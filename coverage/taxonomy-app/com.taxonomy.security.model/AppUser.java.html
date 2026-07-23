@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AppUser.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.model</a> &gt; <span class="el_source">AppUser.java</span></div><h1>AppUser.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.Table;
 
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * Application user stored in the database.
- * Linked to {@link AppRole} via a many-to-many join table.
- */
+/** Application user stored in the database. */
 @Entity
 @Table(name = &quot;app_user&quot;)
 public class AppUser {
@@ -23,15 +29,22 @@ public class AppUser {
     @Column(name = &quot;password_hash&quot;, nullable = false)
     private String passwordHash;
 
-<span class="fc" id="L26">    @Column(nullable = false)</span>
+<span class="fc" id="L32">    @Column(nullable = false)</span>
     private boolean enabled = true;
+
+    /**
+     * When set, the user may authenticate but cannot use the application until
+     * the temporary/bootstrap password has been replaced.
+     */
+    @Column(name = &quot;must_change_password&quot;, nullable = false)
+    private boolean mustChangePassword;
 
     @Column(name = &quot;display_name&quot;)
     private String displayName;
 
     private String email;
 
-<span class="fc" id="L34">    @ManyToMany(fetch = FetchType.EAGER)</span>
+<span class="fc" id="L47">    @ManyToMany(fetch = FetchType.EAGER)</span>
     @JoinTable(
             name = &quot;user_roles&quot;,
             joinColumns = @JoinColumn(name = &quot;user_id&quot;),
@@ -39,63 +52,33 @@ public class AppUser {
     )
     private Set&lt;AppRole&gt; roles = new HashSet&lt;&gt;();
 
-<span class="fc" id="L42">    public AppUser() {</span>
-<span class="fc" id="L43">    }</span>
+<span class="fc" id="L55">    public AppUser() {</span>
+<span class="fc" id="L56">    }</span>
 
-    public Long getId() {
-<span class="fc" id="L46">        return id;</span>
-    }
+<span class="fc" id="L58">    public Long getId() { return id; }</span>
+<span class="fc" id="L59">    public void setId(Long id) { this.id = id; }</span>
 
-    public void setId(Long id) {
-<span class="fc" id="L50">        this.id = id;</span>
-<span class="fc" id="L51">    }</span>
+<span class="fc" id="L61">    public String getUsername() { return username; }</span>
+<span class="fc" id="L62">    public void setUsername(String username) { this.username = username; }</span>
 
-    public String getUsername() {
-<span class="fc" id="L54">        return username;</span>
-    }
+<span class="fc" id="L64">    public String getPasswordHash() { return passwordHash; }</span>
+<span class="fc" id="L65">    public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }</span>
 
-    public void setUsername(String username) {
-<span class="fc" id="L58">        this.username = username;</span>
-<span class="fc" id="L59">    }</span>
+<span class="fc" id="L67">    public boolean isEnabled() { return enabled; }</span>
+<span class="fc" id="L68">    public void setEnabled(boolean enabled) { this.enabled = enabled; }</span>
 
-    public String getPasswordHash() {
-<span class="fc" id="L62">        return passwordHash;</span>
-    }
+<span class="fc" id="L70">    public boolean isMustChangePassword() { return mustChangePassword; }</span>
+    public void setMustChangePassword(boolean mustChangePassword) {
+<span class="fc" id="L72">        this.mustChangePassword = mustChangePassword;</span>
+<span class="fc" id="L73">    }</span>
 
-    public void setPasswordHash(String passwordHash) {
-<span class="fc" id="L66">        this.passwordHash = passwordHash;</span>
-<span class="fc" id="L67">    }</span>
+<span class="fc" id="L75">    public String getDisplayName() { return displayName; }</span>
+<span class="fc" id="L76">    public void setDisplayName(String displayName) { this.displayName = displayName; }</span>
 
-    public boolean isEnabled() {
-<span class="fc" id="L70">        return enabled;</span>
-    }
+<span class="fc" id="L78">    public String getEmail() { return email; }</span>
+<span class="fc" id="L79">    public void setEmail(String email) { this.email = email; }</span>
 
-    public void setEnabled(boolean enabled) {
-<span class="fc" id="L74">        this.enabled = enabled;</span>
-<span class="fc" id="L75">    }</span>
-
-    public String getDisplayName() {
-<span class="fc" id="L78">        return displayName;</span>
-    }
-
-    public void setDisplayName(String displayName) {
-<span class="fc" id="L82">        this.displayName = displayName;</span>
-<span class="fc" id="L83">    }</span>
-
-    public String getEmail() {
-<span class="fc" id="L86">        return email;</span>
-    }
-
-    public void setEmail(String email) {
-<span class="fc" id="L90">        this.email = email;</span>
-<span class="fc" id="L91">    }</span>
-
-    public Set&lt;AppRole&gt; getRoles() {
-<span class="fc" id="L94">        return roles;</span>
-    }
-
-    public void setRoles(Set&lt;AppRole&gt; roles) {
-<span class="fc" id="L98">        this.roles = roles;</span>
-<span class="fc" id="L99">    }</span>
+<span class="fc" id="L81">    public Set&lt;AppRole&gt; getRoles() { return roles; }</span>
+<span class="fc" id="L82">    public void setRoles(Set&lt;AppRole&gt; roles) { this.roles = roles; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

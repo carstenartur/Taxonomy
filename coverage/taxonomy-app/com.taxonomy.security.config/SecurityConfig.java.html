@@ -7,9 +7,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
@@ -27,32 +26,36 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 public class SecurityConfig {
 
     private final AuthorizationRulesConfigurer authRules;
+    private final PasswordChangeRequiredFilter passwordChangeRequiredFilter;
 
-<span class="fc" id="L31">    public SecurityConfig(AuthorizationRulesConfigurer authRules) {</span>
-<span class="fc" id="L32">        this.authRules = authRules;</span>
-<span class="fc" id="L33">    }</span>
+    public SecurityConfig(AuthorizationRulesConfigurer authRules,
+<span class="fc" id="L32">                          PasswordChangeRequiredFilter passwordChangeRequiredFilter) {</span>
+<span class="fc" id="L33">        this.authRules = authRules;</span>
+<span class="fc" id="L34">        this.passwordChangeRequiredFilter = passwordChangeRequiredFilter;</span>
+<span class="fc" id="L35">    }</span>
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-<span class="fc" id="L37">        RequestMatcher statelessApiClient = SecurityConfig::isStatelessApiClient;</span>
+<span class="fc" id="L39">        RequestMatcher statelessApiClient = SecurityConfig::isStatelessApiClient;</span>
 
-<span class="fc" id="L39">        http</span>
-<span class="fc" id="L40">            .authorizeHttpRequests(auth -&gt; authRules.configure(auth))</span>
-<span class="fc" id="L41">            .csrf(csrf -&gt; csrf.ignoringRequestMatchers(statelessApiClient))</span>
-<span class="fc" id="L42">            .headers(headers -&gt; headers</span>
-<span class="fc" id="L43">                .contentTypeOptions(Customizer.withDefaults())</span>
-<span class="fc" id="L44">                .frameOptions(frame -&gt; frame.sameOrigin())</span>
-<span class="fc" id="L45">                .httpStrictTransportSecurity(hsts -&gt; hsts</span>
-<span class="fc" id="L46">                    .includeSubDomains(true)</span>
-<span class="fc" id="L47">                    .maxAgeInSeconds(31536000))</span>
-<span class="fc" id="L48">                .referrerPolicy(referrer -&gt; referrer</span>
-<span class="fc" id="L49">                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))</span>
+<span class="fc" id="L41">        http</span>
+<span class="fc" id="L42">            .authorizeHttpRequests(auth -&gt; authRules.configure(auth))</span>
+<span class="fc" id="L43">            .csrf(csrf -&gt; csrf.ignoringRequestMatchers(statelessApiClient))</span>
+<span class="fc" id="L44">            .headers(headers -&gt; headers</span>
+<span class="fc" id="L45">                .contentTypeOptions(Customizer.withDefaults())</span>
+<span class="fc" id="L46">                .frameOptions(frame -&gt; frame.sameOrigin())</span>
+<span class="fc" id="L47">                .httpStrictTransportSecurity(hsts -&gt; hsts</span>
+<span class="fc" id="L48">                    .includeSubDomains(true)</span>
+<span class="fc" id="L49">                    .maxAgeInSeconds(31536000))</span>
+<span class="fc" id="L50">                .referrerPolicy(referrer -&gt; referrer</span>
+<span class="fc" id="L51">                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))</span>
             )
-<span class="fc" id="L51">            .formLogin(Customizer.withDefaults())</span>
-<span class="fc" id="L52">            .httpBasic(Customizer.withDefaults())</span>
-<span class="fc" id="L53">            .logout(Customizer.withDefaults());</span>
+<span class="fc" id="L53">            .formLogin(Customizer.withDefaults())</span>
+<span class="fc" id="L54">            .httpBasic(Customizer.withDefaults())</span>
+<span class="fc" id="L55">            .logout(Customizer.withDefaults())</span>
+<span class="fc" id="L56">            .addFilterAfter(passwordChangeRequiredFilter, BasicAuthenticationFilter.class);</span>
 
-<span class="fc" id="L55">        return http.build();</span>
+<span class="fc" id="L58">        return http.build();</span>
     }
 
     /**
@@ -62,18 +65,13 @@ public class SecurityConfig {
      * CSRF protection.
      */
     static boolean isStatelessApiClient(HttpServletRequest request) {
-<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (!request.getRequestURI().startsWith(&quot;/api/&quot;)) {</span>
-<span class="fc" id="L66">            return false;</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (!request.getRequestURI().startsWith(&quot;/api/&quot;)) {</span>
+<span class="fc" id="L69">            return false;</span>
         }
-<span class="fc" id="L68">        String authorization = request.getHeader(&quot;Authorization&quot;);</span>
-<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        return authorization != null</span>
-<span class="nc bnc" id="L70" title="All 2 branches missed.">                &amp;&amp; (authorization.regionMatches(true, 0, &quot;Basic &quot;, 0, 6)</span>
-<span class="pc bnc" id="L71" title="All 2 branches missed.">                || authorization.regionMatches(true, 0, &quot;Bearer &quot;, 0, 7));</span>
-    }
-
-    @Bean
-    PasswordEncoder passwordEncoder() {
-<span class="fc" id="L76">        return new BCryptPasswordEncoder();</span>
+<span class="fc" id="L71">        String authorization = request.getHeader(&quot;Authorization&quot;);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        return authorization != null</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                &amp;&amp; (authorization.regionMatches(true, 0, &quot;Basic &quot;, 0, 6)</span>
+<span class="pc bnc" id="L74" title="All 2 branches missed.">                || authorization.regionMatches(true, 0, &quot;Bearer &quot;, 0, 7));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

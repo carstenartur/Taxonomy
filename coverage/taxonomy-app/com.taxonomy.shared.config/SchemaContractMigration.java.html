@@ -129,36 +129,36 @@ public class SchemaContractMigration implements ApplicationRunner {
 
     private void ensurePasswordChangeColumn(Connection connection) throws SQLException {
 <span class="fc" id="L131">        TableRef appUser = findTable(connection, &quot;app_user&quot;);</span>
-<span class="pc bpc" id="L132" title="1 of 4 branches missed.">        if (appUser == null || columnExists(connection, appUser, &quot;must_change_password&quot;)) {</span>
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">        if (appUser == null || columnExists(connection, appUser, &quot;must_change_password&quot;)) {</span>
 <span class="fc" id="L133">            return;</span>
         }
 
-<span class="fc" id="L136">        String product = connection.getMetaData().getDatabaseProductName()</span>
-<span class="fc" id="L137">                .toLowerCase(Locale.ROOT);</span>
+<span class="nc" id="L136">        String product = connection.getMetaData().getDatabaseProductName()</span>
+<span class="nc" id="L137">                .toLowerCase(Locale.ROOT);</span>
         String definition;
-<span class="pc bpc" id="L139" title="1 of 2 branches missed.">        if (product.contains(&quot;microsoft&quot;)) {</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (product.contains(&quot;microsoft&quot;)) {</span>
 <span class="nc" id="L140">            definition = &quot;BIT DEFAULT 0 NOT NULL&quot;;</span>
-<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        } else if (product.contains(&quot;oracle&quot;)) {</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        } else if (product.contains(&quot;oracle&quot;)) {</span>
 <span class="nc" id="L142">            definition = &quot;NUMBER(1) DEFAULT 0 NOT NULL&quot;;</span>
         } else {
-<span class="fc" id="L144">            definition = &quot;BOOLEAN DEFAULT FALSE NOT NULL&quot;;</span>
+<span class="nc" id="L144">            definition = &quot;BOOLEAN DEFAULT FALSE NOT NULL&quot;;</span>
         }
-<span class="fc" id="L146">        ensureColumn(connection, appUser, &quot;must_change_password&quot;, definition);</span>
-<span class="fc" id="L147">        log.info(&quot;Added app_user.must_change_password with a safe false default&quot;);</span>
-<span class="fc" id="L148">    }</span>
+<span class="nc" id="L146">        ensureColumn(connection, appUser, &quot;must_change_password&quot;, definition);</span>
+<span class="nc" id="L147">        log.info(&quot;Added app_user.must_change_password with a safe false default&quot;);</span>
+<span class="nc" id="L148">    }</span>
 
     private void ensureColumn(Connection connection,
                               TableRef table,
                               String column,
                               String definition) throws SQLException {
-<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (columnExists(connection, table, column)) {</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (columnExists(connection, table, column)) {</span>
 <span class="fc" id="L155">            return;</span>
         }
         // Logical model identifiers are intentionally unquoted: each database
         // applies its normal case folding, matching Hibernate-created columns.
-<span class="fc" id="L159">        execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
+<span class="nc" id="L159">        execute(connection, &quot;ALTER TABLE &quot; + qualified(connection, table)</span>
                 + &quot; ADD &quot; + column + &quot; &quot; + definition);
-<span class="fc" id="L161">    }</span>
+<span class="nc" id="L161">    }</span>
 
     private void assertNoScopedDuplicates(Connection connection,
                                           TableRef table) throws SQLException {
@@ -268,14 +268,14 @@ public class SchemaContractMigration implements ApplicationRunner {
                                  String logicalColumn) throws SQLException {
 <span class="fc" id="L269">        try (ResultSet columns = connection.getMetaData().getColumns(</span>
 <span class="fc" id="L270">                table.catalog(), table.schema(), table.name(), &quot;%&quot;)) {</span>
-<span class="fc bfc" id="L271" title="All 2 branches covered.">            while (columns.next()) {</span>
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">            while (columns.next()) {</span>
 <span class="fc" id="L272">                String name = columns.getString(&quot;COLUMN_NAME&quot;);</span>
 <span class="pc bpc" id="L273" title="1 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalColumn)) {</span>
 <span class="fc" id="L274">                    return true;</span>
                 }
 <span class="fc" id="L276">            }</span>
 <span class="pc bpc" id="L277" title="1 of 2 branches missed.">        }</span>
-<span class="fc" id="L278">        return false;</span>
+<span class="nc" id="L278">        return false;</span>
     }
 
     private void execute(Connection connection, String sql) throws SQLException {

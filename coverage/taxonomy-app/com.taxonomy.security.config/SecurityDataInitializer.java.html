@@ -12,69 +12,72 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
 
-/**
- * Seeds the default roles and an initial admin user on first startup.
- * &lt;p&gt;
- * If the roles or admin user already exist (e.g. persistent database) this is a no-op.
- * The default admin password can be overridden via the {@code TAXONOMY_ADMIN_PASSWORD}
- * environment variable (or the equivalent Spring property {@code taxonomy.admin-password}).
- * &lt;p&gt;
- * Only active in form-login mode (without Keycloak). In the Keycloak profile,
- * users and roles are managed by the identity provider.
- */
+/** Seeds local roles and the initial administrator in form-login mode. */
 @Component
 @Profile(&quot;!keycloak&quot;)
 public class SecurityDataInitializer implements ApplicationRunner {
 
-<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(SecurityDataInitializer.class);</span>
+<span class="fc" id="L24">    private static final Logger log = LoggerFactory.getLogger(SecurityDataInitializer.class);</span>
 
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final String adminPassword;
+    private final boolean requirePasswordChange;
 
     public SecurityDataInitializer(RoleRepository roleRepository,
                                    UserRepository userRepository,
                                    PasswordEncoder passwordEncoder,
-<span class="fc" id="L42">                                   @Value(&quot;${taxonomy.admin-password:admin}&quot;) String adminPassword) {</span>
-<span class="fc" id="L43">        this.roleRepository = roleRepository;</span>
-<span class="fc" id="L44">        this.userRepository = userRepository;</span>
-<span class="fc" id="L45">        this.passwordEncoder = passwordEncoder;</span>
-<span class="fc" id="L46">        this.adminPassword = adminPassword;</span>
-<span class="fc" id="L47">    }</span>
+                                   @Value(&quot;${taxonomy.admin-password:admin}&quot;) String adminPassword,
+                                   @Value(&quot;${taxonomy.security.require-password-change:false}&quot;)
+<span class="fc" id="L37">                                   boolean requirePasswordChange) {</span>
+<span class="fc" id="L38">        this.roleRepository = roleRepository;</span>
+<span class="fc" id="L39">        this.userRepository = userRepository;</span>
+<span class="fc" id="L40">        this.passwordEncoder = passwordEncoder;</span>
+<span class="fc" id="L41">        this.adminPassword = adminPassword;</span>
+<span class="fc" id="L42">        this.requirePasswordChange = requirePasswordChange;</span>
+<span class="fc" id="L43">    }</span>
 
     @Override
+    @Transactional
     public void run(ApplicationArguments args) {
-        // Seed roles
-<span class="fc" id="L52">        AppRole roleUser = findOrCreateRole(&quot;ROLE_USER&quot;);</span>
-<span class="fc" id="L53">        AppRole roleArchitect = findOrCreateRole(&quot;ROLE_ARCHITECT&quot;);</span>
-<span class="fc" id="L54">        AppRole roleAdmin = findOrCreateRole(&quot;ROLE_ADMIN&quot;);</span>
+<span class="fc" id="L48">        AppRole roleUser = findOrCreateRole(&quot;ROLE_USER&quot;);</span>
+<span class="fc" id="L49">        AppRole roleArchitect = findOrCreateRole(&quot;ROLE_ARCHITECT&quot;);</span>
+<span class="fc" id="L50">        AppRole roleAdmin = findOrCreateRole(&quot;ROLE_ADMIN&quot;);</span>
 
-        // Seed default admin user (if not present)
-<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (userRepository.findByUsername(&quot;admin&quot;).isEmpty()) {</span>
-<span class="fc" id="L58">            AppUser admin = new AppUser();</span>
-<span class="fc" id="L59">            admin.setUsername(&quot;admin&quot;);</span>
-<span class="fc" id="L60">            admin.setPasswordHash(passwordEncoder.encode(adminPassword));</span>
-<span class="fc" id="L61">            admin.setEnabled(true);</span>
-<span class="fc" id="L62">            admin.setDisplayName(&quot;Administrator&quot;);</span>
-<span class="fc" id="L63">            admin.setRoles(Set.of(roleUser, roleArchitect, roleAdmin));</span>
-<span class="fc" id="L64">            userRepository.save(admin);</span>
-<span class="fc" id="L65">            log.info(&quot;Created default admin user (username=admin). Change the password immediately.&quot;);</span>
+<span class="fc" id="L52">        AppUser admin = userRepository.findByUsername(&quot;admin&quot;).orElse(null);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        if (admin == null) {</span>
+<span class="fc" id="L54">            admin = new AppUser();</span>
+<span class="fc" id="L55">            admin.setUsername(&quot;admin&quot;);</span>
+<span class="fc" id="L56">            admin.setPasswordHash(passwordEncoder.encode(adminPassword));</span>
+<span class="fc" id="L57">            admin.setEnabled(true);</span>
+<span class="fc" id="L58">            admin.setDisplayName(&quot;Administrator&quot;);</span>
+<span class="fc" id="L59">            admin.setRoles(Set.of(roleUser, roleArchitect, roleAdmin));</span>
+<span class="fc" id="L60">            admin.setMustChangePassword(requirePasswordChange);</span>
+<span class="fc" id="L61">            userRepository.save(admin);</span>
+<span class="fc" id="L62">            log.info(&quot;Created default admin user (username=admin, passwordChangeRequired={}).&quot;,</span>
+<span class="fc" id="L63">                    requirePasswordChange);</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">        } else if (requirePasswordChange</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">                &amp;&amp; passwordEncoder.matches(&quot;admin&quot;, admin.getPasswordHash())</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">                &amp;&amp; !admin.isMustChangePassword()) {</span>
+<span class="nc" id="L67">            admin.setMustChangePassword(true);</span>
+<span class="nc" id="L68">            userRepository.save(admin);</span>
+<span class="nc" id="L69">            log.warn(&quot;Marked existing admin account for mandatory password replacement.&quot;);</span>
         }
 
-        // Warn if the default password is still in use
-<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (&quot;admin&quot;.equals(adminPassword)) {</span>
-<span class="fc" id="L70">            log.warn(&quot;SECURITY WARNING: Default admin password 'admin' is in use. &quot;</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (&quot;admin&quot;.equals(adminPassword)) {</span>
+<span class="fc" id="L73">            log.warn(&quot;SECURITY WARNING: Default admin password 'admin' is in use. &quot;</span>
                     + &quot;Set TAXONOMY_ADMIN_PASSWORD environment variable to change it.&quot;);
         }
-<span class="fc" id="L73">    }</span>
+<span class="fc" id="L76">    }</span>
 
     private AppRole findOrCreateRole(String name) {
-<span class="fc" id="L76">        return roleRepository.findByName(name)</span>
-<span class="fc" id="L77">                .orElseGet(() -&gt; roleRepository.save(new AppRole(name)));</span>
+<span class="fc" id="L79">        return roleRepository.findByName(name)</span>
+<span class="fc" id="L80">                .orElseGet(() -&gt; roleRepository.save(new AppRole(name)));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
