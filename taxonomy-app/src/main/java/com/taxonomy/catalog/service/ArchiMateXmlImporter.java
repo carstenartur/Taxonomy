@@ -1,12 +1,11 @@
 package com.taxonomy.catalog.service;
 
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.dto.ArchiMateImportResult;
 import com.taxonomy.dsl.mapping.profiles.ArchiMateMappingProfile;
 import com.taxonomy.model.RelationType;
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -14,120 +13,197 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 import java.io.InputStream;
-import java.util.*;
-import com.taxonomy.export.ArchiMateDiagramService;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
- * Imports an ArchiMate 3.x Model Exchange Format XML file and maps its
- * elements and relationships to taxonomy nodes and relations.
+ * Parses ArchiMate 3.x Model Exchange XML and materializes matched relations in
+ * an explicit workspace.
  *
- * <p>The importer performs the following steps:
- * <ol>
- *   <li>Parse elements from the XML and extract id, type, and label.</li>
- *   <li>Parse relationships from the XML and extract source, target, and type.</li>
- *   <li>Map each ArchiMate element type to a taxonomy root code using the
- *       reverse of {@link ArchiMateDiagramService#toArchiMateType(String)}.</li>
- *   <li>Match elements to existing taxonomy nodes by name similarity.</li>
- *   <li>Create new relations for matched elements.</li>
- * </ol>
+ * <p>Parsing/matching and persistence are deliberately separated. Preview uses
+ * the same parser and duplicate policy but performs no writes. Import runs in a
+ * single transaction; a fatal materialization error therefore rolls back every
+ * relation created by that request.</p>
  */
 @Service
 public class ArchiMateXmlImporter {
 
     private static final Logger log = LoggerFactory.getLogger(ArchiMateXmlImporter.class);
-
-    private final TaxonomyNodeRepository nodeRepository;
-    private final TaxonomyRelationRepository relationRepository;
-
-    /** Shared mapping profile for ArchiMate types. */
     private static final ArchiMateMappingProfile PROFILE = new ArchiMateMappingProfile();
 
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationService relationService;
+
     public ArchiMateXmlImporter(TaxonomyNodeRepository nodeRepository,
-                                 TaxonomyRelationRepository relationRepository) {
+                                TaxonomyRelationService relationService) {
         this.nodeRepository = nodeRepository;
-        this.relationRepository = relationRepository;
+        this.relationService = relationService;
+    }
+
+    /** Parses and validates the model without mutating architecture state. */
+    @Transactional(readOnly = true)
+    public ArchiMateImportResult previewXml(InputStream inputStream, WorkspaceContext context) {
+        return execute(inputStream, requireContext(context), false);
     }
 
     /**
-     * Imports an ArchiMate XML file and creates taxonomy relations.
-     *
-     * @param inputStream the XML input stream
-     * @return the import result with statistics
+     * Parses, validates, and atomically creates relations in the exact active
+     * workspace. Shared baseline relations are visible to personal workspaces
+     * and therefore count as duplicates rather than being copied locally.
      */
     @Transactional
+    public ArchiMateImportResult importXml(InputStream inputStream, WorkspaceContext context) {
+        return execute(inputStream, requireContext(context), true);
+    }
+
+    /** Backward-compatible shared-scope overload for non-request callers. */
+    @Transactional
     public ArchiMateImportResult importXml(InputStream inputStream) {
-        ArchiMateImportResult result = new ArchiMateImportResult();
+        return importXml(inputStream, WorkspaceContext.SHARED);
+    }
+
+    private ArchiMateImportResult execute(InputStream inputStream,
+                                          WorkspaceContext context,
+                                          boolean materialize) {
+        ParsedModel model = parseModel(inputStream);
         List<String> notes = new ArrayList<>();
+        notes.add("Parsed " + model.elements().size() + " elements and "
+                + model.relationships().size() + " relationships from XML");
 
-        try {
-            // Parse XML
-            Map<String, ParsedElement> elements = new LinkedHashMap<>();
-            List<ParsedRelationship> relationships = new ArrayList<>();
-            parseXml(inputStream, elements, relationships);
+        Map<String, TaxonomyNode> matchedNodes = matchElements(model.elements(), notes);
 
-            notes.add("Parsed " + elements.size() + " elements and " + relationships.size() + " relationships from XML");
+        ArchiMateImportResult result = new ArchiMateImportResult();
+        result.setPreview(!materialize);
+        result.setElementsImported(model.elements().size());
+        result.setElementsMatched(matchedNodes.size());
+        result.setElementsUnmatched(model.elements().size() - matchedNodes.size());
+        result.setRelationsParsed(model.relationships().size());
 
-            // Match elements to taxonomy nodes
-            Map<String, TaxonomyNode> matchedNodes = matchElements(elements, notes);
-            result.setElementsMatched(matchedNodes.size());
-            result.setElementsUnmatched(elements.size() - matchedNodes.size());
-            result.setElementsImported(elements.size());
+        int created = 0;
+        int skipped = 0;
+        int rejected = 0;
 
-            // Create relations for matched element pairs
-            int relationsCreated = createRelations(relationships, elements, matchedNodes, notes);
-            result.setRelationsImported(relationsCreated);
+        for (ParsedRelationship relation : model.relationships()) {
+            TaxonomyNode sourceNode = matchedNodes.get(relation.sourceId());
+            TaxonomyNode targetNode = matchedNodes.get(relation.targetId());
+            if (sourceNode == null || targetNode == null) {
+                rejected++;
+                continue;
+            }
 
-        } catch (Exception e) {
-            log.error("ArchiMate import failed", e);
-            notes.add("Import error: " + e.getMessage());
+            String mappedType = PROFILE.mapRelationType(relation.type());
+            RelationType relationType = mappedType != null
+                    ? RelationType.valueOf(mappedType)
+                    : RelationType.RELATED_TO;
+
+            boolean exists = relationService.relationExistsVisible(
+                    sourceNode.getCode(), targetNode.getCode(), relationType, context.workspaceId());
+            if (exists) {
+                skipped++;
+                continue;
+            }
+
+            if (!materialize) {
+                continue;
+            }
+
+            try {
+                relationService.createRelation(
+                        sourceNode.getCode(), targetNode.getCode(), relationType,
+                        "Imported from ArchiMate XML", "ARCHIMATE_IMPORT",
+                        context.workspaceId(), context.username());
+                created++;
+            } catch (IllegalArgumentException error) {
+                // Treat only a concurrent duplicate as a skip. Any other failure
+                // is fatal and must roll the complete import transaction back.
+                if (relationService.relationExistsVisible(
+                        sourceNode.getCode(), targetNode.getCode(), relationType, context.workspaceId())) {
+                    skipped++;
+                } else {
+                    throw new ArchiMateImportException(
+                            "Unable to materialize ArchiMate relation", error);
+                }
+            } catch (RuntimeException error) {
+                throw new ArchiMateImportException(
+                        "Unable to materialize ArchiMate relation", error);
+            }
         }
 
+        result.setRelationsImported(created);
+        result.setRelationsSkipped(skipped);
+        result.setRelationsRejected(rejected);
         result.setNotes(notes);
+
+        int eligible = model.relationships().size() - skipped - rejected;
+        notes.add(materialize
+                ? "Created " + created + " relation(s) in workspace " + scopeName(context)
+                        + "; skipped " + skipped + " duplicate(s); rejected " + rejected
+                        + " relation(s) with unmatched endpoints"
+                : "Preview found " + eligible + " relation(s) eligible for workspace "
+                        + scopeName(context) + "; " + skipped + " duplicate(s); "
+                        + rejected + " relation(s) with unmatched endpoints");
+
+        log.info("ArchiMate {} complete: elements={}, matched={}, relations={}, created={}, skipped={}, rejected={}, workspace={}",
+                materialize ? "import" : "preview", model.elements().size(), matchedNodes.size(),
+                model.relationships().size(), created, skipped, rejected, context.workspaceId());
         return result;
     }
 
-    private void parseXml(InputStream inputStream,
-                          Map<String, ParsedElement> elements,
-                          List<ParsedRelationship> relationships) throws Exception {
+    private ParsedModel parseModel(InputStream inputStream) {
+        if (inputStream == null) {
+            throw new ArchiMateImportException("No ArchiMate XML input was provided");
+        }
+
+        Map<String, ParsedElement> elements = new LinkedHashMap<>();
+        List<ParsedRelationship> relationships = new ArrayList<>();
 
         XMLInputFactory factory = XMLInputFactory.newInstance();
-        // Security: disable external entities
+        // XXE hardening: never resolve DTDs or external entities.
         factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE);
         factory.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE);
 
-        XMLStreamReader reader = factory.createXMLStreamReader(inputStream);
-
-        while (reader.hasNext()) {
-            int event = reader.next();
-            if (event == XMLStreamConstants.START_ELEMENT) {
-                String localName = reader.getLocalName();
-
-                if ("element".equals(localName)) {
-                    parseElement(reader, elements);
-                } else if ("relationship".equals(localName)) {
-                    parseRelationship(reader, relationships);
+        try {
+            XMLStreamReader reader = factory.createXMLStreamReader(inputStream);
+            try {
+                while (reader.hasNext()) {
+                    int event = reader.next();
+                    if (event != XMLStreamConstants.START_ELEMENT) {
+                        continue;
+                    }
+                    if ("element".equals(reader.getLocalName())) {
+                        parseElement(reader, elements);
+                    } else if ("relationship".equals(reader.getLocalName())) {
+                        parseRelationship(reader, relationships);
+                    }
                 }
+            } finally {
+                reader.close();
             }
+        } catch (XMLStreamException error) {
+            throw new ArchiMateImportException("Malformed ArchiMate XML", error);
         }
-        reader.close();
+
+        return new ParsedModel(elements, relationships);
     }
 
-    private void parseElement(XMLStreamReader reader, Map<String, ParsedElement> elements) throws Exception {
+    private void parseElement(XMLStreamReader reader,
+                              Map<String, ParsedElement> elements) throws XMLStreamException {
         String identifier = reader.getAttributeValue(null, "identifier");
         String xsiType = reader.getAttributeValue(
                 "http://www.w3.org/2001/XMLSchema-instance", "type");
+        if (identifier == null || xsiType == null) {
+            return;
+        }
 
-        if (identifier == null || xsiType == null) return;
-
-        // Strip "id-" prefix if present
-        String id = identifier.startsWith("id-") ? identifier.substring(3) : identifier;
-
+        String id = stripIdentifierPrefix(identifier);
         String label = null;
         String documentation = null;
-
-        // Read child elements for name and documentation
         int depth = 1;
         while (reader.hasNext() && depth > 0) {
             int event = reader.next();
@@ -135,7 +211,7 @@ public class ArchiMateXmlImporter {
                 depth++;
                 if ("name".equals(reader.getLocalName())) {
                     label = reader.getElementText();
-                    depth--; // getElementText consumes the end element
+                    depth--;
                 } else if ("documentation".equals(reader.getLocalName())) {
                     documentation = reader.getElementText();
                     depth--;
@@ -144,126 +220,97 @@ public class ArchiMateXmlImporter {
                 depth--;
             }
         }
-
         elements.put(id, new ParsedElement(id, xsiType, label, documentation));
     }
 
-    private void parseRelationship(XMLStreamReader reader, List<ParsedRelationship> relationships) throws Exception {
+    private void parseRelationship(XMLStreamReader reader,
+                                   List<ParsedRelationship> relationships) {
         String identifier = reader.getAttributeValue(null, "identifier");
         String xsiType = reader.getAttributeValue(
                 "http://www.w3.org/2001/XMLSchema-instance", "type");
         String source = reader.getAttributeValue(null, "source");
         String target = reader.getAttributeValue(null, "target");
+        if (identifier == null || source == null || target == null) {
+            return;
+        }
 
-        if (identifier == null || source == null || target == null) return;
-
-        // Strip "id-" prefix variants
-        String sourceId = source.startsWith("id-") ? source.substring(3) : source;
-        String targetId = target.startsWith("id-") ? target.substring(3) : target;
-        String type = xsiType != null ? xsiType : "Association";
-
-        relationships.add(new ParsedRelationship(identifier, sourceId, targetId, type));
+        relationships.add(new ParsedRelationship(
+                identifier,
+                stripIdentifierPrefix(source),
+                stripIdentifierPrefix(target),
+                xsiType != null ? xsiType : "Association"));
     }
 
     private Map<String, TaxonomyNode> matchElements(Map<String, ParsedElement> elements,
-                                                      List<String> notes) {
+                                                     List<String> notes) {
         Map<String, TaxonomyNode> matched = new LinkedHashMap<>();
-
-        for (ParsedElement el : elements.values()) {
-            String taxonomyRoot = PROFILE.mapElementType(el.type);
+        for (ParsedElement element : elements.values()) {
+            String taxonomyRoot = PROFILE.mapElementType(element.type());
             if (taxonomyRoot == null) {
-                notes.add("Unknown ArchiMate type: " + el.type + " for element " + el.label);
+                notes.add("Unknown ArchiMate type: " + element.type() + " for element " + element.label());
+                continue;
+            }
+            if (element.label() == null || element.label().isBlank()) {
                 continue;
             }
 
-            // Try to find a matching taxonomy node by name in the expected root
-            if (el.label != null && !el.label.isBlank()) {
-                List<TaxonomyNode> candidates = nodeRepository
-                        .findByTaxonomyRootOrderByLevelAscNameEnAsc(taxonomyRoot);
-
-                TaxonomyNode bestMatch = findBestMatch(el.label, candidates);
-                if (bestMatch != null) {
-                    matched.put(el.id, bestMatch);
-                }
+            List<TaxonomyNode> candidates = nodeRepository
+                    .findByTaxonomyRootOrderByLevelAscNameEnAsc(taxonomyRoot);
+            TaxonomyNode bestMatch = findBestMatch(element.label(), candidates);
+            if (bestMatch != null) {
+                matched.put(element.id(), bestMatch);
             }
         }
-
-        notes.add("Matched " + matched.size() + " of " + elements.size() + " elements to taxonomy nodes");
+        notes.add("Matched " + matched.size() + " of " + elements.size()
+                + " elements to taxonomy nodes");
         return matched;
     }
 
     private TaxonomyNode findBestMatch(String label, List<TaxonomyNode> candidates) {
-        if (candidates.isEmpty()) return null;
-
+        if (candidates.isEmpty()) {
+            return null;
+        }
         String normalizedLabel = label.toLowerCase(Locale.ROOT).trim();
-
-        // First: exact name match
         for (TaxonomyNode node : candidates) {
-            if (node.getNameEn() != null &&
-                    node.getNameEn().toLowerCase(Locale.ROOT).trim().equals(normalizedLabel)) {
+            if (node.getNameEn() != null
+                    && node.getNameEn().toLowerCase(Locale.ROOT).trim().equals(normalizedLabel)) {
                 return node;
             }
         }
-
-        // Second: contains match
         for (TaxonomyNode node : candidates) {
-            if (node.getNameEn() != null) {
-                String nodeName = node.getNameEn().toLowerCase(Locale.ROOT).trim();
-                if (nodeName.contains(normalizedLabel) || normalizedLabel.contains(nodeName)) {
-                    return node;
-                }
+            if (node.getNameEn() == null) {
+                continue;
+            }
+            String nodeName = node.getNameEn().toLowerCase(Locale.ROOT).trim();
+            if (nodeName.contains(normalizedLabel) || normalizedLabel.contains(nodeName)) {
+                return node;
             }
         }
-
         return null;
     }
 
-    private int createRelations(List<ParsedRelationship> relationships,
-                                 Map<String, ParsedElement> elements,
-                                 Map<String, TaxonomyNode> matchedNodes,
-                                 List<String> notes) {
-        int created = 0;
-
-        for (ParsedRelationship rel : relationships) {
-            TaxonomyNode sourceNode = matchedNodes.get(rel.sourceId);
-            TaxonomyNode targetNode = matchedNodes.get(rel.targetId);
-
-            if (sourceNode == null || targetNode == null) continue;
-
-            String relTypeName = PROFILE.mapRelationType(rel.type);
-            RelationType relationType = relTypeName != null
-                    ? RelationType.valueOf(relTypeName)
-                    : RelationType.RELATED_TO;
-
-            // Check if relation already exists
-            List<TaxonomyRelation> existing = relationRepository
-                    .findBySourceNodeCode(sourceNode.getCode());
-            boolean alreadyExists = existing.stream()
-                    .anyMatch(r -> r.getTargetNode().getCode().equals(targetNode.getCode()) &&
-                            r.getRelationType() == relationType);
-
-            if (!alreadyExists) {
-                TaxonomyRelation newRel = new TaxonomyRelation();
-                newRel.setSourceNode(sourceNode);
-                newRel.setTargetNode(targetNode);
-                newRel.setRelationType(relationType);
-                newRel.setDescription("Imported from ArchiMate XML");
-                newRel.setProvenance("ARCHIMATE_IMPORT");
-                relationRepository.save(newRel);
-                created++;
-            }
+    private static WorkspaceContext requireContext(WorkspaceContext context) {
+        if (context == null) {
+            throw new ArchiMateImportException("An explicit workspace context is required");
         }
-
-        notes.add("Created " + created + " new relations (" +
-                (relationships.size() - created) + " already existed or had unmatched endpoints)");
-        return created;
+        return context;
     }
 
-    // ── Internal record types ─────────────────────────────────────────────────
+    private static String stripIdentifierPrefix(String value) {
+        return value.startsWith("id-") ? value.substring(3) : value;
+    }
 
-    /** Represents a parsed ArchiMate element with its id, ArchiMate type, display label, and optional documentation text. */
-    private record ParsedElement(String id, String type, String label, String documentation) {}
+    private static String scopeName(WorkspaceContext context) {
+        return context.workspaceId() != null ? context.workspaceId() : "shared";
+    }
 
-    /** Represents a parsed ArchiMate relationship linking a source element to a target element via a specific relationship type. */
-    private record ParsedRelationship(String id, String sourceId, String targetId, String type) {}
+    private record ParsedModel(Map<String, ParsedElement> elements,
+                               List<ParsedRelationship> relationships) {
+    }
+
+    private record ParsedElement(String id, String type, String label, String documentation) {
+    }
+
+    private record ParsedRelationship(String id, String sourceId, String targetId, String type) {
+    }
 }
