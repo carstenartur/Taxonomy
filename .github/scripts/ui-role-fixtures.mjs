@@ -90,7 +90,8 @@ export async function openRoleSession({
     await onboardingDismiss.focus();
     await page.keyboard.press('Enter');
   }
-  await page.evaluate(() => window.TaxonomyRoleSurface?.ready);
+  await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.ready), null, { timeout: 20_000 });
+  await page.evaluate(() => window.TaxonomyRoleSurface.ready);
 
   return { browser, context, page, account };
 }
