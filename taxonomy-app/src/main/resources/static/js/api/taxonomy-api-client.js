@@ -14,6 +14,9 @@
 window.TaxonomyApiClient = (function () {
     'use strict';
 
+    var nativeFetch = window.fetch.bind(window);
+    var accountContextPromise = null;
+
     function csrfMetadata() {
         var token = document.querySelector('meta[name="_csrf"]');
         var header = document.querySelector('meta[name="_csrf_header"]');
@@ -32,38 +35,25 @@ window.TaxonomyApiClient = (function () {
         return headers;
     }
 
+    function inputUrl(input) {
+        if (typeof input === 'string' || input instanceof URL) return String(input);
+        return input && input.url ? input.url : '';
+    }
+
     function isSameOrigin(input) {
         try {
-            var rawUrl = typeof input === 'string' || input instanceof URL
-                ? String(input) : input.url;
-            return new URL(rawUrl, window.location.href).origin === window.location.origin;
+            return new URL(inputUrl(input), window.location.href).origin === window.location.origin;
         } catch (ignored) {
             return true;
         }
     }
 
-    function installGlobalCsrfInterceptor() {
-        if (window.fetch.__taxonomyCsrfInterceptor) return;
-        var originalFetch = window.fetch.bind(window);
-
-        function csrfAwareFetch(input, init) {
-            var requestInit = Object.assign({}, init || {});
-            var method = (requestInit.method || (input instanceof Request ? input.method : 'GET'))
-                .toUpperCase();
-            var metadata = csrfMetadata();
-            if (metadata && isSameOrigin(input) && method !== 'GET' && method !== 'HEAD') {
-                var inheritedHeaders = input instanceof Request ? input.headers : undefined;
-                requestInit.headers = new Headers(requestInit.headers || inheritedHeaders || {});
-                if (!requestInit.headers.has(metadata.name)) {
-                    requestInit.headers.set(metadata.name, metadata.value);
-                }
-            }
-            return originalFetch(input, requestInit);
+    function requestPath(input) {
+        try {
+            return new URL(inputUrl(input), window.location.href).pathname;
+        } catch (ignored) {
+            return '';
         }
-
-        csrfAwareFetch.__taxonomyCsrfInterceptor = true;
-        csrfAwareFetch.__taxonomyOriginalFetch = originalFetch;
-        window.fetch = csrfAwareFetch;
     }
 
     function ApiError(message, status, url, responseBody) {
@@ -100,10 +90,71 @@ window.TaxonomyApiClient = (function () {
         });
     }
 
+    function getAccountContext() {
+        if (!accountContextPromise) {
+            accountContextPromise = nativeFetch('/api/account/me')
+                .then(checkStatus)
+                .then(parseJson)
+                .catch(function (error) {
+                    accountContextPromise = null;
+                    throw error;
+                });
+        }
+        return accountContextPromise;
+    }
+
+    function isAdminPromptBootstrap(input, method) {
+        if (method !== 'GET' || !isSameOrigin(input)) return false;
+        var path = requestPath(input);
+        return path === '/api/prompts' || path === '/api/prompts/categories';
+    }
+
+    function emptyPromptBootstrapResponse(input) {
+        var body = requestPath(input) === '/api/prompts/categories' ? '{}' : '[]';
+        return new Response(body, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
+    function installGlobalCsrfInterceptor() {
+        if (window.fetch.__taxonomyCsrfInterceptor) return;
+        var originalFetch = window.fetch.bind(window);
+
+        function csrfAwareFetch(input, init) {
+            var requestInit = Object.assign({}, init || {});
+            var method = (requestInit.method || (input instanceof Request ? input.method : 'GET'))
+                .toUpperCase();
+            var metadata = csrfMetadata();
+            if (metadata && isSameOrigin(input) && method !== 'GET' && method !== 'HEAD') {
+                var inheritedHeaders = input instanceof Request ? input.headers : undefined;
+                requestInit.headers = new Headers(requestInit.headers || inheritedHeaders || {});
+                if (!requestInit.headers.has(metadata.name)) {
+                    requestInit.headers.set(metadata.name, metadata.value);
+                }
+            }
+
+            // The prompt editor lives inside the hidden ADMIN tab but legacy UI
+            // initialization starts it for every role. Resolve the cached account
+            // context first: admins use the real endpoints, while non-admins receive
+            // an empty bootstrap model without issuing forbidden background requests.
+            if (isAdminPromptBootstrap(input, method)) {
+                return getAccountContext().then(function (account) {
+                    return account && account.administrator
+                        ? originalFetch(input, requestInit)
+                        : emptyPromptBootstrapResponse(input);
+                });
+            }
+            return originalFetch(input, requestInit);
+        }
+
+        csrfAwareFetch.__taxonomyCsrfInterceptor = true;
+        csrfAwareFetch.__taxonomyOriginalFetch = originalFetch;
+        window.fetch = csrfAwareFetch;
+    }
+
     function getJson(url) {
-        return fetch(url)
-            .then(checkStatus)
-            .then(parseJson);
+        return fetch(url).then(checkStatus).then(parseJson);
     }
 
     function sendJson(url, body, method) {
@@ -111,9 +162,7 @@ window.TaxonomyApiClient = (function () {
             method: method || 'POST',
             headers: Object.assign({ 'Content-Type': 'application/json' }, csrfHeaders()),
             body: JSON.stringify(body)
-        })
-        .then(checkStatus)
-        .then(parseJson);
+        }).then(checkStatus).then(parseJson);
     }
 
     function sendFormData(url, formData, method) {
@@ -121,18 +170,14 @@ window.TaxonomyApiClient = (function () {
             method: method || 'POST',
             headers: csrfHeaders(),
             body: formData
-        })
-        .then(checkStatus)
-        .then(parseJson);
+        }).then(checkStatus).then(parseJson);
     }
 
     function deleteJson(url) {
         return fetch(url, {
             method: 'DELETE',
             headers: csrfHeaders()
-        })
-        .then(checkStatus)
-        .then(parseJson);
+        }).then(checkStatus).then(parseJson);
     }
 
     installGlobalCsrfInterceptor();
@@ -140,6 +185,7 @@ window.TaxonomyApiClient = (function () {
     return {
         ApiError: ApiError,
         getJson: getJson,
+        getAccountContext: getAccountContext,
         sendJson: sendJson,
         sendFormData: sendFormData,
         deleteJson: deleteJson,
