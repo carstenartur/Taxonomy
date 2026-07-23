@@ -5,7 +5,7 @@ on:
     branches-ignore: [ gh-pages ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, fix/security-dependency-patches ]
   workflow_dispatch:
 
 permissions:
@@ -13,6 +13,7 @@ permissions:
 
 env:
   BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+  REACTOR_COVERAGE_XML: taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
 
 jobs:
   build-and-test:
@@ -33,6 +34,9 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - name: Test coverage gate itself
+        run: python3 .github/scripts/test-check-coverage.py
+
       - name: Download and verify pinned embedding model
         env:
           MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
@@ -44,10 +48,16 @@ jobs:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
 
-      - name: Enforce aggregate JaCoCo coverage
+      - name: Enforce reactor-wide JaCoCo coverage
         run: |
           python3 .github/scripts/check-coverage.py \
+            --xml "$REACTOR_COVERAGE_XML" \
             --minimum 0.81 \
+            --expected-group "Taxonomy Domain" \
+            --expected-group "Taxonomy DSL" \
+            --expected-group "Taxonomy Export" \
+            --expected-group "Taxonomy Extension API" \
+            --expected-group "Taxonomy Application" \
             --report target/coverage-gate.txt
           cat target/coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"
 
@@ -78,7 +88,7 @@ jobs:
             echo "SBOM was unavailable; companion metadata was not generated." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload SBOM and dependency evidence
+      - name: Upload SBOM, dependency, and coverage evidence
         uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -90,6 +100,7 @@ jobs:
             target/dependency-hygiene-tree.txt
             target/dependency-hygiene-report.txt
             target/coverage-gate.txt
+            taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
             models/bge-small-en-v1.5/MODEL_PROVENANCE.txt
           if-no-files-found: warn
           retention-days: 90
@@ -132,34 +143,33 @@ jobs:
           import os
           import xml.etree.ElementTree as ET
 
-          covered = missed = 0
+          coverage_path = os.environ['REACTOR_COVERAGE_XML']
           try:
-              reports = glob.glob('**/target/site/jacoco/jacoco.xml', recursive=True)
-              for path in reports:
-                  root = ET.parse(path).getroot()
-                  counter = next((item for item in root.findall('counter')
-                                  if item.get('type') == 'INSTRUCTION'), None)
-                  if counter is None:
-                      raise ValueError(f'No report-level instruction counter in {path}')
-                  covered += int(counter.get('covered', 0))
-                  missed += int(counter.get('missed', 0))
+              root = ET.parse(coverage_path).getroot()
+              counter = next((item for item in root.findall('counter')
+                              if item.get('type') == 'INSTRUCTION'), None)
+              if counter is None:
+                  raise ValueError(f'No report-level instruction counter in {coverage_path}')
+              covered = int(counter.get('covered', 0))
+              missed = int(counter.get('missed', 0))
               total = covered + missed
               ratio = covered / total if total else 0.0
               color = 'brightgreen' if ratio >= 0.81 else 'yellow' if ratio >= 0.60 else 'red'
               coverage_badge = {
                   'schemaVersion': 1,
-                  'label': 'coverage',
+                  'label': 'reactor coverage',
                   'message': f'{ratio * 100:.2f}%' if total else 'unknown',
                   'color': color if total else 'lightgrey',
               }
           except Exception as error:
               print(f'Coverage badge generation failed: {error}')
               coverage_badge = {
-                  'schemaVersion': 1, 'label': 'coverage',
+                  'schemaVersion': 1, 'label': 'reactor coverage',
                   'message': 'unknown', 'color': 'lightgrey',
               }
-          os.makedirs('taxonomy-app/target/site/jacoco', exist_ok=True)
-          with open('taxonomy-app/target/site/jacoco/badge.json', 'w', encoding='utf-8') as handle:
+          coverage_dir = 'taxonomy-coverage/target/site/jacoco-aggregate'
+          os.makedirs(coverage_dir, exist_ok=True)
+          with open(f'{coverage_dir}/badge.json', 'w', encoding='utf-8') as handle:
               json.dump(coverage_badge, handle)
 
           try:
@@ -202,8 +212,8 @@ jobs:
           rm -rf target/quality-reports
           mkdir -p target/quality-reports/tests target/quality-reports/coverage
           if [ -d target/site ]; then cp -a target/site/. target/quality-reports/tests/; fi
-          if [ -d taxonomy-app/target/site/jacoco ]; then
-            cp -a taxonomy-app/target/site/jacoco/. target/quality-reports/coverage/
+          if [ -d taxonomy-coverage/target/site/jacoco-aggregate ]; then
+            cp -a taxonomy-coverage/target/site/jacoco-aggregate/. target/quality-reports/coverage/
           fi
           if [ -f target/coverage-gate.txt ]; then
             cp target/coverage-gate.txt target/quality-reports/coverage/coverage-gate.txt
@@ -224,7 +234,7 @@ jobs:
           echo "### Reports" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "[View Test Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/tests/surefire-report.html)" >> "$GITHUB_STEP_SUMMARY"
-          echo "[View Coverage Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/coverage/)" >> "$GITHUB_STEP_SUMMARY"
+          echo "[View Reactor Coverage Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/coverage/)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v7
