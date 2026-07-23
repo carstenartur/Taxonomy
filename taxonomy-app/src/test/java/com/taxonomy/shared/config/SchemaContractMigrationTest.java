@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -25,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
+@Transactional
 class SchemaContractMigrationTest {
 
     private static final Set<String> EXPECTED_SCOPE_COLUMNS = Set.of(
@@ -53,19 +55,26 @@ class SchemaContractMigrationTest {
 
     @Test
     void sharedRelationDuplicatesAreRejectedByDatabaseConstraint() {
-        TaxonomyNode node = nodeRepository.findByCode("BP").orElseThrow();
-        TaxonomyRelation first = relation(node, "schema-contract-first");
-        relationRepository.saveAndFlush(first);
+        TaxonomyNode source = nodeRepository.findByCode("BP").orElseThrow();
+        TaxonomyNode target = nodeRepository.findByCode("BR").orElseThrow();
+        relationRepository.deleteAll(
+                relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(
+                        "BP", "BR", RelationType.CONTAINS));
+        relationRepository.flush();
 
-        TaxonomyRelation duplicate = relation(node, "schema-contract-duplicate");
-        assertThatThrownBy(() -> relationRepository.saveAndFlush(duplicate))
+        relationRepository.saveAndFlush(relation(source, target, "schema-contract-first"));
+
+        assertThatThrownBy(() -> relationRepository.saveAndFlush(
+                relation(source, target, "schema-contract-duplicate")))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
-    private static TaxonomyRelation relation(TaxonomyNode node, String description) {
+    private static TaxonomyRelation relation(TaxonomyNode source,
+                                              TaxonomyNode target,
+                                              String description) {
         TaxonomyRelation relation = new TaxonomyRelation();
-        relation.setSourceNode(node);
-        relation.setTargetNode(node);
+        relation.setSourceNode(source);
+        relation.setTargetNode(target);
         relation.setRelationType(RelationType.CONTAINS);
         relation.setDescription(description);
         relation.setProvenance("schema-contract-test");
