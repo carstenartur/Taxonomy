@@ -43,10 +43,6 @@ class ArchiMateWorkspaceImportTests {
 
     @BeforeEach
     void removeEligibleFixtureRelationFromAllScopes() {
-        // The tests intentionally exercise creation of a Flow/COMMUNICATES_WITH
-        // relation between the matched CP and CR root nodes. Remove any fixture
-        // residue or future catalogue addition transactionally so eligibility is
-        // deterministic; the test transaction restores the catalogue afterwards.
         relationRepository.deleteAll(
                 relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(
                         "CP", "CR", RelationType.COMMUNICATES_WITH));
@@ -100,6 +96,10 @@ class ArchiMateWorkspaceImportTests {
     @Test
     void sharedBaselineRelationIsVisibleAsDuplicateInPersonalWorkspace() {
         WorkspaceContext context = new WorkspaceContext("alice", "qa-archimate-a", "draft");
+        // Establish the baseline idempotently inside this transaction. Depending
+        // on suite order or catalogue fixtures it may already exist; importing it
+        // into shared scope either creates it or reports the existing duplicate.
+        importer.importXml(stream(sharedDuplicateModel()), WorkspaceContext.SHARED);
 
         ArchiMateImportResult result = importer.previewXml(stream(sharedDuplicateModel()), context);
 
