@@ -1,0 +1,142 @@
+name: UI Role and State Acceptance
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'taxonomy-app/src/main/**'
+      - 'taxonomy-app/src/test/**'
+      - '.github/ui-acceptance-matrix.json'
+      - '.github/scripts/ui-role-state-acceptance.mjs'
+      - '.github/workflows/ui-role-state-acceptance.yml'
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  role-state-flow:
+    name: ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: desktop-user-chromium
+            browser: chromium
+            role: USER
+            width: 1440
+            height: 1000
+            zoom: 1
+            forced_colors: false
+          - profile: desktop-architect-firefox
+            browser: firefox
+            role: ARCHITECT
+            width: 1440
+            height: 1000
+            zoom: 1
+            forced_colors: false
+          - profile: mobile-admin-webkit
+            browser: webkit
+            role: ADMIN
+            width: 390
+            height: 844
+            zoom: 1
+            forced_colors: false
+          - profile: zoom-200-user-chromium
+            browser: chromium
+            role: USER
+            width: 1440
+            height: 1000
+            zoom: 2
+            forced_colors: false
+          - profile: zoom-400-user-chromium
+            browser: chromium
+            role: USER
+            width: 1440
+            height: 1000
+            zoom: 4
+            forced_colors: false
+          - profile: forced-colors-architect-chromium
+            browser: chromium
+            role: ARCHITECT
+            width: 1024
+            height: 768
+            zoom: 1
+            forced_colors: true
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+
+      - name: Build application
+        run: mvn -q -pl taxonomy-app -am package -DskipTests
+
+      - name: Start deterministic application
+        env:
+          TAXONOMY_ADMIN_PASSWORD: ui-state-admin-password
+          TAXONOMY_REQUIRE_PASSWORD_CHANGE: 'false'
+          TAXONOMY_EMBEDDING_ENABLED: 'false'
+          TAXONOMY_INIT_ASYNC: 'true'
+          TAXONOMY_THYMELEAF_CACHE: 'false'
+          LLM_MOCK: 'true'
+        run: |
+          JAR=$(find taxonomy-app/target -maxdepth 1 -name 'taxonomy-app-*.jar' ! -name 'original-*' | head -n 1)
+          test -n "$JAR"
+          java -jar "$JAR" > /tmp/taxonomy-ui-state.log 2>&1 &
+          echo $! > /tmp/taxonomy-ui-state.pid
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/login >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/taxonomy-ui-state.log
+          exit 1
+
+      - name: Install pinned browser tools
+        run: |
+          npm install --no-save --no-audit --no-fund \
+            @playwright/test@1.61.1 \
+            @axe-core/playwright@4.12.1
+          npx playwright install --with-deps "${{ matrix.browser }}"
+
+      - name: Run role and state acceptance
+        env:
+          TAXONOMY_BASE_URL: http://127.0.0.1:8080
+          TAXONOMY_UI_ADMIN_USERNAME: admin
+          TAXONOMY_UI_ADMIN_PASSWORD: ui-state-admin-password
+          TAXONOMY_UI_PROFILE: ${{ matrix.profile }}
+          TAXONOMY_BROWSER: ${{ matrix.browser }}
+          TAXONOMY_ROLE: ${{ matrix.role }}
+          TAXONOMY_VIEWPORT_WIDTH: ${{ matrix.width }}
+          TAXONOMY_VIEWPORT_HEIGHT: ${{ matrix.height }}
+          TAXONOMY_ZOOM: ${{ matrix.zoom }}
+          TAXONOMY_FORCED_COLORS: ${{ matrix.forced_colors }}
+          TAXONOMY_UI_OUTPUT_DIR: /tmp/taxonomy-ui-state-${{ matrix.profile }}
+        run: node .github/scripts/ui-role-state-acceptance.mjs
+
+      - name: Upload per-state evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ui-state-${{ matrix.profile }}
+          path: |
+            /tmp/taxonomy-ui-state-${{ matrix.profile }}/**
+            /tmp/taxonomy-ui-state.log
+          if-no-files-found: warn
+          retention-days: 30
