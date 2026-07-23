@@ -11,10 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-/**
- * Form-login controller for local-user password changes. Validation and
- * persistence are delegated to {@link PasswordChangeService}.
- */
+/** Form-login controller for local-user password changes. */
 @Controller
 @ConditionalOnProperty(name = "taxonomy.security.change-password-enabled",
         havingValue = "true", matchIfMissing = true)
@@ -50,7 +47,7 @@ public class ChangePasswordController {
         switch (result) {
             case CHANGED -> {
                 log.info("PASSWORD_CHANGED user={}", username);
-                model.addAttribute("success", "Password changed successfully.");
+                return "redirect:/?passwordChanged=true";
             }
             case USER_NOT_FOUND -> model.addAttribute("error", "User not found.");
             case CURRENT_PASSWORD_INCORRECT ->
