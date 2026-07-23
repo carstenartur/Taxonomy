@@ -69,4 +69,10 @@ export async function runBasicWorkflows({ page, role, evidence }) {
   await axeState('export-backend-error', '#operationToast');
   await saveState('export-backend-error', '#operationToast');
   passed('export failure feedback');
+
+  // Error feedback intentionally persists until the user acknowledges it. Close
+  // it through the real accessible control before continuing with later flows.
+  await page.locator('#operationToast [data-bs-dismiss="toast"]').click();
+  await page.locator('#operationToast').waitFor({ state: 'hidden', timeout: 10_000 });
+  passed('export failure dismissed');
 }
