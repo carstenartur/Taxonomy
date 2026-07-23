@@ -15,6 +15,7 @@ import java.io.ByteArrayInputStream;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -83,12 +84,23 @@ class CatalogFacadeTest {
     }
 
     @Test
-    void importDelegatesAndReturnsImportResult() {
+    void importDelegatesWithExplicitWorkspaceAndReturnsResult() {
         ByteArrayInputStream stream = new ByteArrayInputStream("<model/>".getBytes());
+        WorkspaceContext context = new WorkspaceContext("alice", "ws-1", "draft");
         ArchiMateImportResult expected = new ArchiMateImportResult();
-        when(archiMateXmlImporter.importXml(stream)).thenReturn(expected);
+        when(archiMateXmlImporter.importXml(stream, context)).thenReturn(expected);
 
-        assertThat(facade.importAndValidate(stream)).isSameAs(expected);
+        assertThat(facade.importAndValidate(stream, context)).isSameAs(expected);
+    }
+
+    @Test
+    void importRejectsMissingWorkspaceContext() {
+        ByteArrayInputStream stream = new ByteArrayInputStream("<model/>".getBytes());
+
+        assertThatThrownBy(() -> facade.importAndValidate(stream, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Workspace context");
+        verify(archiMateXmlImporter, never()).importXml(stream, WorkspaceContext.SHARED);
     }
 
     private static TaxonomyNodeDto dto(String code) {
