@@ -37,18 +37,53 @@ async function screenshot(state, selector) {
   await writeFile(path.join(outputDir, `${state}.html`), await target.evaluate(node => node.outerHTML), 'utf8');
 }
 
-await mkdir(outputDir, { recursive: true });
+async function testPartialAnalysis() {
+  await navigateToPage(page, 'analyze');
+  const interactive = page.locator('#interactiveMode');
+  if (await interactive.isChecked()) await interactive.uncheck();
+  await page.locator('#businessText').fill('Provide traceable and resilient hospital communication services.');
+  await page.locator('#analyzeBtn').click();
+  await page.waitForFunction(() => {
+    const text = document.querySelector('#statusArea')?.textContent?.toLowerCase() || '';
+    return text.includes('complete') || text.includes('completed');
+  }, null, { timeout: 120_000 });
 
-try {
-  ({ browser, context, page } = await openRoleSession({
-    baseUrl,
-    role: 'ADMIN',
-    browserName: 'chromium',
-    viewport: { width: 1024, height: 768 },
-    adminUsername: 'admin',
-    adminPassword: ROLE_ACCOUNTS.ADMIN.password
+  const fixture = await page.evaluate(() => ({
+    tree: window.TaxonomyState.taxonomyData,
+    scores: window.TaxonomyState.currentScores
   }));
+  assert(Array.isArray(fixture.tree) && fixture.tree.length > 0, 'Successful analysis produced no reusable tree');
+  assert(fixture.scores && Object.keys(fixture.scores).length > 0, 'Successful analysis produced no reusable scores');
 
+  await page.route('**/api/analyze', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'PARTIAL',
+        errorMessage: 'One provider branch was unavailable',
+        warnings: ['Some architecture branches were not evaluated.'],
+        tree: fixture.tree,
+        scores: fixture.scores,
+        discrepancies: [],
+        provisionalRelations: []
+      })
+    });
+  }, { times: 1 });
+  await page.locator('#businessText').fill('Provide traceable hospital communication services with a partial provider result.');
+  await page.locator('#analyzeBtn').click();
+  await page.waitForFunction(() => {
+    const text = document.querySelector('#statusArea')?.textContent?.toLowerCase() || '';
+    return text.includes('unavailable') || text.includes('incomplete') || text.includes('partial');
+  }, null, { timeout: 30_000 });
+  const statusText = (await page.locator('#statusArea').textContent()).trim();
+  assert(statusText.length > 0, 'Partial analysis status is empty');
+  checks.push('partial analysis status and warning detail');
+  await runAxe('analysis-partial', '#tab-analyze');
+  await screenshot('analysis-partial', '#statusArea');
+}
+
+async function testTextSpacing() {
   await page.addStyleTag({ content: `
     * { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }
     p { margin-bottom: 2em !important; }
@@ -80,9 +115,11 @@ try {
   assert(spacing.scrollWidth <= spacing.clientWidth + 2,
     `Text spacing introduced horizontal scrolling: ${JSON.stringify(spacing)}`);
   checks.push('WCAG text spacing and reflow');
-  await runAxe('text-spacing', '#mainContent');
-  await screenshot('text-spacing', '#mainContent');
+  await runAxe('text-spacing', '#tab-analyze');
+  await screenshot('text-spacing', '#tab-analyze .card:first-of-type');
+}
 
+async function testWorkspaceOffline() {
   await page.route('**/api/workspace/sync-state', route => route.abort('internetdisconnected'));
   await navigateToPage(page, 'versions');
   await page.locator('#versionsSubTabs [data-versions-tab="sync"]').click();
@@ -95,6 +132,23 @@ try {
   checks.push('workspace offline status and retry guidance');
   await runAxe('workspace-offline', '#versions-sync');
   await screenshot('workspace-offline', '#versions-sync');
+}
+
+await mkdir(outputDir, { recursive: true });
+
+try {
+  ({ browser, context, page } = await openRoleSession({
+    baseUrl,
+    role: 'ADMIN',
+    browserName: 'chromium',
+    viewport: { width: 1024, height: 768 },
+    adminUsername: 'admin',
+    adminPassword: ROLE_ACCOUNTS.ADMIN.password
+  }));
+
+  await testPartialAnalysis();
+  await testTextSpacing();
+  await testWorkspaceOffline();
 } catch (error) {
   auditError = error?.stack || String(error);
   process.exitCode = 1;
