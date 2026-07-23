@@ -90,7 +90,33 @@ async function ensureRoleAccounts() {
 
 async function saveState(currentPage, state) {
   const prefix = path.join(outputDir, state);
-  await currentPage.screenshot({ path: `${prefix}.png`, fullPage: true });
+  const dimensions = await currentPage.evaluate(() => ({
+    width: Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth || 0),
+    height: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0)
+  }));
+  const screenshotFiles = [];
+  if (dimensions.width <= 30000 && dimensions.height <= 30000) {
+    const file = `${prefix}.png`;
+    await currentPage.screenshot({ path: file, fullPage: true });
+    screenshotFiles.push(path.basename(file));
+  } else {
+    const segmentHeight = 12000;
+    const segmentWidth = Math.min(dimensions.width, 30000);
+    const segmentCount = Math.ceil(dimensions.height / segmentHeight);
+    for (let index = 0; index < segmentCount; index += 1) {
+      const y = index * segmentHeight;
+      const height = Math.min(segmentHeight, dimensions.height - y);
+      const file = `${prefix}.part-${String(index + 1).padStart(2, '0')}.png`;
+      await currentPage.screenshot({
+        path: file,
+        clip: { x: 0, y, width: segmentWidth, height }
+      });
+      screenshotFiles.push(path.basename(file));
+    }
+  }
+  await writeFile(`${prefix}.screenshots.json`, `${JSON.stringify({
+    dimensions, screenshotFiles
+  }, null, 2)}\n`, 'utf8');
   await writeFile(`${prefix}.html`, await currentPage.content(), 'utf8');
   const body = currentPage.locator('body');
   const aria = typeof body.ariaSnapshot === 'function'
