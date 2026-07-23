@@ -59,6 +59,7 @@ class ArchiMateWorkspaceImportTests {
     void equivalentModelsCanBeImportedIntoSeparateWorkspaces() {
         WorkspaceContext firstContext = new WorkspaceContext("alice", "qa-archimate-a", "draft");
         WorkspaceContext secondContext = new WorkspaceContext("bob", "qa-archimate-b", "draft");
+        long sharedBefore = relationRepository.countByWorkspaceIdIsNull();
 
         ArchiMateImportResult first = importer.importXml(stream(validModel()), firstContext);
         ArchiMateImportResult second = importer.importXml(stream(validModel()), secondContext);
@@ -67,7 +68,7 @@ class ArchiMateWorkspaceImportTests {
         assertThat(second.getRelationsImported()).isEqualTo(1);
         assertThat(relationRepository.findByWorkspaceId("qa-archimate-a")).hasSize(1);
         assertThat(relationRepository.findByWorkspaceId("qa-archimate-b")).hasSize(1);
-        assertThat(relationRepository.findByWorkspaceIdIsNull()).isEmpty();
+        assertThat(relationRepository.countByWorkspaceIdIsNull()).isEqualTo(sharedBefore);
     }
 
     @Test
