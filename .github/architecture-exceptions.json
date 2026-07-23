@@ -80,6 +80,56 @@
       "rationale": "Application services still address DSL persistence/export adapters through their historical package names.",
       "removalCondition": "Move these adapters to a dedicated taxonomy-adapters module and expose narrow ports.",
       "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-analysis-usecase-to-export-metadata",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.analysis.usecase..",
+      "toPackage": "com.taxonomy.export..",
+      "owner": "analysis-maintainers",
+      "rationale": "AnalyzeRequirementUseCase reads a policy metadata record that is currently declared in the export module.",
+      "removalCondition": "Move the policy metadata contract to taxonomy-domain and retain export-only construction in taxonomy-export.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-catalog-model-to-search-binder",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.catalog.model..",
+      "toPackage": "com.taxonomy.search..",
+      "owner": "search-maintainers",
+      "rationale": "Hibernate Search entity annotations reference application-level embedding binder implementations.",
+      "removalCondition": "Move binder adapters next to the catalog persistence adapter or introduce an annotation-free mapping contributor.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-search-binder-to-catalog-model",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.search..",
+      "toPackage": "com.taxonomy.catalog.model..",
+      "owner": "search-maintainers",
+      "rationale": "Embedding type bridges necessarily bind the indexed catalog entity types while the annotations still point back to the bridges.",
+      "removalCondition": "Relocate the binder implementation into a catalog-owned persistence adapter package together with the mapping definition.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-architecture-controller-to-versioning-state",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.architecture.controller..",
+      "toPackage": "com.taxonomy.versioning.service..",
+      "owner": "architecture-maintainers",
+      "rationale": "Report endpoints combine architecture rendering with repository snapshot resolution at the HTTP application boundary.",
+      "removalCondition": "Move cross-context HTTP orchestration into a dedicated application-controller package above both bounded contexts.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-catalog-controller-to-versioning-state",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.catalog.controller..",
+      "toPackage": "com.taxonomy.versioning.service..",
+      "owner": "catalog-maintainers",
+      "rationale": "Framework import endpoints combine catalog import with repository view-context resolution.",
+      "removalCondition": "Move cross-context import orchestration into a dedicated application-controller package above catalog and versioning.",
+      "expiresOn": "2027-06-30"
     }
   ]
 }
