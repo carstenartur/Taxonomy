@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "id": "cycle-architecture-to-export",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.architecture..",
+      "toPackage": "com.taxonomy.export..",
+      "owner": "architecture-maintainers",
+      "rationale": "The application adapter layer still invokes export services directly from architecture orchestration.",
+      "removalCondition": "Introduce an export port in taxonomy-extension-api and inject the adapter from taxonomy-app.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-export-to-architecture",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.export..",
+      "toPackage": "com.taxonomy.architecture..",
+      "owner": "architecture-maintainers",
+      "rationale": "Diagram generation currently consumes application architecture view models.",
+      "removalCondition": "Move canonical export input contracts into taxonomy-export or taxonomy-extension-api.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-catalog-to-relations",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.catalog..",
+      "toPackage": "com.taxonomy.relations..",
+      "owner": "catalog-maintainers",
+      "rationale": "Catalog facades expose relation-enriched node representations.",
+      "removalCondition": "Replace direct relation package dependencies with a read port owned by the catalog boundary.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-relations-to-catalog",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.relations..",
+      "toPackage": "com.taxonomy.catalog..",
+      "owner": "relations-maintainers",
+      "rationale": "Relation persistence references canonical taxonomy nodes and catalog-owned relation entities.",
+      "removalCondition": "Move shared node/relation identities to a framework-free domain contract module.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-versioning-to-workspace",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.versioning..",
+      "toPackage": "com.taxonomy.workspace..",
+      "owner": "versioning-maintainers",
+      "rationale": "Version operations require explicit workspace context and repository routing.",
+      "removalCondition": "Introduce a versioning-owned repository-context port implemented by the workspace adapter.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-workspace-to-versioning",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.workspace..",
+      "toPackage": "com.taxonomy.versioning..",
+      "owner": "workspace-maintainers",
+      "rationale": "Workspace synchronization currently invokes versioning and repository-state services.",
+      "removalCondition": "Move synchronization orchestration to an application service above both bounded contexts.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-dsl-adapter-outbound",
+      "kind": "adapter-boundary",
+      "fromPackage": "com.taxonomy.dsl.storage..|com.taxonomy.dsl.export..",
+      "toPackage": "*",
+      "owner": "dsl-maintainers",
+      "rationale": "Spring/JGit persistence and export adapters still reside below the com.taxonomy.dsl package root in taxonomy-app.",
+      "removalCondition": "Move these adapters to a dedicated taxonomy-adapters module and leave taxonomy-dsl framework-free.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-dsl-adapter-inbound",
+      "kind": "adapter-boundary",
+      "fromPackage": "*",
+      "toPackage": "com.taxonomy.dsl.storage..|com.taxonomy.dsl.export..",
+      "owner": "dsl-maintainers",
+      "rationale": "Application services still address DSL persistence/export adapters through their historical package names.",
+      "removalCondition": "Move these adapters to a dedicated taxonomy-adapters module and expose narrow ports.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-analysis-usecase-to-export-metadata",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.analysis.usecase..",
+      "toPackage": "com.taxonomy.export..",
+      "owner": "analysis-maintainers",
+      "rationale": "AnalyzeRequirementUseCase reads a policy metadata record that is currently declared in the export module.",
+      "removalCondition": "Move the policy metadata contract to taxonomy-domain and retain export-only construction in taxonomy-export.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-catalog-model-to-search-binder",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.catalog.model..",
+      "toPackage": "com.taxonomy.search..",
+      "owner": "search-maintainers",
+      "rationale": "Hibernate Search entity annotations reference application-level embedding binder implementations.",
+      "removalCondition": "Move binder adapters next to the catalog persistence adapter or introduce an annotation-free mapping contributor.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-search-binder-to-catalog-model",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.search..",
+      "toPackage": "com.taxonomy.catalog.model..",
+      "owner": "search-maintainers",
+      "rationale": "Embedding type bridges necessarily bind the indexed catalog entity types while the annotations still point back to the bridges.",
+      "removalCondition": "Relocate the binder implementation into a catalog-owned persistence adapter package together with the mapping definition.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-architecture-controller-to-versioning-state",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.architecture.controller..",
+      "toPackage": "com.taxonomy.versioning.service..",
+      "owner": "architecture-maintainers",
+      "rationale": "Report endpoints combine architecture rendering with repository snapshot resolution at the HTTP application boundary.",
+      "removalCondition": "Move cross-context HTTP orchestration into a dedicated application-controller package above both bounded contexts.",
+      "expiresOn": "2027-06-30"
+    },
+    {
+      "id": "cycle-catalog-controller-to-versioning-state",
+      "kind": "cycle-edge",
+      "fromPackage": "com.taxonomy.catalog.controller..",
+      "toPackage": "com.taxonomy.versioning.service..",
+      "owner": "catalog-maintainers",
+      "rationale": "Framework import endpoints combine catalog import with repository view-context resolution.",
+      "removalCondition": "Move cross-context import orchestration into a dedicated application-controller package above catalog and versioning.",
+      "expiresOn": "2027-06-30"
+    }
+  ]
+}
