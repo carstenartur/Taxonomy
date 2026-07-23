@@ -97,54 +97,86 @@ async function testTextSpacing() {
   await navigateToPage(page, 'analyze');
   await page.locator('#documentImportPanel').waitFor({ state: 'attached', timeout: 20_000 });
 
-  // CSP correctly blocks new inline style elements and attributes. A user
-  // stylesheet is outside that threat model, so model it by inserting scoped
-  // rules into an already-authorized same-origin stylesheet.
-  const stylesheetResult = await page.evaluate(() => {
-    let sheet = null;
-    for (const candidate of document.styleSheets) {
+  const result = await page.evaluate(() => {
+    const sample = document.querySelector('#documentImportPanel p');
+    if (!sample) return { applied: false, reason: 'sample paragraph unavailable', attempts: [] };
+
+    const spacingRule = '#tab-analyze, #tab-analyze * { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }';
+    const paragraphRule = '#tab-analyze p { margin-bottom: 2em !important; }';
+    const attempts = [];
+
+    function measure() {
+      const style = getComputedStyle(sample);
+      const fontSize = Number.parseFloat(style.fontSize);
+      return {
+        fontSize,
+        lineHeight: Number.parseFloat(style.lineHeight),
+        letterSpacing: Number.parseFloat(style.letterSpacing),
+        wordSpacing: Number.parseFloat(style.wordSpacing),
+        marginBottom: Number.parseFloat(style.marginBottom),
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth
+      };
+    }
+
+    function satisfies(metrics) {
+      return Number.isFinite(metrics.fontSize) && metrics.fontSize > 0
+        && metrics.lineHeight / metrics.fontSize >= 1.49
+        && metrics.letterSpacing / metrics.fontSize >= 0.119
+        && metrics.wordSpacing / metrics.fontSize >= 0.159
+        && metrics.marginBottom / metrics.fontSize >= 1.99;
+    }
+
+    for (const sheet of Array.from(document.styleSheets)) {
+      const media = sheet.media ? sheet.media.mediaText : '';
+      if (sheet.disabled || (media && !matchMedia(media).matches)) continue;
+      let start;
       try {
-        void candidate.cssRules.length;
-        sheet = candidate;
-        break;
-      } catch (ignored) {
-        // Cross-origin sheet; continue to an accessible same-origin stylesheet.
+        start = sheet.cssRules.length;
+        sheet.insertRule(spacingRule, start);
+        sheet.insertRule(paragraphRule, start + 1);
+        const metrics = measure();
+        attempts.push({ kind: 'document', href: sheet.href, media, metrics });
+        if (satisfies(metrics)) {
+          return { applied: true, kind: 'document', href: sheet.href, media, metrics, attempts };
+        }
+        sheet.deleteRule(start + 1);
+        sheet.deleteRule(start);
+      } catch (error) {
+        attempts.push({ kind: 'document', href: sheet.href, media, error: String(error) });
+        if (Number.isInteger(start)) {
+          try {
+            while (sheet.cssRules.length > start) sheet.deleteRule(start);
+          } catch (ignored) {
+            // Nothing else can be cleaned up on an inaccessible stylesheet.
+          }
+        }
       }
     }
-    if (!sheet) return { applied: false, reason: 'no accessible stylesheet' };
-    const start = sheet.cssRules.length;
-    sheet.insertRule('#tab-analyze, #tab-analyze * { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }', start);
-    sheet.insertRule('#tab-analyze p { margin-bottom: 2em !important; }', start + 1);
-    return { applied: true, href: sheet.href, ruleCount: sheet.cssRules.length };
-  });
-  assert(stylesheetResult.applied, `Unable to apply user stylesheet: ${JSON.stringify(stylesheetResult)}`);
 
-  const spacing = await page.evaluate(() => {
-    const sample = document.querySelector('#documentImportPanel p');
-    if (!sample) throw new Error('Text-spacing sample paragraph is unavailable');
-    const style = getComputedStyle(sample);
-    const fontSize = Number.parseFloat(style.fontSize);
-    return {
-      fontSize,
-      lineHeight: Number.parseFloat(style.lineHeight),
-      letterSpacing: Number.parseFloat(style.letterSpacing),
-      wordSpacing: Number.parseFloat(style.wordSpacing),
-      marginBottom: Number.parseFloat(style.marginBottom),
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth
-    };
+    if ('adoptedStyleSheets' in document && typeof CSSStyleSheet === 'function') {
+      try {
+        const userSheet = new CSSStyleSheet();
+        userSheet.replaceSync(`${spacingRule}\n${paragraphRule}`);
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, userSheet];
+        const metrics = measure();
+        attempts.push({ kind: 'constructed', metrics });
+        if (satisfies(metrics)) {
+          return { applied: true, kind: 'constructed', metrics, attempts };
+        }
+      } catch (error) {
+        attempts.push({ kind: 'constructed', error: String(error) });
+      }
+    }
+
+    return { applied: false, reason: 'no active cascade path applied the requested spacing', metrics: measure(), attempts };
   });
-  assert(spacing.lineHeight / spacing.fontSize >= 1.49,
-    `Line spacing is below 1.5: ${JSON.stringify(spacing)}`);
-  assert(spacing.letterSpacing / spacing.fontSize >= 0.119,
-    `Letter spacing is below 0.12em: ${JSON.stringify(spacing)}`);
-  assert(spacing.wordSpacing / spacing.fontSize >= 0.159,
-    `Word spacing is below 0.16em: ${JSON.stringify(spacing)}`);
-  assert(spacing.marginBottom / spacing.fontSize >= 1.99,
-    `Paragraph spacing is below 2em: ${JSON.stringify(spacing)}`);
+
+  assert(result.applied, `Unable to apply user stylesheet: ${JSON.stringify(result)}`);
+  const spacing = result.metrics;
   assert(spacing.scrollWidth <= spacing.clientWidth + 2,
-    `Text spacing introduced horizontal scrolling: ${JSON.stringify(spacing)}`);
-  checks.push('WCAG text spacing and reflow');
+    `Text spacing introduced horizontal scrolling: ${JSON.stringify(result)}`);
+  checks.push(`WCAG text spacing and reflow via ${result.kind} stylesheet`);
   await runAxe('text-spacing', '#tab-analyze');
   await screenshot('text-spacing', '#tab-analyze .card:first-of-type');
 }
