@@ -44,7 +44,8 @@ def main() -> int:
     orm_versions = resolved.get(("org.hibernate.orm", "hibernate-core"), set())
     if len(orm_versions) != 1 or not next(iter(orm_versions), "").startswith(args.orm_prefix):
         failures.append(
-            f"hibernate-core resolved to {sorted(orm_versions)}, expected one {args.orm-prefix}x version"
+            f"hibernate-core resolved to {sorted(orm_versions)}, "
+            f"expected one {args.orm_prefix}x version"
         )
 
     lucene_versions = resolved.get(("org.apache.lucene", "lucene-core"), set())
