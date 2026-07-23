@@ -29,6 +29,13 @@ public class PasswordChangeService {
         this.passwordEncoder = passwordEncoder;
     }
 
+    @Transactional(readOnly = true)
+    public boolean isPasswordChangeRequired(String username) {
+        return username != null && userRepository.findByUsername(username)
+                .map(AppUser::isMustChangePassword)
+                .orElse(false);
+    }
+
     @Transactional
     public Result changePassword(String username,
                                  String currentPassword,
@@ -52,6 +59,7 @@ public class PasswordChangeService {
             return Result.SAME_AS_CURRENT;
         }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
         userRepository.save(user);
         return Result.CHANGED;
     }
