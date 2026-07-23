@@ -1,0 +1,57 @@
+name: Adjust primary workflow suite
+
+on:
+  push:
+    branches: [ qa/expanded-ui-a11y-verified ]
+    paths:
+      - '.github/workflows/qa-adjust-primary-workflow-suite.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  adjust-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: qa/expanded-ui-a11y-verified
+
+      - name: Patch document evidence and workspace offline state
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/ui-primary-workflow-acceptance.mjs')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace("name: 'requirements.txt',\n    mimeType: 'text/plain',", "name: 'requirements.pdf',\n    mimeType: 'application/pdf',", 1)
+          text = text.replace("name: 'oversized.txt',\n    mimeType: 'text/plain',", "name: 'oversized.pdf',\n    mimeType: 'application/pdf',", 1)
+          text = text.replace("'#docImportPanel'", "'#documentImportPanel'")
+
+          marker = """  passed('workspace diverged conflict state');
+
+  await page.route('**/api/workspace/sync-from-shared?*', async route => {
+"""
+          replacement = """  passed('workspace diverged conflict state');
+
+  await page.route('**/api/workspace/sync-state', route => route.abort('internetdisconnected'), { times: 1 });
+  await page.evaluate(() => window.TaxonomyWorkspaceSync.refresh());
+  await waitForText('#syncStatePanel', text => text.toLowerCase().includes('offline'));
+  await axeState('workspace-offline', '#versions-sync');
+  await saveState('workspace-offline', '#versions-sync');
+  passed('workspace offline state');
+
+  await page.route('**/api/workspace/sync-from-shared?*', async route => {
+"""
+          if marker not in text:
+              raise SystemExit('Workspace conflict marker not found')
+          text = text.replace(marker, replacement, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          rm .github/workflows/qa-adjust-primary-workflow-suite.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .github/scripts/ui-primary-workflow-acceptance.mjs \
+                  .github/workflows/qa-adjust-primary-workflow-suite.yml
+          git commit -m 'qa: cover document and workspace offline contracts'
+          git push origin HEAD:qa/expanded-ui-a11y-verified
