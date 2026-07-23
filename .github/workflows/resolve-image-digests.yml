@@ -1,0 +1,27 @@
+name: Resolve Production Image Digests
+
+on:
+  push:
+    branches: [ security/source-sast-and-pinning ]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve multi-platform manifest digests
+        run: |
+          set -euo pipefail
+          for image in \
+            maven:3.9.9-eclipse-temurin-21 \
+            eclipse-temurin:21-jre-jammy \
+            caddy:2-alpine
+          do
+            digest=$(docker buildx imagetools inspect "$image" \
+              --format '{{json .Manifest.Digest}}' | tr -d '"')
+            test -n "$digest"
+            printf '%s@%s\n' "$image" "$digest"
+          done
