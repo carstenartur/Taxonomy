@@ -208,8 +208,8 @@ import java.util.stream.Collectors;
 <span class="fc bfc" id="L208" title="All 2 branches covered.">            if (n.parentId() != null) {</span>
                 // Only link to parent if the parent is actually a container in the model
 <span class="fc" id="L210">                boolean parentIsContainer = allNodes.stream()</span>
-<span class="pc bpc" id="L211" title="2 of 4 branches missed.">                        .anyMatch(p -&gt; p.id().equals(n.parentId()) &amp;&amp; p.container());</span>
-<span class="pc bpc" id="L212" title="1 of 2 branches missed.">                if (parentIsContainer) {</span>
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">                        .anyMatch(p -&gt; p.id().equals(n.parentId()) &amp;&amp; p.container());</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                if (parentIsContainer) {</span>
 <span class="fc" id="L213">                    childrenOf.computeIfAbsent(n.parentId(), k -&gt; new ArrayList&lt;&gt;()).add(n);</span>
 <span class="fc" id="L214">                    childIds.add(n.id());</span>
                 }
