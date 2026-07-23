@@ -5,17 +5,47 @@
     {
       "id": "authentication-and-navigation",
       "roles": ["USER", "ARCHITECT", "ADMIN"],
-      "states": ["success", "keyboard-only", "role-specific-surface"]
+      "states": ["success", "keyboard-only", "role-specific-surface", "unauthorized-control-hidden"]
     },
     {
       "id": "requirement-analysis",
       "roles": ["USER", "ARCHITECT", "ADMIN"],
-      "states": ["loading", "success", "stale", "provider-error"]
+      "states": ["empty", "loading", "success", "partial", "stale", "provider-error", "live-announcement"]
     },
     {
       "id": "proposal-review",
       "roles": ["USER", "ARCHITECT", "ADMIN"],
-      "states": ["forbidden", "created", "accepted-or-rejected"]
+      "states": ["forbidden", "pending", "accepted", "rejected", "reverted", "bulk-accepted"]
+    },
+    {
+      "id": "relation-management",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["read-only", "created", "duplicate-conflict", "delete-confirmed", "foreign-mutation-forbidden"]
+    },
+    {
+      "id": "framework-import",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["preview-success", "materialization-forbidden", "invalid-file-error"]
+    },
+    {
+      "id": "document-import",
+      "roles": ["ARCHITECT", "ADMIN"],
+      "states": ["upload-loading", "candidate-review", "selection", "resource-limit-error"]
+    },
+    {
+      "id": "export",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["download-success", "backend-error", "accessible-feedback"]
+    },
+    {
+      "id": "password-change",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["confirmation-error", "success", "focus-preserved"]
+    },
+    {
+      "id": "workspace-sync",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["up-to-date", "diverged-conflict", "remote-error", "offline", "publish-success", "admin-controls-only"]
     },
     {
       "id": "accessible-dialog",
@@ -25,15 +55,22 @@
     {
       "id": "responsive-reflow",
       "roles": ["USER", "ARCHITECT", "ADMIN"],
-      "states": ["mobile", "zoom-200", "zoom-400", "forced-colors"]
+      "states": ["mobile-portrait", "narrow-landscape", "zoom-200", "zoom-400", "text-spacing", "forced-colors", "reduced-motion"]
     }
   ],
   "profiles": [
-    {"id": "desktop-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 1, "forcedColors": false},
-    {"id": "desktop-architect-firefox", "browser": "firefox", "role": "ARCHITECT", "width": 1440, "height": 1000, "zoom": 1, "forcedColors": false},
-    {"id": "mobile-admin-webkit", "browser": "webkit", "role": "ADMIN", "width": 390, "height": 844, "zoom": 1, "forcedColors": false},
-    {"id": "zoom-200-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 2, "forcedColors": false},
-    {"id": "zoom-400-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 4, "forcedColors": false},
-    {"id": "forced-colors-architect-chromium", "browser": "chromium", "role": "ARCHITECT", "width": 1024, "height": 768, "zoom": 1, "forcedColors": true}
+    {"id": "desktop-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 1, "forcedColors": false, "textSpacing": false},
+    {"id": "desktop-architect-firefox", "browser": "firefox", "role": "ARCHITECT", "width": 1440, "height": 1000, "zoom": 1, "forcedColors": false, "textSpacing": false},
+    {"id": "mobile-admin-webkit", "browser": "webkit", "role": "ADMIN", "width": 390, "height": 844, "zoom": 1, "forcedColors": false, "textSpacing": false},
+    {"id": "landscape-user-firefox", "browser": "firefox", "role": "USER", "width": 844, "height": 390, "zoom": 1, "forcedColors": false, "textSpacing": false},
+    {"id": "zoom-200-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 2, "forcedColors": false, "textSpacing": false},
+    {"id": "zoom-400-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 4, "forcedColors": false, "textSpacing": false},
+    {"id": "text-spacing-admin-chromium", "browser": "chromium", "role": "ADMIN", "width": 1024, "height": 768, "zoom": 1, "forcedColors": false, "textSpacing": true},
+    {"id": "forced-colors-architect-chromium", "browser": "chromium", "role": "ARCHITECT", "width": 1024, "height": 768, "zoom": 1, "forcedColors": true, "textSpacing": false}
+  ],
+  "primaryWorkflowProfiles": [
+    {"id": "primary-user-chromium", "browser": "chromium", "role": "USER"},
+    {"id": "primary-architect-chromium", "browser": "chromium", "role": "ARCHITECT"},
+    {"id": "primary-admin-chromium", "browser": "chromium", "role": "ADMIN"}
   ]
 }
