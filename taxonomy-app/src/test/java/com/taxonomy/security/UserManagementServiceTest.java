@@ -8,6 +8,7 @@ import com.taxonomy.security.service.UserManagementService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -57,8 +58,34 @@ class UserManagementServiceTest {
         assertThat(result)
                 .containsEntry("id", 7L)
                 .containsEntry("username", "alice")
+                .containsEntry("mustChangePassword", false)
                 .doesNotContainKey("passwordHash");
         verify(userRepository).save(any(AppUser.class));
+    }
+
+    @Test
+    void enforcedPolicyMarksCreatedAndResetPasswordsAsTemporary() {
+        ReflectionTestUtils.setField(service, "requirePasswordChange", true);
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.empty());
+        when(userRepository.save(any(AppUser.class))).thenAnswer(invocation -> {
+            AppUser user = invocation.getArgument(0);
+            if (user.getId() == null) user.setId(7L);
+            return user;
+        });
+
+        service.createUser(java.util.Map.of(
+                "username", "alice",
+                "password", "StrongPassword!2026",
+                "roles", List.of("USER")), "admin");
+
+        var created = org.mockito.ArgumentCaptor.forClass(AppUser.class);
+        verify(userRepository).save(created.capture());
+        assertThat(created.getValue().isMustChangePassword()).isTrue();
+
+        AppUser existing = created.getValue();
+        when(userRepository.findById(7L)).thenReturn(Optional.of(existing));
+        service.changePassword(7L, "ReplacementPassword!2026", "admin");
+        assertThat(existing.isMustChangePassword()).isTrue();
     }
 
     @Test
