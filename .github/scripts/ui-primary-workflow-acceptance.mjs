@@ -85,19 +85,34 @@ async function testRoleSurfaces() {
   const contextData = await page.evaluate(() => window.TaxonomyRoleSurface.getContext());
   assert(contextData.roles.includes(role), `Role context does not contain ${role}: ${JSON.stringify(contextData)}`);
 
+  async function controlCapability(selector) {
+    const locator = page.locator(selector);
+    assert(await locator.count() === 1, `Expected exactly one control for ${selector}`);
+    return locator.evaluate(element => ({
+      hidden: element.hidden,
+      disabled: 'disabled' in element ? element.disabled : false,
+      ariaHidden: element.getAttribute('aria-hidden')
+    }));
+  }
+
   const architectureAllowed = role === 'ARCHITECT' || role === 'ADMIN';
   const architectureSelectors = [
     '#docImportUploadBtn', '#createRelationBtn', '#archiMateImportBtn',
     '#importExecuteBtn', '#proposeRelationsSubmit'
   ];
   for (const selector of architectureSelectors) {
-    const visible = await page.locator(selector).isVisible().catch(() => false);
-    assert(visible === architectureAllowed,
-      `${selector} visibility=${visible}, expected ${architectureAllowed} for ${role}`);
+    const capability = await controlCapability(selector);
+    const available = !capability.hidden && !capability.disabled && capability.ariaHidden !== 'true';
+    assert(available === architectureAllowed,
+      `${selector} capability=${JSON.stringify(capability)}, expected allowed=${architectureAllowed} for ${role}`);
   }
-  const workspaceCreateVisible = await page.locator('#wsCreateBtn').isVisible().catch(() => false);
-  assert(workspaceCreateVisible === (role === 'ADMIN'),
-    `Workspace creation visibility=${workspaceCreateVisible}, expected ${role === 'ADMIN'}`);
+
+  const workspaceCapability = await controlCapability('#wsCreateBtn');
+  const workspaceAvailable = !workspaceCapability.hidden
+    && !workspaceCapability.disabled
+    && workspaceCapability.ariaHidden !== 'true';
+  assert(workspaceAvailable === (role === 'ADMIN'),
+    `Workspace creation capability=${JSON.stringify(workspaceCapability)}, expected allowed=${role === 'ADMIN'}`);
   passed('role-appropriate mutation controls');
 }
 
@@ -126,6 +141,14 @@ async function testCsvExportAndBackendFailure() {
   }, { times: 1 });
   await page.evaluate(() => window.TaxonomyExport.exportVisio('QA export failure requirement'));
   await waitForText('#operationToastBody', text => text.toLowerCase().includes('unavailable') || text.includes('503'));
+  await page.waitForFunction(() => {
+    const toast = document.getElementById('operationToast');
+    if (!toast || toast.dataset.toastVisible !== 'true') return false;
+    const style = getComputedStyle(toast);
+    return style.display !== 'none'
+      && style.visibility !== 'hidden'
+      && Number.parseFloat(style.opacity || '1') > 0;
+  }, null, { timeout: 10_000 });
   await page.locator('#operationToast').waitFor({ state: 'visible', timeout: 10_000 });
   await axeState('export-backend-error', '#operationToast');
   await saveState('export-backend-error', '#operationToast');
@@ -241,8 +264,8 @@ async function testDocumentImportStates() {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        fileName: 'requirements.txt',
-        mimeType: 'text/plain',
+        fileName: 'requirements.pdf',
+        mimeType: 'application/pdf',
         totalPages: 1,
         totalCandidates: 2,
         sourceArtifactId: 42,
@@ -254,9 +277,9 @@ async function testDocumentImportStates() {
     });
   }, { times: 1 });
   await page.locator('#docImportFile').setInputFiles({
-    name: 'requirements.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('The service shall remain available.\nThe service shall record decisions.')
+    name: 'requirements.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('The service shall remain available.\nThe service shal decisions.')
   });
   await page.locator('#docImportUploadBtn').click();
   await page.locator('#docCandidateReviewPanel').waitFor({ state: 'visible', timeout: 15_000 });
@@ -273,8 +296,8 @@ async function testDocumentImportStates() {
     });
   }, { times: 1 });
   await page.locator('#docImportFile').setInputFiles({
-    name: 'oversized.txt',
-    mimeType: 'text/plain',
+    name: 'oversized.pdf',
+    mimeType: 'application/pdf',
     buffer: Buffer.from('oversized')
   });
   await page.locator('#docImportUploadBtn').click();
@@ -291,7 +314,7 @@ async function testFrameworkImportStates() {
   await page.locator('#importProfileSelect').selectOption('apqc');
   await page.locator('#importFrameworkFile').setInputFiles({
     name: 'apqc.csv',
-    mimeType: 'text/csv',
+    mimeType: 'text/csf',
     buffer: Buffer.from('PCF ID,Name,Level,Description\n1.0,Strategy,1,QA')
   });
 
@@ -302,7 +325,7 @@ async function testFrameworkImportStates() {
       body: JSON.stringify({
         success: true,
         profileId: 'apqc',
-        profileDisplayName: 'APQC PCF',
+        profileDisplayName: 'APPC PCF',
         elementsTotal: 1,
         elementsMapped: 1,
         relationsTotal: 0,
@@ -315,10 +338,10 @@ async function testFrameworkImportStates() {
   await page.locator('#importPreviewBtn').click();
   await page.locator('#importResultArea table').waitFor({ state: 'visible', timeout: 15_000 });
   await axeState('framework-import-preview', '#importResultArea');
-  await saveState('framework-import-preview', '#importResultArea');
+  await saveState('framework.import-preview', '#importResultArea');
   passed('framework import preview');
 
-  await page.route('**/api/import/apqc?branch=*', async route => {
+  await page.route('**/api/import/apqc?branch=', async route => {
     await route.fulfill({
       status: 422,
       contentType: 'application/json',
@@ -357,7 +380,7 @@ async function testWorkspaceSyncStates() {
   await saveState('workspace-conflict', '#versions-sync');
   passed('workspace diverged conflict state');
 
-  await page.route('**/api/workspace/sync-from-shared?*', async route => {
+  await page.route('**/api/workspace/sync-from-shared=', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -370,7 +393,7 @@ async function testWorkspaceSyncStates() {
   await saveState('workspace-sync-error', '#operationToast');
   passed('workspace remote sync error');
 
-  await page.route('**/api/workspace/publish?*', async route => {
+  await page.route('**/api/workspace/publish?=', async route => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   }, { times: 1 });
   await page.evaluate(() => window.TaxonomyWorkspaceSync.publish());
