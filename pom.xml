@@ -28,9 +28,7 @@
             <id>carstenartur</id>
             <name>Carsten Hammer</name>
             <url>https://github.com/carstenartur</url>
-            <roles>
-                <role>Lead Developer</role>
-            </roles>
+            <roles><role>Lead Developer</role></roles>
         </developer>
     </developers>
 
@@ -60,37 +58,39 @@
         <module>taxonomy-extension-api</module>
         <module>taxonomy-app</module>
     </modules>
+
     <properties>
         <java.version>21</java.version>
         <djl.version>0.36.0</djl.version>
-        <!-- Keep the default Maven lifecycle deterministic and bounded. Container
-             integration tests remain ordinary Maven/Failsafe/Testcontainers tests
-             and are enabled locally with -DskipITs=false. The external-database
-             compatibility matrix is additionally selected by its db-* tags. -->
         <skipITs>true</skipITs>
         <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
-        <!-- Dependency versions (centralized to avoid repetition in child POMs) -->
+
+        <!-- Application dependency versions. -->
         <poi.version>5.5.1</poi.version>
         <pdfbox.version>3.0.8</pdfbox.version>
         <lucene.version>9.12.3</lucene.version>
-        <hibernate-search.version>8.3.1.Final</hibernate-search.version>
-        <hibernate-search-backend.version>8.4.0.Final</hibernate-search-backend.version>
+        <!-- Hibernate Search 8.4 targets Hibernate ORM 7.4 and Lucene 9.12.3.
+             The platform BOM below coordinates the complete family. The legacy
+             backend property remains an alias until child POM declarations are
+             simplified; it cannot diverge independently. -->
+        <hibernate-search.version>8.4.0.Final</hibernate-search.version>
+        <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
         <jgit.version>7.7.0.202606012155-r</jgit.version>
         <springdoc.version>3.0.3</springdoc.version>
-        <!-- Spring Boot-managed patch overrides for currently fixed security releases. -->
+
+        <!-- Spring Boot-managed patch overrides for fixed security releases. -->
         <postgresql.version>42.7.12</postgresql.version>
         <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
         <jackson-bom.version>3.1.5</jackson-bom.version>
-        <!-- Keep the Selenium BOM and the explicitly selected browser image aligned.
-             The dated image tag makes CI reproducible; ContainerTestUtils also checks
-             at runtime that its Selenium version matches this image tag. -->
+
         <selenium.version>4.46.0</selenium.version>
         <selenium.container.image>selenium/standalone-chrome:4.46.0-20260707</selenium.container.image>
         <archunit.version>1.4.2</archunit.version>
         <flexmark.version>0.64.8</flexmark.version>
         <xstream.version>1.4.21</xstream.version>
         <testcontainers.version>2.0.5</testcontainers.version>
-        <!-- Plugin versions (centralized) -->
+
+        <!-- Plugin versions. -->
         <cyclonedx.version>2.9.2</cyclonedx.version>
         <maven-site-plugin.version>3.22.0</maven-site-plugin.version>
         <maven-fluido-skin.version>2.1.0</maven-fluido-skin.version>
@@ -100,8 +100,16 @@
         <jacoco.version>0.8.15</jacoco.version>
         <maven-enforcer.version>3.6.3</maven-enforcer.version>
     </properties>
+
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.hibernate.search</groupId>
+                <artifactId>hibernate-search-platform-bom</artifactId>
+                <version>${hibernate-search.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
@@ -111,19 +119,14 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
     <build>
         <plugins>
-            <!-- Skip spring-boot:run/repackage on the root aggregator POM
-                 (taxonomy-app overrides this with its own plugin declaration). -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <skip>true</skip>
-                </configuration>
+                <configuration><skip>true</skip></configuration>
             </plugin>
-            <!-- Dependency hygiene is a normal Maven invariant, not a GitHub-only check.
-                 Test-scoped fixtures are intentionally outside these packaged-runtime bans. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
@@ -154,7 +157,6 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- Generate one authoritative aggregate SBOM at the reactor root. -->
             <plugin>
                 <groupId>org.cyclonedx</groupId>
                 <artifactId>cyclonedx-maven-plugin</artifactId>
@@ -164,9 +166,7 @@
                     <execution>
                         <id>generate-aggregate-sbom</id>
                         <phase>package</phase>
-                        <goals>
-                            <goal>makeAggregateBom</goal>
-                        </goals>
+                        <goals><goal>makeAggregateBom</goal></goals>
                     </execution>
                 </executions>
                 <configuration>
@@ -185,9 +185,6 @@
                     <includeTestScope>false</includeTestScope>
                 </configuration>
             </plugin>
-            <!-- The site and skin versions are controlled by the properties above.
-                 Bundling the skin as a plugin dependency keeps site generation
-                 reproducible and avoids resolving an implicit remote default. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-site-plugin</artifactId>
@@ -200,8 +197,6 @@
                     </dependency>
                 </dependencies>
             </plugin>
-            <!-- Keep Surefire Report on the same managed Doxia/Fluido family as
-                 the site plugin; literal versions belong only in properties. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-report-plugin</artifactId>
@@ -214,9 +209,6 @@
                     </dependency>
                 </dependencies>
             </plugin>
-            <!-- Keep Project Info Reports on the managed Doxia 2.x family. This
-                 prevents parent dependency management from selecting an older
-                 report stack that misreads project metadata. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-project-info-reports-plugin</artifactId>
