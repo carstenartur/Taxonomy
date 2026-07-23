@@ -193,14 +193,20 @@ window.TaxonomyApiClient = (function () {
     };
 }());
 
-(function loadRoleCapabilitySurface() {
+(function loadAuthenticatedUiSurfaces() {
     'use strict';
-    if (window.TaxonomyRoleSurface || document.querySelector('script[data-taxonomy-role-surface]')) {
-        return;
+
+    function loadSurface(globalName, marker, source) {
+        if (window[globalName] || document.querySelector('script[' + marker + ']')) return;
+        var script = document.createElement('script');
+        script.src = source;
+        script.async = false;
+        script.setAttribute(marker, 'true');
+        document.head.appendChild(script);
     }
-    var script = document.createElement('script');
-    script.src = '/js/security/taxonomy-role-surface.js';
-    script.async = false;
-    script.dataset.taxonomyRoleSurface = 'true';
-    document.head.appendChild(script);
+
+    loadSurface('TaxonomyRoleSurface', 'data-taxonomy-role-surface',
+        '/js/security/taxonomy-role-surface.js');
+    loadSurface('TaxonomyUiSemantics', 'data-taxonomy-ui-semantics',
+        '/js/security/taxonomy-ui-semantics.js');
 }());
