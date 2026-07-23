@@ -55,6 +55,22 @@ public class TaxonomyRelationService {
         return toDtos(relations);
     }
 
+    /**
+     * Returns whether an equivalent relation is already visible in the target
+     * workspace. Personal workspaces inherit shared baseline relations, while a
+     * null workspace checks shared rows only and never scans personal data.
+     */
+    @Transactional(readOnly = true)
+    public boolean relationExistsVisible(String sourceCode, String targetCode,
+                                         RelationType type,
+                                         @Nullable String workspaceId) {
+        List<TaxonomyRelation> existing = workspaceId != null
+                ? relationRepository.findVisibleByWorkspaceAndSourceTargetType(
+                        workspaceId, sourceCode, targetCode, type)
+                : relationRepository.findSharedBySourceTargetType(sourceCode, targetCode, type);
+        return !existing.isEmpty();
+    }
+
     // ── Legacy delegating read methods (shared scope) ───────────────
 
     @Transactional(readOnly = true)
@@ -85,14 +101,7 @@ public class TaxonomyRelationService {
         TaxonomyNode target = nodeRepository.findByCode(targetCode)
                 .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetCode));
 
-        // Workspace overlays inherit shared relations, so an equivalent shared
-        // relation remains a duplicate for creation. Shared mode checks shared
-        // rows only and never scans personal workspaces.
-        List<TaxonomyRelation> existing = workspaceId != null
-                ? relationRepository.findByWorkspaceAndSourceTargetType(
-                        workspaceId, sourceCode, targetCode, type)
-                : relationRepository.findSharedBySourceTargetType(sourceCode, targetCode, type);
-        if (!existing.isEmpty()) {
+        if (relationExistsVisible(sourceCode, targetCode, type, workspaceId)) {
             throw new IllegalArgumentException(String.format(
                     "Relation already exists: %s --[%s]--> %s (workspace=%s)",
                     sourceCode, type, targetCode, workspaceId));
