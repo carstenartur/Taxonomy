@@ -7,9 +7,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
@@ -27,9 +26,12 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 public class SecurityConfig {
 
     private final AuthorizationRulesConfigurer authRules;
+    private final PasswordChangeRequiredFilter passwordChangeRequiredFilter;
 
-    public SecurityConfig(AuthorizationRulesConfigurer authRules) {
+    public SecurityConfig(AuthorizationRulesConfigurer authRules,
+                          PasswordChangeRequiredFilter passwordChangeRequiredFilter) {
         this.authRules = authRules;
+        this.passwordChangeRequiredFilter = passwordChangeRequiredFilter;
     }
 
     @Bean
@@ -50,7 +52,8 @@ public class SecurityConfig {
             )
             .formLogin(Customizer.withDefaults())
             .httpBasic(Customizer.withDefaults())
-            .logout(Customizer.withDefaults());
+            .logout(Customizer.withDefaults())
+            .addFilterAfter(passwordChangeRequiredFilter, BasicAuthenticationFilter.class);
 
         return http.build();
     }
@@ -69,10 +72,5 @@ public class SecurityConfig {
         return authorization != null
                 && (authorization.regionMatches(true, 0, "Basic ", 0, 6)
                 || authorization.regionMatches(true, 0, "Bearer ", 0, 7));
-    }
-
-    @Bean
-    PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 }
