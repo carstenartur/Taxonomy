@@ -127,16 +127,30 @@ jobs:
           TAXONOMY_VIEWPORT_HEIGHT: ${{ matrix.height }}
           TAXONOMY_ZOOM: ${{ matrix.zoom }}
           TAXONOMY_FORCED_COLORS: ${{ matrix.forced_colors }}
-          TAXONOMY_UI_OUTPUT_DIR: /tmp/taxonomy-ui-state-${{ matrix.profile }}
+          TAXONOMY_UI_OUTPUT_DIR: ${{ github.workspace }}/target/ui-state/${{ matrix.profile }}
         run: node .github/scripts/ui-role-state-acceptance.mjs
+
+      - name: Stage and summarize per-state evidence
+        if: always()
+        shell: bash
+        run: |
+          OUTPUT="target/ui-state/${{ matrix.profile }}"
+          mkdir -p "$OUTPUT"
+          cp /tmp/taxonomy-ui-state.log "$OUTPUT/application.log" 2>/dev/null || true
+          echo "### UI role/state profile: ${{ matrix.profile }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$OUTPUT/report.json" ]; then
+            cat "$OUTPUT/report.json" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '{"auditError":"report.json was not produced"}' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload per-state evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ui-state-${{ matrix.profile }}
-          path: |
-            /tmp/taxonomy-ui-state-${{ matrix.profile }}/**
-            /tmp/taxonomy-ui-state.log
-          if-no-files-found: warn
+          path: target/ui-state/${{ matrix.profile }}/**
+          if-no-files-found: error
           retention-days: 30
