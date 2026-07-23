@@ -39,7 +39,14 @@ export async function runRoleStateFlow({
     const text = document.querySelector('#statusArea')?.textContent?.toLowerCase() || '';
     return text.includes('complete') || text.includes('completed');
   }, null, { timeout: 120_000 });
-  assert(await page.locator('.tax-pct').count() > 0, 'Analysis produced no scored nodes');
+  // At extreme zoom the analysis status can settle before the asynchronous tree
+  // renderer has committed its score badges. Wait for both model and visible
+  // rendering so the acceptance still proves perceivable scored output.
+  await page.waitForFunction(() => {
+    const scores = window.TaxonomyState?.currentScores;
+    return scores && Object.keys(scores).length > 0
+      && document.querySelectorAll('.tax-pct').length > 0;
+  }, null, { timeout: 30_000 });
   passed('analysis loading and success');
   await runAxe('analysis-success');
   await saveState('analysis-success');
