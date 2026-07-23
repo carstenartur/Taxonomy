@@ -1,21 +1,42 @@
 package com.taxonomy.relations.model;
 
-import jakarta.persistence.*;
-import org.hibernate.annotations.Nationalized;
-import java.time.Instant;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.Nationalized;
 
-/**
- * A proposed relation between two taxonomy nodes, awaiting human review.
- * Created by the Relation Proposal Pipeline.
- */
+import java.time.Instant;
+
+/** A proposed relation awaiting human review. */
 @Entity
 @Table(name = "relation_proposal",
         uniqueConstraints = @UniqueConstraint(
-                columnNames = {"source_node_id", "target_node_id", "relation_type"}))
+                name = "uk_relation_proposal_scope",
+                columnNames = {
+                        "source_node_id", "target_node_id", "relation_type", "workspace_scope_key"
+                }),
+        indexes = {
+                @Index(name = "idx_proposal_workspace", columnList = "workspace_id"),
+                @Index(name = "idx_proposal_owner", columnList = "owner_username")
+        })
 public class RelationProposal {
+
+    public static final String SHARED_SCOPE_KEY = "__shared__";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,16 +58,13 @@ public class RelationProposal {
     @Column(nullable = false)
     private ProposalStatus status = ProposalStatus.PENDING;
 
-    /** Confidence score between 0.0 and 1.0. */
     @Column(nullable = false)
     private double confidence;
 
-    /** Human-readable explanation of why this relation was proposed. */
     @Nationalized
     @Column(length = 2000)
     private String rationale;
 
-    /** How this proposal was generated (e.g. "hybrid-search", "embedding-similarity"). */
     @Nationalized
     private String provenance;
 
@@ -59,6 +77,13 @@ public class RelationProposal {
     @Column(name = "workspace_id")
     private String workspaceId;
 
+    /**
+     * Non-null database uniqueness key. SQL UNIQUE permits repeated NULL values,
+     * so nullable workspace_id cannot by itself protect shared-scope proposals.
+     */
+    @Column(name = "workspace_scope_key", length = 255)
+    private String workspaceScopeKey = SHARED_SCOPE_KEY;
+
     @Column(name = "owner_username")
     private String ownerUsername;
 
@@ -67,9 +92,22 @@ public class RelationProposal {
         if (createdAt == null) {
             createdAt = Instant.now();
         }
+        synchronizeWorkspaceScopeKey();
     }
 
-    // ── Getters / Setters ─────────────────────────────────────────────────────
+    @PreUpdate
+    void onUpdate() {
+        synchronizeWorkspaceScopeKey();
+    }
+
+    private void synchronizeWorkspaceScopeKey() {
+        workspaceScopeKey = scopeKeyFor(workspaceId);
+    }
+
+    public static String scopeKeyFor(String workspaceId) {
+        return workspaceId == null || workspaceId.isBlank()
+                ? SHARED_SCOPE_KEY : workspaceId;
+    }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -102,7 +140,12 @@ public class RelationProposal {
     public void setReviewedAt(Instant reviewedAt) { this.reviewedAt = reviewedAt; }
 
     public String getWorkspaceId() { return workspaceId; }
-    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
+        synchronizeWorkspaceScopeKey();
+    }
+
+    public String getWorkspaceScopeKey() { return workspaceScopeKey; }
 
     public String getOwnerUsername() { return ownerUsername; }
     public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }

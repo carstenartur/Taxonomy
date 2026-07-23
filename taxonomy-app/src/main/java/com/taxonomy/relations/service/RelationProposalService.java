@@ -1,10 +1,13 @@
 package com.taxonomy.relations.service;
 
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.model.*;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.slf4j.Logger;
@@ -14,10 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.model.ProposalStatus;
-import com.taxonomy.model.RelationType;
-import com.taxonomy.relations.model.RelationProposal;
 
 /**
  * Orchestrator for the Relation Proposal Pipeline.
@@ -78,25 +77,18 @@ public class RelationProposalService {
 
         List<RelationProposalDto> proposals = new ArrayList<>();
 
-        // Resolve workspace context
+        // Resolve workspace context once for the complete operation.
         WorkspaceContext ctx = contextResolver.resolveCurrentContext();
 
         // 2–4. Validate each candidate and create proposals
         for (int i = 0; i < candidates.size(); i++) {
             TaxonomyNodeDto candidate = candidates.get(i);
 
-            // Skip if a proposal already exists for this triple in this workspace
-            if (ctx.workspaceId() != null) {
-                if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationTypeAndWorkspaceId(
-                        sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId())) {
-                    log.debug("Proposal already exists: {} → {} [{}] (workspace={})",
-                            sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId());
-                    continue;
-                }
-            } else if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(
-                    sourceNodeCode, candidate.getCode(), relationType)) {
-                log.debug("Proposal already exists: {} → {} [{}]",
-                        sourceNodeCode, candidate.getCode(), relationType);
+            // A null workspace means the shared scope only, never all workspaces.
+            if (proposalRepository.existsInWorkspace(
+                    sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId())) {
+                log.debug("Proposal already exists: {} → {} [{}] (workspace={})",
+                        sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId());
                 continue;
             }
 
@@ -122,14 +114,14 @@ public class RelationProposalService {
 
                 RelationProposal saved = proposalRepository.save(proposal);
                 proposals.add(toDto(saved));
-                log.debug("Created proposal: {} → {} [{}] confidence={}",
+                log.debug("Created proposal: {} → {} [{}] confidence={} (workspace={})",
                         sourceNodeCode, candidate.getCode(), relationType,
-                        result.getConfidence());
+                        result.getConfidence(), ctx.workspaceId());
             }
         }
 
-        log.info("Proposed {} relations for node '{}' [{}]",
-                proposals.size(), sourceNodeCode, relationType);
+        log.info("Proposed {} relations for node '{}' [{}] (workspace={})",
+                proposals.size(), sourceNodeCode, relationType, ctx.workspaceId());
         return proposals;
     }
 
@@ -140,7 +132,7 @@ public class RelationProposalService {
         if (ctx.workspaceId() != null) {
             proposals = proposalRepository.findByStatusAndWorkspace(ProposalStatus.PENDING, ctx.workspaceId());
         } else {
-            proposals = proposalRepository.findByStatus(ProposalStatus.PENDING);
+            proposals = proposalRepository.findByStatusAndWorkspaceIdIsNull(ProposalStatus.PENDING);
         }
         return proposals.stream().map(this::toDto).toList();
     }
@@ -152,7 +144,7 @@ public class RelationProposalService {
         if (ctx.workspaceId() != null) {
             proposals = proposalRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());
         } else {
-            proposals = proposalRepository.findAll();
+            proposals = proposalRepository.findByWorkspaceIdIsNull();
         }
         return proposals.stream().map(this::toDto).toList();
     }
@@ -164,7 +156,7 @@ public class RelationProposalService {
         if (ctx.workspaceId() != null) {
             proposals = proposalRepository.findBySourceNodeCodeAndWorkspace(sourceCode, ctx.workspaceId());
         } else {
-            proposals = proposalRepository.findBySourceNodeCode(sourceCode);
+            proposals = proposalRepository.findBySourceNodeCodeAndWorkspaceIdIsNull(sourceCode);
         }
         return proposals.stream().map(this::toDto).toList();
     }
@@ -189,9 +181,11 @@ public class RelationProposalService {
         TaxonomyNode target = nodeRepository.findByCode(targetCode)
                 .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetCode));
 
-        if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(
-                sourceCode, targetCode, relationType)) {
-            log.debug("Proposal already exists: {} → {} [{}]", sourceCode, targetCode, relationType);
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        if (proposalRepository.existsInWorkspace(
+                sourceCode, targetCode, relationType, ctx.workspaceId())) {
+            log.debug("Proposal already exists: {} → {} [{}] (workspace={})",
+                    sourceCode, targetCode, relationType, ctx.workspaceId());
             return null;
         }
 
@@ -203,14 +197,12 @@ public class RelationProposalService {
         proposal.setRationale(rationale);
         proposal.setProvenance("analysis-hypothesis");
         proposal.setStatus(ProposalStatus.PENDING);
-
-        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
         proposal.setWorkspaceId(ctx.workspaceId());
         proposal.setOwnerUsername(ctx.username());
 
         RelationProposal saved = proposalRepository.save(proposal);
-        log.info("Created proposal from hypothesis: {} → {} [{}] confidence={}",
-                sourceCode, targetCode, relationType, confidence);
+        log.info("Created proposal from hypothesis: {} → {} [{}] confidence={} (workspace={})",
+                sourceCode, targetCode, relationType, confidence, ctx.workspaceId());
         return toDto(saved);
     }
 
