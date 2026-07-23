@@ -1,8 +1,12 @@
 name: Resolve Production Image Digests
 
 on:
-  push:
-    branches: [ security/source-sast-and-pinning ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.prod.yml'
+      - '.github/workflows/resolve-image-digests.yml'
   workflow_dispatch:
 
 permissions: {}
