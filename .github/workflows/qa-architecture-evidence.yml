@@ -1,0 +1,46 @@
+name: QA Architecture Evidence
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'taxonomy-app/src/**'
+      - '.github/architecture-exceptions.json'
+      - '.github/workflows/qa-architecture-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  architecture-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Install dependencies without tests
+        run: mvn -B -q -pl taxonomy-app -am install -DskipTests
+      - name: Run architecture tests
+        id: tests
+        continue-on-error: true
+        run: >-
+          mvn -B -pl taxonomy-app test
+          -Dtest=ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest
+      - name: Upload raw reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qa-architecture-reports
+          path: taxonomy-app/target/surefire-reports/**
+          if-no-files-found: error
+          retention-days: 14
+      - name: Propagate result
+        if: steps.tests.outcome != 'success'
+        run: exit 1
