@@ -14,10 +14,21 @@ window.TaxonomyUiSemantics = (function () {
     }
 
     function synchronizeResultPanel(panel) {
+        if (!panel) return;
         var hidden = /(?:^|;)\s*display\s*:\s*none\s*;?/i.test(inlineDisplayMarker(panel));
         panel.classList.toggle('d-none', hidden);
         panel.classList.toggle('d-block', !hidden);
         panel.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+    }
+
+    function synchronizeResultPanels() {
+        resultPanelIds.forEach(function (id) {
+            synchronizeResultPanel(document.getElementById(id));
+        });
+    }
+
+    function scheduleResultPanelSync() {
+        window.requestAnimationFrame(synchronizeResultPanels);
     }
 
     function installResultPanelBridge(panel) {
@@ -31,7 +42,21 @@ window.TaxonomyUiSemantics = (function () {
         observers.push(observer);
     }
 
+    function installDocumentImportStatusBridge() {
+        var status = document.getElementById('docImportStatus');
+        if (!status || status.dataset.resultPanelObserved === 'true') return;
+        status.dataset.resultPanelObserved = 'true';
+        var observer = new MutationObserver(scheduleResultPanelSync);
+        observer.observe(status, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+        observers.push(observer);
+    }
+
     function synchronizeTaxonomyContainer(tree) {
+        if (!tree) return;
         var containsTreeItems = Boolean(tree.querySelector('[role="treeitem"]'));
         var expectedRole = containsTreeItems ? 'tree' : 'region';
         if (tree.getAttribute('role') !== expectedRole) tree.setAttribute('role', expectedRole);
@@ -60,6 +85,7 @@ window.TaxonomyUiSemantics = (function () {
         resultPanelIds.forEach(function (id) {
             installResultPanelBridge(document.getElementById(id));
         });
+        installDocumentImportStatusBridge();
         installTaxonomyContainerBridge();
     }
 
@@ -72,6 +98,7 @@ window.TaxonomyUiSemantics = (function () {
     return {
         initialize: initialize,
         synchronizeResultPanel: synchronizeResultPanel,
+        synchronizeResultPanels: synchronizeResultPanels,
         synchronizeTaxonomyContainer: synchronizeTaxonomyContainer
     };
 }());
