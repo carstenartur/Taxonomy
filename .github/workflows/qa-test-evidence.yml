@@ -1,9 +1,8 @@
 name: QA Test Evidence
 
 on:
-  push:
-    branches:
-      - fix/proposal-workspace-authorization
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
