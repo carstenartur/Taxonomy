@@ -1,0 +1,157 @@
+name: Apply role surface wiring
+
+on:
+  push:
+    branches: [ qa/expanded-ui-a11y-verified ]
+    paths:
+      - '.github/workflows/qa-apply-role-surface-wiring.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-wiring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: qa/expanded-ui-a11y-verified
+
+      - name: Wire role-aware controls and dynamic tables
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Expected block missing in {path}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          index = 'taxonomy-app/src/main/resources/templates/index.html'
+          replace(index,
+              '<button id="docImportUploadBtn" class="btn btn-sm btn-outline-primary"',
+              '<button id="docImportUploadBtn" class="btn btn-sm btn-outline-primary" data-required-roles="ARCHITECT,ADMIN"')
+          replace(index,
+              '<button id="createRelationBtn" class="btn btn-sm btn-outline-primary"',
+              '<button id="createRelationBtn" class="btn btn-sm btn-outline-primary" data-required-roles="ARCHITECT,ADMIN"')
+          replace(index,
+              '<button id="archiMateImportBtn" class="btn btn-outline-success"',
+              '<button id="archiMateImportBtn" class="btn btn-outline-success" data-required-roles="ARCHITECT,ADMIN"')
+          replace(index,
+              '<button id="importExecuteBtn" class="btn btn-outline-success btn-sm" data-guard="import"',
+              '<button id="importExecuteBtn" class="btn btn-outline-success btn-sm" data-guard="import" data-required-roles="ARCHITECT,ADMIN"')
+          replace(index,
+              '<button id="wsCreateBtn" class="btn btn-sm btn-outline-primary">',
+              '<button id="wsCreateBtn" class="btn btn-sm btn-outline-primary" data-required-roles="ADMIN">')
+          replace(index,
+              '<button type="button" id="proposeRelationsSubmit" class="btn btn-primary">',
+              '<button type="button" id="proposeRelationsSubmit" class="btn btn-primary" data-required-roles="ARCHITECT,ADMIN">')
+          replace(index,
+              '<script th:src="@{/js/api/taxonomy-api-client.js}"></script>',
+              '<script th:src="@{/js/api/taxonomy-api-client.js}"></script>\n<script th:src="@{/js/security/taxonomy-role-surface.js}"></script>')
+
+          browse = 'taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js'
+          replace(browse,
+              """        const hasPending = proposals.some(function (p) { return p.status === 'PENDING'; });
+
+        let html = '';
+
+        // Bulk actions bar (only for pending proposals)
+        if (hasPending) {
+""",
+              """        const canMutate = window.TaxonomyRoleSurface
+            && window.TaxonomyRoleSurface.canMutateArchitecture();
+        const hasPending = canMutate
+            && proposals.some(function (p) { return p.status === 'PENDING'; });
+
+        let html = '';
+
+        // Bulk actions are available only to roles that may mutate architecture state.
+        if (hasPending) {
+""")
+          replace(browse,
+              """            const actionHtml = isPending
+                ? '<button class="btn btn-accept btn-sm me-1" ' +
+                    'aria-label="Accept proposal ' + p.id + '" ' +
+                    'onclick="window._proposalAccept(' + p.id + ')">&#9989; Accept</button>' +
+                  '<button class="btn btn-reject btn-sm" ' +
+                    'aria-label="Reject proposal ' + p.id + '" ' +
+                    'onclick="window._proposalReject(' + p.id + ')">&#10060; Reject</button>'
+                : '<span class="badge ' + (p.status === 'ACCEPTED' ? 'bg-success' : 'bg-secondary') + '">' +
+                    escapeHtml(p.status) + '</span>';
+""",
+              """            const actionHtml = isPending && canMutate
+                ? '<button class="btn btn-accept btn-sm me-1" ' +
+                    'aria-label="Accept proposal ' + p.id + '" ' +
+                    'onclick="window._proposalAccept(' + p.id + ')">&#9989; Accept</button>' +
+                  '<button class="btn btn-reject btn-sm" ' +
+                    'aria-label="Reject proposal ' + p.id + '" ' +
+                    'onclick="window._proposalReject(' + p.id + ')">&#10060; Reject</button>'
+                : isPending
+                    ? '<span class="badge bg-secondary">' + escapeHtml(t('quality.pending')) + '</span>'
+                    : '<span class="badge ' + (p.status === 'ACCEPTED' ? 'bg-success' : 'bg-secondary') + '">' +
+                        escapeHtml(p.status) + '</span>';
+""")
+
+          relations = 'taxonomy-app/src/main/resources/static/js/relations/taxonomy-relations.js'
+          replace(relations,
+              """        relations.forEach(function (r) {
+            html += '<tr>';
+""",
+              """        var canMutate = window.TaxonomyRoleSurface
+            && window.TaxonomyRoleSurface.canMutateArchitecture();
+        relations.forEach(function (r) {
+            html += '<tr>';
+""")
+          replace(relations,
+              """            html += '<td><button class="btn btn-sm btn-outline-danger py-0 px-1 relation-delete-btn" data-id="' + r.id + '" title="' + t('relations.delete.title') + '">\u2716</button></td>';
+""",
+              """            html += '<td>' + (canMutate
+                ? '<button class="btn btn-sm btn-outline-danger py-0 px-1 relation-delete-btn" data-id="' + r.id + '" title="' + t('relations.delete.title') + '">\u2716</button>'
+                : '<span class="text-muted" aria-label="Read-only relation">\u2014</span>') + '</td>';
+""")
+
+          sync = 'taxonomy-app/src/main/resources/static/js/workspace/taxonomy-workspace-sync.js'
+          replace(sync,
+              """        if (status === 'DIVERGED') {
+            html += '<button class="btn btn-sm btn-outline-danger ms-2" '
+""",
+              """        if (status === 'DIVERGED' && window.TaxonomyRoleSurface
+                && window.TaxonomyRoleSurface.isAdministrator()) {
+            html += '<button class="btn btn-sm btn-outline-danger ms-2" '
+""")
+          replace(sync,
+              """                } else {
+                    var branchDisplay = TaxonomyI18n.formatBranch(branch);
+                    html += '<p class="mb-2">' + t('workspace.local.count', data.changeCount, escapeHtml(branchDisplay)) + '</p>';
+                    html += '<div class="d-flex gap-2">';
+                    html += '<button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()">\uD83D\uDCE4 ' + escapeHtml(t('workspace.local.publish')) + '</button>';
+                    html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.syncFromShared()">\uD83D\uDCE5 ' + escapeHtml(t('workspace.local.sync')) + '</button>';
+                    html += '</div>';
+                }
+""",
+              """                } else {
+                    var branchDisplay = TaxonomyI18n.formatBranch(branch);
+                    html += '<p class="mb-2">' + t('workspace.local.count', data.changeCount, escapeHtml(branchDisplay)) + '</p>';
+                    if (window.TaxonomyRoleSurface && window.TaxonomyRoleSurface.isAdministrator()) {
+                        html += '<div class="d-flex gap-2">';
+                        html += '<button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()">\uD83D\uDCE4 ' + escapeHtml(t('workspace.local.publish')) + '</button>';
+                        html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.syncFromShared()">\uD83D\uDCE5 ' + escapeHtml(t('workspace.local.sync')) + '</button>';
+                        html += '</div>';
+                    }
+                }
+""")
+          PY
+
+          rm .github/workflows/qa-apply-role-surface-wiring.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/src/main/resources/templates/index.html \
+                  taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js \
+                  taxonomy-app/src/main/resources/static/js/relations/taxonomy-relations.js \
+                  taxonomy-app/src/main/resources/static/js/workspace/taxonomy-workspace-sync.js \
+                  .github/workflows/qa-apply-role-surface-wiring.yml
+          git commit -m 'feat: hide mutation controls outside authorized roles'
+          git push origin HEAD:qa/expanded-ui-a11y-verified
