@@ -13,7 +13,7 @@ For the exact citation text and BibTeX entry, use the citation shown on the Zeno
 
 ## Development version citation
 
-Carsten Hammer. **Taxonomy Architecture Analyzer**. Version 1.2.6-SNAPSHOT. 2026. Software. GitHub repository: https://github.com/carstenartur/Taxonomy
+Carsten Hammer. **Taxonomy Architecture Analyzer**. Version 1.2.6. 2026. Software. GitHub repository: https://github.com/carstenartur/Taxonomy
 
 ## BibTeX template for the active repository
 
@@ -22,7 +22,8 @@ Carsten Hammer. **Taxonomy Architecture Analyzer**. Version 1.2.6-SNAPSHOT. 2026
   author       = {Hammer, Carsten},
   orcid        = {https://orcid.org/0009-0005-1047-6381},
   title        = {Taxonomy Architecture Analyzer},
-  version      = {1.2.6-SNAPSHOT},
+  version      = {1.2.6},
+  date         = {2026-07-23},
   publisher    = {GitHub and Zenodo},
   url          = {https://github.com/carstenartur/Taxonomy},
   license      = {MIT}
