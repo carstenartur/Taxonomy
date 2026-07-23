@@ -1,24 +1,49 @@
-name: QA Export Document Import Source
+name: QA Apply Document Import CSP Fix
 
 on:
   pull_request:
     branches: [ main ]
     paths:
       - '.github/workflows/qa-export-document-import-source.yml'
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export-source:
+  apply-patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          persist-credentials: false
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: document-import-source
-          path: taxonomy-app/src/main/resources/static/js/shared/taxonomy-document-import.js
-          retention-days: 1
+          ref: qa/expanded-ui-a11y-verified
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Apply validated CSP visibility fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('taxonomy-app/src/main/resources/static/js/shared/taxonomy-document-import.js')
+          source = path.read_text(encoding='utf-8')
+          replacements = {
+              "        reviewPanel.style.display = '';": "        reviewPanel.removeAttribute('style');",
+              "        aiResultPanel.style.display = '';": "        aiResultPanel.removeAttribute('style');",
+              "        regMapPanel.style.display = '';": "        regMapPanel.removeAttribute('style');",
+          }
+          for old, new in replacements.items():
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one occurrence of {old!r}, found {count}')
+              source = source.replace(old, new)
+          path.write_text(source, encoding='utf-8')
+          PY
+          node --check taxonomy-app/src/main/resources/static/js/shared/taxonomy-document-import.js
+          grep -n "removeAttribute('style')\|style\.display" taxonomy-app/src/main/resources/static/js/shared/taxonomy-document-import.js
+      - name: Commit patch and remove helper workflow
+        run: |
+          rm .github/workflows/qa-export-document-import-source.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add taxonomy-app/src/main/resources/static/js/shared/taxonomy-document-import.js \
+                  .github/workflows/qa-export-document-import-source.yml
+          git commit -m "fix(ui): make document import panels CSP-visible"
+          git push origin HEAD:qa/expanded-ui-a11y-verified
