@@ -9,44 +9,52 @@ on:
       - 'taxonomy-app/src/main/resources/static/**'
       - 'taxonomy-app/src/test/java/**/ScreenshotGeneratorIT.java'
 
+permissions:
+  contents: read
+
+env:
+  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+
 jobs:
   screenshots:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
 
       - name: Cache DJL embedding model
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.djl.ai
-          key: djl-bge-small-v1-${{ runner.os }}
+          key: djl-bge-small-v1-${{ runner.os }}-${{ env.BGE_MODEL_REVISION }}
 
-      - name: Download embedding model
+      - name: Download pinned embedding model
+        env:
+          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
         run: |
+          set -euo pipefail
           mkdir -p models/bge-small-en-v1.5
           cd models/bge-small-en-v1.5
-          curl -fsL -o model.onnx https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx
-          curl -fsL -o tokenizer.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json
-          curl -fsL -o tokenizer_config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json
-          curl -fsL -o special_tokens_map.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/special_tokens_map.json
-          curl -fsL -o config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json
-          # DJL requires serving.properties to recognize a local model directory.
-          # Use printf instead of heredoc to avoid YAML indentation leaking into file content.
+          base="https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/${MODEL_REVISION}"
+          curl -fsL -o model.onnx "$base/onnx/model.onnx"
+          curl -fsL -o tokenizer.json "$base/tokenizer.json"
+          curl -fsL -o tokenizer_config.json "$base/tokenizer_config.json"
+          curl -fsL -o special_tokens_map.json "$base/special_tokens_map.json"
+          curl -fsL -o config.json "$base/config.json"
           printf 'engine=OnnxRuntime\noption.modelName=model\ntranslatorFactory=ai.djl.huggingface.tokenizers.HuggingFaceTokenizer\n' > serving.properties
 
       - name: Verify embedding model
         run: |
           echo "=== Model directory contents ==="
           ls -la models/bge-small-en-v1.5/
-          echo "=== serving.properties content (cat -A shows invisible chars) ==="
+          echo "=== serving.properties content ==="
           cat -A models/bge-small-en-v1.5/serving.properties
           echo "=== model.onnx size ==="
           stat --format='%s bytes' models/bge-small-en-v1.5/model.onnx
