@@ -117,7 +117,12 @@ async function testTextSpacing() {
   await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.ready), null, { timeout: 20_000 });
   await page.evaluate(() => window.TaxonomyRoleSurface.ready);
   await navigateToPage(page, 'analyze');
-  await page.locator('#documentImportPanel').waitFor({ state: 'attached', timeout: 20_000 });
+  const documentPanel = page.locator('#documentImportPanel');
+  await documentPanel.waitFor({ state: 'visible', timeout: 20_000 });
+  if (!(await documentPanel.getAttribute('open'))) {
+    await documentPanel.locator('summary').click();
+  }
+  await page.locator('#documentImportPanel p').waitFor({ state: 'visible', timeout: 10_000 });
 
   const spacing = await page.evaluate(() => {
     const sample = document.querySelector('#documentImportPanel p');
@@ -146,7 +151,7 @@ async function testTextSpacing() {
     `Text spacing introduced horizontal scrolling: ${JSON.stringify(spacing)}`);
   checks.push('WCAG text spacing and reflow');
   await runAxe('text-spacing', '#tab-analyze');
-  await screenshot('text-spacing', '#tab-analyze .card:first-of-type');
+  await screenshot('text-spacing', '#documentImportPanel');
 }
 
 async function testWorkspaceOffline() {
