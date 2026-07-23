@@ -50,12 +50,15 @@ jobs:
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Archive packaging log
+      - name: Archive packaging and supply-chain evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: security-packaging-log
-          path: target/security-build.log
+          path: |
+            target/security-build.log
+            target/supply-chain-pins.json
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Stop when packaging failed
@@ -131,6 +134,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: trivy-security-scan
-          path: trivy-results.sarif
+          path: |
+            trivy-results.sarif
+            target/supply-chain-pins.json
           if-no-files-found: warn
           retention-days: 90
