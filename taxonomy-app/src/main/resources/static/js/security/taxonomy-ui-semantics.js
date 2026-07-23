@@ -39,7 +39,13 @@ window.TaxonomyUiSemantics = (function () {
         var observer = new MutationObserver(function () {
             synchronizeResultPanel(panel);
         });
-        observer.observe(panel, { attributes: true, attributeFilter: ['style'] });
+        observer.observe(panel, {
+            attributes: true,
+            attributeFilter: ['style'],
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
         observers.push(observer);
     }
 
