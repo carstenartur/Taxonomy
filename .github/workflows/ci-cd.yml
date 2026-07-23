@@ -218,6 +218,16 @@ jobs:
           if [ -f target/coverage-gate.txt ]; then
             cp target/coverage-gate.txt target/quality-reports/coverage/coverage-gate.txt
           fi
+          mkdir -p target/quality-reports/tests/junit
+          while IFS= read -r -d '' report; do
+            relative=${report#./}
+            destination="target/quality-reports/tests/junit/$relative"
+            mkdir -p "$(dirname "$destination")"
+            cp "$report" "$destination"
+          done < <(find . -type f \
+            \( -path '*/target/surefire-reports/*' -o -path '*/target/failsafe-reports/*' \) \
+            \( -name 'TEST-*.xml' -o -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) \
+            -print0)
 
       - name: Upload report publication artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
