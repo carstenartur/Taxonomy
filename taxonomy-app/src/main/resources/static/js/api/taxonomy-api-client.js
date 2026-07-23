@@ -146,3 +146,15 @@ window.TaxonomyApiClient = (function () {
         csrfHeaders: csrfHeaders
     };
 }());
+
+(function loadRoleCapabilitySurface() {
+    'use strict';
+    if (window.TaxonomyRoleSurface || document.querySelector('script[data-taxonomy-role-surface]')) {
+        return;
+    }
+    var script = document.createElement('script');
+    script.src = '/js/security/taxonomy-role-surface.js';
+    script.async = false;
+    script.dataset.taxonomyRoleSurface = 'true';
+    document.head.appendChild(script);
+}());
