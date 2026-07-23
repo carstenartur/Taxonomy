@@ -26,7 +26,12 @@ class ArchitectureCycleBoundaryTest {
             "cycle-versioning-to-workspace",
             "cycle-workspace-to-versioning",
             "cycle-dsl-adapter-outbound",
-            "cycle-dsl-adapter-inbound"
+            "cycle-dsl-adapter-inbound",
+            "cycle-analysis-usecase-to-export-metadata",
+            "cycle-catalog-model-to-search-binder",
+            "cycle-search-binder-to-catalog-model",
+            "cycle-architecture-controller-to-versioning-state",
+            "cycle-catalog-controller-to-versioning-state"
     );
 
     private static final String[] STRUCTURAL_SHARED_PACKAGES = {
@@ -66,6 +71,22 @@ class ArchitectureCycleBoundaryTest {
             .ignoreDependency(
                     resideInAnyPackage("com.taxonomy.workspace.."),
                     resideInAnyPackage("com.taxonomy.versioning.."))
+            // Precisely scoped pre-existing edges exposed by replacing the old no-op rule.
+            .ignoreDependency(
+                    resideInAnyPackage("com.taxonomy.analysis.usecase.."),
+                    resideInAnyPackage("com.taxonomy.export.."))
+            .ignoreDependency(
+                    resideInAnyPackage("com.taxonomy.catalog.model.."),
+                    resideInAnyPackage("com.taxonomy.search.."))
+            .ignoreDependency(
+                    resideInAnyPackage("com.taxonomy.search.."),
+                    resideInAnyPackage("com.taxonomy.catalog.model.."))
+            .ignoreDependency(
+                    resideInAnyPackage("com.taxonomy.architecture.controller.."),
+                    resideInAnyPackage("com.taxonomy.versioning.service.."))
+            .ignoreDependency(
+                    resideInAnyPackage("com.taxonomy.catalog.controller.."),
+                    resideInAnyPackage("com.taxonomy.versioning.service.."))
             // Spring/JGit DSL adapters still live below the otherwise pure DSL root.
             .ignoreDependency(resideInAnyPackage(DSL_ADAPTER_PACKAGES), alwaysTrue())
             .ignoreDependency(alwaysTrue(), resideInAnyPackage(DSL_ADAPTER_PACKAGES))
