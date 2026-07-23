@@ -38,4 +38,4 @@ DTD support and external entity resolution are disabled on the StAX factory. Mal
 
 ## Verification
 
-Focused tests cover preview non-mutation, two-workspace isolation, same-workspace duplicate handling, malformed XML, endpoint 422 behavior, XXE rejection, and explicit facade context. Full CI additionally runs reactor coverage, CodeQL, Trivy, immutable supply-chain validation, database compatibility, container restart, UI, accessibility, frontend architecture, and documentation checks.
+Focused tests cover preview non-mutation, two-workspace isolation, same-workspace duplicate handling, malformed XML, endpoint 422 behavior, XXE rejection, and explicit facade context. Full CI additionally runs reactor coverage, CodeQL, Trivy, immutable supply-chain validation, database compatibility, container restart, UI, accessibility, frontend architecture, documentation checks, and the strict bounded-context architecture gate.
