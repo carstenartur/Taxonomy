@@ -7,8 +7,6 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -66,10 +64,5 @@ public class SecurityConfig {
         return authorization != null
                 && (authorization.regionMatches(true, 0, "Basic ", 0, 6)
                 || authorization.regionMatches(true, 0, "Bearer ", 0, 7));
-    }
-
-    @Bean
-    PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 }
