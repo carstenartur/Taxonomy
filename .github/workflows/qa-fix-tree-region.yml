@@ -1,0 +1,52 @@
+name: QA Apply Taxonomy Tree Region Fix
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/qa-fix-tree-region.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: qa/expanded-ui-a11y-verified
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Preserve labelled region semantics outside tree view
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js')
+          source = path.read_text(encoding='utf-8')
+          old = """        } else {
+              tree.removeAttribute('role');
+              tree.setAttribute('aria-busy', 'true');
+          }
+"""
+          new = """        } else {
+              tree.setAttribute('role', 'region');
+              tree.setAttribute('aria-busy', 'true');
+          }
+"""
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one tree fallback block, found {count}')
+          path.write_text(source.replace(old, new), encoding='utf-8')
+          PY
+          node --check taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js
+          grep -n -A5 -B2 "function syncTreeContainerSemantics" taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js
+      - name: Commit patch and remove helper workflow
+        run: |
+          rm .github/workflows/qa-fix-tree-region.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js \
+                  .github/workflows/qa-fix-tree-region.yml
+          git commit -m "fix(a11y): preserve taxonomy region semantics"
+          git push origin HEAD:qa/expanded-ui-a11y-verified
