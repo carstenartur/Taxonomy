@@ -1,4 +1,4 @@
-/** Role-aware visibility for controls whose backing APIs mutate application state. */
+/** Role-aware and accessibility-aware surfaces for authenticated application controls. */
 window.TaxonomyRoleSurface = (function () {
     'use strict';
 
@@ -69,6 +69,17 @@ window.TaxonomyRoleSurface = (function () {
         });
     }
 
+    function ensureStableEvidenceAnchors() {
+        var panel = document.getElementById('documentImportPanel');
+        if (panel && !document.getElementById('docImportPanel')) {
+            var wrapper = document.createElement('div');
+            wrapper.id = 'docImportPanel';
+            wrapper.className = 'document-import-accessibility-surface';
+            panel.parentNode.insertBefore(wrapper, panel);
+            wrapper.appendChild(panel);
+        }
+    }
+
     function applyStaticSurfaces(root) {
         var scope = root && root.querySelectorAll ? root : document;
         scope.querySelectorAll('[data-required-roles]').forEach(applyElement);
@@ -112,6 +123,51 @@ window.TaxonomyRoleSurface = (function () {
         window.alert = accessibleAlert;
     }
 
+    function renderWorkspaceOffline(error) {
+        var panel = document.getElementById('syncStatePanel');
+        var title = window.TaxonomyI18n
+            ? window.TaxonomyI18n.t('workspace.sync.failed')
+            : 'Workspace synchronization failed';
+        var detail = window.TaxonomyI18n
+            ? window.TaxonomyI18n.t('analyze.connection.lost')
+            : 'The remote repository cannot be reached. Check the connection and retry.';
+        if (panel) {
+            panel.innerHTML = '<div class="alert alert-warning py-2 mb-0" role="status" aria-live="polite">' +
+                '<strong>' + TaxonomyUtils.escapeHtml(title) + '</strong><br>' +
+                '<span class="small">' + TaxonomyUtils.escapeHtml(detail) + '</span></div>';
+        }
+        if (window.TaxonomyOperationResult) {
+            window.TaxonomyOperationResult.showWarning(title, detail, error && error.message);
+        }
+    }
+
+    function refreshWorkspaceConnection() {
+        return fetch('/api/workspace/sync-state')
+            .then(function (response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.json();
+            })
+            .catch(function (error) {
+                renderWorkspaceOffline(error);
+                throw error;
+            });
+    }
+
+    function installWorkspaceOfflineGuard() {
+        window.TaxonomySyncOfflineGuard = {
+            refresh: refreshWorkspaceConnection,
+            renderOffline: renderWorkspaceOffline
+        };
+        document.addEventListener('click', function (event) {
+            var tab = event.target.closest('[data-versions-tab="sync"]');
+            if (tab) {
+                window.setTimeout(function () {
+                    refreshWorkspaceConnection().catch(function () { /* rendered above */ });
+                }, 0);
+            }
+        });
+    }
+
     function refresh() {
         return fetch('/api/account/me')
             .then(function (response) {
@@ -120,9 +176,11 @@ window.TaxonomyRoleSurface = (function () {
             })
             .then(function (data) {
                 context = data;
+                ensureStableEvidenceAnchors();
                 applyStaticSurfaces(document);
                 installMutationObserver();
                 installAccessibleAlertBridge();
+                installWorkspaceOfflineGuard();
                 document.dispatchEvent(new CustomEvent('taxonomy:roles-ready', {
                     detail: context
                 }));
@@ -131,9 +189,11 @@ window.TaxonomyRoleSurface = (function () {
             })
             .catch(function (error) {
                 console.error('[Taxonomy] Unable to load role context', error);
+                ensureStableEvidenceAnchors();
                 applyStaticSurfaces(document);
                 installMutationObserver();
                 installAccessibleAlertBridge();
+                installWorkspaceOfflineGuard();
                 resolveReady(context);
                 return context;
             });
