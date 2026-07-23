@@ -33,3 +33,5 @@ The same check runs in `Hibernate Search Alignment` and archives the resolved tr
 3. Keep `hibernate-search-backend.version` as an alias or remove it together with all remaining child-POM references.
 4. Run the full Maven reactor, persistent-index restart tests, database compatibility matrix, and mass-index/search tests.
 5. Confirm whether a reindex is required before release and document that decision.
+
+A release is incomplete until the resolved dependency evidence and persistent-index restart test are both green.
