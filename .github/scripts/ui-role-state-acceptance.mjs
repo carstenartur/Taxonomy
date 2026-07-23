@@ -62,9 +62,10 @@ function assert(condition, message) {
 }
 
 async function ensureRoleAccounts() {
+  const basicAuthorization = `Basic ${Buffer.from(`${adminUsername}:${adminPassword}`, 'utf8').toString('base64')}`;
   const api = await request.newContext({
     baseURL: baseUrl,
-    httpCredentials: { username: adminUsername, password: adminPassword }
+    extraHTTPHeaders: { Authorization: basicAuthorization }
   });
   try {
     for (const value of [credentials.USER, credentials.ARCHITECT]) {
