@@ -55,9 +55,6 @@ async function testPartialAnalysis() {
   assert(Array.isArray(fixture.tree) && fixture.tree.length > 0, 'Successful analysis produced no reusable tree');
   assert(fixture.scores && Object.keys(fixture.scores).length > 0, 'Successful analysis produced no reusable scores');
 
-  // List and tab views intentionally use the SSE endpoint. Switch through the
-  // actual UI to a diagram view so this state exercises the JSON /api/analyze
-  // contract that carries SUCCESS/PARTIAL/ERROR result status values.
   await page.locator('#viewSunburst').click();
   await page.waitForFunction(() => window.TaxonomyState.currentView === 'sunburst');
 
@@ -100,19 +97,27 @@ async function testTextSpacing() {
   await navigateToPage(page, 'analyze');
   await page.locator('#documentImportPanel').waitFor({ state: 'attached', timeout: 20_000 });
 
-  // A strict CSP can reject dynamically inserted <style> elements. Apply the
-  // equivalent user stylesheet through the rendered CSSOM so the test measures
-  // the actual 1.4.12 layout instead of an existing Bootstrap default.
-  await page.locator('#tab-analyze').evaluate(root => {
-    [root, ...root.querySelectorAll('*')].forEach(element => {
-      element.style.setProperty('line-height', '1.5', 'important');
-      element.style.setProperty('letter-spacing', '0.12em', 'important');
-      element.style.setProperty('word-spacing', '0.16em', 'important');
-    });
-    root.querySelectorAll('p').forEach(element => {
-      element.style.setProperty('margin-bottom', '2em', 'important');
-    });
+  // CSP correctly blocks new inline style elements and attributes. A user
+  // stylesheet is outside that threat model, so model it by inserting scoped
+  // rules into an already-authorized same-origin stylesheet.
+  const stylesheetResult = await page.evaluate(() => {
+    let sheet = null;
+    for (const candidate of document.styleSheets) {
+      try {
+        void candidate.cssRules.length;
+        sheet = candidate;
+        break;
+      } catch (ignored) {
+        // Cross-origin sheet; continue to an accessible same-origin stylesheet.
+      }
+    }
+    if (!sheet) return { applied: false, reason: 'no accessible stylesheet' };
+    const start = sheet.cssRules.length;
+    sheet.insertRule('#tab-analyze, #tab-analyze * { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }', start);
+    sheet.insertRule('#tab-analyze p { margin-bottom: 2em !important; }', start + 1);
+    return { applied: true, href: sheet.href, ruleCount: sheet.cssRules.length };
   });
+  assert(stylesheetResult.applied, `Unable to apply user stylesheet: ${JSON.stringify(stylesheetResult)}`);
 
   const spacing = await page.evaluate(() => {
     const sample = document.querySelector('#documentImportPanel p');
