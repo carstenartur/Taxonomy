@@ -7,6 +7,7 @@ import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.repository.RelationProposalRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.relations.service.RelationProposalService;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,20 +24,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.relations.controller.ProposalApiController;
 import com.taxonomy.relations.service.RelationCandidateService;
 import com.taxonomy.relations.service.RelationCompatibilityMatrix;
-import com.taxonomy.relations.service.RelationProposalService;
 import com.taxonomy.relations.service.RelationReviewService;
 import com.taxonomy.relations.service.RelationValidationService;
 
-/**
- * Tests for the Relation Proposal Pipeline:
- * RelationProposalService, RelationCandidateService, RelationValidationService,
- * RelationReviewService, RelationCompatibilityMatrix, and ProposalApiController.
- */
+/** Tests for the relation proposal pipeline and REST API. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
@@ -57,25 +50,19 @@ class RelationProposalTests {
         relationRepository.deleteAll();
     }
 
-    // ── Compatibility Matrix ──────────────────────────────────────────────────
-
     @Test
     void compatibilityMatrixAllowsCorrectPairs() {
-        // CP → CR is valid for REALIZES
         assertThat(compatibilityMatrix.isCompatible("CP", "CR", RelationType.REALIZES)).isTrue();
-        // CR → BP is valid for SUPPORTS
         assertThat(compatibilityMatrix.isCompatible("CR", "BP", RelationType.SUPPORTS)).isTrue();
     }
 
     @Test
     void compatibilityMatrixRejectsIncorrectPairs() {
-        // BP → CR should not be valid for REALIZES (source must be CP)
         assertThat(compatibilityMatrix.isCompatible("BP", "CR", RelationType.REALIZES)).isFalse();
     }
 
     @Test
     void compatibilityMatrixRelatedToHasNoRestrictions() {
-        // RELATED_TO should allow any combination
         assertThat(compatibilityMatrix.isCompatible("BP", "CR", RelationType.RELATED_TO)).isTrue();
         assertThat(compatibilityMatrix.isCompatible("CP", "CI", RelationType.RELATED_TO)).isTrue();
     }
@@ -86,28 +73,24 @@ class RelationProposalTests {
         assertThat(targets).containsExactly("CR");
     }
 
-    // ── Validation Service ────────────────────────────────────────────────────
-
     @Test
     void validationRejectsSelfRelation() {
         var source = new com.taxonomy.catalog.model.TaxonomyNode();
         source.setCode("BP");
         source.setTaxonomyRoot("BP");
-
         var candidate = new com.taxonomy.dto.TaxonomyNodeDto();
         candidate.setCode("BP");
         candidate.setTaxonomyRoot("BP");
 
         var result = validationService.validate(source, candidate, RelationType.RELATED_TO, 0, 1);
+
         assertThat(result.isValid()).isFalse();
         assertThat(result.getRationale()).contains("Self-relation");
     }
 
     @Test
     void confidenceComputationBounds() {
-        // Rank 0 of 5 should be high
         double high = validationService.computeConfidence(0, 5);
-        // Rank 4 of 5 should be low
         double low = validationService.computeConfidence(4, 5);
         assertThat(high).isGreaterThan(0.8);
         assertThat(low).isGreaterThan(0.2);
@@ -116,11 +99,8 @@ class RelationProposalTests {
 
     @Test
     void confidenceSingleCandidate() {
-        double c = validationService.computeConfidence(0, 1);
-        assertThat(c).isEqualTo(0.9);
+        assertThat(validationService.computeConfidence(0, 1)).isEqualTo(0.9);
     }
-
-    // ── Proposal Service ──────────────────────────────────────────────────────
 
     @Test
     void contextLoadsWithProposalServices() {
@@ -133,18 +113,15 @@ class RelationProposalTests {
 
     @Test
     void proposeRelationsReturnsProposals() {
-        // RELATED_TO has no root restriction, so should find candidates
         List<RelationProposalDto> proposals =
                 proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
         assertThat(proposals).isNotNull();
-        // With full-text search, there should be at least some candidates
-        // (embedding may not be available in test)
     }
 
     @Test
     void proposeRelationsRejectsUnknownNode() {
-        assertThatThrownBy(() ->
-                proposalService.proposeRelations("NONEXISTENT", RelationType.RELATED_TO, 5))
+        assertThatThrownBy(() -> proposalService.proposeRelations(
+                "NONEXISTENT", RelationType.RELATED_TO, 5))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -158,23 +135,18 @@ class RelationProposalTests {
         assertThat(proposalService.getAllProposals()).isEmpty();
     }
 
-    // ── Review Service ────────────────────────────────────────────────────────
-
     @Test
     void acceptProposalCreatesRelation() {
-        // Generate proposals first
         List<RelationProposalDto> proposals =
                 proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
-
         if (!proposals.isEmpty()) {
             Long proposalId = proposals.get(0).getId();
-            TaxonomyRelationDto relation = reviewService.acceptProposal(proposalId);
+            TaxonomyRelationDto relation = reviewService.acceptProposal(
+                    proposalId, WorkspaceContext.SHARED);
             assertThat(relation).isNotNull();
             assertThat(relation.getSourceCode()).isEqualTo("BP");
             assertThat(relation.getRelationType()).isEqualTo("RELATED_TO");
             assertThat(relation.getProvenance()).isEqualTo("proposal-pipeline");
-
-            // Verify proposal status changed
             var updated = proposalRepository.findById(proposalId).orElseThrow();
             assertThat(updated.getStatus()).isEqualTo(ProposalStatus.ACCEPTED);
             assertThat(updated.getReviewedAt()).isNotNull();
@@ -185,12 +157,11 @@ class RelationProposalTests {
     void rejectProposalChangesStatus() {
         List<RelationProposalDto> proposals =
                 proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
-
         if (!proposals.isEmpty()) {
             Long proposalId = proposals.get(0).getId();
-            RelationProposalDto rejected = reviewService.rejectProposal(proposalId);
+            RelationProposalDto rejected = reviewService.rejectProposal(
+                    proposalId, WorkspaceContext.SHARED);
             assertThat(rejected.getStatus()).isEqualTo("REJECTED");
-
             var updated = proposalRepository.findById(proposalId).orElseThrow();
             assertThat(updated.getStatus()).isEqualTo(ProposalStatus.REJECTED);
             assertThat(updated.getReviewedAt()).isNotNull();
@@ -199,17 +170,17 @@ class RelationProposalTests {
 
     @Test
     void acceptNonExistentProposalThrows() {
-        assertThatThrownBy(() -> reviewService.acceptProposal(999L))
+        assertThatThrownBy(() -> reviewService.acceptProposal(
+                999L, WorkspaceContext.SHARED))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectNonExistentProposalThrows() {
-        assertThatThrownBy(() -> reviewService.rejectProposal(999L))
+        assertThatThrownBy(() -> reviewService.rejectProposal(
+                999L, WorkspaceContext.SHARED))
                 .isInstanceOf(IllegalArgumentException.class);
     }
-
-    // ── REST API ──────────────────────────────────────────────────────────────
 
     @Test
     void proposalsApiGetAllReturnsEmptyList() throws Exception {

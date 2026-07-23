@@ -1,17 +1,41 @@
 package com.taxonomy.catalog.model;
 
+import com.taxonomy.model.RelationType;
 import com.taxonomy.search.RelationEmbeddingBinder;
-import jakarta.persistence.*;
+import com.taxonomy.shared.model.FloatArrayConverter;
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.Nationalized;
 import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
-import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
-import com.taxonomy.model.RelationType;
-import com.taxonomy.shared.model.FloatArrayConverter;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.GenericField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.Indexed;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.IndexedEmbedded;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.KeywordField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.TypeBinding;
 
 @Entity
 @Table(name = "taxonomy_relation",
         uniqueConstraints = @UniqueConstraint(
-                columnNames = {"source_node_id", "target_node_id", "relation_type", "workspace_id"}),
+                name = "uk_taxonomy_relation_scope",
+                columnNames = {
+                        "source_node_id", "target_node_id", "relation_type", "workspace_scope_key"
+                }),
         indexes = {
                 @Index(name = "idx_rel_workspace", columnList = "workspace_id"),
                 @Index(name = "idx_rel_owner", columnList = "owner_username")
@@ -19,6 +43,8 @@ import com.taxonomy.shared.model.FloatArrayConverter;
 @Indexed
 @TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
 public class TaxonomyRelation {
+
+    public static final String SHARED_SCOPE_KEY = "__shared__";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -42,6 +68,11 @@ public class TaxonomyRelation {
     @Column(name = "workspace_id")
     @KeywordField
     private String workspaceId;
+
+    /** Non-null uniqueness key for both shared and personal workspace rows. */
+    @Column(name = "workspace_scope_key", length = 255)
+    @KeywordField
+    private String workspaceScopeKey = SHARED_SCOPE_KEY;
 
     @Column(name = "owner_username")
     @KeywordField
@@ -67,6 +98,17 @@ public class TaxonomyRelation {
     @GenericField
     @Column(name = "has_embedding")
     private boolean hasEmbedding;
+
+    @PrePersist
+    @PreUpdate
+    void synchronizeWorkspaceScopeKey() {
+        workspaceScopeKey = scopeKeyFor(workspaceId);
+    }
+
+    public static String scopeKeyFor(String workspaceId) {
+        return workspaceId == null || workspaceId.isBlank()
+                ? SHARED_SCOPE_KEY : workspaceId;
+    }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -95,14 +137,19 @@ public class TaxonomyRelation {
     public float[] getSemanticEmbedding() { return semanticEmbedding; }
     public void setSemanticEmbedding(float[] semanticEmbedding) {
         this.semanticEmbedding = semanticEmbedding;
-        this.hasEmbedding = (semanticEmbedding != null);
+        this.hasEmbedding = semanticEmbedding != null;
     }
 
     public boolean isHasEmbedding() { return hasEmbedding; }
     private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }
 
     public String getWorkspaceId() { return workspaceId; }
-    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
+        synchronizeWorkspaceScopeKey();
+    }
+
+    public String getWorkspaceScopeKey() { return workspaceScopeKey; }
 
     public String getOwnerUsername() { return ownerUsername; }
     public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }

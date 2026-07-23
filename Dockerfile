@@ -1,5 +1,6 @@
 # ---- build stage ----
-FROM maven:3.9.9-eclipse-temurin-21 AS build
+# Tag retained for readability and automated update discovery; digest is authoritative.
+FROM maven:3.9.9-eclipse-temurin-21@sha256:1c76eb045e808749d70fb96a02bc64290b2c20db3801b9e4413544fcf6b3abec AS build
 WORKDIR /workspace
 COPY pom.xml .
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
@@ -7,6 +8,7 @@ COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
 COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
 COPY taxonomy-extension-api/pom.xml taxonomy-extension-api/pom.xml
 COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
+COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml
 # Pre-fetch dependencies so they are cached in a separate layer
 RUN mvn -q dependency:go-offline -B
 COPY taxonomy-domain/src taxonomy-domain/src
@@ -17,7 +19,8 @@ COPY taxonomy-app/src taxonomy-app/src
 RUN mvn -q -DskipTests package
 
 # ---- runtime stage ----
-FROM eclipse-temurin:21-jre-jammy
+# Tag retained for readability; digest prevents mutable-tag supply-chain drift.
+FROM eclipse-temurin:21-jre-jammy@sha256:2c2088115d82ba0022ccf8080f233d2398b7ad3ba3308ed45e860caf511f6b95
 # OCI Image Specification labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.description="Spring Boot web application that loads a C3-taxonomy catalogue and provides full-text search, KNN vector search, architecture-overlay DSL editing, and LLM-assisted analysis." \
@@ -26,7 +29,7 @@ LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.documentation="https://github.com/carstenartur/Taxonomy#readme" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Carsten Hammer" \
-      org.opencontainers.image.base.name="eclipse-temurin:21-jre-jammy"
+      org.opencontainers.image.base.name="eclipse-temurin:21-jre-jammy@sha256:2c2088115d82ba0022ccf8080f233d2398b7ad3ba3308ed45e860caf511f6b95"
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION

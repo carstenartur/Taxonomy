@@ -8,6 +8,8 @@ import com.taxonomy.security.repository.RoleRepository;
 import com.taxonomy.security.repository.UserRepository;
 import com.taxonomy.security.service.DatabaseUserDetailsService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -21,8 +23,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests for Spring Security configuration: authentication, authorization,
@@ -143,7 +146,7 @@ class SecurityTests {
                 .andExpect(status().isOk());
     }
 
-    // ── Role-based access: USER cannot write relations ────────────────────────
+    // ── Role-based access: USER cannot mutate architecture state ─────────────
 
     @Test
     @WithMockUser(roles = "USER")
@@ -163,7 +166,25 @@ class SecurityTests {
                 .andExpect(status().isForbidden());
     }
 
-    // ── Role-based access: ARCHITECT can write relations ──────────────────────
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/proposals/propose",
+            "/api/proposals/from-hypothesis",
+            "/api/proposals/999/accept",
+            "/api/proposals/999/reject",
+            "/api/proposals/999/revert",
+            "/api/proposals/bulk/accept",
+            "/api/proposals/bulk/reject"
+    })
+    @WithMockUser(roles = "USER")
+    void userCannotMutateRelationProposals(String endpoint) throws Exception {
+        mockMvc.perform(post(endpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    // ── Role-based access: ARCHITECT can write architecture state ────────────
 
     @Test
     @WithMockUser(roles = "ARCHITECT")
@@ -172,6 +193,13 @@ class SecurityTests {
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("meta { }"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ARCHITECT")
+    void architectReachesProposalController() throws Exception {
+        mockMvc.perform(post("/api/proposals/999/accept"))
+                .andExpect(status().isBadRequest());
     }
 
     // ── Role-based access: Admin-only endpoints ───────────────────────────────

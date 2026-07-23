@@ -1,11 +1,11 @@
 package com.taxonomy.catalog.service;
 
-import com.taxonomy.dto.TaxonomyRelationDto;
-import com.taxonomy.model.RelationType;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.RelationType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
@@ -33,50 +33,29 @@ public class TaxonomyRelationService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsForNode(String code, @Nullable String workspaceId) {
-        List<TaxonomyRelation> relations;
-        if (workspaceId != null) {
-            relations = relationRepository.findByWorkspaceAndNodeCode(workspaceId, code);
-        } else {
-            relations = relationRepository.findBySourceNodeCodeOrTargetNodeCode(code, code);
-        }
-        List<TaxonomyRelationDto> dtos = new ArrayList<>();
-        for (TaxonomyRelation relation : relations) {
-            dtos.add(toDto(relation));
-        }
-        return dtos;
+        List<TaxonomyRelation> relations = workspaceId != null
+                ? relationRepository.findVisibleByWorkspaceAndNodeCode(workspaceId, code)
+                : relationRepository.findSharedByNodeCode(code);
+        return toDtos(relations);
     }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsByType(RelationType type, @Nullable String workspaceId) {
-        List<TaxonomyRelation> relations;
-        if (workspaceId != null) {
-            relations = relationRepository.findByWorkspaceAndRelationType(workspaceId, type);
-        } else {
-            relations = relationRepository.findByRelationType(type);
-        }
-        List<TaxonomyRelationDto> dtos = new ArrayList<>();
-        for (TaxonomyRelation relation : relations) {
-            dtos.add(toDto(relation));
-        }
-        return dtos;
+        List<TaxonomyRelation> relations = workspaceId != null
+                ? relationRepository.findVisibleByWorkspaceAndRelationType(workspaceId, type)
+                : relationRepository.findByRelationTypeAndWorkspaceIdIsNull(type);
+        return toDtos(relations);
     }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getAllRelations(@Nullable String workspaceId) {
-        List<TaxonomyRelation> relations;
-        if (workspaceId != null) {
-            relations = relationRepository.findByWorkspaceIdIsNullOrWorkspaceId(workspaceId);
-        } else {
-            relations = relationRepository.findAll();
-        }
-        List<TaxonomyRelationDto> dtos = new ArrayList<>();
-        for (TaxonomyRelation relation : relations) {
-            dtos.add(toDto(relation));
-        }
-        return dtos;
+        List<TaxonomyRelation> relations = workspaceId != null
+                ? relationRepository.findVisibleByWorkspace(workspaceId)
+                : relationRepository.findByWorkspaceIdIsNull();
+        return toDtos(relations);
     }
 
-    // ── Legacy delegating read methods (backward-compatible) ─────────
+    // ── Legacy delegating read methods (shared scope) ───────────────
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsForNode(String code) {
@@ -106,19 +85,13 @@ public class TaxonomyRelationService {
         TaxonomyNode target = nodeRepository.findByCode(targetCode)
                 .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetCode));
 
-        // Programmatic duplicate check (covers NULL workspace_id in unique constraint)
-        List<TaxonomyRelation> existing;
-        if (workspaceId != null) {
-            existing = relationRepository.findByWorkspaceAndSourceTargetType(
-                    workspaceId, sourceCode, targetCode, type);
-        } else {
-            existing = relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(
-                    sourceCode, targetCode, type);
-            // Filter to only those with null workspace for exact match
-            existing = existing.stream()
-                    .filter(r -> r.getWorkspaceId() == null)
-                    .toList();
-        }
+        // Workspace overlays inherit shared relations, so an equivalent shared
+        // relation remains a duplicate for creation. Shared mode checks shared
+        // rows only and never scans personal workspaces.
+        List<TaxonomyRelation> existing = workspaceId != null
+                ? relationRepository.findByWorkspaceAndSourceTargetType(
+                        workspaceId, sourceCode, targetCode, type)
+                : relationRepository.findSharedBySourceTargetType(sourceCode, targetCode, type);
         if (!existing.isEmpty()) {
             throw new IllegalArgumentException(String.format(
                     "Relation already exists: %s --[%s]--> %s (workspace=%s)",
@@ -139,9 +112,7 @@ public class TaxonomyRelationService {
         return toDto(saved);
     }
 
-    /**
-     * Legacy overload — delegates to workspace-aware method with null workspace.
-     */
+    /** Legacy overload — creates a shared relation. */
     @Transactional
     public TaxonomyRelationDto createRelation(String sourceCode, String targetCode,
                                               RelationType type, String description,
@@ -150,46 +121,49 @@ public class TaxonomyRelationService {
     }
 
     /**
-     * Delete a relation by ID, with optional workspace ownership check.
-     *
-     * <p>If {@code workspaceId} is non-null, the relation must either belong to
-     * the given workspace or be a shared (null workspace) relation. If it belongs
-     * to a different workspace, an {@link IllegalArgumentException} is thrown.
+     * Deletes a relation only when it belongs to the exact active workspace.
+     * A null workspace ID means shared scope only; a personal workspace can
+     * never delete a shared or foreign-workspace relation by guessing its ID.
      */
     @Transactional
     public void deleteRelation(Long id, @Nullable String workspaceId) {
-        if (workspaceId != null) {
-            TaxonomyRelation relation = relationRepository.findById(id).orElse(null);
-            if (relation != null && relation.getWorkspaceId() != null
-                    && !workspaceId.equals(relation.getWorkspaceId())) {
-                throw new IllegalArgumentException(
-                        "Relation " + id + " belongs to workspace '" + relation.getWorkspaceId()
-                                + "', not '" + workspaceId + "'");
-            }
-        }
-        relationRepository.deleteById(id);
+        TaxonomyRelation relation = relationRepository.findByIdInWorkspace(id, workspaceId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Relation not found in active workspace: " + id));
+        relationRepository.delete(relation);
         log.info("Deleted relation with id: {} (workspace={})", id, workspaceId);
     }
 
-    /** Legacy overload — deletes without workspace ownership check. */
+    /** Legacy overload — deletes a shared relation only. */
     @Transactional
     public void deleteRelation(Long id) {
         deleteRelation(id, null);
     }
 
     /**
-     * Delete all relations matching a specific source, target, and type combination.
-     * Used by the proposal revert mechanism to remove accepted relations.
+     * Deletes relations matching a source, target, type, and exact workspace.
+     * A null workspace ID means shared relations only, never all workspaces.
      */
     @Transactional
     public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
-                                                  RelationType type) {
-        List<TaxonomyRelation> matches = relationRepository
-                .findBySourceNodeCodeAndTargetNodeCodeAndRelationType(sourceCode, targetCode, type);
+                                                  RelationType type,
+                                                  @Nullable String workspaceId) {
+        List<TaxonomyRelation> matches = workspaceId != null
+                ? relationRepository.findByWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(
+                        workspaceId, sourceCode, targetCode, type)
+                : relationRepository.findSharedBySourceTargetType(sourceCode, targetCode, type);
         if (!matches.isEmpty()) {
             relationRepository.deleteAll(matches);
-            log.info("Deleted {} relation(s): {} --[{}]--> {}", matches.size(), sourceCode, type, targetCode);
+            log.info("Deleted {} relation(s): {} --[{}]--> {} (workspace={})",
+                    matches.size(), sourceCode, type, targetCode, workspaceId);
         }
+    }
+
+    /** Legacy overload — operates on shared relations only. */
+    @Transactional
+    public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
+                                                  RelationType type) {
+        deleteRelationBySourceTargetType(sourceCode, targetCode, type, null);
     }
 
     public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
@@ -209,15 +183,22 @@ public class TaxonomyRelationService {
 
     @Transactional(readOnly = true)
     public long countRelations(@Nullable String workspaceId) {
-        if (workspaceId != null) {
-            return relationRepository.countByWorkspaceIdIsNullOrWorkspaceId(workspaceId);
-        }
-        return relationRepository.count();
+        return workspaceId != null
+                ? relationRepository.countVisibleByWorkspace(workspaceId)
+                : relationRepository.countByWorkspaceIdIsNull();
     }
 
-    /** Legacy overload — counts all relations. */
+    /** Legacy overload — counts shared relations only. */
     @Transactional(readOnly = true)
     public long countRelations() {
         return countRelations(null);
+    }
+
+    private List<TaxonomyRelationDto> toDtos(List<TaxonomyRelation> relations) {
+        List<TaxonomyRelationDto> dtos = new ArrayList<>(relations.size());
+        for (TaxonomyRelation relation : relations) {
+            dtos.add(toDto(relation));
+        }
+        return dtos;
     }
 }

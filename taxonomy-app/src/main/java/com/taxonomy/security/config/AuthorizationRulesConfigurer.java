@@ -48,6 +48,13 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.PUT,    "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
 
+        // Proposal generation and review mutate proposal state and can create or
+        // delete real relations. Keep these endpoints out of the generic
+        // authenticated-user fallback.
+        auth.requestMatchers(HttpMethod.POST,   "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT,    "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
+
         auth.requestMatchers(HttpMethod.POST,   "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT,    "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");

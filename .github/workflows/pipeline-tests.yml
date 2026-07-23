@@ -5,38 +5,42 @@ on:
   push:
     branches: [main]
     paths:
-      - 'taxonomy-app/src/main/java/com/taxonomy/service/**'
-      - 'taxonomy-app/src/main/java/com/taxonomy/controller/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/analysis/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/search/**'
+      - 'taxonomy-app/src/test/java/com/taxonomy/**/*Onnx*IT.java'
+      - '.github/workflows/pipeline-tests.yml'
+      - '.github/scripts/download-embedding-model.sh'
+
+permissions:
+  contents: read
+
+env:
+  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
 
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
 
       - name: Cache DJL embedding model
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.djl.ai
-          key: djl-bge-small-v1-${{ runner.os }}
+          key: djl-bge-small-v1-${{ runner.os }}-${{ env.BGE_MODEL_REVISION }}
 
-      - name: Download embedding model
-        run: |
-          mkdir -p models/bge-small-en-v1.5
-          cd models/bge-small-en-v1.5
-          curl -fsL -o model.onnx https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx
-          curl -fsL -o tokenizer.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json
-          curl -fsL -o tokenizer_config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json
-          curl -fsL -o special_tokens_map.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/special_tokens_map.json
-          curl -fsL -o config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json
+      - name: Download and verify pinned embedding model
+        env:
+          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
+        run: bash .github/scripts/download-embedding-model.sh
 
       - name: Build JAR
         run: mvn install -DskipTests -q
@@ -45,3 +49,4 @@ jobs:
         run: mvn failsafe:integration-test failsafe:verify -DrunOnnxTests -Dit.test="LocalOnnxPipelineIT,OnnxSeleniumIT" -pl taxonomy-app -am
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
