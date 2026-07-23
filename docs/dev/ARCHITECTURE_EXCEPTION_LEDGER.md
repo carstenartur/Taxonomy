@@ -34,4 +34,4 @@ Before extending an exception:
 
 The shared DTO, model, and shared-infrastructure packages are structural contracts rather than bounded contexts. They are excluded separately and must not be used as a route for domain-service dependencies.
 
-The five additional edges recorded in the initial strict-rule adoption are narrower than a bounded context: one analysis use-case dependency, two Hibernate Search binder directions, and two HTTP-controller orchestration dependencies. The reverse service dependencies remain governed by the cycle rule.
+The strict-rule adoption exposed seven cycles hidden by the former broad exclusions. Five additional directed edges are sufficient to explain them: one analysis use-case dependency, two Hibernate Search binder directions, and two HTTP-controller orchestration dependencies. Reverse service dependencies remain governed by the cycle rule, and all five adoption entries expire on 30 June 2027.
