@@ -43,4 +43,4 @@ Every state produces:
 - ARIA snapshot when supported by Playwright;
 - one machine-readable report containing checks, axe findings, viewport data, console errors, external requests, and any failure stack.
 
-Artifacts are retained for 30 days to make UI regressions reviewable rather than relying only on a green check name. The workflow itself uses immutable GitHub Action references and is covered by the repository supply-chain gate.
+Artifacts are retained for 30 days to make UI regressions reviewable rather than relying only on a green check name. The workflow itself uses immutable GitHub Action references and is covered by the repository supply-chain gate. Normal CI additionally verifies reactor-wide coverage, CodeQL, Trivy, database/container compatibility, and the strict bounded-context architecture gate.
