@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "roles": ["USER", "ARCHITECT", "ADMIN"],
+  "workflows": [
+    {
+      "id": "authentication-and-navigation",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["success", "keyboard-only", "role-specific-surface"]
+    },
+    {
+      "id": "requirement-analysis",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["loading", "success", "stale", "provider-error"]
+    },
+    {
+      "id": "proposal-review",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["forbidden", "created", "accepted-or-rejected"]
+    },
+    {
+      "id": "accessible-dialog",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["opened", "focus-contained", "closed", "focus-restored"]
+    },
+    {
+      "id": "responsive-reflow",
+      "roles": ["USER", "ARCHITECT", "ADMIN"],
+      "states": ["mobile", "zoom-200", "zoom-400", "forced-colors"]
+    }
+  ],
+  "profiles": [
+    {"id": "desktop-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 1, "forcedColors": false},
+    {"id": "desktop-architect-firefox", "browser": "firefox", "role": "ARCHITECT", "width": 1440, "height": 1000, "zoom": 1, "forcedColors": false},
+    {"id": "mobile-admin-webkit", "browser": "webkit", "role": "ADMIN", "width": 390, "height": 844, "zoom": 1, "forcedColors": false},
+    {"id": "zoom-200-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 2, "forcedColors": false},
+    {"id": "zoom-400-user-chromium", "browser": "chromium", "role": "USER", "width": 1440, "height": 1000, "zoom": 4, "forcedColors": false},
+    {"id": "forced-colors-architect-chromium", "browser": "chromium", "role": "ARCHITECT", "width": 1024, "height": 768, "zoom": 1, "forcedColors": true}
+  ]
+}
