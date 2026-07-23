@@ -10,26 +10,23 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
-/**
- * Spring Security configuration for form-login mode (default, without Keycloak).
- *
- * <p>The GUI uses form-login sessions and therefore keeps CSRF protection for
- * state-changing API calls. Only programmatic API clients authenticated with an
- * explicit Basic or Bearer Authorization header are treated as stateless and
- * may call the REST API without a CSRF token.</p>
- */
+/** Spring Security configuration for local form-login/HTTP-Basic mode. */
 @Configuration
 @EnableMethodSecurity
 @Profile("!keycloak")
 public class SecurityConfig {
 
     private final AuthorizationRulesConfigurer authRules;
+    private final PasswordChangeRequiredFilter passwordChangeRequiredFilter;
 
-    public SecurityConfig(AuthorizationRulesConfigurer authRules) {
+    public SecurityConfig(AuthorizationRulesConfigurer authRules,
+                          PasswordChangeRequiredFilter passwordChangeRequiredFilter) {
         this.authRules = authRules;
+        this.passwordChangeRequiredFilter = passwordChangeRequiredFilter;
     }
 
     @Bean
@@ -50,16 +47,16 @@ public class SecurityConfig {
             )
             .formLogin(Customizer.withDefaults())
             .httpBasic(Customizer.withDefaults())
-            .logout(Customizer.withDefaults());
+            .logout(Customizer.withDefaults())
+            .addFilterAfter(passwordChangeRequiredFilter, BasicAuthenticationFilter.class);
 
         return http.build();
     }
 
     /**
-     * A request is stateless only when it carries an explicit HTTP
-     * authentication scheme. The absence of an existing session is not enough:
-     * otherwise a browser request made before session resolution could bypass
-     * CSRF protection.
+     * A request is stateless only when it targets the API and carries an
+     * explicit HTTP authentication scheme. Browser session requests retain
+     * normal CSRF protection.
      */
     static boolean isStatelessApiClient(HttpServletRequest request) {
         if (!request.getRequestURI().startsWith("/api/")) {
