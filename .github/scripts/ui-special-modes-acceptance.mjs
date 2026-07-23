@@ -55,6 +55,12 @@ async function testPartialAnalysis() {
   assert(Array.isArray(fixture.tree) && fixture.tree.length > 0, 'Successful analysis produced no reusable tree');
   assert(fixture.scores && Object.keys(fixture.scores).length > 0, 'Successful analysis produced no reusable scores');
 
+  // List and tab views intentionally use the SSE endpoint. Switch through the
+  // actual UI to a diagram view so this state exercises the JSON /api/analyze
+  // contract that carries SUCCESS/PARTIAL/ERROR result status values.
+  await page.locator('#viewSunburst').click();
+  await page.waitForFunction(() => window.TaxonomyState.currentView === 'sunburst');
+
   await page.route('**/api/analyze', async route => {
     await route.fulfill({
       status: 200,
