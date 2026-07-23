@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -53,14 +54,26 @@ def parse_report(path: Path) -> tuple[Counter, dict[str, Counter]]:
     return aggregate, groups
 
 
+def normalize_group_name(value: str) -> str:
+    """Map human Maven module names and artifact IDs to one stable key."""
+    normalized = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    return normalized if normalized.startswith("taxonomy-") else f"taxonomy-{normalized}"
+
+
 def build_report(
     xml_path: Path,
     minimum: float,
     expected_groups: list[str],
 ) -> tuple[bool, str]:
     aggregate, groups = parse_report(xml_path)
-    missing = sorted(set(expected_groups) - set(groups))
-    unexpected = sorted(set(groups) - set(expected_groups)) if expected_groups else []
+    actual_by_key = {normalize_group_name(name): name for name in groups}
+    expected_by_key = {normalize_group_name(name): name for name in expected_groups}
+    missing_keys = sorted(set(expected_by_key) - set(actual_by_key))
+    unexpected_keys = (
+        sorted(set(actual_by_key) - set(expected_by_key)) if expected_groups else []
+    )
+    missing = [expected_by_key[key] for key in missing_keys]
+    unexpected = [actual_by_key[key] for key in unexpected_keys]
 
     passed = aggregate.total > 0 and aggregate.ratio >= minimum and not missing
     lines = [
@@ -110,9 +123,8 @@ def main(argv: list[str] | None = None) -> int:
         "--expected-group",
         action="append",
         default=[],
-        help="Required JaCoCo module group; repeat for every shipped module",
+        help="Required Maven module name or JaCoCo artifact group; repeat for every shipped module",
     )
-    # Keep the established CLI name for the text evidence output.
     parser.add_argument("--report", type=Path, default=Path("target/coverage-gate.txt"))
     args = parser.parse_args(argv)
 
