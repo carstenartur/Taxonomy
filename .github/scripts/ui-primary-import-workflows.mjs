@@ -23,6 +23,27 @@ export async function runImportWorkflows({ page, evidence }) {
     name: 'requirements.pdf', mimeType: 'application/pdf', buffer: Buffer.from('mock-pdf')
   });
   await page.locator('#docImportUploadBtn').click();
+  const outcomeHandle = await page.waitForFunction(() => {
+    const status = document.getElementById('docImportStatus');
+    const text = (status?.textContent || '').trim();
+    if (!text || /uploading|parsing/i.test(text)) return false;
+    const panel = document.getElementById('docCandidateReviewPanel');
+    const selected = document.querySelector('input[name="importMode"]:checked');
+    return {
+      success: Boolean(status.querySelector('.text-success')),
+      statusText: text,
+      statusHtml: status.innerHTML,
+      mode: selected?.value || null,
+      panelStyle: panel?.getAttribute('style'),
+      panelClass: panel?.className,
+      panelAriaHidden: panel?.getAttribute('aria-hidden'),
+      semanticsLoaded: Boolean(window.TaxonomyUiSemantics),
+      statusObserved: status.dataset.resultPanelObserved || null,
+      lifecycleObserved: document.getElementById('docImportUploadBtn')?.dataset.resultLifecycleObserved || null
+    };
+  }, null, { timeout: 15_000 });
+  const outcome = await outcomeHandle.jsonValue();
+  assert(outcome.success, `Document upload did not succeed: ${JSON.stringify(outcome)}`);
   await page.locator('#docCandidateReviewPanel').waitFor({ state: 'visible', timeout: 15_000 });
   assert((await page.locator('#docCandidateCount').textContent()).trim() === '2',
     'Candidate count is not two');
