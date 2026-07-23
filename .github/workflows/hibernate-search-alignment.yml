@@ -1,0 +1,61 @@
+name: Hibernate Search Alignment
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'pom.xml'
+      - 'taxonomy-*/pom.xml'
+      - '.github/scripts/check-hibernate-search-alignment.py'
+      - '.github/workflows/hibernate-search-alignment.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'pom.xml'
+      - 'taxonomy-*/pom.xml'
+      - '.github/scripts/check-hibernate-search-alignment.py'
+      - '.github/workflows/hibernate-search-alignment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolved-platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Resolve coordinated dependency set
+        run: |
+          mkdir -p target
+          mvn -B -q -pl taxonomy-app -am install -DskipTests
+          mvn -B -q -pl taxonomy-app dependency:tree \
+            -Dincludes='org.hibernate.search:*,org.hibernate.orm:hibernate-core,org.apache.lucene:lucene-core' \
+            -DoutputFile=../target/hibernate-search-dependencies.txt
+          SEARCH_VERSION=$(mvn help:evaluate -Dexpression=hibernate-search.version -q -DforceStdout)
+          python3 .github/scripts/check-hibernate-search-alignment.py \
+            --tree target/hibernate-search-dependencies.txt \
+            --search-version "$SEARCH_VERSION" \
+            | tee target/hibernate-search-alignment.txt
+
+      - name: Upload dependency evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: hibernate-search-alignment
+          path: |
+            target/hibernate-search-dependencies.txt
+            target/hibernate-search-alignment.txt
+          if-no-files-found: error
+          retention-days: 90
