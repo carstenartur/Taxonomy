@@ -78,15 +78,22 @@ async function testPartialAnalysis() {
   }, { times: 1 });
   await page.locator('#businessText').fill('Provide traceable hospital communication services with a partial provider result.');
   await page.locator('#analyzeBtn').click();
-  await page.waitForFunction(() => {
-    const text = document.querySelector('#statusArea')?.textContent?.toLowerCase() || '';
-    return text.includes('unavailable') || text.includes('incomplete') || text.includes('partial');
+  const statusHandle = await page.waitForFunction(() => {
+    const text = (document.querySelector('#statusArea')?.textContent || '').trim();
+    const normalized = text.toLowerCase();
+    return text && (normalized.includes('unavailable')
+      || normalized.includes('incomplete')
+      || normalized.includes('partial')) ? text : false;
   }, null, { timeout: 30_000 });
-  const statusText = (await page.locator('#statusArea').textContent()).trim();
-  assert(statusText.length > 0, 'Partial analysis status is empty');
-  checks.push('partial analysis status and warning detail');
+  const statusText = await statusHandle.jsonValue();
+  assert(typeof statusText === 'string' && statusText.length > 0, 'Partial analysis status is empty');
+  await page.waitForFunction(() => {
+    const text = (document.querySelector('#a11yStatus')?.textContent || '').trim().toLowerCase();
+    return text.includes('unavailable') || text.includes('incomplete') || text.includes('partial');
+  }, null, { timeout: 10_000 });
+  checks.push('partial analysis status, warning detail, and live announcement');
   await runAxe('analysis-partial', '#tab-analyze');
-  await screenshot('analysis-partial', '#statusArea');
+  await screenshot('analysis-partial', '#tab-analyze');
 }
 
 async function testTextSpacing() {
