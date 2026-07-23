@@ -11,6 +11,7 @@ import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
 import com.taxonomy.relations.service.RelationProposalService;
 import com.taxonomy.relations.service.RelationReviewService;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,42 +21,26 @@ import org.springframework.transaction.annotation.Transactional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Regression tests for exact-scope proposal and relation access.
- *
- * <p>The mock user has no provisioned workspace and therefore resolves to the
- * shared context. Shared context must never mean unrestricted access to all
- * personal workspaces.
- */
+/** Regression tests for exact-scope proposal and relation access. */
 @SpringBootTest
 @Transactional
 @WithMockUser(username = "qa-admin", roles = {"USER", "ARCHITECT", "ADMIN"})
 class WorkspaceRelationIsolationTests {
 
-    @Autowired
-    private TaxonomyNodeRepository nodeRepository;
-
-    @Autowired
-    private RelationProposalRepository proposalRepository;
-
-    @Autowired
-    private TaxonomyRelationRepository relationRepository;
-
-    @Autowired
-    private RelationProposalService proposalService;
-
-    @Autowired
-    private RelationReviewService reviewService;
-
-    @Autowired
-    private TaxonomyRelationService relationService;
+    @Autowired private TaxonomyNodeRepository nodeRepository;
+    @Autowired private RelationProposalRepository proposalRepository;
+    @Autowired private TaxonomyRelationRepository relationRepository;
+    @Autowired private RelationProposalService proposalService;
+    @Autowired private RelationReviewService reviewService;
+    @Autowired private TaxonomyRelationService relationService;
 
     @Test
     void sharedContextCannotReviewForeignWorkspaceProposal() {
         RelationProposal foreign = proposalRepository.saveAndFlush(
                 newProposal("qa-foreign-workspace", "other-user"));
 
-        assertThatThrownBy(() -> reviewService.acceptProposal(foreign.getId()))
+        assertThatThrownBy(() -> reviewService.acceptProposal(
+                foreign.getId(), WorkspaceContext.SHARED))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("active workspace");
 
