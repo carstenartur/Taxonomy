@@ -60,7 +60,8 @@ services:
 
   # ─── Caddy Reverse Proxy (automatic HTTPS) ──────────────────
   caddy:
-    image: caddy:2-alpine
+    # Tag is retained for readability; digest is authoritative and immutable.
+    image: caddy:2-alpine@sha256:b9e25ad35f1dc8b11a91d531628f5a3537ab9769c6e4218ea2795bba37ef7b11
     ports:
       - "80:80"                   # HTTP → HTTPS redirect + ACME challenge
       - "443:443"                 # HTTPS
