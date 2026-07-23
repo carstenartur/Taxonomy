@@ -94,33 +94,30 @@ async function testPartialAnalysis() {
 }
 
 async function testTextSpacing() {
-  await navigateToPage(page, 'analyze');
-  await page.locator('#documentImportPanel').waitFor({ state: 'attached', timeout: 20_000 });
-
-  // WCAG 1.4.12 models a user stylesheet. The application CSP correctly blocks
-  // DOM inline styles, so apply the external-user override through Chromium's
-  // DevTools CSS domain. This changes only the inspected rendering and leaves
-  // the production CSP and application source untouched.
-  const cdp = await context.newCDPSession(page);
-  await cdp.send('DOM.enable');
-  await cdp.send('CSS.enable');
-  await cdp.send('Page.enable');
-  const { frameTree } = await cdp.send('Page.getFrameTree');
-  const { styleSheetId } = await cdp.send('CSS.createStyleSheet', {
-    frameId: frameTree.frame.id
-  });
-  await cdp.send('CSS.setStyleSheetText', {
-    styleSheetId,
-    text: [
+  // WCAG 1.4.12 models an external user stylesheet. Keep the product CSP strict
+  // and append the test-only override to an already allowed, same-origin CSS
+  // response before reloading the authenticated page.
+  await page.route('**/css/taxonomy-ergonomics.css', async route => {
+    const response = await route.fetch();
+    const original = await response.text();
+    const override = [
+      '',
+      '/* WCAG 1.4.12 test-only external user stylesheet */',
       '#tab-analyze, #tab-analyze * {',
       '  line-height: 1.5 !important;',
       '  letter-spacing: 0.12em !important;',
       '  word-spacing: 0.16em !important;',
       '}',
       '#tab-analyze p { margin-bottom: 2em !important; }'
-    ].join('\n')
+    ].join('\n');
+    await route.fulfill({ response, body: original + override });
   });
-  await page.waitForTimeout(100);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.ready), null, { timeout: 20_000 });
+  await page.evaluate(() => window.TaxonomyRoleSurface.ready);
+  await navigateToPage(page, 'analyze');
+  await page.locator('#documentImportPanel').waitFor({ state: 'attached', timeout: 20_000 });
 
   const spacing = await page.evaluate(() => {
     const sample = document.querySelector('#documentImportPanel p');
