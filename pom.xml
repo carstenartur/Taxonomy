@@ -77,6 +77,10 @@
         <hibernate-search-backend.version>8.4.0.Final</hibernate-search-backend.version>
         <jgit.version>7.7.0.202606012155-r</jgit.version>
         <springdoc.version>3.0.3</springdoc.version>
+        <!-- Spring Boot-managed patch overrides for currently fixed security releases. -->
+        <postgresql.version>42.7.12</postgresql.version>
+        <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
+        <jackson-bom.version>3.1.5</jackson-bom.version>
         <!-- Keep the Selenium BOM and the explicitly selected browser image aligned.
              The dated image tag makes CI reproducible; ContainerTestUtils also checks
              at runtime that its Selenium version matches this image tag. -->
