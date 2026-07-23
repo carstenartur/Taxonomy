@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateDiagramService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">ArchiMateDiagramService.java</span></div><h1>ArchiMateDiagramService.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.archimate.ArchiMateElement;
+import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.archimate.ArchiMateRelationship;
+import com.taxonomy.archimate.ArchiMateView;
+import com.taxonomy.archimate.ArchiMateViewConnection;
+import com.taxonomy.archimate.ArchiMateViewNode;
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Converts a neutral {@link DiagramModel} into an {@link ArchiMateModel} by mapping
+ * taxonomy types to ArchiMate element types, relationship types to ArchiMate relationship
+ * types, and computing pixel-based layout positions for the diagram view.
+ */
+<span class="fc" id="L29">public class ArchiMateDiagramService {</span>
+
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(ArchiMateDiagramService.class);</span>
+
+    // Layout constants (pixels)
+    private static final int NODE_WIDTH  = 120;
+    private static final int NODE_HEIGHT =  40;
+    private static final int H_GAP       = 160;
+    private static final int V_GAP       =  60;
+    private static final int MARGIN_X    =  40;
+    private static final int MARGIN_Y    =  40;
+
+    /**
+     * Converts a {@link DiagramModel} to an {@link ArchiMateModel}.
+     */
+    public ArchiMateModel convert(DiagramModel model) {
+        // Collect non-container node IDs — container-only nodes are visual grouping
+        // constructs and must not appear as ArchiMate elements or relationship endpoints.
+<span class="fc" id="L47">        Set&lt;String&gt; elementIds = model.nodes().stream()</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                .filter(n -&gt; !n.container())</span>
+<span class="fc" id="L49">                .map(DiagramNode::id)</span>
+<span class="fc" id="L50">                .collect(Collectors.toSet());</span>
+
+<span class="fc" id="L52">        List&lt;ArchiMateElement&gt; elements = buildElements(model.nodes());</span>
+<span class="fc" id="L53">        List&lt;ArchiMateRelationship&gt; relationships = buildRelationships(model.edges(), elementIds);</span>
+<span class="fc" id="L54">        Map&lt;String, List&lt;String&gt;&gt; organizations = buildOrganizations(model.nodes());</span>
+<span class="fc" id="L55">        ArchiMateView view = buildView(model, elementIds);</span>
+
+<span class="fc" id="L57">        log.info(&quot;ArchiMateDiagram: {} elements, {} relationships, {} view nodes&quot;,</span>
+<span class="fc" id="L58">                elements.size(), relationships.size(), view.nodes().size());</span>
+
+<span class="fc" id="L60">        return new ArchiMateModel(</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                model.title() != null ? model.title() : &quot;Architecture View&quot;,</span>
+                elements,
+                relationships,
+                organizations,
+                view);
+    }
+
+    private List&lt;ArchiMateElement&gt; buildElements(List&lt;DiagramNode&gt; nodes) {
+<span class="fc" id="L69">        List&lt;ArchiMateElement&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (DiagramNode node : nodes) {</span>
+            // Container-only nodes are visual grouping constructs — they must not
+            // leak into the ArchiMate model as real architecture elements.
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (node.container()) {</span>
+<span class="fc" id="L74">                continue;</span>
+            }
+<span class="fc" id="L76">            elements.add(new ArchiMateElement(</span>
+<span class="fc" id="L77">                    node.id(),</span>
+<span class="fc" id="L78">                    node.label(),</span>
+<span class="fc" id="L79">                    toArchiMateType(node.type()),</span>
+<span class="fc" id="L80">                    &quot;Relevance: &quot; + String.format(Locale.US, &quot;%.2f&quot;, node.relevance())));</span>
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">        return elements;</span>
+    }
+
+    private List&lt;ArchiMateRelationship&gt; buildRelationships(List&lt;DiagramEdge&gt; edges,
+                                                             Set&lt;String&gt; elementIds) {
+<span class="fc" id="L87">        List&lt;ArchiMateRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (DiagramEdge edge : edges) {</span>
+            // Skip edges that reference container-only nodes
+<span class="pc bpc" id="L90" title="2 of 4 branches missed.">            if (!elementIds.contains(edge.sourceId()) || !elementIds.contains(edge.targetId())) {</span>
+<span class="nc" id="L91">                continue;</span>
+            }
+<span class="fc" id="L93">            relationships.add(new ArchiMateRelationship(</span>
+<span class="fc" id="L94">                    edge.id(),</span>
+<span class="fc" id="L95">                    edge.sourceId(),</span>
+<span class="fc" id="L96">                    edge.targetId(),</span>
+<span class="fc" id="L97">                    toArchiMateRelType(edge.relationType()),</span>
+<span class="fc" id="L98">                    toAccessType(edge.relationType()),</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">                    edge.relationType() != null ? edge.relationType() : &quot;&quot;));</span>
+<span class="fc" id="L100">        }</span>
+<span class="fc" id="L101">        return relationships;</span>
+    }
+
+    private Map&lt;String, List&lt;String&gt;&gt; buildOrganizations(List&lt;DiagramNode&gt; nodes) {
+<span class="fc" id="L105">        Map&lt;String, List&lt;String&gt;&gt; organizations = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        for (DiagramNode node : nodes) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (node.container()) continue; // grouping-only nodes are not architecture elements</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            String type = node.type() != null ? node.type() : &quot;Unknown&quot;;</span>
+<span class="fc" id="L109">            organizations.computeIfAbsent(type, k -&gt; new ArrayList&lt;&gt;()).add(node.id());</span>
+<span class="fc" id="L110">        }</span>
+<span class="fc" id="L111">        return organizations;</span>
+    }
+
+    private ArchiMateView buildView(DiagramModel model, Set&lt;String&gt; elementIds) {
+        // Group nodes by layer for left-to-right layout
+<span class="fc" id="L116">        Map&lt;Integer, List&lt;DiagramNode&gt;&gt; layerGroups = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (DiagramNode node : model.nodes()) {</span>
+<span class="fc" id="L118">            layerGroups.computeIfAbsent(node.layer(), k -&gt; new ArrayList&lt;&gt;()).add(node);</span>
+<span class="fc" id="L119">        }</span>
+
+<span class="fc" id="L121">        List&lt;ArchiMateViewNode&gt; viewNodes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L122">        int layerIdx = 0;</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        for (var entry : layerGroups.entrySet().stream()</span>
+<span class="fc" id="L124">                .sorted(Comparator.comparingInt(Map.Entry::getKey)).toList()) {</span>
+<span class="fc" id="L125">            List&lt;DiagramNode&gt; layerNodes = entry.getValue();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            for (int i = 0; i &lt; layerNodes.size(); i++) {</span>
+<span class="fc" id="L127">                DiagramNode node = layerNodes.get(i);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                if (node.container()) continue; // visual-only container — not an ArchiMate element</span>
+<span class="fc" id="L129">                int x = MARGIN_X + layerIdx * H_GAP;</span>
+<span class="fc" id="L130">                int y = MARGIN_Y + i * V_GAP;</span>
+<span class="fc" id="L131">                int[] color = toColor(node.type());</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                int lineWidth = node.anchor() ? 3 : 1;</span>
+<span class="fc" id="L133">                viewNodes.add(new ArchiMateViewNode(</span>
+<span class="fc" id="L134">                        node.id(),</span>
+<span class="fc" id="L135">                        node.id(),</span>
+                        x, y,
+                        NODE_WIDTH, NODE_HEIGHT,
+<span class="fc" id="L138">                        node.label(),</span>
+                        color[0], color[1], color[2],
+                        lineWidth));
+            }
+<span class="fc" id="L142">            layerIdx++;</span>
+<span class="fc" id="L143">        }</span>
+
+<span class="fc" id="L145">        Set&lt;String&gt; nodeIdSet = elementIds;</span>
+<span class="fc" id="L146">        List&lt;ArchiMateViewConnection&gt; viewConnections = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (DiagramEdge edge : model.edges()) {</span>
+<span class="pc bpc" id="L148" title="2 of 4 branches missed.">            if (nodeIdSet.contains(edge.sourceId()) &amp;&amp; nodeIdSet.contains(edge.targetId())) {</span>
+<span class="fc" id="L149">                viewConnections.add(new ArchiMateViewConnection(</span>
+<span class="fc" id="L150">                        edge.id(),</span>
+<span class="fc" id="L151">                        edge.id(),</span>
+<span class="fc" id="L152">                        edge.sourceId(),</span>
+<span class="fc" id="L153">                        edge.targetId()));</span>
+            }
+<span class="fc" id="L155">        }</span>
+
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        String viewName = model.title() != null ? model.title() : &quot;Architecture View&quot;;</span>
+<span class="fc" id="L158">        return new ArchiMateView(&quot;view-1&quot;, viewName, viewNodes, viewConnections);</span>
+    }
+
+    // ── Type mappings ─────────────────────────────────────────────────────────
+
+    public static String toArchiMateType(String taxonomyType) {
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        if (taxonomyType == null) return &quot;BusinessObject&quot;;</span>
+<span class="pc bpc" id="L165" title="2 of 15 branches missed.">        return switch (taxonomyType) {</span>
+<span class="fc" id="L166">            case &quot;Capabilities&quot;          -&gt; &quot;Capability&quot;;</span>
+<span class="fc" id="L167">            case &quot;Business Processes&quot;    -&gt; &quot;BusinessProcess&quot;;</span>
+<span class="fc" id="L168">            case &quot;Business Roles&quot;        -&gt; &quot;BusinessRole&quot;;</span>
+<span class="fc" id="L169">            case &quot;Services&quot;              -&gt; &quot;ApplicationService&quot;;</span>
+<span class="fc" id="L170">            case &quot;COI Services&quot;          -&gt; &quot;BusinessService&quot;;</span>
+<span class="fc" id="L171">            case &quot;Communications Services&quot; -&gt; &quot;CommunicationNetwork&quot;;</span>
+<span class="fc" id="L172">            case &quot;Core Services&quot;         -&gt; &quot;TechnologyService&quot;;</span>
+<span class="fc" id="L173">            case &quot;Applications&quot;          -&gt; &quot;ApplicationComponent&quot;;</span>
+<span class="fc" id="L174">            case &quot;User Applications&quot;     -&gt; &quot;ApplicationComponent&quot;;</span>
+<span class="fc" id="L175">            case &quot;Information Products&quot;  -&gt; &quot;DataObject&quot;;</span>
+<span class="nc" id="L176">            case &quot;Systems&quot;               -&gt; &quot;ApplicationComponent&quot;;</span>
+<span class="nc" id="L177">            case &quot;Components&quot;            -&gt; &quot;ApplicationComponent&quot;;</span>
+<span class="fc" id="L178">            case &quot;System&quot;                -&gt; &quot;Node&quot;;</span>
+<span class="fc" id="L179">            case &quot;Component&quot;             -&gt; &quot;ApplicationComponent&quot;;</span>
+<span class="fc" id="L180">            default                      -&gt; &quot;BusinessObject&quot;;</span>
+        };
+    }
+
+    public static String toArchiMateRelType(String relationType) {
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        if (relationType == null) return &quot;Association&quot;;</span>
+<span class="pc bpc" id="L186" title="1 of 10 branches missed.">        return switch (relationType) {</span>
+<span class="fc" id="L187">            case &quot;SUPPORTS&quot;, &quot;ENABLES&quot;, &quot;USES&quot;, &quot;DEPENDS_ON&quot; -&gt; &quot;Serving&quot;;</span>
+<span class="fc" id="L188">            case &quot;PRODUCES&quot;                                   -&gt; &quot;Access&quot;;</span>
+<span class="fc" id="L189">            case &quot;CONSUMES&quot;, &quot;REQUIRES&quot;                       -&gt; &quot;Access&quot;;</span>
+<span class="fc" id="L190">            case &quot;REALIZES&quot;, &quot;IMPLEMENTS&quot;, &quot;FULFILLS&quot;         -&gt; &quot;Realization&quot;;</span>
+<span class="fc" id="L191">            case &quot;ASSIGNED_TO&quot;                                -&gt; &quot;Assignment&quot;;</span>
+<span class="fc" id="L192">            case &quot;COMMUNICATES_WITH&quot;                          -&gt; &quot;Flow&quot;;</span>
+<span class="fc" id="L193">            case &quot;PART_OF&quot;                                    -&gt; &quot;Composition&quot;;</span>
+<span class="nc" id="L194">            case &quot;CONTAINS&quot;                                   -&gt; &quot;Composition&quot;;</span>
+<span class="fc" id="L195">            case &quot;RELATED_TO&quot;                                 -&gt; &quot;Association&quot;;</span>
+<span class="fc" id="L196">            default                                           -&gt; &quot;Association&quot;;</span>
+        };
+    }
+
+    public static String toAccessType(String relationType) {
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (&quot;PRODUCES&quot;.equals(relationType)) return &quot;Write&quot;;</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (&quot;CONSUMES&quot;.equals(relationType)) return &quot;Read&quot;;</span>
+<span class="fc" id="L203">        return null;</span>
+    }
+
+    public static int[] toColor(String taxonomyType) {
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        if (taxonomyType == null) return new int[]{224, 224, 224};</span>
+<span class="pc bpc" id="L208" title="3 of 15 branches missed.">        return switch (taxonomyType) {</span>
+<span class="fc" id="L209">            case &quot;Capabilities&quot;           -&gt; new int[]{255, 255, 181};</span>
+<span class="fc" id="L210">            case &quot;Business Processes&quot;     -&gt; new int[]{255, 255, 181};</span>
+<span class="fc" id="L211">            case &quot;Business Roles&quot;         -&gt; new int[]{255, 224, 181};</span>
+<span class="fc" id="L212">            case &quot;Services&quot;               -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L213">            case &quot;COI Services&quot;           -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L214">            case &quot;Core Services&quot;          -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L215">            case &quot;Communications Services&quot;-&gt; new int[]{204, 224, 255};</span>
+<span class="nc" id="L216">            case &quot;Applications&quot;           -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L217">            case &quot;User Applications&quot;      -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L218">            case &quot;Information Products&quot;   -&gt; new int[]{204, 255, 204};</span>
+<span class="nc" id="L219">            case &quot;Systems&quot;                -&gt; new int[]{181, 204, 255};</span>
+<span class="nc" id="L220">            case &quot;Components&quot;             -&gt; new int[]{204, 181, 255};</span>
+<span class="fc" id="L221">            case &quot;System&quot;                 -&gt; new int[]{204, 204, 255};</span>
+<span class="fc" id="L222">            case &quot;Component&quot;              -&gt; new int[]{224, 204, 255};</span>
+<span class="fc" id="L223">            default                       -&gt; new int[]{224, 224, 224};</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

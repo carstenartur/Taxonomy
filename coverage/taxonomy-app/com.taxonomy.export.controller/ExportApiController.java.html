@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExportApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.controller</a> &gt; <span class="el_source">ExportApiController.java</span></div><h1>ExportApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.controller;
+
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.dto.SavedAnalysis;
+import com.taxonomy.export.MermaidLabels;
+import com.taxonomy.export.service.ExportFacade;
+import com.taxonomy.export.service.ExportFormatExtensionRegistry;
+import com.taxonomy.export.spi.ExportContext;
+import com.taxonomy.export.spi.ExportFormatDescriptor;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.export.spi.ExportResult;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Export&quot;)
+public class ExportApiController {
+
+<span class="fc" id="L38">    private static final Logger log = LoggerFactory.getLogger(ExportApiController.class);</span>
+
+    private final ExportFacade exportFacade;
+    private final ExportFormatExtensionRegistry exportFormatRegistry;
+
+    public ExportApiController(ExportFacade exportFacade,
+<span class="fc" id="L44">                               ExportFormatExtensionRegistry exportFormatRegistry) {</span>
+<span class="fc" id="L45">        this.exportFacade = exportFacade;</span>
+<span class="fc" id="L46">        this.exportFormatRegistry = exportFormatRegistry;</span>
+<span class="fc" id="L47">    }</span>
+
+    @Operation(summary = &quot;Export Visio diagram&quot;,
+            description = &quot;Generates a Visio .vsdx architecture diagram from a business requirement&quot;,
+            tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Visio file returned as binary attachment&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/diagram/visio&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportVisio(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L56">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L57" title="All 4 branches covered.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L58">            return ResponseEntity.badRequest().build();</span>
+        }
+        try {
+<span class="fc" id="L61">            byte[] vsdx = exportFacade.exportAsVisio(businessText);</span>
+<span class="fc" id="L62">            HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L63">            headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
+                    &quot;attachment; filename=\&quot;requirement-architecture.vsdx\&quot;&quot;);
+<span class="fc" id="L65">            headers.set(HttpHeaders.CONTENT_TYPE, &quot;application/vnd.ms-visio.drawing.main+xml&quot;);</span>
+<span class="fc" id="L66">            return ResponseEntity.ok().headers(headers).body(vsdx);</span>
+<span class="nc" id="L67">        } catch (IOException e) {</span>
+<span class="nc" id="L68">            return ResponseEntity.internalServerError().build();</span>
+        }
+    }
+
+    @Operation(summary = &quot;Export ArchiMate XML&quot;,
+            description = &quot;Generates an ArchiMate Model Exchange File Format XML from a business requirement&quot;,
+            tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;ArchiMate XML returned as attachment&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/diagram/archimate&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportArchiMate(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L79">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L80" title="All 4 branches covered.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L81">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L83">        byte[] xml = exportFacade.exportAsArchiMate(businessText);</span>
+<span class="fc" id="L84">        HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L85">        headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
+                &quot;attachment; filename=\&quot;requirement-architecture.xml\&quot;&quot;);
+<span class="fc" id="L87">        headers.set(HttpHeaders.CONTENT_TYPE, &quot;application/xml&quot;);</span>
+<span class="fc" id="L88">        return ResponseEntity.ok().headers(headers).body(xml);</span>
+    }
+
+    @Operation(summary = &quot;Export Mermaid diagram&quot;,
+            description = &quot;Generates a Mermaid flowchart from a business requirement for use in Markdown documents. Accepts optional 'locale' field ('en' or 'de') to localize layer and relation labels.&quot;,
+            tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Mermaid text returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/diagram/mermaid&quot;)
+    public ResponseEntity&lt;String&gt; exportMermaid(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L98">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="pc bpc" id="L99" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L100">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="nc" id="L102">        MermaidLabels labels = resolveMermaidLabels(body.get(&quot;locale&quot;));</span>
+<span class="nc" id="L103">        String mermaid = exportFacade.exportAsMermaid(businessText, labels);</span>
+<span class="nc" id="L104">        return ResponseEntity.ok()</span>
+<span class="nc" id="L105">                .header(HttpHeaders.CONTENT_TYPE, &quot;text/plain; charset=UTF-8&quot;)</span>
+<span class="nc" id="L106">                .body(mermaid);</span>
+    }
+
+    private MermaidLabels resolveMermaidLabels(Object localeObj) {
+<span class="nc bnc" id="L110" title="All 4 branches missed.">        if (localeObj instanceof String locale &amp;&amp; locale.startsWith(&quot;de&quot;)) {</span>
+<span class="nc" id="L111">            return MermaidLabels.german();</span>
+        }
+<span class="nc" id="L113">        return MermaidLabels.english();</span>
+    }
+
+    @Operation(summary = &quot;Export Structurizr DSL&quot;,
+            description = &quot;Generates a Structurizr workspace DSL from a business requirement for C4 tools&quot;,
+            tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Structurizr DSL returned as text&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/diagram/structurizr&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportStructurizrDsl(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="nc" id="L123">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="nc bnc" id="L124" title="All 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="nc" id="L125">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="nc" id="L127">        String dsl = exportFacade.exportAsStructurizrDsl(businessText);</span>
+<span class="nc" id="L128">        HttpHeaders headers = new HttpHeaders();</span>
+<span class="nc" id="L129">        headers.set(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=\&quot;workspace.dsl\&quot;&quot;);</span>
+<span class="nc" id="L130">        headers.set(HttpHeaders.CONTENT_TYPE, &quot;text/plain; charset=UTF-8&quot;);</span>
+<span class="nc" id="L131">        return ResponseEntity.ok().headers(headers)</span>
+<span class="nc" id="L132">                .body(dsl.getBytes(java.nio.charset.StandardCharsets.UTF_8));</span>
+    }
+
+    @Operation(summary = &quot;Export diagram in any registered format&quot;,
+            description = &quot;Exports a diagram in the format identified by {formatId}. Registered formats: archimate, mermaid, structurizr, visio, plus any custom ExportFormatExtension components. An optional 'locale' field is forwarded to the adapter.&quot;,
+            tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Diagram file returned as attachment&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Unknown format ID&quot;)
+    @PostMapping(&quot;/diagram/export/{formatId}&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportByFormat(
+            @PathVariable String formatId,
+            @RequestBody Map&lt;String, Object&gt; body) {
+<span class="nc" id="L145">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="nc" id="L147">            return ResponseEntity.badRequest().build();</span>
+        }
+
+<span class="nc" id="L150">        Optional&lt;ExportFormatExtension&gt; extensionOpt = exportFormatRegistry.findByFormatId(formatId);</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (extensionOpt.isEmpty()) {</span>
+<span class="nc" id="L152">            return ResponseEntity.notFound().build();</span>
+        }
+
+<span class="nc" id="L155">        ExportFormatExtension extension = extensionOpt.get();</span>
+<span class="nc" id="L156">        ExportFormatDescriptor descriptor = extension.descriptor();</span>
+<span class="nc" id="L157">        Map&lt;String, Object&gt; options = new HashMap&lt;&gt;(body);</span>
+<span class="nc" id="L158">        options.remove(&quot;businessText&quot;);</span>
+
+        try {
+<span class="nc" id="L161">            DiagramModel diagram = exportFacade.buildDiagram(businessText);</span>
+<span class="nc" id="L162">            ExportResult result = extension.export(new ExportContext(diagram, options));</span>
+<span class="nc" id="L163">            HttpHeaders headers = new HttpHeaders();</span>
+<span class="nc" id="L164">            headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
+<span class="nc" id="L165">                    &quot;attachment; filename=\&quot;diagram.&quot; + descriptor.fileExtension() + &quot;\&quot;&quot;);</span>
+<span class="nc" id="L166">            headers.set(HttpHeaders.CONTENT_TYPE, descriptor.contentType());</span>
+<span class="nc" id="L167">            return ResponseEntity.ok().headers(headers).body(result.bytes());</span>
+<span class="nc" id="L168">        } catch (UncheckedIOException e) {</span>
+<span class="nc" id="L169">            log.error(&quot;Export failed for format '{}': {}&quot;, formatId, e.getMessage(), e);</span>
+<span class="nc" id="L170">            return ResponseEntity.internalServerError().build();</span>
+        }
+    }
+
+    @Operation(summary = &quot;Export analysis scores as JSON&quot;,
+            description = &quot;Returns a SavedAnalysis JSON with timestamp and version added. The frontend triggers a file download.&quot;,
+            tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;SavedAnalysis JSON returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement is blank or scores are missing&quot;)
+    @PostMapping(&quot;/scores/export&quot;)
+    public ResponseEntity&lt;SavedAnalysis&gt; exportScores(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L181">        String requirement = (String) body.get(&quot;requirement&quot;);</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">        if (requirement == null || requirement.isBlank()) {</span>
+<span class="fc" id="L183">            return ResponseEntity.badRequest().build();</span>
+        }
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        Map&lt;String, Object&gt; rawScores = body.get(&quot;scores&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="pc" id="L187">                ? (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;) : null;</span>
+<span class="pc bpc" id="L188" title="1 of 4 branches missed.">        if (rawScores == null || rawScores.isEmpty()) {</span>
+<span class="fc" id="L189">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L191">        Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        for (Map.Entry&lt;String, Object&gt; entry : rawScores.entrySet()) {</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">            if (entry.getValue() instanceof Number number) {</span>
+<span class="fc" id="L194">                scores.put(entry.getKey(), number.intValue());</span>
+            }
+<span class="fc" id="L196">        }</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">        Map&lt;String, String&gt; reasons = body.get(&quot;reasons&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="pc" id="L199">                ? (Map&lt;String, String&gt;) body.get(&quot;reasons&quot;) : Map.of();</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        String provider = body.get(&quot;provider&quot;) instanceof String p</span>
+<span class="pc" id="L201">                ? p : exportFacade.getActiveProviderName();</span>
+<span class="fc" id="L202">        return ResponseEntity.ok(exportFacade.buildExport(requirement, scores, reasons, provider));</span>
+    }
+
+    @Operation(summary = &quot;Import analysis scores from JSON&quot;,
+            description = &quot;Validates a SavedAnalysis JSON and returns the scores, reasons, requirement, and any warnings.&quot;,
+            tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Scores imported and returned with any warnings&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid JSON format or validation failure&quot;)
+    @PostMapping(&quot;/scores/import&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; importScores(@RequestBody String jsonBody) {
+        try {
+<span class="fc" id="L213">            SavedAnalysis saved = exportFacade.importFromJson(jsonBody);</span>
+<span class="fc" id="L214">            List&lt;String&gt; warnings = exportFacade.findUnknownCodes(saved)</span>
+<span class="fc" id="L215">                    .stream()</span>
+<span class="fc" id="L216">                    .map(code -&gt; &quot;Unknown node code: &quot; + code)</span>
+<span class="fc" id="L217">                    .toList();</span>
+<span class="fc" id="L218">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L219">            result.put(&quot;requirement&quot;, saved.getRequirement());</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">            result.put(&quot;scores&quot;, saved.getScores() != null ? saved.getScores() : Map.of());</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">            result.put(&quot;reasons&quot;, saved.getReasons() != null ? saved.getReasons() : Map.of());</span>
+<span class="fc" id="L222">            result.put(&quot;provider&quot;, saved.getProvider());</span>
+<span class="fc" id="L223">            result.put(&quot;warnings&quot;, warnings);</span>
+<span class="fc" id="L224">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L225">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L226">            return ResponseEntity.badRequest()</span>
+<span class="fc" id="L227">                    .body(Map.of(&quot;error&quot;, e.getMessage(), &quot;warnings&quot;, List.of()));</span>
+<span class="nc" id="L228">        } catch (Exception e) {</span>
+<span class="nc" id="L229">            return ResponseEntity.badRequest()</span>
+<span class="nc" id="L230">                    .body(Map.of(&quot;error&quot;, &quot;Invalid JSON: &quot; + e.getMessage(), &quot;warnings&quot;, List.of()));</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

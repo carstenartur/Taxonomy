@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.validation</a> &gt; <span class="el_source">DslValidator.java</span></div><h1>DslValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.validation;
+
+import com.taxonomy.dsl.model.*;
+
+import java.util.*;
+
+/**
+ * Validates a {@link CanonicalArchitectureModel} for structural and semantic correctness.
+ *
+ * &lt;p&gt;Checks include:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Duplicate element/requirement/view/evidence IDs&lt;/li&gt;
+ *   &lt;li&gt;Relations referencing unknown element IDs&lt;/li&gt;
+ *   &lt;li&gt;Mappings referencing unknown requirement or element IDs&lt;/li&gt;
+ *   &lt;li&gt;Invalid relation types against the type matrix&lt;/li&gt;
+ *   &lt;li&gt;Invalid type combinations for relation source/target&lt;/li&gt;
+ *   &lt;li&gt;Invalid status values on relations&lt;/li&gt;
+ *   &lt;li&gt;Missing required fields&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L21">public class DslValidator {</span>
+
+    /** Recognized relation types from the type matrix. */
+<span class="fc" id="L24">    private static final Set&lt;String&gt; VALID_RELATION_TYPES = Set.of(</span>
+            &quot;REALIZES&quot;, &quot;SUPPORTS&quot;, &quot;CONSUMES&quot;, &quot;USES&quot;, &quot;FULFILLS&quot;,
+            &quot;ASSIGNED_TO&quot;, &quot;DEPENDS_ON&quot;, &quot;PRODUCES&quot;, &quot;COMMUNICATES_WITH&quot;,
+            &quot;CONTAINS&quot;, &quot;REQUIRES&quot;, &quot;RELATED_TO&quot;);
+
+    /** Recognized relation statuses. */
+<span class="fc" id="L30">    private static final Set&lt;String&gt; VALID_STATUSES = Set.of(</span>
+            &quot;proposed&quot;, &quot;provisional&quot;, &quot;accepted&quot;, &quot;rejected&quot;);
+
+    /**
+     * Type compatibility matrix: relation type → allowed (sourceRoot → targetRoots).
+     * Mirrors {@code RelationCompatibilityMatrix} but usable without Spring.
+     */
+    private static final Map&lt;String, Map&lt;String, Set&lt;String&gt;&gt;&gt; TYPE_MATRIX;
+
+    static {
+<span class="fc" id="L40">        Map&lt;String, Map&lt;String, Set&lt;String&gt;&gt;&gt; m = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L41">        m.put(&quot;REALIZES&quot;,          Map.of(&quot;CP&quot;, Set.of(&quot;CR&quot;)));</span>
+<span class="fc" id="L42">        m.put(&quot;SUPPORTS&quot;,          Map.of(&quot;CR&quot;, Set.of(&quot;BP&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L43">                                          &quot;CI&quot;, Set.of(&quot;BP&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L44">                                          &quot;CO&quot;, Set.of(&quot;BP&quot;),</span>
+<span class="fc" id="L45">                                          &quot;UA&quot;, Set.of(&quot;BP&quot;)));</span>
+<span class="fc" id="L46">        m.put(&quot;CONSUMES&quot;,          Map.of(&quot;BP&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L47">                                          &quot;CR&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L48">                                          &quot;CI&quot;, Set.of(&quot;IP&quot;)));</span>
+<span class="fc" id="L49">        m.put(&quot;USES&quot;,              Map.of(&quot;UA&quot;, Set.of(&quot;CR&quot;, &quot;CI&quot;, &quot;CO&quot;),</span>
+<span class="fc" id="L50">                                          &quot;SY&quot;, Set.of(&quot;SY&quot;, &quot;CR&quot;),</span>
+<span class="fc" id="L51">                                          &quot;BP&quot;, Set.of(&quot;CR&quot;, &quot;CI&quot;),</span>
+<span class="fc" id="L52">                                          &quot;BR&quot;, Set.of(&quot;IP&quot;)));</span>
+<span class="fc" id="L53">        m.put(&quot;FULFILLS&quot;,          Map.of(&quot;CI&quot;, Set.of(&quot;CP&quot;), &quot;CR&quot;, Set.of(&quot;CP&quot;)));</span>
+<span class="fc" id="L54">        m.put(&quot;ASSIGNED_TO&quot;,       Map.of(&quot;BR&quot;, Set.of(&quot;BP&quot;)));</span>
+<span class="fc" id="L55">        m.put(&quot;DEPENDS_ON&quot;,        Map.of(&quot;CR&quot;, Set.of(&quot;CR&quot;, &quot;CI&quot;),</span>
+<span class="fc" id="L56">                                          &quot;CI&quot;, Set.of(&quot;CR&quot;),</span>
+<span class="fc" id="L57">                                          &quot;CO&quot;, Set.of(&quot;CR&quot;),</span>
+<span class="fc" id="L58">                                          &quot;SY&quot;, Set.of(&quot;SY&quot;),</span>
+<span class="fc" id="L59">                                          &quot;CM&quot;, Set.of(&quot;CM&quot;, &quot;CR&quot;)));</span>
+<span class="fc" id="L60">        m.put(&quot;PRODUCES&quot;,          Map.of(&quot;BP&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L61">                                          &quot;CR&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L62">                                          &quot;CI&quot;, Set.of(&quot;IP&quot;),</span>
+<span class="fc" id="L63">                                          &quot;UA&quot;, Set.of(&quot;IP&quot;)));</span>
+<span class="fc" id="L64">        m.put(&quot;COMMUNICATES_WITH&quot;, Map.of(&quot;CO&quot;, Set.of(&quot;CR&quot;, &quot;CI&quot;, &quot;UA&quot;)));</span>
+<span class="fc" id="L65">        m.put(&quot;CONTAINS&quot;,          Map.of(&quot;SY&quot;, Set.of(&quot;UA&quot;, &quot;CM&quot;), &quot;CM&quot;, Set.of(&quot;CM&quot;)));</span>
+<span class="fc" id="L66">        m.put(&quot;REQUIRES&quot;,          Map.of(&quot;CP&quot;, Set.of(&quot;IP&quot;)));</span>
+        // RELATED_TO has no restrictions
+<span class="fc" id="L68">        TYPE_MATRIX = Collections.unmodifiableMap(m);</span>
+<span class="fc" id="L69">    }</span>
+
+    /**
+     * Validate a canonical architecture model.
+     */
+    public DslValidationResult validate(CanonicalArchitectureModel model) {
+<span class="fc" id="L75">        DslValidationResult result = new DslValidationResult();</span>
+
+<span class="fc" id="L77">        Set&lt;String&gt; elementIds = checkDuplicateIds(model.getElements(), &quot;element&quot;, result);</span>
+<span class="fc" id="L78">        Set&lt;String&gt; requirementIds = checkDuplicateRequirementIds(model.getRequirements(), result);</span>
+<span class="fc" id="L79">        checkDuplicateViewIds(model.getViews(), result);</span>
+<span class="fc" id="L80">        checkDuplicateEvidenceIds(model.getEvidence(), result);</span>
+
+        // Combine all known IDs for reference resolution
+<span class="fc" id="L83">        Set&lt;String&gt; allIds = new HashSet&lt;&gt;(elementIds);</span>
+<span class="fc" id="L84">        allIds.addAll(requirementIds);</span>
+
+        // Build element type lookup for type-combination validation
+<span class="fc" id="L87">        Map&lt;String, String&gt; elementTypeMap = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (ArchitectureElement el : model.getElements()) {</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">            if (el.getId() != null &amp;&amp; el.getType() != null) {</span>
+<span class="fc" id="L90">                elementTypeMap.put(el.getId(), el.getType());</span>
+            }
+<span class="fc" id="L92">        }</span>
+
+<span class="fc" id="L94">        validateRelations(model.getRelations(), allIds, elementTypeMap, result);</span>
+<span class="fc" id="L95">        validateMappings(model.getMappings(), requirementIds, elementIds, result);</span>
+<span class="fc" id="L96">        validateElements(model.getElements(), result);</span>
+
+<span class="fc" id="L98">        return result;</span>
+    }
+
+    private Set&lt;String&gt; checkDuplicateIds(List&lt;ArchitectureElement&gt; elements, String kind,
+                                          DslValidationResult result) {
+<span class="fc" id="L103">        Set&lt;String&gt; seen = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (ArchitectureElement el : elements) {</span>
+<span class="pc bpc" id="L105" title="1 of 4 branches missed.">            if (el.getId() == null || el.getId().isBlank()) {</span>
+<span class="fc" id="L106">                result.addError(&quot;Element is missing an ID&quot;);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            } else if (!seen.add(el.getId())) {</span>
+<span class="fc" id="L108">                result.addError(&quot;Duplicate &quot; + kind + &quot; ID: &quot; + el.getId());</span>
+            }
+<span class="fc" id="L110">        }</span>
+<span class="fc" id="L111">        return seen;</span>
+    }
+
+    private Set&lt;String&gt; checkDuplicateRequirementIds(List&lt;ArchitectureRequirement&gt; requirements,
+                                                     DslValidationResult result) {
+<span class="fc" id="L116">        Set&lt;String&gt; seen = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (ArchitectureRequirement req : requirements) {</span>
+<span class="pc bpc" id="L118" title="2 of 4 branches missed.">            if (req.getId() == null || req.getId().isBlank()) {</span>
+<span class="nc" id="L119">                result.addError(&quot;Requirement is missing an ID&quot;);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">            } else if (!seen.add(req.getId())) {</span>
+<span class="fc" id="L121">                result.addError(&quot;Duplicate requirement ID: &quot; + req.getId());</span>
+            }
+<span class="fc" id="L123">        }</span>
+<span class="fc" id="L124">        return seen;</span>
+    }
+
+    private void checkDuplicateViewIds(List&lt;ArchitectureView&gt; views, DslValidationResult result) {
+<span class="fc" id="L128">        Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        for (ArchitectureView view : views) {</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">            if (view.getId() == null || view.getId().isBlank()) {</span>
+<span class="nc" id="L131">                result.addError(&quot;View is missing an ID&quot;);</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">            } else if (!seen.add(view.getId())) {</span>
+<span class="nc" id="L133">                result.addError(&quot;Duplicate view ID: &quot; + view.getId());</span>
+            }
+<span class="nc" id="L135">        }</span>
+<span class="fc" id="L136">    }</span>
+
+    private void checkDuplicateEvidenceIds(List&lt;ArchitectureEvidence&gt; evidence, DslValidationResult result) {
+<span class="fc" id="L139">        Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        for (ArchitectureEvidence ev : evidence) {</span>
+<span class="nc bnc" id="L141" title="All 4 branches missed.">            if (ev.getId() == null || ev.getId().isBlank()) {</span>
+<span class="nc" id="L142">                result.addError(&quot;Evidence is missing an ID&quot;);</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">            } else if (!seen.add(ev.getId())) {</span>
+<span class="nc" id="L144">                result.addError(&quot;Duplicate evidence ID: &quot; + ev.getId());</span>
+            }
+<span class="nc" id="L146">        }</span>
+<span class="fc" id="L147">    }</span>
+
+    private void validateRelations(List&lt;ArchitectureRelation&gt; relations, Set&lt;String&gt; allIds,
+                                   Map&lt;String, String&gt; elementTypeMap,
+                                   DslValidationResult result) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        for (ArchitectureRelation rel : relations) {</span>
+<span class="pc bpc" id="L153" title="2 of 4 branches missed.">            if (rel.getSourceId() == null || rel.getSourceId().isBlank()) {</span>
+<span class="nc" id="L154">                result.addError(&quot;Relation is missing a source ID&quot;);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            } else if (!allIds.contains(rel.getSourceId())) {</span>
+<span class="fc" id="L156">                result.addWarning(&quot;Relation references unknown source ID: &quot; + rel.getSourceId());</span>
+            }
+
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">            if (rel.getTargetId() == null || rel.getTargetId().isBlank()) {</span>
+<span class="nc" id="L160">                result.addError(&quot;Relation is missing a target ID&quot;);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            } else if (!allIds.contains(rel.getTargetId())) {</span>
+<span class="fc" id="L162">                result.addWarning(&quot;Relation references unknown target ID: &quot; + rel.getTargetId());</span>
+            }
+
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">            if (rel.getRelationType() != null &amp;&amp; !VALID_RELATION_TYPES.contains(rel.getRelationType())) {</span>
+<span class="fc" id="L166">                result.addWarning(&quot;Unknown relation type: &quot; + rel.getRelationType());</span>
+            }
+
+<span class="fc bfc" id="L169" title="All 4 branches covered.">            if (rel.getStatus() != null &amp;&amp; !VALID_STATUSES.contains(rel.getStatus())) {</span>
+<span class="fc" id="L170">                result.addError(&quot;Invalid relation status: &quot; + rel.getStatus()</span>
+                        + &quot; (valid: &quot; + VALID_STATUSES + &quot;)&quot;);
+            }
+
+            // Type-combination validation using the type matrix
+<span class="pc bpc" id="L175" title="3 of 6 branches missed.">            if (rel.getRelationType() != null &amp;&amp; rel.getSourceId() != null &amp;&amp; rel.getTargetId() != null) {</span>
+<span class="fc" id="L176">                validateTypeCombination(rel, elementTypeMap, result);</span>
+            }
+<span class="fc" id="L178">        }</span>
+<span class="fc" id="L179">    }</span>
+
+    /**
+     * Check that the source and target element types are compatible with the relation type,
+     * using the type matrix (e.g., REALIZES requires CP→CR).
+     */
+    private void validateTypeCombination(ArchitectureRelation rel,
+                                         Map&lt;String, String&gt; elementTypeMap,
+                                         DslValidationResult result) {
+<span class="fc" id="L188">        Map&lt;String, Set&lt;String&gt;&gt; rules = TYPE_MATRIX.get(rel.getRelationType());</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (rules == null) {</span>
+<span class="fc" id="L190">            return; // No type matrix rule (e.g., RELATED_TO or unknown type)</span>
+        }
+
+<span class="fc" id="L193">        String sourceRoot = resolveTaxonomyRootCode(rel.getSourceId(), elementTypeMap);</span>
+<span class="fc" id="L194">        String targetRoot = resolveTaxonomyRootCode(rel.getTargetId(), elementTypeMap);</span>
+
+<span class="fc bfc" id="L196" title="All 4 branches covered.">        if (sourceRoot == null || targetRoot == null) {</span>
+<span class="fc" id="L197">            return; // Can't determine type — skip validation</span>
+        }
+
+<span class="fc" id="L200">        Set&lt;String&gt; allowedTargets = rules.get(sourceRoot);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (allowedTargets == null) {</span>
+<span class="fc" id="L202">            result.addWarning(&quot;Relation &quot; + rel.getRelationType() + &quot;: source &quot;</span>
+<span class="fc" id="L203">                    + rel.getSourceId() + &quot; (root &quot; + sourceRoot</span>
+<span class="fc" id="L204">                    + &quot;) is not a valid source type for &quot; + rel.getRelationType());</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">        } else if (!allowedTargets.contains(targetRoot)) {</span>
+<span class="fc" id="L206">            result.addWarning(&quot;Relation &quot; + rel.getRelationType() + &quot;: target &quot;</span>
+<span class="fc" id="L207">                    + rel.getTargetId() + &quot; (root &quot; + targetRoot</span>
+                    + &quot;) is not a valid target type; expected one of &quot; + allowedTargets);
+        }
+<span class="fc" id="L210">    }</span>
+
+    /**
+     * Resolve the taxonomy root code for an element ID, using either the
+     * element type map (from DSL) or the ID prefix (e.g., CP-1023 → CP).
+     */
+    private String resolveTaxonomyRootCode(String elementId, Map&lt;String, String&gt; elementTypeMap) {
+        // Try element type from DSL model first
+<span class="fc" id="L218">        String typeName = elementTypeMap.get(elementId);</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (typeName != null) {</span>
+<span class="fc" id="L220">            String root = TaxonomyRootTypes.rootFor(typeName);</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">            if (root != null) return root;</span>
+        }
+        // Fall back to ID prefix
+<span class="fc" id="L224">        return TaxonomyRootTypes.rootFromId(elementId);</span>
+    }
+
+    private void validateMappings(List&lt;RequirementMapping&gt; mappings,
+                                  Set&lt;String&gt; requirementIds,
+                                  Set&lt;String&gt; elementIds,
+                                  DslValidationResult result) {
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        for (RequirementMapping m : mappings) {</span>
+<span class="pc bpc" id="L232" title="2 of 4 branches missed.">            if (m.getRequirementId() == null || m.getRequirementId().isBlank()) {</span>
+<span class="nc" id="L233">                result.addError(&quot;Mapping is missing a requirement ID&quot;);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            } else if (!requirementIds.contains(m.getRequirementId())) {</span>
+<span class="fc" id="L235">                result.addWarning(&quot;Mapping references unknown requirement ID: &quot; + m.getRequirementId());</span>
+            }
+
+<span class="pc bpc" id="L238" title="2 of 4 branches missed.">            if (m.getElementId() == null || m.getElementId().isBlank()) {</span>
+<span class="nc" id="L239">                result.addError(&quot;Mapping is missing an element ID&quot;);</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">            } else if (!elementIds.contains(m.getElementId())) {</span>
+<span class="fc" id="L241">                result.addWarning(&quot;Mapping references unknown element ID: &quot; + m.getElementId());</span>
+            }
+<span class="fc" id="L243">        }</span>
+<span class="fc" id="L244">    }</span>
+
+    private void validateElements(List&lt;ArchitectureElement&gt; elements, DslValidationResult result) {
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        for (ArchitectureElement el : elements) {</span>
+<span class="pc bpc" id="L248" title="1 of 4 branches missed.">            if (el.getTitle() == null || el.getTitle().isBlank()) {</span>
+<span class="fc" id="L249">                result.addWarning(&quot;Element &quot; + el.getId() + &quot; is missing a title&quot;);</span>
+            }
+<span class="fc" id="L251">        }</span>
+<span class="fc" id="L252">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ViewContext.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">ViewContext.java</span></div><h1>ViewContext.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.time.Instant;
+
+/**
+ * Metadata attached to API responses that return architecture data.
+ *
+ * &lt;p&gt;Tells the consumer exactly which Git version the data comes from
+ * and whether the projection or search index is stale.
+ *
+ * @param basedOnCommit              commit SHA the response data is based on
+ * @param basedOnBranch              branch the response data is based on
+ * @param commitTimestamp            timestamp of the commit
+ * @param includesProvisionalRelations whether the data includes provisional (unreviewed) relations
+ * @param projectionStale            true if the DB projection is behind HEAD
+ * @param indexStale                 true if the search index is behind HEAD
+ */
+<span class="fc" id="L18">public record ViewContext(</span>
+    String basedOnCommit,
+    String basedOnBranch,
+    Instant commitTimestamp,
+    boolean includesProvisionalRelations,
+    boolean projectionStale,
+    boolean indexStale
+) {}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

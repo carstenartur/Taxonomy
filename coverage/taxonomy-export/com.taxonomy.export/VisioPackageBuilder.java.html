@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPackageBuilder.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioPackageBuilder.java</span></div><h1>VisioPackageBuilder.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.converter.VisioDocumentConverter;
+import com.taxonomy.visio.converter.VisioPageContentsConverter;
+import com.taxonomy.visio.converter.VisioPagesConverter;
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.io.xml.XppDriver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+/**
+ * Builds a Visio .vsdx file (OPC/ZIP package) from a {@link VisioDocument}.
+ * &lt;p&gt;
+ * The .vsdx format is an Open Packaging Convention (OPC) ZIP archive containing
+ * XML parts that describe the Visio document structure.
+ */
+<span class="fc" id="L25">public class VisioPackageBuilder {</span>
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(VisioPackageBuilder.class);</span>
+    private static final String XML_DECLARATION = &quot;&lt;?xml version=\&quot;1.0\&quot; encoding=\&quot;UTF-8\&quot; standalone=\&quot;yes\&quot;?&gt;\n&quot;;
+
+    /**
+     * Builds a .vsdx byte array from a VisioDocument.
+     *
+     * @param doc the Visio document model
+     * @return the .vsdx file content as a byte array
+     * @throws IOException if an I/O error occurs during ZIP creation
+     */
+    public byte[] build(VisioDocument doc) throws IOException {
+<span class="fc" id="L38">        ByteArrayOutputStream baos = new ByteArrayOutputStream();</span>
+
+<span class="fc" id="L40">        try (ZipOutputStream zos = new ZipOutputStream(baos, StandardCharsets.UTF_8)) {</span>
+            // [Content_Types].xml
+<span class="fc" id="L42">            writeEntry(zos, &quot;[Content_Types].xml&quot;, buildContentTypes(doc));</span>
+
+            // _rels/.rels
+<span class="fc" id="L45">            writeEntry(zos, &quot;_rels/.rels&quot;, buildRootRels());</span>
+
+            // visio/document.xml
+<span class="fc" id="L48">            writeEntry(zos, &quot;visio/document.xml&quot;, buildDocumentXml(doc));</span>
+
+            // visio/_rels/document.xml.rels
+<span class="fc" id="L51">            writeEntry(zos, &quot;visio/_rels/document.xml.rels&quot;, buildDocumentRels(doc));</span>
+
+            // visio/pages/pages.xml
+<span class="fc" id="L54">            writeEntry(zos, &quot;visio/pages/pages.xml&quot;, buildPagesXml(doc));</span>
+
+            // Individual page files
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            for (int i = 0; i &lt; doc.getPages().size(); i++) {</span>
+<span class="fc" id="L58">                VisioPage page = doc.getPages().get(i);</span>
+<span class="fc" id="L59">                writeEntry(zos, &quot;visio/pages/page&quot; + (i + 1) + &quot;.xml&quot;, buildPageXml(page));</span>
+            }
+
+            // visio/pages/_rels/pages.xml.rels
+<span class="fc" id="L63">            writeEntry(zos, &quot;visio/pages/_rels/pages.xml.rels&quot;, buildPagesRels(doc));</span>
+        }
+
+<span class="fc" id="L66">        log.info(&quot;Built .vsdx package: {} bytes&quot;, baos.size());</span>
+<span class="fc" id="L67">        return baos.toByteArray();</span>
+    }
+
+    private void writeEntry(ZipOutputStream zos, String name, String content) throws IOException {
+<span class="fc" id="L71">        zos.putNextEntry(new ZipEntry(name));</span>
+<span class="fc" id="L72">        zos.write(content.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L73">        zos.closeEntry();</span>
+<span class="fc" id="L74">    }</span>
+
+    private String buildContentTypes(VisioDocument doc) {
+<span class="fc" id="L77">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L78">        sb.append(&quot;&lt;?xml version=\&quot;1.0\&quot; encoding=\&quot;UTF-8\&quot; standalone=\&quot;yes\&quot;?&gt;\n&quot;);</span>
+<span class="fc" id="L79">        sb.append(&quot;&lt;Types xmlns=\&quot;http://schemas.openxmlformats.org/package/2006/content-types\&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L80">        sb.append(&quot;  &lt;Default Extension=\&quot;rels\&quot; ContentType=\&quot;application/vnd.openxmlformats-package.relationships+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L81">        sb.append(&quot;  &lt;Default Extension=\&quot;xml\&quot; ContentType=\&quot;application/xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L82">        sb.append(&quot;  &lt;Override PartName=\&quot;/visio/document.xml\&quot; ContentType=\&quot;application/vnd.ms-visio.drawing.main+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc" id="L83">        sb.append(&quot;  &lt;Override PartName=\&quot;/visio/pages/pages.xml\&quot; ContentType=\&quot;application/vnd.ms-visio.pages+xml\&quot;/&gt;\n&quot;);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (int i = 0; i &lt; doc.getPages().size(); i++) {</span>
+<span class="fc" id="L85">            sb.append(&quot;  &lt;Override PartName=\&quot;/visio/pages/page&quot;).append(i + 1)</span>
+<span class="fc" id="L86">              .append(&quot;.xml\&quot; ContentType=\&quot;application/vnd.ms-visio.page+xml\&quot;/&gt;\n&quot;);</span>
+        }
+<span class="fc" id="L88">        sb.append(&quot;&lt;/Types&gt;&quot;);</span>
+<span class="fc" id="L89">        return sb.toString();</span>
+    }
+
+    private String buildRootRels() {
+<span class="fc" id="L93">        return &quot;&quot;&quot;</span>
+                &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; standalone=&quot;yes&quot;?&gt;
+                &lt;Relationships xmlns=&quot;http://schemas.openxmlformats.org/package/2006/relationships&quot;&gt;
+                  &lt;Relationship Id=&quot;rId1&quot; Type=&quot;http://schemas.microsoft.com/visio/2010/relationships/document&quot; Target=&quot;visio/document.xml&quot;/&gt;
+                &lt;/Relationships&gt;&quot;&quot;&quot;;
+    }
+
+    private String buildDocumentXml(VisioDocument doc) {
+<span class="fc" id="L101">        XStream xstream = new XStream(new XppDriver());</span>
+<span class="fc" id="L102">        xstream.setMode(XStream.NO_REFERENCES);</span>
+<span class="fc" id="L103">        xstream.alias(&quot;VisioDocument&quot;, VisioDocument.class);</span>
+<span class="fc" id="L104">        xstream.registerConverter(new VisioDocumentConverter());</span>
+<span class="fc" id="L105">        return XML_DECLARATION + xstream.toXML(doc);</span>
+    }
+
+    private String buildDocumentRels(VisioDocument doc) {
+<span class="fc" id="L109">        return &quot;&quot;&quot;</span>
+                &lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot; standalone=&quot;yes&quot;?&gt;
+                &lt;Relationships xmlns=&quot;http://schemas.openxmlformats.org/package/2006/relationships&quot;&gt;
+                  &lt;Relationship Id=&quot;rId1&quot; Type=&quot;http://schemas.microsoft.com/visio/2010/relationships/pages&quot; Target=&quot;pages/pages.xml&quot;/&gt;
+                &lt;/Relationships&gt;&quot;&quot;&quot;;
+    }
+
+    private String buildPagesXml(VisioDocument doc) {
+<span class="fc" id="L117">        XStream xstream = new XStream(new XppDriver());</span>
+<span class="fc" id="L118">        xstream.setMode(XStream.NO_REFERENCES);</span>
+<span class="fc" id="L119">        xstream.alias(&quot;Pages&quot;, VisioDocument.class);</span>
+<span class="fc" id="L120">        xstream.registerConverter(new VisioPagesConverter());</span>
+<span class="fc" id="L121">        return XML_DECLARATION + xstream.toXML(doc);</span>
+    }
+
+    private String buildPagesRels(VisioDocument doc) {
+<span class="fc" id="L125">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L126">        sb.append(&quot;&lt;?xml version=\&quot;1.0\&quot; encoding=\&quot;UTF-8\&quot; standalone=\&quot;yes\&quot;?&gt;\n&quot;);</span>
+<span class="fc" id="L127">        sb.append(&quot;&lt;Relationships xmlns=\&quot;http://schemas.openxmlformats.org/package/2006/relationships\&quot;&gt;\n&quot;);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        for (int i = 0; i &lt; doc.getPages().size(); i++) {</span>
+<span class="fc" id="L129">            sb.append(&quot;  &lt;Relationship Id=\&quot;rId&quot;).append(i + 1)</span>
+<span class="fc" id="L130">              .append(&quot;\&quot; Type=\&quot;http://schemas.microsoft.com/visio/2010/relationships/page\&quot; Target=\&quot;page&quot;)</span>
+<span class="fc" id="L131">              .append(i + 1).append(&quot;.xml\&quot;/&gt;\n&quot;);</span>
+        }
+<span class="fc" id="L133">        sb.append(&quot;&lt;/Relationships&gt;&quot;);</span>
+<span class="fc" id="L134">        return sb.toString();</span>
+    }
+
+    private String buildPageXml(VisioPage page) {
+<span class="fc" id="L138">        XStream xstream = new XStream(new XppDriver());</span>
+<span class="fc" id="L139">        xstream.setMode(XStream.NO_REFERENCES);</span>
+<span class="fc" id="L140">        xstream.alias(&quot;PageContents&quot;, VisioPage.class);</span>
+<span class="fc" id="L141">        xstream.registerConverter(new VisioPageContentsConverter());</span>
+<span class="fc" id="L142">        return XML_DECLARATION + xstream.toXML(page);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

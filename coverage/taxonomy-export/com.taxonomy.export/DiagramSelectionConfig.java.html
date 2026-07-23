@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DiagramSelectionConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">DiagramSelectionConfig.java</span></div><h1>DiagramSelectionConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+/**
+ * Rule-based configuration for {@link DiagramSelectionPolicy} implementations.
+ *
+ * &lt;p&gt;Each boolean flag enables or disables a specific curation rule.
+ * Preset factory methods provide well-tested defaults for common use-cases.&lt;/p&gt;
+ *
+ * @param suppressRootNodes            suppress two-letter root codes (e.g. &quot;CP&quot;) when concrete descendants exist
+ * @param suppressScaffoldingNodes     suppress first-level containers matching {@code XX-1000} when concrete nodes exist
+ * @param collapseRedundantParentChild when an intermediate has exactly one strong child, suppress the intermediate and lift the child
+ * @param leafOnlyMode                 only show the deepest (leaf) nodes; suppress all intermediate and root nodes
+ * @param allowIntermediateAsClusters  retain intermediate nodes as visual containers when they group ≥ 2 strong children
+ * @param preferCrossCategoryRelations prioritise cross-category (impact) edges over same-category (trace) edges
+ * @param minRelevance                 minimum relevance threshold for node inclusion (0.0–1.0); anchors and impact-selected nodes bypass this
+ * @param maxNodes                     maximum number of nodes in the curated model
+ * @param maxEdges                     maximum number of edges in the curated model
+ */
+<span class="fc" id="L19">public record DiagramSelectionConfig(</span>
+        boolean suppressRootNodes,
+        boolean suppressScaffoldingNodes,
+        boolean collapseRedundantParentChild,
+        boolean leafOnlyMode,
+        boolean allowIntermediateAsClusters,
+        boolean preferCrossCategoryRelations,
+        double minRelevance,
+        int maxNodes,
+        int maxEdges
+) {
+
+    /**
+     * Default impact configuration: suppresses root/scaffolding nodes, collapses
+     * redundant parent–child pairs, and promotes intermediates with multiple
+     * comparable children to visual containers.  This keeps the final impact view
+     * free of taxonomy scaffolding and dominated by meaningful concrete nodes.
+     */
+    public static DiagramSelectionConfig defaultImpact() {
+<span class="fc" id="L38">        return new DiagramSelectionConfig(</span>
+                true,   // suppressRootNodes
+                true,   // suppressScaffoldingNodes
+                true,   // collapseRedundantParentChild
+                false,  // leafOnlyMode
+                true,   // allowIntermediateAsClusters
+                true,   // preferCrossCategoryRelations
+                0.35,   // minRelevance
+                25,     // maxNodes
+                40      // maxEdges
+        );
+    }
+
+    /** Leaf-only mode for showcase / README diagrams. */
+    public static DiagramSelectionConfig leafOnly() {
+<span class="fc" id="L53">        return new DiagramSelectionConfig(</span>
+                true,   // suppressRootNodes
+                true,   // suppressScaffoldingNodes
+                true,   // collapseRedundantParentChild
+                true,   // leafOnlyMode
+                false,  // allowIntermediateAsClusters
+                true,   // preferCrossCategoryRelations
+                0.0,    // minRelevance — keep all that survive the leaf filter
+                25,     // maxNodes
+                12      // maxEdges
+        );
+    }
+
+    /** Clustering mode: intermediate nodes become visual containers when they group multiple strong children. */
+    public static DiagramSelectionConfig clustering() {
+<span class="fc" id="L68">        return new DiagramSelectionConfig(</span>
+                true,   // suppressRootNodes
+                true,   // suppressScaffoldingNodes
+                true,   // collapseRedundantParentChild
+                false,  // leafOnlyMode
+                true,   // allowIntermediateAsClusters
+                true,   // preferCrossCategoryRelations
+                0.35,   // minRelevance
+                30,     // maxNodes — more room for cluster containers
+                40      // maxEdges
+        );
+    }
+
+    /** Trace mode: preserve full hierarchy for traceability — nothing suppressed. */
+    public static DiagramSelectionConfig trace() {
+<span class="fc" id="L83">        return new DiagramSelectionConfig(</span>
+                false,  // suppressRootNodes
+                false,  // suppressScaffoldingNodes
+                false,  // collapseRedundantParentChild
+                false,  // leafOnlyMode
+                false,  // allowIntermediateAsClusters
+                false,  // preferCrossCategoryRelations
+                0.0,    // minRelevance — show everything
+                50,     // maxNodes
+                60      // maxEdges
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

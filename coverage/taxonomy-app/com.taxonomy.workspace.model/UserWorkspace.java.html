@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UserWorkspace.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.model</a> &gt; <span class="el_source">UserWorkspace.java</span></div><h1>UserWorkspace.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.model;
+
+import jakarta.persistence.*;
+
+import java.time.Instant;
+
+/**
+ * Persistent workspace metadata for a user.
+ *
+ * &lt;p&gt;Each user has at least one workspace that provides an isolated context
+ * for architecture editing. The workspace tracks which branch the user is on,
+ * their base branch, and timestamps for auditing. The actual navigation state
+ * (context stack, projection tracking) is held in-memory by the
+ * {@code WorkspaceManager}.
+ *
+ * &lt;p&gt;The shared integration workspace ({@code shared = true}) represents
+ * the canonical team-wide repository state and is not owned by any single user.
+ */
+@Entity
+@Table(name = &quot;user_workspace&quot;, indexes = {
+    @Index(name = &quot;idx_workspace_username&quot;, columnList = &quot;username&quot;),
+    @Index(name = &quot;idx_workspace_shared&quot;, columnList = &quot;shared&quot;)
+}, uniqueConstraints = {
+    @UniqueConstraint(name = &quot;uq_workspace_user_name&quot;, columnNames = {&quot;username&quot;, &quot;display_name&quot;})
+})
+public class UserWorkspace {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;workspace_id&quot;, nullable = false, unique = true)
+    private String workspaceId;
+
+    @Column(nullable = false)
+    private String username;
+
+    @Column(name = &quot;display_name&quot;)
+    private String displayName;
+
+<span class="fc" id="L41">    @Column(name = &quot;current_branch&quot;, nullable = false)</span>
+    private String currentBranch = &quot;draft&quot;;
+
+<span class="fc" id="L44">    @Column(name = &quot;base_branch&quot;)</span>
+    private String baseBranch = &quot;draft&quot;;
+
+<span class="fc" id="L47">    @Column(nullable = false)</span>
+    private boolean shared = false;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;last_accessed_at&quot;)
+    private Instant lastAccessedAt;
+
+<span class="fc" id="L56">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;provisioning_status&quot;, nullable = false)
+    private WorkspaceProvisioningStatus provisioningStatus = WorkspaceProvisioningStatus.READY;
+
+<span class="fc" id="L60">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;topology_mode&quot;, nullable = false)
+    private RepositoryTopologyMode topologyMode = RepositoryTopologyMode.INTERNAL_SHARED;
+
+    @Column(name = &quot;source_repository_id&quot;)
+    private String sourceRepositoryId;
+
+    @Column(name = &quot;base_commit&quot;)
+    private String baseCommit;
+
+    @Column(name = &quot;current_commit&quot;)
+    private String currentCommit;
+
+    @Column(name = &quot;sync_target_branch&quot;)
+    private String syncTargetBranch;
+
+    @Column(name = &quot;provisioned_at&quot;)
+    private Instant provisionedAt;
+
+    @Column(name = &quot;provisioning_error&quot;)
+    private String provisioningError;
+
+    @Column(name = &quot;description&quot;, length = 500)
+    private String description;
+
+<span class="fc" id="L85">    @Column(nullable = false)</span>
+    private boolean archived = false;
+
+<span class="fc" id="L88">    @Column(name = &quot;is_default&quot;, nullable = false)</span>
+    private boolean isDefault = false;
+
+<span class="fc" id="L91">    public UserWorkspace() {</span>
+<span class="fc" id="L92">    }</span>
+
+    public Long getId() {
+<span class="nc" id="L95">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="nc" id="L99">        this.id = id;</span>
+<span class="nc" id="L100">    }</span>
+
+    public String getWorkspaceId() {
+<span class="fc" id="L103">        return workspaceId;</span>
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L107">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L108">    }</span>
+
+    public String getUsername() {
+<span class="fc" id="L111">        return username;</span>
+    }
+
+    public void setUsername(String username) {
+<span class="fc" id="L115">        this.username = username;</span>
+<span class="fc" id="L116">    }</span>
+
+    public String getDisplayName() {
+<span class="fc" id="L119">        return displayName;</span>
+    }
+
+    public void setDisplayName(String displayName) {
+<span class="fc" id="L123">        this.displayName = displayName;</span>
+<span class="fc" id="L124">    }</span>
+
+    public String getCurrentBranch() {
+<span class="fc" id="L127">        return currentBranch;</span>
+    }
+
+    public void setCurrentBranch(String currentBranch) {
+<span class="fc" id="L131">        this.currentBranch = currentBranch;</span>
+<span class="fc" id="L132">    }</span>
+
+    public String getBaseBranch() {
+<span class="fc" id="L135">        return baseBranch;</span>
+    }
+
+    public void setBaseBranch(String baseBranch) {
+<span class="fc" id="L139">        this.baseBranch = baseBranch;</span>
+<span class="fc" id="L140">    }</span>
+
+    public boolean isShared() {
+<span class="fc" id="L143">        return shared;</span>
+    }
+
+    public void setShared(boolean shared) {
+<span class="fc" id="L147">        this.shared = shared;</span>
+<span class="fc" id="L148">    }</span>
+
+    public Instant getCreatedAt() {
+<span class="fc" id="L151">        return createdAt;</span>
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+<span class="fc" id="L155">        this.createdAt = createdAt;</span>
+<span class="fc" id="L156">    }</span>
+
+    public Instant getLastAccessedAt() {
+<span class="fc" id="L159">        return lastAccessedAt;</span>
+    }
+
+    public void setLastAccessedAt(Instant lastAccessedAt) {
+<span class="fc" id="L163">        this.lastAccessedAt = lastAccessedAt;</span>
+<span class="fc" id="L164">    }</span>
+
+    public WorkspaceProvisioningStatus getProvisioningStatus() {
+<span class="fc" id="L167">        return provisioningStatus;</span>
+    }
+
+    public void setProvisioningStatus(WorkspaceProvisioningStatus provisioningStatus) {
+<span class="fc" id="L171">        this.provisioningStatus = provisioningStatus;</span>
+<span class="fc" id="L172">    }</span>
+
+    public RepositoryTopologyMode getTopologyMode() {
+<span class="fc" id="L175">        return topologyMode;</span>
+    }
+
+    public void setTopologyMode(RepositoryTopologyMode topologyMode) {
+<span class="fc" id="L179">        this.topologyMode = topologyMode;</span>
+<span class="fc" id="L180">    }</span>
+
+    public String getSourceRepositoryId() {
+<span class="fc" id="L183">        return sourceRepositoryId;</span>
+    }
+
+    public void setSourceRepositoryId(String sourceRepositoryId) {
+<span class="fc" id="L187">        this.sourceRepositoryId = sourceRepositoryId;</span>
+<span class="fc" id="L188">    }</span>
+
+    public String getBaseCommit() {
+<span class="nc" id="L191">        return baseCommit;</span>
+    }
+
+    public void setBaseCommit(String baseCommit) {
+<span class="fc" id="L195">        this.baseCommit = baseCommit;</span>
+<span class="fc" id="L196">    }</span>
+
+    public String getCurrentCommit() {
+<span class="fc" id="L199">        return currentCommit;</span>
+    }
+
+    public void setCurrentCommit(String currentCommit) {
+<span class="fc" id="L203">        this.currentCommit = currentCommit;</span>
+<span class="fc" id="L204">    }</span>
+
+    public String getSyncTargetBranch() {
+<span class="nc" id="L207">        return syncTargetBranch;</span>
+    }
+
+    public void setSyncTargetBranch(String syncTargetBranch) {
+<span class="fc" id="L211">        this.syncTargetBranch = syncTargetBranch;</span>
+<span class="fc" id="L212">    }</span>
+
+    public Instant getProvisionedAt() {
+<span class="fc" id="L215">        return provisionedAt;</span>
+    }
+
+    public void setProvisionedAt(Instant provisionedAt) {
+<span class="fc" id="L219">        this.provisionedAt = provisionedAt;</span>
+<span class="fc" id="L220">    }</span>
+
+    public String getProvisioningError() {
+<span class="fc" id="L223">        return provisioningError;</span>
+    }
+
+    public void setProvisioningError(String provisioningError) {
+<span class="fc" id="L227">        this.provisioningError = provisioningError;</span>
+<span class="fc" id="L228">    }</span>
+
+    public String getDescription() {
+<span class="fc" id="L231">        return description;</span>
+    }
+
+    public void setDescription(String description) {
+<span class="fc" id="L235">        this.description = description;</span>
+<span class="fc" id="L236">    }</span>
+
+    public boolean isArchived() {
+<span class="fc" id="L239">        return archived;</span>
+    }
+
+    public void setArchived(boolean archived) {
+<span class="fc" id="L243">        this.archived = archived;</span>
+<span class="fc" id="L244">    }</span>
+
+    public boolean isDefault() {
+<span class="fc" id="L247">        return isDefault;</span>
+    }
+
+    public void setDefault(boolean isDefault) {
+<span class="fc" id="L251">        this.isDefault = isDefault;</span>
+<span class="fc" id="L252">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

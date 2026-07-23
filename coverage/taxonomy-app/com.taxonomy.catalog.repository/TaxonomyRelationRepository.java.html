@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyRelationRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.repository</a> &gt; <span class="el_source">TaxonomyRelationRepository.java</span></div><h1>TaxonomyRelationRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.repository;
+
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.model.RelationType;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface TaxonomyRelationRepository extends JpaRepository&lt;TaxonomyRelation, Long&gt; {
+
+    List&lt;TaxonomyRelation&gt; findBySourceNodeCode(String code);
+
+    List&lt;TaxonomyRelation&gt; findByTargetNodeCode(String code);
+
+    List&lt;TaxonomyRelation&gt; findByRelationType(RelationType relationType);
+
+    List&lt;TaxonomyRelation&gt; findBySourceNodeCodeOrTargetNodeCode(String sourceCode, String targetCode);
+
+    List&lt;TaxonomyRelation&gt; findByRelationTypeIn(List&lt;RelationType&gt; relationTypes);
+
+    List&lt;TaxonomyRelation&gt; findBySourceNodeCodeAndRelationTypeIn(String sourceCode, List&lt;RelationType&gt; types);
+
+    List&lt;TaxonomyRelation&gt; findByTargetNodeCodeAndRelationTypeIn(String targetCode, List&lt;RelationType&gt; types);
+
+    List&lt;TaxonomyRelation&gt; findBySourceNodeCodeAndTargetNodeCodeAndRelationType(
+            String sourceCode, String targetCode, RelationType relationType);
+
+    // ── Visible workspace scope: shared baseline + current workspace ──
+
+    @Query(&quot;SELECT r FROM TaxonomyRelation r WHERE (r.workspaceId = :wsId OR r.workspaceId IS NULL) &quot; +
+           &quot;AND (r.sourceNode.code = :code OR r.targetNode.code = :code)&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByWorkspaceAndNodeCode(@Param(&quot;wsId&quot;) String workspaceId,
+                                                              @Param(&quot;code&quot;) String code);
+
+    @Query(&quot;SELECT r FROM TaxonomyRelation r WHERE r.workspaceId = :wsId OR r.workspaceId IS NULL&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByWorkspace(@Param(&quot;wsId&quot;) String workspaceId);
+
+    @Query(&quot;SELECT r FROM TaxonomyRelation r WHERE (r.workspaceId = :wsId OR r.workspaceId IS NULL) &quot; +
+           &quot;AND r.relationType = :type&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByWorkspaceAndRelationType(@Param(&quot;wsId&quot;) String workspaceId,
+                                                                  @Param(&quot;type&quot;) RelationType type);
+
+    @Query(&quot;SELECT r FROM TaxonomyRelation r WHERE (r.workspaceId = :wsId OR r.workspaceId IS NULL) &quot; +
+           &quot;AND r.sourceNode.code = :sourceCode AND r.targetNode.code = :targetCode &quot; +
+           &quot;AND r.relationType = :type&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByWorkspaceAndSourceTargetType(
+            @Param(&quot;wsId&quot;) String workspaceId,
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;type&quot;) RelationType type);
+
+    @Query(&quot;SELECT COUNT(r) FROM TaxonomyRelation r WHERE r.workspaceId = :wsId OR r.workspaceId IS NULL&quot;)
+    long countVisibleByWorkspace(@Param(&quot;wsId&quot;) String workspaceId);
+
+    // ── Shared scope only ────────────────────────────────────────────
+
+    List&lt;TaxonomyRelation&gt; findByWorkspaceIdIsNull();
+
+    List&lt;TaxonomyRelation&gt; findByRelationTypeAndWorkspaceIdIsNull(RelationType relationType);
+
+    @Query(&quot;SELECT r FROM TaxonomyRelation r WHERE r.workspaceId IS NULL &quot; +
+           &quot;AND (r.sourceNode.code = :code OR r.targetNode.code = :code)&quot;)
+    List&lt;TaxonomyRelation&gt; findSharedByNodeCode(@Param(&quot;code&quot;) String code);
+
+    long countByWorkspaceIdIsNull();
+
+    // ── Exact mutable workspace scope ────────────────────────────────
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.id = :id
+              AND ((:wsId IS NULL AND r.workspaceId IS NULL) OR r.workspaceId = :wsId)
+            &quot;&quot;&quot;)
+    Optional&lt;TaxonomyRelation&gt; findByIdInWorkspace(@Param(&quot;id&quot;) Long id,
+                                                    @Param(&quot;wsId&quot;) String workspaceId);
+
+    List&lt;TaxonomyRelation&gt; findByWorkspaceId(String workspaceId);
+
+    List&lt;TaxonomyRelation&gt; findByWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(
+            String workspaceId, String sourceCode, String targetCode, RelationType type);
+
+    @Query(&quot;SELECT r FROM TaxonomyRelation r WHERE r.workspaceId IS NULL &quot; +
+           &quot;AND r.sourceNode.code = :sourceCode AND r.targetNode.code = :targetCode &quot; +
+           &quot;AND r.relationType = :type&quot;)
+    List&lt;TaxonomyRelation&gt; findSharedBySourceTargetType(@Param(&quot;sourceCode&quot;) String sourceCode,
+                                                         @Param(&quot;targetCode&quot;) String targetCode,
+                                                         @Param(&quot;type&quot;) RelationType type);
+
+    // ── Backward-compatible aliases for visible-scope callers ───────
+
+    default List&lt;TaxonomyRelation&gt; findByWorkspaceAndNodeCode(String workspaceId, String code) {
+<span class="nc" id="L97">        return findVisibleByWorkspaceAndNodeCode(workspaceId, code);</span>
+    }
+
+    default List&lt;TaxonomyRelation&gt; findByWorkspaceIdIsNullOrWorkspaceId(String workspaceId) {
+<span class="nc" id="L101">        return findVisibleByWorkspace(workspaceId);</span>
+    }
+
+    default List&lt;TaxonomyRelation&gt; findByWorkspaceAndRelationType(String workspaceId, RelationType type) {
+<span class="nc" id="L105">        return findVisibleByWorkspaceAndRelationType(workspaceId, type);</span>
+    }
+
+    default List&lt;TaxonomyRelation&gt; findByWorkspaceAndSourceTargetType(String workspaceId,
+                                                                       String sourceCode,
+                                                                       String targetCode,
+                                                                       RelationType type) {
+<span class="fc" id="L112">        return findVisibleByWorkspaceAndSourceTargetType(workspaceId, sourceCode, targetCode, type);</span>
+    }
+
+    default long countByWorkspaceIdIsNullOrWorkspaceId(String workspaceId) {
+<span class="nc" id="L116">        return countVisibleByWorkspace(workspaceId);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

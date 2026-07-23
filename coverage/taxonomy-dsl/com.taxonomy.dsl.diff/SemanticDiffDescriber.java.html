@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SemanticDiffDescriber.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.diff</a> &gt; <span class="el_source">SemanticDiffDescriber.java</span></div><h1>SemanticDiffDescriber.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.diff;
+
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+
+import java.util.*;
+
+/**
+ * Converts a structural {@link ModelDiff} into a list of human-readable
+ * {@link SemanticChange} instances.
+ *
+ * &lt;p&gt;While {@code ModelDiff} answers &lt;em&gt;&quot;what objects differ?&quot;&lt;/em&gt;,
+ * the describer answers &lt;em&gt;&quot;what specifically changed and why does it matter?&quot;&lt;/em&gt;.
+ * This is the foundation for:
+ * &lt;ul&gt;
+ *     &lt;li&gt;Reviewable architecture change logs&lt;/li&gt;
+ *     &lt;li&gt;Automated release notes&lt;/li&gt;
+ *     &lt;li&gt;Change impact summaries&lt;/li&gt;
+ *     &lt;li&gt;History search annotations&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;This class is a pure library component — no Spring, no JPA.
+ */
+<span class="fc" id="L24">public class SemanticDiffDescriber {</span>
+
+    /**
+     * Derive semantic changes from a model diff.
+     *
+     * @param diff the structural diff (must not be {@code null})
+     * @return an unmodifiable list of semantic changes, in deterministic order
+     */
+    public List&lt;SemanticChange&gt; describe(ModelDiff diff) {
+<span class="fc" id="L33">        Objects.requireNonNull(diff, &quot;diff must not be null&quot;);</span>
+<span class="fc" id="L34">        List&lt;SemanticChange&gt; changes = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L36">        describeAddedElements(diff, changes);</span>
+<span class="fc" id="L37">        describeRemovedElements(diff, changes);</span>
+<span class="fc" id="L38">        describeChangedElements(diff, changes);</span>
+<span class="fc" id="L39">        describeAddedRelations(diff, changes);</span>
+<span class="fc" id="L40">        describeRemovedRelations(diff, changes);</span>
+<span class="fc" id="L41">        describeChangedRelations(diff, changes);</span>
+
+<span class="fc" id="L43">        return Collections.unmodifiableList(changes);</span>
+    }
+
+    /**
+     * Produce a compact text summary of semantic changes.
+     *
+     * @param diff the structural diff
+     * @return multi-line summary suitable for commit messages or change logs
+     */
+    public String summarize(ModelDiff diff) {
+<span class="fc" id="L53">        List&lt;SemanticChange&gt; changes = describe(diff);</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (changes.isEmpty()) {</span>
+<span class="fc" id="L55">            return &quot;No changes detected.&quot;;</span>
+        }
+
+<span class="fc" id="L58">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L59">        sb.append(changes.size()).append(&quot; semantic change(s):\n&quot;);</span>
+
+<span class="fc" id="L61">        Map&lt;SemanticChangeType, Long&gt; counts = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (SemanticChange c : changes) {</span>
+<span class="fc" id="L63">            counts.merge(c.changeType(), 1L, Long::sum);</span>
+<span class="fc" id="L64">        }</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        for (Map.Entry&lt;SemanticChangeType, Long&gt; entry : counts.entrySet()) {</span>
+<span class="fc" id="L66">            sb.append(&quot;  - &quot;).append(entry.getKey().getLabel())</span>
+<span class="fc" id="L67">              .append(&quot;: &quot;).append(entry.getValue()).append('\n');</span>
+<span class="fc" id="L68">        }</span>
+<span class="fc" id="L69">        return sb.toString();</span>
+    }
+
+    // ── Added elements ───────────────────────────────────────────────
+
+    private void describeAddedElements(ModelDiff diff, List&lt;SemanticChange&gt; out) {
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        for (ArchitectureElement e : diff.addedElements()) {</span>
+<span class="fc" id="L76">            String desc = String.format(&quot;Added %s '%s' (%s)&quot;,</span>
+<span class="fc" id="L77">                    safe(e.getType()), safe(e.getTitle()), safe(e.getId()));</span>
+<span class="fc" id="L78">            out.add(SemanticChange.element(SemanticChangeType.ELEMENT_ADDED, e.getId(), desc));</span>
+<span class="fc" id="L79">        }</span>
+<span class="fc" id="L80">    }</span>
+
+    // ── Removed elements ─────────────────────────────────────────────
+
+    private void describeRemovedElements(ModelDiff diff, List&lt;SemanticChange&gt; out) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        for (ArchitectureElement e : diff.removedElements()) {</span>
+<span class="fc" id="L86">            String desc = String.format(&quot;Removed %s '%s' (%s)&quot;,</span>
+<span class="fc" id="L87">                    safe(e.getType()), safe(e.getTitle()), safe(e.getId()));</span>
+<span class="fc" id="L88">            out.add(SemanticChange.element(SemanticChangeType.ELEMENT_REMOVED, e.getId(), desc));</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc" id="L90">    }</span>
+
+    // ── Changed elements ─────────────────────────────────────────────
+
+    private void describeChangedElements(ModelDiff diff, List&lt;SemanticChange&gt; out) {
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (ModelDiff.ElementChange ch : diff.changedElements()) {</span>
+<span class="fc" id="L96">            ArchitectureElement before = ch.before();</span>
+<span class="fc" id="L97">            ArchitectureElement after = ch.after();</span>
+
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (!Objects.equals(before.getType(), after.getType())) {</span>
+<span class="fc" id="L100">                out.add(SemanticChange.element(SemanticChangeType.ELEMENT_TYPE_CHANGED, after.getId(),</span>
+<span class="fc" id="L101">                        String.format(&quot;Type changed from '%s' to '%s' for %s&quot;,</span>
+<span class="fc" id="L102">                                safe(before.getType()), safe(after.getType()), safe(after.getId())),</span>
+<span class="fc" id="L103">                        before.getType(), after.getType()));</span>
+            }
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (!Objects.equals(before.getTitle(), after.getTitle())) {</span>
+<span class="fc" id="L106">                out.add(SemanticChange.element(SemanticChangeType.ELEMENT_TITLE_CHANGED, after.getId(),</span>
+<span class="fc" id="L107">                        String.format(&quot;Title changed from '%s' to '%s' for %s&quot;,</span>
+<span class="fc" id="L108">                                safe(before.getTitle()), safe(after.getTitle()), safe(after.getId())),</span>
+<span class="fc" id="L109">                        before.getTitle(), after.getTitle()));</span>
+            }
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (!Objects.equals(before.getDescription(), after.getDescription())) {</span>
+<span class="fc" id="L112">                out.add(SemanticChange.element(SemanticChangeType.ELEMENT_DESCRIPTION_CHANGED, after.getId(),</span>
+<span class="fc" id="L113">                        String.format(&quot;Description changed for %s&quot;, safe(after.getId())),</span>
+<span class="fc" id="L114">                        before.getDescription(), after.getDescription()));</span>
+            }
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (!Objects.equals(before.getTaxonomy(), after.getTaxonomy())) {</span>
+<span class="fc" id="L117">                out.add(SemanticChange.element(SemanticChangeType.ELEMENT_TAXONOMY_CHANGED, after.getId(),</span>
+<span class="fc" id="L118">                        String.format(&quot;Taxonomy changed from '%s' to '%s' for %s&quot;,</span>
+<span class="fc" id="L119">                                safe(before.getTaxonomy()), safe(after.getTaxonomy()), safe(after.getId())),</span>
+<span class="fc" id="L120">                        before.getTaxonomy(), after.getTaxonomy()));</span>
+            }
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            if (!Objects.equals(before.getExtensions(), after.getExtensions())) {</span>
+<span class="nc" id="L123">                out.add(SemanticChange.element(SemanticChangeType.ELEMENT_EXTENSIONS_CHANGED, after.getId(),</span>
+<span class="nc" id="L124">                        String.format(&quot;Extensions changed for %s&quot;, safe(after.getId()))));</span>
+            }
+<span class="fc" id="L126">        }</span>
+<span class="fc" id="L127">    }</span>
+
+    // ── Added relations ──────────────────────────────────────────────
+
+    private void describeAddedRelations(ModelDiff diff, List&lt;SemanticChange&gt; out) {
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (ArchitectureRelation r : diff.addedRelations()) {</span>
+<span class="fc" id="L133">            String key = relationKey(r);</span>
+<span class="fc" id="L134">            String desc = String.format(&quot;Added relation %s → %s → %s&quot;,</span>
+<span class="fc" id="L135">                    safe(r.getSourceId()), safe(r.getRelationType()), safe(r.getTargetId()));</span>
+<span class="fc" id="L136">            out.add(SemanticChange.relation(SemanticChangeType.RELATION_ADDED, key, desc));</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc" id="L138">    }</span>
+
+    // ── Removed relations ────────────────────────────────────────────
+
+    private void describeRemovedRelations(ModelDiff diff, List&lt;SemanticChange&gt; out) {
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        for (ArchitectureRelation r : diff.removedRelations()) {</span>
+<span class="fc" id="L144">            String key = relationKey(r);</span>
+<span class="fc" id="L145">            String desc = String.format(&quot;Removed relation %s → %s → %s&quot;,</span>
+<span class="fc" id="L146">                    safe(r.getSourceId()), safe(r.getRelationType()), safe(r.getTargetId()));</span>
+<span class="fc" id="L147">            out.add(SemanticChange.relation(SemanticChangeType.RELATION_REMOVED, key, desc));</span>
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">    }</span>
+
+    // ── Changed relations ────────────────────────────────────────────
+
+    private void describeChangedRelations(ModelDiff diff, List&lt;SemanticChange&gt; out) {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        for (ModelDiff.RelationChange ch : diff.changedRelations()) {</span>
+<span class="fc" id="L155">            ArchitectureRelation before = ch.before();</span>
+<span class="fc" id="L156">            ArchitectureRelation after = ch.after();</span>
+<span class="fc" id="L157">            String key = relationKey(after);</span>
+
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            if (!Objects.equals(before.getStatus(), after.getStatus())) {</span>
+<span class="fc" id="L160">                out.add(SemanticChange.relation(SemanticChangeType.RELATION_STATUS_CHANGED, key,</span>
+<span class="fc" id="L161">                        String.format(&quot;Status changed from '%s' to '%s' for %s&quot;,</span>
+<span class="fc" id="L162">                                safe(before.getStatus()), safe(after.getStatus()), key),</span>
+<span class="fc" id="L163">                        before.getStatus(), after.getStatus()));</span>
+            }
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (!Objects.equals(before.getConfidence(), after.getConfidence())) {</span>
+<span class="fc" id="L166">                out.add(SemanticChange.relation(SemanticChangeType.RELATION_CONFIDENCE_CHANGED, key,</span>
+<span class="fc" id="L167">                        String.format(&quot;Confidence changed from %s to %s for %s&quot;,</span>
+<span class="fc" id="L168">                                safe(str(before.getConfidence())), safe(str(after.getConfidence())), key),</span>
+<span class="fc" id="L169">                        str(before.getConfidence()), str(after.getConfidence())));</span>
+            }
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">            if (!Objects.equals(before.getProvenance(), after.getProvenance())) {</span>
+<span class="nc" id="L172">                out.add(SemanticChange.relation(SemanticChangeType.RELATION_PROVENANCE_CHANGED, key,</span>
+<span class="nc" id="L173">                        String.format(&quot;Provenance changed from '%s' to '%s' for %s&quot;,</span>
+<span class="nc" id="L174">                                safe(before.getProvenance()), safe(after.getProvenance()), key),</span>
+<span class="nc" id="L175">                        before.getProvenance(), after.getProvenance()));</span>
+            }
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">            if (!Objects.equals(before.getExtensions(), after.getExtensions())) {</span>
+<span class="nc" id="L178">                out.add(SemanticChange.relation(SemanticChangeType.RELATION_EXTENSIONS_CHANGED, key,</span>
+<span class="nc" id="L179">                        String.format(&quot;Extensions changed for %s&quot;, key)));</span>
+            }
+<span class="fc" id="L181">        }</span>
+<span class="fc" id="L182">    }</span>
+
+    // ── Helpers ──────────────────────────────────────────────────────
+
+    private static String relationKey(ArchitectureRelation r) {
+<span class="fc" id="L187">        return r.getSourceId() + &quot;|&quot; + r.getRelationType() + &quot;|&quot; + r.getTargetId();</span>
+    }
+
+    private static String safe(String value) {
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        return value != null ? value : &quot;&lt;none&gt;&quot;;</span>
+    }
+
+    private static String str(Double value) {
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">        return value != null ? String.valueOf(value) : null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

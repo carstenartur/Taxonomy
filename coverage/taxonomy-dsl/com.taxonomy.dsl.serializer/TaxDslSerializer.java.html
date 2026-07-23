@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxDslSerializer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.serializer</a> &gt; <span class="el_source">TaxDslSerializer.java</span></div><h1>TaxDslSerializer.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.serializer;
+
+import com.taxonomy.dsl.ast.*;
+
+import java.util.*;
+
+/**
+ * Deterministic serializer for the TaxDSL v2 language.
+ *
+ * &lt;p&gt;Produces stable, Git-diff-friendly output using explicit block delimiters
+ * and semicolon-terminated properties:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Blocks are grouped by kind and sorted by primary identifier for deterministic ordering.&lt;/li&gt;
+ *   &lt;li&gt;Blocks are separated by a single blank line.&lt;/li&gt;
+ *   &lt;li&gt;Blocks use {@code &amp;#123;} and {@code &amp;#125;} delimiters — indentation is not semantically significant.&lt;/li&gt;
+ *   &lt;li&gt;Properties use {@code key: value;} syntax, indented with two spaces for readability.&lt;/li&gt;
+ *   &lt;li&gt;Properties within a block follow a canonical order (known properties first, then extensions).&lt;/li&gt;
+ *   &lt;li&gt;String values are quoted; bare values (numbers, identifiers) are not.&lt;/li&gt;
+ *   &lt;li&gt;Extension attributes ({@code x-*}) are serialized after known attributes.&lt;/li&gt;
+ *   &lt;li&gt;Special characters in quoted values are escaped ({@code \&quot;} and {@code \\}).&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L23">public class TaxDslSerializer {</span>
+
+<span class="fc" id="L25">    private static final Set&lt;String&gt; BARE_VALUE_KEYS = Set.of(</span>
+            &quot;score&quot;, &quot;confidence&quot;, &quot;status&quot;, &quot;layout&quot;, &quot;type&quot;);
+
+    /**
+     * Canonical ordering of block kinds for deterministic output.
+     * Unknown block types sort after all known types.
+     */
+<span class="fc" id="L32">    private static final List&lt;String&gt; BLOCK_KIND_ORDER = List.of(</span>
+            &quot;element&quot;, &quot;relation&quot;, &quot;requirement&quot;, &quot;mapping&quot;, &quot;view&quot;, &quot;evidence&quot;,
+            &quot;source&quot;, &quot;sourceVersion&quot;, &quot;sourceFragment&quot;, &quot;requirementSourceLink&quot;, &quot;candidate&quot;);
+
+    /**
+     * Canonical property ordering per block kind.
+     * Properties are serialized in this order; any property not listed sorts alphabetically
+     * after the listed ones but before extension attributes.
+     */
+<span class="fc" id="L41">    private static final Map&lt;String, List&lt;String&gt;&gt; PROPERTY_ORDER = Map.ofEntries(</span>
+<span class="fc" id="L42">            Map.entry(&quot;element&quot;, List.of(&quot;title&quot;, &quot;description&quot;, &quot;taxonomy&quot;)),</span>
+<span class="fc" id="L43">            Map.entry(&quot;relation&quot;, List.of(&quot;status&quot;, &quot;confidence&quot;, &quot;provenance&quot;)),</span>
+<span class="fc" id="L44">            Map.entry(&quot;requirement&quot;, List.of(&quot;title&quot;, &quot;text&quot;)),</span>
+<span class="fc" id="L45">            Map.entry(&quot;mapping&quot;, List.of(&quot;score&quot;, &quot;source&quot;)),</span>
+<span class="fc" id="L46">            Map.entry(&quot;view&quot;, List.of(&quot;title&quot;, &quot;include&quot;, &quot;layout&quot;)),</span>
+<span class="fc" id="L47">            Map.entry(&quot;evidence&quot;, List.of(&quot;for-relation&quot;, &quot;type&quot;, &quot;model&quot;, &quot;confidence&quot;, &quot;summary&quot;)),</span>
+<span class="fc" id="L48">            Map.entry(&quot;source&quot;, List.of(&quot;type&quot;, &quot;title&quot;, &quot;canonicalIdentifier&quot;, &quot;canonicalUrl&quot;, &quot;originSystem&quot;, &quot;language&quot;)),</span>
+<span class="fc" id="L49">            Map.entry(&quot;sourceVersion&quot;, List.of(&quot;source&quot;, &quot;versionLabel&quot;, &quot;retrievedAt&quot;, &quot;effectiveDate&quot;, &quot;mimeType&quot;, &quot;contentHash&quot;)),</span>
+<span class="fc" id="L50">            Map.entry(&quot;sourceFragment&quot;, List.of(&quot;sourceVersion&quot;, &quot;sectionPath&quot;, &quot;paragraphRef&quot;, &quot;pageFrom&quot;, &quot;pageTo&quot;, &quot;text&quot;, &quot;fragmentHash&quot;, &quot;parentFragment&quot;, &quot;chunkLevel&quot;)),</span>
+<span class="fc" id="L51">            Map.entry(&quot;requirementSourceLink&quot;, List.of(&quot;requirement&quot;, &quot;source&quot;, &quot;sourceVersion&quot;, &quot;sourceFragment&quot;, &quot;linkType&quot;, &quot;confidence&quot;, &quot;note&quot;))</span>
+    );
+
+    /**
+     * Serialize a {@link DocumentAst} to DSL v2 text.
+     * Blocks are sorted by kind (element → relation → requirement → mapping → view → evidence → unknown)
+     * and within each kind by primary identifier for deterministic, diff-friendly output.
+     */
+    public String serialize(DocumentAst document) {
+<span class="fc" id="L60">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (document.getMeta() != null) {</span>
+<span class="fc" id="L63">            serializeMeta(document.getMeta(), sb);</span>
+        }
+
+<span class="fc" id="L66">        List&lt;BlockAst&gt; sorted = sortBlocksDeterministically(document.getBlocks());</span>
+
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        for (BlockAst block : sorted) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            if (!sb.isEmpty()) {</span>
+<span class="fc" id="L70">                sb.append('\n');</span>
+            }
+<span class="fc" id="L72">            serializeBlock(block, sb);</span>
+<span class="fc" id="L73">        }</span>
+
+        // Ensure trailing newline
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">        if (!sb.isEmpty() &amp;&amp; sb.charAt(sb.length() - 1) != '\n') {</span>
+<span class="nc" id="L77">            sb.append('\n');</span>
+        }
+
+<span class="fc" id="L80">        return sb.toString();</span>
+    }
+
+    /**
+     * Sort blocks deterministically: first by kind order, then by primary identifier.
+     * Unknown block types sort after all known types, alphabetically by kind then by ID.
+     */
+    private List&lt;BlockAst&gt; sortBlocksDeterministically(List&lt;BlockAst&gt; blocks) {
+<span class="fc" id="L88">        List&lt;BlockAst&gt; sorted = new ArrayList&lt;&gt;(blocks);</span>
+<span class="fc" id="L89">        sorted.sort(Comparator</span>
+<span class="fc" id="L90">                .comparingInt((BlockAst b) -&gt; {</span>
+<span class="fc" id="L91">                    int idx = BLOCK_KIND_ORDER.indexOf(b.getKind());</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">                    return idx &gt;= 0 ? idx : BLOCK_KIND_ORDER.size();</span>
+                })
+<span class="fc" id="L94">                .thenComparing(BlockAst::getKind)</span>
+<span class="fc" id="L95">                .thenComparing(b -&gt; blockSortKey(b)));</span>
+<span class="fc" id="L96">        return sorted;</span>
+    }
+
+    /**
+     * Compute a sort key for a block within its kind group.
+     * For relations, the sort key is a composite of source + type + target.
+     * For other blocks, it is the first header token (the primary ID).
+     */
+    private String blockSortKey(BlockAst block) {
+<span class="fc" id="L105">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (tokens.isEmpty()) return &quot;&quot;;</span>
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">        if (&quot;relation&quot;.equals(block.getKind()) &amp;&amp; tokens.size() &gt;= 3) {</span>
+            // Sort relations by source + relation type + target for stable ordering
+<span class="fc" id="L109">            return tokens.get(0) + &quot;/&quot; + tokens.get(1) + &quot;/&quot; + tokens.get(2);</span>
+        }
+<span class="pc bpc" id="L111" title="3 of 4 branches missed.">        if (&quot;mapping&quot;.equals(block.getKind()) &amp;&amp; tokens.size() &gt;= 3) {</span>
+            // Sort mappings by requirement + element
+<span class="nc" id="L113">            return tokens.get(0) + &quot;/&quot; + tokens.get(2);</span>
+        }
+<span class="fc" id="L115">        return tokens.get(0);</span>
+    }
+
+    private void serializeMeta(MetaAst meta, StringBuilder sb) {
+<span class="fc" id="L119">        sb.append(&quot;meta {\n&quot;);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if (meta.language() != null) {</span>
+<span class="fc" id="L121">            sb.append(&quot;  language: \&quot;&quot;).append(meta.language()).append(&quot;\&quot;;\n&quot;);</span>
+        }
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (meta.version() != null) {</span>
+<span class="fc" id="L124">            sb.append(&quot;  version: \&quot;&quot;).append(meta.version()).append(&quot;\&quot;;\n&quot;);</span>
+        }
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (meta.namespace() != null) {</span>
+<span class="fc" id="L127">            sb.append(&quot;  namespace: \&quot;&quot;).append(meta.namespace()).append(&quot;\&quot;;\n&quot;);</span>
+        }
+<span class="fc" id="L129">        sb.append(&quot;}\n&quot;);</span>
+<span class="fc" id="L130">    }</span>
+
+    private void serializeBlock(BlockAst block, StringBuilder sb) {
+        // Header line with opening brace
+<span class="fc" id="L134">        sb.append(block.getKind());</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (String token : block.getHeaderTokens()) {</span>
+<span class="fc" id="L136">            sb.append(' ').append(token);</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc" id="L138">        sb.append(&quot; {\n&quot;);</span>
+
+        // Properties: known first (in canonical order), then extensions (sorted alphabetically)
+<span class="fc" id="L141">        List&lt;PropertyAst&gt; known = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L142">        List&lt;PropertyAst&gt; extensions = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        for (PropertyAst prop : block.getProperties()) {</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (prop.isExtension()) {</span>
+<span class="fc" id="L145">                extensions.add(prop);</span>
+            } else {
+<span class="fc" id="L147">                known.add(prop);</span>
+            }
+<span class="fc" id="L149">        }</span>
+
+        // Sort known properties by canonical order for this block kind
+<span class="fc" id="L152">        List&lt;String&gt; canonicalOrder = PROPERTY_ORDER.getOrDefault(block.getKind(), List.of());</span>
+<span class="fc" id="L153">        known.sort(Comparator.comparingInt((PropertyAst p) -&gt; {</span>
+<span class="fc" id="L154">            int idx = canonicalOrder.indexOf(p.key());</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            return idx &gt;= 0 ? idx : canonicalOrder.size();</span>
+<span class="fc" id="L156">        }).thenComparing(PropertyAst::key));</span>
+
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        for (PropertyAst prop : known) {</span>
+<span class="fc" id="L159">            serializeProperty(prop, sb);</span>
+<span class="fc" id="L160">        }</span>
+
+        // Sort extensions alphabetically for stable output
+<span class="fc" id="L163">        extensions.sort(Comparator.comparing(PropertyAst::key));</span>
+
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        for (PropertyAst prop : extensions) {</span>
+<span class="fc" id="L166">            serializeProperty(prop, sb);</span>
+<span class="fc" id="L167">        }</span>
+
+        // Closing brace
+<span class="fc" id="L170">        sb.append(&quot;}\n&quot;);</span>
+<span class="fc" id="L171">    }</span>
+
+    private void serializeProperty(PropertyAst prop, StringBuilder sb) {
+<span class="fc" id="L174">        sb.append(&quot;  &quot;).append(prop.key()).append(&quot;: &quot;);</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (shouldQuote(prop.key(), prop.value())) {</span>
+<span class="fc" id="L176">            sb.append('&quot;').append(escapeForQuoting(prop.value())).append('&quot;');</span>
+        } else {
+<span class="fc" id="L178">            sb.append(prop.value());</span>
+        }
+<span class="fc" id="L180">        sb.append(&quot;;\n&quot;);</span>
+<span class="fc" id="L181">    }</span>
+
+    /**
+     * Determine whether a property value should be quoted.
+     * Bare values are used for numeric values and specific known keys.
+     */
+    private boolean shouldQuote(String key, String value) {
+<span class="pc bpc" id="L188" title="2 of 4 branches missed.">        if (value == null || value.isEmpty()) return true;</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (BARE_VALUE_KEYS.contains(key)) return false;</span>
+        // Check if value is numeric
+        try {
+<span class="fc" id="L192">            Double.parseDouble(value);</span>
+<span class="fc" id="L193">            return false;</span>
+<span class="fc" id="L194">        } catch (NumberFormatException e) {</span>
+<span class="fc" id="L195">            return true;</span>
+        }
+    }
+
+    /**
+     * Escape special characters for a quoted string value:
+     * {@code \} → {@code \\}, {@code &quot;} → {@code \&quot;}.
+     */
+    private String escapeForQuoting(String value) {
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        if (value == null) return &quot;&quot;;</span>
+<span class="fc bfc" id="L205" title="All 4 branches covered.">        if (value.indexOf('\\') &lt; 0 &amp;&amp; value.indexOf('&quot;') &lt; 0) return value;</span>
+<span class="fc" id="L206">        return value.replace(&quot;\\&quot;, &quot;\\\\&quot;).replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

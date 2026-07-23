@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrameworkImportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service.importer</a> &gt; <span class="el_source">FrameworkImportService.java</span></div><h1>FrameworkImportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service.importer;
+
+import com.taxonomy.dto.FrameworkImportResult;
+import com.taxonomy.dto.ProfileInfo;
+import com.taxonomy.extension.api.importer.ImportInput;
+import com.taxonomy.extension.api.importer.ImportProfileExtension;
+import org.springframework.stereotype.Service;
+
+import java.io.InputStream;
+import java.util.List;
+import java.util.Map;
+
+/** Generic framework import service delegating to registered profile adapters. */
+@Service
+public class FrameworkImportService {
+
+    private final ImportProfileRegistry registry;
+
+<span class="fc" id="L19">    public FrameworkImportService(ImportProfileRegistry registry) {</span>
+<span class="fc" id="L20">        this.registry = registry;</span>
+<span class="fc" id="L21">    }</span>
+
+    public List&lt;ProfileInfo&gt; getAvailableProfiles() {
+<span class="fc" id="L24">        return registry.listDescriptors().stream()</span>
+<span class="fc" id="L25">                .map(descriptor -&gt; new ProfileInfo(</span>
+<span class="fc" id="L26">                        descriptor.profileId(),</span>
+<span class="fc" id="L27">                        descriptor.displayName(),</span>
+<span class="fc" id="L28">                        descriptor.supportedElementTypes(),</span>
+<span class="fc" id="L29">                        descriptor.supportedRelationTypes(),</span>
+<span class="fc" id="L30">                        descriptor.acceptedFileFormat()))</span>
+<span class="fc" id="L31">                .toList();</span>
+    }
+
+    public FrameworkImportResult preview(String profileId, InputStream input) {
+<span class="fc" id="L35">        return registry.findById(profileId)</span>
+<span class="fc" id="L36">                .map(extension -&gt; extension.preview(ImportInput.forPreview(input)))</span>
+<span class="fc" id="L37">                .orElseGet(() -&gt; errorResult(profileId, &quot;Unknown profile: &quot; + profileId));</span>
+    }
+
+    public FrameworkImportResult importFile(
+            String profileId, InputStream input, String branch) {
+<span class="fc" id="L42">        return registry.findById(profileId)</span>
+<span class="fc" id="L43">                .map(extension -&gt; extension.importData(new ImportInput(input, branch)))</span>
+<span class="fc" id="L44">                .orElseGet(() -&gt; errorResult(profileId, &quot;Unknown profile: &quot; + profileId));</span>
+    }
+
+    private static FrameworkImportResult errorResult(String profileId, String message) {
+<span class="fc" id="L48">        return new FrameworkImportResult(</span>
+                profileId, profileId, false,
+                0, 0, 0, 0, 0, 0, null,
+<span class="fc" id="L51">                List.of(message), List.of(), Map.of());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

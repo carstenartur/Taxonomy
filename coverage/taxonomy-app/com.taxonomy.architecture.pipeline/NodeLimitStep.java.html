@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>NodeLimitStep.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">NodeLimitStep.java</span></div><h1>NodeLimitStep.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.RequirementRelationshipView;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Truncates the element and relationship lists to the requested maximum node count.
+ *
+ * &lt;p&gt;When {@code maxArchitectureNodes} is positive and the element list exceeds
+ * that limit, only the first {@code maxArchitectureNodes} elements are kept and
+ * any relationships whose endpoints no longer appear in the kept set are removed.
+ * A note is added to the view.
+ *
+ * &lt;p&gt;This step is a pure function with no external dependencies and can be
+ * unit-tested without a Spring context.
+ *
+ * &lt;p&gt;&lt;b&gt;Core invariant&lt;/b&gt; — this step enforces the caller-requested node-count
+ * limit. Do not disable or reorder it relative to impact-relation (step 800),
+ * which must run &lt;em&gt;after&lt;/em&gt; truncation.
+ */
+@Service
+<span class="fc" id="L28">public class NodeLimitStep implements ArchitecturePipelineStep {</span>
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;node-limit&quot;;
+
+    @Override
+<span class="fc" id="L34">    public String id() { return STEP_ID; }</span>
+
+    @Override
+<span class="fc" id="L37">    public int order() { return 700; }</span>
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+<span class="nc" id="L41">        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);</span>
+    }
+
+    /**
+     * Applies the node-count limit stored in {@code ctx.maxArchitectureNodes}.
+     * Has no effect when the limit is 0 or when the element count is within the limit.
+     */
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L50">        int maxNodes = ctx.getMaxArchitectureNodes();</span>
+<span class="fc" id="L51">        List&lt;RequirementElementView&gt; elements = ctx.getElements();</span>
+<span class="fc" id="L52">        List&lt;RequirementRelationshipView&gt; relationships = ctx.getRelationships();</span>
+
+<span class="fc bfc" id="L54" title="All 4 branches covered.">        if (maxNodes &lt;= 0 || elements.size() &lt;= maxNodes) {</span>
+<span class="fc" id="L55">            return;</span>
+        }
+
+<span class="fc" id="L58">        Set&lt;String&gt; keptCodes = elements.subList(0, maxNodes).stream()</span>
+<span class="fc" id="L59">                .map(RequirementElementView::getNodeCode)</span>
+<span class="fc" id="L60">                .collect(Collectors.toSet());</span>
+
+<span class="fc" id="L62">        ctx.setElements(new ArrayList&lt;&gt;(elements.subList(0, maxNodes)));</span>
+<span class="fc" id="L63">        ctx.setRelationships(relationships.stream()</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                .filter(r -&gt; keptCodes.contains(r.getSourceCode())</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                        &amp;&amp; keptCodes.contains(r.getTargetCode()))</span>
+<span class="fc" id="L66">                .collect(Collectors.toList()));</span>
+
+<span class="fc" id="L68">        ctx.getView().getNotes().add(&quot;Architecture view limited to &quot; + maxNodes + &quot; elements.&quot;);</span>
+<span class="fc" id="L69">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

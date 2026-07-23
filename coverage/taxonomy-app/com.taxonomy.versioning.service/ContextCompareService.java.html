@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ContextCompareService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">ContextCompareService.java</span></div><h1>ContextCompareService.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.dsl.diff.ModelDiff;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dto.ContextComparison;
+import com.taxonomy.dto.ContextComparison.DiffSummary;
+import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.SemanticChange;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Compares two architecture contexts and produces a semantic diff.
+ *
+ * &lt;p&gt;Builds on the existing {@link DslGitRepository#diffBetween(String, String)}
+ * infrastructure and enriches the result with human-readable change descriptions.
+ */
+@Service
+public class ContextCompareService {
+
+<span class="fc" id="L30">    private static final Logger log = LoggerFactory.getLogger(ContextCompareService.class);</span>
+
+    private final DslGitRepositoryFactory repositoryFactory;
+
+<span class="fc" id="L34">    public ContextCompareService(DslGitRepositoryFactory repositoryFactory) {</span>
+<span class="fc" id="L35">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L36">    }</span>
+
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+<span class="fc" id="L46">        return repositoryFactory.resolveRepository(ctx);</span>
+    }
+
+    /**
+     * Compare two contexts identified by their commit IDs.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #compareContexts(ContextRef, ContextRef, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param left  the left (source/older) context
+     * @param right the right (target/newer) context
+     * @return the comparison result
+     * @throws IOException if Git operations fail
+     */
+    public ContextComparison compareContexts(ContextRef left, ContextRef right) throws IOException {
+<span class="fc" id="L61">        return compareContexts(left, right, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Compare two contexts identified by their commit IDs.
+     *
+     * @param left  the left (source/older) context
+     * @param right the right (target/newer) context
+     * @param ctx   the workspace context for repository resolution
+     * @return the comparison result
+     * @throws IOException if Git operations fail
+     */
+    public ContextComparison compareContexts(ContextRef left, ContextRef right,
+                                             WorkspaceContext ctx) throws IOException {
+<span class="fc" id="L75">        DslGitRepository repo = resolveRepository(ctx);</span>
+<span class="fc" id="L76">        String leftCommit = resolveCommit(repo, left);</span>
+<span class="fc" id="L77">        String rightCommit = resolveCommit(repo, right);</span>
+
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">        if (leftCommit == null || rightCommit == null) {</span>
+<span class="fc" id="L80">            return new ContextComparison(left, right,</span>
+                    new DiffSummary(0, 0, 0, 0, 0, 0),
+<span class="fc" id="L82">                    List.of(), null);</span>
+        }
+
+<span class="fc" id="L85">        ModelDiff diff = repo.diffBetween(leftCommit, rightCommit);</span>
+<span class="fc" id="L86">        DiffSummary summary = buildDiffSummary(diff);</span>
+<span class="fc" id="L87">        List&lt;SemanticChange&gt; changes = buildSemanticChanges(diff);</span>
+
+<span class="fc" id="L89">        String rawDiff = null;</span>
+        try {
+<span class="fc" id="L91">            rawDiff = repo.textDiff(leftCommit, rightCommit);</span>
+<span class="nc" id="L92">        } catch (IOException e) {</span>
+<span class="nc" id="L93">            log.warn(&quot;Could not generate raw text diff: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L94">        }</span>
+
+<span class="fc" id="L96">        return new ContextComparison(left, right, summary, changes, rawDiff);</span>
+    }
+
+    /**
+     * Compare two branches at their HEAD commits.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #compareBranches(ContextRef, ContextRef, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param left  the left context
+     * @param right the right context
+     * @return the comparison result
+     * @throws IOException if Git operations fail
+     */
+    public ContextComparison compareBranches(ContextRef left, ContextRef right) throws IOException {
+<span class="fc" id="L111">        return compareBranches(left, right, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Compare two branches at their HEAD commits.
+     *
+     * @param left  the left context
+     * @param right the right context
+     * @param ctx   the workspace context for repository resolution
+     * @return the comparison result
+     * @throws IOException if Git operations fail
+     */
+    public ContextComparison compareBranches(ContextRef left, ContextRef right,
+                                             WorkspaceContext ctx) throws IOException {
+<span class="fc" id="L125">        DslGitRepository repo = resolveRepository(ctx);</span>
+<span class="fc" id="L126">        ModelDiff diff = repo.diffBranches(left.branch(), right.branch());</span>
+<span class="fc" id="L127">        DiffSummary summary = buildDiffSummary(diff);</span>
+<span class="fc" id="L128">        List&lt;SemanticChange&gt; changes = buildSemanticChanges(diff);</span>
+
+<span class="fc" id="L130">        String rawDiff = null;</span>
+        try {
+<span class="fc" id="L132">            String leftCommit = repo.getHeadCommit(left.branch());</span>
+<span class="fc" id="L133">            String rightCommit = repo.getHeadCommit(right.branch());</span>
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">            if (leftCommit != null &amp;&amp; rightCommit != null) {</span>
+<span class="fc" id="L135">                rawDiff = repo.textDiff(leftCommit, rightCommit);</span>
+            }
+<span class="nc" id="L137">        } catch (Exception e) {</span>
+<span class="nc" id="L138">            log.debug(&quot;Could not generate raw diff for branch compare: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L139">        }</span>
+
+<span class="fc" id="L141">        return new ContextComparison(left, right, summary, changes, rawDiff);</span>
+    }
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    DiffSummary buildDiffSummary(ModelDiff diff) {
+<span class="fc" id="L147">        return new DiffSummary(</span>
+<span class="fc" id="L148">                diff.addedElements().size(),</span>
+<span class="fc" id="L149">                diff.changedElements().size(),</span>
+<span class="fc" id="L150">                diff.removedElements().size(),</span>
+<span class="fc" id="L151">                diff.addedRelations().size(),</span>
+<span class="fc" id="L152">                diff.changedRelations().size(),</span>
+<span class="fc" id="L153">                diff.removedRelations().size()</span>
+        );
+    }
+
+    List&lt;SemanticChange&gt; buildSemanticChanges(ModelDiff diff) {
+<span class="fc" id="L158">        List&lt;SemanticChange&gt; changes = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        for (ArchitectureElement el : diff.addedElements()) {</span>
+<span class="fc" id="L161">            changes.add(new SemanticChange(</span>
+<span class="fc" id="L162">                    &quot;ADD&quot;, &quot;ELEMENT&quot;, el.getId(),</span>
+<span class="fc" id="L163">                    &quot;Element &quot; + el.getId() + &quot; added (&quot; + el.getType() + &quot;)&quot;,</span>
+<span class="fc" id="L164">                    null, el.getTitle()));</span>
+<span class="fc" id="L165">        }</span>
+
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        for (ArchitectureElement el : diff.removedElements()) {</span>
+<span class="nc" id="L168">            changes.add(new SemanticChange(</span>
+<span class="nc" id="L169">                    &quot;REMOVE&quot;, &quot;ELEMENT&quot;, el.getId(),</span>
+<span class="nc" id="L170">                    &quot;Element &quot; + el.getId() + &quot; removed (&quot; + el.getType() + &quot;)&quot;,</span>
+<span class="nc" id="L171">                    el.getTitle(), null));</span>
+<span class="nc" id="L172">        }</span>
+
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        for (ModelDiff.ElementChange change : diff.changedElements()) {</span>
+<span class="fc" id="L175">            changes.add(new SemanticChange(</span>
+<span class="fc" id="L176">                    &quot;MODIFY&quot;, &quot;ELEMENT&quot;, change.after().getId(),</span>
+<span class="fc" id="L177">                    &quot;Element &quot; + change.after().getId() + &quot; modified&quot;,</span>
+<span class="fc" id="L178">                    change.before().getTitle(),</span>
+<span class="fc" id="L179">                    change.after().getTitle()));</span>
+<span class="fc" id="L180">        }</span>
+
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (ArchitectureRelation rel : diff.addedRelations()) {</span>
+<span class="fc" id="L183">            String key = rel.getSourceId() + &quot; &quot; + rel.getRelationType() + &quot; &quot; + rel.getTargetId();</span>
+<span class="fc" id="L184">            changes.add(new SemanticChange(</span>
+                    &quot;ADD&quot;, &quot;RELATION&quot;, key,
+                    &quot;Relation added: &quot; + key,
+                    null, key));
+<span class="fc" id="L188">        }</span>
+
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        for (ArchitectureRelation rel : diff.removedRelations()) {</span>
+<span class="nc" id="L191">            String key = rel.getSourceId() + &quot; &quot; + rel.getRelationType() + &quot; &quot; + rel.getTargetId();</span>
+<span class="nc" id="L192">            changes.add(new SemanticChange(</span>
+                    &quot;REMOVE&quot;, &quot;RELATION&quot;, key,
+                    &quot;Relation removed: &quot; + key,
+                    key, null));
+<span class="nc" id="L196">        }</span>
+
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">        for (ModelDiff.RelationChange change : diff.changedRelations()) {</span>
+<span class="nc" id="L199">            String key = change.after().getSourceId() + &quot; &quot;</span>
+<span class="nc" id="L200">                    + change.after().getRelationType() + &quot; &quot; + change.after().getTargetId();</span>
+<span class="nc" id="L201">            changes.add(new SemanticChange(</span>
+                    &quot;MODIFY&quot;, &quot;RELATION&quot;, key,
+                    &quot;Relation modified: &quot; + key,
+<span class="nc" id="L204">                    change.before().getStatus(),</span>
+<span class="nc" id="L205">                    change.after().getStatus()));</span>
+<span class="nc" id="L206">        }</span>
+
+<span class="fc" id="L208">        return changes;</span>
+    }
+
+    private String resolveCommit(DslGitRepository repo, ContextRef ctx) {
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (ctx.commitId() != null) {</span>
+<span class="fc" id="L213">            return ctx.commitId();</span>
+        }
+        try {
+<span class="fc" id="L216">            return repo.getHeadCommit(ctx.branch());</span>
+<span class="nc" id="L217">        } catch (IOException e) {</span>
+<span class="nc" id="L218">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, ctx.branch(), e.getMessage());</span>
+<span class="nc" id="L219">            return null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

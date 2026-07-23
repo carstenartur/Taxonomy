@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxDslParser.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.parser</a> &gt; <span class="el_source">TaxDslParser.java</span></div><h1>TaxDslParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.parser;
+
+import com.taxonomy.dsl.ast.*;
+
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Block-structured parser for the TaxDSL v2 language.
+ *
+ * &lt;p&gt;DSL v2 uses explicit block delimiters ({@code &amp;#123;} / {@code &amp;#125;}) and
+ * semicolon-terminated {@code key: value;} properties:
+ * &lt;pre&gt;
+ * element CP-1023 type Capability {
+ *   title: &quot;Secure Communications&quot;;
+ *   description: &quot;Ability to provide secure communications&quot;;
+ * }
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;The parser is intentionally simple and tolerant:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Blocks start with a keyword line ending in {@code &amp;#123;}.&lt;/li&gt;
+ *   &lt;li&gt;Properties use {@code key: value;} syntax inside the block.&lt;/li&gt;
+ *   &lt;li&gt;Blocks end with a line containing {@code &amp;#125;}.&lt;/li&gt;
+ *   &lt;li&gt;Indentation is ignored — only {@code &amp;#123;} and {@code &amp;#125;} are structural.&lt;/li&gt;
+ *   &lt;li&gt;Unknown block types and unknown properties are preserved.&lt;/li&gt;
+ *   &lt;li&gt;Quoted string values are unquoted; unquoted values are kept as-is.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L31">public class TaxDslParser {</span>
+
+<span class="fc" id="L33">    private static final Set&lt;String&gt; KNOWN_BLOCK_TYPES = Set.of(</span>
+            &quot;meta&quot;, &quot;element&quot;, &quot;relation&quot;, &quot;requirement&quot;, &quot;mapping&quot;, &quot;view&quot;, &quot;evidence&quot;,
+            // Provenance block types (v2.1)
+            &quot;source&quot;, &quot;sourceVersion&quot;, &quot;sourceFragment&quot;, &quot;requirementSourceLink&quot;, &quot;candidate&quot;);
+
+    /**
+     * Pattern to extract a quoted string value.
+     * Supports escaped quotes ({@code \&quot;}) inside the string.
+     * Uses a possessive quantifier ({@code *+}) to prevent catastrophic
+     * backtracking (ReDoS) on malformed input.
+     */
+<span class="fc" id="L44">    private static final Pattern QUOTED_VALUE = Pattern.compile(&quot;\&quot;((?:[^\&quot;\\\\]|\\\\.)*+)\&quot;&quot;);</span>
+
+    /**
+     * Parse DSL text into a {@link DocumentAst}.
+     *
+     * @param text     the DSL source text
+     * @param fileName optional file name for source locations (may be {@code null})
+     * @return the parsed document AST
+     */
+    public DocumentAst parse(String text, String fileName) {
+<span class="fc bfc" id="L54" title="All 4 branches covered.">        if (text == null || text.isBlank()) {</span>
+<span class="fc" id="L55">            return new DocumentAst(null, List.of());</span>
+        }
+
+<span class="fc" id="L58">        List&lt;String&gt; lines = text.lines().toList();</span>
+<span class="fc" id="L59">        MetaAst meta = null;</span>
+<span class="fc" id="L60">        List&lt;BlockAst&gt; blocks = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L61">        int i = 0;</span>
+
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        while (i &lt; lines.size()) {</span>
+<span class="fc" id="L64">            String stripped = lines.get(i).strip();</span>
+
+            // Skip blank lines and comments
+<span class="fc bfc" id="L67" title="All 4 branches covered.">            if (stripped.isEmpty() || stripped.startsWith(&quot;#&quot;)) {</span>
+<span class="fc" id="L68">                i++;</span>
+<span class="fc" id="L69">                continue;</span>
+            }
+
+            // Look for a block opening: keyword ... {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (stripped.endsWith(&quot;{&quot;)) {</span>
+<span class="fc" id="L74">                String headerPart = stripped.substring(0, stripped.length() - 1).strip();</span>
+<span class="fc" id="L75">                String keyword = firstToken(headerPart);</span>
+<span class="fc" id="L76">                List&lt;String&gt; headerTokens = parseHeaderTokens(headerPart);</span>
+
+                // Collect body lines until closing }
+<span class="fc" id="L79">                int bodyStart = i + 1;</span>
+<span class="fc" id="L80">                int bodyEnd = bodyStart;</span>
+<span class="fc" id="L81">                int depth = 1;</span>
+<span class="pc bpc" id="L82" title="2 of 4 branches missed.">                while (bodyEnd &lt; lines.size() &amp;&amp; depth &gt; 0) {</span>
+<span class="fc" id="L83">                    String bodyStripped = lines.get(bodyEnd).strip();</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                    if (bodyStripped.endsWith(&quot;{&quot;)) depth++;</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">                    if (bodyStripped.equals(&quot;}&quot;) || bodyStripped.startsWith(&quot;}&quot;)) depth--;</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                    if (depth &gt; 0) bodyEnd++;</span>
+                    else break;
+<span class="fc" id="L88">                }</span>
+
+<span class="fc" id="L90">                List&lt;PropertyAst&gt; properties = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L91">                Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                for (int j = bodyStart; j &lt; bodyEnd; j++) {</span>
+<span class="fc" id="L93">                    String bodyLine = lines.get(j).strip();</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">                    if (bodyLine.isEmpty() || bodyLine.startsWith(&quot;#&quot;)) continue;</span>
+<span class="fc" id="L95">                    PropertyAst prop = parseProperty(bodyLine, fileName, j + 1);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">                    if (prop != null) {</span>
+<span class="fc" id="L97">                        properties.add(prop);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                        if (prop.isExtension()) {</span>
+<span class="fc" id="L99">                            extensions.put(prop.key(), prop.value());</span>
+                        }
+                    }
+                }
+
+<span class="fc" id="L104">                SourceLocation loc = new SourceLocation(fileName, i + 1, 1);</span>
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">                if (&quot;meta&quot;.equals(keyword)) {</span>
+<span class="fc" id="L107">                    String language = findProperty(properties, &quot;language&quot;);</span>
+<span class="fc" id="L108">                    String version = findProperty(properties, &quot;version&quot;);</span>
+<span class="fc" id="L109">                    String namespace = findProperty(properties, &quot;namespace&quot;);</span>
+<span class="fc" id="L110">                    meta = new MetaAst(language, version, namespace, loc);</span>
+<span class="fc" id="L111">                } else {</span>
+<span class="fc" id="L112">                    BlockAst block = new BlockAst(keyword, headerTokens, properties,</span>
+<span class="fc" id="L113">                            List.of(), extensions, loc);</span>
+<span class="fc" id="L114">                    blocks.add(block);</span>
+                }
+
+<span class="fc" id="L117">                i = bodyEnd + 1; // skip past closing }</span>
+<span class="fc" id="L118">            } else {</span>
+<span class="fc" id="L119">                i++;</span>
+            }
+<span class="fc" id="L121">        }</span>
+
+<span class="fc" id="L123">        return new DocumentAst(meta, blocks);</span>
+    }
+
+    /** Convenience overload without file name. */
+    public DocumentAst parse(String text) {
+<span class="fc" id="L128">        return parse(text, null);</span>
+    }
+
+    private String firstToken(String line) {
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        if (line.isEmpty()) return &quot;&quot;;</span>
+<span class="fc" id="L133">        int space = line.indexOf(' ');</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        return space &lt; 0 ? line : line.substring(0, space);</span>
+    }
+
+    /**
+     * Parse header tokens from the block header line (excluding the keyword itself).
+     * Tokens are split by whitespace.
+     */
+    private List&lt;String&gt; parseHeaderTokens(String headerLine) {
+<span class="fc" id="L142">        String[] parts = headerLine.split(&quot;\\s+&quot;);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (parts.length &lt;= 1) return List.of();</span>
+<span class="fc" id="L144">        return List.of(Arrays.copyOfRange(parts, 1, parts.length));</span>
+    }
+
+    /**
+     * Parse a single property line in v2 format: {@code key: &quot;value&quot;;} or {@code key: 0.92;}.
+     *
+     * &lt;p&gt;The colon after the key and the trailing semicolon are stripped.
+     */
+    private PropertyAst parseProperty(String line, String fileName, int lineNumber) {
+        // Strip trailing semicolon
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (line.endsWith(&quot;;&quot;)) {</span>
+<span class="fc" id="L155">            line = line.substring(0, line.length() - 1).stripTrailing();</span>
+        }
+
+        // Split on first colon
+<span class="fc" id="L159">        int colonIdx = line.indexOf(':');</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (colonIdx &lt; 0) {</span>
+            // Fallback: try space-separated (for tolerance)
+<span class="nc" id="L162">            return parseSpaceSeparatedProperty(line, fileName, lineNumber);</span>
+        }
+
+<span class="fc" id="L165">        String key = line.substring(0, colonIdx).strip();</span>
+<span class="fc" id="L166">        String rest = line.substring(colonIdx + 1).strip();</span>
+
+        String value;
+<span class="fc" id="L169">        Matcher m = QUOTED_VALUE.matcher(rest);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (m.find()) {</span>
+<span class="fc" id="L171">            value = unescapeQuotedValue(m.group(1));</span>
+        } else {
+<span class="fc" id="L173">            value = rest;</span>
+        }
+
+<span class="fc" id="L176">        return new PropertyAst(key, value, new SourceLocation(fileName, lineNumber, 1));</span>
+    }
+
+    /**
+     * Fallback parser for space-separated properties (tolerance for edge cases).
+     */
+    private PropertyAst parseSpaceSeparatedProperty(String line, String fileName, int lineNumber) {
+<span class="nc" id="L183">        int firstSpace = line.indexOf(' ');</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        if (firstSpace &lt; 0) {</span>
+<span class="nc" id="L185">            return new PropertyAst(line, &quot;&quot;, new SourceLocation(fileName, lineNumber, 1));</span>
+        }
+<span class="nc" id="L187">        String key = line.substring(0, firstSpace);</span>
+<span class="nc" id="L188">        String rest = line.substring(firstSpace).strip();</span>
+<span class="nc" id="L189">        Matcher m = QUOTED_VALUE.matcher(rest);</span>
+        String value;
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (m.find()) {</span>
+<span class="nc" id="L192">            value = unescapeQuotedValue(m.group(1));</span>
+        } else {
+<span class="nc" id="L194">            value = rest;</span>
+        }
+<span class="nc" id="L196">        return new PropertyAst(key, value, new SourceLocation(fileName, lineNumber, 1));</span>
+    }
+
+    private String findProperty(List&lt;PropertyAst&gt; properties, String key) {
+<span class="fc" id="L200">        return properties.stream()</span>
+<span class="fc" id="L201">                .filter(p -&gt; p.key().equals(key))</span>
+<span class="fc" id="L202">                .map(PropertyAst::value)</span>
+<span class="fc" id="L203">                .findFirst()</span>
+<span class="fc" id="L204">                .orElse(null);</span>
+    }
+
+    /**
+     * Unescape a quoted string value: {@code \&quot;} → {@code &quot;}, {@code \\} → {@code \}.
+     */
+    private String unescapeQuotedValue(String raw) {
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">        if (raw == null || raw.indexOf('\\') &lt; 0) return raw;</span>
+<span class="fc" id="L212">        StringBuilder sb = new StringBuilder(raw.length());</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        for (int i = 0; i &lt; raw.length(); i++) {</span>
+<span class="fc" id="L214">            char c = raw.charAt(i);</span>
+<span class="pc bpc" id="L215" title="1 of 4 branches missed.">            if (c == '\\' &amp;&amp; i + 1 &lt; raw.length()) {</span>
+<span class="fc" id="L216">                char next = raw.charAt(i + 1);</span>
+<span class="pc bpc" id="L217" title="1 of 4 branches missed.">                if (next == '&quot;' || next == '\\') {</span>
+<span class="fc" id="L218">                    sb.append(next);</span>
+<span class="fc" id="L219">                    i++;</span>
+<span class="fc" id="L220">                    continue;</span>
+                }
+            }
+<span class="fc" id="L223">            sb.append(c);</span>
+        }
+<span class="fc" id="L225">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

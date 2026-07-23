@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UafMappingProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.mapping.profiles</a> &gt; <span class="el_source">UafMappingProfile.java</span></div><h1>UafMappingProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.mapping.profiles;
+
+import com.taxonomy.dsl.mapping.MappingProfile;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Mapping profile for the Unified Architecture Framework (UAF) / DoDAF.
+ *
+ * &lt;p&gt;Translates UAF element types (from UPDM/UAF XMI profiles) to
+ * taxonomy root codes and UAF relation types to canonical relation type names.
+ */
+<span class="fc" id="L15">public class UafMappingProfile implements MappingProfile {</span>
+
+    /**
+     * UAF element type → taxonomy root code.
+     */
+<span class="fc" id="L20">    static final Map&lt;String, String&gt; ELEMENT_TYPE_MAP = Map.ofEntries(</span>
+<span class="fc" id="L21">            Map.entry(&quot;Capability&quot;, &quot;CP&quot;),</span>
+<span class="fc" id="L22">            Map.entry(&quot;OperationalActivity&quot;, &quot;BP&quot;),</span>
+<span class="fc" id="L23">            Map.entry(&quot;ServiceFunction&quot;, &quot;CR&quot;),</span>
+<span class="fc" id="L24">            Map.entry(&quot;CapabilityConfiguration&quot;, &quot;CI&quot;),</span>
+<span class="fc" id="L25">            Map.entry(&quot;CommunicationsFunction&quot;, &quot;CO&quot;),</span>
+<span class="fc" id="L26">            Map.entry(&quot;System&quot;, &quot;UA&quot;),</span>
+<span class="fc" id="L27">            Map.entry(&quot;Platform&quot;, &quot;UA&quot;),</span>
+<span class="fc" id="L28">            Map.entry(&quot;Performer&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L29">            Map.entry(&quot;Organization&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L30">            Map.entry(&quot;ResourcePerformer&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L31">            Map.entry(&quot;InformationElement&quot;, &quot;IP&quot;)</span>
+    );
+
+    /**
+     * UAF relation type → canonical RelationType name.
+     */
+<span class="fc" id="L37">    static final Map&lt;String, String&gt; RELATION_TYPE_MAP = Map.ofEntries(</span>
+<span class="fc" id="L38">            Map.entry(&quot;Implements&quot;, &quot;REALIZES&quot;),</span>
+<span class="fc" id="L39">            Map.entry(&quot;Supports&quot;, &quot;SUPPORTS&quot;),</span>
+<span class="fc" id="L40">            Map.entry(&quot;Consumes&quot;, &quot;CONSUMES&quot;),</span>
+<span class="fc" id="L41">            Map.entry(&quot;Uses&quot;, &quot;USES&quot;),</span>
+<span class="fc" id="L42">            Map.entry(&quot;Provides&quot;, &quot;FULFILLS&quot;),</span>
+<span class="fc" id="L43">            Map.entry(&quot;IsAssignedTo&quot;, &quot;ASSIGNED_TO&quot;),</span>
+<span class="fc" id="L44">            Map.entry(&quot;DependsOn&quot;, &quot;DEPENDS_ON&quot;),</span>
+<span class="fc" id="L45">            Map.entry(&quot;Produces&quot;, &quot;PRODUCES&quot;),</span>
+<span class="fc" id="L46">            Map.entry(&quot;CommunicatesWith&quot;, &quot;COMMUNICATES_WITH&quot;)</span>
+    );
+
+    @Override
+    public String profileId() {
+<span class="fc" id="L51">        return &quot;uaf&quot;;</span>
+    }
+
+    @Override
+    public String displayName() {
+<span class="fc" id="L56">        return &quot;UAF / DoDAF&quot;;</span>
+    }
+
+    @Override
+    public String mapElementType(String externalType) {
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (externalType == null) return null;</span>
+<span class="fc" id="L62">        return ELEMENT_TYPE_MAP.get(externalType);</span>
+    }
+
+    @Override
+    public String mapRelationType(String externalRelType) {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (externalRelType == null) return null;</span>
+<span class="fc" id="L68">        return RELATION_TYPE_MAP.get(externalRelType);</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; elementExtensions(String externalType, Map&lt;String, String&gt; externalProperties) {
+<span class="fc" id="L73">        Map&lt;String, String&gt; ext = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        if (externalType != null) {</span>
+<span class="fc" id="L75">            ext.put(&quot;x-uaf-kind&quot;, externalType);</span>
+        }
+<span class="fc" id="L77">        return ext;</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; relationExtensions(String externalRelType, Map&lt;String, String&gt; externalProperties) {
+<span class="fc" id="L82">        Map&lt;String, String&gt; ext = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (externalRelType != null) {</span>
+<span class="fc" id="L84">            ext.put(&quot;x-uaf-rel&quot;, externalRelType);</span>
+        }
+<span class="fc" id="L86">        return ext;</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; supportedElementTypes() {
+<span class="fc" id="L91">        return ELEMENT_TYPE_MAP.keySet();</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; supportedRelationTypes() {
+<span class="fc" id="L96">        return RELATION_TYPE_MAP.keySet();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
