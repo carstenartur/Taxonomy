@@ -80,6 +80,14 @@ window.TaxonomyRoleSurface = (function () {
     }
 
     function ensureStableEvidenceAnchors() {
+        var tree = document.getElementById('taxonomyTree');
+        if (tree && tree.hasAttribute('aria-label') && !tree.hasAttribute('role')) {
+            // A labelled generic div has no accessibility semantics and violates
+            // ARIA 1.2. The container hosts interchangeable list/diagram views,
+            // so a named region is the stable cross-view contract.
+            tree.setAttribute('role', 'region');
+        }
+
         var panel = document.getElementById('documentImportPanel');
         if (panel && !document.getElementById('docImportPanel')) {
             var wrapper = document.createElement('div');
