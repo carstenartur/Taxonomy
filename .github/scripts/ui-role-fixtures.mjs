@@ -125,9 +125,15 @@ export async function navigateToPage(page, pageId) {
 }
 
 export async function navigateArchitectureSubtab(page, subtab) {
+  const aliases = {
+    overview: 'arch-overview',
+    relations: 'arch-relations',
+    export: 'arch-export'
+  };
+  const actualSubtab = aliases[subtab] || subtab;
   await navigateToPage(page, 'architecture');
-  const control = page.locator(`#architectureSubTabs [data-subtab="${subtab}"]`);
+  const control = page.locator(`#architectureSubTabs [data-subtab="${actualSubtab}"]`);
   await control.scrollIntoViewIfNeeded();
   await control.click();
-  await page.locator(`#subtab-${subtab}`).waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator(`#subtab-${actualSubtab}`).waitFor({ state: 'visible', timeout: 20_000 });
 }
