@@ -21,17 +21,41 @@ export async function runImportWorkflows({ page, evidence }) {
   await page.locator('#docImportFile').setInputFiles({
     name: 'requirements.pdf', mimeType: 'application/pdf', buffer: Buffer.from('mock-pdf')
   });
-  const requestPromise = page.waitForRequest(request => {
-    const url = new URL(request.url());
-    return request.method() === 'POST' && url.pathname === '/api/documents/upload';
-  }, { timeout: 15_000 });
-  const responsePromise = page.waitForResponse(response => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/documents/upload';
-  }, { timeout: 15_000 });
-  await page.locator('#docImportUploadBtn').click();
-  const request = await requestPromise;
-  const response = await responsePromise;
+
+  let request;
+  let response;
+  try {
+    [request, response] = await Promise.all([
+      page.waitForRequest(candidate => {
+        const url = new URL(candidate.url());
+        return candidate.method() === 'POST' && url.pathname === '/api/documents/upload';
+      }, { timeout: 15_000 }),
+      page.waitForResponse(candidate => {
+        const url = new URL(candidate.url());
+        return candidate.request().method() === 'POST' && url.pathname === '/api/documents/upload';
+      }, { timeout: 15_000 }),
+      page.locator('#docImportUploadBtn').click()
+    ]);
+  } catch (error) {
+    const snapshot = await page.evaluate(() => {
+      const status = document.getElementById('docImportStatus');
+      const upload = document.getElementById('docImportUploadBtn');
+      const file = document.getElementById('docImportFile');
+      const selected = document.querySelector('input[name="importMode"]:checked');
+      return {
+        statusText: (status?.textContent || '').trim(),
+        statusHtml: status?.innerHTML || null,
+        mode: selected?.value || null,
+        uploadDisabled: Boolean(upload?.disabled),
+        uploadVisible: Boolean(upload && upload.getClientRects().length),
+        selectedFileCount: file?.files?.length || 0,
+        semanticsLoaded: Boolean(window.TaxonomyUiSemantics),
+        roleSurfaceLoaded: Boolean(window.TaxonomyRoleSurface)
+      };
+    });
+    throw new Error(`Document upload request was not completed: snapshot=${JSON.stringify(snapshot)}; ${error}`);
+  }
+
   await response.finished();
   const network = {
     method: request.method(),
