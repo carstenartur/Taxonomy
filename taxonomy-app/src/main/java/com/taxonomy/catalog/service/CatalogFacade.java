@@ -47,9 +47,14 @@ public class CatalogFacade {
         return dto;
     }
 
-    public ArchiMateImportResult importAndValidate(InputStream xmlStream) {
-        log.info("Starting ArchiMate XML import via facade");
-        ArchiMateImportResult result = archiMateXmlImporter.importXml(xmlStream);
+    public ArchiMateImportResult importAndValidate(InputStream xmlStream,
+                                                    WorkspaceContext workspaceContext) {
+        if (workspaceContext == null) {
+            throw new IllegalArgumentException("Workspace context is required for ArchiMate import");
+        }
+        log.info("Starting ArchiMate XML import via facade for workspace {}",
+                workspaceContext.workspaceId());
+        ArchiMateImportResult result = archiMateXmlImporter.importXml(xmlStream, workspaceContext);
         log.info("ArchiMate import complete – {} elements matched, {} relations created",
                 result.getElementsMatched(), result.getRelationsImported());
         return result;
@@ -57,8 +62,8 @@ public class CatalogFacade {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> searchWithContext(String query,
-                                                    int maxResults,
-                                                    WorkspaceContext workspaceContext) {
+                                                   int maxResults,
+                                                   WorkspaceContext workspaceContext) {
         List<TaxonomyNodeDto> results = searchService.search(query, maxResults);
         results.forEach(dto -> attachRelations(dto, workspaceContext));
         return results;
