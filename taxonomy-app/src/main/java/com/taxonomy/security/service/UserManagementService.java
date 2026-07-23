@@ -6,6 +6,7 @@ import com.taxonomy.security.repository.RoleRepository;
 import com.taxonomy.security.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,9 @@ public class UserManagementService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+
+    @Value("${taxonomy.security.require-password-change:false}")
+    private boolean requirePasswordChange;
 
     public UserManagementService(UserRepository userRepository,
                                  RoleRepository roleRepository,
@@ -67,12 +71,14 @@ public class UserManagementService {
         user.setUsername(username);
         user.setPasswordHash(passwordEncoder.encode(password));
         user.setEnabled(true);
+        user.setMustChangePassword(requirePasswordChange);
         user.setDisplayName(displayName);
         user.setEmail(email);
         user.setRoles(resolveRoles(roles));
         AppUser saved = userRepository.save(user);
-        log.info("USER_CREATED user={} roles={} by={}", username,
-                saved.getRoles().stream().map(AppRole::getName).sorted().toList(), actor);
+        log.info("USER_CREATED user={} roles={} passwordChangeRequired={} by={}", username,
+                saved.getRoles().stream().map(AppRole::getName).sorted().toList(),
+                saved.isMustChangePassword(), actor);
         return toUserMap(saved);
     }
 
@@ -111,8 +117,10 @@ public class UserManagementService {
         validatePassword(newPassword);
         AppUser user = requireUser(id);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(requirePasswordChange);
         userRepository.save(user);
-        log.info("USER_PASSWORD_CHANGED user={} by={}", user.getUsername(), actor);
+        log.info("USER_PASSWORD_CHANGED user={} temporary={} by={}",
+                user.getUsername(), user.isMustChangePassword(), actor);
     }
 
     public String disableUser(Long id, String actor) {
@@ -178,6 +186,7 @@ public class UserManagementService {
         map.put("displayName", user.getDisplayName());
         map.put("email", user.getEmail());
         map.put("enabled", user.isEnabled());
+        map.put("mustChangePassword", user.isMustChangePassword());
         map.put("roles", user.getRoles().stream().map(AppRole::getName).sorted().toList());
         return map;
     }

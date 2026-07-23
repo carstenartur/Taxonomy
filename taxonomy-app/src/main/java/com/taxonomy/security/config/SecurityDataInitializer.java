@@ -12,19 +12,11 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Set;
 
-/**
- * Seeds the default roles and an initial admin user on first startup.
- * <p>
- * If the roles or admin user already exist (e.g. persistent database) this is a no-op.
- * The default admin password can be overridden via the {@code TAXONOMY_ADMIN_PASSWORD}
- * environment variable (or the equivalent Spring property {@code taxonomy.admin-password}).
- * <p>
- * Only active in form-login mode (without Keycloak). In the Keycloak profile,
- * users and roles are managed by the identity provider.
- */
+/** Seeds local roles and the initial administrator in form-login mode. */
 @Component
 @Profile("!keycloak")
 public class SecurityDataInitializer implements ApplicationRunner {
@@ -35,37 +27,48 @@ public class SecurityDataInitializer implements ApplicationRunner {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final String adminPassword;
+    private final boolean requirePasswordChange;
 
     public SecurityDataInitializer(RoleRepository roleRepository,
                                    UserRepository userRepository,
                                    PasswordEncoder passwordEncoder,
-                                   @Value("${taxonomy.admin-password:admin}") String adminPassword) {
+                                   @Value("${taxonomy.admin-password:admin}") String adminPassword,
+                                   @Value("${taxonomy.security.require-password-change:false}")
+                                   boolean requirePasswordChange) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.adminPassword = adminPassword;
+        this.requirePasswordChange = requirePasswordChange;
     }
 
     @Override
+    @Transactional
     public void run(ApplicationArguments args) {
-        // Seed roles
         AppRole roleUser = findOrCreateRole("ROLE_USER");
         AppRole roleArchitect = findOrCreateRole("ROLE_ARCHITECT");
         AppRole roleAdmin = findOrCreateRole("ROLE_ADMIN");
 
-        // Seed default admin user (if not present)
-        if (userRepository.findByUsername("admin").isEmpty()) {
-            AppUser admin = new AppUser();
+        AppUser admin = userRepository.findByUsername("admin").orElse(null);
+        if (admin == null) {
+            admin = new AppUser();
             admin.setUsername("admin");
             admin.setPasswordHash(passwordEncoder.encode(adminPassword));
             admin.setEnabled(true);
             admin.setDisplayName("Administrator");
             admin.setRoles(Set.of(roleUser, roleArchitect, roleAdmin));
+            admin.setMustChangePassword(requirePasswordChange);
             userRepository.save(admin);
-            log.info("Created default admin user (username=admin). Change the password immediately.");
+            log.info("Created default admin user (username=admin, passwordChangeRequired={}).",
+                    requirePasswordChange);
+        } else if (requirePasswordChange
+                && passwordEncoder.matches("admin", admin.getPasswordHash())
+                && !admin.isMustChangePassword()) {
+            admin.setMustChangePassword(true);
+            userRepository.save(admin);
+            log.warn("Marked existing admin account for mandatory password replacement.");
         }
 
-        // Warn if the default password is still in use
         if ("admin".equals(adminPassword)) {
             log.warn("SECURITY WARNING: Default admin password 'admin' is in use. "
                     + "Set TAXONOMY_ADMIN_PASSWORD environment variable to change it.");
