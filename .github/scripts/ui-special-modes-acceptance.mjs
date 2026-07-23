@@ -90,14 +90,26 @@ async function testPartialAnalysis() {
 }
 
 async function testTextSpacing() {
-  await page.addStyleTag({ content: `
-    * { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }
-    p { margin-bottom: 2em !important; }
-  ` });
   await navigateToPage(page, 'analyze');
+  await page.locator('#documentImportPanel').waitFor({ state: 'attached', timeout: 20_000 });
+
+  // A strict CSP can reject dynamically inserted <style> elements. Apply the
+  // equivalent user stylesheet through the rendered CSSOM so the test measures
+  // the actual 1.4.12 layout instead of an existing Bootstrap default.
+  await page.locator('#tab-analyze').evaluate(root => {
+    [root, ...root.querySelectorAll('*')].forEach(element => {
+      element.style.setProperty('line-height', '1.5', 'important');
+      element.style.setProperty('letter-spacing', '0.12em', 'important');
+      element.style.setProperty('word-spacing', '0.16em', 'important');
+    });
+    root.querySelectorAll('p').forEach(element => {
+      element.style.setProperty('margin-bottom', '2em', 'important');
+    });
+  });
 
   const spacing = await page.evaluate(() => {
-    const sample = document.querySelector('#tab-analyze p') || document.querySelector('#tab-analyze label');
+    const sample = document.querySelector('#documentImportPanel p');
+    if (!sample) throw new Error('Text-spacing sample paragraph is unavailable');
     const style = getComputedStyle(sample);
     const fontSize = Number.parseFloat(style.fontSize);
     return {
