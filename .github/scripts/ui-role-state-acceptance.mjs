@@ -48,6 +48,7 @@ const checks = [];
 const findings = [];
 const consoleErrors = [];
 const externalRequests = [];
+const httpFailures = [];
 let auditError = null;
 let browser;
 let context;
@@ -128,6 +129,13 @@ async function csrfPost(currentPage, endpoint, body) {
   }, { endpoint, body });
 }
 
+function expectedHttpFailure(failure) {
+  if (failure.status === 503 && failure.path === '/api/analyze') return true;
+  return role === 'USER'
+    && failure.status === 403
+    && failure.path === '/api/proposals/from-hypothesis';
+}
+
 await mkdir(outputDir, { recursive: true });
 
 try {
@@ -146,8 +154,16 @@ try {
     if (url.startsWith('data:') || url.startsWith('blob:')) return;
     if (new URL(url).origin !== baseOrigin) externalRequests.push(url);
   });
+  page.on('response', response => {
+    const url = new URL(response.url());
+    if (url.origin === baseOrigin && response.status() >= 400) {
+      httpFailures.push({ path: url.pathname, status: response.status(), method: response.request().method() });
+    }
+  });
   page.on('console', message => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+    if (message.type() === 'error' && !message.text().includes('Failed to load resource')) {
+      consoleErrors.push(message.text());
+    }
   });
   page.on('pageerror', error => consoleErrors.push(error.message));
 
@@ -269,6 +285,10 @@ try {
   passed(`reflow at ${zoom}x`);
   if (forcedColors) passed('forced-colors media state');
 
+  const unexpectedHttpFailures = httpFailures.filter(failure => !expectedHttpFailure(failure));
+  assert(unexpectedHttpFailures.length === 0,
+    `Unexpected HTTP failures: ${JSON.stringify(unexpectedHttpFailures)}`);
+  passed('expected HTTP error states only');
   assert(externalRequests.length === 0,
     `External browser requests detected: ${externalRequests.join(', ')}`);
   assert(consoleErrors.length === 0,
@@ -282,7 +302,7 @@ try {
     profileId, browserName, role,
     physicalViewport: { width: physicalWidth, height: physicalHeight },
     effectiveViewport, zoom, forcedColors, checks, findings,
-    externalRequests, consoleErrors, auditError
+    externalRequests, httpFailures, consoleErrors, auditError
   };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   if (auditError) {
