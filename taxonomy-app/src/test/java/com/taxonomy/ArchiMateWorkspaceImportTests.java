@@ -4,7 +4,9 @@ import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.catalog.service.ArchiMateImportException;
 import com.taxonomy.catalog.service.ArchiMateXmlImporter;
 import com.taxonomy.dto.ArchiMateImportResult;
+import com.taxonomy.model.RelationType;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -39,12 +41,24 @@ class ArchiMateWorkspaceImportTests {
     @Autowired
     private MockMvc mockMvc;
 
+    @BeforeEach
+    void removeEligibleFixtureRelationFromAllScopes() {
+        // The tests intentionally exercise creation of a Flow/COMMUNICATES_WITH
+        // relation between the matched CP and CR root nodes. Remove any fixture
+        // residue or future catalogue addition transactionally so eligibility is
+        // deterministic; the test transaction restores the catalogue afterwards.
+        relationRepository.deleteAll(
+                relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(
+                        "CP", "CR", RelationType.COMMUNICATES_WITH));
+        relationRepository.flush();
+    }
+
     @Test
     void previewReportsEligibleRelationWithoutWriting() {
         WorkspaceContext context = new WorkspaceContext("alice", "qa-archimate-a", "draft");
         long before = relationRepository.count();
 
-        ArchiMateImportResult result = importer.previewXml(stream(validModel()), context);
+        ArchiMateImportResult result = importer.previewXml(stream(eligibleModel()), context);
 
         assertThat(result.isPreview()).isTrue();
         assertThat(result.getElementsMatched()).isEqualTo(2);
@@ -61,8 +75,8 @@ class ArchiMateWorkspaceImportTests {
         WorkspaceContext secondContext = new WorkspaceContext("bob", "qa-archimate-b", "draft");
         long sharedBefore = relationRepository.countByWorkspaceIdIsNull();
 
-        ArchiMateImportResult first = importer.importXml(stream(validModel()), firstContext);
-        ArchiMateImportResult second = importer.importXml(stream(validModel()), secondContext);
+        ArchiMateImportResult first = importer.importXml(stream(eligibleModel()), firstContext);
+        ArchiMateImportResult second = importer.importXml(stream(eligibleModel()), secondContext);
 
         assertThat(first.getRelationsImported()).isEqualTo(1);
         assertThat(second.getRelationsImported()).isEqualTo(1);
@@ -74,13 +88,24 @@ class ArchiMateWorkspaceImportTests {
     @Test
     void repeatedImportInSameWorkspaceIsReportedAsDuplicate() {
         WorkspaceContext context = new WorkspaceContext("alice", "qa-archimate-a", "draft");
-        importer.importXml(stream(validModel()), context);
+        importer.importXml(stream(eligibleModel()), context);
 
-        ArchiMateImportResult duplicate = importer.importXml(stream(validModel()), context);
+        ArchiMateImportResult duplicate = importer.importXml(stream(eligibleModel()), context);
 
         assertThat(duplicate.getRelationsImported()).isZero();
         assertThat(duplicate.getRelationsSkipped()).isEqualTo(1);
         assertThat(relationRepository.findByWorkspaceId("qa-archimate-a")).hasSize(1);
+    }
+
+    @Test
+    void sharedBaselineRelationIsVisibleAsDuplicateInPersonalWorkspace() {
+        WorkspaceContext context = new WorkspaceContext("alice", "qa-archimate-a", "draft");
+
+        ArchiMateImportResult result = importer.previewXml(stream(sharedDuplicateModel()), context);
+
+        assertThat(result.getRelationsImported()).isZero();
+        assertThat(result.getRelationsSkipped()).isEqualTo(1);
+        assertThat(relationRepository.findByWorkspaceId("qa-archimate-a")).isEmpty();
     }
 
     @Test
@@ -130,7 +155,15 @@ class ArchiMateWorkspaceImportTests {
         return new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String validModel() {
+    private static String eligibleModel() {
+        return modelWithRelationshipType("Flow");
+    }
+
+    private static String sharedDuplicateModel() {
+        return modelWithRelationshipType("Realization");
+    }
+
+    private static String modelWithRelationshipType(String relationshipType) {
         return """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <model xmlns="http://www.opengroup.org/xsd/archimate/3.0/"
@@ -145,10 +178,10 @@ class ArchiMateWorkspaceImportTests {
                     </element>
                   </elements>
                   <relationships>
-                    <relationship identifier="id-r1" xsi:type="Realization"
+                    <relationship identifier="id-r1" xsi:type="%s"
                                   source="id-e1" target="id-e2"/>
                   </relationships>
                 </model>
-                """;
+                """.formatted(relationshipType);
     }
 }
