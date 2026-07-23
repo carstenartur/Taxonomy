@@ -10,7 +10,7 @@ The application uses the Hibernate Search **platform BOM**, not independently ve
 | Hibernate ORM | `7.4.x` | Hibernate Search platform BOM |
 | Apache Lucene | `9.12.3` | Hibernate Search platform BOM and `lucene.version` |
 
-Hibernate Search 8.4 targets Hibernate ORM 7.4 and its normal Lucene backend uses Lucene 9.12.3. The platform BOM coordinates these dependencies and prevents mapper/backend minor-version skew.
+Hibernate Search 8.4 targets Hibernate ORM 7.4 and its Lucene backend uses Lucene 9.12.3. The platform BOM coordinates these dependencies and prevents mapper/backend minor-version skew.
 
 ## Local verification
 
