@@ -19,6 +19,14 @@
     flex-wrap: wrap;
 }
 
+/* Bootstrap normally opens modals through an inline display declaration. The
+   strict application CSP correctly blocks that declaration, so reflect the
+   Bootstrap state classes in an external, CSP-compatible stylesheet. */
+.modal.show,
+.modal[data-modal-visible="true"] {
+    display: block !important;
+}
+
 /* Accessible application-native dialog replacing prompt()/alert(). */
 .taxonomy-accessible-dialog {
     width: min(32rem, calc(100vw - 2rem));
