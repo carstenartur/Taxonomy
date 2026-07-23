@@ -167,10 +167,25 @@ try {
   passed('keyboard authentication');
 
   const adminTab = page.locator('#adminNavTab');
-  const adminVisible = await adminTab.isVisible().catch(() => false);
-  assert(role === 'ADMIN' ? adminVisible : !adminVisible,
-    `${role} admin navigation visibility is incorrect`);
-  passed('role-specific navigation');
+  if (role === 'ADMIN') {
+    const adminLockButton = page.locator('#adminLockBtn');
+    await adminLockButton.waitFor({ state: 'visible', timeout: 15_000 });
+    await adminLockButton.focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#adminModal').waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('#adminPasswordInput').fill(adminPassword);
+    await page.locator('#adminUnlockBtn').focus();
+    await page.keyboard.press('Enter');
+    await page.locator('body.admin-unlocked').waitFor({ state: 'attached', timeout: 15_000 });
+    const adminLink = adminTab.locator('a[data-page="admin"]');
+    await adminLink.scrollIntoViewIfNeeded();
+    assert(await adminLink.isVisible(), 'ADMIN navigation is unavailable after admin-mode unlock');
+    passed('keyboard admin-mode unlock and admin navigation');
+  } else {
+    assert(!(await adminTab.isVisible().catch(() => false)),
+      `${role} must not see admin navigation before an explicit admin-mode unlock`);
+    passed('role-specific navigation');
+  }
 
   await page.locator('#mainNavTabs [data-page="analyze"]').click();
   await page.locator('#businessText').fill(
