@@ -12,13 +12,11 @@ import org.springframework.stereotype.Component;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,12 +29,11 @@ import java.util.TreeMap;
  * Idempotent schema contract migration for deployments that predate workspace
  * isolation and mandatory password replacement.
  *
- * <p>The project historically used Hibernate {@code ddl-auto=update}. That is
- * unable to remove obsolete unique constraints reliably. This runner inspects
- * JDBC metadata, drops only constraints with the proven legacy column sets,
- * backfills a non-null workspace scope key, and creates named constraints that
- * protect both shared and personal rows. It also prepares the local-user
- * password-change column used by the security hardening follow-up.</p>
+ * <p>Hibernate {@code ddl-auto=update} cannot remove obsolete unique
+ * constraints reliably. This runner inspects JDBC metadata, drops only
+ * constraints with proven legacy column sets, backfills a non-null workspace
+ * scope key, and creates named constraints that protect both shared and
+ * personal rows. It also prepares the local-user password-change column.</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -106,14 +103,11 @@ public class SchemaContractMigration implements ApplicationRunner {
 
         ensureColumn(connection, table, "workspace_scope_key", "VARCHAR(255)");
         execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET " + quoted(connection, "workspace_scope_key")
-                + " = COALESCE(NULLIF(TRIM(" + quoted(connection, "workspace_id")
-                + "), ''), '" + SHARED_SCOPE + "')");
+                + " SET workspace_scope_key = " + scopeExpression());
 
         assertNoScopedDuplicates(connection, table);
 
-        List<IndexDefinition> indexes = uniqueIndexes(connection, table);
-        for (IndexDefinition index : indexes) {
+        for (IndexDefinition index : uniqueIndexes(connection, table)) {
             Set<String> columns = new LinkedHashSet<>(index.columns());
             if (legacyColumnSets.contains(columns)) {
                 dropConstraintOrIndex(connection, table, index.name());
@@ -127,11 +121,7 @@ public class SchemaContractMigration implements ApplicationRunner {
         if (!targetExists) {
             execute(connection, "ALTER TABLE " + qualified(connection, table)
                     + " ADD CONSTRAINT " + quoted(connection, targetConstraint)
-                    + " UNIQUE ("
-                    + quoted(connection, "source_node_id") + ", "
-                    + quoted(connection, "target_node_id") + ", "
-                    + quoted(connection, "relation_type") + ", "
-                    + quoted(connection, "workspace_scope_key") + ")");
+                    + " UNIQUE (source_node_id, target_node_id, relation_type, workspace_scope_key)");
             log.info("Created workspace-scoped unique constraint {} on {}",
                     targetConstraint, logicalTableName);
         }
@@ -143,7 +133,8 @@ public class SchemaContractMigration implements ApplicationRunner {
             return;
         }
 
-        String product = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT);
+        String product = connection.getMetaData().getDatabaseProductName()
+                .toLowerCase(Locale.ROOT);
         String definition;
         if (product.contains("microsoft")) {
             definition = "BIT DEFAULT 0 NOT NULL";
@@ -163,25 +154,20 @@ public class SchemaContractMigration implements ApplicationRunner {
         if (columnExists(connection, table, column)) {
             return;
         }
+        // Logical model identifiers are intentionally unquoted: each database
+        // applies its normal case folding, matching Hibernate-created columns.
         execute(connection, "ALTER TABLE " + qualified(connection, table)
-                + " ADD " + quoted(connection, column) + " " + definition);
+                + " ADD " + column + " " + definition);
     }
 
     private void assertNoScopedDuplicates(Connection connection,
                                           TableRef table) throws SQLException {
-        String scopeExpression = "COALESCE(NULLIF(TRIM(" + quoted(connection, "workspace_id")
-                + "), ''), '" + SHARED_SCOPE + "')";
         String sql = "SELECT COUNT(*) FROM (SELECT "
-                + quoted(connection, "source_node_id") + ", "
-                + quoted(connection, "target_node_id") + ", "
-                + quoted(connection, "relation_type") + ", "
-                + scopeExpression + " AS scope_key, COUNT(*) AS duplicate_count FROM "
+                + "source_node_id, target_node_id, relation_type, "
+                + scopeExpression() + " AS scope_key, COUNT(*) AS duplicate_count FROM "
                 + qualified(connection, table)
-                + " GROUP BY "
-                + quoted(connection, "source_node_id") + ", "
-                + quoted(connection, "target_node_id") + ", "
-                + quoted(connection, "relation_type") + ", "
-                + scopeExpression
+                + " GROUP BY source_node_id, target_node_id, relation_type, "
+                + scopeExpression()
                 + " HAVING COUNT(*) > 1) taxonomy_duplicates";
         try (Statement statement = connection.createStatement();
              ResultSet result = statement.executeQuery(sql)) {
@@ -194,6 +180,10 @@ public class SchemaContractMigration implements ApplicationRunner {
                         + "Resolve them before starting the upgraded application.");
             }
         }
+    }
+
+    private static String scopeExpression() {
+        return "COALESCE(NULLIF(TRIM(workspace_id), ''), '" + SHARED_SCOPE + "')";
     }
 
     private void dropConstraintOrIndex(Connection connection,
@@ -210,11 +200,10 @@ public class SchemaContractMigration implements ApplicationRunner {
 
         String product = connection.getMetaData().getDatabaseProductName()
                 .toLowerCase(Locale.ROOT);
-        String indexName = qualifiedIndex(connection, table, name);
         String sql = product.contains("microsoft")
                 ? "DROP INDEX " + quoted(connection, name)
                         + " ON " + qualified(connection, table)
-                : "DROP INDEX " + indexName;
+                : "DROP INDEX " + qualifiedIndex(connection, table, name);
         try {
             execute(connection, sql);
         } catch (SQLException indexFailure) {
