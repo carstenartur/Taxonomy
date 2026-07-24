@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -40,6 +41,9 @@ public class JgitStorageSchemaMigrationConfig {
 
     private static final Logger log =
             LoggerFactory.getLogger(JgitStorageSchemaMigrationConfig.class);
+
+    private static final int REQUIRED_REF_NAME_LENGTH = 1024;
+    private static final int LEGACY_TAXONOMY_REF_NAME_LENGTH = 255;
 
     private static final Set<String> LEGACY_PACK_COLUMNS = Set.of(
             "ID",
@@ -104,6 +108,7 @@ public class JgitStorageSchemaMigrationConfig {
             requireCurrentCoreShape(schema);
             log.info("Migrating managed JGit Core schema for {}", family.displayName());
             flyway.migrate();
+            requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
             return;
         }
 
@@ -131,6 +136,7 @@ public class JgitStorageSchemaMigrationConfig {
                         CoreSchemaMigrations.PRE_MIGRATION_BASELINE_DESCRIPTION);
                 flyway.migrate();
             }
+            requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
             return;
         }
 
@@ -144,13 +150,15 @@ public class JgitStorageSchemaMigrationConfig {
 
         if (schema.packColumns().equals(LEGACY_PACK_COLUMNS)) {
             migrateLegacyTaxonomySchema(
-                    configuration, family, dataSource, legacyAdoptionEnabled);
+                    configuration, family, dataSource, schema, legacyAdoptionEnabled);
             flyway.migrate();
+            requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
             return;
         }
 
         if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
             requireSafePackRows(dataSource, false);
+            requireReflogRefNameCapacity(schema);
             log.info(
                     "Establishing Flyway history for an exact unversioned JGit Core schema on {}",
                     family.displayName());
@@ -160,6 +168,7 @@ public class JgitStorageSchemaMigrationConfig {
                     CoreSchemaMigrations.LEGACY_SCHEMA_VERSION,
                     CoreSchemaMigrations.LEGACY_BASELINE_DESCRIPTION);
             flyway.migrate();
+            requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
             return;
         }
 
@@ -172,6 +181,7 @@ public class JgitStorageSchemaMigrationConfig {
             Configuration configuration,
             DatabaseFamily family,
             DataSource dataSource,
+            SchemaSnapshot schema,
             boolean legacyAdoptionEnabled) {
         if (!legacyAdoptionEnabled) {
             throw unsafeSchema(
@@ -181,6 +191,7 @@ public class JgitStorageSchemaMigrationConfig {
         }
 
         LegacyCoreSchemaAdoption.LegacySchemaReport report = requireSafePackRows(dataSource, true);
+        widenLegacyReflogRefName(dataSource, family, schema);
         log.warn(
                 "Adopting {} pre-library JGit pack rows on {}; the operator explicitly enabled "
                         + "the one-time migration",
@@ -201,6 +212,35 @@ public class JgitStorageSchemaMigrationConfig {
                 family,
                 CoreSchemaMigrations.CURRENT_SCHEMA_VERSION,
                 "adopted pre-library core schema");
+    }
+
+    private static void widenLegacyReflogRefName(
+            DataSource dataSource, DatabaseFamily family, SchemaSnapshot schema) {
+        int currentLength = schema.reflogRefNameLength();
+        if (currentLength >= REQUIRED_REF_NAME_LENGTH) {
+            return;
+        }
+        if (currentLength != LEGACY_TAXONOMY_REF_NAME_LENGTH) {
+            throw unsafeSchema(
+                    "git_reflog.ref_name has length " + currentLength
+                            + "; only the exact legacy Taxonomy length "
+                            + LEGACY_TAXONOMY_REF_NAME_LENGTH + " can be widened automatically.");
+        }
+
+        log.warn(
+                "Widening legacy git_reflog.ref_name from {} to {} characters on {}",
+                currentLength,
+                REQUIRED_REF_NAME_LENGTH,
+                family.displayName());
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute(family.widenRefNameSql());
+        } catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "Could not widen legacy git_reflog.ref_name safely", exception);
+        }
+
+        requireReflogRefNameCapacity(SchemaSnapshot.inspect(dataSource));
     }
 
     private static LegacyCoreSchemaAdoption.LegacySchemaReport requireSafePackRows(
@@ -254,6 +294,16 @@ public class JgitStorageSchemaMigrationConfig {
         }
         requireExactColumns("git_packs", schema.packColumns(), CURRENT_PACK_COLUMNS);
         requireExactColumns("git_reflog", schema.reflogColumns(), REFLOG_COLUMNS);
+        requireReflogRefNameCapacity(schema);
+    }
+
+    private static void requireReflogRefNameCapacity(SchemaSnapshot schema) {
+        if (schema.reflogRefNameLength() < REQUIRED_REF_NAME_LENGTH) {
+            throw unsafeSchema(
+                    "git_reflog.ref_name supports only " + schema.reflogRefNameLength()
+                            + " characters; the released Core contract requires at least "
+                            + REQUIRED_REF_NAME_LENGTH + ".");
+        }
     }
 
     private static void requireExactColumns(
@@ -274,20 +324,32 @@ public class JgitStorageSchemaMigrationConfig {
     }
 
     enum DatabaseFamily {
-        HSQLDB("HSQLDB", CoreSchemaMigrations.HSQLDB_LOCATION,
-                CoreSchemaMigrations.HSQLDB_LEGACY_ADOPTION_LOCATION),
-        POSTGRESQL("PostgreSQL", CoreSchemaMigrations.POSTGRESQL_LOCATION,
-                CoreSchemaMigrations.POSTGRESQL_LEGACY_ADOPTION_LOCATION);
+        HSQLDB(
+                "HSQLDB",
+                CoreSchemaMigrations.HSQLDB_LOCATION,
+                CoreSchemaMigrations.HSQLDB_LEGACY_ADOPTION_LOCATION,
+                "alter table git_reflog alter column ref_name "
+                        + "set data type varchar(1024)"),
+        POSTGRESQL(
+                "PostgreSQL",
+                CoreSchemaMigrations.POSTGRESQL_LOCATION,
+                CoreSchemaMigrations.POSTGRESQL_LEGACY_ADOPTION_LOCATION,
+                "alter table git_reflog alter column ref_name type varchar(1024)");
 
         private final String displayName;
         private final String normalLocation;
         private final String legacyAdoptionLocation;
+        private final String widenRefNameSql;
 
         DatabaseFamily(
-                String displayName, String normalLocation, String legacyAdoptionLocation) {
+                String displayName,
+                String normalLocation,
+                String legacyAdoptionLocation,
+                String widenRefNameSql) {
             this.displayName = displayName;
             this.normalLocation = normalLocation;
             this.legacyAdoptionLocation = legacyAdoptionLocation;
+            this.widenRefNameSql = widenRefNameSql;
         }
 
         String displayName() {
@@ -300,6 +362,10 @@ public class JgitStorageSchemaMigrationConfig {
 
         String legacyAdoptionLocation() {
             return legacyAdoptionLocation;
+        }
+
+        String widenRefNameSql() {
+            return widenRefNameSql;
         }
 
         static DatabaseFamily detect(DataSource dataSource) {
@@ -325,7 +391,8 @@ public class JgitStorageSchemaMigrationConfig {
     record SchemaSnapshot(
             Map<String, String> tables,
             Set<String> packColumns,
-            Set<String> reflogColumns) {
+            Set<String> reflogColumns,
+            int reflogRefNameLength) {
 
         boolean hasTable(String table) {
             return tables.containsKey(normalize(table));
@@ -339,10 +406,13 @@ public class JgitStorageSchemaMigrationConfig {
                 Set<String> packColumns = readColumns(metadata, schema, tables.get("GIT_PACKS"));
                 Set<String> reflogColumns =
                         readColumns(metadata, schema, tables.get("GIT_REFLOG"));
+                int refNameLength = readColumnSize(
+                        metadata, schema, tables.get("GIT_REFLOG"), "REF_NAME");
                 return new SchemaSnapshot(
                         Collections.unmodifiableMap(tables),
                         Collections.unmodifiableSet(packColumns),
-                        Collections.unmodifiableSet(reflogColumns));
+                        Collections.unmodifiableSet(reflogColumns),
+                        refNameLength);
             } catch (SQLException exception) {
                 throw new IllegalStateException(
                         "Could not inspect the existing JGit Core schema", exception);
@@ -374,6 +444,22 @@ public class JgitStorageSchemaMigrationConfig {
                 }
             }
             return columns;
+        }
+
+        private static int readColumnSize(
+                DatabaseMetaData metadata, String schema, String table, String column)
+                throws SQLException {
+            if (table == null) {
+                return -1;
+            }
+            try (ResultSet resultSet = metadata.getColumns(null, schema, table, "%")) {
+                while (resultSet.next()) {
+                    if (normalize(resultSet.getString("COLUMN_NAME")).equals(column)) {
+                        return resultSet.getInt("COLUMN_SIZE");
+                    }
+                }
+            }
+            return -1;
         }
 
         private static String normalize(String identifier) {
