@@ -204,9 +204,9 @@ TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true \
   docker compose -f docker-compose.prod.yml up -d
 ```
 
-Prüfen Sie danach Refs, Commit-Verlauf, Reflogs und BLOB-Prüfsummen und setzen Sie die Variable anschließend wieder auf `false`. Doppelte Pack-Identitäten, partielle Schemas, überlange Pack-Erweiterungen und andere unsichere Formen werden vor dem Übernahme-DDL abgewiesen.
+Prüfen Sie danach Refs, Commit-Verlauf, Reflogs und BLOB-Prüfsummen und setzen Sie die Variable anschließend wieder auf `false`. Doppelte Pack-Identitäten, partielle Schemata, überlange Pack-Erweiterungen und andere unsichere Formen werden vor dem Übernahme-DDL abgewiesen.
 
-`jgit-storage-hibernate-core` 0.1.8 veröffentlicht Flyway-Migrationen für HSQLDB und PostgreSQL. SQL Server und Oracle bleiben auf Taxonomys Hibernate-Schema-Verwaltung, bis passende Upstream-Migrationen und Tests mit realen Datenbanken veröffentlicht sind.
+`jgit-storage-hibernate-core` 0.1.9 veröffentlicht Flyway-Migrationen für HSQLDB und PostgreSQL. SQL Server und Oracle bleiben auf Taxonomys Hibernate-Schema-Verwaltung, bis passende Upstream-Migrationen und Tests mit realen Datenbanken veröffentlicht sind.
 
 ## 8. Lokal bauen
 
