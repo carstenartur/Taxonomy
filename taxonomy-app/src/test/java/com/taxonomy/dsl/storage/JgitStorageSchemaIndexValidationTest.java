@@ -1,5 +1,6 @@
 package com.taxonomy.dsl.storage;
 
+import static com.taxonomy.dsl.storage.DatabaseIdentifierTestSupport.dropTable;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,7 +27,7 @@ class JgitStorageSchemaIndexValidationTest {
     void rejectsUnversionedCurrentSchemaWithoutUniquePackIdentity() throws Exception {
         DataSource dataSource = dataSource("missing-current-unique");
         flyway(dataSource).migrate();
-        execute(dataSource, "drop table " + CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+        dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
         execute(dataSource,
                 "alter table git_packs drop constraint uk_pack_repo_name_ext");
 
