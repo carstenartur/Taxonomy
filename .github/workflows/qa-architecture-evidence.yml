@@ -11,6 +11,10 @@ on:
 
 permissions:
   contents: read
+  packages: read
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   architecture-tests:
@@ -20,11 +24,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+      - name: Set up Java 21 and GitHub Packages
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
       - name: Install dependencies without tests
         run: mvn -B -q -pl taxonomy-app -am install -DskipTests
       - name: Run architecture tests
