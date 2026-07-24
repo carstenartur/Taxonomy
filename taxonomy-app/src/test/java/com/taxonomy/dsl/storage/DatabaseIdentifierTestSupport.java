@@ -17,27 +17,25 @@ final class DatabaseIdentifierTestSupport {
     static String quoteExistingTable(Connection connection, String logicalName)
             throws SQLException {
         DatabaseMetaData metadata = connection.getMetaData();
-        String actualName = null;
-        try (ResultSet tables = metadata.getTables(
-                null, connection.getSchema(), "%", new String[] {"TABLE"})) {
-            while (tables.next()) {
-                String candidate = tables.getString("TABLE_NAME");
-                if (logicalName.equalsIgnoreCase(candidate)) {
-                    actualName = candidate;
-                    break;
+        return quoteIdentifier(metadata, findExistingTable(connection, logicalName));
+    }
+
+    static String quoteExistingColumn(
+            Connection connection, String logicalTableName, String logicalColumnName)
+            throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        String actualTableName = findExistingTable(connection, logicalTableName);
+        try (ResultSet columns = metadata.getColumns(
+                null, connection.getSchema(), actualTableName, "%")) {
+            while (columns.next()) {
+                String candidate = columns.getString("COLUMN_NAME");
+                if (logicalColumnName.equalsIgnoreCase(candidate)) {
+                    return quoteIdentifier(metadata, candidate);
                 }
             }
         }
-        if (actualName == null) {
-            throw new SQLException("Table not found: " + logicalName);
-        }
-
-        String quote = metadata.getIdentifierQuoteString();
-        quote = quote == null ? "" : quote.trim();
-        if (quote.isEmpty()) {
-            return actualName;
-        }
-        return quote + actualName.replace(quote, quote + quote) + quote;
+        throw new SQLException(
+                "Column not found: " + logicalTableName + "." + logicalColumnName);
     }
 
     static void dropTable(DataSource dataSource, String logicalName) throws SQLException {
@@ -45,5 +43,30 @@ final class DatabaseIdentifierTestSupport {
              Statement statement = connection.createStatement()) {
             statement.execute("drop table " + quoteExistingTable(connection, logicalName));
         }
+    }
+
+    private static String findExistingTable(Connection connection, String logicalName)
+            throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        try (ResultSet tables = metadata.getTables(
+                null, connection.getSchema(), "%", new String[] {"TABLE"})) {
+            while (tables.next()) {
+                String candidate = tables.getString("TABLE_NAME");
+                if (logicalName.equalsIgnoreCase(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+        throw new SQLException("Table not found: " + logicalName);
+    }
+
+    private static String quoteIdentifier(DatabaseMetaData metadata, String identifier)
+            throws SQLException {
+        String quote = metadata.getIdentifierQuoteString();
+        quote = quote == null ? "" : quote.trim();
+        if (quote.isEmpty()) {
+            return identifier;
+        }
+        return quote + identifier.replace(quote, quote + quote) + quote;
     }
 }
