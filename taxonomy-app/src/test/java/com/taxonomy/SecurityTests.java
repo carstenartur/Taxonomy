@@ -159,8 +159,8 @@ class SecurityTests {
 
     @Test
     @WithMockUser(roles = "USER")
-    void userCannotPostDsl() throws Exception {
-        mockMvc.perform(post("/api/dsl/parse")
+    void userCannotMaterializeDsl() throws Exception {
+        mockMvc.perform(post("/api/dsl/materialize")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("meta { }"))
                 .andExpect(status().isForbidden());

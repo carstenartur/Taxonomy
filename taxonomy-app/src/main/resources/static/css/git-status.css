@@ -391,3 +391,69 @@ body.dark-mode .restore-preview {
     background: #1e1e30;
     border-color: #333;
 }
+
+/* ── Dynamic score contrast ──────────────────────────────
+ * The renderer supplies a score-dependent translucent green inline colour.
+ * Normalise it to a stable WCAG AA surface; the percentage badge continues to
+ * convey the exact score without relying on colour intensity alone.
+ */
+.tax-node-header[style*="background-color"] {
+    background-color: #d1e7dd !important;
+    color: #0f5132 !important;
+}
+
+.tax-node-header[style*="background-color"] .tax-toggle,
+.tax-node-header[style*="background-color"] .tax-code,
+.tax-node-header[style*="background-color"] .tax-name,
+.tax-node-header[style*="background-color"] .tax-pct {
+    color: inherit !important;
+}
+
+.tax-node-header[style*="background-color"] .tax-node-actions .btn {
+    background-color: #fff !important;
+    border-color: #495057 !important;
+    color: #212529 !important;
+}
+
+.tax-node-header[style*="background-color"] .tax-node-actions .btn:hover,
+.tax-node-header[style*="background-color"] .tax-node-actions .btn:focus-visible {
+    background-color: #212529 !important;
+    border-color: #212529 !important;
+    color: #fff !important;
+}
+
+/* ── Windows High Contrast / Forced Colors ─────────────── */
+@media (forced-colors: active) {
+    .git-status-bar {
+        background: Canvas !important;
+        border-color: CanvasText !important;
+        color: CanvasText !important;
+        forced-color-adjust: auto;
+    }
+
+    .git-status-bar .git-branch,
+    .git-status-bar .git-sha,
+    .git-status-bar .git-indicator,
+    .git-status-bar .git-operation,
+    .git-status-bar .git-sep {
+        color: CanvasText !important;
+    }
+
+    .git-status-bar .git-indicator .dot {
+        background: CanvasText !important;
+        border: 1px solid CanvasText !important;
+    }
+
+    .tax-node-header[style*="background-color"] {
+        background: Canvas !important;
+        border: 1px solid CanvasText !important;
+        color: CanvasText !important;
+        forced-color-adjust: auto;
+    }
+
+    .tax-node-header[style*="background-color"] .tax-node-actions .btn {
+        background: ButtonFace !important;
+        border-color: ButtonText !important;
+        color: ButtonText !important;
+    }
+}
