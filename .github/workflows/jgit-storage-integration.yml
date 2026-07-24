@@ -9,7 +9,9 @@ on:
       - taxonomy-app/src/main/java/com/taxonomy/TaxonomyApplication.java
       - taxonomy-app/src/main/java/com/taxonomy/dsl/storage/**
       - taxonomy-app/src/main/java/com/taxonomy/preferences/**
+      - taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java
       - taxonomy-app/src/test/java/com/taxonomy/dsl/storage/**
+      - taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceManagerGitDeletionTest.java
       - .github/workflows/jgit-storage-integration.yml
   push:
     branches: [ main ]
@@ -19,13 +21,19 @@ on:
       - taxonomy-app/src/main/java/com/taxonomy/TaxonomyApplication.java
       - taxonomy-app/src/main/java/com/taxonomy/dsl/storage/**
       - taxonomy-app/src/main/java/com/taxonomy/preferences/**
+      - taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java
       - taxonomy-app/src/test/java/com/taxonomy/dsl/storage/**
+      - taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceManagerGitDeletionTest.java
       - .github/workflows/jgit-storage-integration.yml
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: read
+
+concurrency:
+  group: jgit-storage-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   storage-integration:
