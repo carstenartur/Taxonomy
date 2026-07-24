@@ -1,5 +1,7 @@
 package com.taxonomy.dsl.storage;
 
+import static com.taxonomy.dsl.storage.DatabaseIdentifierTestSupport.dropTable;
+import static com.taxonomy.dsl.storage.DatabaseIdentifierTestSupport.quoteExistingTable;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -242,7 +244,7 @@ class JgitStorageSchemaMigrationConfigTest {
     void establishesHistoryForExactUnversionedCoreSchema() throws Exception {
         DataSource dataSource = dataSource("unversioned-current");
         flyway(dataSource).migrate();
-        execute(dataSource, "drop table " + CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+        dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
 
         JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
 
@@ -403,13 +405,15 @@ class JgitStorageSchemaMigrationConfigTest {
     private static List<String> successfulVersions(
             DataSource dataSource, String historyTable) throws SQLException {
         List<String> versions = new ArrayList<>();
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(
-                     "select version from " + historyTable
-                             + " where success = true order by installed_rank")) {
-            while (resultSet.next()) {
-                versions.add(resultSet.getString(1));
+        try (Connection connection = dataSource.getConnection()) {
+            String quotedHistoryTable = quoteExistingTable(connection, historyTable);
+            try (Statement statement = connection.createStatement();
+                 ResultSet resultSet = statement.executeQuery(
+                         "select version from " + quotedHistoryTable
+                                 + " where success = true order by installed_rank")) {
+                while (resultSet.next()) {
+                    versions.add(resultSet.getString(1));
+                }
             }
         }
         return versions;
