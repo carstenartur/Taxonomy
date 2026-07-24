@@ -49,7 +49,12 @@ jobs:
         run: bash .github/scripts/download-embedding-model.sh
 
       - name: Build and run tests
-        run: mvn -q install -DexcludedGroups="real-llm"
+        shell: bash
+        run: |
+          mkdir -p target
+          set -o pipefail
+          mvn -q install -DexcludedGroups="real-llm" \
+            2>&1 | tee target/maven-build.log
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
@@ -110,6 +115,18 @@ jobs:
             models/bge-small-en-v1.5/MODEL_PROVENANCE.txt
           if-no-files-found: warn
           retention-days: 90
+
+      - name: Upload raw Maven diagnostics
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: maven-diagnostics
+          path: |
+            target/maven-build.log
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
