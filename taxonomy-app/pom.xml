@@ -123,11 +123,16 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- JGit — Git object storage in-process (DFS-based, database-backed) -->
+        <!-- JGit public API plus the reusable Hibernate-backed DFS storage implementation. -->
         <dependency>
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit</artifactId>
             <version>${jgit.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.carstenartur</groupId>
+            <artifactId>jgit-storage-hibernate-core</artifactId>
+            <version>${jgit-storage-hibernate.version}</version>
         </dependency>
 
         <!-- OpenAPI / Swagger UI (auto-generated interactive API docs) -->
@@ -136,7 +141,6 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
         </dependency>
-
 
         <!-- Version-pinned local browser assets for offline / air-gapped operation. -->
         <dependency>
