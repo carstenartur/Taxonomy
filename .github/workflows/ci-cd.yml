@@ -10,10 +10,12 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 env:
   BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
   REACTOR_COVERAGE_XML: taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   build-and-test:
@@ -22,17 +24,21 @@ jobs:
     permissions:
       contents: read
       checks: write
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - name: Set up Java 21
+      - name: Set up Java 21 and GitHub Packages
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
 
       - name: Test coverage gate itself
         run: python3 .github/scripts/test-check-coverage.py
