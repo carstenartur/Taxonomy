@@ -65,10 +65,11 @@ class JgitStoragePostgresMigrationIT {
                 List.of(CoreSchemaMigrations.CURRENT_SCHEMA_VERSION),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
 
-        assertThrows(
+        SQLException duplicate = assertThrows(
                 SQLException.class,
                 () -> insertLegacyPack(
                         dataSource, "legacy", "pack-a", "reftable", packData));
+        assertEquals("23505", duplicate.getSQLState());
     }
 
     private static DataSource dataSource() {
