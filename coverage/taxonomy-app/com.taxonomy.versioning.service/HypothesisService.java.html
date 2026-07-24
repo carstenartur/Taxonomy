@@ -91,7 +91,7 @@ public class HypothesisService {
 <span class="fc" id="L91">                    .findBySourceNodeIdAndTargetNodeIdAndRelationType(</span>
 <span class="fc" id="L92">                            dto.getSourceCode(), dto.getTargetCode(), relationType);</span>
 <span class="fc" id="L93">            boolean alreadyExists = existing.stream()</span>
-<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                    .anyMatch(h -&gt; effectiveSessionId.equals(h.getAnalysisSessionId())</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                    .anyMatch(h -&gt; effectiveSessionId.equals(h.getAnalysisSessionId())</span>
 <span class="fc bfc" id="L95" title="All 2 branches covered.">                            &amp;&amp; sameWorkspace(h.getWorkspaceId(), effectiveContext.workspaceId()));</span>
 <span class="fc bfc" id="L96" title="All 2 branches covered.">            if (alreadyExists) {</span>
 <span class="fc" id="L97">                continue;</span>

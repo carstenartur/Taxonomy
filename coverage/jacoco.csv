@@ -1,13 +1,13 @@
 GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RelationQualityMetrics,0,30,0,0,0,1,0,1,0,1
-Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RequirementSourceLinkDto,26,47,0,0,8,13,8,13,8,13
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ProjectionState,0,24,0,0,0,1,0,1,0,1
+Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RequirementSourceLinkDto,26,47,0,0,8,13,8,13,8,13
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ContextRef,0,36,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,TaxonomyDiscrepancy,0,12,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RecommendedElement,23,40,0,0,6,14,6,8,6,8
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ElementHistoryAggregation,33,0,2,0,3,0,3,0,2,0
-Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,TaxonomyNodeDto,0,164,0,0,0,46,0,43,0,43
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,DocumentParseResult,5,69,1,1,1,20,2,18,1,18
+Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,TaxonomyNodeDto,0,164,0,0,0,46,0,43,0,43
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ImpactElement,0,45,0,0,0,13,0,13,0,13
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RelationHypothesisDto,8,68,0,0,2,22,2,14,2,14
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RepositoryState,0,51,0,0,0,1,0,1,0,1
@@ -22,14 +22,14 @@ Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ArchitectureReport,
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ChunkingStrategy,0,21,0,0,0,4,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,SuggestedRelation,0,46,0,0,0,15,0,10,0,10
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,TransferSelection.TransferMode,0,21,0,0,0,4,0,1,0,1
-Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ContextComparison.DiffSummary,0,39,0,0,0,2,0,2,0,2
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ApqcHierarchyNode,24,0,0,0,1,0,1,0,1,0
+Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ContextComparison.DiffSummary,0,39,0,0,0,2,0,2,0,2
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RequirementAnchor,15,21,0,0,4,8,4,4,4,4
-Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ViewContext,0,21,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,HierarchicalChunk,0,45,0,0,0,13,0,13,0,13
+Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ViewContext,0,21,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,SemanticChange,0,21,0,0,0,1,0,1,0,1
-Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,PatternDetectionView,4,49,0,0,1,13,1,10,1,10
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ArchiMateImportResult,0,71,0,0,0,21,0,19,0,19
+Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,PatternDetectionView,4,49,0,0,1,13,1,10,1,10
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ImpactRelationship,15,30,0,0,5,8,5,8,5,8
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ProfileInfo,0,18,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,WorkspaceRole,15,0,0,0,3,0,1,0,1,0
@@ -49,9 +49,9 @@ Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RelationSeedRow,0,5
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,GraphNeighborhoodView,4,70,0,0,1,19,1,16,1,16
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,AiExtractedCandidate,0,15,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RegulationArchitectureMatch,0,18,0,0,0,1,0,1,0,1
+Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ContextComparison,0,18,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,MissingRelation,23,33,0,0,6,12,6,6,6,6
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RelationProposalDto,0,94,0,0,0,27,0,27,0,27
-Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ContextComparison,0,18,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,DetectedPattern,44,42,0,0,8,13,8,4,8,4
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ContextMode,0,21,0,0,0,4,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,CoverageStatistics,0,27,0,0,0,1,0,1,0,1
@@ -69,8 +69,8 @@ Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,IncompletePattern,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ExplanationTrace,0,60,0,0,0,16,0,13,0,13
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,GraphSearchResult,19,27,0,0,7,10,5,5,5,5
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,RequirementImpactView,4,63,0,0,1,17,1,14,1,14
-Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,DocumentSection,57,38,0,0,13,12,13,7,13,7
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,WorkspaceInfo,0,81,0,0,0,5,0,3,0,3
+Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,DocumentSection,57,38,0,0,13,12,13,7,13,7
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,SourceArtifactDto,0,89,0,0,0,27,0,24,0,24
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ArchitectureSummary,0,39,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,ArchitectureSummary.SummaryEntry,0,12,0,0,0,1,0,1,0,1
@@ -78,8 +78,8 @@ Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,TransferSelection,0
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,NavigationReason,0,33,0,0,0,6,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,FrameworkImportResult,0,42,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,EnrichedImpactElement,12,52,0,0,4,14,4,13,4,13
-Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,AnalysisRequest,0,43,0,0,0,13,0,10,0,10
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,VersionedSearchResult,33,0,0,0,1,0,1,0,1,0
+Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.dto,AnalysisRequest,0,43,0,0,0,13,0,10,0,10
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.model,HypothesisStatus,0,27,0,0,0,5,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.model,ProposalStatus,0,21,0,0,0,4,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.model,SeedType,0,21,0,0,0,4,0,1,0,1
@@ -87,8 +87,8 @@ Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.model,LinkType,0,39,0,0
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.model,SourceType,0,57,0,0,0,10,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-domain,com.taxonomy.model,RelationType,0,75,0,0,0,13,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-dsl,com.taxonomy.dsl.diff,ModelDiffer,0,425,7,57,0,83,7,39,0,14
-Taxonomy Aggregate Coverage/taxonomy-dsl,com.taxonomy.dsl.diff,ModelDiff.RelationChange,0,9,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-dsl,com.taxonomy.dsl.diff,DiffSummary,0,93,0,2,0,16,0,3,0,2
+Taxonomy Aggregate Coverage/taxonomy-dsl,com.taxonomy.dsl.diff,ModelDiff.RelationChange,0,9,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-dsl,com.taxonomy.dsl.diff,ModelDiff.ElementChange,0,9,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-dsl,com.taxonomy.dsl.diff,SemanticChange,0,61,0,0,0,5,0,5,0,5
 Taxonomy Aggregate Coverage/taxonomy-dsl,com.taxonomy.dsl.diff,ModelDiff,0,73,5,7,0,5,5,4,0,3
@@ -138,11 +138,11 @@ Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export.spi,ExportContex
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export.spi,ExportFormatExtension,0,21,0,0,0,4,0,4,0,4
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,ArchiMateDiagramService,69,677,13,77,7,121,13,63,0,14
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,VisioPackageBuilder,0,280,0,6,0,57,0,14,0,11
-Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,MermaidExportService,66,905,19,88,13,171,16,64,0,24
+Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,MermaidExportService,67,904,21,86,13,171,18,62,0,24
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,ClusteringDiagramSelectionPolicy,4,4,0,0,2,2,1,1,1,1
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,LeafOnlyDiagramSelectionPolicy,4,4,0,0,2,2,1,1,1,1
-Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,DiagramViewMetadata,0,103,1,17,0,21,1,11,0,3
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,ArchiMateXmlExporter,3,502,5,23,1,105,5,18,0,9
+Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,DiagramViewMetadata,0,103,1,17,0,21,1,11,0,3
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,ConfigurableDiagramSelectionPolicy,14,774,14,106,1,129,15,67,1,21
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,VisioDiagramService,1,207,3,11,0,37,3,8,0,4
 Taxonomy Aggregate Coverage/taxonomy-export,com.taxonomy.export,StructurizrExportService,14,328,8,24,2,61,8,14,0,6
@@ -172,8 +172,8 @@ Taxonomy Aggregate Coverage/taxonomy-extension-api,com.taxonomy.shared.extension
 Taxonomy Aggregate Coverage/taxonomy-extension-api,com.taxonomy.shared.extension,TaxonomyExtension,2,12,0,0,1,1,1,1,1,1
 Taxonomy Aggregate Coverage/taxonomy-extension-api,com.taxonomy.shared.extension,ExtensionKind,0,33,0,0,0,6,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-extension-api,com.taxonomy.extension.api.importer,ImportProfileExtension,0,21,0,0,0,5,0,4,0,4
-Taxonomy Aggregate Coverage/taxonomy-extension-api,com.taxonomy.extension.api.importer,ImportProfileDescriptor,0,18,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-extension-api,com.taxonomy.extension.api.importer,ImportInput,0,20,0,0,0,4,0,2,0,2
+Taxonomy Aggregate Coverage/taxonomy-extension-api,com.taxonomy.extension.api.importer,ImportProfileDescriptor,0,18,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.security.model,AppUser,0,67,0,0,0,21,0,17,0,17
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.security.model,AppRole,11,12,0,0,5,6,3,3,3,3
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.dsl.storage.jgit,GitReflogEntity,70,3,0,0,20,2,20,1,20,1
@@ -271,11 +271,11 @@ Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,QwenLlmPr
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LocalOnnxLlmProviderExtension,0,20,0,0,0,4,0,3,0,3
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,MistralLlmProviderExtension,0,18,0,0,0,4,0,3,0,3
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmTimeoutException,0,9,0,0,0,4,0,2,0,2
-Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmRateLimitException,0,9,0,0,0,4,0,2,0,2
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,DeepSeekLlmProviderExtension,0,18,0,0,0,4,0,3,0,3
+Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmRateLimitException,0,9,0,0,0,4,0,2,0,2
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmService.ScoreParseResult,35,12,2,0,5,1,3,1,2,1
-Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,3,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmProviderExtensionRegistry.Registration,0,9,0,0,0,1,0,1,0,1
+Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,3,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,3,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,3,0,0,0,1,0,1,0,1
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.analysis.service,LlmService,463,1975,83,141,94,433,70,79,4,33
@@ -433,7 +433,7 @@ Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,Version
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,VersioningFacade,105,0,0,0,23,0,6,0,6,0
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,GitRepositoryBootstrap,17,65,2,4,7,18,2,4,0,3
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,VersioningFacade.FullContextState,12,0,0,0,1,0,1,0,1,0
-Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,HypothesisService,57,768,23,65,10,168,24,43,1,22
+Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,HypothesisService,57,768,22,66,10,168,23,44,1,22
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,SelectiveTransferService,78,401,21,21,12,90,18,18,3,12
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,ContextCompareService,104,298,5,17,21,63,5,16,0,10
 Taxonomy Aggregate Coverage/taxonomy-app,com.taxonomy.versioning.service,DslOperationsFacade,86,235,3,7,16,48,15,35,12,33

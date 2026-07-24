@@ -5,9 +5,9 @@ Source: taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
 - taxonomy-app: 80.98% (48341/59692 instructions)
 - taxonomy-domain: 87.34% (3745/4288 instructions)
 - taxonomy-dsl: 93.80% (6954/7414 instructions)
-- taxonomy-export: 96.69% (5582/5773 instructions)
+- taxonomy-export: 96.67% (5581/5773 instructions)
 - taxonomy-extension-api: 97.76% (262/268 instructions)
 
-Aggregate: 83.79% (64884/77435 instructions)
+Aggregate: 83.79% (64883/77435 instructions)
 Required:  81.00%
 Result:    PASS
