@@ -44,11 +44,14 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
-      - name: Set up JDK 21
+      - name: Set up JDK 21 and GitHub Packages
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
 
       - name: Cache Maven dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -70,6 +73,7 @@ jobs:
       - name: Build, publish and prepare next development version
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.release_version }}
           NEXT_VERSION_INPUT: ${{ inputs.next_development_version }}
           SKIP_TESTS: ${{ inputs.skip_tests }}

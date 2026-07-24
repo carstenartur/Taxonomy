@@ -1,22 +1,27 @@
 package com.taxonomy;
 
+import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.shared.config.RateLimitFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
-import com.taxonomy.catalog.service.SearchService;
-import com.taxonomy.shared.config.GlobalExceptionHandler;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests for {@link com.taxonomy.shared.config.RateLimitFilter} and
@@ -42,9 +47,18 @@ class ProductionHardeningTests {
     @Autowired
     private RateLimitFilter rateLimitFilter;
 
+    /**
+     * The production filter deliberately prefers the runtime preference over the
+     * static property. Fix the runtime value for this test context so the tests do
+     * not depend on a preferences repository created by another Spring context.
+     */
+    @MockitoBean
+    private PreferencesService preferencesService;
+
     @BeforeEach
     void resetCounters() {
-        // Clear the per-IP counters between tests to avoid cross-test interference
+        when(preferencesService.getInt(eq("rate-limit.per-minute"), anyInt()))
+                .thenReturn(3);
         rateLimitFilter.clearCounters();
     }
 
@@ -113,17 +127,13 @@ class ProductionHardeningTests {
 
     @Test
     void rateLimitWindowCounterResetsAfterMinute() {
-        // Rate limit is 3 in this test context. Exhaust the limit.
-        // Then verify the /api/taxonomy endpoint (not rate-limited) still works to confirm
-        // other endpoints are unaffected regardless of counter state.
+        // Rate limit is fixed to 3 in this test context. The time-window behaviour
+        // itself is covered by the counter implementation tests.
         assertThat(rateLimitFilter).isNotNull();
-        // Verify the filter is properly configured with the test property value
-        // (indirectly verified by the 429 test above passing with limit=3)
     }
 
     @Test
     void rateLimitFilterBeanIsRegistered() {
-        // Verify the filter bean is properly instantiated in the application context
         assertThat(rateLimitFilter).isNotNull();
     }
 

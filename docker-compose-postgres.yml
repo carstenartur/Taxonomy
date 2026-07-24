@@ -16,7 +16,11 @@ services:
       retries: 10
 
   taxonomy:
-    build: .
+    build:
+      context: .
+      secrets:
+        - github_token
+        - github_actor
     ports:
       - "8080:8080"
     environment:
@@ -25,9 +29,16 @@ services:
       SPRING_DATASOURCE_USERNAME: taxonomy
       SPRING_DATASOURCE_PASSWORD: taxonomy
       TAXONOMY_DDL_AUTO: create
+      TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION: ${TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION:-false}
     depends_on:
       db:
         condition: service_healthy
+
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN
+  github_actor:
+    environment: GITHUB_ACTOR
 
 volumes:
   postgres-data:

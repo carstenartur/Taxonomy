@@ -5,6 +5,10 @@
 ##   cp .env.example .env        # edit with your domain and credentials
 ##   docker compose -f docker-compose.prod.yml up -d --build
 ##
+## The source build consumes jgit-storage-hibernate from GitHub Packages. Set
+## GITHUB_ACTOR and a GITHUB_TOKEN with read:packages in .env or the shell.
+## BuildKit mounts both values only for Maven dependency resolution.
+##
 ## Ports exposed to the internet:
 ##   443  — HTTPS (Caddy, automatic Let's Encrypt certificate)
 ##    80  — HTTP → HTTPS redirect + ACME challenge only
@@ -16,7 +20,11 @@
 services:
   # ─── Taxonomy Application ───────────────────────────────────
   taxonomy:
-    build: .
+    build:
+      context: .
+      secrets:
+        - github_token
+        - github_actor
     # Or use the published image instead of building locally. Production image
     # references must be digest-pinned before enabling this alternative.
     environment:
@@ -39,6 +47,8 @@ services:
       # being lost when the application container is replaced directly after a commit.
       - TAXONOMY_DATASOURCE_URL=jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true
       - TAXONOMY_DDL_AUTO=update
+      # One-time only when adopting a backed-up pre-library JGit schema.
+      - TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=${TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION:-false}
       - TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem
       - TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index
       - TAXONOMY_EMBEDDING_ENABLED=${TAXONOMY_EMBEDDING_ENABLED:-true}
@@ -76,6 +86,12 @@ services:
       taxonomy:
         condition: service_healthy
     restart: unless-stopped
+
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN
+  github_actor:
+    environment: GITHUB_ACTOR
 
 volumes:
   taxonomy-data:

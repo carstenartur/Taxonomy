@@ -48,6 +48,20 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-hsqldb</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
             <groupId>org.hsqldb</groupId>
             <artifactId>hsqldb</artifactId>
             <scope>runtime</scope>
@@ -123,11 +137,16 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- JGit — Git object storage in-process (DFS-based, database-backed) -->
+        <!-- JGit public API plus the reusable Hibernate-backed DFS storage implementation. -->
         <dependency>
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit</artifactId>
             <version>${jgit.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.carstenartur</groupId>
+            <artifactId>jgit-storage-hibernate-core</artifactId>
+            <version>${jgit-storage-hibernate.version}</version>
         </dependency>
 
         <!-- OpenAPI / Swagger UI (auto-generated interactive API docs) -->
@@ -136,7 +155,6 @@
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
         </dependency>
-
 
         <!-- Version-pinned local browser assets for offline / air-gapped operation. -->
         <dependency>

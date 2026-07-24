@@ -1,8 +1,9 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.WorkspaceInfo;
-import com.taxonomy.dto.WorkspaceRole;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
@@ -18,32 +19,21 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 
 /**
  * Manages per-user workspace state for multi-user architecture editing.
  *
- * <p>Each authenticated user gets their own {@link UserWorkspaceState} with
- * independent context navigation, projection tracking, and operation state.
- * When a {@link DslGitRepositoryFactory} is available, each workspace gets its
- * own logically separate Git repository (same database, different namespace).
- * Otherwise, workspaces are isolated via branches in a shared repository.
- *
- * <p>The manager maintains an in-memory map of active workspace states (keyed by
- * workspaceId) and persists workspace metadata (branch, timestamps) via
- * {@link UserWorkspaceRepository}. A secondary map tracks the currently active
- * workspace per user.
- *
- * <p>A special "shared" workspace exists for the integration repository concept —
- * the canonical team-wide state that users synchronize with.
+ * <p>Workspace metadata is persisted through {@link UserWorkspaceRepository},
+ * while active navigation state stays in memory. When a
+ * {@link DslGitRepositoryFactory} is available, each workspace uses its own
+ * logical JGit repository name in the shared database.</p>
  */
 @Service
 public class WorkspaceManager {
 
     private static final Logger log = LoggerFactory.getLogger(WorkspaceManager.class);
 
-    /** Default username used when no authentication context is available (e.g. tests). */
+    /** Default username used when no authentication context is available. */
     public static final String DEFAULT_USER = "anonymous";
 
     private final UserWorkspaceRepository workspaceRepository;
@@ -52,17 +42,20 @@ public class WorkspaceManager {
     private final DslGitRepository gitRepository;
     private final DslGitRepositoryFactory repositoryFactory;
 
-    /** Active workspace states keyed by workspaceId. */
-    private final ConcurrentMap<String, UserWorkspaceState> activeWorkspaces = new ConcurrentHashMap<>();
+    /** Active workspace states keyed by workspace ID. */
+    private final ConcurrentMap<String, UserWorkspaceState> activeWorkspaces =
+            new ConcurrentHashMap<>();
 
-    /** Maps username to the currently active workspaceId for that user. */
-    private final ConcurrentMap<String, String> activeWorkspaceByUser = new ConcurrentHashMap<>();
+    /** Maps a username to its currently active workspace ID. */
+    private final ConcurrentMap<String, String> activeWorkspaceByUser =
+            new ConcurrentHashMap<>();
 
     @Autowired
-    public WorkspaceManager(UserWorkspaceRepository workspaceRepository,
-                            @Value("${taxonomy.context.max-history:50}") int maxHistory,
-                            SystemRepositoryService systemRepositoryService,
-                            DslGitRepositoryFactory repositoryFactory) {
+    public WorkspaceManager(
+            UserWorkspaceRepository workspaceRepository,
+            @Value("${taxonomy.context.max-history:50}") int maxHistory,
+            SystemRepositoryService systemRepositoryService,
+            DslGitRepositoryFactory repositoryFactory) {
         this.workspaceRepository = workspaceRepository;
         this.maxHistory = maxHistory;
         this.systemRepositoryService = systemRepositoryService;
@@ -70,13 +63,12 @@ public class WorkspaceManager {
         this.repositoryFactory = repositoryFactory;
     }
 
-    /**
-     * Legacy constructor for backward compatibility (used in tests).
-     */
-    public WorkspaceManager(UserWorkspaceRepository workspaceRepository,
-                            int maxHistory,
-                            SystemRepositoryService systemRepositoryService,
-                            DslGitRepository gitRepository) {
+    /** Legacy constructor retained for unit tests using one caller-supplied repository. */
+    public WorkspaceManager(
+            UserWorkspaceRepository workspaceRepository,
+            int maxHistory,
+            SystemRepositoryService systemRepositoryService,
+            DslGitRepository gitRepository) {
         this.workspaceRepository = workspaceRepository;
         this.maxHistory = maxHistory;
         this.systemRepositoryService = systemRepositoryService;
@@ -84,68 +76,47 @@ public class WorkspaceManager {
         this.repositoryFactory = null;
     }
 
-    /**
-     * Get or create the workspace state for a user's default workspace.
-     *
-     * <p>If no in-memory state exists, a new one is created and a persistent
-     * workspace record is ensured in the database.
-     *
-     * @param username the authenticated user's username
-     * @return the user's workspace state (never null)
-     */
+    /** Return or create the user's default workspace state. */
     public UserWorkspaceState getOrCreateWorkspace(String username) {
         if (username == null || username.isBlank()) {
             username = DEFAULT_USER;
         }
         String user = username;
 
-        // Check if the user already has an active workspace
-        String activeWsId = activeWorkspaceByUser.get(user);
-        if (activeWsId != null) {
-            UserWorkspaceState existing = activeWorkspaces.get(activeWsId);
+        String activeWorkspaceId = activeWorkspaceByUser.get(user);
+        if (activeWorkspaceId != null) {
+            UserWorkspaceState existing = activeWorkspaces.get(activeWorkspaceId);
             if (existing != null) {
                 return existing;
             }
         }
 
-        // Ensure a persistent workspace exists and activate it
         ensurePersistentWorkspace(user);
 
-        // Find the default (or first) non-archived workspace for this user
-        UserWorkspace ws = safeOptional(workspaceRepository.findByUsernameAndIsDefaultTrue(user));
-        if (ws != null && ws.isArchived()) {
-            ws = null;
+        UserWorkspace workspace = safeOptional(
+                workspaceRepository.findByUsernameAndIsDefaultTrue(user));
+        if (workspace != null && workspace.isArchived()) {
+            workspace = null;
         }
-        if (ws == null) {
-            ws = safeOptional(workspaceRepository.findByUsernameAndSharedFalse(user));
-            if (ws != null && ws.isArchived()) {
-                ws = null;
+        if (workspace == null) {
+            workspace = safeOptional(workspaceRepository.findByUsernameAndSharedFalse(user));
+            if (workspace != null && workspace.isArchived()) {
+                workspace = null;
             }
         }
 
-        String workspaceId;
-        if (ws != null) {
-            workspaceId = ws.getWorkspaceId();
-        } else {
-            workspaceId = user + "-workspace";
-        }
-
-        String wsId = workspaceId;
-        UserWorkspaceState state = activeWorkspaces.computeIfAbsent(wsId, id -> {
+        String workspaceId = workspace != null
+                ? workspace.getWorkspaceId()
+                : user + "-workspace";
+        UserWorkspaceState state = activeWorkspaces.computeIfAbsent(workspaceId, id -> {
             log.info("Creating workspace state for user '{}', workspaceId='{}'", user, id);
             return new UserWorkspaceState(user, maxHistory);
         });
-        activeWorkspaceByUser.put(user, wsId);
+        activeWorkspaceByUser.put(user, workspaceId);
         return state;
     }
 
-    /**
-     * Get or create the workspace state for a specific workspace.
-     *
-     * @param username    the authenticated user's username
-     * @param workspaceId the workspace ID to load
-     * @return the workspace state (never null)
-     */
+    /** Return or create state for one explicitly selected workspace. */
     public UserWorkspaceState getOrCreateWorkspace(String username, String workspaceId) {
         if (username == null || username.isBlank()) {
             username = DEFAULT_USER;
@@ -159,482 +130,425 @@ public class WorkspaceManager {
         return state;
     }
 
-    /**
-     * Get the workspace state for a user, or null if not active.
-     *
-     * @param username the user's username
-     * @return the workspace state, or null if the user has no active workspace
-     */
+    /** Return the active in-memory workspace state for a user, or {@code null}. */
     public UserWorkspaceState getWorkspace(String username) {
         String user = username != null ? username : DEFAULT_USER;
-        String activeWsId = activeWorkspaceByUser.get(user);
-        if (activeWsId != null) {
-            return activeWorkspaces.get(activeWsId);
-        }
-        return null;
+        String activeWorkspaceId = activeWorkspaceByUser.get(user);
+        return activeWorkspaceId != null ? activeWorkspaces.get(activeWorkspaceId) : null;
     }
 
-    /**
-     * List all active workspaces as {@link WorkspaceInfo} DTOs.
-     *
-     * @return list of active workspace summaries
-     */
+    /** Return summaries of all currently active workspaces. */
     public List<WorkspaceInfo> listActiveWorkspaces() {
         return activeWorkspaces.values().stream()
                 .map(this::toWorkspaceInfo)
                 .toList();
     }
 
-    /**
-     * Get workspace info for a specific user.
-     *
-     * @param username the user's username
-     * @return workspace info, or null if not found
-     */
+    /** Return the current workspace summary for a user. */
     public WorkspaceInfo getWorkspaceInfo(String username) {
-        UserWorkspaceState state = getOrCreateWorkspace(username);
-        return toWorkspaceInfo(state);
+        return toWorkspaceInfo(getOrCreateWorkspace(username));
     }
 
-    /**
-     * Remove a user's workspace state from the in-memory cache.
-     *
-     * <p>This does not delete the persistent workspace record; the user's
-     * workspace will be recreated on next access. Useful for cleanup on logout.
-     *
-     * @param username the user's username
-     */
+    /** Remove only a user's in-memory workspace state. */
     public void evictWorkspace(String username) {
-        String activeWsId = activeWorkspaceByUser.remove(username);
-        if (activeWsId != null) {
-            UserWorkspaceState removed = activeWorkspaces.remove(activeWsId);
-            if (removed != null) {
-                log.info("Evicted workspace state for user '{}', workspaceId='{}'", username, activeWsId);
-            }
+        String activeWorkspaceId = activeWorkspaceByUser.remove(username);
+        if (activeWorkspaceId == null) {
+            return;
+        }
+        UserWorkspaceState removed = activeWorkspaces.remove(activeWorkspaceId);
+        if (removed != null) {
+            log.info("Evicted workspace state for user '{}', workspaceId='{}'",
+                    username, activeWorkspaceId);
         }
     }
 
-    /**
-     * Get the number of active workspaces.
-     *
-     * @return count of active user workspaces
-     */
+    /** Return the number of active in-memory workspaces. */
     public int getActiveWorkspaceCount() {
         return activeWorkspaces.size();
     }
 
-    /**
-     * Find the persistent workspace entity for a user (active workspace first).
-     *
-     * @param username the user's username
-     * @return the workspace entity, or null if not found
-     */
+    /** Find a user's persistent workspace, preferring the active one. */
     public UserWorkspace findUserWorkspace(String username) {
         try {
-            // Try active workspace first
             UserWorkspace active = findActiveWorkspace(username);
             if (active != null) {
                 return active;
             }
             return workspaceRepository.findByUsernameAndSharedFalse(username).orElse(null);
-        } catch (Exception e) {
-            log.debug("Could not find workspace for '{}': {}", username, e.getMessage());
+        } catch (Exception exception) {
+            log.debug("Could not find workspace for '{}': {}",
+                    username, exception.getMessage());
             return null;
         }
     }
 
-    // ── Multi-Workspace Management ──────────────────────────────────
+    // ── Multi-workspace management ─────────────────────────────────
 
-    /**
-     * Create a new workspace for the given user.
-     *
-     * @param username    the owner
-     * @param displayName the human-readable name
-     * @param description optional description
-     * @return the newly created workspace entity
-     */
-    public UserWorkspace createWorkspace(String username, String displayName, String description) {
-        UserWorkspace ws = new UserWorkspace();
-        ws.setWorkspaceId(UUID.randomUUID().toString());
-        ws.setUsername(username);
-        ws.setDisplayName(displayName);
-        ws.setDescription(description);
-        ws.setCurrentBranch("draft");
-        ws.setBaseBranch("draft");
-        ws.setShared(false);
-        ws.setArchived(false);
-        ws.setDefault(false);
-        ws.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
-        ws.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
-        ws.setCreatedAt(Instant.now());
-        ws.setLastAccessedAt(Instant.now());
-        workspaceRepository.save(ws);
+    /** Create a new, initially unprovisioned workspace. */
+    public UserWorkspace createWorkspace(
+            String username,
+            String displayName,
+            String description) {
+        UserWorkspace workspace = new UserWorkspace();
+        workspace.setWorkspaceId(UUID.randomUUID().toString());
+        workspace.setUsername(username);
+        workspace.setDisplayName(displayName);
+        workspace.setDescription(description);
+        workspace.setCurrentBranch("draft");
+        workspace.setBaseBranch("draft");
+        workspace.setShared(false);
+        workspace.setArchived(false);
+        workspace.setDefault(false);
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        workspace.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
+        workspace.setCreatedAt(Instant.now());
+        workspace.setLastAccessedAt(Instant.now());
+        workspaceRepository.save(workspace);
         log.info("Created new workspace '{}' for user '{}'", displayName, username);
-        return ws;
+        return workspace;
     }
 
-    /**
-     * Switch the user's active workspace to the given workspace.
-     *
-     * @param username    the user
-     * @param workspaceId the workspace to switch to
-     * @return the workspace entity that was switched to
-     */
+    /** Switch the user's active workspace. */
     public UserWorkspace switchWorkspace(String username, String workspaceId) {
-        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Workspace not found: " + workspaceId));
 
-        if (!ws.getUsername().equals(username)) {
-            throw new IllegalArgumentException("Cannot switch to workspace owned by another user");
+        if (!workspace.getUsername().equals(username)) {
+            throw new IllegalArgumentException(
+                    "Cannot switch to workspace owned by another user");
         }
-        if (ws.isArchived()) {
+        if (workspace.isArchived()) {
             throw new IllegalArgumentException("Cannot switch to an archived workspace");
         }
-        if (ws.isShared()) {
+        if (workspace.isShared()) {
             throw new IllegalArgumentException("Cannot switch to the shared workspace");
         }
 
-        // Evict old active workspace from memory
-        String oldWsId = activeWorkspaceByUser.get(username);
-        if (oldWsId != null) {
-            activeWorkspaces.remove(oldWsId);
+        String oldWorkspaceId = activeWorkspaceByUser.get(username);
+        if (oldWorkspaceId != null) {
+            activeWorkspaces.remove(oldWorkspaceId);
         }
 
-        // Activate new workspace
         activeWorkspaceByUser.put(username, workspaceId);
-        activeWorkspaces.computeIfAbsent(workspaceId, id ->
-                new UserWorkspaceState(username, maxHistory));
+        activeWorkspaces.computeIfAbsent(
+                workspaceId,
+                id -> new UserWorkspaceState(username, maxHistory));
 
-        ws.setLastAccessedAt(Instant.now());
-        workspaceRepository.save(ws);
+        workspace.setLastAccessedAt(Instant.now());
+        workspaceRepository.save(workspace);
         log.info("User '{}' switched to workspace '{}'", username, workspaceId);
-        return ws;
+        return workspace;
     }
 
-    /**
-     * Rename a workspace.
-     *
-     * @param username    the user requesting the rename
-     * @param workspaceId the workspace to rename
-     * @param newName     the new display name
-     * @return the updated workspace entity
-     */
-    public UserWorkspace renameWorkspace(String username, String workspaceId, String newName) {
-        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+    /** Rename a workspace owned by the requesting user. */
+    public UserWorkspace renameWorkspace(
+            String username,
+            String workspaceId,
+            String newName) {
+        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Workspace not found: " + workspaceId));
 
-        if (!ws.getUsername().equals(username)) {
-            throw new IllegalArgumentException("User '" + username + "' does not own workspace: " + workspaceId);
+        if (!workspace.getUsername().equals(username)) {
+            throw new IllegalArgumentException(
+                    "User '" + username + "' does not own workspace: " + workspaceId);
         }
-        if (ws.isArchived()) {
-            throw new IllegalStateException("Archived workspace cannot be renamed: " + workspaceId);
+        if (workspace.isArchived()) {
+            throw new IllegalStateException(
+                    "Archived workspace cannot be renamed: " + workspaceId);
         }
-        if (ws.isShared()) {
-            throw new IllegalStateException("Shared workspace cannot be renamed: " + workspaceId);
+        if (workspace.isShared()) {
+            throw new IllegalStateException(
+                    "Shared workspace cannot be renamed: " + workspaceId);
         }
 
-        ws.setDisplayName(newName);
-        workspaceRepository.save(ws);
-        log.info("User '{}' renamed workspace '{}' to '{}'", username, workspaceId, newName);
-        return ws;
+        workspace.setDisplayName(newName);
+        workspaceRepository.save(workspace);
+        log.info("User '{}' renamed workspace '{}' to '{}'",
+                username, workspaceId, newName);
+        return workspace;
     }
 
-    /**
-     * Archive a workspace (soft-delete).
-     *
-     * @param username    the requesting user (must be the owner)
-     * @param workspaceId the workspace to archive
-     * @return the archived workspace entity
-     */
+    /** Archive a non-default workspace without removing its Git history. */
     public UserWorkspace archiveWorkspace(String workspaceId, String username) {
-        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Workspace not found: " + workspaceId));
 
-        if (!ws.getUsername().equals(username)) {
-            throw new IllegalArgumentException("Cannot archive workspace owned by another user");
+        if (!workspace.getUsername().equals(username)) {
+            throw new IllegalArgumentException(
+                    "Cannot archive workspace owned by another user");
         }
-        if (ws.isShared()) {
+        if (workspace.isShared()) {
             throw new IllegalArgumentException("Cannot archive the shared workspace");
         }
-        if (ws.isDefault()) {
+        if (workspace.isDefault()) {
             throw new IllegalArgumentException("Cannot archive the default workspace");
         }
 
-        ws.setArchived(true);
-        workspaceRepository.save(ws);
-
-        // Remove from active state if loaded
+        workspace.setArchived(true);
+        workspaceRepository.save(workspace);
         activeWorkspaces.remove(workspaceId);
-        activeWorkspaceByUser.entrySet().removeIf(entry -> entry.getValue().equals(workspaceId));
+        activeWorkspaceByUser.entrySet()
+                .removeIf(entry -> entry.getValue().equals(workspaceId));
         log.info("Archived workspace '{}' for user '{}'", workspaceId, username);
-        return ws;
+        return workspace;
     }
 
     /**
-     * Hard-delete a workspace (only own, non-shared).
+     * Permanently delete a workspace and its isolated logical Git repository.
      *
-     * @param workspaceId the workspace to delete
-     * @param username    the requesting user (must be the owner)
+     * <p>Storage deletion happens before metadata deletion. If the storage library
+     * rejects or cannot complete deletion, the workspace row remains available for
+     * diagnosis and retry rather than becoming an orphaned Git namespace.</p>
      */
     public void deleteWorkspace(String workspaceId, String username) {
-        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Workspace not found: " + workspaceId));
 
-        if (!ws.getUsername().equals(username)) {
-            throw new IllegalArgumentException("Cannot delete workspace owned by another user");
+        if (!workspace.getUsername().equals(username)) {
+            throw new IllegalArgumentException(
+                    "Cannot delete workspace owned by another user");
         }
-        if (ws.isShared()) {
+        if (workspace.isShared()) {
             throw new IllegalArgumentException("Cannot delete the shared workspace");
         }
-        if (ws.isDefault()) {
+        if (workspace.isDefault()) {
             throw new IllegalArgumentException("Cannot delete the default workspace");
         }
 
-        // Remove from active state
         activeWorkspaces.remove(workspaceId);
-        activeWorkspaceByUser.entrySet().removeIf(entry -> entry.getValue().equals(workspaceId));
+        activeWorkspaceByUser.entrySet()
+                .removeIf(entry -> entry.getValue().equals(workspaceId));
 
-        workspaceRepository.delete(ws);
-        log.info("Deleted workspace '{}' for user '{}'", workspaceId, username);
-    }
-
-    /**
-     * List all non-archived workspaces for a user.
-     *
-     * @param username the user
-     * @return list of non-archived workspaces ordered by last accessed
-     */
-    public List<UserWorkspace> listUserWorkspaces(String username) {
-        return workspaceRepository.findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(username);
-    }
-
-    /**
-     * Find the currently active workspace for a user from the in-memory map.
-     *
-     * @param username the user
-     * @return the active workspace entity, or null if none is active
-     */
-    public UserWorkspace findActiveWorkspace(String username) {
-        String activeWsId = activeWorkspaceByUser.get(username);
-        if (activeWsId != null) {
-            try {
-                return workspaceRepository.findByWorkspaceId(activeWsId).orElse(null);
-            } catch (Exception e) {
-                log.debug("Could not find active workspace '{}' for '{}': {}",
-                        activeWsId, username, e.getMessage());
-            }
+        if (repositoryFactory != null) {
+            repositoryFactory.deleteWorkspaceRepository(workspaceId);
         }
-        return null;
+        workspaceRepository.delete(workspace);
+        log.info("Deleted workspace '{}' and its logical Git repository for user '{}'",
+                workspaceId, username);
     }
 
-    /**
-     * Get a workspace by its ID.
-     *
-     * @param workspaceId the workspace ID
-     * @return the workspace entity, or null if not found
-     */
-    public UserWorkspace getWorkspaceById(String workspaceId) {
+    /** Return all non-archived workspaces for a user. */
+    public List<UserWorkspace> listUserWorkspaces(String username) {
+        return workspaceRepository
+                .findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(username);
+    }
+
+    /** Find the persistent entity for the user's active workspace. */
+    public UserWorkspace findActiveWorkspace(String username) {
+        String activeWorkspaceId = activeWorkspaceByUser.get(username);
+        if (activeWorkspaceId == null) {
+            return null;
+        }
         try {
-            return workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);
-        } catch (Exception e) {
-            log.debug("Could not find workspace '{}': {}", workspaceId, e.getMessage());
+            return workspaceRepository.findByWorkspaceId(activeWorkspaceId).orElse(null);
+        } catch (Exception exception) {
+            log.debug("Could not find active workspace '{}' for '{}': {}",
+                    activeWorkspaceId, username, exception.getMessage());
             return null;
         }
     }
 
-    /**
-     * Update the description of a workspace.
-     *
-     * @param username    the user requesting the update
-     * @param workspaceId the workspace to update
-     * @param description the new description
-     * @return the updated workspace entity
-     */
-    public UserWorkspace updateDescription(String username, String workspaceId, String description) {
-        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
-
-        if (!ws.getUsername().equals(username)) {
-            throw new IllegalArgumentException("User '" + username + "' does not own workspace: " + workspaceId);
+    /** Return a workspace by ID, or {@code null} when it cannot be read. */
+    public UserWorkspace getWorkspaceById(String workspaceId) {
+        try {
+            return workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);
+        } catch (Exception exception) {
+            log.debug("Could not find workspace '{}': {}",
+                    workspaceId, exception.getMessage());
+            return null;
         }
-        if (ws.isArchived()) {
-            throw new IllegalStateException("Archived workspace cannot be updated: " + workspaceId);
+    }
+
+    /** Update the description of a non-archived workspace. */
+    public UserWorkspace updateDescription(
+            String username,
+            String workspaceId,
+            String description) {
+        UserWorkspace workspace = workspaceRepository.findByWorkspaceId(workspaceId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Workspace not found: " + workspaceId));
+
+        if (!workspace.getUsername().equals(username)) {
+            throw new IllegalArgumentException(
+                    "User '" + username + "' does not own workspace: " + workspaceId);
+        }
+        if (workspace.isArchived()) {
+            throw new IllegalStateException(
+                    "Archived workspace cannot be updated: " + workspaceId);
         }
 
-        ws.setDescription(description);
-        workspaceRepository.save(ws);
+        workspace.setDescription(description);
+        workspaceRepository.save(workspace);
         log.info("User '{}' updated description for workspace '{}'", username, workspaceId);
-        return ws;
+        return workspace;
     }
 
     // ── Provisioning ───────────────────────────────────────────────
 
-    /**
-     * Provision a user's workspace repository by creating a personal Git branch.
-     *
-     * <p>This method implements lazy provisioning: workspace metadata is created
-     * eagerly on first access, but the actual Git branch is only created when
-     * explicitly requested (e.g. when the user first needs write access).
-     *
-     * <p>If the workspace is already provisioned ({@code READY}), this method
-     * is a no-op and returns the existing workspace.
-     *
-     * @param username the authenticated user's username
-     * @return the provisioned workspace entity
-     * @throws RuntimeException if provisioning fails
-     */
+    /** Lazily provision the active workspace repository. */
     public UserWorkspace provisionWorkspaceRepository(String username) {
-        // Try to find workspace by active workspaceId first, fall back to username lookup
-        UserWorkspace ws = null;
-        String activeWsId = activeWorkspaceByUser.get(username);
-        if (activeWsId != null) {
-            ws = workspaceRepository.findByWorkspaceId(activeWsId).orElse(null);
+        UserWorkspace workspace = null;
+        String activeWorkspaceId = activeWorkspaceByUser.get(username);
+        if (activeWorkspaceId != null) {
+            workspace = workspaceRepository.findByWorkspaceId(activeWorkspaceId).orElse(null);
         }
-        if (ws == null) {
-            ws = workspaceRepository.findByUsernameAndSharedFalse(username)
-                    .orElseThrow(() -> new IllegalStateException("No workspace metadata for " + username));
-        }
-
-        if (ws.getProvisioningStatus() == WorkspaceProvisioningStatus.READY) {
-            return ws;
+        if (workspace == null) {
+            workspace = workspaceRepository.findByUsernameAndSharedFalse(username)
+                    .orElseThrow(() ->
+                            new IllegalStateException("No workspace metadata for " + username));
         }
 
-        ws.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
-        workspaceRepository.save(ws);
+        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.READY) {
+            return workspace;
+        }
+
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
+        workspaceRepository.save(workspace);
 
         try {
-            var sysRepo = systemRepositoryService.getPrimaryRepository();
-            String baseBranch = sysRepo.getDefaultBranch();
+            var systemRepository = systemRepositoryService.getPrimaryRepository();
+            String baseBranch = systemRepository.getDefaultBranch();
 
             if (repositoryFactory != null) {
-                // Per-workspace repository isolation: each workspace gets its own repo
-                DslGitRepository wsRepo = repositoryFactory.getWorkspaceRepository(ws.getWorkspaceId());
-                DslGitRepository sysGitRepo = repositoryFactory.getSystemRepository();
+                DslGitRepository workspaceGit =
+                        repositoryFactory.getWorkspaceRepository(workspace.getWorkspaceId());
+                DslGitRepository systemGit = repositoryFactory.getSystemRepository();
 
-                String sysDsl = sysGitRepo.getDslAtHead(baseBranch);
-                if (sysDsl != null) {
-                    wsRepo.commitDsl("main", sysDsl, username, "Fork from shared/" + baseBranch);
+                String systemDsl = systemGit.getDslAtHead(baseBranch);
+                if (systemDsl != null) {
+                    workspaceGit.commitDsl(
+                            "main",
+                            systemDsl,
+                            username,
+                            "Fork from shared/" + baseBranch);
                 }
 
-                ws.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
-                ws.setSourceRepositoryId(sysRepo.getRepositoryId());
-                ws.setTopologyMode(sysRepo.getTopologyMode());
-                ws.setBaseBranch(baseBranch);
-                ws.setBaseCommit(sysGitRepo.getHeadCommit(baseBranch));
-                ws.setCurrentBranch("main");
-                ws.setCurrentCommit(wsRepo.getHeadCommit("main"));
-                ws.setSyncTargetBranch(baseBranch);
-                ws.setProvisionedAt(Instant.now());
-                ws.setProvisioningError(null);
-                workspaceRepository.save(ws);
+                workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+                workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
+                workspace.setTopologyMode(systemRepository.getTopologyMode());
+                workspace.setBaseBranch(baseBranch);
+                workspace.setBaseCommit(systemGit.getHeadCommit(baseBranch));
+                workspace.setCurrentBranch("main");
+                workspace.setCurrentCommit(workspaceGit.getHeadCommit("main"));
+                workspace.setSyncTargetBranch(baseBranch);
+                workspace.setProvisionedAt(Instant.now());
+                workspace.setProvisioningError(null);
+                workspaceRepository.save(workspace);
 
                 log.info("Provisioned workspace for user '{}': repo='ws-{}', base='{}'",
-                        username, ws.getWorkspaceId(), baseBranch);
+                        username, workspace.getWorkspaceId(), baseBranch);
             } else {
-                // Legacy branch-based isolation: all workspaces share one repo
-                String userBranch = username + "/workspace/" + ws.getWorkspaceId();
-
+                String userBranch = username + "/workspace/" + workspace.getWorkspaceId();
                 String baseCommit = gitRepository.getHeadCommit(baseBranch);
                 if (baseCommit != null) {
                     gitRepository.createBranch(userBranch, baseBranch);
                 }
 
-                ws.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
-                ws.setSourceRepositoryId(sysRepo.getRepositoryId());
-                ws.setTopologyMode(sysRepo.getTopologyMode());
-                ws.setBaseBranch(baseBranch);
-                ws.setBaseCommit(baseCommit);
-                ws.setCurrentBranch(userBranch);
-                ws.setCurrentCommit(baseCommit);
-                ws.setSyncTargetBranch(baseBranch);
-                ws.setProvisionedAt(Instant.now());
-                ws.setProvisioningError(null);
-                workspaceRepository.save(ws);
+                workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+                workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
+                workspace.setTopologyMode(systemRepository.getTopologyMode());
+                workspace.setBaseBranch(baseBranch);
+                workspace.setBaseCommit(baseCommit);
+                workspace.setCurrentBranch(userBranch);
+                workspace.setCurrentCommit(baseCommit);
+                workspace.setSyncTargetBranch(baseBranch);
+                workspace.setProvisionedAt(Instant.now());
+                workspace.setProvisioningError(null);
+                workspaceRepository.save(workspace);
 
                 log.info("Provisioned workspace for user '{}': branch='{}', base='{}'",
                         username, userBranch, baseBranch);
             }
-            return ws;
-        } catch (Exception e) {
-            ws.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
-            ws.setProvisioningError(e.getMessage());
-            workspaceRepository.save(ws);
-            throw new RuntimeException("Could not provision workspace for " + username, e);
+            return workspace;
+        } catch (Exception exception) {
+            workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
+            workspace.setProvisioningError(exception.getMessage());
+            workspaceRepository.save(workspace);
+            throw new RuntimeException(
+                    "Could not provision workspace for " + username,
+                    exception);
         }
     }
 
-    // ── Internal ────────────────────────────────────────────────────
+    // ── Internal helpers ───────────────────────────────────────────
 
     private void ensurePersistentWorkspace(String username) {
         try {
             if (!workspaceRepository.existsByUsername(username)) {
-                UserWorkspace ws = new UserWorkspace();
-                ws.setWorkspaceId(UUID.randomUUID().toString());
-                ws.setUsername(username);
-                ws.setDisplayName(username + "'s workspace");
-                ws.setCurrentBranch("draft");
-                ws.setBaseBranch("draft");
-                ws.setShared(false);
-                ws.setDefault(true);
-                ws.setArchived(false);
-                ws.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
-                ws.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
-                ws.setCreatedAt(Instant.now());
-                ws.setLastAccessedAt(Instant.now());
-                workspaceRepository.save(ws);
+                UserWorkspace workspace = new UserWorkspace();
+                workspace.setWorkspaceId(UUID.randomUUID().toString());
+                workspace.setUsername(username);
+                workspace.setDisplayName(username + "'s workspace");
+                workspace.setCurrentBranch("draft");
+                workspace.setBaseBranch("draft");
+                workspace.setShared(false);
+                workspace.setDefault(true);
+                workspace.setArchived(false);
+                workspace.setProvisioningStatus(
+                        WorkspaceProvisioningStatus.NOT_PROVISIONED);
+                workspace.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
+                workspace.setCreatedAt(Instant.now());
+                workspace.setLastAccessedAt(Instant.now());
+                workspaceRepository.save(workspace);
                 log.debug("Created persistent workspace for user '{}'", username);
             } else {
                 workspaceRepository.findByUsernameAndSharedFalse(username)
-                        .ifPresent(ws -> {
-                            ws.setLastAccessedAt(Instant.now());
-                            workspaceRepository.save(ws);
+                        .ifPresent(workspace -> {
+                            workspace.setLastAccessedAt(Instant.now());
+                            workspaceRepository.save(workspace);
                         });
             }
-        } catch (Exception e) {
-            // Non-fatal: workspace state works in-memory even if persistence fails
-            log.warn("Could not persist workspace for user '{}': {}", username, e.getMessage());
+        } catch (Exception exception) {
+            log.warn("Could not persist workspace for user '{}': {}",
+                    username, exception.getMessage());
         }
     }
 
     private WorkspaceInfo toWorkspaceInfo(UserWorkspaceState state) {
-        ContextRef ctx = state.getCurrentContext();
+        ContextRef context = state.getCurrentContext();
         String provisioningStatus = "READY";
         String topologyMode = "INTERNAL_SHARED";
         String sourceRepositoryId = null;
-        String wsId = state.getUsername() + "-workspace";
+        String workspaceId = state.getUsername() + "-workspace";
         String displayName = state.getUsername() + "'s workspace";
         String description = null;
         boolean archived = false;
-        boolean isDefault = false;
+        boolean defaultWorkspace = false;
 
         try {
-            UserWorkspace ws = findActiveWorkspace(state.getUsername());
-            if (ws == null) {
-                ws = workspaceRepository.findByUsernameAndSharedFalse(state.getUsername())
+            UserWorkspace workspace = findActiveWorkspace(state.getUsername());
+            if (workspace == null) {
+                workspace = workspaceRepository
+                        .findByUsernameAndSharedFalse(state.getUsername())
                         .orElse(null);
             }
-            if (ws != null) {
-                provisioningStatus = ws.getProvisioningStatus().name();
-                topologyMode = ws.getTopologyMode().name();
-                sourceRepositoryId = ws.getSourceRepositoryId();
-                wsId = ws.getWorkspaceId();
-                displayName = ws.getDisplayName();
-                description = ws.getDescription();
-                archived = ws.isArchived();
-                isDefault = ws.isDefault();
+            if (workspace != null) {
+                provisioningStatus = workspace.getProvisioningStatus().name();
+                topologyMode = workspace.getTopologyMode().name();
+                sourceRepositoryId = workspace.getSourceRepositoryId();
+                workspaceId = workspace.getWorkspaceId();
+                displayName = workspace.getDisplayName();
+                description = workspace.getDescription();
+                archived = workspace.isArchived();
+                defaultWorkspace = workspace.isDefault();
             }
-        } catch (Exception e) {
-            log.debug("Could not read provisioning info for '{}': {}", state.getUsername(), e.getMessage());
+        } catch (Exception exception) {
+            log.debug("Could not read provisioning info for '{}': {}",
+                    state.getUsername(), exception.getMessage());
         }
 
         return new WorkspaceInfo(
-                wsId,
+                workspaceId,
                 state.getUsername(),
                 displayName,
-                ctx != null ? ctx.branch() : "draft",
+                context != null ? context.branch() : "draft",
                 "draft",
                 false,
-                ctx,
+                context,
                 Instant.now(),
                 Instant.now(),
                 provisioningStatus,
@@ -642,14 +556,11 @@ public class WorkspaceManager {
                 sourceRepositoryId,
                 description,
                 archived,
-                isDefault
-        );
+                defaultWorkspace);
     }
 
-    /**
-     * Safely unwrap an Optional that may itself be null (e.g. from an unstubbed mock).
-     */
-    private static <T> T safeOptional(java.util.Optional<T> opt) {
-        return opt != null ? opt.orElse(null) : null;
+    /** Safely unwrap an Optional that may itself be null from an unstubbed mock. */
+    private static <T> T safeOptional(java.util.Optional<T> optional) {
+        return optional != null ? optional.orElse(null) : null;
     }
 }

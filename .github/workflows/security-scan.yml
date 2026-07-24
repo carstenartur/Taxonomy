@@ -16,7 +16,11 @@ on:
 
 permissions:
   contents: read
+  packages: read
   security-events: write
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   trivy:
@@ -31,12 +35,15 @@ jobs:
       - name: Enforce immutable supply-chain references
         run: python3 .github/scripts/check-supply-chain-pins.py
 
-      - name: Set up Java 21
+      - name: Set up Java 21 and GitHub Packages
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
 
       - name: Build application for packaged dependency inspection
         id: package

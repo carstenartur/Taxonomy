@@ -99,6 +99,9 @@ jobs:
             BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             VCS_REF=${{ github.event.workflow_run.head_sha }}
             VERSION=${{ steps.meta.outputs.version }}
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
+            github_actor=${{ github.actor }}
 
   deploy-render:
     name: Deploy to Render

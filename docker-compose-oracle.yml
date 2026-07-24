@@ -15,7 +15,11 @@ services:
       retries: 20
 
   taxonomy:
-    build: .
+    build:
+      context: .
+      secrets:
+        - github_token
+        - github_actor
     ports:
       - "8080:8080"
     environment:
@@ -27,6 +31,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN
+  github_actor:
+    environment: GITHUB_ACTOR
 
 volumes:
   oracle-data:

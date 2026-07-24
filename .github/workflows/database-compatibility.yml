@@ -7,7 +7,7 @@ on:
       - 'pom.xml'
       - 'taxonomy-app/pom.xml'
       - 'taxonomy-app/src/main/resources/application-*.properties'
-      - 'taxonomy-app/src/test/java/com/taxonomy/*Postgres*IT.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/**/*Postgres*IT.java'
       - 'taxonomy-app/src/test/java/com/taxonomy/*Mssql*IT.java'
       - 'taxonomy-app/src/test/java/com/taxonomy/*Oracle*IT.java'
       - '.github/workflows/database-compatibility.yml'
@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: database-compatibility-${{ github.workflow }}-${{ github.ref }}-${{ inputs.database || 'pull-request' }}
@@ -31,6 +32,7 @@ concurrency:
 
 env:
   BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   select-matrix:
@@ -49,7 +51,11 @@ jobs:
           import os
 
           tests = {
-              'postgres': ['DiagnosticsPostgresContainerIT', 'SeleniumPostgresContainerIT'],
+              'postgres': [
+                  'JgitStoragePostgresMigrationIT',
+                  'DiagnosticsPostgresContainerIT',
+                  'SeleniumPostgresContainerIT',
+              ],
               'mssql': ['DiagnosticsMssqlContainerIT', 'SeleniumMssqlContainerIT'],
               'oracle': ['DiagnosticsOracleContainerIT', 'SeleniumOracleContainerIT'],
           }
@@ -77,12 +83,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Java 21
+      - name: Set up Java 21 and GitHub Packages
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: temurin
           cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
 
       - name: Download and verify pinned embedding model
         env:
