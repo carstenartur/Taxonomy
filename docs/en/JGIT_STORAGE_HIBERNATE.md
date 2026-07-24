@@ -11,7 +11,7 @@ Taxonomy stores Architecture DSL and preferences histories in relational databas
 | Logical repository names and workspace routing | Reftable ref persistence |
 | Preferences JSON and branch convention | Queryable reflog persistence |
 | Authorization, audit, REST and UI contracts | Transactional logical-repository deletion |
-| Application projections and Hibernate Search indexes | Core entities and versioned Core migrations |
+| Application projections and Hibernate Search indexes | Core entities and versioned Core/adoption migrations |
 
 Taxonomy consumes only public types from `io.github.carstenartur.jgit.storage.hibernate` and public JGit APIs. Application code must not import the library's `repository`, `objects` or `refs` implementation packages.
 
@@ -20,7 +20,7 @@ Taxonomy consumes only public types from `io.github.carstenartur.jgit.storage.hi
 The pinned version is declared in the root POM:
 
 ```xml
-<jgit-storage-hibernate.version>0.1.8</jgit-storage-hibernate.version>
+<jgit-storage-hibernate.version>0.1.9</jgit-storage-hibernate.version>
 ```
 
 The application module depends on:
@@ -33,7 +33,7 @@ The application module depends on:
 </dependency>
 ```
 
-Version 0.1.8 is currently published through GitHub Packages. Maven credentials must use the same server ID as the repository entry in `pom.xml`:
+Version 0.1.9 is currently published through GitHub Packages. Maven credentials must use the same server ID as the repository entry in `pom.xml`:
 
 ```xml
 <settings>
@@ -48,6 +48,8 @@ Version 0.1.8 is currently published through GitHub Packages. Maven credentials 
 ```
 
 The token needs `read:packages`. Never commit a token to the repository. GitHub Actions jobs use their scoped `GITHUB_TOKEN` and require `packages: read` permission.
+
+This is a temporary distribution constraint, not the desired consumer contract. [`jgit-storage-hibernate` issue #62](https://github.com/carstenartur/jgit-storage-hibernate/issues/62) tracks publication to Maven Central. Until a released artifact resolves anonymously from Maven Central, a clean Taxonomy checkout without GitHub credentials cannot be considered equivalent to the GitHub build, and the integration pull request remains a draft.
 
 ## Spring-managed persistence context
 
@@ -98,7 +100,7 @@ Spring Boot's Flyway integration owns the two Core tables on supported Taxonomy 
 - `git_packs`
 - `git_reflog`
 
-`application-hsqldb.properties` and `application-postgres.properties` enable Flyway and select the released database-specific migration stream. The default, SQL Server and Oracle configurations leave this Core migration integration disabled.
+`application-hsqldb.properties` and `application-postgres.properties` enable Flyway and select the released database-specific migration stream. SQL Server and Oracle configurations leave this Core migration integration disabled because the library does not publish matching Core migrations for those databases.
 
 `JgitStorageHibernateSchemaFilterProvider` excludes the two Core tables from Hibernate create, update, truncate and drop operations. The entities remain included in Hibernate schema validation. This prevents `ddl-auto=create` or `ddl-auto=update` from racing with or improvising the Core migration while the rest of Taxonomy's application schema can continue to use its existing Hibernate lifecycle.
 
@@ -108,11 +110,14 @@ Flyway completes before the Spring-managed persistence unit is initialized. Star
 |---|---|
 | Empty database | Run the released fresh Core migrations |
 | Shared schema with unrelated tables but no Core tables | Establish baseline `0`, then run the released migrations |
-| Exact unversioned current Core tables | Run the read-only safety check, establish the normal history at `0.1.4`, then run pending migrations |
-| Managed Core history and exact current shape | Run pending migrations and revalidate the physical contract |
-| Exact pre-library Taxonomy shape | Fail unless the one-time legacy-adoption flag is enabled |
-| One missing Core table, unknown columns or unsupported lengths | Fail before automatic repair |
+| Exact unversioned current Core tables | Run the read-only safety check, establish normal history at `0.1.4`, then run pending migrations |
+| Managed Core history and exact current shape | Run pending Core migrations and revalidate the physical contract |
+| Exact pre-library Taxonomy shape | Fail unless the one-time legacy-adoption flag is enabled; then run released adoption V1 and V2 |
+| Database adopted with 0.1.8 and still using lengths 255/255 | Fail unless the one-time flag is enabled; then run released adoption V2 |
+| One missing Core table, unknown columns, unsupported lengths or missing required indexes | Fail before automatic repair |
 | Adoption history without normal Core history | Fail and require restore or documented recovery |
+
+Taxonomy contains no database-specific `ALTER TABLE` statements for the library-owned columns. It performs classification, preflight and post-migration validation; all physical adoption changes come from the immutable migration resources packaged in `jgit-storage-hibernate-core:0.1.9`.
 
 ## Supported database paths
 
@@ -126,43 +131,37 @@ Flyway completes before the Spring-managed persistence unit is initialized. Star
 
 Taxonomy still supports SQL Server and Oracle for its application entities. Persistent Core storage on those databases must not be described as migration-supported until the library publishes dialect-specific migrations and matching integration coverage.
 
-## Fresh installation
-
-No application code copies classpath migration locations. `JgitStorageSchemaMigrationConfig` uses the public constants from `CoreSchemaMigrations` and configures the Boot-managed Flyway instance for HSQLDB or PostgreSQL.
-
-A fresh HSQLDB or PostgreSQL startup creates the dedicated Core history and applies the released `0.1.4` and `0.1.5` migrations before Hibernate initializes. When the same schema already contains unrelated Taxonomy tables, the orchestrator first records the documented pre-migration baseline `0`; it never baselines an unknown partial Core schema.
-
-The long-term operating model for a fully provisioned persistent deployment remains Flyway plus global Hibernate validation. Until the broader Taxonomy application schema is migrated to Flyway, the schema filter provides the narrower safe boundary: Flyway owns Core DDL and Hibernate manages the remaining application tables.
-
 ## Adopting an existing Taxonomy database
 
-The copied pre-library tables differ from the released Core contract in more than the committed-state columns and unique pack identity:
+The copied pre-library tables differ from the released Core contract in committed-state columns, indexes and physical lengths:
 
 - `git_packs.pack_extension` was implicitly `VARCHAR(255)`; Core requires `VARCHAR(32)`;
 - `git_reflog.ref_name` was implicitly `VARCHAR(255)`; Core requires capacity for 1024 characters.
 
-The application therefore refuses legacy adoption by default. Use this runbook:
+Use this runbook:
 
 1. Stop every writer and take a restorable backup.
-2. Record repository counts and ordered checksums of all `git_packs.data` BLOBs.
-3. Start once with `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true` only after the backup and verification evidence exist.
-4. The read-only preflight rejects partial schemas, incomplete rows, duplicate `(repository_name, pack_name, pack_extension)` identities and any `pack_extension` value longer than 32 characters.
-5. Only after every preflight succeeds, the exact legacy length 255 is narrowed to 32 for `pack_extension`, and `ref_name` is widened from 255 to 1024. Unknown lengths are rejected.
-6. The released legacy-adoption migration adds committed state, backfills `committed_at`, creates the unique identity and records its separate history. The normal Core history is then established at the current version.
-7. After successful startup, remove the legacy-adoption flag immediately.
-8. Reopen at least two logical repositories, traverse refs and commits, verify BLOB checksums and inspect normal queryable reflogs before enabling writers.
+2. Record repository counts, ordered checksums of all `git_packs.data` BLOBs and the existing reflog rows.
+3. Start once with `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true` only after the backup and evidence exist.
+4. The released read-only preflight rejects partial schemas, incomplete rows, duplicate `(repository_name, pack_name, pack_extension)` identities and any `pack_extension` value longer than 32 characters.
+5. The released adoption stream runs every pending migration in order. V1 adds committed state, backfills `committed_at`, creates the unique pack identity and committed-state index. V2 narrows `pack_extension` from 255 to 32 and widens `ref_name` from 255 to 1024.
+6. Taxonomy establishes or validates the normal Core history and checks columns, lengths and required indexes after migration.
+7. Remove the legacy-adoption flag immediately after successful startup.
+8. Reopen at least two logical repositories, traverse refs and commits, compare BLOB checksums and reflog rows, and inspect normal queryable reflogs before enabling writers.
 
-Do not use Hibernate `ddl-auto=update` as a substitute for this data migration. Taxonomy never chooses a duplicate row automatically.
+A database already adopted with version 0.1.8 has successful adoption version `1` but may still have both columns at length 255. Apply the same backup and one-time opt-in procedure. Taxonomy then invokes the released adoption stream without deleting or re-baselining either history table; version `2` must be recorded before startup continues.
 
-The missing column-length normalization in library version 0.1.8 is tracked upstream as [`jgit-storage-hibernate` issue #78](https://github.com/carstenartur/jgit-storage-hibernate/issues/78). Taxonomy's consumer bridge is deliberately fail-closed and can be removed after a released upstream migration covers already-adopted and not-yet-adopted databases.
+Do not use Hibernate `ddl-auto=update`, manual ad-hoc DDL, Flyway `repair`, or deletion of migration history as substitutes for this procedure. Taxonomy never chooses a duplicate row or truncates an oversized value automatically. Upstream issue #78 is resolved by release 0.1.9.
 
 ## Verification
 
 `JgitStorageHibernateIntegrationTest` verifies in the Spring-managed HSQLDB persistence unit that all public Core entities are registered, commits and refs survive close/reopen, normal commits produce queryable reflogs, logical repository names remain isolated, and scoped deletion cannot affect another repository.
 
-`JgitStorageSchemaMigrationConfigTest` covers fresh and shared HSQLDB schemas, exact unversioned history establishment, explicit legacy opt-in, physical column normalization, BLOB and reflog preservation, duplicate rejection, oversized extension rejection and partial-schema refusal.
+`JgitStorageSchemaMigrationConfigTest` covers fresh and shared HSQLDB schemas, exact unversioned history establishment, released adoption V1/V2, the explicit upgrade path from an existing 0.1.8 adoption, BLOB/reflog preservation, duplicate and oversized-value refusal, partial schemas and idempotence.
 
-`JgitStoragePostgresMigrationIT` repeats the real pre-library adoption against PostgreSQL and is an explicit job in the database-compatibility matrix.
+`JgitStoragePostgresMigrationIT` repeats the real pre-library adoption against PostgreSQL, asserts adoption history versions `0`, `1` and `2`, and is an explicit job in the database-compatibility matrix.
+
+All of these tests are ordinary Maven/JUnit/Failsafe tests. GitHub Actions may select or parallelize Maven invocations, but it must not own a different test implementation or pass/fail rule.
 
 The full project gate remains:
 
