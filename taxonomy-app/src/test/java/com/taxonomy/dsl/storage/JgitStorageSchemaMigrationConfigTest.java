@@ -27,6 +27,7 @@ import java.util.UUID;
 import javax.sql.DataSource;
 
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.hsqldb.jdbc.JDBCDataSource;
 import org.junit.jupiter.api.Test;
 
@@ -82,7 +83,8 @@ class JgitStorageSchemaMigrationConfigTest {
     }
 
     @Test
-    void adoptsActualTaxonomySchemaWithoutRewritingPackOrReflogData() throws Exception {
+    void adoptsActualTaxonomySchemaThroughReleasedV1AndV2WithoutRewritingData()
+            throws Exception {
         DataSource dataSource = dataSource("legacy-adoption");
         installLegacySchema(dataSource);
         byte[] original = new byte[] {9, 8, 7, 6};
@@ -113,7 +115,7 @@ class JgitStorageSchemaMigrationConfigTest {
             }
         }
         assertEquals(
-                List.of("0", "1"),
+                List.of("0", "1", "2"),
                 successfulVersions(
                         dataSource,
                         CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE));
@@ -124,6 +126,47 @@ class JgitStorageSchemaMigrationConfigTest {
         assertThrows(
                 SQLException.class,
                 () -> insertLegacyPack(dataSource, "legacy", "pack-a", "reftable", original));
+    }
+
+    @Test
+    void upgradesAnExisting018AdoptionOnlyAfterExplicitOperatorOptIn() throws Exception {
+        DataSource dataSource = dataSource("adoption-v1");
+        installLegacySchema(dataSource);
+        byte[] original = new byte[] {4, 5, 6, 7};
+        String refName = "refs/heads/" + "v".repeat(200);
+        insertLegacyPack(dataSource, "legacy", "pack-v1", "reftable", original);
+        insertLegacyReflog(dataSource, refName);
+        installVersion018AdoptionState(dataSource);
+
+        assertEquals(
+                List.of("0", "1"),
+                successfulVersions(
+                        dataSource,
+                        CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE));
+        assertEquals(255, columnSize(dataSource, "git_packs", "pack_extension"));
+        assertEquals(255, columnSize(dataSource, "git_reflog", "ref_name"));
+
+        IllegalStateException refusal = assertThrows(
+                IllegalStateException.class,
+                () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(
+                        flyway(dataSource), false));
+        assertTrue(refusal.getMessage().contains("adoption migration V2"));
+        assertArrayEquals(original, packData(dataSource, "legacy", "pack-v1", "reftable"));
+        assertEquals(refName, reflogRefName(dataSource));
+
+        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), true);
+
+        assertEquals(
+                List.of("0", "1", "2"),
+                successfulVersions(
+                        dataSource,
+                        CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE));
+        assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
+        assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
+        assertArrayEquals(original, packData(dataSource, "legacy", "pack-v1", "reftable"));
+        assertEquals(refName, reflogRefName(dataSource));
+
+        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
     }
 
     @Test
@@ -223,6 +266,29 @@ class JgitStorageSchemaMigrationConfigTest {
                 .locations(CoreSchemaMigrations.HSQLDB_LOCATION)
                 .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE)
                 .load();
+    }
+
+    private static void installVersion018AdoptionState(DataSource dataSource) {
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations(CoreSchemaMigrations.HSQLDB_LEGACY_ADOPTION_LOCATION)
+                .table(CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE)
+                .baselineOnMigrate(true)
+                .baselineVersion(CoreSchemaMigrations.PRE_MIGRATION_BASELINE_VERSION)
+                .baselineDescription("before pre-library core adoption")
+                .target(MigrationVersion.fromVersion("1"))
+                .load()
+                .migrate();
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations(CoreSchemaMigrations.HSQLDB_LOCATION)
+                .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE)
+                .baselineOnMigrate(true)
+                .baselineVersion(CoreSchemaMigrations.CURRENT_SCHEMA_VERSION)
+                .baselineDescription("adopted pre-library core schema")
+                .load()
+                .migrate();
     }
 
     private static void installLegacySchema(DataSource dataSource) throws SQLException {
