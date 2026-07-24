@@ -5,7 +5,7 @@
 ## verifying the full Git workflow across two Taxonomy instances sharing
 ## a Gitea remote repository.
 ##
-## Usage:
+## Usage (requires GITHUB_ACTOR and GITHUB_TOKEN with read:packages):
 ##   docker compose -f docker-compose.integration-test.yml up \
 ##     --build --abort-on-container-exit --exit-code-from integration-tests
 ##
@@ -56,7 +56,11 @@ services:
 
   # ─── Taxonomy Instance A (Alice's Team) ──────────────────────
   taxonomy-a:
-    build: .
+    build:
+      context: .
+      secrets:
+        - github_token
+        - github_actor
     environment:
       TAXONOMY_ADMIN_PASSWORD: test
       TAXONOMY_TOPOLOGY_MODE: EXTERNAL_CANONICAL
@@ -75,7 +79,11 @@ services:
 
   # ─── Taxonomy Instance B (Bob's Team) ────────────────────────
   taxonomy-b:
-    build: .
+    build:
+      context: .
+      secrets:
+        - github_token
+        - github_actor
     environment:
       TAXONOMY_ADMIN_PASSWORD: test
       TAXONOMY_TOPOLOGY_MODE: EXTERNAL_CANONICAL
@@ -91,3 +99,9 @@ services:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
       interval: 5s
       retries: 30
+
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN
+  github_actor:
+    environment: GITHUB_ACTOR
