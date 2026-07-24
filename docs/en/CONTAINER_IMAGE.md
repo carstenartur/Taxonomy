@@ -206,7 +206,7 @@ TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true \
 
 After successful startup, verify refs, commit traversal, reflogs and BLOB checksums, then set the variable back to `false`. Duplicate pack identities, partial schemas, oversized pack-extension values and other unsafe shapes are rejected before the adoption DDL runs.
 
-`jgit-storage-hibernate-core` 0.1.8 publishes Flyway migrations for HSQLDB and PostgreSQL. SQL Server and Oracle remain on Taxonomy's Hibernate schema-management path until matching upstream migrations and real-database tests are released.
+`jgit-storage-hibernate-core` 0.1.9 publishes Flyway migrations for HSQLDB and PostgreSQL. SQL Server and Oracle remain on Taxonomy's Hibernate schema-management path until matching upstream migrations and real-database tests are released.
 
 ## 8. Building locally
 
