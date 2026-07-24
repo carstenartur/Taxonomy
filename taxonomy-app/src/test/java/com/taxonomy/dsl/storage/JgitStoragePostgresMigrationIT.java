@@ -41,7 +41,8 @@ class JgitStoragePostgresMigrationIT {
             .withPassword("taxonomy");
 
     @Test
-    void adoptsActualTaxonomySchemaWithoutRewritingPackOrReflogData() throws Exception {
+    void adoptsActualTaxonomySchemaThroughReleasedV1AndV2WithoutRewritingData()
+            throws Exception {
         DataSource dataSource = dataSource();
         installLegacySchema(dataSource);
         byte[] packData = new byte[] {9, 8, 7, 6, 5};
@@ -57,7 +58,7 @@ class JgitStoragePostgresMigrationIT {
         assertEquals(refName, storedRefName(dataSource));
         assertCommitted(dataSource);
         assertEquals(
-                List.of("0", "1"),
+                List.of("0", "1", "2"),
                 successfulVersions(
                         dataSource,
                         CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE));
