@@ -7,7 +7,7 @@ on:
       - 'pom.xml'
       - 'taxonomy-app/pom.xml'
       - 'taxonomy-app/src/main/resources/application-*.properties'
-      - 'taxonomy-app/src/test/java/com/taxonomy/*Postgres*IT.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/**/*Postgres*IT.java'
       - 'taxonomy-app/src/test/java/com/taxonomy/*Mssql*IT.java'
       - 'taxonomy-app/src/test/java/com/taxonomy/*Oracle*IT.java'
       - '.github/workflows/database-compatibility.yml'
@@ -51,7 +51,11 @@ jobs:
           import os
 
           tests = {
-              'postgres': ['DiagnosticsPostgresContainerIT', 'SeleniumPostgresContainerIT'],
+              'postgres': [
+                  'JgitStoragePostgresMigrationIT',
+                  'DiagnosticsPostgresContainerIT',
+                  'SeleniumPostgresContainerIT',
+              ],
               'mssql': ['DiagnosticsMssqlContainerIT', 'SeleniumMssqlContainerIT'],
               'oracle': ['DiagnosticsOracleContainerIT', 'SeleniumOracleContainerIT'],
           }
