@@ -84,7 +84,7 @@ public class DslGitRepository implements AutoCloseable {
         this.databaseBacked = true;
         this.closeRepository = false;
         log.info("Initialised database-backed DslGitRepository ({})",
-                gitRepo.getDescription().getRepositoryName());
+                gitRepo.getClass().getSimpleName());
     }
 
     /** Create an owned, volatile in-memory repository for unit tests. */
