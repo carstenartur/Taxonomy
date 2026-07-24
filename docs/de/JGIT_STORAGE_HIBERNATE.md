@@ -11,7 +11,7 @@ Taxonomy speichert die Historien der Architecture DSL und der Einstellungen übe
 | Logische Repository-Namen und Workspace-Routing | Reftable-basierte Ref-Persistenz |
 | Preferences-JSON und Branch-Konvention | Abfragbare Reflog-Persistenz |
 | Autorisierung, Audit, REST- und UI-Verträge | Transaktionales Löschen logischer Repositorys |
-| Anwendungsprojektionen und Hibernate-Search-Indizes | Core-Entities und Schema-Migrationen |
+| Anwendungsprojektionen und Hibernate-Search-Indizes | Core-Entities und versionierte Core-Migrationen |
 
 Taxonomy verwendet nur öffentliche Typen aus `io.github.carstenartur.jgit.storage.hibernate` sowie öffentliche JGit-APIs. Anwendungscode darf keine Implementierungspakete `repository`, `objects` oder `refs` der Bibliothek importieren.
 
@@ -51,7 +51,7 @@ Das Token benötigt `read:packages`. Tokens dürfen niemals in das Repository ei
 
 ## Von Spring verwalteter Persistence Context
 
-Die Core-Entities der Bibliothek liegen außerhalb von `com.taxonomy`. Deshalb nimmt die Anwendung das Paket `io.github.carstenartur.jgit.storage.hibernate.entity` ausdrücklich in `@EntityScan` auf. Der Integrationstest vergleicht das resultierende JPA-Metamodell mit `CoreEntities.annotatedClasses()`, damit eine spätere neue Bibliotheks-Entity nicht unbemerkt fehlt.
+Die Core-Entities der Bibliothek liegen außerhalb von `com.taxonomy`. Deshalb nimmt die Anwendung `io.github.carstenartur.jgit.storage.hibernate.entity` ausdrücklich in `@EntityScan` auf. Der Integrationstest vergleicht das resultierende JPA-Metamodell mit `CoreEntities.annotatedClasses()`, damit eine spätere neue Bibliotheks-Entity nicht unbemerkt fehlt.
 
 Spring bleibt Eigentümer von `EntityManagerFactory` und nativer Hibernate-`SessionFactory`:
 
@@ -79,16 +79,11 @@ Die physischen Tabellen werden gemeinsam verwendet, jede Abfrage ist jedoch auf 
 
 `DslGitRepositoryFactory` hält geöffnete Handles in einem Cache. Ein Cache-Evict schließt das Handle, lässt die Datenbankzeilen aber absichtlich bestehen. Beim endgültigen Löschen eines Workspaces wird zuerst das Handle geschlossen und danach `HibernateRepositoryFactory.deleteRepository(...)` aufgerufen. Dabei werden ausschließlich Zeilen des angeforderten logischen Namens entfernt.
 
-Ein erneut geöffnetes persistentes Workspace-Repository wird nicht noch einmal mit einem zusätzlichen Initial-Commit befüllt, wenn es bereits Refs besitzt.
+Ein erneut geöffnetes persistentes Repository wird nicht noch einmal mit einem Initial-Commit befüllt, wenn es bereits Refs besitzt.
 
 ## Ref-Updates und Reflogs
 
-Alle Ref-Änderungen in Taxonomy setzen:
-
-- die erwartete alte Objekt-ID;
-- die neue Objekt-ID;
-- den Akteur mit `setRefLogIdent(...)`;
-- eine operationsspezifische Nachricht mit `setRefLogMessage(...)`.
+Alle Ref-Änderungen in Taxonomy setzen die erwartete alte Objekt-ID, die neue Objekt-ID, den Akteur mit `setRefLogIdent(...)` und eine operationsspezifische Nachricht mit `setRefLogMessage(...)`.
 
 Jedes `RefUpdate.Result` wird geprüft. Abgelehnte, gesperrte oder auf fehlende Objekte verweisende Ergebnisse lassen die Operation fehlschlagen, statt als Erfolg protokolliert zu werden. Die Bibliothek schreibt Reftable-Update und abfragbare `git_reflog`-Zeile in derselben Repository-bezogenen Transaktion. Reflogs werden über die normale öffentliche API gelesen:
 
@@ -96,68 +91,81 @@ Jedes `RefUpdate.Result` wird geprüft. Abgelehnte, gesperrte oder auf fehlende 
 repository.getReflogReader("refs/heads/draft").getLastEntry();
 ```
 
-## Unterstützte Schema-Pfade
+## Schema-Eigentum und Startreihenfolge
 
-Die veröffentlichte Bibliothek stellt folgende Core-Migrationspfade bereit und testet sie:
+Die Flyway-Integration von Spring Boot verantwortet in den unterstützten Taxonomy-Profilen die beiden Core-Tabellen:
 
-| Datenbank | Frisches Schema | Übernahme der alten Taxonomy-Struktur |
+- `git_packs`
+- `git_reflog`
+
+`application-hsqldb.properties` und `application-postgres.properties` aktivieren Flyway und wählen den veröffentlichten datenbankspezifischen Migrationsstrom. Die Standard-, SQL-Server- und Oracle-Konfigurationen lassen diese Core-Migrationsintegration deaktiviert.
+
+`JgitStorageHibernateSchemaFilterProvider` schließt die beiden Core-Tabellen aus Erstellen, Aktualisieren, Leeren und Löschen durch Hibernate aus. In der Hibernate-Schemavalidierung bleiben die Entities vollständig enthalten. Dadurch können `ddl-auto=create` und `ddl-auto=update` weder mit Flyway konkurrieren noch die Core-Migration improvisieren, während das übrige Taxonomy-Anwendungsschema seinen bisherigen Hibernate-Lebenszyklus zunächst beibehält.
+
+Flyway wird abgeschlossen, bevor der von Spring verwaltete Persistence Context initialisiert wird. Der Start klassifiziert die Datenbank vor Auswahl des Pfads:
+
+| Vorhandener Zustand | Startaktion |
+|---|---|
+| Leere Datenbank | Veröffentlichte frische Core-Migrationen ausführen |
+| Gemeinsames Schema mit anderen Tabellen, aber ohne Core-Tabellen | Baseline `0` etablieren, danach die veröffentlichten Migrationen ausführen |
+| Exakte unversionierte aktuelle Core-Tabellen | Schreibgeschützte Sicherheitsprüfung, normale Historie bei `0.1.4` etablieren, ausstehende Migrationen ausführen |
+| Verwaltete Core-Historie und exakte aktuelle Struktur | Ausstehende Migrationen ausführen und physischen Vertrag erneut prüfen |
+| Exakte alte Taxonomy-Struktur | Ohne einmalige Legacy-Freigabe fehlschlagen |
+| Eine fehlende Core-Tabelle, unbekannte Spalten oder nicht unterstützte Längen | Vor automatischer Reparatur fehlschlagen |
+| Adoptionshistorie ohne normale Core-Historie | Fehlschlagen und Wiederherstellung oder dokumentierte Reparatur verlangen |
+
+## Unterstützte Datenbankpfade
+
+| Datenbank | Frisches Core-Schema in Taxonomy | Übernahme eines vorhandenen Taxonomy-Core-Schemas |
 |---|---:|---:|
-| HSQLDB | ja | ja |
-| PostgreSQL | ja | ja |
-| H2 | ja | 0.1.4-Baseline-Pfad |
-| Microsoft SQL Server | noch nicht bereitgestellt | noch nicht bereitgestellt |
-| Oracle | noch nicht bereitgestellt | noch nicht bereitgestellt |
+| HSQLDB | ja | ja, direkt getestet |
+| PostgreSQL | ja | ja, direkt mit Testcontainers getestet |
+| H2 | Bibliotheksmigration vorhanden; kein Taxonomy-Profil | kein Anwendungspfad |
+| Microsoft SQL Server | keine veröffentlichte Core-Migration | nein |
+| Oracle | keine veröffentlichte Core-Migration | nein |
 
-Taxonomy unterstützt SQL Server und Oracle weiterhin für seine Anwendungs-Entities. Persistenter Core-Storage auf diesen Datenbanken darf jedoch erst als migrationsunterstützt bezeichnet werden, wenn die Bibliothek dialektspezifische Migrationen und echte Integrationstests veröffentlicht.
+Taxonomy unterstützt SQL Server und Oracle weiterhin für seine Anwendungs-Entities. Persistenter Core-Storage auf diesen Datenbanken darf jedoch erst als migrationsunterstützt bezeichnet werden, wenn die Bibliothek dialektspezifische Migrationen und passende Integrationstests veröffentlicht.
 
 ## Neuinstallation
 
-Verwende die öffentlichen Konstanten aus `CoreSchemaMigrations`; Klassenpfade dürfen nicht in Anwendungscode kopiert werden. Für ein leeres HSQLDB-Schema:
+Anwendungscode kopiert keine Klassenpfade für Migrationen. `JgitStorageSchemaMigrationConfig` verwendet die öffentlichen Konstanten aus `CoreSchemaMigrations` und konfiguriert die von Boot verwaltete Flyway-Instanz für HSQLDB oder PostgreSQL.
 
-```java
-Flyway.configure()
-    .dataSource(dataSource)
-    .locations(CoreSchemaMigrations.HSQLDB_LOCATION)
-    .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE)
-    .load()
-    .migrate();
-```
+Ein frischer HSQLDB- oder PostgreSQL-Start erstellt die eigene Core-Historie und führt die veröffentlichten Migrationen `0.1.4` und `0.1.5` aus, bevor Hibernate initialisiert wird. Enthält dasselbe Schema bereits andere Taxonomy-Tabellen, zeichnet die Orchestrierung zunächst die dokumentierte Vor-Migrations-Baseline `0` auf; ein unbekanntes partielles Core-Schema wird niemals gebaselined.
 
-Für PostgreSQL wird `POSTGRESQL_LOCATION` verwendet. Enthält ein gemeinsames Schema bereits andere Anwendungstabellen, aber noch keine Core-Tabellen, ist einmalig das in der Bibliothek dokumentierte Baseline-0-Verfahren zu verwenden.
-
-Flyway muss abgeschlossen sein, bevor Hibernate den Persistence Context validiert. Für persistente Installationen ist Migration plus `hibernate.hbm2ddl.auto=validate` das Zielmodell. Auch das übrige Taxonomy-Anwendungsschema muss bereitgestellt sein, bevor die globale Hibernate-Einstellung auf `validate` umgestellt wird.
+Das langfristige Betriebsmodell für vollständig provisionierte persistente Installationen bleibt Flyway plus globale Hibernate-Validierung. Bis auch das übrige Taxonomy-Anwendungsschema über Flyway verwaltet wird, bildet der Schema-Filter die engere sichere Grenze: Flyway besitzt die Core-DDL, Hibernate verwaltet die übrigen Anwendungstabellen.
 
 ## Übernahme einer bestehenden Taxonomy-Datenbank
 
-Die kopierte alte Tabelle `git_packs` enthält weder die Commit-Statusspalten noch die eindeutige logische Pack-Identität. `ddl-auto=update` darf diese Datenmigration nicht improvisieren.
+Die kopierten alten Tabellen unterscheiden sich nicht nur durch fehlende Commit-Statusspalten und die fehlende eindeutige Pack-Identität vom veröffentlichten Core-Vertrag:
 
-Befolge den veröffentlichten [Taxonomy-Adoptionsleitfaden](https://github.com/carstenartur/jgit-storage-hibernate/blob/v0.1.8/docs/taxonomy-adoption.md) exakt:
+- `git_packs.pack_extension` war implizit `VARCHAR(255)`; Core verlangt `VARCHAR(32)`;
+- `git_reflog.ref_name` war implizit `VARCHAR(255)`; Core verlangt Platz für 1024 Zeichen.
+
+Die Anwendung verweigert eine Legacy-Übernahme deshalb standardmäßig. Verwende diesen Ablauf:
 
 1. Alle schreibenden Instanzen stoppen und eine wiederherstellbare Sicherung erstellen.
 2. Repository-Anzahlen und geordnete Prüfsummen aller `git_packs.data`-BLOBs erfassen.
-3. Vor jeder DDL-Anweisung `LegacyCoreSchemaAdoption.requireSafeToAdopt(connection)` ausführen.
-4. Den eigenen HSQLDB- oder PostgreSQL-Legacy-Adoptionspfad mit separater Flyway-Historientabelle und Baseline-Version `0` ausführen.
-5. Anschließend die normale Core-Historie bei `CoreSchemaMigrations.CURRENT_SCHEMA_VERSION` etablieren.
-6. Hibernate mit Schema-Validierung starten.
-7. Mindestens zwei logische Repositorys erneut öffnen und Refs sowie Commits traversieren.
-8. BLOB-Prüfsummen und normale abfragbare Reflogs prüfen, bevor Schreibzugriffe wieder erlaubt werden.
+3. Erst nach vorhandener Sicherung und Prüfevidenz einmalig mit `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true` starten.
+4. Der schreibgeschützte Vorabtest weist partielle Schemata, unvollständige Zeilen, doppelte Identitäten aus `(repository_name, pack_name, pack_extension)` und jeden `pack_extension`-Wert mit mehr als 32 Zeichen zurück.
+5. Erst nach allen erfolgreichen Vorabtests wird die exakte alte Länge 255 bei `pack_extension` auf 32 verkleinert und `ref_name` von 255 auf 1024 erweitert. Unbekannte Längen werden zurückgewiesen.
+6. Die veröffentlichte Legacy-Adoptionsmigration ergänzt den Commit-Zustand, füllt `committed_at`, erzeugt die eindeutige Identität und schreibt ihre separate Historie. Anschließend wird die normale Core-Historie bei der aktuellen Version etabliert.
+7. Nach erfolgreichem Start die Legacy-Freigabe sofort wieder entfernen.
+8. Mindestens zwei logische Repositorys erneut öffnen, Refs und Commits traversieren, BLOB-Prüfsummen vergleichen und normale abfragbare Reflogs prüfen, bevor Schreibzugriffe wieder erlaubt werden.
 
-Der Vorabtest weist partielle Schemata, unvollständige Zeilen und doppelte Identitäten aus `(repository_name, pack_name, pack_extension)` zurück. Duplikate müssen anhand von Anwendungswissen aufgelöst oder aus einer verlässlichen Sicherung wiederhergestellt werden; weder Taxonomy noch die Bibliothek wählen automatisch eine Zeile aus.
+Hibernate `ddl-auto=update` darf diese Datenmigration nicht ersetzen. Taxonomy wählt niemals automatisch eine von mehreren doppelten Zeilen aus.
+
+Die in Bibliotheksversion 0.1.8 fehlende Normalisierung der Spaltenlängen wird als [`jgit-storage-hibernate` Issue #78](https://github.com/carstenartur/jgit-storage-hibernate/issues/78) verfolgt. Die Taxonomy-seitige Übergangsbrücke arbeitet absichtlich fail-closed und kann entfernt werden, sobald eine veröffentlichte Upstream-Migration bereits übernommene und noch nicht übernommene Datenbanken abdeckt.
 
 ## Verifikation
 
-`JgitStorageHibernateIntegrationTest` prüft im von Spring verwalteten HSQLDB-Persistence-Context:
+`JgitStorageHibernateIntegrationTest` prüft im von Spring verwalteten HSQLDB-Persistence-Context die Registrierung aller öffentlichen Core-Entities, Persistenz von Commits und Refs über Schließen und erneutes Öffnen, abfragbare Reflogs, Isolation logischer Repository-Namen und das begrenzte Löschen eines einzelnen Repositorys.
 
-- alle öffentlichen Core-Entity-Typen sind registriert;
-- DSL-Commit und Branch-Ref überleben das Schließen und erneute Öffnen des Handles;
-- normale Taxonomy-Commits erzeugen abfragbare Reflog-Einträge;
-- zwei logische Repository-Namen bleiben isoliert;
-- das Löschen eines Repositorys entfernt dessen Pack- und Reflog-Zeilen, ohne das andere Repository zu verändern.
+`JgitStorageSchemaMigrationConfigTest` deckt frische und gemeinsam genutzte HSQLDB-Schemata, die Historienetablierung für exakte unversionierte Core-Tabellen, die ausdrückliche Legacy-Freigabe, physische Spaltennormalisierung, Erhalt von BLOB- und Reflogdaten, Duplikatverweigerung, zu lange Erweiterungswerte und partielle Schemata ab.
+
+`JgitStoragePostgresMigrationIT` wiederholt die reale alte Taxonomy-Übernahme auf PostgreSQL und ist ein eigener Job in der Datenbank-Kompatibilitätsmatrix.
 
 Der vollständige Projekt-Gate bleibt:
 
 ```bash
 mvn verify -DexcludedGroups="real-llm"
 ```
-
-Die Container-Workflows für PostgreSQL, SQL Server und Oracle prüfen weiterhin die breitere Taxonomy-Datenbankmatrix. Die Migrationsmatrix der Storage-Bibliothek bleibt absichtlich enger, bis passende Upstream-Migrationen vorliegen.
