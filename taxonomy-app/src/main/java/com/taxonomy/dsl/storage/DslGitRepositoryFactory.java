@@ -1,9 +1,11 @@
 package com.taxonomy.dsl.storage;
 
 import com.taxonomy.workspace.service.WorkspaceContext;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryDeletionResult;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
-import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,21 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Factory for creating and caching {@link DslGitRepository} instances.
+ * Creates and caches Taxonomy's logical Git repositories.
  *
- * <p>Provides per-workspace Git repository isolation by creating logically
- * separate repositories (each with its own {@code repositoryName}) in the
- * same database. The system repository (shared "draft" branch, legacy data)
- * uses the well-known name {@code "taxonomy-dsl"}.
- *
- * <p>Instances are cached by repository name so that repeated lookups for
- * the same workspace return the same {@link DslGitRepository} object.
- *
- * <p>This class is instantiated as a Spring {@code @Bean} in
- * {@link DslStorageConfig} — do not add {@code @Service} or
- * {@code @Component} here to avoid duplicate bean registration.
+ * <p>The application owns repository naming, workspace routing and seeding. The
+ * reusable {@code jgit-storage-hibernate-core} library owns database-backed JGit
+ * object, ref and reflog persistence.</p>
  */
-public class DslGitRepositoryFactory {
+public class DslGitRepositoryFactory implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(DslGitRepositoryFactory.class);
 
@@ -36,118 +30,130 @@ public class DslGitRepositoryFactory {
     /** Prefix for workspace repository names. */
     static final String WORKSPACE_REPO_PREFIX = "ws-";
 
-    private final SessionFactory sessionFactory;
+    private final HibernateRepositoryFactory storageFactory;
     private final ConcurrentMap<String, DslGitRepository> cache = new ConcurrentHashMap<>();
 
-    public DslGitRepositoryFactory(SessionFactory sessionFactory) {
-        this.sessionFactory = sessionFactory;
+    /**
+     * Create a logical-repository factory.
+     *
+     * @param storageFactory reusable database storage factory, or {@code null} for in-memory tests
+     */
+    public DslGitRepositoryFactory(HibernateRepositoryFactory storageFactory) {
+        this.storageFactory = storageFactory;
     }
 
-    /**
-     * Get the system repository (shared "draft" branch, legacy data).
-     *
-     * @return the system-wide shared DslGitRepository
-     */
+    /** Return the shared system repository. */
     public DslGitRepository getSystemRepository() {
         return cache.computeIfAbsent(SYSTEM_REPO_NAME, this::createRepository);
     }
 
     /**
-     * Get a per-workspace repository with a logically separate Git namespace.
+     * Return a repository isolated by workspace ID.
      *
-     * <p>When a workspace repository is created for the first time it is
-     * <em>seeded</em> from the system repository's {@code draft} branch.
-     * This mirrors the {@code git clone} workflow: the initial taxonomy
-     * import commit that the bootstrap created on the system repo is copied
-     * into the workspace so that the user starts with a non-empty history.
-     *
-     * @param workspaceId the workspace identifier
-     * @return the workspace-specific DslGitRepository
+     * <p>A newly created, empty repository is seeded from the shared draft. A
+     * database repository reopened after cache eviction already has refs and is
+     * therefore not seeded again.</p>
      */
     public DslGitRepository getWorkspaceRepository(String workspaceId) {
-        String repoName = WORKSPACE_REPO_PREFIX + workspaceId;
+        String repoName = workspaceRepositoryName(workspaceId);
         return cache.computeIfAbsent(repoName, name -> {
-            DslGitRepository repo = createRepository(name);
-            seedFromSystemRepo(repo);
-            return repo;
+            DslGitRepository repository = createRepository(name);
+            seedFromSystemRepo(repository);
+            return repository;
         });
     }
 
-    /**
-     * Resolve the appropriate repository based on a {@link WorkspaceContext}.
-     *
-     * <p>If the context is {@code null} or has no workspace ID (shared context),
-     * the system repository is returned. Otherwise, the per-workspace repository
-     * for the given workspace ID is returned.
-     *
-     * @param ctx the workspace context (may be null)
-     * @return the resolved DslGitRepository
-     */
-    public DslGitRepository resolveRepository(WorkspaceContext ctx) {
-        if (ctx == null || ctx.workspaceId() == null) {
+    /** Resolve the repository selected by a workspace context. */
+    public DslGitRepository resolveRepository(WorkspaceContext context) {
+        if (context == null || context.workspaceId() == null) {
             return getSystemRepository();
         }
-        return getWorkspaceRepository(ctx.workspaceId());
+        return getWorkspaceRepository(context.workspaceId());
     }
 
     /**
-     * Evict a workspace repository from the cache.
+     * Close and remove a cached workspace handle without deleting persisted data.
      *
-     * <p>Call this when a workspace is deleted to free the cached instance.
-     *
-     * @param workspaceId the workspace identifier to evict
+     * @param workspaceId workspace identifier
      */
     public void evict(String workspaceId) {
-        cache.remove(WORKSPACE_REPO_PREFIX + workspaceId);
+        closeQuietly(cache.remove(workspaceRepositoryName(workspaceId)));
     }
 
     /**
-     * Create a new DslGitRepository for the given name.
+     * Delete all persisted Git state belonging to one workspace repository.
      *
-     * <p>If a {@link SessionFactory} is available, creates a database-backed
-     * repository. Otherwise (e.g. in tests), creates an in-memory repository.
+     * <p>The cached handle is closed before invoking the storage library because
+     * deletion is deliberately rejected while any coordinated handle remains
+     * open. Other logical repository names are unaffected.</p>
      *
-     * @param name the logical repository name
-     * @return a new DslGitRepository instance
+     * @param workspaceId workspace identifier
+     * @return counts of deleted storage rows; zeroes in in-memory test mode
      */
+    public RepositoryDeletionResult deleteWorkspaceRepository(String workspaceId) {
+        String repoName = workspaceRepositoryName(workspaceId);
+        closeQuietly(cache.remove(repoName));
+        if (storageFactory == null) {
+            return new RepositoryDeletionResult(0, 0, 0);
+        }
+        return storageFactory.deleteRepository(new RepositoryName(repoName));
+    }
+
+    /** Create either a persistent library-backed repository or an owned in-memory repository. */
     protected DslGitRepository createRepository(String name) {
-        if (sessionFactory != null) {
-            log.info("Creating database-backed DslGitRepository '{}'", name);
-            return new DslGitRepository(sessionFactory, name);
+        if (storageFactory != null) {
+            log.info("Opening database-backed DslGitRepository '{}'", name);
+            return new DslGitRepository(storageFactory, name);
         }
         log.info("Creating in-memory DslGitRepository '{}' (test mode)", name);
         return new DslGitRepository(
-                new InMemoryRepository(new DfsRepositoryDescription(name)));
+                new InMemoryRepository(new DfsRepositoryDescription(name)), true);
     }
 
-    /**
-     * Seed a newly created workspace repository from the system repository.
-     *
-     * <p>Reads the DSL content at the HEAD of the system repo's {@code draft}
-     * branch and commits it as the initial commit on the workspace repo's
-     * {@code draft} branch.  This is the equivalent of {@code git clone}:
-     * every workspace starts with the taxonomy import that the bootstrap
-     * created on the central repository.
-     *
-     * <p>If the system repository has no {@code draft} branch yet (e.g. during
-     * early bootstrap), the seeding is silently skipped — the workspace will
-     * be populated once the user makes their first commit.
-     *
-     * @param workspace the newly created workspace repository to seed
-     */
     private void seedFromSystemRepo(DslGitRepository workspace) {
         try {
+            if (!workspace.getBranchNames().isEmpty()) {
+                log.debug("Workspace repository already contains refs; skipping seed");
+                return;
+            }
+
             DslGitRepository system = getSystemRepository();
             String dsl = system.getDslAtHead("draft");
             if (dsl != null && !dsl.isBlank()) {
                 workspace.commitDsl("draft", dsl, "system",
                         "Initial clone from system repository");
-                log.info("Seeded workspace repo from system repo draft branch");
+                log.info("Seeded workspace repository from system draft branch");
             } else {
-                log.debug("System repo draft branch is empty — skipping workspace seed");
+                log.debug("System draft branch is empty; skipping workspace seed");
             }
-        } catch (IOException e) {
-            log.warn("Failed to seed workspace repo from system repo: {}", e.getMessage());
+        } catch (IOException exception) {
+            log.warn("Failed to seed workspace repository from system repository: {}",
+                    exception.getMessage());
         }
+    }
+
+    private static String workspaceRepositoryName(String workspaceId) {
+        if (workspaceId == null || workspaceId.isBlank()) {
+            throw new IllegalArgumentException("workspaceId must not be blank");
+        }
+        return WORKSPACE_REPO_PREFIX + workspaceId;
+    }
+
+    private static void closeQuietly(DslGitRepository repository) {
+        if (repository == null) {
+            return;
+        }
+        try {
+            repository.close();
+        } catch (RuntimeException exception) {
+            log.warn("Failed to close cached Git repository: {}", exception.getMessage());
+        }
+    }
+
+    /** Close all cached repository handles during application shutdown. */
+    @Override
+    public void close() {
+        cache.values().forEach(DslGitRepositoryFactory::closeQuietly);
+        cache.clear();
     }
 }
