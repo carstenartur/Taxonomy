@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # ---- build stage ----
 # Tag retained for readability and automated update discovery; digest is authoritative.
 FROM maven:3.9.9-eclipse-temurin-21@sha256:1c76eb045e808749d70fb96a02bc64290b2c20db3801b9e4413544fcf6b3abec AS build
@@ -9,14 +11,27 @@ COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
 COPY taxonomy-extension-api/pom.xml taxonomy-extension-api/pom.xml
 COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
 COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml
-# Pre-fetch dependencies so they are cached in a separate layer
-RUN mvn -q dependency:go-offline -B
+COPY .mvn/github-packages-settings.xml .mvn/github-packages-settings.xml
+# Pre-fetch dependencies so they are cached in a separate layer. GitHub Packages
+# credentials are exposed only to this instruction as BuildKit secrets and never
+# become part of an image layer or build argument.
+RUN --mount=type=cache,target=/root/.m2/repository \
+    --mount=type=secret,id=github_token,required=true \
+    --mount=type=secret,id=github_actor,required=true \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token)" \
+    GITHUB_ACTOR="$(cat /run/secrets/github_actor)" \
+    mvn -s .mvn/github-packages-settings.xml -q dependency:go-offline -B
 COPY taxonomy-domain/src taxonomy-domain/src
 COPY taxonomy-dsl/src taxonomy-dsl/src
 COPY taxonomy-export/src taxonomy-export/src
 COPY taxonomy-extension-api/src taxonomy-extension-api/src
 COPY taxonomy-app/src taxonomy-app/src
-RUN mvn -q -DskipTests package
+RUN --mount=type=cache,target=/root/.m2/repository \
+    --mount=type=secret,id=github_token,required=true \
+    --mount=type=secret,id=github_actor,required=true \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token)" \
+    GITHUB_ACTOR="$(cat /run/secrets/github_actor)" \
+    mvn -s .mvn/github-packages-settings.xml -q -DskipTests package
 
 # ---- runtime stage ----
 # Tag retained for readability; digest prevents mutable-tag supply-chain drift.
