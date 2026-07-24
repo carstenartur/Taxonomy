@@ -40,6 +40,8 @@ class JgitStorageSchemaMigrationConfigTest {
 
         assertTrue(tableExists(dataSource, "git_packs"));
         assertTrue(tableExists(dataSource, "git_reflog"));
+        assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
+        assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
         assertEquals(
                 List.of("0.1.4", "0.1.5"),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
@@ -73,6 +75,7 @@ class JgitStorageSchemaMigrationConfigTest {
 
         assertTrue(error.getMessage().contains("TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true"));
         assertFalse(columns(dataSource, "git_packs").contains("COMMITTED"));
+        assertEquals(255, columnSize(dataSource, "git_packs", "pack_extension"));
         assertEquals(255, columnSize(dataSource, "git_reflog", "ref_name"));
         assertFalse(tableExists(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
         assertArrayEquals(original, packData(dataSource, "legacy", "pack-a", "pack"));
@@ -92,9 +95,10 @@ class JgitStorageSchemaMigrationConfigTest {
         Set<String> packColumns = columns(dataSource, "git_packs");
         assertTrue(packColumns.contains("COMMITTED"));
         assertTrue(packColumns.contains("COMMITTED_AT"));
+        assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
+        assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
         assertArrayEquals(original, packData(dataSource, "legacy", "pack-a", "reftable"));
         assertEquals(refName, reflogRefName(dataSource));
-        assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
         try (Connection connection = dataSource.getConnection();
              var statement = connection.prepareStatement(
                      "select committed, committed_at from git_packs "
@@ -135,6 +139,32 @@ class JgitStorageSchemaMigrationConfigTest {
                         flyway(dataSource), true));
 
         assertFalse(columns(dataSource, "git_packs").contains("COMMITTED"));
+        assertEquals(255, columnSize(dataSource, "git_packs", "pack_extension"));
+        assertEquals(255, columnSize(dataSource, "git_reflog", "ref_name"));
+        assertFalse(tableExists(
+                dataSource,
+                CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE));
+    }
+
+    @Test
+    void rejectsOversizedLegacyPackExtensionBeforeChangingSchema() throws Exception {
+        DataSource dataSource = dataSource("legacy-long-extension");
+        installLegacySchema(dataSource);
+        insertLegacyPack(
+                dataSource,
+                "legacy",
+                "pack-a",
+                "x".repeat(33),
+                new byte[] {1, 2, 3});
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(
+                        flyway(dataSource), true));
+
+        assertTrue(error.getMessage().contains("pack_extension"));
+        assertFalse(columns(dataSource, "git_packs").contains("COMMITTED"));
+        assertEquals(255, columnSize(dataSource, "git_packs", "pack_extension"));
         assertEquals(255, columnSize(dataSource, "git_reflog", "ref_name"));
         assertFalse(tableExists(
                 dataSource,
