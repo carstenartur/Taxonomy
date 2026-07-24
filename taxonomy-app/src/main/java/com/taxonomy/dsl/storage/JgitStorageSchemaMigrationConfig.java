@@ -42,6 +42,8 @@ public class JgitStorageSchemaMigrationConfig {
     private static final Logger log =
             LoggerFactory.getLogger(JgitStorageSchemaMigrationConfig.class);
 
+    private static final int REQUIRED_PACK_EXTENSION_LENGTH = 32;
+    private static final int LEGACY_TAXONOMY_PACK_EXTENSION_LENGTH = 255;
     private static final int REQUIRED_REF_NAME_LENGTH = 1024;
     private static final int LEGACY_TAXONOMY_REF_NAME_LENGTH = 255;
 
@@ -158,7 +160,7 @@ public class JgitStorageSchemaMigrationConfig {
 
         if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
             requireSafePackRows(dataSource, false);
-            requireReflogRefNameCapacity(schema);
+            requireCurrentCoreColumnLengths(schema);
             log.info(
                     "Establishing Flyway history for an exact unversioned JGit Core schema on {}",
                     family.displayName());
@@ -191,7 +193,9 @@ public class JgitStorageSchemaMigrationConfig {
         }
 
         LegacyCoreSchemaAdoption.LegacySchemaReport report = requireSafePackRows(dataSource, true);
-        widenLegacyReflogRefName(dataSource, family, schema);
+        LegacyColumnMigrationPlan columnPlan =
+                requireSafeLegacyColumnMigration(dataSource, schema);
+        applyLegacyColumnMigration(dataSource, family, columnPlan);
         log.warn(
                 "Adopting {} pre-library JGit pack rows on {}; the operator explicitly enabled "
                         + "the one-time migration",
@@ -214,33 +218,107 @@ public class JgitStorageSchemaMigrationConfig {
                 "adopted pre-library core schema");
     }
 
-    private static void widenLegacyReflogRefName(
-            DataSource dataSource, DatabaseFamily family, SchemaSnapshot schema) {
-        int currentLength = schema.reflogRefNameLength();
-        if (currentLength >= REQUIRED_REF_NAME_LENGTH) {
-            return;
-        }
-        if (currentLength != LEGACY_TAXONOMY_REF_NAME_LENGTH) {
+    private static LegacyColumnMigrationPlan requireSafeLegacyColumnMigration(
+            DataSource dataSource, SchemaSnapshot schema) {
+        boolean narrowPackExtension;
+        if (schema.packExtensionLength() == REQUIRED_PACK_EXTENSION_LENGTH) {
+            narrowPackExtension = false;
+        } else if (schema.packExtensionLength()
+                == LEGACY_TAXONOMY_PACK_EXTENSION_LENGTH) {
+            long oversizedValues = countOversizedPackExtensions(dataSource);
+            if (oversizedValues > 0) {
+                throw unsafeSchema(
+                        "git_packs contains " + oversizedValues
+                                + " pack_extension values longer than "
+                                + REQUIRED_PACK_EXTENSION_LENGTH
+                                + " characters; resolve them explicitly before adoption.");
+            }
+            narrowPackExtension = true;
+        } else {
             throw unsafeSchema(
-                    "git_reflog.ref_name has length " + currentLength
-                            + "; only the exact legacy Taxonomy length "
-                            + LEGACY_TAXONOMY_REF_NAME_LENGTH + " can be widened automatically.");
+                    "git_packs.pack_extension has length " + schema.packExtensionLength()
+                            + "; only the released Core length "
+                            + REQUIRED_PACK_EXTENSION_LENGTH
+                            + " or exact legacy Taxonomy length "
+                            + LEGACY_TAXONOMY_PACK_EXTENSION_LENGTH
+                            + " is supported.");
         }
 
-        log.warn(
-                "Widening legacy git_reflog.ref_name from {} to {} characters on {}",
-                currentLength,
-                REQUIRED_REF_NAME_LENGTH,
-                family.displayName());
+        boolean widenRefName;
+        if (schema.reflogRefNameLength() >= REQUIRED_REF_NAME_LENGTH) {
+            widenRefName = false;
+        } else if (schema.reflogRefNameLength()
+                == LEGACY_TAXONOMY_REF_NAME_LENGTH) {
+            widenRefName = true;
+        } else {
+            throw unsafeSchema(
+                    "git_reflog.ref_name has length " + schema.reflogRefNameLength()
+                            + "; only the released Core capacity or exact legacy Taxonomy length "
+                            + LEGACY_TAXONOMY_REF_NAME_LENGTH
+                            + " is supported.");
+        }
+
+        return new LegacyColumnMigrationPlan(narrowPackExtension, widenRefName);
+    }
+
+    private static long countOversizedPackExtensions(DataSource dataSource) {
         try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement()) {
-            statement.execute(family.widenRefNameSql());
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(
+                     "select count(*) from git_packs where "
+                             + "character_length(pack_extension) > "
+                             + REQUIRED_PACK_EXTENSION_LENGTH)) {
+            resultSet.next();
+            return resultSet.getLong(1);
         } catch (SQLException exception) {
             throw new IllegalStateException(
-                    "Could not widen legacy git_reflog.ref_name safely", exception);
+                    "Could not validate legacy pack_extension values", exception);
+        }
+    }
+
+    private static void applyLegacyColumnMigration(
+            DataSource dataSource,
+            DatabaseFamily family,
+            LegacyColumnMigrationPlan plan) {
+        if (!plan.requiresDdl()) {
+            return;
         }
 
-        requireReflogRefNameCapacity(SchemaSnapshot.inspect(dataSource));
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
+            try {
+                if (plan.narrowPackExtension()) {
+                    log.warn(
+                            "Narrowing legacy git_packs.pack_extension from {} to {} characters on {}",
+                            LEGACY_TAXONOMY_PACK_EXTENSION_LENGTH,
+                            REQUIRED_PACK_EXTENSION_LENGTH,
+                            family.displayName());
+                    statement.execute(family.narrowPackExtensionSql());
+                }
+                if (plan.widenRefName()) {
+                    log.warn(
+                            "Widening legacy git_reflog.ref_name from {} to {} characters on {}",
+                            LEGACY_TAXONOMY_REF_NAME_LENGTH,
+                            REQUIRED_REF_NAME_LENGTH,
+                            family.displayName());
+                    statement.execute(family.widenRefNameSql());
+                }
+                connection.commit();
+            } catch (SQLException exception) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackFailure) {
+                    exception.addSuppressed(rollbackFailure);
+                }
+                throw exception;
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "Could not normalize legacy JGit Core column lengths safely", exception);
+        }
+
+        requireCurrentCoreColumnLengths(SchemaSnapshot.inspect(dataSource));
     }
 
     private static LegacyCoreSchemaAdoption.LegacySchemaReport requireSafePackRows(
@@ -294,10 +372,16 @@ public class JgitStorageSchemaMigrationConfig {
         }
         requireExactColumns("git_packs", schema.packColumns(), CURRENT_PACK_COLUMNS);
         requireExactColumns("git_reflog", schema.reflogColumns(), REFLOG_COLUMNS);
-        requireReflogRefNameCapacity(schema);
+        requireCurrentCoreColumnLengths(schema);
     }
 
-    private static void requireReflogRefNameCapacity(SchemaSnapshot schema) {
+    private static void requireCurrentCoreColumnLengths(SchemaSnapshot schema) {
+        if (schema.packExtensionLength() != REQUIRED_PACK_EXTENSION_LENGTH) {
+            throw unsafeSchema(
+                    "git_packs.pack_extension has length " + schema.packExtensionLength()
+                            + "; the released Core contract requires exactly "
+                            + REQUIRED_PACK_EXTENSION_LENGTH + ".");
+        }
         if (schema.reflogRefNameLength() < REQUIRED_REF_NAME_LENGTH) {
             throw unsafeSchema(
                     "git_reflog.ref_name supports only " + schema.reflogRefNameLength()
@@ -323,32 +407,47 @@ public class JgitStorageSchemaMigrationConfig {
         return new IllegalStateException("Unsafe JGit Core schema state: " + message);
     }
 
+    private record LegacyColumnMigrationPlan(
+            boolean narrowPackExtension,
+            boolean widenRefName) {
+
+        boolean requiresDdl() {
+            return narrowPackExtension || widenRefName;
+        }
+    }
+
     enum DatabaseFamily {
         HSQLDB(
                 "HSQLDB",
                 CoreSchemaMigrations.HSQLDB_LOCATION,
                 CoreSchemaMigrations.HSQLDB_LEGACY_ADOPTION_LOCATION,
+                "alter table git_packs alter column pack_extension "
+                        + "set data type varchar(32)",
                 "alter table git_reflog alter column ref_name "
                         + "set data type varchar(1024)"),
         POSTGRESQL(
                 "PostgreSQL",
                 CoreSchemaMigrations.POSTGRESQL_LOCATION,
                 CoreSchemaMigrations.POSTGRESQL_LEGACY_ADOPTION_LOCATION,
+                "alter table git_packs alter column pack_extension type varchar(32)",
                 "alter table git_reflog alter column ref_name type varchar(1024)");
 
         private final String displayName;
         private final String normalLocation;
         private final String legacyAdoptionLocation;
+        private final String narrowPackExtensionSql;
         private final String widenRefNameSql;
 
         DatabaseFamily(
                 String displayName,
                 String normalLocation,
                 String legacyAdoptionLocation,
+                String narrowPackExtensionSql,
                 String widenRefNameSql) {
             this.displayName = displayName;
             this.normalLocation = normalLocation;
             this.legacyAdoptionLocation = legacyAdoptionLocation;
+            this.narrowPackExtensionSql = narrowPackExtensionSql;
             this.widenRefNameSql = widenRefNameSql;
         }
 
@@ -362,6 +461,10 @@ public class JgitStorageSchemaMigrationConfig {
 
         String legacyAdoptionLocation() {
             return legacyAdoptionLocation;
+        }
+
+        String narrowPackExtensionSql() {
+            return narrowPackExtensionSql;
         }
 
         String widenRefNameSql() {
@@ -392,6 +495,7 @@ public class JgitStorageSchemaMigrationConfig {
             Map<String, String> tables,
             Set<String> packColumns,
             Set<String> reflogColumns,
+            int packExtensionLength,
             int reflogRefNameLength) {
 
         boolean hasTable(String table) {
@@ -406,12 +510,15 @@ public class JgitStorageSchemaMigrationConfig {
                 Set<String> packColumns = readColumns(metadata, schema, tables.get("GIT_PACKS"));
                 Set<String> reflogColumns =
                         readColumns(metadata, schema, tables.get("GIT_REFLOG"));
+                int packExtensionLength = readColumnSize(
+                        metadata, schema, tables.get("GIT_PACKS"), "PACK_EXTENSION");
                 int refNameLength = readColumnSize(
                         metadata, schema, tables.get("GIT_REFLOG"), "REF_NAME");
                 return new SchemaSnapshot(
                         Collections.unmodifiableMap(tables),
                         Collections.unmodifiableSet(packColumns),
                         Collections.unmodifiableSet(reflogColumns),
+                        packExtensionLength,
                         refNameLength);
             } catch (SQLException exception) {
                 throw new IllegalStateException(
