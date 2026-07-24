@@ -13,9 +13,11 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 env:
   BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   pipeline:
@@ -25,11 +27,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+      - name: Set up Java 21 and GitHub Packages
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
 
       - name: Cache DJL embedding model
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
