@@ -8,12 +8,15 @@ import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 import javax.sql.DataSource;
 
@@ -161,6 +164,7 @@ public class JgitStorageSchemaMigrationConfig {
         if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
             requireSafePackRows(dataSource, false);
             requireCurrentCoreColumnLengths(schema);
+            requireCurrentCoreIndexes(schema);
             log.info(
                     "Establishing Flyway history for an exact unversioned JGit Core schema on {}",
                     family.displayName());
@@ -193,6 +197,7 @@ public class JgitStorageSchemaMigrationConfig {
         }
 
         LegacyCoreSchemaAdoption.LegacySchemaReport report = requireSafePackRows(dataSource, true);
+        requireLegacyCoreIndexes(schema);
         LegacyColumnMigrationPlan columnPlan =
                 requireSafeLegacyColumnMigration(dataSource, schema);
         applyLegacyColumnMigration(dataSource, family, columnPlan);
@@ -373,6 +378,7 @@ public class JgitStorageSchemaMigrationConfig {
         requireExactColumns("git_packs", schema.packColumns(), CURRENT_PACK_COLUMNS);
         requireExactColumns("git_reflog", schema.reflogColumns(), REFLOG_COLUMNS);
         requireCurrentCoreColumnLengths(schema);
+        requireCurrentCoreIndexes(schema);
     }
 
     private static void requireCurrentCoreColumnLengths(SchemaSnapshot schema) {
@@ -388,6 +394,58 @@ public class JgitStorageSchemaMigrationConfig {
                             + " characters; the released Core contract requires at least "
                             + REQUIRED_REF_NAME_LENGTH + ".");
         }
+    }
+
+    private static void requireLegacyCoreIndexes(SchemaSnapshot schema) {
+        requireIndex(
+                "git_packs",
+                schema.packIndexes(),
+                false,
+                List.of("REPOSITORY_NAME"));
+        requireIndex(
+                "git_packs",
+                schema.packIndexes(),
+                false,
+                List.of("REPOSITORY_NAME", "PACK_NAME"));
+        requireIndex(
+                "git_reflog",
+                schema.reflogIndexes(),
+                false,
+                List.of("REPOSITORY_NAME"));
+        requireIndex(
+                "git_reflog",
+                schema.reflogIndexes(),
+                false,
+                List.of("REPOSITORY_NAME", "REF_NAME"));
+    }
+
+    private static void requireCurrentCoreIndexes(SchemaSnapshot schema) {
+        requireLegacyCoreIndexes(schema);
+        requireIndex(
+                "git_packs",
+                schema.packIndexes(),
+                false,
+                List.of("REPOSITORY_NAME", "COMMITTED"));
+        requireIndex(
+                "git_packs",
+                schema.packIndexes(),
+                true,
+                List.of("REPOSITORY_NAME", "PACK_NAME", "PACK_EXTENSION"));
+    }
+
+    private static void requireIndex(
+            String table,
+            Map<String, IndexSignature> indexes,
+            boolean unique,
+            List<String> columns) {
+        IndexSignature required = new IndexSignature(unique, columns);
+        if (indexes.containsValue(required)) {
+            return;
+        }
+        throw unsafeSchema(
+                table + " is missing the required "
+                        + (unique ? "unique " : "")
+                        + "index on " + columns + "; actual indexes=" + indexes);
     }
 
     private static void requireExactColumns(
@@ -413,6 +471,13 @@ public class JgitStorageSchemaMigrationConfig {
 
         boolean requiresDdl() {
             return narrowPackExtension || widenRefName;
+        }
+    }
+
+    private record IndexSignature(boolean unique, List<String> columns) {
+
+        private IndexSignature {
+            columns = List.copyOf(columns);
         }
     }
 
@@ -496,7 +561,9 @@ public class JgitStorageSchemaMigrationConfig {
             Set<String> packColumns,
             Set<String> reflogColumns,
             int packExtensionLength,
-            int reflogRefNameLength) {
+            int reflogRefNameLength,
+            Map<String, IndexSignature> packIndexes,
+            Map<String, IndexSignature> reflogIndexes) {
 
         boolean hasTable(String table) {
             return tables.containsKey(normalize(table));
@@ -507,19 +574,26 @@ public class JgitStorageSchemaMigrationConfig {
                 String schema = connection.getSchema();
                 DatabaseMetaData metadata = connection.getMetaData();
                 Map<String, String> tables = readTables(metadata, schema);
-                Set<String> packColumns = readColumns(metadata, schema, tables.get("GIT_PACKS"));
-                Set<String> reflogColumns =
-                        readColumns(metadata, schema, tables.get("GIT_REFLOG"));
+                String packTable = tables.get("GIT_PACKS");
+                String reflogTable = tables.get("GIT_REFLOG");
+                Set<String> packColumns = readColumns(metadata, schema, packTable);
+                Set<String> reflogColumns = readColumns(metadata, schema, reflogTable);
                 int packExtensionLength = readColumnSize(
-                        metadata, schema, tables.get("GIT_PACKS"), "PACK_EXTENSION");
+                        metadata, schema, packTable, "PACK_EXTENSION");
                 int refNameLength = readColumnSize(
-                        metadata, schema, tables.get("GIT_REFLOG"), "REF_NAME");
+                        metadata, schema, reflogTable, "REF_NAME");
+                Map<String, IndexSignature> packIndexes =
+                        readIndexes(metadata, schema, packTable);
+                Map<String, IndexSignature> reflogIndexes =
+                        readIndexes(metadata, schema, reflogTable);
                 return new SchemaSnapshot(
                         Collections.unmodifiableMap(tables),
                         Collections.unmodifiableSet(packColumns),
                         Collections.unmodifiableSet(reflogColumns),
                         packExtensionLength,
-                        refNameLength);
+                        refNameLength,
+                        Collections.unmodifiableMap(packIndexes),
+                        Collections.unmodifiableMap(reflogIndexes));
             } catch (SQLException exception) {
                 throw new IllegalStateException(
                         "Could not inspect the existing JGit Core schema", exception);
@@ -567,6 +641,45 @@ public class JgitStorageSchemaMigrationConfig {
                 }
             }
             return -1;
+        }
+
+        private static Map<String, IndexSignature> readIndexes(
+                DatabaseMetaData metadata, String schema, String table) throws SQLException {
+            if (table == null) {
+                return new LinkedHashMap<>();
+            }
+
+            Map<String, Boolean> uniqueness = new LinkedHashMap<>();
+            Map<String, Map<Integer, String>> columnsByIndex = new LinkedHashMap<>();
+            try (ResultSet resultSet =
+                         metadata.getIndexInfo(null, schema, table, false, false)) {
+                while (resultSet.next()) {
+                    String indexName = resultSet.getString("INDEX_NAME");
+                    String columnName = resultSet.getString("COLUMN_NAME");
+                    int position = resultSet.getInt("ORDINAL_POSITION");
+                    if (indexName == null || columnName == null || position <= 0) {
+                        continue;
+                    }
+                    String normalizedName = normalize(indexName);
+                    uniqueness.putIfAbsent(
+                            normalizedName, !resultSet.getBoolean("NON_UNIQUE"));
+                    columnsByIndex
+                            .computeIfAbsent(normalizedName, ignored -> new TreeMap<>())
+                            .put(position, normalize(columnName));
+                }
+            }
+
+            Map<String, IndexSignature> indexes = new LinkedHashMap<>();
+            for (Map.Entry<String, Map<Integer, String>> entry :
+                    columnsByIndex.entrySet()) {
+                List<String> columns = new ArrayList<>(entry.getValue().values());
+                indexes.put(
+                        entry.getKey(),
+                        new IndexSignature(
+                                Boolean.TRUE.equals(uniqueness.get(entry.getKey())),
+                                columns));
+            }
+            return indexes;
         }
 
         private static String normalize(String identifier) {
