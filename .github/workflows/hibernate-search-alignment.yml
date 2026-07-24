@@ -38,6 +38,8 @@ jobs:
           cache: maven
 
       - name: Resolve coordinated dependency set
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p target
           mvn -B -q -pl taxonomy-app -am install -DskipTests
