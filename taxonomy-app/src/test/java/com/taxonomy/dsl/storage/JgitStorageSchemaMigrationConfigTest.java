@@ -1,6 +1,7 @@
 package com.taxonomy.dsl.storage;
 
 import static com.taxonomy.dsl.storage.DatabaseIdentifierTestSupport.dropTable;
+import static com.taxonomy.dsl.storage.DatabaseIdentifierTestSupport.quoteExistingColumn;
 import static com.taxonomy.dsl.storage.DatabaseIdentifierTestSupport.quoteExistingTable;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -407,10 +408,16 @@ class JgitStorageSchemaMigrationConfigTest {
         List<String> versions = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             String quotedHistoryTable = quoteExistingTable(connection, historyTable);
+            String quotedVersion = quoteExistingColumn(connection, historyTable, "version");
+            String quotedSuccess = quoteExistingColumn(connection, historyTable, "success");
+            String quotedInstalledRank =
+                    quoteExistingColumn(connection, historyTable, "installed_rank");
             try (Statement statement = connection.createStatement();
                  ResultSet resultSet = statement.executeQuery(
-                         "select version from " + quotedHistoryTable
-                                 + " where success = true order by installed_rank")) {
+                         "select " + quotedVersion
+                                 + " from " + quotedHistoryTable
+                                 + " where " + quotedSuccess + " = true"
+                                 + " order by " + quotedInstalledRank)) {
                 while (resultSet.next()) {
                     versions.add(resultSet.getString(1));
                 }
