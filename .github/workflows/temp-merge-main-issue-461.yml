@@ -19,7 +19,7 @@ jobs:
         with:
           ref: fix/issue-461-jgit-storage-hibernate
           fetch-depth: 0
-      - name: Inspect merge
+      - name: Merge or record conflicts
         shell: bash
         run: |
           set -euo pipefail
@@ -31,12 +31,20 @@ jobs:
           status=$?
           set -e
           if [[ $status -ne 0 ]]; then
-            echo 'MERGE_CONFLICTS_BEGIN'
-            git diff --name-only --diff-filter=U
-            echo 'MERGE_CONFLICTS_END'
-            exit 1
+            conflicts=$(git diff --name-only --diff-filter=U)
+            git merge --abort
+            {
+              echo 'Merge conflicts against current main:'
+              printf '%s\n' "$conflicts"
+            } > .github/issue-461-merge-conflicts.txt
+            rm .github/workflows/temp-merge-main-issue-461.yml
+            git add -A
+            git commit -m 'Record issue 461 merge conflicts'
+            git push origin HEAD:fix/issue-461-jgit-storage-hibernate
+            exit 0
           fi
           rm .github/workflows/temp-merge-main-issue-461.yml
+          rm -f .github/issue-461-merge-conflicts.txt
           git add -A
           git commit -m 'Merge current main into issue 461 integration'
           git push origin HEAD:fix/issue-461-jgit-storage-hibernate
