@@ -1,0 +1,34 @@
+name: Temporary main source export
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.head_ref == 'temp/main-source-export-20260725'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Stage source snapshot
+        run: |
+          set -euo pipefail
+          mkdir -p target/main-source
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude 'target/' \
+            --exclude '*/target/' \
+            --exclude 'node_modules/' \
+            ./ target/main-source/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: taxonomy-main-source
+          path: target/main-source
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
