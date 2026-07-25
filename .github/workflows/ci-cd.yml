@@ -42,7 +42,11 @@ jobs:
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
-        run: ./mvnw -B verify -Pci
+        shell: bash
+        run: |
+          mkdir -p target
+          set -o pipefail
+          ./mvnw -B verify -Pci 2>&1 | tee target/maven-verification.log
 
       - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
@@ -75,6 +79,7 @@ jobs:
             cp -a taxonomy-coverage/target/site/jacoco-aggregate/. target/quality-reports/coverage/
           fi
           for evidence in \
+            target/maven-verification.log \
             target/coverage-gate.txt \
             target/dependency-hygiene-report.txt \
             target/hibernate-search-dependencies.txt \
