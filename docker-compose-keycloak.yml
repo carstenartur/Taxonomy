@@ -4,7 +4,7 @@
 # Usage:
 #   docker compose -f docker-compose-keycloak.yml up -d --build
 #
-# Source builds require GITHUB_ACTOR and a GITHUB_TOKEN with read:packages.
+# Source builds resolve all dependencies anonymously from public Maven repositories.
 #
 # Access:
 #   - Taxonomy Analyzer: http://localhost:8080 (redirects to Keycloak login)
@@ -76,9 +76,6 @@ services:
   taxonomy:
     build:
       context: .
-      secrets:
-        - github_token
-        - github_actor
     ports:
       - "8080:8080"
     environment:
@@ -101,12 +98,6 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
-
-secrets:
-  github_token:
-    environment: GITHUB_TOKEN
-  github_actor:
-    environment: GITHUB_ACTOR
 
 volumes:
   postgres-data:
