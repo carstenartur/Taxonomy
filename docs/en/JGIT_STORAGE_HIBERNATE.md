@@ -20,7 +20,7 @@ Taxonomy consumes only public types from `io.github.carstenartur.jgit.storage.hi
 The pinned version is declared in the root POM:
 
 ```xml
-<jgit-storage-hibernate.version>0.1.10</jgit-storage-hibernate.version>
+<jgit-storage-hibernate.version>0.1.11</jgit-storage-hibernate.version>
 ```
 
 The application module depends on:
@@ -33,7 +33,7 @@ The application module depends on:
 </dependency>
 ```
 
-Version 0.1.10 is currently published through GitHub Packages. Maven credentials must use the same server ID as the repository entry in `pom.xml`:
+Version 0.1.11 is currently published through GitHub Packages. Maven credentials must use the same server ID as the repository entry in `pom.xml`:
 
 ```xml
 <settings>
@@ -117,7 +117,7 @@ Flyway completes before the Spring-managed persistence unit is initialized. Star
 | One missing Core table, unknown columns, unsupported lengths or missing required indexes | Fail before automatic repair |
 | Adoption history without normal Core history | Fail and require restore or documented recovery |
 
-Taxonomy contains no database-specific `ALTER TABLE` statements for the library-owned columns. It performs classification, preflight and post-migration validation; all physical adoption changes come from the immutable migration resources packaged in `jgit-storage-hibernate-core:0.1.10`.
+Taxonomy contains no database-specific `ALTER TABLE` statements for the library-owned columns. It performs classification, preflight and post-migration validation; all physical adoption changes come from the immutable migration resources packaged in `jgit-storage-hibernate-core:0.1.11`.
 
 ## Supported database paths
 
@@ -151,7 +151,7 @@ Use this runbook:
 
 A database already adopted with version 0.1.8 has successful adoption version `1` but may still have both columns at length 255. Apply the same backup and one-time opt-in procedure. Taxonomy then invokes the released adoption stream without deleting or re-baselining either history table; version `2` must be recorded before startup continues.
 
-Do not use Hibernate `ddl-auto=update`, manual ad-hoc DDL, Flyway `repair`, or deletion of migration history as substitutes for this procedure. Taxonomy never chooses a duplicate row or truncates an oversized value automatically. Upstream issue #78 is resolved by release 0.1.10.
+Do not use Hibernate `ddl-auto=update`, manual ad-hoc DDL, Flyway `repair`, or deletion of migration history as substitutes for this procedure. Taxonomy never chooses a duplicate row or truncates an oversized value automatically. Upstream issue #78 is resolved by release 0.1.11.
 
 ## Verification
 
