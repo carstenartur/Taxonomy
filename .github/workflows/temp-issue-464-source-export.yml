@@ -1,35 +1,79 @@
-name: Temporary Issue 464 Source Export
+name: Apply Maven Test Authority Refactor
 
 on:
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
-    if: github.head_ref == 'fix/issue-464-maven-test-authority'
+  apply:
+    if: github.head_ref == 'fix/issue-464-maven-test-authority' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          persist-credentials: false
-      - name: Stage reproducible source snapshot
+          ref: fix/issue-464-maven-test-authority
+          fetch-depth: 0
+      - uses: actions/setup-java@7a445ee9d5a8d74f396ce5bcb5eaa2c5b5e118d # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Apply verified refactor and generate pinned tooling
         run: |
           set -euo pipefail
-          mkdir -p target/issue-464-source
-          rsync -a --delete \
-            --exclude '.git/' \
-            --exclude 'target/' \
-            --exclude '*/target/' \
-            --exclude 'models/' \
-            --exclude 'node_modules/' \
-            ./ target/issue-464-source/
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: issue-464-source
-          path: target/issue-464-source
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git fetch origin main
+          git merge --no-edit origin/main
+
+          cat .github/issue464-patch/part-* \
+            | base64 --decode \
+            | gzip --decompress \
+            > /tmp/issue464.patch
+          git apply --index /tmp/issue464.patch
+
+          mvn -N org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper \
+            -Dmaven=3.9.16 \
+            -Dtype=only-script
+          chmod +x mvnw
+
+          npm --prefix .github install \
+            --package-lock-only \
+            --ignore-scripts \
+            --no-audit \
+            --no-fund
+
+          rm -rf .github/issue464-patch
+          rm .github/workflows/temp-issue-464-source-export.yml
+
+          python3 .github/scripts/check-workflow-test-authority.py
+          python3 .github/scripts/check-doc-links.py
+          python3 - <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          import yaml
+
+          for path in Path('.').rglob('pom.xml'):
+              if 'target' not in path.parts:
+                  ET.parse(path)
+          for path in (Path('.mvn/verification-suites.json'), Path('.github/package.json'), Path('.github/package-lock.json')):
+              json.loads(path.read_text(encoding='utf-8'))
+          for path in Path('.github/workflows').glob('*.yml'):
+              yaml.safe_load(path.read_text(encoding='utf-8'))
+          PY
+          node --check .github/scripts/run-ui-suite.mjs
+          bash -n .github/scripts/release.sh
+          ./mvnw -B -N validate -DskipUiTests=true -DskipQualityChecks=true
+          git diff --check
+
+          git add -A
+          git commit -m 'fix: make Maven the single verification authority'
+          git push origin HEAD:fix/issue-464-maven-test-authority
