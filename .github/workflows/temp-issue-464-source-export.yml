@@ -24,35 +24,44 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
-      - name: Apply verified refactor and generate pinned tooling
+      - name: Merge current main
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
           git fetch origin main
           git merge --no-edit origin/main
-
+      - name: Decode and apply verified patch
+        run: |
+          set -euo pipefail
           cat .github/issue464-patch/part-* \
             | base64 --decode \
             | gzip --decompress \
             > /tmp/issue464.patch
           git apply --index /tmp/issue464.patch
-
+      - name: Generate pinned Maven Wrapper
+        run: |
+          set -euo pipefail
           mvn -N org.apache.maven.plugins:maven-wrapper-plugin:3.3.4:wrapper \
             -Dmaven=3.9.16 \
             -Dtype=only-script
           chmod +x mvnw
-
+      - name: Generate pinned frontend lock
+        run: |
+          set -euo pipefail
           npm --prefix .github install \
             --package-lock-only \
             --ignore-scripts \
             --no-audit \
             --no-fund
-
+      - name: Remove transfer helpers
+        run: |
+          set -euo pipefail
           rm -rf .github/issue464-patch
           rm .github/workflows/temp-issue-464-source-export.yml
-
+      - name: Run structural verification
+        run: |
+          set -euo pipefail
           python3 .github/scripts/check-workflow-test-authority.py
           python3 .github/scripts/check-doc-links.py
           python3 - <<'PY'
@@ -73,7 +82,11 @@ jobs:
           bash -n .github/scripts/release.sh
           ./mvnw -B -N validate -DskipUiTests=true -DskipQualityChecks=true
           git diff --check
-
+      - name: Commit final branch state
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'fix: make Maven the single verification authority'
           git push origin HEAD:fix/issue-464-maven-test-authority
