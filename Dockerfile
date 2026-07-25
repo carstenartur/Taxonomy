@@ -2,7 +2,7 @@
 
 # ---- build stage ----
 # Tag retained for readability and automated update discovery; digest is authoritative.
-FROM maven:3.9.9-eclipse-temurin-21@sha256:1c76eb045e808749d70fb96a02bc64290b2c20db3801b9e4413544fcf6b3abec AS build
+FROM maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e AS build
 WORKDIR /workspace
 COPY pom.xml .
 COPY mvnw mvnw
