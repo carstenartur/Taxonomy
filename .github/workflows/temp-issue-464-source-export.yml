@@ -17,11 +17,11 @@ jobs:
         with:
           ref: fix/issue-464-maven-test-authority
           fetch-depth: 0
-      - uses: actions/setup-java@7a445ee9d5a8d74f396ce5bcb5eaa2c5b5e118d # v5
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           distribution: temurin
           java-version: '21'
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
       - name: Apply verified refactor and generate pinned tooling
