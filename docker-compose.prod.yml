@@ -5,9 +5,7 @@
 ##   cp .env.example .env        # edit with your domain and credentials
 ##   docker compose -f docker-compose.prod.yml up -d --build
 ##
-## The source build consumes jgit-storage-hibernate from GitHub Packages. Set
-## GITHUB_ACTOR and a GITHUB_TOKEN with read:packages in .env or the shell.
-## BuildKit mounts both values only for Maven dependency resolution.
+## The source build resolves all dependencies anonymously from public Maven repositories.
 ##
 ## Ports exposed to the internet:
 ##   443  — HTTPS (Caddy, automatic Let's Encrypt certificate)
@@ -22,9 +20,6 @@ services:
   taxonomy:
     build:
       context: .
-      secrets:
-        - github_token
-        - github_actor
     # Or use the published image instead of building locally. Production image
     # references must be digest-pinned before enabling this alternative.
     environment:
@@ -86,12 +81,6 @@ services:
       taxonomy:
         condition: service_healthy
     restart: unless-stopped
-
-secrets:
-  github_token:
-    environment: GITHUB_TOKEN
-  github_actor:
-    environment: GITHUB_ACTOR
 
 volumes:
   taxonomy-data:
