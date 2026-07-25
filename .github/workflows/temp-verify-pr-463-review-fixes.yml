@@ -7,6 +7,7 @@ on:
       - 'Dockerfile'
       - 'docker-compose*.yml'
       - '.env.example'
+      - '.mvn/wrapper/maven-wrapper.properties'
       - 'docs/*/CONTAINER_IMAGE.md'
       - 'taxonomy-app/src/main/java/com/taxonomy/security/config/AuthorizationRulesConfigurer.java'
       - 'taxonomy-app/src/test/java/com/taxonomy/SecurityTests.java'
