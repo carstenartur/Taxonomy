@@ -1,0 +1,44 @@
+name: Verify PR 463 review fixes
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'docs/*/CONTAINER_IMAGE.md'
+      - 'taxonomy-app/src/main/java/com/taxonomy/security/config/AuthorizationRulesConfigurer.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/SecurityTests.java'
+      - '.github/workflows/temp-verify-pr-463-review-fixes.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Reject obsolete authenticated build wiring
+        run: |
+          set -euo pipefail
+          ! grep -R -n -E 'github-packages-settings|GITHUB_ACTOR|GITHUB_TOKEN|read:packages|GitHub Packages' \
+            Dockerfile docker-compose*.yml .env.example docs/en/CONTAINER_IMAGE.md docs/de/CONTAINER_IMAGE.md
+      - name: Validate production Compose model
+        env:
+          DOMAIN: taxonomy.example.com
+          TAXONOMY_ADMIN_PASSWORD: test-only-password
+        run: docker compose -f docker-compose.prod.yml config >/dev/null
+      - name: Verify authorization regression tests
+        run: ./mvnw -B -pl taxonomy-app -am -Dtest=SecurityTests -DfailIfNoTests=false test
+      - name: Build source stage without credentials
+        run: docker build --target build -t taxonomy-source-build-check .
