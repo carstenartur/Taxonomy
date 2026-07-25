@@ -10,6 +10,7 @@ on:
       - 'docs/*/CONTAINER_IMAGE.md'
       - 'taxonomy-app/src/main/java/com/taxonomy/security/config/AuthorizationRulesConfigurer.java'
       - 'taxonomy-app/src/test/java/com/taxonomy/SecurityTests.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/ProductionHardeningTests.java'
       - '.github/workflows/temp-verify-pr-463-review-fixes.yml'
 
 permissions:
@@ -38,10 +39,10 @@ jobs:
           DOMAIN: taxonomy.example.com
           TAXONOMY_ADMIN_PASSWORD: test-only-password
         run: docker compose -f docker-compose.prod.yml config >/dev/null
-      - name: Verify authorization regression tests
+      - name: Verify authorization and rate-limit regressions
         run: >-
           ./mvnw -B -pl taxonomy-app -am
-          -Dtest=SecurityTests
+          -Dtest=SecurityTests,ProductionHardeningTests
           -Dsurefire.failIfNoSpecifiedTests=false
           test
       - name: Build source stage without credentials
