@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -120,11 +121,40 @@ abstract class AbstractSeleniumContainerIT {
             new WebDriverWait(driver, Duration.ofSeconds(5))
                     .until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
         }
+        waitForRoleSurfaceReady();
     }
 
     @AfterAll
     void stopContainers() throws Exception {
         ContainerTestUtils.closeAll(browserSession, appContainer, dbContainer, network);
+    }
+
+    private void waitForRoleSurfaceReady() {
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript(
+                        "return Boolean(window.TaxonomyRoleSurface " +
+                                "&& window.TaxonomyRoleSurface.getContext " +
+                                "&& window.TaxonomyRoleSurface.getContext().administrator === true);")));
+    }
+
+    private void openMainTab(String pageId) {
+        waitForRoleSurfaceReady();
+        By tabSelector = By.cssSelector(
+                "#mainNavTabs .nav-link[data-page='" + pageId + "']");
+        WebElement tab = new WebDriverWait(driver, Duration.ofSeconds(20))
+                .until(ExpectedConditions.visibilityOfElementLocated(tabSelector));
+        ((JavascriptExecutor) driver).executeScript(
+                "arguments[0].scrollIntoView({block:'nearest',inline:'center'});", tab);
+        new WebDriverWait(driver, Duration.ofSeconds(20))
+                .until(d -> Boolean.TRUE.equals(((JavascriptExecutor) d).executeScript(
+                        "const el=arguments[0],r=el.getBoundingClientRect();" +
+                                "const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);" +
+                                "return hit===el || el.contains(hit);", tab)));
+        new WebDriverWait(driver, Duration.ofSeconds(20))
+                .until(ExpectedConditions.elementToBeClickable(tabSelector))
+                .click();
+        new WebDriverWait(driver, Duration.ofSeconds(20))
+                .until(ExpectedConditions.visibilityOfElementLocated(By.id("tab-" + pageId)));
     }
 
     private String baseUrl() {
@@ -220,9 +250,7 @@ abstract class AbstractSeleniumContainerIT {
     @Test
     @Order(15)
     void helpTabLoadsAndDisplaysToc() {
-        WebElement helpTab = driver.findElement(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='help']"));
-        helpTab.click();
+        openMainTab("help");
 
         new WebDriverWait(driver, Duration.ofSeconds(10))
                 .until(ExpectedConditions.presenceOfElementLocated(
@@ -272,10 +300,11 @@ abstract class AbstractSeleniumContainerIT {
                         driver.findElement(By.id("langSelector")));
         langSelect.selectByValue("de");
 
-        // Wait for page reload with German locale
+        // Wait for page reload with German locale and stable role navigation.
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(
                         By.cssSelector("#taxonomyTree .tax-node")));
+        waitForRoleSurfaceReady();
 
         // Verify German label is different from English
         WebElement analyzeTabDe = driver.findElement(
@@ -287,11 +316,8 @@ abstract class AbstractSeleniumContainerIT {
     @Test
     @Order(18)
     void helpTabServesGermanDocsWhenLocaleIsDe() {
-        // Should still be in German locale from previous test
-        // Navigate to Help tab
-        WebElement helpTab = driver.findElement(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='help']"));
-        helpTab.click();
+        // Should still be in German locale from previous test.
+        openMainTab("help");
 
         // Wait for TOC to load
         new WebDriverWait(driver, Duration.ofSeconds(10))
@@ -333,6 +359,7 @@ abstract class AbstractSeleniumContainerIT {
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(
                         By.cssSelector("#taxonomyTree .tax-node")));
+        waitForRoleSurfaceReady();
 
         WebElement analyzeTab = driver.findElement(
                 By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
