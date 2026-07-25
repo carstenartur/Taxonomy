@@ -1,0 +1,77 @@
+name: Temporary WebJar Alignment
+
+on:
+  push:
+    branches:
+      - fix/webjar-version-alignment
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/webjar-version-alignment
+      - name: Align packaged WebJar dependencies and browser paths
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path('taxonomy-app/pom.xml'): [
+                  ('<artifactId>bootstrap</artifactId>\n            <version>5.3.2</version>',
+                   '<artifactId>bootstrap</artifactId>\n            <version>5.3.8</version>'),
+                  ('<artifactId>jspdf</artifactId>\n            <version>4.2.0</version>',
+                   '<artifactId>jspdf</artifactId>\n            <version>4.2.1</version>'),
+              ],
+              Path('taxonomy-app/src/main/resources/templates/index.html'): [
+                  ('/webjars/bootstrap/5.3.2/', '/webjars/bootstrap/5.3.8/'),
+                  ('/webjars/jspdf/4.2.0/', '/webjars/jspdf/4.2.1/'),
+              ],
+              Path('taxonomy-app/src/main/resources/templates/change-password.html'): [
+                  ('/webjars/bootstrap/5.3.2/', '/webjars/bootstrap/5.3.8/'),
+              ],
+              Path('taxonomy-app/src/test/java/com/taxonomy/OfflineWebAssetsTest.java'): [
+                  ('/webjars/bootstrap/5.3.2/', '/webjars/bootstrap/5.3.8/'),
+                  ('/webjars/jspdf/4.2.0/', '/webjars/jspdf/4.2.1/'),
+              ],
+          }
+
+          for path, changes in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              for old, new in changes:
+                  count = text.count(old)
+                  if count == 0:
+                      raise SystemExit(f'Expected reference not found in {path}: {old}')
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+
+          checks = {
+              Path('taxonomy-app/pom.xml'): ('5.3.2</version>', '4.2.0</version>'),
+              Path('taxonomy-app/src/main/resources/templates/index.html'): ('/webjars/bootstrap/5.3.2/', '/webjars/jspdf/4.2.0/'),
+              Path('taxonomy-app/src/main/resources/templates/change-password.html'): ('/webjars/bootstrap/5.3.2/',),
+              Path('taxonomy-app/src/test/java/com/taxonomy/OfflineWebAssetsTest.java'): ('/webjars/bootstrap/5.3.2/', '/webjars/jspdf/4.2.0/'),
+          }
+          for path, forbidden in checks.items():
+              text = path.read_text(encoding='utf-8')
+              for value in forbidden:
+                  if value in text:
+                      raise SystemExit(f'Stale WebJar reference remains in {path}: {value}')
+          PY
+          rm .github/workflows/temp-webjar-alignment.yml
+          printf 'WebJar versions aligned by temporary maintenance job.\n' > .github/webjar-alignment-applied
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/pom.xml \
+            taxonomy-app/src/main/resources/templates/index.html \
+            taxonomy-app/src/main/resources/templates/change-password.html \
+            taxonomy-app/src/test/java/com/taxonomy/OfflineWebAssetsTest.java \
+            .github/webjar-alignment-applied \
+            .github/workflows/temp-webjar-alignment.yml
+          git commit -m 'fix: align packaged WebJar versions and resource paths'
+          git push origin HEAD:fix/webjar-version-alignment
