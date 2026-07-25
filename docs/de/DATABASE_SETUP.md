@@ -106,8 +106,8 @@ PostgreSQL verwendet standardmäßig UTF-8, sodass alle Zeichenkettenfelder ohne
 ### Integrationstests ausführen
 
 ```bash
-mvn -B -pl taxonomy-app -am install -DskipTests
-mvn -B -pl taxonomy-app \
+./mvnw -B -pl taxonomy-app -am install -DskipTests
+./mvnw -B -pl taxonomy-app \
   failsafe:integration-test failsafe:verify \
   -DskipITs=false \
   -Dit.test='*Postgres*IT' \
@@ -179,8 +179,8 @@ Das Passwort muss mindestens 8 Zeichen lang sein und Zeichen aus mindestens drei
 ### Integrationstests ausführen
 
 ```bash
-mvn -B -pl taxonomy-app -am install -DskipTests
-mvn -B -pl taxonomy-app \
+./mvnw -B -pl taxonomy-app -am install -DskipTests
+./mvnw -B -pl taxonomy-app \
   failsafe:integration-test failsafe:verify \
   -DskipITs=false \
   -Dit.test='*Mssql*IT' \
@@ -263,8 +263,8 @@ Für Oracle-Instanzen, die eine **SID** verwenden, nutzen Sie: `jdbc:oracle:thin
 ### Integrationstests ausführen
 
 ```bash
-mvn -B -pl taxonomy-app -am install -DskipTests
-mvn -B -pl taxonomy-app \
+./mvnw -B -pl taxonomy-app -am install -DskipTests
+./mvnw -B -pl taxonomy-app \
   failsafe:integration-test failsafe:verify \
   -DskipITs=false \
   -Dit.test='*Oracle*IT' \
@@ -345,7 +345,7 @@ Eine leere Zieldatenbank importiert die mitgelieferte Taxonomie-Arbeitsmappe. Ei
 
 ## Testarchitektur und Kompatibilitätsnachweise
 
-`mvn verify` ist der begrenzte deterministische Standard-Lebenszyklus und startet
+`./mvnw verify` ist der begrenzte deterministische Standard-Lebenszyklus und startet
 keine externe Datenbank. Die zentralen HSQLDB-Container-Tests sowie die
 PostgreSQL-/MSSQL-/Oracle-Matrix sind normale Failsafe-/Testcontainers-Tests und
 werden mit `-DskipITs=false` aktiviert.

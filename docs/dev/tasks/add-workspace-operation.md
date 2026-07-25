@@ -85,10 +85,10 @@ New workspace operations typically follow the pattern
 
 ```bash
 # App module unit tests
-mvn test -pl taxonomy-app
+./mvnw test -pl taxonomy-app
 
 # Full verify if you changed the UI or application configuration
-mvn verify -DexcludedGroups="real-llm"
+./mvnw verify -DexcludedGroups="real-llm"
 ```
 
 Relevant test classes:

@@ -338,6 +338,10 @@
                         -->
                         <spring.test.context.cache.maxSize>1</spring.test.context.cache.maxSize>
                     </systemPropertyVariables>
+                    <environmentVariables>
+                        <TAXONOMY_EMBEDDING_MODEL_DIR>${maven.multiModuleProjectDirectory}/models/bge-small-en-v1.5</TAXONOMY_EMBEDDING_MODEL_DIR>
+                        <TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>false</TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>
+                    </environmentVariables>
                 </configuration>
             </plugin>
             <plugin>
@@ -383,6 +387,34 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>${maven-dependency-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>write-packaged-dependency-policy-tree</id>
+                        <phase>verify</phase>
+                        <goals><goal>tree</goal></goals>
+                        <configuration>
+                            <skip>${taxonomy.quality.skip}</skip>
+                            <scope>runtime</scope>
+                            <includes>org.apache.pdfbox:*,com.vladsch.flexmark:flexmark-pdf-converter,com.openhtmltopdf:*</includes>
+                            <outputFile>${maven.multiModuleProjectDirectory}/target/dependency-hygiene-tree.txt</outputFile>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>write-hibernate-search-alignment-tree</id>
+                        <phase>verify</phase>
+                        <goals><goal>tree</goal></goals>
+                        <configuration>
+                            <skip>${taxonomy.quality.skip}</skip>
+                            <includes>org.hibernate.search:*,org.hibernate.orm:hibernate-core,org.apache.lucene:lucene-core</includes>
+                            <outputFile>${maven.multiModuleProjectDirectory}/target/hibernate-search-dependencies.txt</outputFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <includes>
@@ -402,6 +434,10 @@
                              Selenium BOM instead of deriving it from a transitive JAR. -->
                         <selenium.container.image>${selenium.container.image}</selenium.container.image>
                     </systemPropertyVariables>
+                    <environmentVariables>
+                        <TAXONOMY_EMBEDDING_MODEL_DIR>${maven.multiModuleProjectDirectory}/models/bge-small-en-v1.5</TAXONOMY_EMBEDDING_MODEL_DIR>
+                        <TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>false</TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>
+                    </environmentVariables>
                 </configuration>
                 <executions>
                     <execution>

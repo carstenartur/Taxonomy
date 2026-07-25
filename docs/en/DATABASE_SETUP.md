@@ -106,8 +106,8 @@ PostgreSQL uses UTF-8 by default, so all string fields are stored correctly with
 ### Running Integration Tests
 
 ```bash
-mvn -B -pl taxonomy-app -am install -DskipTests
-mvn -B -pl taxonomy-app \
+./mvnw -B -pl taxonomy-app -am install -DskipTests
+./mvnw -B -pl taxonomy-app \
   failsafe:integration-test failsafe:verify \
   -DskipITs=false \
   -Dit.test='*Postgres*IT' \
@@ -179,8 +179,8 @@ The password must be at least 8 characters and contain characters from at least 
 ### Running Integration Tests
 
 ```bash
-mvn -B -pl taxonomy-app -am install -DskipTests
-mvn -B -pl taxonomy-app \
+./mvnw -B -pl taxonomy-app -am install -DskipTests
+./mvnw -B -pl taxonomy-app \
   failsafe:integration-test failsafe:verify \
   -DskipITs=false \
   -Dit.test='*Mssql*IT' \
@@ -263,8 +263,8 @@ For Oracle instances using a **SID**, use: `jdbc:oracle:thin:@localhost:1521:ORC
 ### Running Integration Tests
 
 ```bash
-mvn -B -pl taxonomy-app -am install -DskipTests
-mvn -B -pl taxonomy-app \
+./mvnw -B -pl taxonomy-app -am install -DskipTests
+./mvnw -B -pl taxonomy-app \
   failsafe:integration-test failsafe:verify \
   -DskipITs=false \
   -Dit.test='*Oracle*IT' \
@@ -345,7 +345,7 @@ An empty target database imports the bundled taxonomy workbook. A file-backed so
 
 ## Test architecture and compatibility evidence
 
-`mvn verify` is the bounded deterministic lifecycle and does not start external
+`./mvnw verify` is the bounded deterministic lifecycle and does not start external
 databases. Core HSQLDB container tests and the PostgreSQL/MSSQL/Oracle matrix are
 ordinary Failsafe/Testcontainers tests enabled with `-DskipITs=false`.
 

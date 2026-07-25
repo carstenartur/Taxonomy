@@ -73,7 +73,7 @@ Für Umgebungen ohne Internetzugang laden Sie das Modell `bge-small-en-v1.5` vor
 
 ```bash
 # 1. Auf einem Rechner mit Internetzugang die Anwendung einmal starten, um den Download auszulösen:
-LLM_PROVIDER=LOCAL_ONNX mvn spring-boot:run
+LLM_PROVIDER=LOCAL_ONNX ./mvnw -pl taxonomy-app spring-boot:run
 # Das Modell wird unter ~/.djl.ai/cache/ zwischengespeichert (ca. 33 MB)
 
 # 2. Das zwischengespeicherte Modellverzeichnis auf den Zielrechner kopieren:
@@ -146,7 +146,7 @@ curl -u admin:admin http://localhost:8080/api/taxonomy
 
 **Lokale Entwicklung:**
 ```bash
-ADMIN_PASSWORD=my-secret mvn spring-boot:run
+ADMIN_PASSWORD=my-secret ./mvnw -pl taxonomy-app spring-boot:run
 ```
 
 **Docker:**

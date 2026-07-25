@@ -33,21 +33,28 @@ Bewertet wird die authentifizierte Webanwendung mit Analyse, Taxonomiebaum, Arch
 
 ## Automatischer Accessibility-Gate
 
-Der Workflow `.github/workflows/accessibility.yml`:
+Accessibility ist Teil der Maven-gesteuerten Browser-Suite und kein eigener
+GitHub-Workflow mehr:
 
-1. baut und startet die echte Spring-Boot-Anwendung;
-2. meldet sich über das Formular an;
-3. öffnet Analyse, Architektur, Graph, Versionen, DSL, Hilfe, Administration und Einstellungen;
-4. führt `@axe-core/playwright` für WCAG 2.0/2.1 A und AA aus;
-5. schlägt bei kritischen oder schwerwiegenden Verstößen fehl;
-6. lädt bei Fehlern das Anwendungslog hoch.
+```bash
+./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true \
+  -Dtaxonomy.ui.suite=accessibility
+```
 
-Fest gepinnte Werkzeuge:
+Das Profil `ci` führt dieselben authentifizierten axe-Szenarien zusammen mit
+der Primärworkflow- und Rollen-/Zustandsmatrix aus. Maven installiert die fest
+gepinnten Node-, Playwright- und axe-Abhängigkeiten, startet die echte
+Spring-Boot-Anwendung und schreibt Berichte unter
+`target/ui-verification/accessibility/`.
+
+Fest gepinnte Pakete:
 
 - `@playwright/test` 1.61.1
 - `@axe-core/playwright` 4.12.1
 
-Automatische Tests belegen keine vollständige Konformität. Sie ersetzen weder Tastatur-, Screenreader-, Zoom- und Kognitionstests noch die fachliche Prüfung von Diagrammalternativen.
+Automatische Prüfungen belegen keine vollständige Konformität und ersetzen
+weder Tastatur-, Screenreader-, Zoom- und Kognitionstests noch die fachliche
+Prüfung von Diagrammalternativen.
 
 ## Verbindliche manuelle Release-Prüfungen
 

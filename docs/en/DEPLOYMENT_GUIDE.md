@@ -16,8 +16,8 @@ This guide describes supported deployment modes and their persistence, security 
 ```bash
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
-mvn install -DskipTests
-mvn -pl taxonomy-app spring-boot:run
+./mvnw install -DskipTests
+./mvnw -pl taxonomy-app spring-boot:run
 ```
 
 Or run the published image:

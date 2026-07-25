@@ -130,7 +130,7 @@ This checklist maps the BSI criteria for the use of AI models in federal adminis
 
 | BSI Criterion | Taxonomy Implementation | Status |
 |---|---|---|
-| Software Bill of Materials available | CycloneDX SBOM automatically generated (`mvn package`) | ✅ Met |
+| Software Bill of Materials available | CycloneDX SBOM automatically generated (`./mvnw package`) | ✅ Met |
 | Dependencies documented | `target/taxonomy-sbom.json` and `target/taxonomy-sbom.xml` with package names, versions, licenses, hashes | ✅ Met |
 | Third-party transparency | [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) documents all third-party licenses | ✅ Met |
 | Open-source license | MIT License — fully open source | ✅ Met |

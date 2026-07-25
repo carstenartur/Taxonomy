@@ -30,13 +30,13 @@ The root `pom.xml` declares project version, module structure, Java version, and
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 git checkout v1.2.2   # or a concrete commit SHA
-mvn test
+./mvnw test
 ```
 
 For a fuller verification run:
 
 ```bash
-mvn verify
+./mvnw verify
 ```
 
 Integration tests may require Docker.
@@ -44,8 +44,7 @@ Integration tests may require Docker.
 ## 4. Run locally
 
 ```bash
-cd taxonomy-app
-LLM_PROVIDER=LOCAL_ONNX mvn spring-boot:run
+LLM_PROVIDER=LOCAL_ONNX ./mvnw -pl taxonomy-app spring-boot:run
 ```
 
 Then open `http://localhost:8080`.

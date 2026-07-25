@@ -81,7 +81,7 @@ dialog, update both the JS module and the template.
 
 ```bash
 # App module unit tests
-mvn test -pl taxonomy-app
+./mvnw test -pl taxonomy-app
 ```
 
 Relevant test classes:

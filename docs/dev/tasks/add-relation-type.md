@@ -82,10 +82,10 @@ After adding the enum constant, the new type appears automatically in
 
 ```bash
 # Domain module: verify enum constant is present
-mvn test -pl taxonomy-domain
+./mvnw test -pl taxonomy-domain
 
 # App module: verify compatibility matrix and validation
-mvn test -pl taxonomy-app
+./mvnw test -pl taxonomy-app
 ```
 
 Relevant test classes:

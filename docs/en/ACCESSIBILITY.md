@@ -33,21 +33,26 @@ The assessment covers the authenticated single-page application, including analy
 
 ## Automated accessibility gate
 
-The workflow `.github/workflows/accessibility.yml`:
+Accessibility is part of the Maven-owned browser suite rather than a separate
+GitHub workflow:
 
-1. builds and starts the real Spring Boot application;
-2. signs in through the form-login page;
-3. visits Analyze, Architecture, Graph, Versions, DSL, Help, Admin and Preferences;
-4. runs `@axe-core/playwright` against WCAG 2.0/2.1 A and AA rules;
-5. fails on critical or serious violations;
-6. uploads the application log when the audit fails.
+```bash
+./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true \
+  -Dtaxonomy.ui.suite=accessibility
+```
 
-Pinned audit tooling:
+The `ci` profile runs the same authenticated axe scenarios together with the
+primary-workflow and role/state matrix. Maven installs the pinned Node,
+Playwright and axe dependencies, starts the real Spring Boot application and
+writes reports below `target/ui-verification/accessibility/`.
+
+Pinned packages:
 
 - `@playwright/test` 1.61.1
 - `@axe-core/playwright` 4.12.1
 
-Automated tests cannot establish full conformity. They do not replace keyboard, screen-reader, zoom, cognitive-accessibility or domain-specific diagram reviews.
+Automated checks do not prove complete conformity and do not replace keyboard,
+screen-reader, zoom, cognitive-load or diagram-equivalence review.
 
 ## Required manual release checks
 

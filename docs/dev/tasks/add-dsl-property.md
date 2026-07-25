@@ -102,10 +102,10 @@ view response), add a new DTO in `taxonomy-domain/…/dto/` and map from the mod
 
 ```bash
 # DSL module unit tests (fast, no Spring context, no Docker)
-mvn test -pl taxonomy-dsl
+./mvnw test -pl taxonomy-dsl
 
 # App module tests (if you changed the commit index or facade)
-mvn test -pl taxonomy-app
+./mvnw test -pl taxonomy-app
 ```
 
 Relevant test classes:

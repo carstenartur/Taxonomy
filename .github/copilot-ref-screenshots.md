@@ -11,13 +11,13 @@ The test class is **opt-in** — it only runs when the `generateScreenshots` sys
 
 ```bash
 # Step 1 — build the application JAR (required by the container tests)
-mvn package -DskipTests
+./mvnw package -DskipTests
 
 # Step 2 — run the screenshot generator (screenshots 1–14, no LLM key needed)
-mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+./mvnw failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
 
 # Step 2 (alternative) — run with LLM key to also capture screenshots 15–26
-GEMINI_API_KEY=<your-key> mvn failsafe:integration-test \
+GEMINI_API_KEY=<your-key> ./mvnw failsafe:integration-test \
     -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
 ```
 
@@ -61,20 +61,15 @@ LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.g
    ![Alt text](/docs/images/01-full-page-layout.png)
    ```
 
-3. **Run the generator** locally (`mvn package -DskipTests && mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT`) to produce the PNG file.
+3. **Run the generator** locally (`./mvnw -B verify -Pscreenshots`) to produce the PNG file.
 
 4. **Commit the PNG** to `docs/images/` alongside the test and documentation changes.
 
 ## Automatic regeneration via GitHub Actions
 
-The workflow `.github/workflows/generate-screenshots.yml` runs automatically on:
-- Manual trigger (`workflow_dispatch`)
-- Push to `main` that changes files under `src/main/resources/templates/**` or `src/main/resources/static/**`
-- Push to `main` that changes `src/test/java/**/ScreenshotGeneratorIT.java`
+The manual `.github/workflows/documentation-screenshots.yml` workflow invokes the same Maven-owned `screenshots` profile, uploads the generated images for review and publishes changed PNGs only after the generation job succeeds.
 
-It builds the JAR, runs the screenshot generator (with `GEMINI_API_KEY` from repository secrets), and auto-commits any changed PNGs back to the branch with the message `docs: auto-generate UI screenshots [skip ci]`.
-
-To trigger it manually from the GitHub UI: **Actions → Generate Documentation Screenshots → Run workflow**.
+To trigger it manually from the GitHub UI: **Actions → Documentation Screenshots → Run workflow**.
 
 ## Key Element IDs (for Selenium tests)
 

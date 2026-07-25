@@ -1,0 +1,15 @@
+{
+  "name": "taxonomy-browser-verification",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "verify:ui": "node scripts/run-ui-suite.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.61.1"
+  }
+}

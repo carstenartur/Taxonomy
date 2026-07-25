@@ -82,7 +82,7 @@ Avoid adding nullable fields as a shortcut — consider whether a new DTO is cle
 
 ```bash
 # App module unit tests
-mvn test -pl taxonomy-app
+./mvnw test -pl taxonomy-app
 ```
 
 Relevant test classes:

@@ -80,7 +80,7 @@ For environments without internet access, pre-download the `bge-small-en-v1.5` m
 
 ```bash
 # 1. On a machine with internet access, run the app once to trigger the download:
-LLM_PROVIDER=LOCAL_ONNX mvn spring-boot:run
+LLM_PROVIDER=LOCAL_ONNX ./mvnw -pl taxonomy-app spring-boot:run
 # The model is cached under ~/.djl.ai/cache/ (approximately 33 MB)
 
 # 2. Copy the cached model directory to the target machine:
@@ -153,7 +153,7 @@ curl -u admin:admin http://localhost:8080/api/taxonomy
 
 **Local development:**
 ```bash
-ADMIN_PASSWORD=my-secret mvn spring-boot:run
+ADMIN_PASSWORD=my-secret ./mvnw -pl taxonomy-app spring-boot:run
 ```
 
 **Docker:**

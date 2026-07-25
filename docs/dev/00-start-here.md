@@ -31,7 +31,7 @@ without reading the full architecture reference first.
    also run the full verification suite:
 
    ```bash
-   mvn verify -DexcludedGroups="real-llm"
+   ./mvnw verify -DexcludedGroups="real-llm"
    ```
 
 ---

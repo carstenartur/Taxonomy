@@ -81,30 +81,25 @@ the deeper architecture sections below.
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 
-# Compile all 5 modules (~5 seconds)
-mvn compile
+# Compile the complete reactor with the pinned Maven distribution
+./mvnw compile
 
-# Run the complete deterministic lifecycle (no Docker needed)
-mvn verify
+# Bounded developer verification (no Docker)
+./mvnw verify
 
-# Run one explicit Testcontainers scenario (Docker required)
-mvn -B -pl taxonomy-app -am install -DskipTests
-mvn -B -pl taxonomy-app failsafe:integration-test failsafe:verify \
-  -DskipITs=false -Dit.test=DiagnosticsContainerIT \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
+# Complete pull-request verification (Docker required)
+./mvnw -B verify -Pci
 
-# Start locally (browse-only, no API key needed)
-mvn -pl taxonomy-app spring-boot:run
+# Start locally (browse-only, no API key required)
+./mvnw -pl taxonomy-app spring-boot:run
 ```
 
-Open <http://localhost:8080> to see the application.
-
----
+Open <http://localhost:8080> to see the application. The reactor contains five
+shipped modules plus the aggregate-coverage and build-policy modules.
 
 ## Module Architecture
 
-The project is a multi-module Maven build with five modules. See [Architecture](ARCHITECTURE.md#module-architecture) for the full module diagram and dependency graph.
+The project is a multi-module Maven build with five shipped modules and two verification modules. See [Architecture](ARCHITECTURE.md#module-architecture) for the full module diagram and dependency graph.
 
 | Module | Scope | Spring? |
 |---|---|---|
@@ -195,69 +190,27 @@ The main Spring Boot application:
 
 ## Running Tests
 
-The root POM keeps `mvn verify` deterministic and bounded. It runs unit, Spring,
-architecture, contract, and dependency-hygiene tests without Docker or live LLM
-calls. Failsafe/Testcontainers tests are selected explicitly.
+The checked-in Maven Wrapper is the only build authority. The default lifecycle
+is intentionally bounded; the `ci` profile activates Docker-backed integration,
+quality gates and the browser/accessibility matrix.
 
 ```bash
-# Complete standard lifecycle (no Docker)
-mvn verify
-
-# One module or test class
-mvn test -pl taxonomy-dsl
-mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
-
-# Prepare the reactor for an isolated integration test
-mvn -B -pl taxonomy-app -am install -DskipTests
-
-# One core Testcontainers scenario
-mvn -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test=ProductionPersistenceRestartIT \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
+./mvnw verify
+./mvnw test -pl taxonomy-dsl
+./mvnw test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
+./mvnw -B verify -Pcore-integration
+./mvnw -B verify -Pdatabase-postgres
+./mvnw -B verify -Pdatabase-mssql
+./mvnw -B verify -Pdatabase-oracle
+./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true
+./mvnw -B verify -Pci
 ```
 
-### External database compatibility
-
-PostgreSQL, Microsoft SQL Server, and Oracle tests are ordinary Maven
-Failsafe/Testcontainers tests, but all three `db-*` tags are excluded from the
-standard lifecycle. Relevant database-configuration pull requests run the
-bounded PostgreSQL diagnostics/Selenium pair. Scheduled and manual workflows
-cover the selected full matrix.
-
-```bash
-mvn -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test='*Postgres*IT' \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm
-
-# Substitute *Mssql*IT or *Oracle*IT for another family.
-```
-
-`-DexcludedGroups=real-llm` deliberately includes the database tags while still
-excluding live LLM calls. Test classes inherit from
-`AbstractDatabaseContainerIT` or `AbstractSeleniumContainerIT`; application and
-database containers share a Testcontainers network and receive the selected
-Spring profile and JDBC settings through environment variables.
-
-| Pattern/tag | Runner | Standard lifecycle |
-|---|---|---|
-| `*Test.java`, `*Tests.java` | Surefire | Included |
-| `*IT.java` | Failsafe | Skipped while `skipITs=true` |
-| `db-postgres` | Failsafe/Testcontainers | Excluded |
-| `db-mssql` | Failsafe/Testcontainers | Excluded |
-| `db-oracle` | Failsafe/Testcontainers | Excluded |
-| `real-llm` | Surefire/Failsafe | Excluded |
-
-The authoritative command catalogue, browser matrix, accessibility audit, and
-screenshot procedure are maintained in
-[`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md).
-
----
+The exact suite scope, prerequisites, browser-profile reproduction and the eight
+remaining workflow responsibilities are documented in
+[`docs/dev/MAVEN_VERIFICATION.md`](../dev/MAVEN_VERIFICATION.md). Test selection
+belongs in a POM profile; workflow YAML may select an environment/profile but
+must not name Java tests or invoke Playwright/axe scripts directly.
 
 ## Adding a New REST Endpoint
 
@@ -545,7 +498,7 @@ After changing the analysis pipeline, diagram projection logic, or Mermaid expor
 
 1. Run:
    ```
-   mvn test -pl taxonomy-app -Dtest=ReadmeShowcaseTest -Dsurefire.failIfNoSpecifiedTests=false
+   ./mvnw test -pl taxonomy-app -Dtest=ReadmeShowcaseTest -Dsurefire.failIfNoSpecifiedTests=false
    ```
 2. Open `taxonomy-app/target/readme-showcase.md` and copy the Mermaid block
    (everything between ` ```mermaid ` and ` ``` `) into `README.md`, replacing
@@ -574,7 +527,7 @@ Screenshots are auto-generated by `ScreenshotGeneratorIT` and stored in `docs/im
 
 3. **Regeneration:** After any UI change, regenerate affected screenshots:
    ```
-   mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+   ./mvnw failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
    ```
 
 4. **Bilingual screenshots:** If the UI is switched to German, generate a parallel

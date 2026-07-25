@@ -251,7 +251,7 @@ permission.
 
 | Layer | Trigger and responsibility |
 |---|---|
-| **Build & Test** | `mvn install` with deterministic tests; produces JAR, SBOM, dependency, test, and coverage artifacts |
+| **Build & Test** | `./mvnw install` with deterministic tests; produces JAR, SBOM, dependency, test, and coverage artifacts |
 | **Core Integration** | Four explicitly selected HSQLDB/Testcontainers scenarios |
 | **Database Compatibility** | PostgreSQL pair on relevant PRs; scheduled/manual PostgreSQL, MSSQL, and Oracle matrix |
 | **UI / Accessibility** | Chromium/Firefox and desktop/tablet/mobile evidence |

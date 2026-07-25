@@ -113,9 +113,9 @@ Common extension metadata (`TaxonomyExtension`, `ExtensionKind`) is owned by `ta
 ## Tests to run
 
 ```bash
-mvn test -pl taxonomy-export -am
-mvn test -pl taxonomy-app -Dtest=ExportFormatExtensionRegistryTest,ExportFormatExtensionAdapterTest
-mvn verify -DexcludedGroups="real-llm"
+./mvnw test -pl taxonomy-export -am
+./mvnw test -pl taxonomy-app -Dtest=ExportFormatExtensionRegistryTest,ExportFormatExtensionAdapterTest
+./mvnw verify -DexcludedGroups="real-llm"
 ```
 
 For user-visible changes also run the screenshot generator and authenticated accessibility workflow.
