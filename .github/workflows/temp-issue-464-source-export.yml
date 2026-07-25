@@ -30,5 +30,6 @@ jobs:
         with:
           name: issue-464-source
           path: target/issue-464-source
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
