@@ -15,8 +15,8 @@ Hibernate Search 8.4 targets Hibernate ORM 7.4 and its Lucene backend uses Lucen
 ## Local verification
 
 ```bash
-mvn -B -q -pl taxonomy-app -am install -DskipTests
-mvn -B -q -pl taxonomy-app dependency:tree \
+./mvnw -B -q -pl taxonomy-app -am install -DskipTests
+./mvnw -B -q -pl taxonomy-app dependency:tree \
   -Dincludes='org.hibernate.search:*,org.hibernate.orm:hibernate-core,org.apache.lucene:lucene-core' \
   -DoutputFile=../target/hibernate-search-dependencies.txt
 python3 .github/scripts/check-hibernate-search-alignment.py \

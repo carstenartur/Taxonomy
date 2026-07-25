@@ -26,7 +26,7 @@ if [[ "$SOURCE_BRANCH" != "main" && "$DRY_RUN" != "true" ]]; then
   exit 1
 fi
 
-CURRENT_VERSION=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)
+CURRENT_VERSION=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
 if [[ "$CURRENT_VERSION" != *-SNAPSHOT ]]; then
   echo "::error::Current Maven version must be a SNAPSHOT, but was $CURRENT_VERSION"
   exit 1
@@ -55,7 +55,7 @@ verify_metadata() {
   local expected=$1
   local release_mode=$2
   local maven_version
-  maven_version=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)
+  maven_version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
   if [[ "$maven_version" != "$expected" ]]; then
     echo "::error::Maven version $maven_version != $expected"
     exit 1
@@ -229,7 +229,7 @@ echo "Dry run: $DRY_RUN"
 echo "Skip tests: $SKIP_TESTS"
 
 verify_metadata "$CURRENT_VERSION" false
-mvn -B validate
+./mvnw -B validate
 
 git fetch origin --tags --force
 TAG_EXISTS=false
@@ -254,7 +254,7 @@ fi
 echo "Release state: $STATE"
 
 if [[ "$STATE" == "new" ]]; then
-  mvn -B versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
+  ./mvnw -B versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
   python3 "$METADATA_HELPER" "$RELEASE_VERSION" --release
   verify_metadata "$RELEASE_VERSION" true
   ensure_no_snapshot_poms
@@ -266,9 +266,9 @@ else
 fi
 
 if [[ "$SKIP_TESTS" == "true" ]]; then
-  mvn -B clean package -DskipTests
+  ./mvnw -B clean package -DskipTests
 else
-  mvn -B clean verify
+  ./mvnw -B clean verify -Pci
 fi
 
 python3 "$VEX_HELPER"
@@ -321,7 +321,7 @@ if [[ "$DRY_RUN" != "true" && "$PUBLISHED_THIS_RUN" == "true" ]]; then
   fi
 fi
 
-mvn -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
+./mvnw -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
 python3 "$METADATA_HELPER" "$NEXT_VERSION"
 verify_metadata "$NEXT_VERSION" false
 

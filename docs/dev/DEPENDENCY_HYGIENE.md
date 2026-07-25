@@ -1,7 +1,7 @@
 # Packaged Dependency Hygiene
 
 The normal Maven lifecycle enforces the runtime dependency boundary. This is not
-a GitHub-specific policy: `mvn verify` executes Maven Enforcer in every module.
+a GitHub-specific policy: `./mvnw verify` executes Maven Enforcer in every module.
 
 ## Enforced invariants
 
@@ -19,15 +19,15 @@ packaged application.
 ## Verification and diagnostics
 
 ```bash
-mvn verify
+./mvnw verify
 
-PDFBOX_VERSION=$(mvn help:evaluate \
+PDFBOX_VERSION=$(./mvnw help:evaluate \
   -Dexpression=pdfbox.version -q -DforceStdout)
 python3 .github/scripts/check-dependency-hygiene.py \
   --sbom target/taxonomy-sbom.json \
   --expected-pdfbox-version "$PDFBOX_VERSION"
 
-mvn -pl taxonomy-app dependency:tree \
+./mvnw -pl taxonomy-app dependency:tree \
   -Dscope=runtime \
   -Dincludes='org.apache.pdfbox:*,com.vladsch.flexmark:flexmark-pdf-converter,com.openhtmltopdf:*'
 ```

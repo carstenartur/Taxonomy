@@ -246,7 +246,7 @@ keine Schreibberechtigung auf Repository-Inhalte erforderlich.
 
 | Ebene | Auslöser und Verantwortung |
 |---|---|
-| **Build & Test** | `mvn install` mit deterministischen Tests; erzeugt JAR-, SBOM-, Abhängigkeits-, Test- und Coverage-Artefakte |
+| **Build & Test** | `./mvnw install` mit deterministischen Tests; erzeugt JAR-, SBOM-, Abhängigkeits-, Test- und Coverage-Artefakte |
 | **Core Integration** | Vier explizit ausgewählte HSQLDB-/Testcontainers-Szenarien |
 | **Database Compatibility** | PostgreSQL-Paar bei relevanten PRs; geplante/manuelle PostgreSQL-, MSSQL- und Oracle-Matrix |
 | **UI / Accessibility** | Chromium/Firefox sowie Desktop-/Tablet-/Mobil-Nachweise |

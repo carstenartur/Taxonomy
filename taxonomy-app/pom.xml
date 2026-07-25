@@ -383,6 +383,34 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>${maven-dependency-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>write-packaged-dependency-policy-tree</id>
+                        <phase>verify</phase>
+                        <goals><goal>tree</goal></goals>
+                        <configuration>
+                            <skip>${taxonomy.quality.skip}</skip>
+                            <scope>runtime</scope>
+                            <includes>org.apache.pdfbox:*,com.vladsch.flexmark:flexmark-pdf-converter,com.openhtmltopdf:*</includes>
+                            <outputFile>${maven.multiModuleProjectDirectory}/target/dependency-hygiene-tree.txt</outputFile>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>write-hibernate-search-alignment-tree</id>
+                        <phase>verify</phase>
+                        <goals><goal>tree</goal></goals>
+                        <configuration>
+                            <skip>${taxonomy.quality.skip}</skip>
+                            <includes>org.hibernate.search:*,org.hibernate.orm:hibernate-core,org.apache.lucene:lucene-core</includes>
+                            <outputFile>${maven.multiModuleProjectDirectory}/target/hibernate-search-dependencies.txt</outputFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <includes>
@@ -414,4 +442,40 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            Use a pre-downloaded ONNX model instead of downloading at test time.
+            Activate with: -Plocal-onnx-model
+            The model directory must exist at models/bge-small-en-v1.5/ relative to the
+            repository root, containing the ONNX export files from BAAI/bge-small-en-v1.5.
+        -->
+        <profile>
+            <id>local-onnx-model</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <environmentVariables>
+                                <TAXONOMY_EMBEDDING_MODEL_DIR>${maven.multiModuleProjectDirectory}/models/bge-small-en-v1.5</TAXONOMY_EMBEDDING_MODEL_DIR>
+                                <TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>false</TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>
+                            </environmentVariables>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <environmentVariables>
+                                <TAXONOMY_EMBEDDING_MODEL_DIR>${maven.multiModuleProjectDirectory}/models/bge-small-en-v1.5</TAXONOMY_EMBEDDING_MODEL_DIR>
+                                <TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>false</TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD>
+                            </environmentVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

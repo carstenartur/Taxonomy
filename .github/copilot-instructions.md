@@ -7,9 +7,9 @@ Spring Boot 4 / Java 21 web application. Taxonomy data loaded from an Excel work
 ## Build & Test
 
 ```bash
-mvn compile            # compile only
-mvn test               # unit + Spring context tests (never requires Docker or an API key)
-mvn verify             # unit tests + integration tests (requires Docker for container ITs)
+./mvnw compile            # compile only
+./mvnw test               # unit + Spring context tests (never requires Docker or an API key)
+./mvnw verify             # unit tests + integration tests (requires Docker for container ITs)
 ```
 
 Integration test classes follow the `**/*IT.java` naming pattern and are run by `maven-failsafe-plugin`.
@@ -18,17 +18,17 @@ Integration test classes follow the `**/*IT.java` naming pattern and are run by 
 
 The CI pipeline runs exactly:
 ```bash
-mvn -q verify -DexcludedGroups="real-llm"
+./mvnw -q verify -DexcludedGroups="real-llm"
 ```
 This is the **authoritative** build command. It runs **all** unit tests and **all** integration tests (including Testcontainers-based PostgreSQL, MSSQL, and Oracle ITs), excluding only LLM tests that require a real API key.
 
 ### Validation Strategy
 
-During iterative development, `mvn test` is sufficient for quick feedback.
+During iterative development, `./mvnw test` is sufficient for quick feedback.
 
 **Before completing your work** (final commit before opening the PR), run:
 ```bash
-mvn verify -DexcludedGroups="real-llm"
+./mvnw verify -DexcludedGroups="real-llm"
 ```
 if your changes could affect any of the following:
 - REST controllers or API endpoints
@@ -37,11 +37,11 @@ if your changes could affect any of the following:
 - `pom.xml` or dependency changes
 - Dockerfile or container setup
 
-⚠️ **Do NOT** invent alternative test commands (e.g., adding `-pl`, extra `-DexcludedGroups`, or switching `verify` to `test`). If `mvn verify` fails due to Docker/Testcontainers issues in your environment, report the failure — do not silently fall back to a weaker command.
+⚠️ **Do NOT** invent alternative test commands (e.g., adding `-pl`, extra `-DexcludedGroups`, or switching `verify` to `test`). If `./mvnw verify` fails due to Docker/Testcontainers issues in your environment, report the failure — do not silently fall back to a weaker command.
 
-For changes that only touch internal logic, Javadoc, comments, or documentation files, `mvn test` is sufficient.
+For changes that only touch internal logic, Javadoc, comments, or documentation files, `./mvnw test` is sufficient.
 
-**When modifying CI/CD workflow files** (`.github/workflows/*.yml`): manually execute every new or changed shell command in your workspace before committing. This is a multi-module Maven project — commands using `-pl <module>` must also include `-am` (`--also-make`), because `mvn verify` does not install sibling modules into `~/.m2/repository`.
+**When modifying CI/CD workflow files** (`.github/workflows/*.yml`): manually execute every new or changed shell command in your workspace before committing. This is a multi-module Maven project — commands using `-pl <module>` must also include `-am` (`--also-make`), because `./mvnw verify` does not install sibling modules into `~/.m2/repository`.
 
 ## Critical Rules
 

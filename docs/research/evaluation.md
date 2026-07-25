@@ -43,7 +43,7 @@ The comparison should focus on traceability and architectural usefulness, not on
 ### Technical metrics
 
 - build success from a clean checkout;
-- test success with `mvn test` and `mvn verify` where Docker is available;
+- test success with `./mvnw test` and `./mvnw verify` where Docker is available;
 - export validity for ArchiMate, Visio, Mermaid, JSON, Markdown, HTML, and DOCX;
 - stability of local/offline provider runs;
 - response time for representative taxonomy sizes.

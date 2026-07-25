@@ -31,7 +31,7 @@
 ## ScreenshotGeneratorIT Is Opt-In Only
 
 - The screenshot generator only runs when `-DgenerateScreenshots=true` is passed to Maven failsafe.
-- It must **not** run as part of the normal `mvn verify` cycle.
+- It must **not** run as part of the normal `./mvnw verify` cycle.
 - Add `Assumptions.assumeTrue(System.getProperty("generateScreenshots") != null)` guard if adding new screenshot test classes.
 
 ## Do Not Use `/api/diagnostics` for Health Checks
@@ -44,16 +44,16 @@
 - Extending test timeouts masks bugs. If a test is timing out, find and fix the root cause.
 - Silent JavaScript promise failures (missing `.catch()`) are a common cause of Selenium timeouts.
 
-## Use `mvn verify` as Final Validation When Needed
+## Use `./mvnw verify` as Final Validation When Needed
 
-- Running only `mvn test` misses ALL integration tests (`*IT.java`).
+- Running only `./mvnw test` misses ALL integration tests (`*IT.java`).
 - These ITs start the real application in Docker via Testcontainers and test against HSQLDB, PostgreSQL, Oracle, and MSSQL.
-- Before finishing your work, run `mvn verify -DexcludedGroups="real-llm"` if your changes could affect controllers, GUI, startup config, pom.xml, or Dockerfiles.
-- You do NOT need to run `mvn verify` for every small iteration — only as a final check before pushing.
-- ⚠️ **Do NOT** weaken the test command by adding `-pl`, extra exclusion tags (`db-postgres`, `db-oracle`, `db-mssql`), or downgrading from `verify` to `test`. The CI runs `mvn verify -DexcludedGroups="real-llm"` — your local validation must match. If Docker/Testcontainers fail in your environment, report it rather than silently running fewer tests.
+- Before finishing your work, run `./mvnw verify -DexcludedGroups="real-llm"` if your changes could affect controllers, GUI, startup config, pom.xml, or Dockerfiles.
+- You do NOT need to run `./mvnw verify` for every small iteration — only as a final check before pushing.
+- ⚠️ **Do NOT** weaken the test command by adding `-pl`, extra exclusion tags (`db-postgres`, `db-oracle`, `db-mssql`), or downgrading from `verify` to `test`. The CI runs `./mvnw verify -DexcludedGroups="real-llm"` — your local validation must match. If Docker/Testcontainers fail in your environment, report it rather than silently running fewer tests.
 
 ## Multi-Module Maven — Always Use `-am` With `-pl`
 
-- `mvn verify` does NOT run `install` — sibling modules are NOT in `~/.m2/repository`.
+- `./mvnw verify` does NOT run `install` — sibling modules are NOT in `~/.m2/repository`.
 - Any command using `-pl <module>` MUST also include `-am` (`--also-make`) or sibling dependencies will fail to resolve.
 - When adding Maven commands to CI workflow files, always test them manually in your workspace first.

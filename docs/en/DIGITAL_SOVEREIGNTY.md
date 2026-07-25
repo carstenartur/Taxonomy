@@ -22,7 +22,7 @@ This document describes the positioning of the Taxonomy Architecture Analyzer wi
 | **Open Standards** | ArchiMate 3.x XML, JSON, Mermaid, ONNX, OpenAPI, CycloneDX SBOM | ✅ |
 | **No Vendor Lock-In** | 7 interchangeable LLM providers; standard databases (PostgreSQL, SQL Server, Oracle) | ✅ |
 | **Air-Gapped Operation** | `LOCAL_ONNX` mode for fully local inference; pre-loaded embedding models | ✅ |
-| **SBOM / Supply Chain** | CycloneDX SBOM automatically generated during `mvn package` | ✅ |
+| **SBOM / Supply Chain** | CycloneDX SBOM automatically generated during `./mvnw package` | ✅ |
 | **Modular Architecture** | 5 Maven modules (domain, dsl, export, app); extensible and interchangeable | ✅ |
 | **Data Portability** | Export in 5+ formats (ArchiMate XML, Visio, Mermaid, JSON, Reports); JGit repository exportable | ✅ |
 | **EU Data Residency** | Mistral AI (France/EU) or LOCAL_ONNX configurable for on-premises operation | ✅ |

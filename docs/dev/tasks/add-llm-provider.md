@@ -79,10 +79,10 @@ at startup.
 
 ```bash
 # Fast: unit tests for the app module only
-mvn test -pl taxonomy-app
+./mvnw test -pl taxonomy-app
 
 # If you changed application.properties (context-level change)
-mvn verify -DexcludedGroups="real-llm"
+./mvnw verify -DexcludedGroups="real-llm"
 ```
 
 Relevant test classes:
