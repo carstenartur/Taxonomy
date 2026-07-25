@@ -39,6 +39,10 @@ jobs:
           TAXONOMY_ADMIN_PASSWORD: test-only-password
         run: docker compose -f docker-compose.prod.yml config >/dev/null
       - name: Verify authorization regression tests
-        run: ./mvnw -B -pl taxonomy-app -am -Dtest=SecurityTests -DfailIfNoTests=false test
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am
+          -Dtest=SecurityTests
+          -Dsurefire.failIfNoSpecifiedTests=false
+          test
       - name: Build source stage without credentials
         run: docker build --target build -t taxonomy-source-build-check .
