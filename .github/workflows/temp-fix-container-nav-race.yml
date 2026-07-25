@@ -1,4 +1,5 @@
 name: Fix container navigation initialization race
+# Trigger the already bounded same-repository patch job.
 
 on:
   pull_request:
