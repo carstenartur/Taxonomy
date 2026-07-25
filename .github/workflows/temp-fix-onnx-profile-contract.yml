@@ -1,0 +1,65 @@
+name: Fix ONNX Maven profile contract
+
+on:
+  push:
+    branches:
+      - fix/issue-461-jgit-storage-hibernate
+    paths:
+      - '.github/workflows/temp-fix-onnx-profile-contract.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/issue-461-jgit-storage-hibernate
+          fetch-depth: 0
+      - name: Separate ONNX and database verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          path = Path('pom.xml')
+          text = path.read_text(encoding='utf-8')
+
+          default_old = '<excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>'
+          default_new = '<excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle</excludedGroups>'
+          if text.count(default_old) < 1:
+              raise SystemExit('Default excludedGroups contract not found')
+          text = text.replace(default_old, default_new, 1)
+
+          for profile in ('database-postgres', 'database-mssql', 'database-oracle'):
+              marker = f'<id>{profile}</id>'
+              start = text.index(marker)
+              end = text.index('</profile>', start)
+              block = text[start:end]
+              if block.count('<excludedGroups>real-llm</excludedGroups>') != 1:
+                  raise SystemExit(f'Unexpected excludedGroups in {profile}')
+              if block.count('<taxonomy.model.download.skip>false</taxonomy.model.download.skip>') != 1:
+                  raise SystemExit(f'Unexpected model download setting in {profile}')
+              block = block.replace(
+                  '<excludedGroups>real-llm</excludedGroups>',
+                  '<excludedGroups>real-llm,onnx</excludedGroups>',
+              ).replace(
+                  '<taxonomy.model.download.skip>false</taxonomy.model.download.skip>',
+                  '<taxonomy.model.download.skip>true</taxonomy.model.download.skip>',
+              )
+              text = text[:start] + block + text[end:]
+
+          path.write_text(text, encoding='utf-8')
+          ET.parse(path)
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pom.xml
+          git commit -m 'build: separate ONNX and database verification profiles'
+          git push origin HEAD:fix/issue-461-jgit-storage-hibernate
