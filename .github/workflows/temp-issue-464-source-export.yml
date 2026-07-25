@@ -87,6 +87,10 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git status --short
           git add -A
           git commit -m 'fix: make Maven the single verification authority'
+      - name: Push final branch state
+        run: |
+          set -euo pipefail
           git push origin HEAD:fix/issue-464-maven-test-authority
