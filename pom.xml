@@ -105,7 +105,7 @@
         <taxonomy.quality.skip>true</taxonomy.quality.skip>
         <taxonomy.ui.suite>all</taxonomy.ui.suite>
         <taxonomy.ui.profile.filter></taxonomy.ui.profile.filter>
-        <taxonomy.playwright.install.arguments>exec playwright install --with-deps chromium firefox webkit</taxonomy.playwright.install.arguments>
+        <taxonomy.playwright.install.arguments>exec -- playwright install --with-deps chromium firefox webkit</taxonomy.playwright.install.arguments>
     </properties>
 
     <repositories>
