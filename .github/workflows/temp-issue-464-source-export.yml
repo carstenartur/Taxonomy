@@ -82,7 +82,11 @@ jobs:
           bash -n .github/scripts/release.sh
           ./mvnw -B -N validate -DskipUiTests=true -DskipQualityChecks=true
           git diff --check
-      - name: Commit final branch state
+      - name: Restore workflow files for connector-managed update
+        run: |
+          set -euo pipefail
+          git restore --source=HEAD --staged --worktree .github/workflows
+      - name: Commit final non-workflow state
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -90,7 +94,7 @@ jobs:
           git status --short
           git add -A
           git commit -m 'fix: make Maven the single verification authority'
-      - name: Push final branch state
+      - name: Push final non-workflow state
         run: |
           set -euo pipefail
           git push origin HEAD:fix/issue-464-maven-test-authority
