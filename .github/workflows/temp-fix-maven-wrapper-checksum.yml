@@ -51,7 +51,22 @@ jobs:
       - name: Verify the checked-in wrapper
         run: ./mvnw --version
       - name: Verify credential-free source container build
-        run: docker build --progress=plain --target build -t taxonomy-source-build-check .
+        id: docker_build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          docker build --progress=plain --target build -t taxonomy-source-build-check . 2>&1 | tee wrapper-docker-build.log
+      - name: Upload wrapper Docker diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wrapper-docker-build-log
+          path: wrapper-docker-build.log
+          if-no-files-found: error
+          retention-days: 14
+      - name: Enforce Docker build result
+        if: steps.docker_build.outcome != 'success'
+        run: exit 1
       - name: Commit verified checksum
         run: |
           set -euo pipefail
