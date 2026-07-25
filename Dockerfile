@@ -5,6 +5,8 @@
 FROM maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e AS build
 WORKDIR /workspace
 COPY pom.xml .
+COPY mvnw .
+COPY .mvn/wrapper .mvn/wrapper
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
 COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
@@ -12,19 +14,20 @@ COPY taxonomy-extension-api/pom.xml taxonomy-extension-api/pom.xml
 COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
 COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml
 COPY taxonomy-build/pom.xml taxonomy-build/pom.xml
+RUN chmod +x mvnw
 # Pre-fetch dependencies into a reusable BuildKit cache. All project artifacts
 # resolve anonymously from public Maven repositories; no build secret is required.
-# The builder image is digest-pinned and already provides Maven, so the container
-# does not perform a second Maven-distribution download through the wrapper.
+# The checked-in wrapper is authoritative and pins the same Maven distribution
+# used by contributors and CI, even when the builder image contains another Maven.
 RUN --mount=type=cache,target=/root/.m2/repository \
-    mvn -q dependency:go-offline -B
+    ./mvnw -q dependency:go-offline -B
 COPY taxonomy-domain/src taxonomy-domain/src
 COPY taxonomy-dsl/src taxonomy-dsl/src
 COPY taxonomy-export/src taxonomy-export/src
 COPY taxonomy-extension-api/src taxonomy-extension-api/src
 COPY taxonomy-app/src taxonomy-app/src
 RUN --mount=type=cache,target=/root/.m2/repository \
-    mvn -q -DskipTests package
+    ./mvnw -q -DskipTests package
 
 # ---- runtime stage ----
 # Tag retained for readability; digest prevents mutable-tag supply-chain drift.
