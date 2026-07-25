@@ -59,13 +59,19 @@ jobs:
       - name: Run Maven-owned database suite
         env:
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
-        run: ${{ matrix.command }}
+        shell: bash
+        run: |
+          mkdir -p target
+          set -o pipefail
+          ${{ matrix.command }} 2>&1 | tee "target/database-${{ matrix.profile }}.log"
 
       - name: Upload database evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: database-${{ matrix.profile }}
-          path: '**/target/failsafe-reports/**'
+          path: |
+            target/database-${{ matrix.profile }}.log
+            **/target/failsafe-reports/**
           if-no-files-found: warn
           retention-days: 14
