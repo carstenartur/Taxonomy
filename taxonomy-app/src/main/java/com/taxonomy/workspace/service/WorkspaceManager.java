@@ -476,7 +476,7 @@ public class WorkspaceManager {
 
     // ── Internal helpers ───────────────────────────────────────────
 
-    private void ensurePersistentWorkspace(String username) {
+    private synchronized void ensurePersistentWorkspace(String username) {
         try {
             if (!workspaceRepository.existsByUsername(username)) {
                 UserWorkspace workspace = new UserWorkspace();

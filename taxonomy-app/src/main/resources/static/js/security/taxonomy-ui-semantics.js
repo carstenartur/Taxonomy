@@ -1,0 +1,151 @@
+/** CSP-safe state and ARIA synchronization for dynamic Taxonomy UI surfaces. */
+window.TaxonomyUiSemantics = (function () {
+    'use strict';
+
+    var resultPanelIds = [
+        'docCandidateReviewPanel',
+        'docAiResultPanel',
+        'docRegMapResultPanel'
+    ];
+    var observers = [];
+    var documentImportMonitor = null;
+
+    function inlineDisplayMarker(panel) {
+        return panel.getAttribute('style') || '';
+    }
+
+    function activeResultPanelId() {
+        var status = document.getElementById('docImportStatus');
+        if (!status || !status.querySelector('.text-success')) return null;
+        var selected = document.querySelector('input[name="importMode"]:checked');
+        var mode = selected ? selected.value : 'extract';
+        if (mode === 'ai-extract') return 'docAiResultPanel';
+        if (mode === 'reg-map') return 'docRegMapResultPanel';
+        return 'docCandidateReviewPanel';
+    }
+
+    function synchronizeResultPanel(panel) {
+        if (!panel) return;
+        var markerHidden = /(?:^|;)\s*display\s*:\s*none\s*;?/i.test(inlineDisplayMarker(panel));
+        var successfulResult = activeResultPanelId() === panel.id;
+        var hidden = markerHidden && !successfulResult;
+        panel.classList.toggle('d-none', hidden);
+        panel.classList.toggle('d-block', !hidden);
+        panel.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+    }
+
+    function synchronizeResultPanels() {
+        resultPanelIds.forEach(function (id) {
+            synchronizeResultPanel(document.getElementById(id));
+        });
+    }
+
+    function scheduleResultPanelSync() {
+        window.requestAnimationFrame(synchronizeResultPanels);
+    }
+
+    function installResultPanelBridge(panel) {
+        if (!panel || panel.dataset.cspVisibilityObserved === 'true') return;
+        panel.dataset.cspVisibilityObserved = 'true';
+        synchronizeResultPanel(panel);
+        var observer = new MutationObserver(function () {
+            synchronizeResultPanel(panel);
+        });
+        observer.observe(panel, {
+            attributes: true,
+            attributeFilter: ['style'],
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+        observers.push(observer);
+    }
+
+    function installDocumentImportStatusBridge() {
+        var status = document.getElementById('docImportStatus');
+        if (!status || status.dataset.resultPanelObserved === 'true') return;
+        status.dataset.resultPanelObserved = 'true';
+        var observer = new MutationObserver(scheduleResultPanelSync);
+        observer.observe(status, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+        observers.push(observer);
+    }
+
+    function monitorDocumentImportActivity() {
+        if (documentImportMonitor !== null) window.clearTimeout(documentImportMonitor);
+        var checksRemaining = 6000;
+
+        function synchronizeUntilSettled() {
+            synchronizeResultPanels();
+            checksRemaining -= 1;
+            var spinner = document.getElementById('docImportSpinner');
+            var busy = spinner && !spinner.classList.contains('d-none');
+            if ((busy || checksRemaining > 5996) && checksRemaining > 0) {
+                documentImportMonitor = window.setTimeout(synchronizeUntilSettled, 50);
+            } else {
+                documentImportMonitor = null;
+                scheduleResultPanelSync();
+            }
+        }
+
+        documentImportMonitor = window.setTimeout(synchronizeUntilSettled, 0);
+    }
+
+    function installDocumentImportActivityBridge() {
+        var upload = document.getElementById('docImportUploadBtn');
+        if (!upload || upload.dataset.resultLifecycleObserved === 'true') return;
+        upload.dataset.resultLifecycleObserved = 'true';
+        upload.addEventListener('click', monitorDocumentImportActivity);
+    }
+
+    function synchronizeTaxonomyContainer(tree) {
+        if (!tree) return;
+        var containsTreeItems = Boolean(tree.querySelector('[role="treeitem"]'));
+        var expectedRole = containsTreeItems ? 'tree' : 'region';
+        if (tree.getAttribute('role') !== expectedRole) tree.setAttribute('role', expectedRole);
+        if (containsTreeItems) tree.removeAttribute('aria-busy');
+        else tree.setAttribute('aria-busy', 'true');
+    }
+
+    function installTaxonomyContainerBridge() {
+        var tree = document.getElementById('taxonomyTree');
+        if (!tree || tree.dataset.semanticRoleObserved === 'true') return;
+        tree.dataset.semanticRoleObserved = 'true';
+        synchronizeTaxonomyContainer(tree);
+        var observer = new MutationObserver(function () {
+            synchronizeTaxonomyContainer(tree);
+        });
+        observer.observe(tree, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['role']
+        });
+        observers.push(observer);
+    }
+
+    function initialize() {
+        resultPanelIds.forEach(function (id) {
+            installResultPanelBridge(document.getElementById(id));
+        });
+        installDocumentImportStatusBridge();
+        installDocumentImportActivityBridge();
+        installTaxonomyContainerBridge();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize, { once: true });
+    } else {
+        initialize();
+    }
+
+    return {
+        initialize: initialize,
+        synchronizeResultPanel: synchronizeResultPanel,
+        synchronizeResultPanels: synchronizeResultPanels,
+        synchronizeTaxonomyContainer: synchronizeTaxonomyContainer
+    };
+}());
