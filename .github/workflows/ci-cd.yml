@@ -40,6 +40,7 @@ jobs:
 
       - name: Run the canonical Maven verification suite
         env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: ./mvnw -B verify -Pci
 
