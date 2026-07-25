@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: 002c0e6020d85d590c5d3c8051f0039769725bf6
           persist-credentials: false
       - name: Stage source snapshot
         run: |
