@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - fix/webjar-version-alignment
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   align:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'fix/webjar-version-alignment' || github.ref_name == 'fix/webjar-version-alignment'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
