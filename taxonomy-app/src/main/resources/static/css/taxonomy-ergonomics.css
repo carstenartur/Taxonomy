@@ -19,6 +19,28 @@
     flex-wrap: wrap;
 }
 
+/* Bootstrap normally opens modals through an inline display declaration. The
+   strict application CSP correctly blocks that declaration, so reflect the
+   Bootstrap state classes in an external, CSP-compatible stylesheet. */
+.modal.show,
+.modal[data-modal-visible="true"] {
+    display: block !important;
+}
+
+/* Legacy document-import code uses the inline display value as a state marker.
+   CSP blocks the inline declaration itself, therefore external CSS maps the
+   marker to the intended visible/hidden state. */
+#docCandidateReviewPanel[style*="display:none"],
+#docAiResultPanel[style*="display:none"],
+#docRegMapResultPanel[style*="display:none"] {
+    display: none !important;
+}
+#docCandidateReviewPanel:not([style*="display:none"]),
+#docAiResultPanel:not([style*="display:none"]),
+#docRegMapResultPanel:not([style*="display:none"]) {
+    display: block !important;
+}
+
 /* Accessible application-native dialog replacing prompt()/alert(). */
 .taxonomy-accessible-dialog {
     width: min(32rem, calc(100vw - 2rem));
@@ -120,6 +142,10 @@
 .bg-warning code {
     color: #842029 !important;
 }
+/* Bootstrap's default danger text narrowly misses WCAG AA on bg-light. */
+#docImportStatus .text-danger {
+    color: #b02a37 !important;
+}
 .vc-fresh {
     color: #146c43 !important;
 }
@@ -182,6 +208,19 @@
     }
     #businessText {
         min-height: 12rem;
+    }
+    #tab-analyze .card-body > .d-flex {
+        flex-wrap: wrap;
+    }
+    #providerSelect {
+        flex: 1 1 100%;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100%;
+    }
+    #analyzeBtn,
+    #copilotBtn {
+        min-width: 0;
     }
     .tax-node {
         font-size: 1rem;

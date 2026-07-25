@@ -41,11 +41,21 @@
     // ── UI helpers ────────────────────────────────────────────────────────────
     function setAnalyzing(on) {
         const btn = document.getElementById('analyzeBtn');
-        const spinner = document.getElementById('analyzeSpinner');
+        if (!btn) { return; }
+
+        let spinner = document.getElementById('analyzeSpinner');
+        if (!spinner) {
+            spinner = document.createElement('span');
+            spinner.id = 'analyzeSpinner';
+            spinner.className = 'spinner-border spinner-border-sm me-1';
+            spinner.setAttribute('role', 'status');
+            spinner.setAttribute('aria-hidden', 'true');
+        }
+
         btn.disabled = on;
         spinner.classList.toggle('d-none', !on);
-        btn.textContent = on ? ' ' + t('scoring.analyzing') : t('scoring.analyze.btn');
-        if (on) btn.prepend(spinner);
+        const label = on ? t('scoring.analyzing') : t('scoring.analyze.btn');
+        btn.replaceChildren(spinner, document.createTextNode(' ' + label));
     }
 
     function clearAnalysisLog() {

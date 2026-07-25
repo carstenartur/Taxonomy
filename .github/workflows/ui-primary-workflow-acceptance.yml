@@ -1,0 +1,114 @@
+name: UI Primary Workflow Acceptance
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'taxonomy-app/src/main/**'
+      - 'taxonomy-app/src/test/**'
+      - '.github/ui-acceptance-matrix.json'
+      - '.github/scripts/ui-role-fixtures.mjs'
+      - '.github/scripts/ui-primary-*.mjs'
+      - '.github/workflows/ui-primary-workflow-acceptance.yml'
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ui-primary-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  primary-workflows:
+    name: ${{ matrix.role }} / Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [USER, ARCHITECT, ADMIN]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+
+      - name: Build application
+        run: mvn -q -pl taxonomy-app -am package -DskipTests
+
+      - name: Start deterministic application
+        env:
+          TAXONOMY_ADMIN_PASSWORD: ui-primary-admin-password
+          TAXONOMY_REQUIRE_PASSWORD_CHANGE: 'false'
+          TAXONOMY_EMBEDDING_ENABLED: 'false'
+          TAXONOMY_INIT_ASYNC: 'true'
+          TAXONOMY_THYMELEAF_CACHE: 'false'
+          LLM_MOCK: 'true'
+        run: |
+          JAR=$(find taxonomy-app/target -maxdepth 1 -name 'taxonomy-app-*.jar' ! -name 'original-*' | head -n 1)
+          test -n "$JAR"
+          java -jar "$JAR" > target/ui-primary-application.log 2>&1 &
+          echo $! > target/ui-primary-application.pid
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/login >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat target/ui-primary-application.log
+          exit 1
+
+      - name: Install pinned browser tools
+        run: |
+          npm install --no-save --no-audit --no-fund \
+            @playwright/test@1.61.1 \
+            @axe-core/playwright@4.12.1
+          npx playwright install --with-deps chromium
+
+      - name: Run primary workflow acceptance
+        env:
+          TAXONOMY_BASE_URL: http://127.0.0.1:8080
+          TAXONOMY_UI_ADMIN_USERNAME: admin
+          TAXONOMY_UI_ADMIN_PASSWORD: ui-primary-admin-password
+          TAXONOMY_ROLE: ${{ matrix.role }}
+          TAXONOMY_BROWSER: chromium
+          TAXONOMY_UI_OUTPUT_DIR: ${{ github.workspace }}/target/ui-primary/${{ matrix.role }}
+        run: node .github/scripts/ui-primary-workflow-acceptance.mjs
+
+      - name: Stage application log and summarize report
+        if: always()
+        shell: bash
+        run: |
+          OUTPUT="target/ui-primary/${{ matrix.role }}"
+          mkdir -p "$OUTPUT"
+          cp target/ui-primary-application.log "$OUTPUT/application.log" 2>/dev/null || true
+          echo "### Primary workflows: ${{ matrix.role }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$OUTPUT/report.json" ]; then
+            cat "$OUTPUT/report.json" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '{"auditError":"report.json was not produced"}' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload primary workflow evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ui-primary-${{ matrix.role }}
+          path: target/ui-primary/${{ matrix.role }}/**
+          if-no-files-found: error
+          retention-days: 30

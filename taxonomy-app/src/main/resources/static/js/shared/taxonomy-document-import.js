@@ -192,7 +192,7 @@
     // ── Candidate review (rule-based) ──────────────────────────────────────────
 
     function showCandidateReview(result) {
-        reviewPanel.style.display = '';
+        reviewPanel.removeAttribute('style');
         countBadge.textContent = result.totalCandidates;
         sourceInfo.innerHTML = '<strong>' + escapeHtml(result.fileName || '') + '</strong> — ' +
             (result.mimeType || '') + ' — ' + result.totalPages + ' page(s)' +
@@ -226,7 +226,7 @@
 
     function showAiExtractionResults(result) {
         if (!aiResultPanel) return;
-        aiResultPanel.style.display = '';
+        aiResultPanel.removeAttribute('style');
 
         var aiCandidates = result.aiCandidates || [];
         var ruleBasedCount = result.ruleBased ? result.ruleBased.length : 0;
@@ -271,7 +271,7 @@
 
     function showRegulationMappingResults(result) {
         if (!regMapPanel) return;
-        regMapPanel.style.display = '';
+        regMapPanel.removeAttribute('style');
 
         var matches = result.matches || [];
 
