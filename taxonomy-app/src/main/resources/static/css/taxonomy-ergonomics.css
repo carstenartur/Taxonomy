@@ -142,6 +142,10 @@
 .bg-warning code {
     color: #842029 !important;
 }
+/* Bootstrap's default danger text narrowly misses WCAG AA on bg-light. */
+#docImportStatus .text-danger {
+    color: #b02a37 !important;
+}
 .vc-fresh {
     color: #146c43 !important;
 }
@@ -204,6 +208,19 @@
     }
     #businessText {
         min-height: 12rem;
+    }
+    #tab-analyze .card-body > .d-flex {
+        flex-wrap: wrap;
+    }
+    #providerSelect {
+        flex: 1 1 100%;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100%;
+    }
+    #analyzeBtn,
+    #copilotBtn {
+        min-width: 0;
     }
     .tax-node {
         font-size: 1rem;
