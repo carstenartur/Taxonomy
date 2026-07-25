@@ -11,6 +11,7 @@ on:
       - 'taxonomy-app/src/test/java/com/taxonomy/**/*Postgres*IT.java'
       - 'taxonomy-app/src/test/java/com/taxonomy/**/*Mssql*IT.java'
       - 'taxonomy-app/src/test/java/com/taxonomy/**/*Oracle*IT.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/AbstractSeleniumContainerIT.java'
       - '.github/workflows/database-compatibility.yml'
   workflow_dispatch:
   schedule:
