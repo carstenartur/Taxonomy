@@ -5,6 +5,13 @@
 FROM maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e AS build
 WORKDIR /workspace
 
+# The Maven Wrapper validates the ZIP distribution. The minimal Maven builder
+# image does not provide unzip, and mvnw would otherwise silently switch to the
+# tar.gz archive while retaining the ZIP checksum.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
+
 # The checked-in wrapper is the single Maven authority for contributors, CI and
 # container builds. The builder image supplies only Java and bootstrap utilities.
 COPY mvnw .
