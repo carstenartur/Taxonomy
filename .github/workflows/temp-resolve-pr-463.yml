@@ -1,0 +1,95 @@
+name: Resolve and verify PR 463 integration
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/temp-resolve-pr-463.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: resolve-taxonomy-pr-463
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    if: github.event.head_commit.message == 'Resolve and verify PR 463 integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/issue-461-jgit-storage-hibernate
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Merge main, retain Maven workflow authority and use anonymous library release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TEMP_WORKFLOW: .github/workflows/temp-resolve-pr-463.yml
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          set +e
+          git merge --no-commit --no-ff origin/main
+          merge_status=$?
+          set -e
+
+          # PR #467 made the main branch's workflow directory authoritative.
+          rm -rf .github/workflows
+          git checkout origin/main -- .github/workflows
+          rm -f .github/issue-461-merge-conflicts.txt
+          rm -f .mvn/github-packages-settings.xml
+
+          unresolved=$(git diff --name-only --diff-filter=U)
+          if [[ -n "$unresolved" ]]; then
+            echo "Unresolved non-workflow conflicts:"
+            echo "$unresolved"
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          pom = Path('pom.xml')
+          text = pom.read_text(encoding='utf-8')
+          text = text.replace(
+              '<jgit-storage-hibernate.version>0.1.9</jgit-storage-hibernate.version>',
+              '<jgit-storage-hibernate.version>0.1.10</jgit-storage-hibernate.version>',
+          )
+          old_repository = '''        <repository>\n            <id>github</id>\n            <name>GitHub Packages - jgit-storage-hibernate</name>\n            <url>https://maven.pkg.github.com/carstenartur/jgit-storage-hibernate</url>\n            <releases><enabled>true</enabled></releases>\n            <snapshots><enabled>false</enabled></snapshots>\n        </repository>'''
+          new_repository = '''        <repository>\n            <id>jgit-storage-hibernate-releases</id>\n            <name>jgit-storage-hibernate anonymous releases</name>\n            <url>https://raw.githubusercontent.com/carstenartur/jgit-storage-hibernate/maven-repository/</url>\n            <releases><enabled>true</enabled></releases>\n            <snapshots><enabled>false</enabled></snapshots>\n        </repository>'''
+          if old_repository not in text:
+              raise SystemExit('Expected GitHub Packages repository block not found')
+          pom.write_text(text.replace(old_repository, new_repository), encoding='utf-8')
+
+          for name in ('docs/en/JGIT_STORAGE_HIBERNATE.md', 'docs/de/JGIT_STORAGE_HIBERNATE.md'):
+              path = Path(name)
+              path.write_text(path.read_text(encoding='utf-8').replace('0.1.9', '0.1.10'), encoding='utf-8')
+
+          for path in Path('.').rglob('pom.xml'):
+              if 'target' not in path.parts:
+                  ET.parse(path)
+          PY
+
+          chmod +x mvnw
+          ./mvnw -B -N validate -DskipUiTests=true -DskipQualityChecks=true
+          git diff --check
+          git add -A
+          git commit -m 'Integrate anonymous jgit-storage-hibernate 0.1.10 release'
+          git push origin HEAD:fix/issue-461-jgit-storage-hibernate
+
+          temp_sha=$(gh api "repos/${REPOSITORY}/contents/${TEMP_WORKFLOW}?ref=main" --jq '.sha')
+          gh api -X DELETE "repos/${REPOSITORY}/contents/${TEMP_WORKFLOW}" \
+            -f message='Remove temporary PR 463 integration dispatcher' \
+            -f sha="$temp_sha" \
+            -f branch=main >/dev/null
