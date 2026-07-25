@@ -1,0 +1,209 @@
+name: Apply PR 463 review corrections
+
+on:
+  push:
+    branches: [ fix/issue-461-jgit-storage-hibernate ]
+    paths:
+      - '.github/workflows/temp-address-pr-463-review.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: taxonomy-pr-463-review-corrections
+  cancel-in-progress: true
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/issue-461-jgit-storage-hibernate
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Apply bounded review corrections
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Expected text not found in {path}: {old[:100]!r}')
+              file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          dockerfile = Path('Dockerfile')
+          text = dockerfile.read_text(encoding='utf-8')
+          text = text.replace('COPY pom.xml .\n', 'COPY pom.xml .\nCOPY mvnw mvnw\nCOPY .mvn/wrapper .mvn/wrapper\nRUN chmod +x mvnw\n', 1)
+          text = text.replace('COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml\n',
+                              'COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml\nCOPY taxonomy-build/pom.xml taxonomy-build/pom.xml\n', 1)
+          old = '''COPY .mvn/github-packages-settings.xml .mvn/github-packages-settings.xml
+          # Pre-fetch dependencies so they are cached in a separate layer. GitHub Packages
+          # credentials are exposed only to this instruction as BuildKit secrets and never
+          # become part of an image layer or build argument.
+          RUN --mount=type=cache,target=/root/.m2/repository \
+              --mount=type=secret,id=github_token,required=true \
+              --mount=type=secret,id=github_actor,required=true \
+              GITHUB_TOKEN="$(cat /run/secrets/github_token)" \
+              GITHUB_ACTOR="$(cat /run/secrets/github_actor)" \
+              mvn -s .mvn/github-packages-settings.xml -q dependency:go-offline -B
+          '''.replace('          ', '')
+          new = '''# Pre-fetch dependencies into a reusable BuildKit cache. All project artifacts
+          # resolve anonymously from public Maven repositories; no build secret is required.
+          RUN --mount=type=cache,target=/root/.m2/repository \
+              ./mvnw -q dependency:go-offline -B
+          '''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('Expected authenticated dependency block not found in Dockerfile')
+          text = text.replace(old, new, 1)
+          old = '''RUN --mount=type=cache,target=/root/.m2/repository \
+              --mount=type=secret,id=github_token,required=true \
+              --mount=type=secret,id=github_actor,required=true \
+              GITHUB_TOKEN="$(cat /run/secrets/github_token)" \
+              GITHUB_ACTOR="$(cat /run/secrets/github_actor)" \
+              mvn -s .mvn/github-packages-settings.xml -q -DskipTests package
+          '''.replace('          ', '')
+          new = '''RUN --mount=type=cache,target=/root/.m2/repository \
+              ./mvnw -q -DskipTests package
+          '''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('Expected authenticated package block not found in Dockerfile')
+          dockerfile.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          for compose in Path('.').glob('docker-compose*.yml'):
+              text = compose.read_text(encoding='utf-8')
+              text = re.sub(r'(?m)^      secrets:\n        - github_token\n        - github_actor\n', '', text)
+              text = text.replace('\nsecrets:\n  github_token:\n    environment: GITHUB_TOKEN\n  github_actor:\n    environment: GITHUB_ACTOR\n', '\n')
+              compose.write_text(text, encoding='utf-8')
+
+          replace('docker-compose.prod.yml',
+              '## The source build consumes jgit-storage-hibernate from GitHub Packages. Set\n## GITHUB_ACTOR and a GITHUB_TOKEN with read:packages in .env or the shell.\n## BuildKit mounts both values only for Maven dependency resolution.\n##\n',
+              '## The source build resolves all dependencies anonymously from public Maven repositories.\n##\n')
+
+          replace('.env.example',
+              '# ─── Required for source builds ──────────────────────────────\n# jgit-storage-hibernate is currently consumed from GitHub Packages. The token\n# needs read:packages and is mounted only as a BuildKit secret while Maven runs.\n# Do not commit the populated .env file.\nGITHUB_ACTOR=your-github-username\nGITHUB_TOKEN=replace-with-a-token-that-has-read-packages\n\n',
+              '# Source builds resolve all dependencies anonymously. No GitHub account or token is required.\n# Do not commit the populated .env file.\n\n')
+
+          replace('docs/en/CONTAINER_IMAGE.md',
+              '# Edit .env: domain, administrator password, AI settings and build credentials.\n',
+              '# Edit .env: domain, administrator password and AI settings.\n')
+          replace('docs/en/CONTAINER_IMAGE.md',
+              'The local source build consumes `jgit-storage-hibernate-core` from GitHub Packages. Set these values in `.env` or export them in the shell:\n\n```bash\nGITHUB_ACTOR=your-github-username\nGITHUB_TOKEN=token-with-read-packages\n```\n\nThe token needs `read:packages`. Compose passes both values to the Dockerfile as BuildKit secrets; they are available only while Maven resolves dependencies and are not stored as build arguments or image layers.\n',
+              'The local source build resolves `jgit-storage-hibernate-core` anonymously from the public immutable Maven repository. No GitHub account, token or Maven `settings.xml` entry is required.\n')
+          replace('docs/en/CONTAINER_IMAGE.md',
+              'A production deployment can avoid source-build credentials by replacing the `build` block with an immutable published image reference:\n',
+              'A production deployment can avoid compiling source by replacing the `build` block with an immutable published image reference:\n')
+          replace('docs/en/CONTAINER_IMAGE.md',
+              'Remove the complete `build:` block, including its `secrets:` entries, when using an image.\n',
+              'Remove the complete `build:` block when using an image.\n')
+          replace('docs/en/CONTAINER_IMAGE.md',
+              'All source-building Compose files use the same `GITHUB_ACTOR` and `GITHUB_TOKEN` BuildKit secrets.\n',
+              'All source-building Compose files resolve the released storage library anonymously and require no build credentials.\n')
+          replace('docs/en/CONTAINER_IMAGE.md',
+              'Build-only variables:\n\n| Variable | Required for source build | Description |\n|---|---:|---|\n| `GITHUB_ACTOR` | yes | GitHub Packages username |\n| `GITHUB_TOKEN` | yes | Token with `read:packages` |\n',
+              'No build-only credentials are required for the checked-in source build.\n')
+
+          replace('docs/de/CONTAINER_IMAGE.md',
+              '# .env bearbeiten: Domain, Administratorpasswort, KI-Einstellungen und Build-Zugang.\n',
+              '# .env bearbeiten: Domain, Administratorpasswort und KI-Einstellungen.\n')
+          replace('docs/de/CONTAINER_IMAGE.md',
+              'Der lokale Quellcode-Build bezieht `jgit-storage-hibernate-core` aus GitHub Packages. Setzen Sie folgende Werte in `.env` oder exportieren Sie sie in der Shell:\n\n```bash\nGITHUB_ACTOR=your-github-username\nGITHUB_TOKEN=token-with-read-packages\n```\n\nDas Token benötigt `read:packages`. Compose reicht beide Werte als BuildKit-Secrets an den Dockerfile weiter. Sie stehen nur während der Maven-Auflösung zur Verfügung und werden weder als Build-Argumente noch in Image-Schichten gespeichert.\n',
+              'Der lokale Quellcode-Build bezieht `jgit-storage-hibernate-core` anonym aus dem öffentlichen unveränderlichen Maven-Repository. Ein GitHub-Konto, Token oder Maven-`settings.xml`-Eintrag ist nicht erforderlich.\n')
+          replace('docs/de/CONTAINER_IMAGE.md',
+              'Ein Produktions-Deployment kann Quellcode-Build-Credentials vermeiden, indem der `build`-Block durch eine unveränderliche veröffentlichte Image-Referenz ersetzt wird:\n',
+              'Ein Produktions-Deployment kann die lokale Übersetzung vermeiden, indem der `build`-Block durch eine unveränderliche veröffentlichte Image-Referenz ersetzt wird:\n')
+          replace('docs/de/CONTAINER_IMAGE.md',
+              'Entfernen Sie bei Verwendung eines Images den vollständigen `build:`-Block einschließlich seiner `secrets:`-Einträge.\n',
+              'Entfernen Sie bei Verwendung eines Images den vollständigen `build:`-Block.\n')
+          replace('docs/de/CONTAINER_IMAGE.md',
+              'Alle Compose-Dateien mit Quellcode-Build verwenden dieselben BuildKit-Secrets `GITHUB_ACTOR` und `GITHUB_TOKEN`.\n',
+              'Alle Compose-Dateien mit Quellcode-Build lösen die veröffentlichte Storage-Bibliothek anonym und ohne Build-Zugangsdaten auf.\n')
+          replace('docs/de/CONTAINER_IMAGE.md',
+              'Nur für den Build:\n\n| Variable | Für Quellcode-Build erforderlich | Beschreibung |\n|---|---:|---|\n| `GITHUB_ACTOR` | ja | Benutzername für GitHub Packages |\n| `GITHUB_TOKEN` | ja | Token mit `read:packages` |\n',
+              'Für den eingecheckten Quellcode-Build sind keine reinen Build-Zugangsdaten erforderlich.\n')
+
+          replace('taxonomy-app/src/main/resources/application-mssql.properties',
+              '# jgit-storage-hibernate 0.1.9 does not publish SQL Server Core migrations.\n',
+              '# The upstream storage library does not currently publish SQL Server Core migrations.\n')
+          replace('taxonomy-app/src/main/resources/application-oracle.properties',
+              '# jgit-storage-hibernate 0.1.9 does not publish Oracle Core migrations.\n',
+              '# The upstream storage library does not currently publish Oracle Core migrations.\n')
+
+          auth = Path('taxonomy-app/src/main/java/com/taxonomy/security/config/AuthorizationRulesConfigurer.java')
+          text = auth.read_text(encoding='utf-8')
+          marker = '        auth.requestMatchers(HttpMethod.POST,   "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");\n'
+          rules = ('        // Parsing, validation and formatting transform request content only and are used by\n'
+                   '        // the always-visible editor. Keep them available to every authenticated role.\n'
+                   '        auth.requestMatchers(HttpMethod.POST, "/api/dsl/parse", "/api/dsl/validate",\n'
+                   '                        "/api/dsl/format")\n'
+                   '                .authenticated();\n\n')
+          if marker not in text:
+              raise SystemExit('Generic DSL POST authorization rule not found')
+          auth.write_text(text.replace(marker, rules + marker, 1), encoding='utf-8')
+
+          tests = Path('taxonomy-app/src/test/java/com/taxonomy/SecurityTests.java')
+          text = tests.read_text(encoding='utf-8')
+          old = '''    @Test
+              @WithMockUser(roles = "USER")
+              void userCannotPostDsl() throws Exception {
+                  mockMvc.perform(post("/api/dsl/parse")
+                                  .contentType(MediaType.TEXT_PLAIN)
+                                  .content("meta { }"))
+                          .andExpect(status().isForbidden());
+              }
+          '''.replace('          ', '')
+          new = '''    @Test
+              @WithMockUser(roles = "USER")
+              void authenticatedUserCanParseDsl() throws Exception {
+                  mockMvc.perform(post("/api/dsl/parse")
+                                  .contentType(MediaType.TEXT_PLAIN)
+                                  .content("meta { }"))
+                          .andExpect(status().isOk());
+              }
+
+              @Test
+              @WithMockUser(roles = "USER")
+              void userCannotMaterializeDsl() throws Exception {
+                  mockMvc.perform(post("/api/dsl/materialize")
+                                  .contentType(MediaType.TEXT_PLAIN)
+                                  .content("meta { }"))
+                          .andExpect(status().isForbidden());
+              }
+          '''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('Expected DSL authorization test block not found')
+          tests.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Verify anonymous build contract
+        run: |
+          set -euo pipefail
+          ! grep -R -n -E 'github-packages-settings|GITHUB_ACTOR|GITHUB_TOKEN|read:packages|GitHub Packages' \
+            Dockerfile docker-compose*.yml .env.example docs/en/CONTAINER_IMAGE.md docs/de/CONTAINER_IMAGE.md
+          DOMAIN=taxonomy.example.com TAXONOMY_ADMIN_PASSWORD=test-only-password \
+            docker compose -f docker-compose.prod.yml config >/tmp/docker-compose-prod.yml
+          grep -q 'context:' /tmp/docker-compose-prod.yml
+
+      - name: Verify authorization regression tests
+        run: ./mvnw -B -pl taxonomy-app -am -Dtest=SecurityTests -DfailIfNoTests=false test
+
+      - name: Verify source container build
+        run: docker build --target build -t taxonomy-source-build-check .
+
+      - name: Commit reviewed corrections
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add Dockerfile docker-compose*.yml .env.example docs/en/CONTAINER_IMAGE.md docs/de/CONTAINER_IMAGE.md \
+            taxonomy-app/src/main/resources/application-mssql.properties \
+            taxonomy-app/src/main/resources/application-oracle.properties \
+            taxonomy-app/src/main/java/com/taxonomy/security/config/AuthorizationRulesConfigurer.java \
+            taxonomy-app/src/test/java/com/taxonomy/SecurityTests.java
+          git commit -m 'Address PR 463 build and authorization review'
+          git push origin HEAD:fix/issue-461-jgit-storage-hibernate
