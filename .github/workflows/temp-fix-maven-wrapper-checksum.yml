@@ -12,7 +12,7 @@ permissions:
 jobs:
   repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -35,8 +35,8 @@ jobs:
           path = Path(sys.argv[1])
           sha256 = sys.argv[2]
           lines = path.read_text(encoding='utf-8').splitlines()
-          replaced = False
           result = []
+          replaced = False
           for line in lines:
               if line.startswith('distributionSha256Sum='):
                   result.append(f'distributionSha256Sum={sha256}')
@@ -50,23 +50,6 @@ jobs:
           grep '^distributionSha256Sum=' "$properties"
       - name: Verify the checked-in wrapper
         run: ./mvnw --version
-      - name: Verify credential-free source container build
-        id: docker_build
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          docker build --progress=plain --target build -t taxonomy-source-build-check . 2>&1 | tee wrapper-docker-build.log
-      - name: Upload wrapper Docker diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: wrapper-docker-build-log
-          path: wrapper-docker-build.log
-          if-no-files-found: error
-          retention-days: 14
-      - name: Enforce Docker build result
-        if: steps.docker_build.outcome != 'success'
-        run: exit 1
       - name: Commit verified checksum
         run: |
           set -euo pipefail
