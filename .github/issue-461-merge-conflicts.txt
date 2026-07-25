@@ -1,0 +1,10 @@
+Merge conflicts against current main:
+.github/workflows/accessibility.yml
+.github/workflows/archimate-import-evidence.yml
+.github/workflows/core-integration.yml
+.github/workflows/document-import-evidence.yml
+.github/workflows/generate-screenshots.yml
+.github/workflows/hibernate-search-alignment.yml
+.github/workflows/pipeline-tests.yml
+.github/workflows/qa-architecture-evidence.yml
+.github/workflows/ui-acceptance.yml
