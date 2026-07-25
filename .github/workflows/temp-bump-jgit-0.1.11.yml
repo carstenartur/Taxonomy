@@ -1,0 +1,54 @@
+name: Bump jgit-storage-hibernate to 0.1.11
+
+on:
+  push:
+    branches:
+      - fix/issue-461-jgit-storage-hibernate
+    paths:
+      - '.github/workflows/temp-bump-jgit-0.1.11.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/issue-461-jgit-storage-hibernate
+          fetch-depth: 0
+      - name: Update released library coordinate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          pom = Path('pom.xml')
+          text = pom.read_text(encoding='utf-8')
+          old = '<jgit-storage-hibernate.version>0.1.10</jgit-storage-hibernate.version>'
+          new = '<jgit-storage-hibernate.version>0.1.11</jgit-storage-hibernate.version>'
+          if text.count(old) != 1:
+              raise SystemExit('Expected exactly one 0.1.10 library version property')
+          pom.write_text(text.replace(old, new), encoding='utf-8')
+
+          for name in ('docs/en/JGIT_STORAGE_HIBERNATE.md', 'docs/de/JGIT_STORAGE_HIBERNATE.md'):
+              path = Path(name)
+              content = path.read_text(encoding='utf-8')
+              if '0.1.10' not in content:
+                  raise SystemExit(f'Expected 0.1.10 reference in {name}')
+              path.write_text(content.replace('0.1.10', '0.1.11'), encoding='utf-8')
+
+          for path in Path('.').rglob('pom.xml'):
+              if 'target' not in path.parts:
+                  ET.parse(path)
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pom.xml docs/en/JGIT_STORAGE_HIBERNATE.md docs/de/JGIT_STORAGE_HIBERNATE.md
+          git commit -m 'build: consume jgit-storage-hibernate 0.1.11'
+          git push origin HEAD:fix/issue-461-jgit-storage-hibernate
