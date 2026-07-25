@@ -63,18 +63,11 @@ The repository includes [`docker-compose.prod.yml`](../../docker-compose.prod.ym
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 cp .env.example .env
-# Edit .env: domain, administrator password, AI settings and build credentials.
+# Edit .env: domain, administrator password and AI settings.
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-The local source build consumes `jgit-storage-hibernate-core` from GitHub Packages. Set these values in `.env` or export them in the shell:
-
-```bash
-GITHUB_ACTOR=your-github-username
-GITHUB_TOKEN=token-with-read-packages
-```
-
-The token needs `read:packages`. Compose passes both values to the Dockerfile as BuildKit secrets; they are available only while Maven resolves dependencies and are not stored as build arguments or image layers.
+The local source build resolves `jgit-storage-hibernate-core` anonymously from the public immutable Maven repository. No GitHub account, token or Maven `settings.xml` entry is required.
 
 The stack contains:
 
@@ -85,7 +78,7 @@ The stack contains:
 
 ### Use the published image instead
 
-A production deployment can avoid source-build credentials by replacing the `build` block with an immutable published image reference:
+A production deployment can avoid compiling source by replacing the `build` block with an immutable published image reference:
 
 ```yaml
 services:
@@ -93,7 +86,7 @@ services:
     image: ghcr.io/carstenartur/taxonomy@sha256:<verified-digest>
 ```
 
-Remove the complete `build:` block, including its `secrets:` entries, when using an image.
+Remove the complete `build:` block when using an image.
 
 ### Database-specific Compose files
 
@@ -105,7 +98,7 @@ Remove the complete `build:` block, including its `secrets:` entries, when using
 | `docker-compose-keycloak.yml` | PostgreSQL plus Keycloak/OIDC |
 | `docker-compose.integration-test.yml` | Two Taxonomy instances plus Gitea |
 
-All source-building Compose files use the same `GITHUB_ACTOR` and `GITHUB_TOKEN` BuildKit secrets.
+All source-building Compose files resolve the released storage library anonymously and require no build credentials.
 
 ## 4. Environment variables
 
@@ -123,12 +116,7 @@ Runtime variables:
 | `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `false` | One-time opt-in for verified pre-library JGit storage adoption |
 | `JAVA_OPTS` | Dockerfile defaults | JVM heap, GC and stack settings |
 
-Build-only variables:
-
-| Variable | Required for source build | Description |
-|---|---:|---|
-| `GITHUB_ACTOR` | yes | GitHub Packages username |
-| `GITHUB_TOKEN` | yes | Token with `read:packages` |
+No build-only credentials are required for the checked-in source build.
 
 See [Configuration Reference](CONFIGURATION_REFERENCE.md) for the full application property set and [Hibernate-backed JGit storage](JGIT_STORAGE_HIBERNATE.md) for the storage contract.
 
@@ -167,63 +155,3 @@ healthcheck:
   retries: 5
   start_period: 90s
 ```
-
-Useful endpoints include:
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /actuator/health/readiness` | Container readiness |
-| `GET /api/status/startup` | Catalogue initialization status |
-| `GET /api/ai-status` | LLM provider status |
-| `GET /api/embedding/status` | Embedding subsystem status |
-
-## 7. Upgrading persistent installations
-
-### Normal upgrade
-
-1. Stop writers and take a restorable backup.
-2. Pull the verified image or rebuild with BuildKit secrets.
-3. Recreate the application container without deleting the data volume.
-4. Verify readiness, repository refs/history and search functionality.
-
-HSQLDB and PostgreSQL profiles run the released `jgit-storage-hibernate-core` Flyway stream before Hibernate starts. Fresh installations and already-managed schemas migrate automatically.
-
-### Existing pre-library Taxonomy JGit schema
-
-An installation created by the former copied backend does **not** migrate silently. Startup fails closed until an operator has:
-
-1. stopped every writer;
-2. taken a restorable backup;
-3. recorded representative repository/ref data and ordered `git_packs.data` BLOB checksums;
-4. reviewed the [JGit storage adoption runbook](JGIT_STORAGE_HIBERNATE.md#adopting-an-existing-taxonomy-database).
-
-Enable adoption for exactly one startup:
-
-```bash
-TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true \
-  docker compose -f docker-compose.prod.yml up -d
-```
-
-After successful startup, verify refs, commit traversal, reflogs and BLOB checksums, then set the variable back to `false`. Duplicate pack identities, partial schemas, oversized pack-extension values and other unsafe shapes are rejected before the adoption DDL runs.
-
-`jgit-storage-hibernate-core` 0.1.9 publishes Flyway migrations for HSQLDB and PostgreSQL. SQL Server and Oracle remain on Taxonomy's Hibernate schema-management path until matching upstream migrations and real-database tests are released.
-
-## 8. Building locally
-
-The Dockerfile requires BuildKit secrets because the released storage library is currently hosted on GitHub Packages:
-
-```bash
-git clone https://github.com/carstenartur/Taxonomy.git
-cd Taxonomy
-export GITHUB_ACTOR=your-github-username
-export GITHUB_TOKEN=token-with-read-packages
-
-docker build \
-  --secret id=github_actor,env=GITHUB_ACTOR \
-  --secret id=github_token,env=GITHUB_TOKEN \
-  -t taxonomy-analyzer .
-
-docker run --rm -p 8080:8080 taxonomy-analyzer
-```
-
-Do not pass the token with `--build-arg`, copy a Maven `settings.xml` containing credentials into the build context, or bake credentials into a custom image. The multi-stage build uses Maven with Eclipse Temurin 21 and a Temurin 21 JRE runtime image.
