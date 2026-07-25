@@ -1,22 +1,28 @@
 package com.taxonomy;
 
+import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.shared.config.RateLimitFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
-import com.taxonomy.catalog.service.SearchService;
-import com.taxonomy.shared.config.GlobalExceptionHandler;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests for {@link com.taxonomy.shared.config.RateLimitFilter} and
@@ -42,9 +48,27 @@ class ProductionHardeningTests {
     @Autowired
     private RateLimitFilter rateLimitFilter;
 
+    /**
+     * Runtime preferences deliberately override static properties in production.
+     * Replace the persistent service here so this test remains independent of
+     * preferences committed by another Spring context in the full reactor.
+     */
+    @MockitoBean
+    private PreferencesService preferencesService;
+
     @BeforeEach
     void resetCounters() {
-        // Clear the per-IP counters between tests to avoid cross-test interference
+        // Preserve normal fallback behaviour for unrelated preference lookups.
+        when(preferencesService.getInt(anyString(), anyInt()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+        when(preferencesService.getString(anyString(), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+        when(preferencesService.getBoolean(anyString(), anyBoolean()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+        // Pin the runtime preference that has precedence over the test property.
+        when(preferencesService.getInt("rate-limit.per-minute", 3)).thenReturn(3);
+
+        // Clear the per-IP counters between tests to avoid cross-test interference.
         rateLimitFilter.clearCounters();
     }
 
