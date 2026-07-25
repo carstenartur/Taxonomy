@@ -106,7 +106,7 @@ Das Admin-Panel bietet LLM-Diagnose, Prompt-Template-Bearbeitung und Kommunikati
 Für die lokale Entwicklung sind die Standardwerte ausreichend:
 
 ```bash
-mvn spring-boot:run   # admin/admin, no admin panel password
+./mvnw -pl taxonomy-app spring-boot:run   # admin/admin, no admin panel password
 ```
 
 ### Gemeinsam genutzte oder exponierte Bereitstellung
@@ -425,7 +425,7 @@ USER taxonomy
 Eine CycloneDX-SBOM wird automatisch während des Build-Prozesses generiert:
 
 ```bash
-mvn package
+./mvnw package
 # Output: target/taxonomy-sbom.json and target/taxonomy-sbom.xml
 ```
 

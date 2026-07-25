@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "canonicalCommand": "./mvnw -B verify -Pci",
+  "profiles": {
+    "ci": {
+      "purpose": "Required pull-request verification: unit tests, core and PostgreSQL integration tests, quality gates, browser matrix and accessibility audit",
+      "requires": ["Java 21", "Docker", "Python 3", "POSIX shell"]
+    },
+    "core-integration": {
+      "itTest": "DiagnosticsContainerIT,DiagnosticsWithApiKeyContainerIT,CoreUiAcceptanceIT,ProductionPersistenceRestartIT"
+    },
+    "database-postgres": {"itTest": "*Postgres*IT"},
+    "database-mssql": {"itTest": "*Mssql*IT"},
+    "database-oracle": {"itTest": "*Oracle*IT"},
+    "onnx": {"itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT", "systemProperty": "runOnnxTests"},
+    "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest"},
+    "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},
+    "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,CatalogFacadeTest"},
+    "ui-tests": {"runner": ".github/scripts/run-ui-suite.mjs"}
+  },
+  "workflowResponsibilities": {
+    "ci-cd.yml": "authoritative Maven verification and report publication",
+    "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
+    "codeql.yml": "external source analysis",
+    "security-scan.yml": "external Trivy analysis",
+    "documentation-screenshots.yml": "Maven-owned screenshot evidence publication",
+    "delivery.yml": "report, container and deployment delivery",
+    "deploy-release.yml": "release state machine",
+    "cleanup-workflow-runs.yml": "Actions retention"
+  }
+}

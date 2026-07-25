@@ -81,26 +81,21 @@ bevor Sie die tiefergehenden Architekturabschnitte lesen.
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 
-# Compile all 5 modules (~5 seconds)
-mvn compile
+# Gesamten Reaktor mit der festgelegten Maven-Version kompilieren
+./mvnw compile
 
-# Vollständigen deterministischen Lebenszyklus ausführen (kein Docker nötig)
-mvn verify
+# Begrenzte Entwicklerprüfung (ohne Docker)
+./mvnw verify
 
-# Ein explizites Testcontainers-Szenario ausführen (Docker erforderlich)
-mvn -B -pl taxonomy-app -am install -DskipTests
-mvn -B -pl taxonomy-app failsafe:integration-test failsafe:verify \
-  -DskipITs=false -Dit.test=DiagnosticsContainerIT \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
+# Vollständige Pull-Request-Prüfung (Docker erforderlich)
+./mvnw -B verify -Pci
 
-# Start locally (browse-only, no API key needed)
-mvn -pl taxonomy-app spring-boot:run
+# Lokal starten (nur Lesen, kein API-Schlüssel erforderlich)
+./mvnw -pl taxonomy-app spring-boot:run
 ```
 
-Öffnen Sie <http://localhost:8080>, um die Anwendung aufzurufen.
-
----
+Öffnen Sie <http://localhost:8080>. Der Reaktor enthält fünf ausgelieferte
+Module sowie die Module für aggregierte Coverage und Build-Policy.
 
 ## Modularchitektur
 
@@ -195,70 +190,28 @@ Die Haupt-Spring-Boot-Anwendung:
 
 ## Tests ausführen
 
-Das Root-POM hält `mvn verify` deterministisch und begrenzt. Es führt Unit-,
-Spring-, Architektur-, Vertrags- und Abhängigkeitshygiene-Tests ohne Docker und
-ohne Live-LLM-Aufrufe aus. Failsafe-/Testcontainers-Tests werden explizit
-ausgewählt.
+Der eingecheckte Maven Wrapper ist die einzige Build-Autorität. Der
+Standard-Lebenszyklus bleibt bewusst begrenzt; das Profil `ci` aktiviert
+Docker-Integration, Qualitäts-Gates sowie die Browser-/Accessibility-Matrix.
 
 ```bash
-# Vollständiger Standard-Lebenszyklus (kein Docker)
-mvn verify
-
-# Einzelnes Modul oder einzelne Testklasse
-mvn test -pl taxonomy-dsl
-mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
-
-# Reactor für einen isolierten Integrationstest vorbereiten
-mvn -B -pl taxonomy-app -am install -DskipTests
-
-# Ein zentrales Testcontainers-Szenario
-mvn -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test=ProductionPersistenceRestartIT \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
+./mvnw verify
+./mvnw test -pl taxonomy-dsl
+./mvnw test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
+./mvnw -B verify -Pcore-integration
+./mvnw -B verify -Pdatabase-postgres
+./mvnw -B verify -Pdatabase-mssql
+./mvnw -B verify -Pdatabase-oracle
+./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true
+./mvnw -B verify -Pci
 ```
 
-### Kompatibilität mit externen Datenbanken
-
-Die PostgreSQL-, Microsoft-SQL-Server- und Oracle-Tests sind normale Maven-
-Failsafe-/Testcontainers-Tests. Alle drei `db-*`-Tags sind jedoch im Standard-
-Lebenszyklus ausgeschlossen. Relevante Pull Requests zur Datenbankkonfiguration
-führen das begrenzte PostgreSQL-Paar aus Diagnose- und Selenium-Test aus.
-Geplante und manuelle Workflows decken die ausgewählte vollständige Matrix ab.
-
-```bash
-mvn -B -pl taxonomy-app \
-  failsafe:integration-test failsafe:verify \
-  -DskipITs=false \
-  -Dit.test='*Postgres*IT' \
-  -DfailIfNoTests=false \
-  -DexcludedGroups=real-llm
-
-# Für andere Familien *Mssql*IT beziehungsweise *Oracle*IT einsetzen.
-```
-
-`-DexcludedGroups=real-llm` aktiviert bewusst die Datenbank-Tags und schließt
-weiterhin Live-LLM-Aufrufe aus. Die Testklassen erben von
-`AbstractDatabaseContainerIT` oder `AbstractSeleniumContainerIT`; Anwendungs-
-und Datenbankcontainer teilen sich ein Testcontainers-Netzwerk und erhalten das
-Spring-Profil sowie die JDBC-Einstellungen über Umgebungsvariablen.
-
-| Muster/Tag | Runner | Standard-Lebenszyklus |
-|---|---|---|
-| `*Test.java`, `*Tests.java` | Surefire | enthalten |
-| `*IT.java` | Failsafe | übersprungen, solange `skipITs=true` |
-| `db-postgres` | Failsafe/Testcontainers | ausgeschlossen |
-| `db-mssql` | Failsafe/Testcontainers | ausgeschlossen |
-| `db-oracle` | Failsafe/Testcontainers | ausgeschlossen |
-| `real-llm` | Surefire/Failsafe | ausgeschlossen |
-
-Der verbindliche Befehlskatalog sowie Browsermatrix, Accessibility-Prüfung und
-Screenshot-Verfahren stehen in
-[`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md).
-
----
+Genaue Umfänge, Voraussetzungen, die Reproduktion einzelner Browserprofile und
+die Verantwortungen der acht verbleibenden Workflows stehen in
+[`docs/dev/MAVEN_VERIFICATION.md`](../dev/MAVEN_VERIFICATION.md). Testauswahl
+gehört in ein POM-Profil; Workflow-YAML darf eine Umgebung beziehungsweise ein
+Profil wählen, aber keine Java-Testklassen nennen und keine Playwright-/axe-
+Skripte direkt aufrufen.
 
 ## Einen neuen REST-Endpunkt hinzufügen
 
@@ -535,7 +488,7 @@ Nach Änderungen an der Analyse-Pipeline, der Diagrammprojektion oder dem Mermai
 
 1. Ausführen:
    ```
-   mvn test -pl taxonomy-app -am -Dtest=ReadmeShowcaseTest -Dsurefire.failIfNoSpecifiedTests=false
+   ./mvnw test -pl taxonomy-app -am -Dtest=ReadmeShowcaseTest -Dsurefire.failIfNoSpecifiedTests=false
    ```
 2. `taxonomy-app/target/readme-showcase.md` öffnen und den Mermaid-Block
    (alles zwischen ` ```mermaid ` und ` ``` `) in `README.md` kopieren und
@@ -564,7 +517,7 @@ Screenshots werden automatisch von `ScreenshotGeneratorIT` generiert und in `doc
 
 3. **Neugenerierung:** Nach jeder UI-Änderung betroffene Screenshots neu generieren:
    ```
-   mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+   ./mvnw failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
    ```
 
 4. **Checkliste für PRs mit UI-Änderungen:**

@@ -6,3 +6,6 @@ taxonomy-app/codemirror-build/package-lock.json
 # LLM recording manifest is a runtime artifact, not a source file
 **/llm-recordings/manifest.json
 
+
+# Maven-owned browser tooling is installed locally from package-lock.json
+.github/node_modules/

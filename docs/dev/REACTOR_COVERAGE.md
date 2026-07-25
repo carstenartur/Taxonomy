@@ -33,7 +33,7 @@ Module-local reports may still exist for diagnosis, but they are not added toget
 ## Local verification
 
 ```bash
-mvn install -DexcludedGroups=real-llm
+./mvnw install -DexcludedGroups=real-llm
 python3 .github/scripts/check-coverage.py \
   --xml taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml \
   --minimum 0.81 \

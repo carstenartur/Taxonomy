@@ -93,7 +93,7 @@ New DTOs belong in `taxonomy-domain`, not in `taxonomy-app`.
 
 ```bash
 # Full verify required for any UI change
-mvn verify -DexcludedGroups="real-llm"
+./mvnw verify -DexcludedGroups="real-llm"
 ```
 
 Relevant test classes:

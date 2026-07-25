@@ -20,7 +20,7 @@ Taxonomy verwendet nur öffentliche Typen aus `io.github.carstenartur.jgit.stora
 Die festgelegte Version steht im Root-POM:
 
 ```xml
-<jgit-storage-hibernate.version>0.1.9</jgit-storage-hibernate.version>
+<jgit-storage-hibernate.version>0.1.10</jgit-storage-hibernate.version>
 ```
 
 Das Anwendungsmodul bindet das Core-Artefakt ein:
@@ -33,7 +33,7 @@ Das Anwendungsmodul bindet das Core-Artefakt ein:
 </dependency>
 ```
 
-Version 0.1.9 wird derzeit über GitHub Packages bereitgestellt. Die Maven-Zugangsdaten müssen dieselbe Server-ID wie der Repository-Eintrag in `pom.xml` verwenden:
+Version 0.1.10 wird derzeit über GitHub Packages bereitgestellt. Die Maven-Zugangsdaten müssen dieselbe Server-ID wie der Repository-Eintrag in `pom.xml` verwenden:
 
 ```xml
 <settings>
@@ -117,7 +117,7 @@ Flyway wird abgeschlossen, bevor der von Spring verwaltete Persistence Context i
 | Eine fehlende Core-Tabelle, unbekannte Spalten, nicht unterstützte Längen oder fehlende Pflichtindizes | Vor automatischer Reparatur fehlschlagen |
 | Adoptionshistorie ohne normale Core-Historie | Fehlschlagen und Wiederherstellung oder dokumentierte Reparatur verlangen |
 
-Taxonomy enthält keine datenbankspezifischen `ALTER TABLE`-Anweisungen für die bibliothekseigenen Spalten. Die Anwendung klassifiziert den Zustand, führt den Vorabtest aus und validiert das Ergebnis; alle physischen Adoptionsänderungen stammen aus den unveränderlichen Migrationsressourcen von `jgit-storage-hibernate-core:0.1.9`.
+Taxonomy enthält keine datenbankspezifischen `ALTER TABLE`-Anweisungen für die bibliothekseigenen Spalten. Die Anwendung klassifiziert den Zustand, führt den Vorabtest aus und validiert das Ergebnis; alle physischen Adoptionsänderungen stammen aus den unveränderlichen Migrationsressourcen von `jgit-storage-hibernate-core:0.1.10`.
 
 ## Unterstützte Datenbankpfade
 
@@ -151,7 +151,7 @@ Verwende diesen Ablauf:
 
 Eine bereits mit Version 0.1.8 übernommene Datenbank enthält die erfolgreiche Adoptionsversion `1`, kann aber weiterhin beide Spalten mit Länge 255 besitzen. Wende denselben Sicherungs- und einmaligen Freigabeprozess an. Taxonomy ruft dann den veröffentlichten Adoptionsstrom auf, ohne eine der beiden Historientabellen zu löschen oder neu zu baselinen; vor Fortsetzung des Starts muss Version `2` aufgezeichnet sein.
 
-Hibernate `ddl-auto=update`, manuelle Ad-hoc-DDL, Flyway `repair` oder das Löschen der Migrationshistorie dürfen diesen Ablauf nicht ersetzen. Taxonomy wählt niemals automatisch eine doppelte Zeile aus und kürzt keinen zu langen Wert. Das Upstream-Issue #78 ist durch Release 0.1.9 erledigt.
+Hibernate `ddl-auto=update`, manuelle Ad-hoc-DDL, Flyway `repair` oder das Löschen der Migrationshistorie dürfen diesen Ablauf nicht ersetzen. Taxonomy wählt niemals automatisch eine doppelte Zeile aus und kürzt keinen zu langen Wert. Das Upstream-Issue #78 ist durch Release 0.1.10 erledigt.
 
 ## Verifikation
 

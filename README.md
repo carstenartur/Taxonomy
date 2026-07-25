@@ -290,7 +290,7 @@ _Architecture impact view — swimlane layout groups elements by layer. The deta
 | Requirement | Notes |
 |---|---|
 | **Java 21+** | JDK for building, JRE for running |
-| **Maven 3.9+** | Build only |
+| **Maven Wrapper** | Checked in; downloads the pinned Maven 3.9.16 distribution |
 | **LLM API key** _or_ `LLM_PROVIDER=LOCAL_ONNX` | Required for AI analysis; browsing and search work without it |
 
 ### Where to start
@@ -307,20 +307,14 @@ _Architecture impact view — swimlane layout groups elements by layer. The deta
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 
-# Build the sibling modules first (required once, or after changes)
-mvn install -DskipTests
-
-# Then start the application from the app module
-cd taxonomy-app
-
 # With Gemini (default)
-GEMINI_API_KEY=your-key mvn spring-boot:run
+GEMINI_API_KEY=your-key ./mvnw -pl taxonomy-app spring-boot:run
 
 # Fully offline (no API key)
-LLM_PROVIDER=LOCAL_ONNX mvn spring-boot:run
+LLM_PROVIDER=LOCAL_ONNX ./mvnw -pl taxonomy-app spring-boot:run
 
 # Browse-only (no AI analysis)
-mvn spring-boot:run
+./mvnw -pl taxonomy-app spring-boot:run
 ```
 
 Open <http://localhost:8080> and log in with `admin` / `admin`.
@@ -389,10 +383,15 @@ docker run -p 8080:8080 -e LLM_PROVIDER=LOCAL_ONNX ghcr.io/carstenartur/taxonomy
 ### Build & Test
 
 ```bash
-mvn compile           # Compile only
-mvn test              # Unit + Spring context tests (no Docker needed)
-mvn verify            # Unit + integration tests (requires Docker)
+./mvnw compile                    # Compile only
+./mvnw verify                     # Bounded developer verification; no Docker
+./mvnw -B verify -Pci             # Complete required verification; Docker required
+./mvnw -B verify -Pui-tests \
+  -DskipTests -DskipITs=true      # Browser and accessibility suites only
 ```
+
+The stable scopes and all focused profiles are documented in
+[Maven Verification Authority](docs/dev/MAVEN_VERIFICATION.md).
 
 ---
 
@@ -520,7 +519,7 @@ For stable archival reference, cite the Zenodo DOI linked by the badge at the to
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Run tests (`mvn test`)
+3. Run the relevant focused profile and finish with `./mvnw -B verify -Pci`
 4. Commit your changes
 5. Open a pull request
 

@@ -25,7 +25,7 @@ and CI. Oracle has initial tests but is not fully verified.
 | `db-oracle` | Oracle Database |
 
 ```bash
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
+./mvnw verify -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
+./mvnw verify -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
+./mvnw verify -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
 ```

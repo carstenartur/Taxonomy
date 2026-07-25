@@ -57,9 +57,10 @@
         <module>taxonomy-export</module>
         <module>taxonomy-extension-api</module>
         <module>taxonomy-app</module>
-        <!-- Must stay last: report-aggregate consumes classes and execution data
-             produced by all shipped modules above. -->
+        <!-- Coverage consumes classes and execution data produced by all shipped modules above. -->
         <module>taxonomy-coverage</module>
+        <!-- Must stay last: build-policy and browser verification consume the complete reactor. -->
+        <module>taxonomy-build</module>
     </modules>
 
     <properties>
@@ -75,7 +76,7 @@
         <hibernate-search.version>8.4.0.Final</hibernate-search.version>
         <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
         <jgit.version>7.7.0.202606012155-r</jgit.version>
-        <jgit-storage-hibernate.version>0.1.9</jgit-storage-hibernate.version>
+        <jgit-storage-hibernate.version>0.1.10</jgit-storage-hibernate.version>
         <springdoc.version>3.0.3</springdoc.version>
         <postgresql.version>42.7.12</postgresql.version>
         <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
@@ -94,13 +95,24 @@
         <git-commit-id.version>9.1.0</git-commit-id.version>
         <jacoco.version>0.8.15</jacoco.version>
         <maven-enforcer.version>3.6.3</maven-enforcer.version>
+        <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
+        <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+        <frontend-maven-plugin.version>2.0.0</frontend-maven-plugin.version>
+        <node.version>v24.18.0</node.version>
+        <taxonomy.model.revision>5c38ec7c405ec4b44b94cc5a9bb96e735b38267a</taxonomy.model.revision>
+        <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
+        <taxonomy.ui.skip>true</taxonomy.ui.skip>
+        <taxonomy.quality.skip>true</taxonomy.quality.skip>
+        <taxonomy.ui.suite>all</taxonomy.ui.suite>
+        <taxonomy.ui.profile.filter></taxonomy.ui.profile.filter>
+        <taxonomy.playwright.install.arguments>exec playwright install --with-deps chromium firefox webkit</taxonomy.playwright.install.arguments>
     </properties>
 
     <repositories>
         <repository>
-            <id>github</id>
-            <name>GitHub Packages - jgit-storage-hibernate</name>
-            <url>https://maven.pkg.github.com/carstenartur/jgit-storage-hibernate</url>
+            <id>jgit-storage-hibernate-releases</id>
+            <name>jgit-storage-hibernate anonymous releases</name>
+            <url>https://raw.githubusercontent.com/carstenartur/jgit-storage-hibernate/maven-repository/</url>
             <releases><enabled>true</enabled></releases>
             <snapshots><enabled>false</enabled></snapshots>
         </repository>
@@ -165,6 +177,10 @@
                         <goals><goal>enforce</goal></goals>
                         <configuration>
                             <rules>
+                                <requireMavenVersion>
+                                    <version>[3.9.16,3.9.17)</version>
+                                    <message>Use the checked-in Maven Wrapper (./mvnw or mvnw.cmd).</message>
+                                </requireMavenVersion>
                                 <bannedDependencies>
                                     <searchTransitive>true</searchTransitive>
                                     <excludes>
@@ -213,6 +229,30 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec-maven-plugin.version}</version>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <id>download-pinned-embedding-model</id>
+                        <phase>initialize</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <skip>${taxonomy.model.download.skip}</skip>
+                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                            <executable>bash</executable>
+                            <environmentVariables>
+                                <MODEL_REVISION>${taxonomy.model.revision}</MODEL_REVISION>
+                            </environmentVariables>
+                            <arguments>
+                                <argument>.github/scripts/download-embedding-model.sh</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-site-plugin</artifactId>
                 <version>${maven-site-plugin.version}</version>
@@ -250,4 +290,93 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <profile>
+            <id>ci</id>
+            <properties>
+                <skipITs>false</skipITs>
+                <excludedGroups>real-llm,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <taxonomy.ui.skip>false</taxonomy.ui.skip>
+                <taxonomy.quality.skip>false</taxonomy.quality.skip>
+                <taxonomy.ui.suite>all</taxonomy.ui.suite>
+            </properties>
+        </profile>
+        <profile>
+            <id>quality</id>
+            <properties><taxonomy.quality.skip>false</taxonomy.quality.skip></properties>
+        </profile>
+        <profile>
+            <id>ui-tests</id>
+            <properties>
+                <taxonomy.ui.skip>false</taxonomy.ui.skip>
+                <taxonomy.ui.suite>all</taxonomy.ui.suite>
+            </properties>
+        </profile>
+        <profile>
+            <id>core-integration</id>
+            <properties>
+                <skipITs>false</skipITs>
+                <it.test>DiagnosticsContainerIT,DiagnosticsWithApiKeyContainerIT,CoreUiAcceptanceIT,ProductionPersistenceRestartIT</it.test>
+                <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>database-postgres</id>
+            <properties>
+                <skipITs>false</skipITs><it.test>*Postgres*IT</it.test>
+                <excludedGroups>real-llm</excludedGroups>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>database-mssql</id>
+            <properties>
+                <skipITs>false</skipITs><it.test>*Mssql*IT</it.test>
+                <excludedGroups>real-llm</excludedGroups>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>database-oracle</id>
+            <properties>
+                <skipITs>false</skipITs><it.test>*Oracle*IT</it.test>
+                <excludedGroups>real-llm</excludedGroups>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>onnx</id>
+            <properties>
+                <skipITs>false</skipITs>
+                <it.test>LocalOnnxPipelineIT,OnnxSeleniumIT</it.test>
+                <runOnnxTests>true</runOnnxTests>
+                <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+        <profile>
+            <id>architecture-tests</id>
+            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest</test></properties>
+        </profile>
+        <profile>
+            <id>document-import-tests</id>
+            <properties><test>DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest</test></properties>
+        </profile>
+        <profile>
+            <id>archimate-import-tests</id>
+            <properties><test>ArchiMateWorkspaceImportTests,CatalogFacadeTest</test></properties>
+        </profile>
+        <profile>
+            <id>screenshots</id>
+            <properties>
+                <skipITs>false</skipITs><it.test>ScreenshotGeneratorIT</it.test>
+                <generateScreenshots>true</generateScreenshots>
+                <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
+                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+            </properties>
+        </profile>
+    </profiles>
+
 </project>
