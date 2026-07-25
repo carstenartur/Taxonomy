@@ -1,6 +1,7 @@
 package com.taxonomy;
 
 import com.taxonomy.shared.service.LocalEmbeddingService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,12 +10,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Proves that {@link LocalEmbeddingService} works end-to-end as a Spring bean:
- * lazy model download from HuggingFace, ONNX Runtime loading, and embedding inference.
- * <p>
- * <strong>No CI-cache, no manual curl, no {@code resolveModelCacheDir}.</strong>
- * The service downloads the model itself on first use — exactly the same codepath
- * used in production.
+ * pinned-model loading, ONNX Runtime loading, and embedding inference.
+ *
+ * <p>This is an explicit ONNX verification test. Ordinary and database-focused
+ * Maven suites exclude the {@code onnx} group; the {@code ci} and {@code onnx}
+ * profiles provide the pinned model and deliberately execute it.</p>
  */
+@Tag("onnx")
 @SpringBootTest
 class OnnxEmbeddingServiceTest {
 
