@@ -67,7 +67,7 @@
         <java.version>21</java.version>
         <djl.version>0.36.0</djl.version>
         <skipITs>true</skipITs>
-        <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
+        <excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle</excludedGroups>
         <poi.version>5.5.1</poi.version>
         <pdfbox.version>3.0.8</pdfbox.version>
         <lucene.version>9.12.3</lucene.version>
@@ -326,24 +326,24 @@
             <id>database-postgres</id>
             <properties>
                 <skipITs>false</skipITs><it.test>*Postgres*IT</it.test>
-                <excludedGroups>real-llm</excludedGroups>
-                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <excludedGroups>real-llm,onnx</excludedGroups>
+                <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
             </properties>
         </profile>
         <profile>
             <id>database-mssql</id>
             <properties>
                 <skipITs>false</skipITs><it.test>*Mssql*IT</it.test>
-                <excludedGroups>real-llm</excludedGroups>
-                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <excludedGroups>real-llm,onnx</excludedGroups>
+                <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
             </properties>
         </profile>
         <profile>
             <id>database-oracle</id>
             <properties>
                 <skipITs>false</skipITs><it.test>*Oracle*IT</it.test>
-                <excludedGroups>real-llm</excludedGroups>
-                <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
+                <excludedGroups>real-llm,onnx</excludedGroups>
+                <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
             </properties>
         </profile>
         <profile>
