@@ -69,7 +69,9 @@ public class ExternalSyncController {
     public ResponseEntity<Map<String, Object>> pushToExternal(
             @RequestParam(required = false) String branch) {
         try {
-            String targetBranch = branch != null ? branch : systemRepositoryService.getSharedBranch();
+            String targetBranch = branch != null
+                    ? branch
+                    : systemRepositoryService.getSharedBranch();
             var result = externalGitSyncService.pushToExternal(targetBranch);
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("success", true);
@@ -109,7 +111,8 @@ public class ExternalSyncController {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                     "success", false,
                     "error", "MERGE_CONFLICT",
-                    "message", "Local and external changes conflict; the local shared branch was not changed"));
+                    "message", "Local and external changes conflict; "
+                            + "the local shared branch was not changed"));
         } catch (IllegalStateException | IllegalArgumentException exception) {
             return configurationError(exception);
         } catch (Exception exception) {
@@ -146,10 +149,16 @@ public class ExternalSyncController {
             SystemRepository systemRepository = systemRepositoryService.getPrimaryRepository();
 
             if (externalUrl != null) {
-                systemRepository.setExternalUrl(externalUrl);
+                // Parse and reject embedded HTTP credentials before the value can
+                // reach persistence, logs, status responses, or JGit transport.
+                String validatedUrl = ExternalGitSyncService
+                        .validateExternalUrl(externalUrl)
+                        .toPrivateString();
+                systemRepository.setExternalUrl(validatedUrl);
             }
             if (topologyMode != null) {
-                systemRepository.setTopologyMode(RepositoryTopologyMode.valueOf(topologyMode));
+                systemRepository.setTopologyMode(
+                        RepositoryTopologyMode.valueOf(topologyMode));
             }
 
             systemRepositoryService.save(systemRepository);
@@ -169,7 +178,8 @@ public class ExternalSyncController {
         }
     }
 
-    private static ResponseEntity<Map<String, Object>> configurationError(RuntimeException exception) {
+    private static ResponseEntity<Map<String, Object>> configurationError(
+            RuntimeException exception) {
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "Configuration error",
                 "message", exception.getMessage()));
