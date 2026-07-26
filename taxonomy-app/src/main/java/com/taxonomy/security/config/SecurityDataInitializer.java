@@ -78,11 +78,14 @@ public class SecurityDataInitializer implements ApplicationRunner {
                                 + "(passwordChangeRequired={}).",
                         requirePasswordChange);
             }
-        } else if (requirePasswordChange
-                && !admin.isMustChangePassword()) {
+        } else if (!admin.isMustChangePassword()
+                && passwordEncoder.matches("admin", admin.getPasswordHash())) {
+            // One-time migration for accounts created by historic releases with
+            // the removed built-in credential. Do not re-lock normal accounts on
+            // every application restart.
             admin.setMustChangePassword(true);
             userRepository.save(admin);
-            log.info("Marked the administrator account for mandatory password replacement.");
+            log.warn("Detected a legacy administrator credential and required replacement.");
         }
     }
 
