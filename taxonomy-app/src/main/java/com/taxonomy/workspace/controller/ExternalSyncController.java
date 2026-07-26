@@ -127,6 +127,7 @@ public class ExternalSyncController {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("externalEnabled", status.externalEnabled());
         response.put("externalUrl", status.externalUrl());
+        response.put("credentialConfigured", status.credentialConfigured());
         response.put("lastFetchAt", status.lastFetchAt());
         response.put("lastPushAt", status.lastPushAt());
         response.put("lastFetchCommit", status.lastFetchCommit());
