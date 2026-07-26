@@ -18,7 +18,7 @@ public interface SourceVersionRepository extends JpaRepository<SourceVersion, Lo
 
     /** Serialize idempotent candidate confirmation for one source version. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select version from SourceVersion version "
-            + "join fetch version.sourceArtifact where version.id = :id")
+    @Query("select v from SourceVersion v "
+            + "join fetch v.sourceArtifact where v.id = :id")
     Optional<SourceVersion> findByIdForUpdate(@Param("id") Long id);
 }
