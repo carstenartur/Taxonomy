@@ -6,12 +6,16 @@ import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.transport.Daemon;
+import org.eclipse.jgit.transport.FileResolver;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,8 +29,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * End-to-end JGit transport tests using a temporary local bare repository.
- * No external Git service or GitHub-specific orchestration is required.
+ * End-to-end JGit transport tests using a temporary bare repository served by
+ * an in-process daemon bound exclusively to the loopback interface.
+ *
+ * <p>The application repository is a DFS repository and intentionally has no
+ * local filesystem abstraction. A {@code file://} remote would therefore test
+ * an unsupported TransportLocal assumption rather than real external Git
+ * synchronization. The loopback daemon exercises upload-pack/receive-pack
+ * through the same transport boundary as a remote Git service without any
+ * external infrastructure or GitHub-specific orchestration.</p>
  */
 class ExternalGitSyncServiceIT {
 
@@ -41,15 +52,29 @@ class ExternalGitSyncServiceIT {
     private DslGitRepository systemDslRepository;
     private SystemRepository systemRepository;
     private ExternalGitSyncService service;
+    private Daemon gitDaemon;
     private String remoteUri;
 
     @BeforeEach
     void setUp() throws Exception {
         Path bareDirectory = temporaryDirectory.resolve("remote.git");
-        try (Git ignored = Git.init().setBare(true).setDirectory(bareDirectory.toFile()).call()) {
+        try (Git ignored = Git.init()
+                .setBare(true)
+                .setDirectory(bareDirectory.toFile())
+                .call()) {
             // Repository creation is the setup action.
         }
-        remoteUri = bareDirectory.toUri().toString();
+
+        gitDaemon = new Daemon(new InetSocketAddress(
+                InetAddress.getLoopbackAddress(), 0));
+        gitDaemon.setRepositoryResolver(
+                new FileResolver<>(temporaryDirectory.toFile(), true));
+        gitDaemon.getService("git-upload-pack").setEnabled(true);
+        gitDaemon.getService("git-receive-pack").setEnabled(true);
+        gitDaemon.start();
+        remoteUri = "git://127.0.0.1:"
+                + gitDaemon.getAddress().getPort()
+                + "/remote.git";
 
         repositoryFactory = new DslGitRepositoryFactory(null);
         systemDslRepository = repositoryFactory.getSystemRepository();
@@ -77,12 +102,16 @@ class ExternalGitSyncServiceIT {
         if (repositoryFactory != null) {
             repositoryFactory.close();
         }
+        if (gitDaemon != null) {
+            gitDaemon.stop();
+        }
     }
 
     @Test
     void remoteOnlyCommitFastForwardsLocalSharedBranch() throws Exception {
         String remoteDsl = "architecture {\n  description \"remote\"\n}\n";
-        ObjectId remoteCommit = commitToRemote(remoteDsl, "remote change", "fast-forward-work");
+        ObjectId remoteCommit = commitToRemote(
+                remoteDsl, "remote change", "fast-forward-work");
 
         String result = service.fullSync("alice");
 
@@ -94,7 +123,8 @@ class ExternalGitSyncServiceIT {
     @Test
     void remoteAncestorDoesNotOverwriteLocalOnlyCommit() throws Exception {
         String localDsl = "architecture {\n  description \"local only\"\n}\n";
-        String localCommit = systemDslRepository.commitDsl(BRANCH, localDsl, "alice", "local change");
+        String localCommit = systemDslRepository.commitDsl(
+                BRANCH, localDsl, "alice", "local change");
 
         String result = service.fullSync("alice");
 
@@ -109,7 +139,8 @@ class ExternalGitSyncServiceIT {
                 "remote conflict",
                 "conflict-work");
         String localDsl = "architecture {\n  description \"local conflict\"\n}\n";
-        String localCommit = systemDslRepository.commitDsl(BRANCH, localDsl, "alice", "local conflict");
+        String localCommit = systemDslRepository.commitDsl(
+                BRANCH, localDsl, "alice", "local conflict");
 
         assertThrows(ExternalGitSyncService.ExternalSyncConflictException.class,
                 () -> service.fullSync("alice"));
@@ -150,14 +181,19 @@ class ExternalGitSyncServiceIT {
         assertEquals(remoteCommit.name(), systemRepository.getLastFetchCommit());
     }
 
-    private ObjectId commitToRemote(String dsl, String message, String directoryName) throws Exception {
+    private ObjectId commitToRemote(String dsl,
+                                    String message,
+                                    String directoryName) throws Exception {
         Path workDirectory = temporaryDirectory.resolve(directoryName);
         try (Git git = Git.cloneRepository()
                 .setURI(remoteUri)
                 .setBranch("refs/heads/" + BRANCH)
                 .setDirectory(workDirectory.toFile())
                 .call()) {
-            Files.writeString(workDirectory.resolve(DSL_FILE), dsl, StandardCharsets.UTF_8);
+            Files.writeString(
+                    workDirectory.resolve(DSL_FILE),
+                    dsl,
+                    StandardCharsets.UTF_8);
             git.add().addFilepattern(DSL_FILE).call();
             ObjectId commitId = git.commit()
                     .setMessage(message)
