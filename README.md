@@ -8,58 +8,41 @@
 [![DOI](https://zenodo.org/badge/1172765819.svg)](https://zenodo.org/badge/latestdoi/1172765819)
 [![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)](https://github.com/carstenartur/Taxonomy/releases/latest)
 
-**Turn a business requirement into a validated architecture view — in one step.**
+**Transform requirements, regulations, and architecture knowledge into traceable architecture models.**
 
-Describe what you need in plain English. The Taxonomy Architecture Analyzer scores every node in the C3 Taxonomy Catalogue (~2,500 elements across 8 architecture layers) using AI, discovers architecture relations, and generates exportable diagrams — with full names, impact hotspots, and clear layer labels visible at every step.
+Taxonomy Architecture Analyzer combines a hierarchical architecture catalogue, a version-controlled architecture DSL, full-text and vector search, source provenance, architecture relations, and optional LLM-assisted analysis in one Spring Boot application.
+
+The system is intended to reduce the cognitive load of architecture analysis while keeping every accepted change reviewable, attributable, comparable, and reversible.
+
+## What the application provides
+
+| Capability | Description |
+|---|---|
+| Hierarchical requirement analysis | Scores catalogue roots, intermediate nodes, and leaves instead of treating final nodes as isolated labels |
+| Architecture views | Builds cross-layer views from selected elements and typed relations |
+| Traceable source import | Extracts bounded candidates from PDF and DOCX sources and links accepted requirements to source versions and fragments |
+| Versioned architecture DSL | Stores architecture changes in JGit with branches, history, semantic diffs, merges, reverts, and selective transfer |
+| Search | Provides full-text search and optional local ONNX vector search through Hibernate Search and Lucene |
+| Multi-user workspaces | Separates personal workspaces from the shared architecture repository |
+| Export | Produces machine-readable and presentation-oriented architecture outputs |
+| Pluggable AI | Supports cloud providers and a local ONNX option; deterministic browsing remains available without an LLM |
+
+## Typical workflow
 
 ```mermaid
 flowchart LR
-    A["✏️ Requirement"] --> B["🤖 AI Analysis"]
-    B --> C["🌳 Scored Tree"]
-    C --> D["🏗️ Architecture View"]
-    D --> E["📐 Export"]
-
-    style A fill:#e3f2fd
-    style B fill:#fff3e0
-    style C fill:#e8f5e9
-    style D fill:#f3e5f5
-    style E fill:#fce4ec
+    A[Requirement or source document] --> B[Candidate extraction]
+    B --> C[Hierarchical analysis]
+    C --> D[Human review]
+    D --> E[Versioned architecture change]
+    E --> F[Diagram, report, or data export]
 ```
 
-The AI analysis step is **hierarchical** — it scores root categories first, then distributes each root's relevance budget into its children at every taxonomy level. This produces a **scoring trace** (how relevance narrows from root to leaf) and an **architecture impact view** (which layers and relations are affected). See the [showcase below](#architecture-impact-showcase) for a worked example.
-
----
+LLM results are proposals, not authoritative architecture decisions. Users remain responsible for reviewing scores, rationales, relations, and source mappings before accepting them.
 
 ## Architecture Impact Showcase
 
-> _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments, with a clinical dashboard application for patient handoff tracking and team coordination."_
-
-**How scoring works — hierarchical, not isolated:**
-
-The system does **not** match a few keywords to final nodes. Instead, scoring progresses **hierarchically through the taxonomy** — the AI first evaluates each of the 8 root categories (Capabilities, Communications Services, Core Services, …), then distributes each root's relevance budget into its children at every taxonomy level. Intermediate nodes also receive scores and carry architectural meaning. This produces two complementary results:
-
-1. **Scoring Trace** — how relevance narrows step-by-step from root → intermediate → leaf (example paths shown below)
-2. **Architecture Impact** — which concrete elements and cross-layer relations are affected (the graph and table below)
-
-**What the system found for this requirement:**
-
-| Scoring path (root → leaf) | Root budget | Leaf result | Why |
-|---|---|---|---|
-| **CP** → CP-1000 → **CP-1023** Communication and Information System Capabilities | 92% | 85% | Direct communication capability match |
-| **CO** → CO-1000 → **CO-1011** Communications Access Services | 88% | 80% | Real-time voice/data exchange |
-| **CR** → CR-1000 → **CR-1047** Infrastructure Services | 81% | 75% | Infrastructure supporting the platform |
-| **UA** → UA-1000 → UA-1179 → **UA-1574** Unified Communication Applications | 74% | 62% | Hospital staff unified comms application |
-| **BP** → BP-1000 → BP-1327 → BP-1490 → **BP-1697** Medical Command, Control And Communication | 71% | 52% | Clinical workflow and coordination |
-| **IP** → IP-1000 → IP-1078 → IP-1023 → **IP-2106** CIS Coordination | 60% | 38% | Data exchange coordination products |
-| **BR** → BR-1000 → BR-1057 → BR-1023 → **BR-1334** CIS Coordination and Advice Roles | 55% | 32% | Staff coordination roles |
-
-> Each root score is a **budget** distributed into children. A leaf score of 85% under a 92% root means that child consumed most of the parent's relevance. Intermediate nodes (CP-1000, CO-1000, CR-1000, …) also received scores — they are not just structural pass-throughs.
->
-> **About leaf specificity:** The scoring trace shows _how_ the system navigates from abstract roots to the most specific available node.
-
-The result spans **7 architecture layers** with traceable relations, ⚠ impact hotspots (≥ 80%), and exportable diagrams. The graph below was **generated by the real pipeline** — not hand-crafted.
-
-**6 concrete architecture elements** across **7 layers**, connected by **17 traced relations** — generated by the real pipeline.
+The following view is generated by the real architecture-view and Mermaid export pipeline for an integrated hospital communication requirement. A drift-prevention test compares this block with current exporter output.
 
 ```mermaid
 flowchart TD
@@ -117,417 +100,223 @@ flowchart TD
     class CO_1050 comm
 ```
 
-> **Legend:** ★ = direct match (anchor) · ⚠ = impact hotspot (≥ 80%) · Rounded nodes = anchors/hotspots · % = relevance score · Arrow labels = relation type
+> **Legend:** ★ = direct match · ⚠ = impact hotspot (≥ 80%) · rounded nodes = anchors/hotspots · percentages = relevance score · arrow labels = relation type
 
-<details>
-<summary><strong>Scoring trace</strong> — how relevance narrows from root to leaf</summary>
+## Quick start
 
-The LLM does **not** score leaf nodes in isolation. It first evaluates each root category (distributing a total relevance budget), then recursively narrows the score into child nodes at each taxonomy level. Every intermediate node receives a score and carries architectural meaning — the result is **hierarchical narrowing**, not isolated leaf matching.
+### Requirements
 
-| Scoring Path | Score | Role |
-|---|---|---|
-| **CP** Capabilities | **92%** | Root category |
-| &ensp;├ CP-1000 Capabilities | 90% | Intermediate (L1) — narrows 92% |
-| &ensp;&ensp;├ CP-1023 Communication and Information System Capabilities | 85% | Leaf — narrowed from 90% |
-| &ensp;&ensp;├ CP-1010 Battlespace Management Capabilities | 40% | Intermediate (L2) — narrows 90% |
-| &ensp;&ensp;&ensp;└ CP-1030 Cyberspace Battlespace Management Capabilities | 30% | Leaf — narrowed from 40% |
-| **CO** Communications Services | **88%** | Root category |
-| &ensp;├ CO-1000 Communications Services | 86% | Intermediate (L1) — narrows 88% |
-| &ensp;&ensp;├ CO-1011 Communications Access Services | 80% | Leaf — narrowed from 86% |
-| &ensp;&ensp;├ CO-1063 Transport Services | 70% | Intermediate (L2) — narrows 86% |
-| &ensp;&ensp;&ensp;├ CO-1050 Transit Services | 55% | Intermediate (L3) — narrows 70% |
-| &ensp;&ensp;&ensp;&ensp;└ CO-1019 Frame Switching Services | 52% | Leaf — narrowed from 55% |
-| **CR** Core Services | **81%** | Root category |
-| &ensp;├ CR-1000 Core Services | 79% | Intermediate (L1) — narrows 81% |
-| &ensp;&ensp;├ CR-1047 Infrastructure Services | 75% | Intermediate (L2) — narrows 79% |
-| &ensp;&ensp;&ensp;├ CR-1039 Infrastructure CIS Security Services | 52% | Intermediate (L3) — narrows 75% |
-| &ensp;&ensp;&ensp;&ensp;└ CR-1021 Digital Certificate Services | 48% | Leaf — narrowed from 52% |
-| **UA** User Applications | **74%** | Root category |
-| &ensp;├ UA-1000 User Applications | 72% | Intermediate (L1) — narrows 74% |
-| &ensp;&ensp;├ UA-1179 Communication and Collaboration Applications | 68% | Intermediate (L2) — narrows 72% |
-| &ensp;&ensp;&ensp;└ UA-1574 Unified Communication Applications | 62% | Leaf — narrowed from 68% |
-| **BP** Business Processes | **71%** | Root category |
-| &ensp;├ BP-1000 Business Processes | 69% | Intermediate (L1) — narrows 71% |
-| &ensp;&ensp;├ BP-1327 Enable | 65% | Intermediate (L2) — narrows 69% |
-| &ensp;&ensp;&ensp;├ BP-1490 Health Services | 58% | Intermediate (L3) — narrows 65% |
-| &ensp;&ensp;&ensp;&ensp;└ BP-1697 Medical Command, Control And Communication | 52% | Leaf — narrowed from 58% |
-| **IP** Information Products | **60%** | Root category |
-| &ensp;├ IP-1000 Information Products | 58% | Intermediate (L1) — narrows 60% |
-| &ensp;&ensp;├ IP-1078 Operation Enabling Information Products | 48% | Intermediate (L2) — narrows 58% |
-| &ensp;&ensp;&ensp;├ IP-1023 CIS Information Products | 42% | Intermediate (L3) — narrows 48% |
-| &ensp;&ensp;&ensp;&ensp;└ IP-2106 CIS Coordination | 38% | Leaf — narrowed from 42% |
-| **BR** Business Roles | **55%** | Root category |
-| &ensp;├ BR-1000 Business Roles | 53% | Intermediate (L1) — narrows 55% |
-| &ensp;&ensp;├ BR-1057 Functional Military Roles | 45% | Intermediate (L2) — narrows 53% |
-| &ensp;&ensp;&ensp;├ BR-1023 CIS Staff Roles | 38% | Intermediate (L3) — narrows 45% |
-| &ensp;&ensp;&ensp;&ensp;└ BR-1334 CIS Coordination and Advice Roles | 32% | Leaf — narrowed from 38% |
-| **CI** COI Services | **45%** | Root category |
-| &ensp;└ _(no leaf nodes scored above threshold)_ | — | — |
+- Java 21
+- Docker for integration and browser verification profiles
+- Git
 
-> Each root score is the **budget** that the LLM distributes among its children. A leaf score of 85% under a root of 92% means that child consumed most of the parent's relevance.
-
-</details>
-
-<details>
-<summary><strong>Pipeline details</strong> — included elements and relationships</summary>
-
-**Included Elements** — selected by the pipeline (anchors + propagated + enriched leaf nodes):
-
-| Code | Name | Layer | Relevance | Path | Role | Included Because |
-|---|---|---|---|---|---|---|
-| CP | Capabilities | Capabilities | 92% | CP _(root)_ | ★ Anchor | direct-match |
-| CP-1000 | Capabilities | Capabilities | 90% | CP > CP-1000 | ★ Anchor | direct-match |
-| CO | Communications Services | Communications Services | 88% | CO _(root)_ | ★ Anchor | direct-match |
-| CO-1000 | Communications Services | Communications Services | 86% | CO > CO-1000 | ★ Anchor | direct-match |
-| CP-1023 | Communication and Information System Capabilities | Capabilities | 85% | CP > CP-1000 > CP-1023 | ★ Anchor | direct-match |
-| CR | Core Services | Core Services | 81% | CR _(root)_ | ★ Anchor | direct-match |
-| CO-1011 | Communications Access Services | Communications Services | 80% | CO > CO-1000 > CO-1011 | ★ Anchor | direct-match |
-| CR-1000 | Core Services | Core Services | 79% | CR > CR-1000 | ★ Anchor | direct-match |
-| CR-1047 | Infrastructure Services | Core Services | 75% | CR > CR-1000 > CR-1047 | ★ Anchor | direct-match |
-| UA | User Applications | User Applications | 74% | UA _(root)_ | ★ Anchor | direct-match |
-| UA-1000 | User Applications | User Applications | 72% | UA > UA-1000 | ★ Anchor | direct-match |
-| BP | Business Processes | Business Processes | 71% | BP _(root)_ | ★ Anchor | direct-match |
-| CO-1063 | Transport Services | Communications Services | 70% | CO > CO-1000 > CO-1063 | ★ Anchor | direct-match |
-| CI | COI Services | COI Services | 74% | CI _(root)_ | Propagated | propagated via REALIZES from CP |
-| UA-1179 | Communication and Collaboration Applications | User Applications | 68% | UA > UA-1000 > UA-1179 | Enriched leaf | leaf-enrichment: top-scoring in UA |
-| BP-1327 | Enable | Business Processes | 65% | BP > BP-1000 > BP-1327 | Enriched leaf | leaf-enrichment: top-scoring in BP |
-| UA-1574 | Unified Communication Applications | User Applications | 62% | UA > UA-1000 > UA-1179 > UA-1574 | Enriched leaf | leaf-enrichment: top-scoring in UA |
-| BR | Business Roles | Business Roles | 61% | BR _(root)_ | Propagated | propagated via SUPPORTS from CR |
-| BP-1490 | Health Services | Business Processes | 58% | BP > BP-1000 > BP-1327 > BP-1490 | Enriched leaf | leaf-enrichment: top-scoring in BP |
-| CO-1050 | Transit Services | Communications Services | 55% | CO > CO-1000 > CO-1063 > CO-1050 | Enriched leaf | leaf-enrichment: top-scoring in CO |
-
-**Impact Relationships** — concrete cross-category architecture connections:
-
-| Source | Target | Relation Type | Relevance | Derived From |
-|---|---|---|---|---|
-| CP-1023 Communication and Information System Capabilities | CR-1047 Infrastructure Services | REALIZES | 75% | impact: CP-1023 → CR-1047 (derived from CP → CR) |
-| CR-1047 Infrastructure Services | CP-1023 Communication and Information System Capabilities | FULFILLS | 75% | impact: CR-1047 → CP-1023 (derived from CR → CP) |
-| CR-1047 Infrastructure Services | UA-1574 Unified Communication Applications | SUPPORTS | 62% | impact: CR-1047 → UA-1574 (derived from CR → UA) |
-| UA-1574 Unified Communication Applications | CR-1047 Infrastructure Services | USES | 62% | impact: UA-1574 → CR-1047 (derived from UA → CR) |
-| CR-1047 Infrastructure Services | BP-1490 Health Services | SUPPORTS | 58% | impact: CR-1047 → BP-1490 (derived from CR → BP) |
-| UA-1574 Unified Communication Applications | BP-1490 Health Services | SUPPORTS | 58% | impact: UA-1574 → BP-1490 (derived from UA → BP) |
-| CP-1023 Communication and Information System Capabilities | CO-1050 Transit Services | REALIZES | 55% | impact: CP-1023 → CO-1050 (derived from CP → CO) |
-| CO-1050 Transit Services | BP-1490 Health Services | SUPPORTS | 55% | impact: CO-1050 → BP-1490 (derived from CO → BP) |
-| CO-1050 Transit Services | CR-1047 Infrastructure Services | DEPENDS_ON | 55% | impact: CO-1050 → CR-1047 (derived from CO → CR) |
-| CO-1050 Transit Services | CR-1047 Infrastructure Services | SUPPORTS | 55% | impact: CO-1050 → CR-1047 (derived from CO → CR) |
-| UA-1574 Unified Communication Applications | CO-1050 Transit Services | USES | 55% | impact: UA-1574 → CO-1050 (derived from UA → CO) |
-
-**Trace Relationships** — root-level propagation for scoring traceability:
-
-| Source | Target | Relation Type | Propagated Relevance | Hop |
-|---|---|---|---|---|
-| CP | CI | REALIZES | 74% | 1 |
-| CP | CO | REALIZES | 74% | 1 |
-| CP | CR | REALIZES | 74% | 1 |
-| CO | BP | SUPPORTS | 66% | 1 |
-| CO | CR | SUPPORTS | 66% | 1 |
-| CR | BP | SUPPORTS | 61% | 1 |
-| CR | BR | SUPPORTS | 61% | 1 |
-| CR | UA | SUPPORTS | 61% | 1 |
-| CR | CP | FULFILLS | 57% | 1 |
-| UA | BP | SUPPORTS | 55% | 1 |
-| CO | CR | DEPENDS_ON | 53% | 1 |
-| CR | CI | DEPENDS_ON | 49% | 1 |
-| UA | CI | USES | 48% | 1 |
-| UA | CO | USES | 48% | 1 |
-| UA | CR | USES | 48% | 1 |
-| CI | BP | SUPPORTS | 39% | 2 |
-| CI | BR | SUPPORTS | 39% | 2 |
-| CI | CP | FULFILLS | 36% | 2 |
-
-</details>
-
-**Interactive views** — the same requirement analyzed in the web UI:
-
-The scored taxonomy tree (left) shows hierarchical scoring across all 8 root categories — colour-coded by relevance, with every intermediate and leaf node carrying its own score. The architecture impact view (right) shows the derived multi-layer result with swimlanes, anchors (★), hotspots (⚠), and the detail table.
-
-<img src="docs/images/15-scored-taxonomy-tree.png" alt="Scored taxonomy tree showing hierarchical scoring across all root categories" width="700">
-
-_Scored taxonomy tree — each node shows its relevance score, colour-coded from green (high) to grey (low). Root, intermediate, and leaf nodes all carry scores._
-
-<img src="docs/images/20-architecture-view.png" alt="Architecture impact view with swimlanes, anchors, and detail table" width="700">
-
-_Architecture impact view — swimlane layout groups elements by layer. The detail table below lists every included element with its hierarchy path, relevance, and inclusion reason._
-
----
-
-## Core Workflow (UI)
-
-| Step | What you do | What happens |
-|:---:|---|---|
-| **1** | Enter a requirement in the analysis panel | Free-text input |
-| **2** | Click **Analyze with AI** | AI scores every taxonomy node (0–100) |
-| **3** | Explore the scored tree | Colour-coded results across 6 view modes |
-| **4** | Review relations and proposals | Accept/reject AI-generated architecture relations |
-| **5** | Export | One-click export to ArchiMate XML, Visio, Mermaid, or JSON |
-
-<img src="docs/images/01-full-page-layout.png" alt="Full page layout" width="700">
-
-<details>
-<summary><strong>Export buttons</strong></summary>
-
-<img src="docs/images/23-export-buttons.png" alt="Export buttons" width="700">
-</details>
-
----
-
-## Key Features
-
-| Area | Capabilities |
-|---|---|
-| **Analysis** | AI-scored taxonomy mapping · semantic, hybrid, and graph search · relevance propagation · full node names and layer labels |
-| **Architecture** | Interactive impact maps with ★ anchors and ⚠️ hotspots · relation proposals with review workflow · gap analysis · pattern detection |
-| **Graph** | Upstream/downstream exploration · failure-impact analysis · requirement impact |
-| **DSL** | Text-based architecture DSL · JGit-backed versioning with branching and merge |
-| **Export** | ArchiMate 3.x XML · Visio `.vsdx` · Mermaid · JSON · Reports (Markdown, HTML, DOCX) |
-
----
-
-## Installation
-
-### Prerequisites
-
-| Requirement | Notes |
-|---|---|
-| **Java 21+** | JDK for building, JRE for running |
-| **Maven Wrapper** | Checked in; downloads the pinned Maven 3.9.16 distribution |
-| **LLM API key** _or_ `LLM_PROVIDER=LOCAL_ONNX` | Required for AI analysis; browsing and search work without it |
-
-### Where to start
-
-| Your goal | Recommended option |
-|---|---|
-| **🚀 Quickest way to try it** | [Container Image](#container-image) — one `docker run` command |
-| **🏢 Production deployment** | [Docker + HTTPS](#docker-production--with-https) — Caddy reverse proxy with automatic TLS |
-| **🛠️ Development & contribution** | [Run locally](#run-locally-development-only) — Maven + JDK |
-
-### Run locally (development only)
+Use the checked-in Maven Wrapper. A separately installed Maven version is neither required nor recommended.
 
 ```bash
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
-
-# With Gemini (default)
-GEMINI_API_KEY=your-key ./mvnw -pl taxonomy-app spring-boot:run
-
-# Fully offline (no API key)
-LLM_PROVIDER=LOCAL_ONNX ./mvnw -pl taxonomy-app spring-boot:run
-
-# Browse-only (no AI analysis)
-./mvnw -pl taxonomy-app spring-boot:run
+./mvnw -pl taxonomy-app -am spring-boot:run
 ```
 
-Open <http://localhost:8080> and log in with `admin` / `admin`.
+Open `http://localhost:8080`.
 
-> ⚠️ **`localhost` only.** The commands above start an unencrypted HTTP server for local
-> development. **Never expose port 8080 to the internet.** For any non-local deployment,
-> use the Docker + HTTPS setup below.
+On a new local database, the application creates the `admin` account with a **random one-time bootstrap password** and prints that value once in the startup log. The password must be replaced at the first login. No reusable password is published in this repository.
 
-**→ Now follow the [Core Workflow](#core-workflow-ui) above to run your first analysis.**
-
-### Container Image
-
-The official Docker image is published to **GitHub Container Registry** from pushes to
-`main` and from release tags (`v*`):
-
-```
-ghcr.io/carstenartur/taxonomy
-```
-
-**Pull and run (quick start):**
-```bash
-docker pull ghcr.io/carstenartur/taxonomy:latest
-docker run -p 8080:8080 ghcr.io/carstenartur/taxonomy:latest
-# Open http://localhost:8080 — never expose port 8080 to the internet
-```
-
-| Tag | Example | Description |
-|---|---|---|
-| `latest` | `ghcr.io/carstenartur/taxonomy:latest` | Most recent build from the default branch (`main`) |
-| `main` | `ghcr.io/carstenartur/taxonomy:main` | Identical to `latest` (branch-name tag) |
-| `vX.Y.Z` | `ghcr.io/carstenartur/taxonomy:v1.2.5` | Release-tag image for a published version |
-| `sha-<hash>` | `ghcr.io/carstenartur/taxonomy:sha-abc1234` | Pinned to a specific commit from `main` or release-tag builds |
-
-> See the [Container Image Guide](docs/en/CONTAINER_IMAGE.md) for Docker Compose usage,
-> environment variables, volume mounts, and upgrade notes.
-
-### Docker (production — with HTTPS)
-
-For any deployment beyond `localhost`, use Docker Compose with a reverse proxy that
-provides automatic HTTPS. The repository includes a ready-to-use
-[`docker-compose.prod.yml`](docker-compose.prod.yml) with [Caddy](https://caddyserver.com)
-for automatic TLS certificate provisioning:
+To provide the initial password explicitly for local development:
 
 ```bash
-# 1. Clone and configure
-git clone https://github.com/carstenartur/Taxonomy.git
-cd Taxonomy
-cp .env.example .env          # edit .env with your domain and API key
-
-# 2. Start (HTTPS on port 443, automatic Let's Encrypt certificate)
-docker compose -f docker-compose.prod.yml up -d
+export TAXONOMY_ADMIN_PASSWORD='use-a-unique-local-development-secret'
+./mvnw -pl taxonomy-app -am spring-boot:run
 ```
 
-Open `https://your-domain.example.com` and log in with the password you set in `.env`.
-
-> See the [Deployment Guide](docs/en/DEPLOYMENT_GUIDE.md) for VPS, Render.com,
-> and cloud deployment instructions, alternative reverse proxies (nginx),
-> and Spring Boot native SSL.
-
-**Docker without HTTPS (local testing only):**
-```bash
-docker run -p 8080:8080 -e LLM_PROVIDER=LOCAL_ONNX ghcr.io/carstenartur/taxonomy:latest
-# Access at http://localhost:8080 — never expose this to the internet
-```
-
-### Build & Test
+To browse without loading or downloading the embedding model:
 
 ```bash
-./mvnw compile                    # Compile only
-./mvnw verify                     # Bounded developer verification; no Docker
-./mvnw -B verify -Pci             # Complete required verification; Docker required
-./mvnw -B verify -Pui-tests \
-  -DskipTests -DskipITs=true      # Browser and accessibility suites only
+export TAXONOMY_EMBEDDING_ENABLED=false
+./mvnw -pl taxonomy-app -am spring-boot:run
 ```
 
-The stable scopes and all focused profiles are documented in
-[Maven Verification Authority](docs/dev/MAVEN_VERIFICATION.md).
+The local command starts plain HTTP on port 8080. Do not expose that port directly to the internet.
 
----
+## Production deployment
 
-## Advanced: REST API (Automation & Integration)
+The supported production example places Caddy in front of the application, enables automatic HTTPS, keeps application port 8080 inside the Docker network, and stores application state in named volumes.
 
-<details>
-<summary>For scripting, CI pipelines, and system integration — click to expand</summary>
-
-The primary way to use this product is through the **web-based GUI** (see [Core Workflow](#core-workflow-ui) above).
-
-For **scripting, CI pipelines, and system integration**, a REST API is available:
-
-- Interactive documentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html)
-- [API Reference](docs/en/API_REFERENCE.md) — endpoint overview
-- [Curl Workflow Examples](docs/en/CURL_EXAMPLES.md) — end-to-end automation examples
-
-> **Note:** The REST API is not intended as a replacement for the GUI for end-user workflows.
-> All user-facing features are designed to be used through the web interface first.
-
-</details>
-
----
-
-## Repository Structure
-
-```
-Taxonomy/
-├── taxonomy-domain/     # Pure domain types (DTOs, enums) — no framework dependencies
-├── taxonomy-dsl/        # Architecture DSL: parser, serializer, validator, differ
-├── taxonomy-export/     # Export formats: ArchiMate, Visio, Mermaid, Diagram
-├── taxonomy-extension-api/ # Internal extension SPI contracts + metadata (Spring-free)
-├── taxonomy-app/        # Spring Boot application: REST API, services, persistence, UI
-├── docs/                # Documentation and auto-generated screenshots
-└── pom.xml              # Parent POM (5 modules, Spring Boot 4, Java 21)
+```bash
+cp .env.example .env
+# Configure DOMAIN, TAXONOMY_ADMIN_PASSWORD, and optional provider settings.
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
----
+Production startup rejects missing, placeholder, or short administrator passwords. Review the complete deployment and security documentation before exposing an instance outside a trusted development machine.
+
+- [Deployment guide](docs/en/DEPLOYMENT_GUIDE.md)
+- [Deployment checklist](docs/en/DEPLOYMENT_CHECKLIST.md)
+- [Container image](docs/en/CONTAINER_IMAGE.md)
+- [Security](docs/en/SECURITY.md)
+- [Configuration reference](docs/en/CONFIGURATION_REFERENCE.md)
+
+## Build and verification
+
+Fast default verification:
+
+```bash
+./mvnw verify
+```
+
+Authoritative CI-equivalent verification, including integration, browser, quality, coverage, and local ONNX suites:
+
+```bash
+./mvnw verify -Pci -DrunOnnxTests=true
+```
+
+Focused profiles include:
+
+```bash
+./mvnw verify -Parchitecture-tests
+./mvnw verify -Pdocument-import-tests
+./mvnw verify -Parchimate-import-tests
+./mvnw verify -Pdatabase-postgres
+./mvnw verify -Ponnx
+./mvnw verify -Pui-tests
+```
+
+The build generates:
+
+- JUnit and Failsafe reports
+- aggregate JaCoCo coverage
+- browser and accessibility evidence
+- CycloneDX SBOM files
+- dependency-alignment and supply-chain policy reports
+
+## Architecture
+
+The Maven reactor separates domain logic, DSL processing, export formats, extension contracts, the Spring application, aggregate coverage, and build policy.
+
+| Module | Responsibility |
+|---|---|
+| `taxonomy-domain` | Core architecture and analysis domain types |
+| `taxonomy-dsl` | DSL syntax, parsing, mapping, semantic diff, and model processing |
+| `taxonomy-export` | Export contracts and implementations |
+| `taxonomy-extension-api` | Stable extension interfaces |
+| `taxonomy-app` | Spring Boot application, persistence, security, UI, search, workspaces, and integrations |
+| `taxonomy-coverage` | Reactor-wide coverage aggregation |
+| `taxonomy-build` | Authoritative quality gates and browser verification |
+
+Important implementation choices:
+
+- Java 21 and Spring Boot
+- Hibernate ORM and Hibernate Search
+- Lucene full-text and vector indexes
+- JGit-backed architecture history
+- database-backed logical Git repositories through `jgit-storage-hibernate`
+- DJL and ONNX Runtime for optional local embeddings
+- Thymeleaf-based web UI
+- Testcontainers for reproducible external-system integration tests
+- Playwright for cross-browser and accessibility verification
+
+See [Architecture](docs/en/ARCHITECTURE.md) for component boundaries and [Repository topology](docs/en/REPOSITORY_TOPOLOGY.md) for workspace and shared-repository behavior.
+
+## Architecture history and collaboration
+
+Architecture content is stored as a purpose-built textual DSL rather than as opaque serialized UI state. This enables:
+
+- human-readable review
+- semantic and textual comparison
+- named variants
+- shared and personal workspaces
+- merge and conflict detection
+- revert and restoration
+- selective transfer of individual changes
+- traceability from source material to accepted architecture content
+
+External canonical repositories can be integrated through JGit transport. Synchronization uses commit ancestry and three-way merge semantics; rejected pushes and merge conflicts are reported instead of being presented as success.
+
+See [Git integration](docs/en/GIT_INTEGRATION.md) and [Workspace and versioning guide](docs/en/WORKSPACE_VERSIONING.md).
+
+## Document import and provenance
+
+PDF and DOCX processing is bounded by upload size, PDF page count, expanded archive size, extracted text length, and candidate count. ZIP-bomb checks are performed before Apache POI expands DOCX content.
+
+Document registration and candidate confirmation are transactional. A failed operation does not leave a partially created provenance graph, and repeating the same candidate confirmation is idempotent.
+
+## AI and local operation
+
+The application can use Gemini, OpenAI-compatible providers, or a local ONNX embedding model. Provider configuration is optional for catalogue browsing, DSL editing, version navigation, deterministic validation, and many search and export functions.
+
+Local embedding configuration:
+
+```bash
+export LLM_PROVIDER=LOCAL_ONNX
+export TAXONOMY_EMBEDDING_MODEL_DIR=/absolute/path/to/bge-small-en-v1.5
+export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
+```
+
+For deployment provenance and model-policy details, see:
+
+- [AI transparency](docs/en/AI_TRANSPARENCY.md)
+- [Digital sovereignty](docs/en/DIGITAL_SOVEREIGNTY.md)
+- [Data protection](docs/en/DATA_PROTECTION.md)
+
+## Security model
+
+The application supports local form login and a Keycloak/OIDC profile. Authorization distinguishes read-only users, architects, and administrators. State-changing architecture, provenance, workspace, prompt, and administrative operations are protected independently of UI visibility.
+
+Production deployments should:
+
+- use HTTPS through a trusted reverse proxy;
+- use a unique administrator credential or Keycloak;
+- keep secrets in deployment secret storage rather than source files;
+- disable public Swagger access unless explicitly required;
+- restrict database, index, backup, and Git-storage access;
+- monitor authentication, authorization, and audit events;
+- review generated SBOM and vulnerability-assessment evidence.
+
+Report security issues according to [SECURITY.md](SECURITY.md).
+
+## Accessibility
+
+The UI is tested across roles, browsers, viewport sizes, zoom levels, forced-colour mode, text spacing, dialogs, and representative loading, empty, offline, error, and conflict states.
+
+See [Accessibility](docs/en/ACCESSIBILITY.md) for the evidence matrix, manual checks, and known limitations.
 
 ## Documentation
 
-### Essential guides
-
-| Document | Description |
+| Document | Purpose |
 |---|---|
-| **[User Guide](docs/en/USER_GUIDE.md)** | End-user guide with screenshots and workflow walkthroughs |
-| **[Examples](docs/en/EXAMPLES.md)** | Worked examples for analysis, impact, proposals, export |
-| **[Deployment](docs/en/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
-| **[Security](docs/en/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
-| **[Architecture](docs/en/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
-| **[Developer Guide](docs/en/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
-| **[Workspace Versioning](docs/en/WORKSPACE_VERSIONING.md)** | Context bar, variants, sync, merge, cherry-pick |
-| **[AI Providers](docs/en/AI_PROVIDERS.md)** | Supported LLM providers and configuration |
-| **[Research Overview](RESEARCH.md)** | Research questions, contributions, evaluation, and reproducibility entry point |
+| [User guide](docs/en/USER_GUIDE.md) | Main workflows and UI concepts |
+| [API reference](docs/en/API_REFERENCE.md) | REST endpoints and integration details |
+| [Architecture](docs/en/ARCHITECTURE.md) | Components, boundaries, and runtime design |
+| [Configuration reference](docs/en/CONFIGURATION_REFERENCE.md) | Environment variables and profiles |
+| [Database setup](docs/en/DATABASE_SETUP.md) | Supported database configurations |
+| [Repository topology](docs/en/REPOSITORY_TOPOLOGY.md) | Shared repository and workspace routing |
+| [Git integration](docs/en/GIT_INTEGRATION.md) | Versioning and external repository behavior |
+| [Security](docs/en/SECURITY.md) | Authentication, authorization, and deployment controls |
+| [AI transparency](docs/en/AI_TRANSPARENCY.md) | AI usage, limitations, and operator responsibilities |
+| [Accessibility](docs/en/ACCESSIBILITY.md) | Accessibility scope and verification |
 
-<details>
-<summary><strong>All documentation</strong> — configuration, operations, integrations, and more</summary>
+German documentation is available under [`docs/de`](docs/de/).
 
-| Document | Description |
-|---|---|
-| **[Concepts & Glossary](docs/en/CONCEPTS.md)** | Key terms and domain model |
-| **[Document Import](docs/en/DOCUMENT_IMPORT.md)** | PDF/DOCX import, candidate extraction, source provenance |
-| **[Framework Import](docs/en/FRAMEWORK_IMPORT.md)** | Import APQC, ArchiMate, C4, UAF frameworks |
-| **[Preferences](docs/en/PREFERENCES.md)** | Runtime preferences (LLM, DSL/Git, size limits) |
-| **[API Reference](docs/en/API_REFERENCE.md)** | REST API quick-reference with request/response examples |
-| **[Curl Examples](docs/en/CURL_EXAMPLES.md)** | End-to-end automation examples |
-| **[Configuration](docs/en/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
-| **[Container Image](docs/en/CONTAINER_IMAGE.md)** | GHCR image, Docker Compose, tags, volumes, upgrades |
-| **[Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md)** | Pre-deployment verification checklist |
-| **[Database Setup](docs/en/DATABASE_SETUP.md)** | PostgreSQL, MSSQL, Oracle configuration |
-| **[Keycloak & SSO](docs/en/KEYCLOAK_SETUP.md)** | SSO/OIDC/SAML integration with Keycloak |
-| **[Keycloak Migration](docs/en/KEYCLOAK_MIGRATION.md)** | Migrating from form-login to Keycloak/OIDC |
-| **[Operations Guide](docs/en/OPERATIONS_GUIDE.md)** | Operational procedures and monitoring |
-| **[Git Integration](docs/en/GIT_INTEGRATION.md)** | JGit DFS repository, branching, REST endpoints |
-| **[Repository Topology](docs/en/REPOSITORY_TOPOLOGY.md)** | Workspace provisioning, topology modes, sync |
-| **[Relation Seeds](docs/en/RELATION_SEEDS.md)** | Seed data format, provenance, CSV schema |
-| **[Feature Matrix](docs/en/FEATURE_MATRIX.md)** | Feature completeness tracking (GUI, REST, docs, i18n) |
-| **[UI Gap Analysis](docs/en/UI_GAP_ANALYSIS.md)** | JavaScript module inventory and workspace UI status |
-| **[AI Transparency](docs/en/AI_TRANSPARENCY.md)** | AI/LLM usage transparency documentation |
-| **[Data Protection](docs/en/DATA_PROTECTION.md)** | GDPR and data protection compliance |
-| **[Knowledge Conservation](docs/en/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation |
-| **[Architecture Contributions](docs/research/architecture-contributions.md)** | Research contribution summary for architecture analysis |
-| **[Evaluation](docs/research/evaluation.md)** | Evaluation goals, baselines, metrics, and study design |
-| **[Reproducibility](docs/research/reproducibility.md)** | Build, run, archive, and reproduce research artefacts |
+## Project status
 
-</details>
+The project is under active development. Compatibility, persistence, security, and migration behavior should be evaluated against the release notes and the exact version deployed. Do not infer production readiness solely from a successful demonstration or an individual quality badge.
 
-## Government Readiness (Behördentauglichkeit)
-
-The Taxonomy Architecture Analyzer includes comprehensive documentation for deployment in German government and public administration environments.
-See also: [Security](docs/en/SECURITY.md), [Data Protection](docs/en/DATA_PROTECTION.md), [AI Transparency](docs/en/AI_TRANSPARENCY.md), [Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md), and [Knowledge Conservation](docs/en/USE_CASE_WISSENSKONSERVIERUNG.md) in the Documentation table above.
-
-| Document | Description |
-|---|---|
-| **[BSI KI Checklist](docs/en/BSI_KI_CHECKLIST.md)** | BSI criteria checklist for AI models in federal administration |
-| **[AI Literacy Concept](docs/en/AI_LITERACY_CONCEPT.md)** | Training concept per EU AI Act Art. 4 (AI Literacy) |
-| **[Accessibility / BITV 2.0](docs/en/ACCESSIBILITY.md)** | Accessibility evidence matrix, automated axe gate, manual release checks, and known limitations |
-| **[Digital Sovereignty](docs/en/DIGITAL_SOVEREIGNTY.md)** | Digital sovereignty, openCode compatibility, DVC architecture |
-| **[Administration Integration](docs/en/VERWALTUNGSINTEGRATION.md)** | FIM / 115 / XÖV integration roadmap |
-
-**Key capabilities for government use:**
-- 🔒 **Local AI execution** — `LLM_PROVIDER=LOCAL_ONNX`; a fully network-isolated deployment additionally requires preloaded, checksummed models, local browser assets, disabled runtime downloads, and an outbound-network test
-- 🇪🇺 **EU data residency** — Mistral (France/EU) as cloud LLM alternative
-- 📋 **SBOM** — CycloneDX Software Bill of Materials generated at build time
-- 🏛️ **Open Source** — MIT license, full source code, no vendor lock-in
-- 🔐 **SSO/OIDC** — Keycloak integration for government identity providers (see [Keycloak & SSO Setup](docs/en/KEYCLOAK_SETUP.md))
-
-## Research, citation, and archival metadata
-
-The repository contains research and archival metadata for Zenodo publication and scholarly reuse:
-
-| File | Purpose |
-|---|---|
-| [`CITATION.cff`](CITATION.cff) | Machine-readable citation metadata used by GitHub and citation tools |
-| [`CITATION.md`](CITATION.md) | Human-readable citation guidance and BibTeX template |
-| [`codemeta.json`](codemeta.json) | CodeMeta software metadata for indexing and research catalogues |
-| [`.zenodo.json`](.zenodo.json) | Zenodo deposition metadata for release archiving |
-| [`RESEARCH.md`](RESEARCH.md) | Research overview, research questions, and contribution summary |
-| [`docs/research/architecture-contributions.md`](docs/research/architecture-contributions.md) | Architecture-analysis contributions and limitations |
-| [`docs/research/evaluation.md`](docs/research/evaluation.md) | Suggested evaluation design, baselines, and metrics |
-| [`docs/research/reproducibility.md`](docs/research/reproducibility.md) | Reproducibility instructions for release-based research use |
-
-For stable archival reference, cite the Zenodo DOI linked by the badge at the top of this README; use the GitHub repository for the active development version.
+Open defects and planned improvements are tracked in [GitHub Issues](https://github.com/carstenartur/Taxonomy/issues).
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Run the relevant focused profile and finish with `./mvnw -B verify -Pci`
-4. Commit your changes
-5. Open a pull request
+Contributions should keep the Maven Wrapper as the reproducible entry point and include tests at the lowest appropriate layer. Changes to security, repository routing, persistence, synchronization, import, or export behavior require integration coverage for failure and recovery paths.
 
-> **Important:** For user-facing features, please read the
-> [Definition of Done](docs/en/DEVELOPER_GUIDE.md#definition-of-done--user-facing-features)
-> before opening a PR. Features that only add a REST endpoint without GUI support
-> are not considered complete.
+Before opening a pull request:
+
+```bash
+./mvnw verify
+```
+
+## Citation
+
+Citation metadata is provided in [CITATION.cff](CITATION.cff). Archived releases can be cited through the DOI badge above.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+Taxonomy Architecture Analyzer is licensed under the [MIT License](LICENSE). Third-party catalogues, models, imported documents, and external services may have their own terms; operators are responsible for verifying that their intended use is permitted.

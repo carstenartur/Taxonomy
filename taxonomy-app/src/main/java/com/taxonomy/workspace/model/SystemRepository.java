@@ -1,20 +1,23 @@
 package com.taxonomy.workspace.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 import java.time.Instant;
 
 /**
  * Represents the system-owned central repository configuration.
  *
- * <p>Exactly one primary system repository exists at any time. It defines
- * the shared integration branch and topology mode used by all user workspaces.
- * The system repository is automatically created at application startup by
- * {@code SystemRepositoryService} if no primary repository record exists.
- *
- * <p>In {@code INTERNAL_SHARED} mode, the application hosts the shared
- * repository internally. In {@code EXTERNAL_CANONICAL} mode, an external
- * Git repository URL is configured as the canonical source.
+ * <p>Credentials are deliberately not part of the public entity contract. The
+ * legacy plaintext column remains mapped only so startup migration can erase
+ * values written by older releases. New credentials are supplied exclusively
+ * through deployment secret configuration.</p>
  */
 @Entity
 @Table(name = "system_repository")
@@ -40,8 +43,9 @@ public class SystemRepository {
     @Column(name = "external_url")
     private String externalUrl;
 
+    /** Legacy cleanup-only mapping. Never expose or use this value for authentication. */
     @Column(name = "external_auth_token")
-    private String externalAuthToken;
+    private String legacyExternalAuthToken;
 
     @Column(name = "last_fetch_at")
     private Instant lastFetchAt;
@@ -60,8 +64,6 @@ public class SystemRepository {
 
     public SystemRepository() {
     }
-
-    // ── Getters / Setters ───────────────────────────────────────────
 
     public Long getId() {
         return id;
@@ -111,12 +113,14 @@ public class SystemRepository {
         this.externalUrl = externalUrl;
     }
 
-    public String getExternalAuthToken() {
-        return externalAuthToken;
+    /** Whether an older release left a plaintext credential that must be erased. */
+    public boolean hasLegacyPlaintextCredential() {
+        return legacyExternalAuthToken != null && !legacyExternalAuthToken.isBlank();
     }
 
-    public void setExternalAuthToken(String externalAuthToken) {
-        this.externalAuthToken = externalAuthToken;
+    /** Clear a legacy plaintext value without ever returning it to application code. */
+    public void clearLegacyPlaintextCredential() {
+        legacyExternalAuthToken = null;
     }
 
     public Instant getLastFetchAt() {

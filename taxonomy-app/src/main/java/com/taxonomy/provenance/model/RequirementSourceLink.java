@@ -1,11 +1,19 @@
 package com.taxonomy.provenance.model;
 
 import com.taxonomy.model.LinkType;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 
-/**
- * Links a requirement to one or more source materials.
- */
+/** Links a requirement to one or more source materials. */
 @Entity
 @Table(name = "requirement_source_link")
 public class RequirementSourceLink {
@@ -39,38 +47,78 @@ public class RequirementSourceLink {
     @Column(length = 1000)
     private String note;
 
-    protected RequirementSourceLink() {}
+    protected RequirementSourceLink() {
+    }
 
-    public RequirementSourceLink(String requirementId, SourceArtifact sourceArtifact,
-                                  LinkType linkType) {
+    public RequirementSourceLink(String requirementId,
+                                 SourceArtifact sourceArtifact,
+                                 LinkType linkType) {
         this.requirementId = requirementId;
         this.sourceArtifact = sourceArtifact;
         this.linkType = linkType;
     }
 
-    // ── Accessors ──────────────────────────────────────────────────────────────
+    public Long getId() {
+        return id;
+    }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public void setId(Long id) {
+        this.id = id;
+    }
 
-    public String getRequirementId() { return requirementId; }
-    public void setRequirementId(String requirementId) { this.requirementId = requirementId; }
+    public String getRequirementId() {
+        return requirementId;
+    }
 
-    public SourceArtifact getSourceArtifact() { return sourceArtifact; }
-    public void setSourceArtifact(SourceArtifact sourceArtifact) { this.sourceArtifact = sourceArtifact; }
+    public void setRequirementId(String requirementId) {
+        this.requirementId = requirementId;
+    }
 
-    public SourceVersion getSourceVersion() { return sourceVersion; }
-    public void setSourceVersion(SourceVersion sourceVersion) { this.sourceVersion = sourceVersion; }
+    public SourceArtifact getSourceArtifact() {
+        return sourceArtifact;
+    }
 
-    public SourceFragment getSourceFragment() { return sourceFragment; }
-    public void setSourceFragment(SourceFragment sourceFragment) { this.sourceFragment = sourceFragment; }
+    public void setSourceArtifact(SourceArtifact sourceArtifact) {
+        this.sourceArtifact = sourceArtifact;
+    }
 
-    public LinkType getLinkType() { return linkType; }
-    public void setLinkType(LinkType linkType) { this.linkType = linkType; }
+    public SourceVersion getSourceVersion() {
+        return sourceVersion;
+    }
 
-    public Double getConfidence() { return confidence; }
-    public void setConfidence(Double confidence) { this.confidence = confidence; }
+    public void setSourceVersion(SourceVersion sourceVersion) {
+        this.sourceVersion = sourceVersion;
+    }
 
-    public String getNote() { return note; }
-    public void setNote(String note) { this.note = note; }
+    public SourceFragment getSourceFragment() {
+        return sourceFragment;
+    }
+
+    public void setSourceFragment(SourceFragment sourceFragment) {
+        this.sourceFragment = sourceFragment;
+    }
+
+    public LinkType getLinkType() {
+        return linkType;
+    }
+
+    public void setLinkType(LinkType linkType) {
+        this.linkType = linkType;
+    }
+
+    public Double getConfidence() {
+        return confidence;
+    }
+
+    public void setConfidence(Double confidence) {
+        this.confidence = confidence;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
+    }
 }

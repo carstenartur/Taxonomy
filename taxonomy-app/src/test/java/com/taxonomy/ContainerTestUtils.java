@@ -1,12 +1,5 @@
 package com.taxonomy;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.concurrent.Future;
-
 import org.openqa.selenium.BuildInfo;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -20,21 +13,22 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.selenium.BrowserWebDriverContainer;
 import org.testcontainers.utility.DockerImageName;
 
-/**
- * Shared utilities for container-based integration tests.
- */
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.concurrent.Future;
+
+/** Shared utilities for container-based integration tests. */
 final class ContainerTestUtils {
 
     /**
-     * Lazily built Docker image that is shared across <em>all</em> container
-     * integration tests. The image is built exactly once (the first time any
-     * test needs it) and then reused, avoiding the creation of many identical
-     * Docker images that waste disk space.
-     * <p>
-     * The deterministic image name {@code taxonomy-app-it:latest} lets Docker
-     * recognise a cache hit even across JVM restarts as long as the underlying
-     * app JAR has not changed.
+     * Deterministic credential used only inside isolated disposable test
+     * containers. Product code has no corresponding default.
      */
+    static final String TEST_ADMIN_PASSWORD = "admin";
+
     private static final Future<String> SHARED_IMAGE = new ImageFromDockerfile(
             "taxonomy-app-it", false)
             .withFileFromPath("app.jar", findApplicationJar())
@@ -46,154 +40,132 @@ final class ContainerTestUtils {
                     .entryPoint("java", "-jar", "app.jar")
                     .build());
 
+    static final String POSTGRES_IMAGE = "postgres:16-alpine";
+    static final String ORACLE_IMAGE = "gvenzl/oracle-free:23-slim-faststart";
+    static final String MSSQL_IMAGE =
+            "mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04";
+    static final String APP_NETWORK_ALIAS = "taxonomy.test";
+    static final String APP_ORIGIN = "http://" + APP_NETWORK_ALIAS + ":8080";
+    static final String MSSQL_PASSWORD = "A_Str0ng_Required_Password";
+
+    private static final String SELENIUM_IMAGE_PROPERTY = "selenium.container.image";
+
     private ContainerTestUtils() {
     }
 
-    /**
-     * Returns the shared Docker image future that all container tests should
-     * use. The image is built at most once.
-     */
     static Future<String> sharedImage() {
         return SHARED_IMAGE;
     }
 
-    /**
-     * Resolves the Spring Boot fat JAR in the {@code target/} directory.
-     * <p>
-     * When run via Maven Failsafe, the {@code project.build.finalName} system
-     * property is set (e.g. {@code taxonomy-app-1.1.3-SNAPSHOT}), so the JAR
-     * name is constructed deterministically as {@code <finalName>.jar}.
-     * <p>
-     * When launched from an IDE (system property absent), a regex scan of
-     * {@code target/} and {@code taxonomy-app/target/} is used as a fallback,
-     * excluding {@code -original}, {@code -sources}, and {@code -javadoc} JARs
-     * and preferring the largest remaining match.
-     */
     static Path findApplicationJar() {
         Path moduleTarget = Path.of("target");
-        Path repoRootTarget = Path.of("taxonomy-app", "target");
+        Path repositoryTarget = Path.of("taxonomy-app", "target");
 
-        // --- Deterministic path via Maven system property (set by Failsafe) ---
         String finalName = System.getProperty("project.build.finalName");
         if (finalName != null) {
             String jarName = finalName + ".jar";
-            for (Path targetDir : new Path[]{moduleTarget, repoRootTarget}) {
-                Path candidate = targetDir.resolve(jarName);
+            for (Path targetDirectory : new Path[]{moduleTarget, repositoryTarget}) {
+                Path candidate = targetDirectory.resolve(jarName);
                 if (Files.isRegularFile(candidate)) {
                     return candidate;
                 }
             }
             throw new IllegalStateException(
-                    "Expected JAR '" + jarName + "' not found in " + moduleTarget + "/ or "
-                            + repoRootTarget + "/. Run 'mvn package -DskipTests' first.");
+                    "Expected JAR '" + jarName + "' not found in "
+                            + moduleTarget + "/ or " + repositoryTarget
+                            + "/. Run 'mvn package -DskipTests' first.");
         }
 
-        // --- Fallback for IDE runs: scan target/ directories ---
-        for (Path targetDir : new Path[]{moduleTarget, repoRootTarget}) {
-            if (!Files.isDirectory(targetDir)) {
+        for (Path targetDirectory : new Path[]{moduleTarget, repositoryTarget}) {
+            if (!Files.isDirectory(targetDirectory)) {
                 continue;
             }
-            try (var stream = Files.list(targetDir)) {
+            try (var stream = Files.list(targetDirectory)) {
                 var jar = stream
-                        .filter(p -> p.getFileName().toString().matches("taxonomy-app-.*\\.jar"))
-                        .filter(p -> !p.getFileName().toString().contains("original"))
-                        .filter(p -> !p.getFileName().toString().contains("sources"))
-                        .filter(p -> !p.getFileName().toString().contains("javadoc"))
-                        .max(java.util.Comparator.comparingLong(p -> p.toFile().length()));
+                        .filter(path -> path.getFileName().toString()
+                                .matches("taxonomy-app-.*\\.jar"))
+                        .filter(path -> !path.getFileName().toString()
+                                .contains("original"))
+                        .filter(path -> !path.getFileName().toString()
+                                .contains("sources"))
+                        .filter(path -> !path.getFileName().toString()
+                                .contains("javadoc"))
+                        .max(java.util.Comparator.comparingLong(
+                                path -> path.toFile().length()));
                 if (jar.isPresent()) {
                     return jar.get();
                 }
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to scan " + targetDir + "/ directory for application JAR", e);
+            } catch (IOException exception) {
+                throw new UncheckedIOException(
+                        "Failed to scan " + targetDirectory
+                                + "/ for the application JAR",
+                        exception);
             }
         }
         throw new IllegalStateException(
-                "No taxonomy-app-*.jar found in " + moduleTarget + "/ or " + repoRootTarget
+                "No taxonomy-app-*.jar found in " + moduleTarget
+                        + "/ or " + repositoryTarget
                         + "/. Run 'mvn package -DskipTests' first.");
     }
 
-    // ── Docker image constants ──────────────────────────────────────────────
-
-    static final String POSTGRES_IMAGE = "postgres:16-alpine";
-    static final String ORACLE_IMAGE = "gvenzl/oracle-free:23-slim-faststart";
-    static final String MSSQL_IMAGE = "mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04";
-    static final String APP_NETWORK_ALIAS = "taxonomy.test";
-    static final String APP_ORIGIN = "http://" + APP_NETWORK_ALIAS + ":8080";
-    private static final String SELENIUM_IMAGE_PROPERTY = "selenium.container.image";
-
-    /** Strong password required by SQL Server's complexity rules. */
-    static final String MSSQL_PASSWORD = "A_Str0ng_Required_Password";
-
-    // ── Selenium container factory ───────────────────────────────────────────────
-
-    /**
-     * Starts a Selenium browser container and creates its matching remote driver.
-     * The caller owns the returned session and must close it before closing the
-     * Docker network.
-     */
     static BrowserSession startBrowser(Network network) {
         BrowserWebDriverContainer container = new BrowserWebDriverContainer(seleniumImage())
                 .withNetwork(network);
         container.start();
         try {
-            RemoteWebDriver driver = new RemoteWebDriver(container.getSeleniumAddress(), chromeOptions());
+            RemoteWebDriver driver = new RemoteWebDriver(
+                    container.getSeleniumAddress(), chromeOptions());
             return new BrowserSession(container, driver);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException exception) {
             try {
                 container.stop();
             } catch (RuntimeException stopFailure) {
-                e.addSuppressed(stopFailure);
+                exception.addSuppressed(stopFailure);
             }
-            throw e;
+            throw exception;
         }
     }
 
-    /**
-     * Resolves the configured image and rejects a client/image version mismatch.
-     * Failsafe supplies the pinned image from the root POM; the fallback keeps IDE
-     * runs convenient while still using the Selenium client version on the classpath.
-     */
     static DockerImageName seleniumImage() {
         String seleniumVersion = new BuildInfo().getReleaseLabel();
         String configuredImage = System.getProperty(
-                SELENIUM_IMAGE_PROPERTY, "selenium/standalone-chrome:" + seleniumVersion);
+                SELENIUM_IMAGE_PROPERTY,
+                "selenium/standalone-chrome:" + seleniumVersion);
         DockerImageName image = DockerImageName.parse(configuredImage);
         String imageTag = image.getVersionPart();
-        if (!imageTag.equals(seleniumVersion) && !imageTag.startsWith(seleniumVersion + "-")) {
-            throw new IllegalStateException("Selenium client " + seleniumVersion
-                    + " does not match browser image " + configuredImage);
+        if (!imageTag.equals(seleniumVersion)
+                && !imageTag.startsWith(seleniumVersion + "-")) {
+            throw new IllegalStateException(
+                    "Selenium client " + seleniumVersion
+                            + " does not match browser image " + configuredImage);
         }
         return image;
     }
 
     private static ChromeOptions chromeOptions() {
         ChromeOptions options = new ChromeOptions();
-        // Chrome's automated-test guidance recommends allowlisting intentional
-        // HTTP origins. APP_NETWORK_ALIAS deliberately uses the reserved .test
-        // TLD; the former alias "app" collided with the HSTS-preloaded .app TLD,
-        // which forces HTTPS before any HTTPS-First feature flag is considered.
-        options.addArguments("--unsafely-treat-insecure-origin-as-secure=" + APP_ORIGIN);
+        options.addArguments(
+                "--unsafely-treat-insecure-origin-as-secure=" + APP_ORIGIN);
         return options;
     }
 
-    /** Owns both sides of a Selenium session and closes the driver before its container. */
-    record BrowserSession(BrowserWebDriverContainer container, RemoteWebDriver driver)
-            implements AutoCloseable {
+    record BrowserSession(BrowserWebDriverContainer container,
+                          RemoteWebDriver driver) implements AutoCloseable {
         @Override
         public void close() {
             RuntimeException failure = null;
             try {
                 driver.quit();
-            } catch (RuntimeException e) {
-                failure = e;
+            } catch (RuntimeException exception) {
+                failure = exception;
             }
             try {
                 container.stop();
-            } catch (RuntimeException e) {
+            } catch (RuntimeException exception) {
                 if (failure == null) {
-                    failure = e;
+                    failure = exception;
                 } else {
-                    failure.addSuppressed(e);
+                    failure.addSuppressed(exception);
                 }
             }
             if (failure != null) {
@@ -202,10 +174,6 @@ final class ContainerTestUtils {
         }
     }
 
-    /**
-     * Closes every resource in order, even if an earlier cleanup fails, then
-     * rethrows the first failure with any later failures attached.
-     */
     static void closeAll(AutoCloseable... resources) throws Exception {
         Exception failure = null;
         for (AutoCloseable resource : resources) {
@@ -214,11 +182,11 @@ final class ContainerTestUtils {
             }
             try {
                 resource.close();
-            } catch (Exception e) {
+            } catch (Exception exception) {
                 if (failure == null) {
-                    failure = e;
+                    failure = exception;
                 } else {
-                    failure.addSuppressed(e);
+                    failure.addSuppressed(exception);
                 }
             }
         }
@@ -227,16 +195,8 @@ final class ContainerTestUtils {
         }
     }
 
-    // ── Application container factories ──────────────────────────────────────
-
-    /**
-     * Creates a standalone application container (no Docker network).
-     * Suitable for HSQLDB-backed tests that need no external database.
-     *
-     * @return a configured but <em>not yet started</em> {@link GenericContainer}
-     */
     static GenericContainer<?> appContainer() {
-        return new GenericContainer<>(SHARED_IMAGE)
+        return configureApplicationContainer(new GenericContainer<>(SHARED_IMAGE))
                 .withExposedPorts(8080)
                 .withStartupTimeout(Duration.ofSeconds(120))
                 .waitingFor(Wait.forHttp("/actuator/health")
@@ -244,17 +204,8 @@ final class ContainerTestUtils {
                         .forPort(8080));
     }
 
-    /**
-     * Creates a pre-configured application container on the given Docker network.
-     * The container is built from the Spring Boot fat JAR and exposes port 8080.
-     * Callers can add additional env vars (e.g. database configuration) before
-     * the container is started.
-     *
-     * @param network the Docker network to attach the container to
-     * @return a configured but <em>not yet started</em> {@link GenericContainer}
-     */
     static GenericContainer<?> appContainer(Network network) {
-        return new GenericContainer<>(SHARED_IMAGE)
+        return configureApplicationContainer(new GenericContainer<>(SHARED_IMAGE))
                 .withNetwork(network)
                 .withNetworkAliases(APP_NETWORK_ALIAS)
                 .withExposedPorts(8080)
@@ -264,20 +215,18 @@ final class ContainerTestUtils {
                         .forPort(8080));
     }
 
-    /**
-     * Creates an application container pre-configured with database connection
-     * environment variables. This eliminates the repetitive 5-env-var block
-     * that every database-backed container test otherwise needs.
-     *
-     * @param network  the Docker network to attach the container to
-     * @param profile  Spring profile name (e.g. {@code "postgres"}, {@code "oracle"}, {@code "mssql"})
-     * @param jdbcUrl  JDBC URL using the Docker network alias (e.g. {@code "jdbc:postgresql://db:5432/taxonomy"})
-     * @param username database username
-     * @param password database password
-     * @return a configured but <em>not yet started</em> {@link GenericContainer}
-     */
-    static GenericContainer<?> appContainer(Network network, String profile,
-                                            String jdbcUrl, String username, String password) {
+    private static GenericContainer<?> configureApplicationContainer(
+            GenericContainer<?> container) {
+        return container
+                .withEnv("TAXONOMY_ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+                .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false");
+    }
+
+    static GenericContainer<?> appContainer(Network network,
+                                             String profile,
+                                             String jdbcUrl,
+                                             String username,
+                                             String password) {
         return appContainer(network)
                 .withEnv("SPRING_PROFILES_ACTIVE", profile)
                 .withEnv("TAXONOMY_DATASOURCE_URL", jdbcUrl)
@@ -286,14 +235,6 @@ final class ContainerTestUtils {
                 .withEnv("TAXONOMY_DDL_AUTO", "create");
     }
 
-    // ── Database container factories ─────────────────────────────────────────
-
-    /**
-     * Creates a PostgreSQL container with the standard test credentials.
-     *
-     * @param network the Docker network to attach the container to
-     * @return a configured but <em>not yet started</em> {@link PostgreSQLContainer}
-     */
     @SuppressWarnings("rawtypes")
     static PostgreSQLContainer postgresContainer(Network network) {
         return new PostgreSQLContainer(POSTGRES_IMAGE)
@@ -304,12 +245,6 @@ final class ContainerTestUtils {
                 .withPassword("taxonomy");
     }
 
-    /**
-     * Creates an Oracle Database Free container with the standard test credentials.
-     *
-     * @param network the Docker network to attach the container to
-     * @return a configured but <em>not yet started</em> {@link OracleContainer}
-     */
     static OracleContainer oracleContainer(Network network) {
         return new OracleContainer(ORACLE_IMAGE)
                 .withNetwork(network)
@@ -319,12 +254,6 @@ final class ContainerTestUtils {
                 .withPassword("taxonomy");
     }
 
-    /**
-     * Creates a Microsoft SQL Server container with the standard test credentials.
-     *
-     * @param network the Docker network to attach the container to
-     * @return a configured but <em>not yet started</em> {@link MSSQLServerContainer}
-     */
     @SuppressWarnings({"resource", "rawtypes"})
     static MSSQLServerContainer mssqlContainer(Network network) {
         return new MSSQLServerContainer(MSSQL_IMAGE)
@@ -334,40 +263,32 @@ final class ContainerTestUtils {
                 .acceptLicense();
     }
 
-    // ── Pre-configured app + DB shortcuts ────────────────────────────────────
-
-    /**
-     * Creates an application container pre-configured for PostgreSQL.
-     *
-     * @param network the Docker network (must also host the Postgres container)
-     * @return a configured but <em>not yet started</em> {@link GenericContainer}
-     */
     static GenericContainer<?> postgresAppContainer(Network network) {
-        return appContainer(network, "postgres",
-                "jdbc:postgresql://db:5432/taxonomy", "taxonomy", "taxonomy");
+        return appContainer(
+                network,
+                "postgres",
+                "jdbc:postgresql://db:5432/taxonomy",
+                "taxonomy",
+                "taxonomy");
     }
 
-    /**
-     * Creates an application container pre-configured for Oracle.
-     *
-     * @param network the Docker network (must also host the Oracle container)
-     * @return a configured but <em>not yet started</em> {@link GenericContainer}
-     */
     static GenericContainer<?> oracleAppContainer(Network network) {
-        return appContainer(network, "oracle",
-                "jdbc:oracle:thin:@db:1521/taxonomy", "taxonomy", "taxonomy")
+        return appContainer(
+                network,
+                "oracle",
+                "jdbc:oracle:thin:@db:1521/taxonomy",
+                "taxonomy",
+                "taxonomy")
                 .withStartupTimeout(Duration.ofSeconds(300));
     }
 
-    /**
-     * Creates an application container pre-configured for SQL Server.
-     *
-     * @param network the Docker network (must also host the MSSQL container)
-     * @return a configured but <em>not yet started</em> {@link GenericContainer}
-     */
     static GenericContainer<?> mssqlAppContainer(Network network) {
-        return appContainer(network, "mssql",
-                "jdbc:sqlserver://db:1433;databaseName=master;encrypt=false;trustServerCertificate=true;loginTimeout=30",
-                "sa", MSSQL_PASSWORD);
+        return appContainer(
+                network,
+                "mssql",
+                "jdbc:sqlserver://db:1433;databaseName=master;encrypt=false;"
+                        + "trustServerCertificate=true;loginTimeout=30",
+                "sa",
+                MSSQL_PASSWORD);
     }
 }

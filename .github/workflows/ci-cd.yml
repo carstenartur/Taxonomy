@@ -19,7 +19,7 @@ jobs:
   verify:
     name: Maven verification
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     permissions:
       contents: read
       checks: write
@@ -46,7 +46,7 @@ jobs:
         run: |
           mkdir -p target
           set -o pipefail
-          ./mvnw -B verify -Pci 2>&1 | tee target/maven-verification.log
+          ./mvnw -B verify -Pci -DrunOnnxTests=true 2>&1 | tee target/maven-verification.log
 
       - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3

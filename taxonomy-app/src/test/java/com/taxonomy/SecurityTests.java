@@ -55,8 +55,6 @@ class SecurityTests {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    // ── Data Initializer ──────────────────────────────────────────────────────
-
     @Test
     void defaultRolesAreCreated() {
         assertThat(roleRepository.findByName("ROLE_USER")).isPresent();
@@ -65,16 +63,15 @@ class SecurityTests {
     }
 
     @Test
-    void defaultAdminUserIsCreated() {
+    void bootstrapAdminUserIsCreatedWithoutKnownPassword() {
         Optional<AppUser> admin = userRepository.findByUsername("admin");
         assertThat(admin).isPresent();
         assertThat(admin.get().isEnabled()).isTrue();
         assertThat(admin.get().getRoles()).extracting(AppRole::getName)
                 .containsExactlyInAnyOrder("ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
-        assertThat(passwordEncoder.matches("admin", admin.get().getPasswordHash())).isTrue();
+        assertThat(admin.get().isMustChangePassword()).isTrue();
+        assertThat(passwordEncoder.matches("admin", admin.get().getPasswordHash())).isFalse();
     }
-
-    // ── Beans ─────────────────────────────────────────────────────────────────
 
     @Test
     void securityConfigBeanIsLoaded(@Autowired SecurityConfig config) {
@@ -90,8 +87,6 @@ class SecurityTests {
     void securityDataInitializerBeanIsLoaded(@Autowired SecurityDataInitializer initializer) {
         assertThat(initializer).isNotNull();
     }
-
-    // ── Public endpoints ──────────────────────────────────────────────────────
 
     @Test
     @WithAnonymousUser
@@ -114,8 +109,6 @@ class SecurityTests {
                 .andExpect(status().isOk());
     }
 
-    // ── Unauthenticated access is denied ─────────────────────────────────────
-
     @Test
     @WithAnonymousUser
     void unauthenticatedApiAccessIsUnauthorized() throws Exception {
@@ -130,8 +123,6 @@ class SecurityTests {
                 .andExpect(status().isUnauthorized());
     }
 
-    // ── Authenticated USER access ─────────────────────────────────────────────
-
     @Test
     @WithMockUser(roles = "USER")
     void authenticatedUserCanAccessTaxonomyApi() throws Exception {
@@ -145,8 +136,6 @@ class SecurityTests {
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk());
     }
-
-    // ── Role-based access: USER cannot mutate architecture state ─────────────
 
     @Test
     @WithMockUser(roles = "USER")
@@ -193,8 +182,6 @@ class SecurityTests {
                 .andExpect(status().isForbidden());
     }
 
-    // ── Role-based access: ARCHITECT can write architecture state ────────────
-
     @Test
     @WithMockUser(roles = "ARCHITECT")
     void architectCanPostDsl() throws Exception {
@@ -210,8 +197,6 @@ class SecurityTests {
         mockMvc.perform(post("/api/proposals/999/accept"))
                 .andExpect(status().isBadRequest());
     }
-
-    // ── Role-based access: Admin-only endpoints ───────────────────────────────
 
     @Test
     @WithMockUser(roles = "USER")
@@ -233,8 +218,6 @@ class SecurityTests {
         mockMvc.perform(get("/api/admin/status"))
                 .andExpect(status().isOk());
     }
-
-    // ── Password encoding ─────────────────────────────────────────────────────
 
     @Test
     void passwordEncoderIsBCrypt() {

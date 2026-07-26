@@ -10,26 +10,20 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Integration tests that validate the full LOCAL_ONNX data pipeline using the
- * embedded bge-small-en-v1.5 model. No Selenium needed — pure REST API calls.
- * <p>
- * Opt-in: only runs when the {@code runOnnxTests} system property is set.
- * Run with: {@code mvn verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT}
- */
+/** End-to-end REST verification for the local ONNX pipeline. */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
@@ -37,16 +31,19 @@ class LocalOnnxPipelineIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
     private static final HttpClient HTTP = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10)).build();
-
-    /** HTTP Basic auth header value for the default admin user. */
-    private static final String BASIC_AUTH = "Basic " +
-            Base64.getEncoder().encodeToString("admin:admin".getBytes());
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    private static final String BASIC_AUTH = "Basic "
+            + Base64.getEncoder().encodeToString(
+                    ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
+                            .getBytes(StandardCharsets.UTF_8));
 
     @Container
     static GenericContainer<?> app = new GenericContainer<>(
             ContainerTestUtils.sharedImage())
             .withExposedPorts(8080)
+            .withEnv("TAXONOMY_ADMIN_PASSWORD", ContainerTestUtils.TEST_ADMIN_PASSWORD)
+            .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false")
             .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
             .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
             .withStartupTimeout(Duration.ofSeconds(180))
@@ -62,23 +59,25 @@ class LocalOnnxPipelineIT {
     }
 
     private HttpResponse<String> httpGet(String path) throws Exception {
-        HttpRequest req = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
                 .header("Accept", "application/json")
                 .header("Authorization", BASIC_AUTH)
-                .GET().build();
-        return HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                .GET()
+                .build();
+        return HTTP.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    private HttpResponse<String> httpPost(String path, String body, String contentType) throws Exception {
-        HttpRequest req = HttpRequest.newBuilder()
+    private HttpResponse<String> httpPost(
+            String path, String body, String contentType) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
                 .header("Content-Type", contentType)
                 .header("Accept", "application/json")
                 .header("Authorization", BASIC_AUTH)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
-        return HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        return HTTP.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     @Test
@@ -90,9 +89,9 @@ class LocalOnnxPipelineIT {
     @Test
     @Order(2)
     void embeddingStatusReportsAvailable() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/embedding/status");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
+        HttpResponse<String> response = httpGet("/api/embedding/status");
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = MAPPER.readTree(response.body());
         assertThat(body.has("enabled")).isTrue();
         assertThat(body.get("enabled").booleanValue()).isTrue();
     }
@@ -100,11 +99,9 @@ class LocalOnnxPipelineIT {
     @Test
     @Order(3)
     void dslExportContainsElements() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/dsl/export");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        String dsl = resp.body();
-        assertThat(dsl).contains("element");
-        assertThat(dsl).contains("meta");
+        HttpResponse<String> response = httpGet("/api/dsl/export");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("element").contains("meta");
     }
 
     @Test
@@ -115,16 +112,16 @@ class LocalOnnxPipelineIT {
                   title: "Pipeline Test Element";
                 }
                 """;
-        HttpResponse<String> commitResp = httpPost("/api/dsl/commit", dsl, "text/plain");
-        assertThat(commitResp.statusCode()).isEqualTo(200);
-        JsonNode commitBody = MAPPER.readTree(commitResp.body());
+        HttpResponse<String> commitResponse = httpPost(
+                "/api/dsl/commit", dsl, "text/plain");
+        assertThat(commitResponse.statusCode()).isEqualTo(200);
+        JsonNode commitBody = MAPPER.readTree(commitResponse.body());
         assertThat(commitBody.has("commitId")).isTrue();
         assertThat(commitBody.get("commitId").textValue()).isNotEmpty();
 
-        HttpResponse<String> historyResp = httpGet("/api/dsl/history");
-        assertThat(historyResp.statusCode()).isEqualTo(200);
-        JsonNode historyBody = MAPPER.readTree(historyResp.body());
-        // /api/dsl/history returns a wrapped object with a "commits" array (changed in PR #172)
+        HttpResponse<String> historyResponse = httpGet("/api/dsl/history");
+        assertThat(historyResponse.statusCode()).isEqualTo(200);
+        JsonNode historyBody = MAPPER.readTree(historyResponse.body());
         assertThat(historyBody.isObject()).isTrue();
         assertThat(historyBody.has("commits")).isTrue();
         assertThat(historyBody.get("commits").isArray()).isTrue();
@@ -134,19 +131,20 @@ class LocalOnnxPipelineIT {
     @Test
     @Order(5)
     void taxonomyEndpointReturnsData() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/taxonomy");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
+        HttpResponse<String> response = httpGet("/api/taxonomy");
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = MAPPER.readTree(response.body());
         assertThat(body.isArray()).isTrue();
         assertThat(body.size()).isGreaterThan(0);
     }
 
     @Test
     @Order(6)
-    void searchEndpointReturnsResults() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/search?q=BP");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
+    void fullTextSearchEndpointReturnsResults() throws Exception {
+        HttpResponse<String> response = httpGet(
+                "/api/search?q=Business%20Processes&maxResults=20");
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = MAPPER.readTree(response.body());
         assertThat(body.isArray()).isTrue();
         assertThat(body.size()).isGreaterThan(0);
     }
@@ -154,19 +152,18 @@ class LocalOnnxPipelineIT {
     @Test
     @Order(7)
     void graphUpstreamEndpointResponds() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/graph/node/BP/upstream");
-        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(httpGet("/api/graph/node/BP/upstream").statusCode())
+                .isEqualTo(200);
     }
 
     @Test
     @Order(8)
     void aiStatusEndpointReturnsLocalOnnx() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/ai-status");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
+        HttpResponse<String> response = httpGet("/api/ai-status");
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = MAPPER.readTree(response.body());
         assertThat(body.has("available")).isTrue();
         assertThat(body.has("level")).isTrue();
-        // In LOCAL_ONNX pipeline, embedding is enabled so level should be LIMITED
         assertThat(body.get("level").textValue()).isEqualTo("LIMITED");
         assertThat(body.get("available").booleanValue()).isTrue();
         assertThat(body.get("limited").booleanValue()).isTrue();
