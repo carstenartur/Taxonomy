@@ -55,9 +55,9 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.PUT,    "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        // Parse, validate and format are pure in-memory transformations and are
-        // safe for every authenticated reader. Materialization, commit and branch
-        // operations remain architecture mutations covered by the broader rules.
+        // Parse, validate and format transform request content only and are used by
+        // the editor for every authenticated role. More general DSL writes below
+        // remain restricted to ARCHITECT and ADMIN.
         auth.requestMatchers(HttpMethod.POST, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format")
                 .authenticated();
         auth.requestMatchers(HttpMethod.POST,   "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");

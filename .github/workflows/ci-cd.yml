@@ -11,14 +11,15 @@ on:
 permissions:
   contents: read
 
-env:
-  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
-  REACTOR_COVERAGE_XML: taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+concurrency:
+  group: taxonomy-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build & Test
+  verify:
+    name: Maven verification
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
       checks: write
@@ -34,76 +35,18 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Test coverage gate itself
-        run: python3 .github/scripts/test-check-coverage.py
+      - name: Verify Docker availability
+        run: docker info
 
-      - name: Download and verify pinned embedding model
-        env:
-          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
-        run: bash .github/scripts/download-embedding-model.sh
-
-      - name: Build and run tests
-        run: mvn -q install -DexcludedGroups="real-llm"
+      - name: Run the canonical Maven verification suite
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
-
-      - name: Enforce reactor-wide JaCoCo coverage
+        shell: bash
         run: |
-          python3 .github/scripts/check-coverage.py \
-            --xml "$REACTOR_COVERAGE_XML" \
-            --minimum 0.81 \
-            --expected-group taxonomy-domain \
-            --expected-group taxonomy-dsl \
-            --expected-group taxonomy-export \
-            --expected-group taxonomy-extension-api \
-            --expected-group taxonomy-app \
-            --report target/coverage-gate.txt
-          cat target/coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Verify packaged dependency hygiene
-        run: |
-          PDFBOX_VERSION=$(mvn help:evaluate -Dexpression=pdfbox.version -q -DforceStdout)
-          mvn -q -pl taxonomy-app dependency:tree \
-            -Dscope=runtime \
-            -Dincludes='org.apache.pdfbox:*,com.vladsch.flexmark:flexmark-pdf-converter,com.openhtmltopdf:*' \
-            -DoutputFile=../target/dependency-hygiene-tree.txt
-          python3 .github/scripts/check-dependency-hygiene.py \
-            --sbom target/taxonomy-sbom.json \
-            --expected-pdfbox-version "$PDFBOX_VERSION" \
-            --report target/dependency-hygiene-report.txt
-
-      - name: Generate SBOM companion metadata
-        if: always()
-        run: |
-          python3 .github/scripts/generate-vex.py \
-            --sbom target/taxonomy-sbom.json \
-            --output target/taxonomy-vex.json
-          echo "### SBOM companion metadata" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f target/taxonomy-vex.json ]; then
-            echo "Generated: \`target/taxonomy-vex.json\`" >> "$GITHUB_STEP_SUMMARY"
-            echo "Assessment status: **not-assessed** — this is not a vulnerability scan or exploitability statement." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "SBOM was unavailable; companion metadata was not generated." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload SBOM, dependency, and coverage evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: sbom-dependency-evidence
-          path: |
-            target/taxonomy-sbom.json
-            target/taxonomy-sbom.xml
-            target/taxonomy-vex.json
-            target/dependency-hygiene-tree.txt
-            target/dependency-hygiene-report.txt
-            target/coverage-gate.txt
-            taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
-            models/bge-small-en-v1.5/MODEL_PROVENANCE.txt
-          if-no-files-found: warn
-          retention-days: 90
+          mkdir -p target
+          set -o pipefail
+          ./mvnw -B verify -Pci 2>&1 | tee target/maven-verification.log
 
       - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
@@ -116,120 +59,39 @@ jobs:
           fail-on-error: false
           max-annotations: '50'
 
-      - name: Generate test HTML report
+      - name: Stage verified reports
         if: always()
+        shell: bash
         run: |
-          mkdir -p target/site
-          mvn surefire-report:report --no-transfer-progress -DskipTests -Daggregate=true || true
-          if [ ! -f target/site/surefire-report.html ]; then
-            REPORT=$(find . -name 'surefire-report.html' -type f | head -n 1 || true)
-            if [ -n "$REPORT" ]; then
-              cp "$REPORT" target/site/surefire-report.html
-            fi
-          fi
-          if [ -f target/site/surefire-report.html ]; then
-            sed -i "s|</body>|<!-- Build: ${{ github.sha }} $(date -u +%Y-%m-%dT%H:%M:%SZ) --></body>|" \
-              target/site/surefire-report.html
-          else
-            echo "::warning::HTML test report unavailable. GitHub Checks/JUnit XML remain authoritative."
-          fi
-
-      - name: Generate badge JSON files
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import glob
-          import json
-          import os
-          import xml.etree.ElementTree as ET
-
-          coverage_path = os.environ['REACTOR_COVERAGE_XML']
-          try:
-              root = ET.parse(coverage_path).getroot()
-              counter = next((item for item in root.findall('counter')
-                              if item.get('type') == 'INSTRUCTION'), None)
-              if counter is None:
-                  raise ValueError(f'No report-level instruction counter in {coverage_path}')
-              covered = int(counter.get('covered', 0))
-              missed = int(counter.get('missed', 0))
-              total = covered + missed
-              ratio = covered / total if total else 0.0
-              color = 'brightgreen' if ratio >= 0.81 else 'yellow' if ratio >= 0.60 else 'red'
-              coverage_badge = {
-                  'schemaVersion': 1,
-                  'label': 'reactor coverage',
-                  'message': f'{ratio * 100:.2f}%' if total else 'unknown',
-                  'color': color if total else 'lightgrey',
-              }
-          except Exception as error:
-              print(f'Coverage badge generation failed: {error}')
-              coverage_badge = {
-                  'schemaVersion': 1, 'label': 'reactor coverage',
-                  'message': 'unknown', 'color': 'lightgrey',
-              }
-          coverage_dir = 'taxonomy-coverage/target/site/jacoco-aggregate'
-          os.makedirs(coverage_dir, exist_ok=True)
-          with open(f'{coverage_dir}/badge.json', 'w', encoding='utf-8') as handle:
-              json.dump(coverage_badge, handle)
-
-          try:
-              files = (
-                  glob.glob('**/target/surefire-reports/TEST-*.xml', recursive=True)
-                  + glob.glob('**/target/failsafe-reports/TEST-*.xml', recursive=True)
-              )
-              tests = failures = errors = skipped = 0
-              for path in files:
-                  root = ET.parse(path).getroot()
-                  tests += int(root.get('tests', 0))
-                  failures += int(root.get('failures', 0))
-                  errors += int(root.get('errors', 0))
-                  skipped += int(root.get('skipped', 0))
-              failed = failures + errors
-              if not files:
-                  message, color = 'no reports', 'lightgrey'
-              elif failed:
-                  message, color = f'{failed}/{tests} failed', 'red'
-              else:
-                  message, color = f'{tests - skipped} passed', 'brightgreen'
-              tests_badge = {
-                  'schemaVersion': 1, 'label': 'tests',
-                  'message': message, 'color': color,
-              }
-          except Exception as error:
-              print(f'Tests badge generation failed: {error}')
-              tests_badge = {
-                  'schemaVersion': 1, 'label': 'tests',
-                  'message': 'unknown', 'color': 'lightgrey',
-              }
-          os.makedirs('target/site', exist_ok=True)
-          with open('target/site/badge.json', 'w', encoding='utf-8') as handle:
-              json.dump(tests_badge, handle)
-          PY
-
-      - name: Stage immutable report artifact
-        if: always()
-        run: |
+          set -euo pipefail
           rm -rf target/quality-reports
-          mkdir -p target/quality-reports/tests target/quality-reports/coverage
-          if [ -d target/site ]; then cp -a target/site/. target/quality-reports/tests/; fi
-          if [ -d taxonomy-coverage/target/site/jacoco-aggregate ]; then
-            cp -a taxonomy-coverage/target/site/jacoco-aggregate/. target/quality-reports/coverage/
-          fi
-          if [ -f target/coverage-gate.txt ]; then
-            cp target/coverage-gate.txt target/quality-reports/coverage/coverage-gate.txt
-          fi
-          mkdir -p target/quality-reports/tests/junit
+          mkdir -p target/quality-reports/tests target/quality-reports/coverage target/quality-reports/evidence
           while IFS= read -r -d '' report; do
             relative=${report#./}
-            destination="target/quality-reports/tests/junit/$relative"
+            destination="target/quality-reports/tests/${relative}"
             mkdir -p "$(dirname "$destination")"
             cp "$report" "$destination"
           done < <(find . -type f \
             \( -path '*/target/surefire-reports/*' -o -path '*/target/failsafe-reports/*' \) \
             \( -name 'TEST-*.xml' -o -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) \
             -print0)
+          if [ -d taxonomy-coverage/target/site/jacoco-aggregate ]; then
+            cp -a taxonomy-coverage/target/site/jacoco-aggregate/. target/quality-reports/coverage/
+          fi
+          for evidence in \
+            target/maven-verification.log \
+            target/coverage-gate.txt \
+            target/dependency-hygiene-report.txt \
+            target/hibernate-search-dependencies.txt \
+            target/supply-chain-pins.json \
+            target/taxonomy-sbom.json \
+            target/taxonomy-sbom.xml \
+            target/taxonomy-vex.json; do
+            if [ -f "$evidence" ]; then cp "$evidence" target/quality-reports/evidence/; fi
+          done
+          printf 'Verified commit: %s\n' "$GITHUB_SHA" > target/quality-reports/README.txt
 
-      - name: Upload report publication artifact
+      - name: Upload verified reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
@@ -238,17 +100,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Report URLs
-        if: always()
-        run: |
-          echo "### Reports" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "[View Test Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/tests/surefire-report.html)" >> "$GITHUB_STEP_SUMMARY"
-          echo "[View Reactor Coverage Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/coverage/)" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload JAR artifact
+      - name: Upload UI verification evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
         with:
-          name: app-jar
-          path: taxonomy-app/target/taxonomy-app-*.jar
-          retention-days: 1
+          name: ui-verification
+          path: target/ui-verification/**
+          if-no-files-found: warn
+          retention-days: 14

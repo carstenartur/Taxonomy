@@ -52,7 +52,12 @@ jobs:
           queries: security-extended,security-and-quality
 
       - name: Build Java reactor for CodeQL
-        run: mvn -B -q -pl taxonomy-app -am package -Dmaven.test.skip=true
+        run: >-
+          ./mvnw -B -q -pl taxonomy-app -am package
+          -Dmaven.test.skip=true
+          -Dtaxonomy.model.download.skip=true
+          -Dtaxonomy.ui.skip=true
+          -Dtaxonomy.quality.skip=true
 
       - name: Analyze Java to local SARIF
         uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4

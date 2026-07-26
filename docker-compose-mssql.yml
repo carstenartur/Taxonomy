@@ -16,7 +16,8 @@ services:
       retries: 10
 
   taxonomy:
-    build: .
+    build:
+      context: .
     ports:
       - "8080:8080"
     environment:

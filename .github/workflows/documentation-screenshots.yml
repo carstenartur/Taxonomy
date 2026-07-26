@@ -47,14 +47,7 @@ jobs:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
           LLM_MOCK: 'true'
-        run: >-
-          mvn -B verify
-          -DskipITs=false
-          -DgenerateScreenshots
-          -Dit.test=ScreenshotGeneratorIT
-          -DfailIfNoTests=false
-          -Dfailsafe.rerunFailingTestsCount=1
-          -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
+        run: ./mvnw -B verify -Pscreenshots -Dfailsafe.rerunFailingTestsCount=1
 
       - name: Stage screenshot artifact
         run: |

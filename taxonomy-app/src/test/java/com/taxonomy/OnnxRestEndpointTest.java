@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,12 +15,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * REST endpoint tests for the embedding / semantic search APIs.
- * <p>
- * Uses {@link LocalEmbeddingService} as a Spring bean — the service
- * downloads the model lazily on first use (same production codepath).
- * No CI-cache assumptions, no manual model setup.
+ * REST endpoint tests for embedding and semantic-search APIs with a real pinned
+ * ONNX model. Ordinary and database-focused Maven suites exclude the
+ * {@code onnx} group; the {@code ci} and {@code onnx} profiles execute it
+ * deliberately with an explicitly provisioned model directory.
  */
+@Tag("onnx")
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
@@ -33,7 +34,7 @@ class OnnxRestEndpointTest {
 
     @Test
     void embeddingStatusEndpointIsOk() throws Exception {
-        // trigger lazy model load so the status reports available=true
+        // trigger model load so the status reports available=true
         embeddingService.embed("warm-up");
 
         mockMvc.perform(get("/api/embedding/status").accept(MediaType.APPLICATION_JSON))

@@ -56,7 +56,8 @@ services:
 
   # ─── Taxonomy Instance A (Alice's Team) ──────────────────────
   taxonomy-a:
-    build: .
+    build:
+      context: .
     environment:
       TAXONOMY_ADMIN_PASSWORD: test
       TAXONOMY_TOPOLOGY_MODE: EXTERNAL_CANONICAL
@@ -75,7 +76,8 @@ services:
 
   # ─── Taxonomy Instance B (Bob's Team) ────────────────────────
   taxonomy-b:
-    build: .
+    build:
+      context: .
     environment:
       TAXONOMY_ADMIN_PASSWORD: test
       TAXONOMY_TOPOLOGY_MODE: EXTERNAL_CANONICAL

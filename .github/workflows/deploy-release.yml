@@ -70,6 +70,7 @@ jobs:
       - name: Build, publish and prepare next development version
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.release_version }}
           NEXT_VERSION_INPUT: ${{ inputs.next_development_version }}
           SKIP_TESTS: ${{ inputs.skip_tests }}
@@ -78,4 +79,6 @@ jobs:
           METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: "$RUNNER_TEMP/release.sh"

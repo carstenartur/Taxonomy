@@ -1,7 +1,24 @@
+# syntax=docker/dockerfile:1.7
+
 # ---- build stage ----
 # Tag retained for readability and automated update discovery; digest is authoritative.
-FROM maven:3.9.9-eclipse-temurin-21@sha256:1c76eb045e808749d70fb96a02bc64290b2c20db3801b9e4413544fcf6b3abec AS build
+FROM maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e AS build
 WORKDIR /workspace
+
+# The Maven Wrapper validates the ZIP distribution. The minimal Maven builder
+# image does not provide unzip, and mvnw would otherwise silently switch to the
+# tar.gz archive while retaining the ZIP checksum.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# The checked-in wrapper is the single Maven authority for contributors, CI and
+# container builds. The builder image supplies only Java and bootstrap utilities.
+COPY mvnw .
+COPY .mvn/wrapper .mvn/wrapper
+RUN chmod +x mvnw
+
+# Copy the reactor descriptors first so dependency downloads remain cacheable.
 COPY pom.xml .
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
@@ -9,14 +26,23 @@ COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
 COPY taxonomy-extension-api/pom.xml taxonomy-extension-api/pom.xml
 COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
 COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml
-# Pre-fetch dependencies so they are cached in a separate layer
-RUN mvn -q dependency:go-offline -B
+COPY taxonomy-build/pom.xml taxonomy-build/pom.xml
+
+# Copy all inputs required by the packaged application. In particular, the app
+# Maven module embeds Markdown help, screenshots and legal notices in the JAR.
 COPY taxonomy-domain/src taxonomy-domain/src
 COPY taxonomy-dsl/src taxonomy-dsl/src
 COPY taxonomy-export/src taxonomy-export/src
 COPY taxonomy-extension-api/src taxonomy-extension-api/src
 COPY taxonomy-app/src taxonomy-app/src
-RUN mvn -q -DskipTests package
+COPY docs docs
+COPY LICENSE NOTICE THIRD-PARTY-NOTICES.md ./
+
+# Do not run dependency:go-offline against this multi-module reactor before its
+# internal SNAPSHOT artifacts exist. A single reactor package resolves and builds
+# sibling modules correctly while the BuildKit Maven cache retains all downloads.
+RUN --mount=type=cache,target=/root/.m2/repository \
+    ./mvnw -q -DskipTests package
 
 # ---- runtime stage ----
 # Tag retained for readability; digest prevents mutable-tag supply-chain drift.

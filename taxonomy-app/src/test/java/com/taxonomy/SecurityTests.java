@@ -159,6 +159,15 @@ class SecurityTests {
 
     @Test
     @WithMockUser(roles = "USER")
+    void authenticatedUserCanParseDsl() throws Exception {
+        mockMvc.perform(post("/api/dsl/parse")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("meta { }"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
     void userCannotMaterializeDsl() throws Exception {
         mockMvc.perform(post("/api/dsl/materialize")
                         .contentType(MediaType.TEXT_PLAIN)

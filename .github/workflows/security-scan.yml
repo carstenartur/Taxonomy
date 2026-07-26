@@ -45,7 +45,7 @@ jobs:
           mkdir -p target
           set +e
           set -o pipefail
-          mvn -B -pl taxonomy-app -am package -Dmaven.test.skip=true 2>&1 | tee target/security-build.log
+          ./mvnw -B -pl taxonomy-app -am package -Dmaven.test.skip=true 2>&1 | tee target/security-build.log
           status=${PIPESTATUS[0]}
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0

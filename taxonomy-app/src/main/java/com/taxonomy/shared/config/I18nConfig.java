@@ -17,7 +17,8 @@ public class I18nConfig {
         ReloadableResourceBundleMessageSource ms = new ReloadableResourceBundleMessageSource();
         ms.setBasenames(
                 "classpath:i18n/messages",
-                "classpath:i18n/messages_document_import");
+                "classpath:i18n/messages_document_import",
+                "classpath:i18n/messages_jgit_storage");
         ms.setDefaultEncoding("UTF-8");
         ms.setFallbackToSystemLocale(false);
         return ms;

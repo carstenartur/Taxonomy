@@ -2,7 +2,9 @@
 #
 # Starts Keycloak, PostgreSQL, and the Taxonomy Analyzer configured for OIDC.
 # Usage:
-#   docker compose -f docker-compose-keycloak.yml up -d
+#   docker compose -f docker-compose-keycloak.yml up -d --build
+#
+# Source builds resolve all dependencies anonymously from public Maven repositories.
 #
 # Access:
 #   - Taxonomy Analyzer: http://localhost:8080 (redirects to Keycloak login)
@@ -72,7 +74,8 @@ services:
       start_period: 60s
 
   taxonomy:
-    build: .
+    build:
+      context: .
     ports:
       - "8080:8080"
     environment:
@@ -83,6 +86,7 @@ services:
       SPRING_DATASOURCE_USERNAME: taxonomy
       SPRING_DATASOURCE_PASSWORD: taxonomy
       TAXONOMY_DDL_AUTO: create
+      TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION: ${TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION:-false}
       TAXONOMY_AUDIT_LOGGING: "true"
       # ── Keycloak configuration ──
       KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/taxonomy

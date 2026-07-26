@@ -56,6 +56,26 @@ The `DslGitRepository` uses `HibernateRepository` backed by the same `SessionFac
 
 ---
 
+## Close storage handles before deleting a logical repository (2026-07-24)
+
+**Problem:** `jgit-storage-hibernate-core` coordinates open handles by `SessionFactory` and logical repository name. Calling `deleteRepository(...)` while a cached `HibernateGitStorage` handle is still open is rejected deliberately; silently deleting rows underneath JGit would leave DFS caches and live repository instances inconsistent.
+
+**Fix:** Taxonomy distinguishes cache eviction from hard deletion. Eviction closes the handle but preserves database rows. Hard workspace deletion first removes and closes the cached handle and only then calls `HibernateRepositoryFactory.deleteRepository(new RepositoryName(...))`.
+
+**Key takeaway:** Treat `HibernateGitStorage` as an owned resource. Close every handle exactly once, never close the application-managed `SessionFactory`, and never implement logical-repository deletion with ad-hoc Hibernate queries.
+
+---
+
+## Normal RefUpdate is the queryable-reflog boundary (2026-07-24)
+
+**Problem:** The old copied backend had a `git_reflog` entity but normal branch operations neither wrote it nor returned a reader. Ref updates also ignored `RefUpdate.Result`, so rejected or locked operations could be logged as successful.
+
+**Fix:** Every mutating Taxonomy operation sets the expected old object ID, actor and reflog message on the standard JGit `RefUpdate`, then checks the result. The released storage library commits reftable and queryable reflog state together.
+
+**Key takeaway:** Do not call implementation-package reflog writers from application code. Use public `Repository#updateRef`, set `setRefLogIdent` and `setRefLogMessage`, and treat every result other than the explicitly accepted success results as an error.
+
+---
+
 ## Never invent taxonomy node codes — use real codes from the Excel workbook (2026-03-13)
 
 **Problem:** Tests (e.g., `captureProposalAccepted`) used invented codes like `CP-3` and `CR-5`. These do not exist in the taxonomy Excel workbook. The API returns `400 Bad Request`, the JavaScript promise chain fails silently, and Selenium times out after 15 seconds.
