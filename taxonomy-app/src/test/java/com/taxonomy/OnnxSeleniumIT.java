@@ -21,6 +21,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -44,6 +45,8 @@ class OnnxSeleniumIT {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+    private static final Duration SEMANTIC_INDEX_TIMEOUT = Duration.ofMinutes(10);
+    private static final String SEMANTIC_QUERY = "communication and collaboration";
     private static final String BASIC_AUTH = "Basic "
             + Base64.getEncoder().encodeToString(
                     ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
@@ -55,7 +58,7 @@ class OnnxSeleniumIT {
     private WebDriver driver;
 
     @BeforeAll
-    void startContainers() {
+    void startContainers() throws Exception {
         network = Network.newNetwork();
 
         appContainer = ContainerTestUtils.appContainer(network)
@@ -74,6 +77,7 @@ class OnnxSeleniumIT {
         }
 
         appContainer.start();
+        waitForSemanticBackendReady();
 
         browserSession = ContainerTestUtils.startBrowser(network);
         driver = browserSession.driver();
@@ -91,7 +95,7 @@ class OnnxSeleniumIT {
         driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
-        new WebDriverWait(driver, Duration.ofSeconds(60))
+        new WebDriverWait(driver, Duration.ofSeconds(120))
                 .until(currentDriver -> {
                     String rendered = currentDriver.findElement(By.id("taxonomyTree"))
                             .getAttribute("data-view-rendered");
@@ -141,6 +145,7 @@ class OnnxSeleniumIT {
         JsonNode body = MAPPER.readTree(response.body());
         assertThat(body.has("enabled")).isTrue();
         assertThat(body.get("enabled").booleanValue()).isTrue();
+        assertThat(body.get("available").booleanValue()).isTrue();
     }
 
     @Test
@@ -152,6 +157,16 @@ class OnnxSeleniumIT {
         assertThat(body.get("level").textValue()).isEqualTo("LIMITED");
         assertThat(body.get("available").booleanValue()).isTrue();
         assertThat(body.get("limited").booleanValue()).isTrue();
+    }
+
+    @Test
+    @Order(4)
+    void semanticSearchEndpointReturnsResults() throws Exception {
+        HttpResponse<String> response = semanticSearch();
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = MAPPER.readTree(response.body());
+        assertThat(body.isArray()).isTrue();
+        assertThat(body.size()).isGreaterThan(0);
     }
 
     @Test
@@ -183,23 +198,7 @@ class OnnxSeleniumIT {
     void semanticSearchViaUiReturnsResults() {
         navigateToAnalyzeTab();
         waitForEmbeddingsReady();
-
-        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
-        if (searchPanel.getAttribute("open") == null) {
-            searchPanel.findElement(By.tagName("summary")).click();
-        }
-
-        ((JavascriptExecutor) driver).executeScript(
-                "document.getElementById('searchModeSelect').value = 'semantic';");
-        WebElement searchInput = driver.findElement(By.id("searchInput"));
-        ((JavascriptExecutor) driver).executeScript(
-                "arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));",
-                searchInput);
-        ((JavascriptExecutor) driver).executeScript(
-                "arguments[0].value = 'communication and collaboration';"
-                        + "arguments[0].dispatchEvent(new Event('input'));",
-                searchInput);
-        driver.findElement(By.id("searchBtn")).click();
+        executeUiSearch("semantic", SEMANTIC_QUERY);
 
         waitForSearchResults();
         assertThat(driver.findElements(
@@ -214,18 +213,7 @@ class OnnxSeleniumIT {
         if (items.isEmpty()) {
             navigateToAnalyzeTab();
             waitForEmbeddingsReady();
-            WebElement searchPanel = driver.findElement(By.id("searchPanel"));
-            if (searchPanel.getAttribute("open") == null) {
-                searchPanel.findElement(By.tagName("summary")).click();
-            }
-            ((JavascriptExecutor) driver).executeScript(
-                    "document.getElementById('searchModeSelect').value = 'semantic';");
-            WebElement searchInput = driver.findElement(By.id("searchInput"));
-            ((JavascriptExecutor) driver).executeScript(
-                    "arguments[0].value = 'communication and collaboration';"
-                            + "arguments[0].dispatchEvent(new Event('input'));",
-                    searchInput);
-            driver.findElement(By.id("searchBtn")).click();
+            executeUiSearch("semantic", SEMANTIC_QUERY);
             waitForSearchResults();
             items = driver.findElements(
                     By.cssSelector("#searchResultsArea .search-result-item"));
@@ -253,22 +241,42 @@ class OnnxSeleniumIT {
     @Order(22)
     void fullTextSearchWorks() {
         navigateToAnalyzeTab();
-        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
-        if (searchPanel.getAttribute("open") == null) {
-            searchPanel.findElement(By.tagName("summary")).click();
-        }
-
-        ((JavascriptExecutor) driver).executeScript(
-                "document.getElementById('searchModeSelect').value = 'fulltext';");
-        WebElement searchInput = driver.findElement(By.id("searchInput"));
-        ((JavascriptExecutor) driver).executeScript(
-                "arguments[0].value = 'BP'; arguments[0].dispatchEvent(new Event('input'));",
-                searchInput);
-        driver.findElement(By.id("searchBtn")).click();
+        executeUiSearch("fulltext", "BP");
 
         waitForSearchResults();
         assertThat(driver.findElements(
                 By.cssSelector("#searchResultsArea .search-result-item"))).isNotEmpty();
+    }
+
+    private HttpResponse<String> semanticSearch() throws Exception {
+        return httpGet("/api/search/semantic?q="
+                + URLEncoder.encode(SEMANTIC_QUERY, StandardCharsets.UTF_8)
+                + "&maxResults=20");
+    }
+
+    private void waitForSemanticBackendReady() throws Exception {
+        long deadline = System.nanoTime() + SEMANTIC_INDEX_TIMEOUT.toNanos();
+        int lastStatus = -1;
+        String lastBody = "";
+
+        while (System.nanoTime() < deadline) {
+            HttpResponse<String> response = semanticSearch();
+            lastStatus = response.statusCode();
+            lastBody = response.body();
+            if (lastStatus == 200) {
+                JsonNode body = MAPPER.readTree(lastBody);
+                if (body.isArray() && body.size() > 0) {
+                    return;
+                }
+            }
+            Thread.sleep(1_000);
+        }
+
+        throw new AssertionError(
+                "LOCAL_ONNX semantic index did not become usable within "
+                        + SEMANTIC_INDEX_TIMEOUT
+                        + "; last status=" + lastStatus
+                        + ", last body=" + lastBody);
     }
 
     private void navigateToAnalyzeTab() {
@@ -282,19 +290,30 @@ class OnnxSeleniumIT {
     }
 
     private void waitForEmbeddingsReady() {
-        new WebDriverWait(driver, Duration.ofSeconds(180))
-                .until(currentDriver -> {
-                    try {
-                        WebElement badge = currentDriver.findElement(
-                                By.id("embeddingStatusBadge"));
-                        String text = badge.getText();
-                        return text != null
-                                && text.contains("Embeddings:")
-                                && !text.contains("unavailable");
-                    } catch (org.openqa.selenium.NoSuchElementException exception) {
-                        return false;
-                    }
-                });
+        ((JavascriptExecutor) driver).executeScript(
+                "window.TaxonomySearch.checkEmbeddingStatus();");
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(currentDriver -> currentDriver.findElement(
+                        By.cssSelector("#searchModeSelect option[value='semantic']"))
+                        .isEnabled());
+    }
+
+    private void executeUiSearch(String mode, String query) {
+        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
+        if (searchPanel.getAttribute("open") == null) {
+            searchPanel.findElement(By.tagName("summary")).click();
+        }
+
+        ((JavascriptExecutor) driver).executeScript(
+                "document.getElementById('searchModeSelect').value = arguments[0];",
+                mode);
+        WebElement searchInput = driver.findElement(By.id("searchInput"));
+        ((JavascriptExecutor) driver).executeScript(
+                "arguments[0].value = arguments[1];"
+                        + "arguments[0].dispatchEvent(new Event('input'));",
+                searchInput,
+                query);
+        driver.findElement(By.id("searchBtn")).click();
     }
 
     private void waitForSearchResults() {
