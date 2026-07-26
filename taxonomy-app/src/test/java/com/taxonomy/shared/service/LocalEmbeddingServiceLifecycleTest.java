@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 
 class LocalEmbeddingServiceLifecycleTest {
 
@@ -21,6 +20,7 @@ class LocalEmbeddingServiceLifecycleTest {
         service.closeModel();
 
         assertFalse(service.isAvailable());
+        assertThrows(IllegalStateException.class, service::getModel);
     }
 
     @Test
@@ -41,14 +41,13 @@ class LocalEmbeddingServiceLifecycleTest {
     @Test
     void failedLoadStateCanStillShutDownSafely() {
         LocalEmbeddingService service = configuredService();
-        @SuppressWarnings("unchecked")
-        ZooModel<String, float[]> model = mock(ZooModel.class);
         ReflectionTestUtils.setField(service, "modelLoadFailed", true);
 
         service.closeModel();
+        service.closeModel();
 
-        verifyNoInteractions(model);
         assertFalse(service.isAvailable());
+        assertThrows(IllegalStateException.class, service::getModel);
     }
 
     private static LocalEmbeddingService configuredService() {
@@ -56,7 +55,10 @@ class LocalEmbeddingServiceLifecycleTest {
         ReflectionTestUtils.setField(service, "embeddingEnabled", true);
         ReflectionTestUtils.setField(service, "allowDownload", false);
         ReflectionTestUtils.setField(service, "modelDir", "/unused/test/model");
-        ReflectionTestUtils.setField(service, "modelName", LocalEmbeddingService.DEFAULT_MODEL_URL);
+        ReflectionTestUtils.setField(
+                service,
+                "modelName",
+                LocalEmbeddingService.DEFAULT_MODEL_URL);
         return service;
     }
 }
