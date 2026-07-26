@@ -5,15 +5,12 @@ import com.taxonomy.dto.DocumentParseResult;
 import com.taxonomy.dto.RegulationArchitectureMatch;
 import com.taxonomy.dto.RequirementSourceLinkDto;
 import com.taxonomy.dto.SourceArtifactDto;
-import com.taxonomy.model.LinkType;
 import com.taxonomy.model.SourceType;
 import com.taxonomy.provenance.config.DocumentImportLimits;
-import com.taxonomy.provenance.model.SourceArtifact;
-import com.taxonomy.provenance.model.SourceFragment;
-import com.taxonomy.provenance.model.SourceVersion;
 import com.taxonomy.provenance.service.DocumentAnalysisService;
 import com.taxonomy.provenance.service.DocumentLimitException;
 import com.taxonomy.provenance.service.DocumentParserService;
+import com.taxonomy.provenance.service.DocumentProvenanceCommandService;
 import com.taxonomy.provenance.service.SourceProvenanceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -44,22 +41,25 @@ public class DocumentImportController {
 
     private final DocumentParserService parserService;
     private final SourceProvenanceService provenanceService;
+    private final DocumentProvenanceCommandService provenanceCommands;
     private final DocumentAnalysisService analysisService;
     private final DocumentImportLimits limits;
 
     public DocumentImportController(DocumentParserService parserService,
                                     SourceProvenanceService provenanceService,
+                                    DocumentProvenanceCommandService provenanceCommands,
                                     DocumentAnalysisService analysisService,
                                     DocumentImportLimits limits) {
         this.parserService = parserService;
         this.provenanceService = provenanceService;
+        this.provenanceCommands = provenanceCommands;
         this.analysisService = analysisService;
         this.limits = limits;
     }
 
     @Operation(summary = "Upload and parse document",
             description = "Uploads a bounded PDF or DOCX document, extracts requirement candidates, "
-                    + "and registers the document as a source artifact")
+                    + "and atomically registers the document and its source version")
     @PostMapping(value = "/documents/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadDocument(
             @RequestParam("file") MultipartFile file,
@@ -71,16 +71,22 @@ public class DocumentImportController {
             DocumentParseResult result = parserService.parse(file);
             SourceType type = parseSourceType(sourceType);
             String artifactTitle = title != null && !title.isBlank()
-                    ? title : safeFileName(file);
-            SourceArtifact artifact = provenanceService.createArtifact(type, artifactTitle);
+                    ? title.strip() : safeFileName(file);
+
+            // Complete all fallible file I/O before starting the database command.
             String contentHash = parserService.computeContentHash(file);
-            SourceVersion version = provenanceService.createVersion(
-                    artifact, result.getMimeType(), contentHash);
-            result.setSourceArtifactId(artifact.getId());
-            result.setSourceVersionId(version.getId());
+            var registration = provenanceCommands.registerDocument(
+                    type, artifactTitle, result.getMimeType(), contentHash);
+
+            result.setSourceArtifactId(registration.sourceArtifactId());
+            result.setSourceVersionId(registration.sourceVersionId());
             return ResponseEntity.ok(result);
         } catch (DocumentLimitException error) {
             throw error;
+        } catch (DocumentProvenanceCommandService.ProvenanceCommandException error) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", error.getCode(),
+                    "message", error.getMessage()));
         } catch (IOException error) {
             log.warn("Document upload rejected for file '{}': {}",
                     safeFileName(file), error.getMessage());
@@ -172,59 +178,41 @@ public class DocumentImportController {
         return ResponseEntity.ok(provenanceService.getLinksForRequirement(requirementId));
     }
 
-    @Operation(summary = "Confirm selected candidates")
+    @Operation(summary = "Confirm selected candidates",
+            description = "Validates and stores the complete candidate batch atomically; "
+                    + "retries are idempotent")
     @PostMapping("/documents/confirm-candidates")
-    public ResponseEntity<?> confirmCandidates(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> confirmCandidates(@RequestBody ConfirmCandidatesRequest request) {
+        if (request == null
+                || request.sourceArtifactId() == null
+                || request.sourceVersionId() == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "SOURCE_IDENTIFIERS_REQUIRED"));
+        }
+
         try {
-            Number artifactNumber = (Number) body.get("sourceArtifactId");
-            Number versionNumber = (Number) body.get("sourceVersionId");
-            if (artifactNumber == null || versionNumber == null) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "error", "SOURCE_IDENTIFIERS_REQUIRED"));
-            }
-            Long artifactId = artifactNumber.longValue();
-            Long versionId = versionNumber.longValue();
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> candidates =
-                    (List<Map<String, Object>>) body.get("candidates");
-            if (candidates == null || candidates.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "NO_CANDIDATES"));
-            }
-            if (candidates.size() > limits.getMaxCandidates()) {
-                throw new DocumentLimitException("CANDIDATE_LIMIT_EXCEEDED",
-                        "Candidate count exceeds the configured limit of "
-                                + limits.getMaxCandidates());
-            }
+            List<DocumentProvenanceCommandService.CandidateInput> candidates =
+                    request.candidates() == null ? List.of() : request.candidates().stream()
+                            .map(candidate -> new DocumentProvenanceCommandService.CandidateInput(
+                                    candidate != null ? candidate.text() : null,
+                                    candidate != null ? candidate.sectionHeading() : null))
+                            .toList();
 
-            var artifact = provenanceService.findArtifactById(artifactId);
-            var version = provenanceService.findVersionById(versionId);
-            if (artifact.isEmpty() || version.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "error", "SOURCE_NOT_FOUND"));
-            }
+            var result = provenanceCommands.confirmCandidates(
+                    request.sourceArtifactId(),
+                    request.sourceVersionId(),
+                    candidates);
 
-            int linked = 0;
-            for (Map<String, Object> candidate : candidates) {
-                String text = candidate.get("text") instanceof String value ? value : null;
-                String section = candidate.get("sectionHeading") instanceof String value
-                        ? value : null;
-                if (text == null || text.isBlank()) continue;
-                if (text.length() > 2000) {
-                    throw new DocumentLimitException("CANDIDATE_TEXT_TOO_LARGE",
-                            "A requirement candidate exceeds 2000 characters");
-                }
-                SourceFragment fragment = provenanceService.createFragment(
-                        version.get(), text, section, null);
-                String requirementId = "DOC-" + artifactId + "-" + linked;
-                provenanceService.linkRequirement(requirementId, artifact.get(),
-                        version.get(), fragment, LinkType.EXTRACTED_FROM);
-                linked++;
-            }
             return ResponseEntity.ok(Map.of(
-                    "linked", linked,
-                    "message", linked + " requirement candidate(s) linked to source"));
+                    "linked", result.linked(),
+                    "alreadyLinked", result.alreadyLinked(),
+                    "message", result.linked() + " requirement candidate(s) linked to source"));
         } catch (DocumentLimitException error) {
             throw error;
+        } catch (DocumentProvenanceCommandService.ProvenanceCommandException error) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", error.getCode(),
+                    "message", error.getMessage()));
         } catch (RuntimeException error) {
             log.error("Failed to confirm document candidates", error);
             return ResponseEntity.badRequest().body(Map.of(
@@ -244,6 +232,9 @@ public class DocumentImportController {
     }
 
     private SourceType parseSourceType(String sourceType) {
+        if (sourceType == null || sourceType.isBlank()) {
+            return SourceType.UPLOADED_DOCUMENT;
+        }
         try {
             return SourceType.valueOf(sourceType.toUpperCase());
         } catch (IllegalArgumentException error) {
@@ -268,14 +259,20 @@ public class DocumentImportController {
             block.append(candidate.getText()).append("\n\n");
             BoundedText appendResult = appendBounded(text, block.toString(), truncated);
             truncated = appendResult.truncated();
-            if (truncated) break;
+            if (truncated) {
+                break;
+            }
         }
         return new BoundedText(text.toString(), truncated);
     }
 
-    private BoundedText appendBounded(StringBuilder target, String value, boolean alreadyTruncated) {
+    private BoundedText appendBounded(StringBuilder target,
+                                      String value,
+                                      boolean alreadyTruncated) {
         int remaining = limits.getMaxLlmCharacters() - target.length();
-        if (remaining <= 0) return new BoundedText(target.toString(), true);
+        if (remaining <= 0) {
+            return new BoundedText(target.toString(), true);
+        }
         if (value.length() > remaining) {
             target.append(value, 0, remaining);
             return new BoundedText(target.toString(), true);
@@ -290,6 +287,15 @@ public class DocumentImportController {
 
     private static String safeResultFileName(DocumentParseResult result) {
         return result.getFileName() != null ? result.getFileName() : "";
+    }
+
+    public record ConfirmCandidatesRequest(
+            Long sourceArtifactId,
+            Long sourceVersionId,
+            List<ConfirmedCandidate> candidates) {
+    }
+
+    public record ConfirmedCandidate(String text, String sectionHeading) {
     }
 
     private record BoundedText(String value, boolean truncated) {
