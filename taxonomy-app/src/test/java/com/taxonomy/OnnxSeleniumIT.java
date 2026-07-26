@@ -207,7 +207,7 @@ class OnnxSeleniumIT {
 
     @Test
     @Order(21)
-    void searchResultClickNavigatesToNode() {
+    void searchResultClickRevealsAndHighlightsExactNode() {
         List<WebElement> items = driver.findElements(
                 By.cssSelector("#searchResultsArea .search-result-item"));
         if (items.isEmpty()) {
@@ -224,24 +224,26 @@ class OnnxSeleniumIT {
         assertThat(code).isNotNull().isNotEmpty();
         items.getFirst().click();
 
-        new WebDriverWait(driver, Duration.ofSeconds(10))
-                .until(currentDriver -> {
-                    List<WebElement> highlighted = currentDriver.findElements(
-                            By.cssSelector(
-                                    ".tax-node.highlight, .tax-node.selected, .tax-node-active"));
-                    if (!highlighted.isEmpty()) {
-                        return true;
-                    }
-                    return currentDriver.findElement(By.id("taxonomyTree"))
-                            .getText().contains(code);
-                });
+        WebElement highlightedHeader = new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(currentDriver -> currentDriver.findElements(
+                                By.cssSelector(".tax-node-header.search-highlight"))
+                        .stream()
+                        .filter(WebElement::isDisplayed)
+                        .filter(header -> code.equals(header.findElement(By.xpath(".."))
+                                .getAttribute("data-code")))
+                        .findFirst()
+                        .orElse(null));
+
+        assertThat(highlightedHeader).isDisplayed();
+        assertThat(highlightedHeader.findElement(By.xpath(".."))
+                .getAttribute("data-code")).isEqualTo(code);
     }
 
     @Test
     @Order(22)
     void fullTextSearchWorks() {
         navigateToAnalyzeTab();
-        executeUiSearch("fulltext", "BP");
+        executeUiSearch("fulltext", "Business Processes");
 
         waitForSearchResults();
         assertThat(driver.findElements(
