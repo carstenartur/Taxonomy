@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -68,11 +69,9 @@ public class ExternalGitSyncService {
     /** Fetch all external branches into {@code refs/remotes/origin/*}. */
     public FetchResult fetchFromExternal() throws Exception {
         SystemRepository systemRepository = systemRepositoryService.getPrimaryRepository();
-        validateExternalMode(systemRepository);
+        URIish uri = validateExternalModeAndCreateUri(systemRepository);
 
         Repository gitRepository = repositoryFactory.getSystemRepository().getGitRepository();
-        URIish uri = new URIish(systemRepository.getExternalUrl());
-
         log.info("Fetching from configured external Git remote");
         try (Transport transport = Transport.open(gitRepository, uri)) {
             credentials.configure(transport);
@@ -102,12 +101,10 @@ public class ExternalGitSyncService {
      */
     public PushResult pushToExternal(String localBranch) throws Exception {
         SystemRepository systemRepository = systemRepositoryService.getPrimaryRepository();
-        validateExternalMode(systemRepository);
+        URIish uri = validateExternalModeAndCreateUri(systemRepository);
         validateBranchName(localBranch);
 
         Repository gitRepository = repositoryFactory.getSystemRepository().getGitRepository();
-        URIish uri = new URIish(systemRepository.getExternalUrl());
-
         log.info("Pushing branch '{}' to configured external Git remote", localBranch);
         try (Transport transport = Transport.open(gitRepository, uri)) {
             credentials.configure(transport);
@@ -231,6 +228,48 @@ public class ExternalGitSyncService {
         }
     }
 
+    /**
+     * Validate a remote URL without returning or logging embedded credentials.
+     * HTTP(S) user information and passwords in any URI form are rejected. SSH
+     * user names such as {@code git@example.org:team/repo.git} remain supported,
+     * but authentication material must come from deployment secret configuration.
+     */
+    static URIish validateExternalUrl(String externalUrl) {
+        if (externalUrl == null || externalUrl.isBlank()) {
+            throw new IllegalArgumentException("External URL is not configured");
+        }
+        try {
+            URIish uri = new URIish(externalUrl.strip());
+            String scheme = uri.getScheme() == null
+                    ? ""
+                    : uri.getScheme().toLowerCase(Locale.ROOT);
+            boolean httpUserInfo = ("http".equals(scheme) || "https".equals(scheme))
+                    && uri.getUser() != null;
+            if (uri.getPass() != null || httpUserInfo) {
+                throw new IllegalArgumentException(
+                        "External Git URL must not contain credentials or HTTP user information");
+            }
+            return uri;
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("External Git URL is invalid", exception);
+        }
+    }
+
+    private URIish validateExternalModeAndCreateUri(SystemRepository systemRepository) {
+        if (systemRepository.getTopologyMode() != RepositoryTopologyMode.EXTERNAL_CANONICAL) {
+            throw new IllegalStateException(
+                    "External sync operations require EXTERNAL_CANONICAL topology mode, but current mode is "
+                            + systemRepository.getTopologyMode());
+        }
+        try {
+            return validateExternalUrl(systemRepository.getExternalUrl());
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException(exception.getMessage(), exception);
+        }
+    }
+
     private void verifyPushResult(PushResult result, String branch) throws ExternalPushRejectedException {
         if (result.getRemoteUpdates().isEmpty()) {
             throw new ExternalPushRejectedException(
@@ -245,18 +284,6 @@ public class ExternalGitSyncService {
                         "External Git remote rejected branch '" + branch + "': "
                                 + update.getStatus() + suffix);
             }
-        }
-    }
-
-    private void validateExternalMode(SystemRepository systemRepository) {
-        if (systemRepository.getTopologyMode() != RepositoryTopologyMode.EXTERNAL_CANONICAL) {
-            throw new IllegalStateException(
-                    "External sync operations require EXTERNAL_CANONICAL topology mode, but current mode is "
-                            + systemRepository.getTopologyMode());
-        }
-        if (systemRepository.getExternalUrl() == null
-                || systemRepository.getExternalUrl().isBlank()) {
-            throw new IllegalStateException("External URL is not configured");
         }
     }
 
