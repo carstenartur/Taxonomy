@@ -27,6 +27,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * is available and create Lucene documents without vectors. Reindexing from an
  * application-ready listener gives Hibernate Search bridges access to the fully
  * initialized Spring context and the local embedding model.</p>
+ *
+ * <p>The application remains globally ready while this optional index is built:
+ * catalogue browsing, full-text search, DSL editing and other deterministic
+ * functions are already usable. Semantic readiness is exposed independently by
+ * the embedding status and semantic-search endpoints.</p>
  */
 @Service
 @Lazy(false)
@@ -67,9 +72,6 @@ public class LocalOnnxIndexInitializer {
             return;
         }
 
-        initializationState.update(
-                AppInitializationStateService.State.BUILDING_INDEX,
-                "Building local semantic-search index…");
         log.info("Building Hibernate Search vector index for LOCAL_ONNX");
 
         try {
@@ -82,19 +84,14 @@ public class LocalOnnxIndexInitializer {
                     .batchSizeToLoadObjects(16)
                     .startAndWait();
 
-            initializationState.update(
-                    AppInitializationStateService.State.READY,
-                    "Application and local semantic-search index are ready");
-            log.info("LOCAL_ONNX vector index completed");
+            log.info("LOCAL_ONNX vector index completed with {} indexed taxonomy nodes",
+                    embeddingService.indexedNodeCount());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             log.warn("LOCAL_ONNX vector indexing was interrupted", exception);
         } catch (Exception | LinkageError exception) {
             log.error("LOCAL_ONNX vector indexing failed; semantic search is unavailable",
                     exception);
-            initializationState.update(
-                    AppInitializationStateService.State.READY,
-                    "Application is ready; local semantic search is unavailable");
         }
     }
 
