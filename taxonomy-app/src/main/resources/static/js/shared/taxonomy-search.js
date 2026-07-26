@@ -18,25 +18,26 @@
     /*  Bootstrap on DOMContentLoaded                                      */
     /* ------------------------------------------------------------------ */
     document.addEventListener('DOMContentLoaded', function () {
-        const searchInput   = document.getElementById('searchInput');
-        const searchBtn     = document.getElementById('searchBtn');
-        const searchMode    = document.getElementById('searchModeSelect');
-        const searchMax     = document.getElementById('searchMaxResults');
-        const resultsArea   = document.getElementById('searchResultsArea');
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const searchMode = document.getElementById('searchModeSelect');
+        const searchMax = document.getElementById('searchMaxResults');
 
-        if (!searchBtn) return;               // panel not in DOM
+        if (!searchBtn) return;
 
         searchBtn.addEventListener('click', function () {
-            performSearch(searchInput.value.trim(), searchMode.value, parseInt(searchMax.value, 10));
+            performSearch(
+                searchInput.value.trim(),
+                searchMode.value,
+                parseInt(searchMax.value, 10));
         });
-        searchInput.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
+        searchInput.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
                 searchBtn.click();
             }
         });
 
-        /* Disable semantic modes until embedding status is known */
         checkEmbeddingStatus();
     });
 
@@ -45,7 +46,7 @@
     /* ------------------------------------------------------------------ */
     function checkEmbeddingStatus() {
         fetch('/api/embedding/status')
-            .then(function (r) { return r.json(); })
+            .then(function (response) { return response.json(); })
             .then(function (data) {
                 embeddingAvailable = data.available === true;
                 updateEmbeddingBadge(data);
@@ -65,7 +66,9 @@
             badge.classList.remove('bg-secondary');
             badge.classList.add('bg-info', 'text-dark');
             badge.textContent = t('search.embeddings.available', data.indexedNodes);
-            badge.title = t('search.embeddings.available.title', data.modelUrl || 'unknown');
+            badge.title = t(
+                'search.embeddings.available.title',
+                data.modelUrl || 'unknown');
         } else {
             badge.classList.remove('bg-info', 'text-dark');
             badge.classList.add('bg-secondary');
@@ -75,13 +78,15 @@
     }
 
     function updateSearchModes() {
-        var sel = document.getElementById('searchModeSelect');
-        if (!sel) return;
-        Array.from(sel.options).forEach(function (opt) {
-            if (opt.value === 'semantic' || opt.value === 'hybrid' || opt.value === 'graph') {
-                opt.disabled = !embeddingAvailable;
-                if (!embeddingAvailable && opt.selected) {
-                    sel.value = 'fulltext';
+        var select = document.getElementById('searchModeSelect');
+        if (!select) return;
+        Array.from(select.options).forEach(function (option) {
+            if (option.value === 'semantic'
+                    || option.value === 'hybrid'
+                    || option.value === 'graph') {
+                option.disabled = !embeddingAvailable;
+                if (!embeddingAvailable && option.selected) {
+                    select.value = 'fulltext';
                 }
             }
         });
@@ -95,27 +100,35 @@
 
         var area = document.getElementById('searchResultsArea');
         area.style.display = 'block';
-        area.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('search.searching') + '</div>';
+        area.innerHTML = '<div class="text-center text-muted py-2">'
+            + '<div class="spinner-border spinner-border-sm" role="status"></div> '
+            + t('search.searching') + '</div>';
 
         var url;
         switch (mode) {
             case 'semantic':
-                url = '/api/search/semantic?q=' + encodeURIComponent(query) + '&maxResults=' + maxResults;
+                url = '/api/search/semantic?q=' + encodeURIComponent(query)
+                    + '&maxResults=' + maxResults;
                 break;
             case 'hybrid':
-                url = '/api/search/hybrid?q=' + encodeURIComponent(query) + '&maxResults=' + maxResults;
+                url = '/api/search/hybrid?q=' + encodeURIComponent(query)
+                    + '&maxResults=' + maxResults;
                 break;
             case 'graph':
-                url = '/api/search/graph?q=' + encodeURIComponent(query) + '&maxResults=' + maxResults;
+                url = '/api/search/graph?q=' + encodeURIComponent(query)
+                    + '&maxResults=' + maxResults;
                 break;
             default:
-                url = '/api/search?q=' + encodeURIComponent(query) + '&maxResults=' + maxResults;
+                url = '/api/search?q=' + encodeURIComponent(query)
+                    + '&maxResults=' + maxResults;
         }
 
         fetch(url)
-            .then(function (r) {
-                if (!r.ok) throw new Error('Search failed (' + r.status + ')');
-                return r.json();
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('Search failed (' + response.status + ')');
+                }
+                return response.json();
             })
             .then(function (data) {
                 if (mode === 'graph') {
@@ -124,8 +137,9 @@
                     renderSearchResults(data);
                 }
             })
-            .catch(function (err) {
-                area.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + escapeHtml(err.message) + '</div>';
+            .catch(function (error) {
+                area.innerHTML = '<div class="text-danger small p-2">⚠️ '
+                    + escapeHtml(error.message) + '</div>';
             });
     }
 
@@ -135,87 +149,139 @@
     function renderSearchResults(nodes) {
         var area = document.getElementById('searchResultsArea');
         if (!nodes || nodes.length === 0) {
-            area.innerHTML = '<div class="text-muted small p-2">' + t('search.no.results') + '</div>';
+            area.innerHTML = '<div class="text-muted small p-2">'
+                + t('search.no.results') + '</div>';
             return;
         }
-        var html = '<div class="small text-muted mb-1">' + t('search.results.count', nodes.length) + '</div>';
+        var html = '<div class="small text-muted mb-1">'
+            + t('search.results.count', nodes.length) + '</div>';
         html += '<div class="list-group list-group-flush search-results-list">';
-        nodes.forEach(function (n) {
-            var pct = (typeof n.matchPercentage === 'number') ? n.matchPercentage : '';
-            var pctBadge = pct !== '' ? '<span class="badge bg-success ms-auto">' + pct + '%</span>' : '';
-            html += '<a href="#" class="list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item" data-code="' + escapeHtml(n.code) + '">';
-            html += '<span class="search-result-code fw-semibold me-1">' + escapeHtml(n.code) + '</span> ';
-            html += '<span class="search-result-name text-truncate">' + escapeHtml(n.nameEn || '') + '</span>';
-            html += pctBadge;
+        nodes.forEach(function (node) {
+            var percentage = typeof node.matchPercentage === 'number'
+                ? node.matchPercentage
+                : '';
+            var percentageBadge = percentage !== ''
+                ? '<span class="badge bg-success ms-auto">'
+                    + percentage + '%</span>'
+                : '';
+            html += '<a href="#" class="list-group-item list-group-item-action '
+                + 'py-1 px-2 d-flex align-items-center search-result-item" data-code="'
+                + escapeHtml(node.code) + '">';
+            html += '<span class="search-result-code fw-semibold me-1">'
+                + escapeHtml(node.code) + '</span> ';
+            html += '<span class="search-result-name text-truncate">'
+                + escapeHtml(node.nameEn || '') + '</span>';
+            html += percentageBadge;
             html += '</a>';
         });
         html += '</div>';
         area.innerHTML = html;
 
-        /* Click to highlight in taxonomy tree */
-        area.querySelectorAll('.search-result-item').forEach(function (el) {
-            el.addEventListener('click', function (e) {
-                e.preventDefault();
-                highlightNodeInTree(el.dataset.code);
-            });
-        });
+        bindSearchResultNavigation(area);
     }
 
     function renderGraphSearchResults(data) {
         var area = document.getElementById('searchResultsArea');
         var html = '';
         if (data.summary) {
-            html += '<div class="small fst-italic mb-2">' + escapeHtml(data.summary) + '</div>';
+            html += '<div class="small fst-italic mb-2">'
+                + escapeHtml(data.summary) + '</div>';
         }
         if (data.matchedNodes && data.matchedNodes.length > 0) {
-            html += '<div class="small text-muted mb-1">' + t('search.matched.nodes', data.matchedNodes.length) + '</div>';
+            html += '<div class="small text-muted mb-1">'
+                + t('search.matched.nodes', data.matchedNodes.length) + '</div>';
             html += '<div class="list-group list-group-flush search-results-list">';
-            data.matchedNodes.forEach(function (n) {
-                html += '<a href="#" class="list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item" data-code="' + escapeHtml(n.code) + '">';
-                html += '<span class="search-result-code fw-semibold me-1">' + escapeHtml(n.code) + '</span> ';
-                html += '<span class="search-result-name text-truncate">' + escapeHtml(n.nameEn || '') + '</span>';
+            data.matchedNodes.forEach(function (node) {
+                html += '<a href="#" class="list-group-item list-group-item-action '
+                    + 'py-1 px-2 d-flex align-items-center search-result-item" data-code="'
+                    + escapeHtml(node.code) + '">';
+                html += '<span class="search-result-code fw-semibold me-1">'
+                    + escapeHtml(node.code) + '</span> ';
+                html += '<span class="search-result-name text-truncate">'
+                    + escapeHtml(node.nameEn || '') + '</span>';
                 html += '</a>';
             });
             html += '</div>';
         }
-        if (data.topRelationTypes && Object.keys(data.topRelationTypes).length > 0) {
-            html += '<div class="small text-muted mt-2 mb-1">' + t('search.top.relation.types') + '</div>';
+        if (data.topRelationTypes
+                && Object.keys(data.topRelationTypes).length > 0) {
+            html += '<div class="small text-muted mt-2 mb-1">'
+                + t('search.top.relation.types') + '</div>';
             html += '<div class="d-flex gap-1 flex-wrap">';
             Object.entries(data.topRelationTypes).forEach(function (entry) {
-                html += '<span class="badge bg-secondary">' + escapeHtml(entry[0]) + ' (' + entry[1] + ')</span>';
+                html += '<span class="badge bg-secondary">'
+                    + escapeHtml(entry[0]) + ' (' + entry[1] + ')</span>';
             });
             html += '</div>';
         }
-        area.innerHTML = html || '<div class="text-muted small p-2">' + t('search.no.graph.results') + '</div>';
+        area.innerHTML = html || '<div class="text-muted small p-2">'
+            + t('search.no.graph.results') + '</div>';
 
-        area.querySelectorAll('.search-result-item').forEach(function (el) {
-            el.addEventListener('click', function (e) {
-                e.preventDefault();
-                highlightNodeInTree(el.dataset.code);
+        bindSearchResultNavigation(area);
+    }
+
+    function bindSearchResultNavigation(area) {
+        area.querySelectorAll('.search-result-item').forEach(function (element) {
+            element.addEventListener('click', function (event) {
+                event.preventDefault();
+                highlightNodeInTree(element.dataset.code);
             });
         });
     }
 
+    /**
+     * Switch to the deterministic list view, reveal every collapsed ancestor,
+     * and place the visual/keyboard focus on the exact search result.
+     */
     function highlightNodeInTree(code) {
-        /* Remove previous highlights */
-        document.querySelectorAll('.search-highlight').forEach(function (el) {
-            el.classList.remove('search-highlight');
+        document.querySelectorAll('.search-highlight').forEach(function (element) {
+            element.classList.remove('search-highlight');
         });
-        /* Find the node header by code */
-        var codeEl = document.querySelector('.tax-code[data-code="' + code + '"]');
-        if (!codeEl) {
-            /* Try finding by text content */
-            document.querySelectorAll('.tax-code').forEach(function (el) {
-                if (el.textContent.trim() === code) codeEl = el;
+
+        var currentView = window.TaxonomyState
+            ? window.TaxonomyState.currentView
+            : null;
+        if (currentView !== 'list'
+                && window.TaxonomyBrowse
+                && window.TaxonomyBrowse.switchView) {
+            window.TaxonomyBrowse.switchView('list');
+            window.requestAnimationFrame(function () {
+                revealNodeInTree(code);
             });
+            return;
         }
-        if (codeEl) {
-            var header = codeEl.closest('.tax-node-header');
-            if (header) {
-                header.classList.add('search-highlight');
-                header.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        revealNodeInTree(code);
+    }
+
+    function revealNodeInTree(code) {
+        var node = Array.from(document.querySelectorAll('.tax-node'))
+            .find(function (candidate) {
+                return candidate.dataset && candidate.dataset.code === code;
+            });
+        if (!node) return;
+
+        var ancestor = node.parentElement;
+        while (ancestor) {
+            if (ancestor.classList
+                    && ancestor.classList.contains('tax-children')) {
+                ancestor.style.display = '';
+                var parentNode = ancestor.parentElement;
+                if (parentNode) {
+                    parentNode.setAttribute('aria-expanded', 'true');
+                    var toggle = parentNode.querySelector(
+                        ':scope > .tax-node-header > .tax-toggle');
+                    if (toggle) toggle.textContent = '▼';
+                }
             }
+            ancestor = ancestor.parentElement;
         }
+
+        var header = node.querySelector(':scope > .tax-node-header');
+        if (!header) return;
+        header.classList.add('search-highlight');
+        node.setAttribute('tabindex', '0');
+        node.focus({ preventScroll: true });
+        header.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     /* ------------------------------------------------------------------ */
@@ -230,28 +296,27 @@
         }
         if (area) {
             area.style.display = 'block';
-            area.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('search.finding.similar') + '</div>';
+            area.innerHTML = '<div class="text-center text-muted py-2">'
+                + '<div class="spinner-border spinner-border-sm" role="status"></div> '
+                + t('search.finding.similar') + '</div>';
         }
 
         fetch('/api/search/similar/' + encodeURIComponent(code) + '?topK=10')
-            .then(function (r) {
-                if (!r.ok) throw new Error('Failed (' + r.status + ')');
-                return r.json();
+            .then(function (response) {
+                if (!response.ok) throw new Error('Failed (' + response.status + ')');
+                return response.json();
             })
             .then(function (nodes) { renderSearchResults(nodes); })
-            .catch(function (err) {
-                if (area) area.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + escapeHtml(err.message) + '</div>';
+            .catch(function (error) {
+                if (area) {
+                    area.innerHTML = '<div class="text-danger small p-2">⚠️ '
+                        + escapeHtml(error.message) + '</div>';
+                }
             });
     }
 
-    /* ------------------------------------------------------------------ */
-    /*  Utility                                                            */
-    /* ------------------------------------------------------------------ */
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
-    /* ------------------------------------------------------------------ */
-    /*  Public API                                                         */
-    /* ------------------------------------------------------------------ */
     window.TaxonomySearch = {
         findSimilar: findSimilar,
         performSearch: performSearch,
