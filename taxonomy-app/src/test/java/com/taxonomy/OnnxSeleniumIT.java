@@ -17,31 +17,23 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Selenium-based integration tests for the LOCAL_ONNX pipeline.
- * Validates that AI status badges, semantic search, and result navigation
- * work correctly when the application is running with local ONNX embeddings.
- * <p>
- * Opt-in: only runs when the {@code runOnnxTests} system property is set
- * <em>and</em> the embedding model directory is available.
- * Run with: {@code mvn verify -DrunOnnxTests -Dit.test=OnnxSeleniumIT}
- */
+/** Selenium-based end-to-end verification for the LOCAL_ONNX pipeline. */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -50,11 +42,12 @@ class OnnxSeleniumIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
     private static final HttpClient HTTP = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10)).build();
-
-    /** HTTP Basic auth header value for the default admin user. */
-    private static final String BASIC_AUTH = "Basic " +
-            Base64.getEncoder().encodeToString("admin:admin".getBytes());
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    private static final String BASIC_AUTH = "Basic "
+            + Base64.getEncoder().encodeToString(
+                    ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
+                            .getBytes(StandardCharsets.UTF_8));
 
     private Network network;
     private GenericContainer<?> appContainer;
@@ -65,22 +58,17 @@ class OnnxSeleniumIT {
     void startContainers() {
         network = Network.newNetwork();
 
-        appContainer = new GenericContainer<>(ContainerTestUtils.sharedImage())
-                .withNetwork(network)
-                .withNetworkAliases(ContainerTestUtils.APP_NETWORK_ALIAS)
-                .withExposedPorts(8080)
+        appContainer = ContainerTestUtils.appContainer(network)
                 .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
-                .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
-                .withStartupTimeout(Duration.ofSeconds(180))
-                .waitingFor(org.testcontainers.containers.wait.strategy.Wait
-                        .forHttp("/actuator/health")
-                        .forStatusCode(200)
-                        .forPort(8080));
+                .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true");
 
-        // If a local model directory is available, bind-mount it into the container
-        String modelDir = System.getenv("TAXONOMY_EMBEDDING_MODEL_DIR");
-        if (modelDir != null && !modelDir.isBlank() && Files.isDirectory(Path.of(modelDir))) {
-            appContainer.withFileSystemBind(modelDir, "/models",
+        String modelDirectory = System.getenv("TAXONOMY_EMBEDDING_MODEL_DIR");
+        if (modelDirectory != null
+                && !modelDirectory.isBlank()
+                && Files.isDirectory(Path.of(modelDirectory))) {
+            appContainer.withFileSystemBind(
+                    modelDirectory,
+                    "/models",
                     org.testcontainers.containers.BindMode.READ_ONLY);
             appContainer.withEnv("TAXONOMY_EMBEDDING_MODEL_DIR", "/models");
         }
@@ -91,31 +79,31 @@ class OnnxSeleniumIT {
         driver = browserSession.driver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
-        // Login via form (Spring Security requires authentication)
         driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
         driver.findElement(By.name("username")).sendKeys("admin");
-        driver.findElement(By.name("password")).sendKeys("admin");
-        driver.findElement(By.cssSelector("button[type='submit'], input[type='submit']")).click();
+        driver.findElement(By.name("password"))
+                .sendKeys(ContainerTestUtils.TEST_ADMIN_PASSWORD);
+        driver.findElement(By.cssSelector(
+                "button[type='submit'], input[type='submit']")).click();
 
-        // Wait for the main page to load after login
         driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         new WebDriverWait(driver, Duration.ofSeconds(60))
-                .until(d -> {
-                    String rendered = d.findElement(By.id("taxonomyTree"))
+                .until(currentDriver -> {
+                    String rendered = currentDriver.findElement(By.id("taxonomyTree"))
                             .getAttribute("data-view-rendered");
                     return rendered != null && !rendered.isEmpty();
                 });
 
-        // Dismiss onboarding overlay if present
-        List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
-        if (!dismissBtns.isEmpty()) {
-            dismissBtns.get(0).click();
+        List<WebElement> dismissButtons = driver.findElements(By.id("onboardingDismiss"));
+        if (!dismissButtons.isEmpty()) {
+            dismissButtons.getFirst().click();
             new WebDriverWait(driver, Duration.ofSeconds(5))
-                    .until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
+                    .until(ExpectedConditions.invisibilityOfElementLocated(
+                            By.id("onboardingOverlay")));
         }
     }
 
@@ -125,19 +113,19 @@ class OnnxSeleniumIT {
     }
 
     private String baseUrl() {
-        return "http://" + appContainer.getHost() + ":" + appContainer.getMappedPort(8080);
+        return "http://" + appContainer.getHost() + ":"
+                + appContainer.getMappedPort(8080);
     }
 
     private HttpResponse<String> httpGet(String path) throws Exception {
-        HttpRequest req = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl() + path))
                 .header("Accept", "application/json")
                 .header("Authorization", BASIC_AUTH)
-                .GET().build();
-        return HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                .GET()
+                .build();
+        return HTTP.send(request, HttpResponse.BodyHandlers.ofString());
     }
-
-    // ── REST API tests ───────────────────────────────────────────────────────
 
     @Test
     @Order(1)
@@ -148,9 +136,9 @@ class OnnxSeleniumIT {
     @Test
     @Order(2)
     void embeddingStatusReportsAvailable() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/embedding/status");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
+        HttpResponse<String> response = httpGet("/api/embedding/status");
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = MAPPER.readTree(response.body());
         assertThat(body.has("enabled")).isTrue();
         assertThat(body.get("enabled").booleanValue()).isTrue();
     }
@@ -158,56 +146,51 @@ class OnnxSeleniumIT {
     @Test
     @Order(3)
     void aiStatusEndpointReturnsLimited() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/ai-status");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
+        HttpResponse<String> response = httpGet("/api/ai-status");
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = MAPPER.readTree(response.body());
         assertThat(body.get("level").textValue()).isEqualTo("LIMITED");
         assertThat(body.get("available").booleanValue()).isTrue();
         assertThat(body.get("limited").booleanValue()).isTrue();
     }
-
-    // ── Selenium UI tests ────────────────────────────────────────────────────
 
     @Test
     @Order(10)
     void homePageLoadsWithTaxonomyTree() {
         WebElement tree = driver.findElement(By.id("taxonomyTree"));
         assertThat(tree.isDisplayed()).isTrue();
-        List<WebElement> nodes = tree.findElements(By.cssSelector(".tax-node"));
-        assertThat(nodes).isNotEmpty();
+        assertThat(tree.findElements(By.cssSelector(".tax-node"))).isNotEmpty();
     }
 
     @Test
     @Order(11)
     void aiStatusBadgeShowsLimited() {
-        // Wait for the AI status badge to be populated (async fetch)
         WebElement badge = new WebDriverWait(driver, Duration.ofSeconds(30))
-                .until(d -> {
-                    WebElement b = d.findElement(By.id("aiStatusBadge"));
-                    String text = b.getText();
-                    return (text != null && !text.isEmpty() && !text.contains("Unknown")) ? b : null;
+                .until(currentDriver -> {
+                    WebElement candidate = currentDriver.findElement(By.id("aiStatusBadge"));
+                    String text = candidate.getText();
+                    return text != null
+                            && !text.isEmpty()
+                            && !text.contains("Unknown")
+                            ? candidate
+                            : null;
                 });
-        String badgeText = badge.getText();
-        assertThat(badgeText).containsIgnoringCase("LIMITED");
+        assertThat(badge.getText()).containsIgnoringCase("LIMITED");
     }
 
     @Test
     @Order(20)
-    void semanticSearchViaUIReturnsResults() {
+    void semanticSearchViaUiReturnsResults() {
         navigateToAnalyzeTab();
         waitForEmbeddingsReady();
 
-        // Open search panel
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
         if (searchPanel.getAttribute("open") == null) {
             searchPanel.findElement(By.tagName("summary")).click();
         }
 
-        // Set search mode to semantic
         ((JavascriptExecutor) driver).executeScript(
                 "document.getElementById('searchModeSelect').value = 'semantic';");
-
-        // Enter search query and trigger search
         WebElement searchInput = driver.findElement(By.id("searchInput"));
         ((JavascriptExecutor) driver).executeScript(
                 "arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));",
@@ -218,20 +201,14 @@ class OnnxSeleniumIT {
                 searchInput);
         driver.findElement(By.id("searchBtn")).click();
 
-        // Wait for search results
         waitForSearchResults();
-
-        // Verify results are present
-        List<WebElement> items = driver.findElements(
-                By.cssSelector("#searchResultsArea .search-result-item"));
-        assertThat(items).isNotEmpty();
+        assertThat(driver.findElements(
+                By.cssSelector("#searchResultsArea .search-result-item"))).isNotEmpty();
     }
 
     @Test
     @Order(21)
     void searchResultClickNavigatesToNode() {
-        // Results should still be visible from the previous test
-        // If not, re-run the search
         List<WebElement> items = driver.findElements(
                 By.cssSelector("#searchResultsArea .search-result-item"));
         if (items.isEmpty()) {
@@ -255,21 +232,20 @@ class OnnxSeleniumIT {
         }
 
         assertThat(items).isNotEmpty();
-
-        // Get the code of the first result and click it
-        String code = items.get(0).getAttribute("data-code");
+        String code = items.getFirst().getAttribute("data-code");
         assertThat(code).isNotNull().isNotEmpty();
-        items.get(0).click();
+        items.getFirst().click();
 
-        // Verify that the tree has navigated (the node should be highlighted)
         new WebDriverWait(driver, Duration.ofSeconds(10))
-                .until(d -> {
-                    List<WebElement> highlighted = d.findElements(
-                            By.cssSelector(".tax-node.highlight, .tax-node.selected, .tax-node-active"));
-                    if (!highlighted.isEmpty()) return true;
-                    // Also check if the tree scrolled to show the node
-                    WebElement tree = d.findElement(By.id("taxonomyTree"));
-                    return tree.getText().contains(code);
+                .until(currentDriver -> {
+                    List<WebElement> highlighted = currentDriver.findElements(
+                            By.cssSelector(
+                                    ".tax-node.highlight, .tax-node.selected, .tax-node-active"));
+                    if (!highlighted.isEmpty()) {
+                        return true;
+                    }
+                    return currentDriver.findElement(By.id("taxonomyTree"))
+                            .getText().contains(code);
                 });
     }
 
@@ -282,10 +258,8 @@ class OnnxSeleniumIT {
             searchPanel.findElement(By.tagName("summary")).click();
         }
 
-        // Set search mode to fulltext
         ((JavascriptExecutor) driver).executeScript(
                 "document.getElementById('searchModeSelect').value = 'fulltext';");
-
         WebElement searchInput = driver.findElement(By.id("searchInput"));
         ((JavascriptExecutor) driver).executeScript(
                 "arguments[0].value = 'BP'; arguments[0].dispatchEvent(new Event('input'));",
@@ -293,13 +267,9 @@ class OnnxSeleniumIT {
         driver.findElement(By.id("searchBtn")).click();
 
         waitForSearchResults();
-
-        List<WebElement> items = driver.findElements(
-                By.cssSelector("#searchResultsArea .search-result-item"));
-        assertThat(items).isNotEmpty();
+        assertThat(driver.findElements(
+                By.cssSelector("#searchResultsArea .search-result-item"))).isNotEmpty();
     }
-
-    // ── Helper methods ───────────────────────────────────────────────────────
 
     private void navigateToAnalyzeTab() {
         WebElement analyzeTab = driver.findElement(
@@ -311,36 +281,29 @@ class OnnxSeleniumIT {
         }
     }
 
-    /**
-     * Waits for embeddings to be ready by monitoring the nav-bar embedding badge.
-     * The badge text changes from "Embeddings: unavailable" to
-     * "Embeddings: N nodes" once the embedding index is built.
-     */
     private void waitForEmbeddingsReady() {
         new WebDriverWait(driver, Duration.ofSeconds(180))
-                .until(d -> {
+                .until(currentDriver -> {
                     try {
-                        WebElement badge = d.findElement(By.id("embeddingStatusBadge"));
+                        WebElement badge = currentDriver.findElement(
+                                By.id("embeddingStatusBadge"));
                         String text = badge.getText();
-                        return text != null && text.contains("Embeddings:")
+                        return text != null
+                                && text.contains("Embeddings:")
                                 && !text.contains("unavailable");
-                    } catch (org.openqa.selenium.NoSuchElementException e) {
+                    } catch (org.openqa.selenium.NoSuchElementException exception) {
                         return false;
                     }
                 });
     }
 
-    /**
-     * Waits for search results to appear in the search results area.
-     */
     private void waitForSearchResults() {
         new WebDriverWait(driver, Duration.ofSeconds(30))
-                .until(d -> {
-                    WebElement area = d.findElement(By.id("searchResultsArea"));
-                    if (!area.isDisplayed()) return false;
-                    List<WebElement> items = area.findElements(
-                            By.cssSelector(".search-result-item"));
-                    return !items.isEmpty();
+                .until(currentDriver -> {
+                    WebElement area = currentDriver.findElement(By.id("searchResultsArea"));
+                    return area.isDisplayed()
+                            && !area.findElements(By.cssSelector(".search-result-item"))
+                            .isEmpty();
                 });
     }
 }
