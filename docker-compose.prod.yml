@@ -31,12 +31,16 @@ services:
       - LLAMA_API_KEY=${LLAMA_API_KEY:-}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
       - LLM_PROVIDER=${LLM_PROVIDER:-}
-      # Production must never fall back to admin/admin.
+      # Production must never fall back to a known administrator password.
       - TAXONOMY_ADMIN_PASSWORD=${TAXONOMY_ADMIN_PASSWORD:?Set TAXONOMY_ADMIN_PASSWORD in .env}
       - TAXONOMY_REQUIRE_PASSWORD_CHANGE=true
       - TAXONOMY_LOGIN_RATE_LIMIT=true
       - TAXONOMY_AUDIT_LOGGING=true
       - TAXONOMY_SWAGGER_PUBLIC=false
+      # Optional external canonical Git credential. It is kept in the process
+      # environment and is never persisted in the application database.
+      - TAXONOMY_EXTERNAL_GIT_USERNAME=${TAXONOMY_EXTERNAL_GIT_USERNAME:-oauth2}
+      - TAXONOMY_EXTERNAL_GIT_TOKEN=${TAXONOMY_EXTERNAL_GIT_TOKEN:-}
       # Persist the embedded database and Lucene index in the mounted volume.
       # Immediate log fsync prevents an acknowledged architecture change from
       # being lost when the application container is replaced directly after a commit.
