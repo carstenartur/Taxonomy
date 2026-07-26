@@ -26,6 +26,10 @@ public class SystemRepositoryService {
     /**
      * Ensure a primary repository exists and erase credentials persisted by
      * releases that stored external Git tokens in plaintext.
+     *
+     * <p>Initialization fails closed. Continuing after a failed cleanup could
+     * leave a usable plaintext credential in the database while the operator
+     * assumes migration succeeded.</p>
      */
     @PostConstruct
     public void ensureSystemRepository() {
@@ -52,8 +56,11 @@ public class SystemRepositoryService {
                 log.warn("Removed a legacy plaintext external Git credential from the database. "
                         + "Configure TAXONOMY_EXTERNAL_GIT_TOKEN through deployment secret storage.");
             }
-        } catch (Exception exception) {
-            log.warn("Could not ensure system repository: {}", exception.getMessage());
+        } catch (RuntimeException exception) {
+            log.error("Could not initialize the system repository safely", exception);
+            throw new IllegalStateException(
+                    "System repository initialization or credential cleanup failed",
+                    exception);
         }
     }
 
