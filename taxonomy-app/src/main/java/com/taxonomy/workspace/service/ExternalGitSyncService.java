@@ -19,7 +19,6 @@ import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.transport.Transport;
 import org.eclipse.jgit.transport.URIish;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,12 +48,21 @@ public class ExternalGitSyncService {
 
     private final DslGitRepositoryFactory repositoryFactory;
     private final SystemRepositoryService systemRepositoryService;
+    private final ExternalGitCredentials credentials;
 
     @Autowired
     public ExternalGitSyncService(DslGitRepositoryFactory repositoryFactory,
-                                  SystemRepositoryService systemRepositoryService) {
+                                  SystemRepositoryService systemRepositoryService,
+                                  ExternalGitCredentials credentials) {
         this.repositoryFactory = repositoryFactory;
         this.systemRepositoryService = systemRepositoryService;
+        this.credentials = credentials;
+    }
+
+    /** Convenience constructor for focused tests without configured credentials. */
+    public ExternalGitSyncService(DslGitRepositoryFactory repositoryFactory,
+                                  SystemRepositoryService systemRepositoryService) {
+        this(repositoryFactory, systemRepositoryService, ExternalGitCredentials.none());
     }
 
     /** Fetch all external branches into {@code refs/remotes/origin/*}. */
@@ -67,7 +75,7 @@ public class ExternalGitSyncService {
 
         log.info("Fetching from configured external Git remote");
         try (Transport transport = Transport.open(gitRepository, uri)) {
-            configureCredentials(transport, systemRepository);
+            credentials.configure(transport);
             FetchResult result = transport.fetch(
                     NullProgressMonitor.INSTANCE,
                     List.of(new RefSpec("+refs/heads/*:refs/remotes/origin/*")));
@@ -102,7 +110,7 @@ public class ExternalGitSyncService {
 
         log.info("Pushing branch '{}' to configured external Git remote", localBranch);
         try (Transport transport = Transport.open(gitRepository, uri)) {
-            configureCredentials(transport, systemRepository);
+            credentials.configure(transport);
             RemoteRefUpdate refUpdate = new RemoteRefUpdate(
                     gitRepository,
                     localRefName(localBranch),
@@ -213,12 +221,13 @@ public class ExternalGitSyncService {
             return new ExternalSyncStatus(
                     systemRepository.getTopologyMode() == RepositoryTopologyMode.EXTERNAL_CANONICAL,
                     systemRepository.getExternalUrl(),
+                    credentials.isConfigured(),
                     systemRepository.getLastFetchAt(),
                     systemRepository.getLastPushAt(),
                     systemRepository.getLastFetchCommit());
         } catch (Exception exception) {
             log.debug("External sync status is unavailable", exception);
-            return new ExternalSyncStatus(false, null, null, null, null);
+            return new ExternalSyncStatus(false, null, credentials.isConfigured(), null, null, null);
         }
     }
 
@@ -255,13 +264,6 @@ public class ExternalGitSyncService {
         if (branch == null || branch.isBlank()
                 || !Repository.isValidRefName(localRefName(branch))) {
             throw new IllegalArgumentException("Invalid Git branch name");
-        }
-    }
-
-    private void configureCredentials(Transport transport, SystemRepository systemRepository) {
-        String token = systemRepository.getExternalAuthToken();
-        if (token != null && !token.isBlank()) {
-            transport.setCredentialsProvider(new UsernamePasswordCredentialsProvider(token, ""));
         }
     }
 
@@ -344,6 +346,7 @@ public class ExternalGitSyncService {
     public record ExternalSyncStatus(
             boolean externalEnabled,
             String externalUrl,
+            boolean credentialConfigured,
             Instant lastFetchAt,
             Instant lastPushAt,
             String lastFetchCommit) {
