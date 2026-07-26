@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -49,13 +50,13 @@ class ExternalSyncControllerBranchCoverageTest {
     @Test
     void fetchCoversSuccessConfigurationAndUnexpectedFailure() throws Exception {
         when(fetchResult.getTrackingRefUpdates()).thenReturn(List.of());
-        when(externalGitSyncService.fetchFromExternal()).thenReturn(fetchResult);
+        doReturn(fetchResult).when(externalGitSyncService).fetchFromExternal();
         assertThat(controller.fetchFromExternal().getBody())
                 .containsEntry("success", true)
                 .containsEntry("updates", 0);
 
-        when(externalGitSyncService.fetchFromExternal())
-                .thenThrow(new IllegalStateException("not configured"));
+        doThrow(new IllegalStateException("not configured"))
+                .when(externalGitSyncService).fetchFromExternal();
         var configurationFailure = controller.fetchFromExternal();
         assertThat(configurationFailure.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(configurationFailure.getBody())
@@ -71,33 +72,34 @@ class ExternalSyncControllerBranchCoverageTest {
 
     @Test
     void pushCoversExplicitDefaultRejectedAndUnexpectedFailures() throws Exception {
-        when(externalGitSyncService.pushToExternal("feature")).thenReturn(pushResult);
+        doReturn(pushResult)
+                .when(externalGitSyncService).pushToExternal("feature");
         assertThat(controller.pushToExternal("feature").getBody())
                 .containsEntry("success", true)
                 .containsEntry("branch", "feature")
                 .containsEntry("updates", 0);
 
         when(systemRepositoryService.getSharedBranch()).thenReturn("shared");
-        when(externalGitSyncService.pushToExternal("shared")).thenReturn(pushResult);
+        doReturn(pushResult)
+                .when(externalGitSyncService).pushToExternal("shared");
         assertThat(controller.pushToExternal(null).getBody())
                 .containsEntry("branch", "shared");
 
-        when(externalGitSyncService.pushToExternal("invalid"))
-                .thenThrow(new IllegalStateException("external mode required"));
+        doThrow(new IllegalStateException("external mode required"))
+                .when(externalGitSyncService).pushToExternal("invalid");
         assertThat(controller.pushToExternal("invalid").getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
 
-        when(externalGitSyncService.pushToExternal("rejected"))
-                .thenThrow(new ExternalGitSyncService.ExternalPushRejectedException(
-                        "rejected"));
+        doThrow(new ExternalGitSyncService.ExternalPushRejectedException("rejected"))
+                .when(externalGitSyncService).pushToExternal("rejected");
         var rejected = controller.pushToExternal("rejected");
         assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(rejected.getBody())
                 .containsEntry("success", false)
                 .containsEntry("error", "PUSH_REJECTED");
 
-        when(externalGitSyncService.pushToExternal("broken"))
-                .thenThrow(new IOException("network"));
+        doThrow(new IOException("network"))
+                .when(externalGitSyncService).pushToExternal("broken");
         var broken = controller.pushToExternal("broken");
         assertThat(broken.getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -106,27 +108,28 @@ class ExternalSyncControllerBranchCoverageTest {
 
     @Test
     void fullSyncCoversSuccessMissingRemoteConflictAndFailures() throws Exception {
-        when(externalGitSyncService.fullSync("alice")).thenReturn("commit-1");
+        doReturn("commit-1")
+                .when(externalGitSyncService).fullSync("alice");
         assertThat(controller.fullSync().getBody())
                 .containsEntry("success", true)
                 .containsEntry("status", "INTEGRATED")
                 .containsEntry("commitId", "commit-1");
 
-        when(externalGitSyncService.fullSync("alice")).thenReturn(null);
+        doReturn(null)
+                .when(externalGitSyncService).fullSync("alice");
         assertThat(controller.fullSync().getBody())
                 .containsEntry("status", "NO_REMOTE_BRANCH");
 
-        when(externalGitSyncService.fullSync("alice"))
-                .thenThrow(new ExternalGitSyncService.ExternalSyncConflictException(
-                        "conflict"));
+        doThrow(new ExternalGitSyncService.ExternalSyncConflictException("conflict"))
+                .when(externalGitSyncService).fullSync("alice");
         var conflict = controller.fullSync();
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(conflict.getBody())
                 .containsEntry("success", false)
                 .containsEntry("error", "MERGE_CONFLICT");
 
-        when(externalGitSyncService.fullSync("alice"))
-                .thenThrow(new IllegalStateException("disabled"));
+        doThrow(new IllegalStateException("disabled"))
+                .when(externalGitSyncService).fullSync("alice");
         assertThat(controller.fullSync().getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
 
@@ -185,7 +188,8 @@ class ExternalSyncControllerBranchCoverageTest {
 
         doThrow(new IllegalStateException("database unavailable"))
                 .when(systemRepositoryService).save(repository);
-        var failure = controller.configure("new-url", "INTERNAL_SHARED");
+        var failure = controller.configure(
+                "https://example.invalid/new-repo.git", "INTERNAL_SHARED");
         assertThat(failure.getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(failure.getBody())
