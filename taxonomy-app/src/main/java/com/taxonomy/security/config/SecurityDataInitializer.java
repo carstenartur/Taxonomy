@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,7 @@ import java.util.Set;
 /** Seeds local roles and an explicitly configured or one-time administrator. */
 @Component
 @Profile("!keycloak")
+@Order(Ordered.LOWEST_PRECEDENCE)
 public class SecurityDataInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityDataInitializer.class);
