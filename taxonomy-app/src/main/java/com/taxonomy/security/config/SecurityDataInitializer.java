@@ -14,31 +14,34 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Set;
 
-/** Seeds local roles and the initial administrator in form-login mode. */
+/** Seeds local roles and an explicitly configured or one-time administrator. */
 @Component
 @Profile("!keycloak")
 public class SecurityDataInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityDataInitializer.class);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final String adminPassword;
+    private final String configuredAdminPassword;
     private final boolean requirePasswordChange;
 
     public SecurityDataInitializer(RoleRepository roleRepository,
                                    UserRepository userRepository,
                                    PasswordEncoder passwordEncoder,
-                                   @Value("${taxonomy.admin-password:admin}") String adminPassword,
-                                   @Value("${taxonomy.security.require-password-change:false}")
+                                   @Value("${taxonomy.admin-password:}") String configuredAdminPassword,
+                                   @Value("${taxonomy.security.require-password-change:true}")
                                    boolean requirePasswordChange) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.adminPassword = adminPassword;
+        this.configuredAdminPassword = configuredAdminPassword;
         this.requirePasswordChange = requirePasswordChange;
     }
 
@@ -51,32 +54,46 @@ public class SecurityDataInitializer implements ApplicationRunner {
 
         AppUser admin = userRepository.findByUsername("admin").orElse(null);
         if (admin == null) {
+            boolean generatedBootstrapPassword = configuredAdminPassword == null
+                    || configuredAdminPassword.isBlank();
+            String effectivePassword = generatedBootstrapPassword
+                    ? generateBootstrapPassword()
+                    : configuredAdminPassword;
+
             admin = new AppUser();
             admin.setUsername("admin");
-            admin.setPasswordHash(passwordEncoder.encode(adminPassword));
+            admin.setPasswordHash(passwordEncoder.encode(effectivePassword));
             admin.setEnabled(true);
             admin.setDisplayName("Administrator");
             admin.setRoles(Set.of(roleUser, roleArchitect, roleAdmin));
-            admin.setMustChangePassword(requirePasswordChange);
+            admin.setMustChangePassword(generatedBootstrapPassword || requirePasswordChange);
             userRepository.save(admin);
-            log.info("Created default admin user (username=admin, passwordChangeRequired={}).",
-                    requirePasswordChange);
+
+            if (generatedBootstrapPassword) {
+                log.warn("Generated a one-time local administrator bootstrap password. "
+                                + "Sign in as 'admin' with this value and replace it immediately: {}",
+                        effectivePassword);
+            } else {
+                log.info("Created configured administrator account "
+                                + "(passwordChangeRequired={}).",
+                        requirePasswordChange);
+            }
         } else if (requirePasswordChange
-                && passwordEncoder.matches("admin", admin.getPasswordHash())
                 && !admin.isMustChangePassword()) {
             admin.setMustChangePassword(true);
             userRepository.save(admin);
-            log.warn("Marked existing admin account for mandatory password replacement.");
-        }
-
-        if ("admin".equals(adminPassword)) {
-            log.warn("SECURITY WARNING: Default admin password 'admin' is in use. "
-                    + "Set TAXONOMY_ADMIN_PASSWORD environment variable to change it.");
+            log.info("Marked the administrator account for mandatory password replacement.");
         }
     }
 
     private AppRole findOrCreateRole(String name) {
         return roleRepository.findByName(name)
                 .orElseGet(() -> roleRepository.save(new AppRole(name)));
+    }
+
+    private static String generateBootstrapPassword() {
+        byte[] entropy = new byte[24];
+        SECURE_RANDOM.nextBytes(entropy);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(entropy);
     }
 }
