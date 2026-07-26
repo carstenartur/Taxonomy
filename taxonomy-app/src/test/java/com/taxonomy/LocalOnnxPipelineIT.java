@@ -140,8 +140,9 @@ class LocalOnnxPipelineIT {
 
     @Test
     @Order(6)
-    void searchEndpointReturnsResults() throws Exception {
-        HttpResponse<String> response = httpGet("/api/search?q=BP");
+    void fullTextSearchEndpointReturnsResults() throws Exception {
+        HttpResponse<String> response = httpGet(
+                "/api/search?q=Business%20Processes&maxResults=20");
         assertThat(response.statusCode()).isEqualTo(200);
         JsonNode body = MAPPER.readTree(response.body());
         assertThat(body.isArray()).isTrue();
