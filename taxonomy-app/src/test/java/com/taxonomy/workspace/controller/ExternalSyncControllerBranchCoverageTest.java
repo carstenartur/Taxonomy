@@ -40,8 +40,10 @@ class ExternalSyncControllerBranchCoverageTest {
 
     @BeforeEach
     void setUp() {
-        controller = new ExternalSyncController(externalGitSyncService, systemRepositoryService, workspaceResolver);
+        controller = new ExternalSyncController(
+                externalGitSyncService, systemRepositoryService, workspaceResolver);
         lenient().when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
+        lenient().when(pushResult.getRemoteUpdates()).thenReturn(List.of());
     }
 
     @Test
@@ -49,64 +51,114 @@ class ExternalSyncControllerBranchCoverageTest {
         when(fetchResult.getTrackingRefUpdates()).thenReturn(List.of());
         when(externalGitSyncService.fetchFromExternal()).thenReturn(fetchResult);
         assertThat(controller.fetchFromExternal().getBody())
-                .containsEntry("success", true).containsEntry("updates", 0);
+                .containsEntry("success", true)
+                .containsEntry("updates", 0);
 
-        when(externalGitSyncService.fetchFromExternal()).thenThrow(new IllegalStateException("not configured"));
+        when(externalGitSyncService.fetchFromExternal())
+                .thenThrow(new IllegalStateException("not configured"));
         var configurationFailure = controller.fetchFromExternal();
         assertThat(configurationFailure.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(configurationFailure.getBody()).containsEntry("error", "Configuration error");
+        assertThat(configurationFailure.getBody())
+                .containsEntry("error", "Configuration error");
 
-        doThrow(new IOException("network")).when(externalGitSyncService).fetchFromExternal();
+        doThrow(new IOException("network"))
+                .when(externalGitSyncService).fetchFromExternal();
         var unexpectedFailure = controller.fetchFromExternal();
-        assertThat(unexpectedFailure.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat(unexpectedFailure.getBody()).containsEntry("error", "Fetch failed");
+        assertThat(unexpectedFailure.getStatusCode())
+                .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(unexpectedFailure.getBody()).containsEntry("error", "FETCH_FAILED");
     }
 
     @Test
-    void pushCoversExplicitDefaultAndBothFailureClasses() throws Exception {
+    void pushCoversExplicitDefaultRejectedAndUnexpectedFailures() throws Exception {
         when(externalGitSyncService.pushToExternal("feature")).thenReturn(pushResult);
         assertThat(controller.pushToExternal("feature").getBody())
-                .containsEntry("success", true).containsEntry("branch", "feature");
+                .containsEntry("success", true)
+                .containsEntry("branch", "feature")
+                .containsEntry("updates", 0);
 
         when(systemRepositoryService.getSharedBranch()).thenReturn("shared");
         when(externalGitSyncService.pushToExternal("shared")).thenReturn(pushResult);
-        assertThat(controller.pushToExternal(null).getBody()).containsEntry("branch", "shared");
+        assertThat(controller.pushToExternal(null).getBody())
+                .containsEntry("branch", "shared");
 
         when(externalGitSyncService.pushToExternal("invalid"))
                 .thenThrow(new IllegalStateException("external mode required"));
-        assertThat(controller.pushToExternal("invalid").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(controller.pushToExternal("invalid").getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
 
-        when(externalGitSyncService.pushToExternal("broken")).thenThrow(new IOException("network"));
-        assertThat(controller.pushToExternal("broken").getStatusCode())
+        when(externalGitSyncService.pushToExternal("rejected"))
+                .thenThrow(new ExternalGitSyncService.ExternalPushRejectedException(
+                        "rejected"));
+        var rejected = controller.pushToExternal("rejected");
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(rejected.getBody())
+                .containsEntry("success", false)
+                .containsEntry("error", "PUSH_REJECTED");
+
+        when(externalGitSyncService.pushToExternal("broken"))
+                .thenThrow(new IOException("network"));
+        var broken = controller.pushToExternal("broken");
+        assertThat(broken.getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(broken.getBody()).containsEntry("error", "PUSH_FAILED");
     }
 
     @Test
-    void fullSyncCoversSuccessConfigurationAndUnexpectedFailure() throws Exception {
+    void fullSyncCoversSuccessMissingRemoteConflictAndFailures() throws Exception {
         when(externalGitSyncService.fullSync("alice")).thenReturn("commit-1");
         assertThat(controller.fullSync().getBody())
-                .containsEntry("success", true).containsEntry("commitId", "commit-1");
+                .containsEntry("success", true)
+                .containsEntry("status", "INTEGRATED")
+                .containsEntry("commitId", "commit-1");
 
-        when(externalGitSyncService.fullSync("alice")).thenThrow(new IllegalStateException("disabled"));
-        assertThat(controller.fullSync().getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        when(externalGitSyncService.fullSync("alice")).thenReturn(null);
+        assertThat(controller.fullSync().getBody())
+                .containsEntry("status", "NO_REMOTE_BRANCH");
 
-        doThrow(new IOException("network")).when(externalGitSyncService).fullSync("alice");
-        assertThat(controller.fullSync().getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        when(externalGitSyncService.fullSync("alice"))
+                .thenThrow(new ExternalGitSyncService.ExternalSyncConflictException(
+                        "conflict"));
+        var conflict = controller.fullSync();
+        assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(conflict.getBody())
+                .containsEntry("success", false)
+                .containsEntry("error", "MERGE_CONFLICT");
+
+        when(externalGitSyncService.fullSync("alice"))
+                .thenThrow(new IllegalStateException("disabled"));
+        assertThat(controller.fullSync().getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        doThrow(new IOException("network"))
+                .when(externalGitSyncService).fullSync("alice");
+        var failure = controller.fullSync();
+        assertThat(failure.getStatusCode())
+                .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(failure.getBody()).containsEntry("error", "FULL_SYNC_FAILED");
     }
 
     @Test
-    void statusMapsEveryServiceField() {
+    void statusMapsEveryNonSecretServiceField() {
         Instant fetchAt = Instant.parse("2026-01-01T00:00:00Z");
         Instant pushAt = Instant.parse("2026-01-02T00:00:00Z");
-        when(externalGitSyncService.getStatus()).thenReturn(new ExternalGitSyncService.ExternalSyncStatus(
-                true, "https://example.invalid/repo.git", fetchAt, pushAt, "abc"));
+        when(externalGitSyncService.getStatus()).thenReturn(
+                new ExternalGitSyncService.ExternalSyncStatus(
+                        true,
+                        "https://example.invalid/repo.git",
+                        true,
+                        fetchAt,
+                        pushAt,
+                        "abc"));
 
         assertThat(controller.getStatus().getBody())
                 .containsEntry("externalEnabled", true)
                 .containsEntry("externalUrl", "https://example.invalid/repo.git")
+                .containsEntry("credentialConfigured", true)
                 .containsEntry("lastFetchAt", fetchAt)
                 .containsEntry("lastPushAt", pushAt)
-                .containsEntry("lastFetchCommit", "abc");
+                .containsEntry("lastFetchCommit", "abc")
+                .doesNotContainKeys("token", "externalAuthToken");
     }
 
     @Test
@@ -114,7 +166,8 @@ class ExternalSyncControllerBranchCoverageTest {
         SystemRepository repository = repository();
         when(systemRepositoryService.getPrimaryRepository()).thenReturn(repository);
 
-        var full = controller.configure("https://example.invalid/repo.git", "EXTERNAL_CANONICAL");
+        var full = controller.configure(
+                "https://example.invalid/repo.git", "EXTERNAL_CANONICAL");
         assertThat(full.getBody())
                 .containsEntry("success", true)
                 .containsEntry("topologyMode", "EXTERNAL_CANONICAL")
@@ -127,12 +180,16 @@ class ExternalSyncControllerBranchCoverageTest {
                 .containsEntry("externalUrl", "existing")
                 .containsEntry("topologyMode", "INTERNAL_SHARED");
 
-        assertThat(controller.configure(null, "NOT_A_MODE").getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(controller.configure(null, "NOT_A_MODE").getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
 
         doThrow(new IllegalStateException("database unavailable"))
                 .when(systemRepositoryService).save(repository);
-        assertThat(controller.configure("new-url", "INTERNAL_SHARED").getStatusCode())
+        var failure = controller.configure("new-url", "INTERNAL_SHARED");
+        assertThat(failure.getStatusCode())
                 .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(failure.getBody())
+                .containsEntry("error", "CONFIGURATION_FAILED");
     }
 
     private static SystemRepository repository() {
