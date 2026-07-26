@@ -7,6 +7,7 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.eclipse.jgit.transport.URIish;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /** REST API for conflict-safe external Git repository synchronization. */
@@ -149,12 +151,8 @@ public class ExternalSyncController {
             SystemRepository systemRepository = systemRepositoryService.getPrimaryRepository();
 
             if (externalUrl != null) {
-                // Parse and reject embedded HTTP credentials before the value can
-                // reach persistence, logs, status responses, or JGit transport.
-                String validatedUrl = ExternalGitSyncService
-                        .validateExternalUrl(externalUrl)
-                        .toPrivateString();
-                systemRepository.setExternalUrl(validatedUrl);
+                validateExternalUrl(externalUrl);
+                systemRepository.setExternalUrl(externalUrl.strip());
             }
             if (topologyMode != null) {
                 systemRepository.setTopologyMode(
@@ -175,6 +173,28 @@ public class ExternalSyncController {
         } catch (Exception exception) {
             log.error("External Git configuration failed", exception);
             return operationFailure("CONFIGURATION_FAILED");
+        }
+    }
+
+    private static void validateExternalUrl(String externalUrl) {
+        if (externalUrl.isBlank()) {
+            throw new IllegalArgumentException("External URL is not configured");
+        }
+        try {
+            URIish uri = new URIish(externalUrl.strip());
+            String scheme = uri.getScheme() == null
+                    ? ""
+                    : uri.getScheme().toLowerCase(Locale.ROOT);
+            boolean httpUserInfo = ("http".equals(scheme) || "https".equals(scheme))
+                    && uri.getUser() != null;
+            if (uri.getPass() != null || httpUserInfo) {
+                throw new IllegalArgumentException(
+                        "External Git URL must not contain credentials or HTTP user information");
+            }
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("External Git URL is invalid", exception);
         }
     }
 
