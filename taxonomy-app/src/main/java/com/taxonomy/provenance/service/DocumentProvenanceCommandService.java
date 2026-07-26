@@ -58,27 +58,32 @@ public class DocumentProvenanceCommandService {
     /** Create the logical artifact and its concrete version in one transaction. */
     @Transactional
     public RegistrationResult registerDocument(SourceType sourceType,
-                                               String title,
-                                               String mimeType,
-                                               String contentHash) {
+                                                String title,
+                                                String mimeType,
+                                                String contentHash) {
         if (sourceType == null) {
-            throw new ProvenanceCommandException("SOURCE_TYPE_REQUIRED", "Source type is required");
+            throw new ProvenanceCommandException(
+                    "SOURCE_TYPE_REQUIRED", "Source type is required");
         }
         if (title == null || title.isBlank()) {
-            throw new ProvenanceCommandException("SOURCE_TITLE_REQUIRED", "Source title is required");
+            throw new ProvenanceCommandException(
+                    "SOURCE_TITLE_REQUIRED", "Source title is required");
         }
         if (title.length() > 500) {
-            throw new ProvenanceCommandException("SOURCE_TITLE_TOO_LARGE",
-                    "Source title exceeds 500 characters");
+            throw new ProvenanceCommandException(
+                    "SOURCE_TITLE_TOO_LARGE", "Source title exceeds 500 characters");
         }
         if (mimeType == null || mimeType.isBlank()) {
-            throw new ProvenanceCommandException("MIME_TYPE_REQUIRED", "MIME type is required");
+            throw new ProvenanceCommandException(
+                    "MIME_TYPE_REQUIRED", "MIME type is required");
         }
         if (contentHash == null || contentHash.isBlank()) {
-            throw new ProvenanceCommandException("CONTENT_HASH_REQUIRED", "Content hash is required");
+            throw new ProvenanceCommandException(
+                    "CONTENT_HASH_REQUIRED", "Content hash is required");
         }
 
-        SourceArtifact artifact = artifactRepository.save(new SourceArtifact(sourceType, title));
+        SourceArtifact artifact = artifactRepository.save(
+                new SourceArtifact(sourceType, title));
         SourceVersion version = new SourceVersion(artifact);
         version.setMimeType(mimeType);
         version.setContentHash(contentHash);
@@ -89,19 +94,22 @@ public class DocumentProvenanceCommandService {
 
     /**
      * Validate and materialize all selected candidates atomically.
-     * Repeating the same command is idempotent because logical requirement IDs
-     * are derived from source-version identity and normalized candidate content.
+     *
+     * <p>A pessimistic lock on the source version serializes concurrent retries
+     * for the same document version. Stable content-derived identities then make
+     * the operation idempotent without requiring an unsafe schema constraint to
+     * be added to installations that may already contain historic duplicates.</p>
      */
     @Transactional
     public ConfirmationResult confirmCandidates(long artifactId,
-                                                long versionId,
-                                                List<CandidateInput> requestedCandidates) {
+                                                 long versionId,
+                                                 List<CandidateInput> requestedCandidates) {
         List<CandidateInput> candidates = validateCandidates(requestedCandidates);
 
         SourceArtifact artifact = artifactRepository.findById(artifactId)
                 .orElseThrow(() -> new ProvenanceCommandException(
                         "SOURCE_NOT_FOUND", "Source artifact was not found"));
-        SourceVersion version = versionRepository.findById(versionId)
+        SourceVersion version = versionRepository.findByIdForUpdate(versionId)
                 .orElseThrow(() -> new ProvenanceCommandException(
                         "SOURCE_NOT_FOUND", "Source version was not found"));
 
@@ -121,8 +129,12 @@ public class DocumentProvenanceCommandService {
             String requirementId = "DOC-" + artifactId + "-" + versionId + "-" + fragmentHash;
 
             if (!identitiesInRequest.add(requirementId)
-                    || linkRepository.existsByRequirementIdAndSourceArtifactIdAndSourceVersionIdAndLinkType(
-                            requirementId, artifactId, versionId, LinkType.EXTRACTED_FROM)) {
+                    || linkRepository
+                    .existsByRequirementIdAndSourceArtifactIdAndSourceVersionIdAndLinkType(
+                            requirementId,
+                            artifactId,
+                            versionId,
+                            LinkType.EXTRACTED_FROM)) {
                 alreadyLinked++;
                 continue;
             }
@@ -143,27 +155,34 @@ public class DocumentProvenanceCommandService {
         return new ConfirmationResult(linked, alreadyLinked);
     }
 
-    private List<CandidateInput> validateCandidates(List<CandidateInput> requestedCandidates) {
+    private List<CandidateInput> validateCandidates(
+            List<CandidateInput> requestedCandidates) {
         if (requestedCandidates == null || requestedCandidates.isEmpty()) {
-            throw new ProvenanceCommandException("NO_CANDIDATES", "No candidates were selected");
+            throw new ProvenanceCommandException(
+                    "NO_CANDIDATES", "No candidates were selected");
         }
         if (requestedCandidates.size() > limits.getMaxCandidates()) {
             throw new DocumentLimitException(
                     "CANDIDATE_LIMIT_EXCEEDED",
-                    "Candidate count exceeds the configured limit of " + limits.getMaxCandidates());
+                    "Candidate count exceeds the configured limit of "
+                            + limits.getMaxCandidates());
         }
 
         List<CandidateInput> validated = new ArrayList<>(requestedCandidates.size());
         for (CandidateInput candidate : requestedCandidates) {
-            if (candidate == null || candidate.text() == null || candidate.text().isBlank()) {
+            if (candidate == null
+                    || candidate.text() == null
+                    || candidate.text().isBlank()) {
                 throw new ProvenanceCommandException(
-                        "CANDIDATE_TEXT_REQUIRED", "Every candidate must contain text");
+                        "CANDIDATE_TEXT_REQUIRED",
+                        "Every candidate must contain text");
             }
             String text = candidate.text().strip();
             if (text.length() > MAX_CANDIDATE_TEXT_LENGTH) {
                 throw new DocumentLimitException(
                         "CANDIDATE_TEXT_TOO_LARGE",
-                        "A requirement candidate exceeds " + MAX_CANDIDATE_TEXT_LENGTH + " characters");
+                        "A requirement candidate exceeds "
+                                + MAX_CANDIDATE_TEXT_LENGTH + " characters");
             }
 
             String section = candidate.sectionHeading();
@@ -174,7 +193,8 @@ public class DocumentProvenanceCommandService {
                 } else if (section.length() > MAX_SECTION_PATH_LENGTH) {
                     throw new DocumentLimitException(
                             "CANDIDATE_SECTION_TOO_LARGE",
-                            "A candidate section path exceeds " + MAX_SECTION_PATH_LENGTH + " characters");
+                            "A candidate section path exceeds "
+                                    + MAX_SECTION_PATH_LENGTH + " characters");
                 }
             }
             validated.add(new CandidateInput(text, section));
@@ -185,9 +205,13 @@ public class DocumentProvenanceCommandService {
     private static String candidateHash(CandidateInput candidate) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            String canonical = (candidate.sectionHeading() == null ? "" : candidate.sectionHeading())
-                    + '\u0000' + candidate.text();
-            return HexFormat.of().formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));
+            String canonical = (candidate.sectionHeading() == null
+                    ? ""
+                    : candidate.sectionHeading())
+                    + '\u0000'
+                    + candidate.text();
+            return HexFormat.of().formatHex(
+                    digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is not available", impossible);
         }
