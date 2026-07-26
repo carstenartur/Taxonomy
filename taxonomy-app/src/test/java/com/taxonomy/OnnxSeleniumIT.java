@@ -234,7 +234,7 @@ class OnnxSeleniumIT {
                         .findFirst()
                         .orElse(null));
 
-        assertThat(highlightedHeader).isDisplayed();
+        assertThat(highlightedHeader.isDisplayed()).isTrue();
         assertThat(highlightedHeader.findElement(By.xpath(".."))
                 .getAttribute("data-code")).isEqualTo(code);
     }
