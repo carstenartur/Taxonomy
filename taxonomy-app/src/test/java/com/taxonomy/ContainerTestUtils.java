@@ -23,8 +23,11 @@ import java.util.concurrent.Future;
 /** Shared utilities for container-based integration tests. */
 final class ContainerTestUtils {
 
-    /** Deterministic credential used only inside isolated test containers. */
-    static final String TEST_ADMIN_PASSWORD = "Taxonomy-Test-Admin-2026!";
+    /**
+     * Deterministic credential used only inside isolated disposable test
+     * containers. Product code has no corresponding default.
+     */
+    static final String TEST_ADMIN_PASSWORD = "admin";
 
     private static final Future<String> SHARED_IMAGE = new ImageFromDockerfile(
             "taxonomy-app-it", false)
