@@ -12,19 +12,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 
 /** Links a requirement to one or more source materials. */
 @Entity
-@Table(name = "requirement_source_link",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_requirement_source_identity",
-                columnNames = {
-                        "requirement_id",
-                        "source_artifact_id",
-                        "source_version_id",
-                        "link_type"
-                }))
+@Table(name = "requirement_source_link")
 public class RequirementSourceLink {
 
     @Id
