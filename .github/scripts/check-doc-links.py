@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Check local Markdown links and image references.
+"""Check repository-owned local Markdown links and image references.
 
-This intentionally checks only repository-local references. External URLs are
-ignored so CI does not fail because of transient remote outages.
+External URLs are ignored so CI does not fail because of transient remote
+outages. Generated output and dependency trees are excluded because their
+Markdown files are not part of Taxonomy's documentation contract.
 """
 
 from __future__ import annotations
@@ -29,17 +30,50 @@ EXTERNAL_PREFIXES = (
 )
 
 DEFAULT_ROOTS = ("README.md", "CITATION.md", "RESEARCH.md", "docs", ".github")
+IGNORED_DIRECTORY_NAMES = frozenset({
+    ".git",
+    ".gradle",
+    ".pytest_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "target",
+    "venv",
+})
+
+
+def is_ignored_path(root: Path, path: Path) -> bool:
+    """Return whether *path* lives in a generated or third-party directory."""
+    try:
+        relative = path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return any(part in IGNORED_DIRECTORY_NAMES for part in relative.parts)
 
 
 def iter_markdown_files(root: Path, inputs: list[str]) -> list[Path]:
-    files: list[Path] = []
+    """Collect repository-owned Markdown files without descending into ignored trees."""
+    files: set[Path] = set()
     for item in inputs:
         path = root / item
+        if is_ignored_path(root, path):
+            continue
         if path.is_file() and path.suffix.lower() == ".md":
-            files.append(path)
+            files.add(path)
         elif path.is_dir():
-            files.extend(sorted(path.rglob("*.md")))
-    return sorted(set(files))
+            for directory, child_directories, file_names in os.walk(path):
+                child_directories[:] = sorted(
+                    name for name in child_directories
+                    if name not in IGNORED_DIRECTORY_NAMES
+                )
+                directory_path = Path(directory)
+                for file_name in sorted(file_names):
+                    candidate = directory_path / file_name
+                    if candidate.suffix.lower() == ".md" and not is_ignored_path(root, candidate):
+                        files.add(candidate)
+    return sorted(files)
 
 
 def is_external_or_runtime_route(target: str) -> bool:
@@ -78,13 +112,9 @@ def collect_targets(line: str) -> list[str]:
     return targets
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("paths", nargs="*", default=list(DEFAULT_ROOTS))
-    args = parser.parse_args()
-
-    repo_root = Path.cwd().resolve()
-    markdown_files = iter_markdown_files(repo_root, args.paths)
+def check_documentation_links(repo_root: Path, inputs: list[str]) -> tuple[list[Path], list[str]]:
+    """Return the checked Markdown files and all invalid repository-local targets."""
+    markdown_files = iter_markdown_files(repo_root, inputs)
     errors: list[str] = []
 
     for md_file in markdown_files:
@@ -100,10 +130,7 @@ def main() -> int:
                 target = normalize_target(raw_target)
                 if not target or is_external_or_runtime_route(target):
                     continue
-                if target.startswith("/") and (target.startswith("/docs/") or target.startswith("/.github/")):
-                    resolved = resolve_local_target(repo_root, md_file, target)
-                else:
-                    resolved = resolve_local_target(repo_root, md_file, target)
+                resolved = resolve_local_target(repo_root, md_file, target)
                 try:
                     resolved.relative_to(repo_root)
                 except ValueError:
@@ -111,6 +138,17 @@ def main() -> int:
                     continue
                 if not resolved.exists():
                     errors.append(f"{rel_md}:{line_no}: missing local target: {raw_target}")
+
+    return markdown_files, errors
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("paths", nargs="*", default=list(DEFAULT_ROOTS))
+    args = parser.parse_args()
+
+    repo_root = Path.cwd().resolve()
+    markdown_files, errors = check_documentation_links(repo_root, args.paths)
 
     if errors:
         print("Documentation link check failed:", file=sys.stderr)
