@@ -18,7 +18,8 @@ public class I18nConfig {
         ms.setBasenames(
                 "classpath:i18n/messages",
                 "classpath:i18n/messages_document_import",
-                "classpath:i18n/messages_jgit_storage");
+                "classpath:i18n/messages_jgit_storage",
+                "classpath:i18n/messages_observability");
         ms.setDefaultEncoding("UTF-8");
         ms.setFallbackToSystemLocale(false);
         return ms;

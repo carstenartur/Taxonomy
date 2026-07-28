@@ -44,6 +44,12 @@ COPY LICENSE NOTICE THIRD-PARTY-NOTICES.md ./
 RUN --mount=type=cache,target=/root/.m2/repository \
     ./mvnw -q -DskipTests package
 
+# ---- optional OpenTelemetry Java agent stage ----
+# Tag retained for automated update discovery; the multi-platform index digest is
+# authoritative. The agent is copied into the runtime image but is never attached
+# by default. Operators opt in explicitly through JAVA_TOOL_OPTIONS.
+FROM otel/autoinstrumentation-java:2.28.1@sha256:41b92978e61d13d4f32c6eb20c6ae7821a73ffdec8539bc6a73858e884b411d8 AS opentelemetry
+
 # ---- runtime stage ----
 # Tag retained for readability; digest prevents mutable-tag supply-chain drift.
 FROM eclipse-temurin:21-jre-jammy@sha256:2c2088115d82ba0022ccf8080f233d2398b7ad3ba3308ed45e860caf511f6b95
@@ -72,8 +78,11 @@ RUN apt-get update \
     && useradd --system --gid taxonomy --home-dir /app --shell /usr/sbin/nologin taxonomy
 
 WORKDIR /app
-RUN mkdir -p /app/data && chown -R taxonomy:taxonomy /app
+RUN mkdir -p /app/data /opt/opentelemetry \
+    && chown -R taxonomy:taxonomy /app /opt/opentelemetry
 COPY --from=build --chown=taxonomy:taxonomy /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
+COPY --from=opentelemetry --chown=taxonomy:taxonomy /javaagent.jar /opt/opentelemetry/opentelemetry-javaagent.jar
+COPY --chown=taxonomy:taxonomy observability/javaagent.properties /opt/opentelemetry/javaagent.properties
 
 # Port 8080 is for INTERNAL communication only (e.g. Caddy reverse proxy inside Docker network).
 # NEVER publish this port to the internet. Use docker-compose.prod.yml for HTTPS on port 443.
@@ -95,4 +104,6 @@ STOPSIGNAL SIGTERM
 # exec replaces the shell with the JVM so Java becomes PID 1 and receives
 # Docker's SIGTERM directly. This allows Spring, HikariCP, HSQLDB and Lucene to
 # close cleanly before a replacement container opens the persisted data again.
+# The OpenTelemetry agent is deliberately absent from this command. It is only
+# attached when an operator sets JAVA_TOOL_OPTIONS=-javaagent:/opt/opentelemetry/opentelemetry-javaagent.jar.
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

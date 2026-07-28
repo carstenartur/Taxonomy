@@ -5,6 +5,11 @@ Taxonomy Architecture Analyzer incorporates components from the following third-
 > **SBOM:** A machine-readable Software Bill of Materials (CycloneDX format) is generated
 > at build time via `mvn package`. The SBOM files are located at
 > `target/taxonomy-sbom.json` and `target/taxonomy-sbom.xml`.
+>
+> The optional OpenTelemetry Java agent is copied into the container image rather
+> than added as a Maven runtime dependency. The optional Collector and Jaeger run
+> as separate containers. Include all three in container-level SBOM generation and
+> vulnerability scanning in addition to the Maven SBOM.
 
 ---
 
@@ -12,7 +17,7 @@ Taxonomy Architecture Analyzer incorporates components from the following third-
 
 | License | Components | Government Use |
 |---|---|---|
-| Apache License 2.0 | Spring Boot, Apache POI, Apache PDFBox, Lucene, Hibernate, springdoc, DJL, Micrometer, JaCoCo | ✅ Permissive, no restrictions |
+| Apache License 2.0 | Spring Boot, Apache POI, Apache PDFBox, Lucene, Hibernate, springdoc, DJL, Micrometer, OpenTelemetry, Jaeger, JaCoCo | ✅ Permissive, no restrictions |
 | MIT License | Bootstrap, jsPDF, svg2pdf.js, ONNX Runtime, CodeMirror | ✅ Permissive, no restrictions |
 | ISC License | D3.js | ✅ Permissive, no restrictions |
 | BSD Licenses | HSQLDB, PostgreSQL JDBC, XStream, Flexmark-java | ✅ Permissive, no restrictions |
@@ -60,6 +65,20 @@ https://djl.ai/
 ### Micrometer
 Copyright © VMware, Inc.
 https://micrometer.io/
+
+### OpenTelemetry Java instrumentation and Collector
+Copyright © OpenTelemetry Authors
+https://opentelemetry.io/
+
+> **Note:** The Java agent is present in the container image but disabled by
+> default. The Collector is used only by the optional observability deployment.
+
+### Jaeger
+Copyright © The Jaeger Authors
+https://www.jaegertracing.io/
+
+> **Note:** Jaeger is an optional trace backend and is not included in the
+> Taxonomy application runtime classpath.
 
 ### Spring Security
 Copyright © Pivotal Software, Inc. / VMware, Inc.
@@ -199,13 +218,19 @@ Output files:
 - `target/taxonomy-sbom.json` — JSON format (machine-readable)
 - `target/taxonomy-sbom.xml` — XML format (CycloneDX standard)
 
-The SBOM includes:
-- All direct and transitive dependencies
+The Maven SBOM includes:
+- All direct and transitive Maven dependencies
 - Package names, versions, and checksums
 - License information per dependency
 - Dependency tree structure
 
-Use the SBOM for:
+Additionally generate or inspect a container-level SBOM for:
+- the Java runtime base image;
+- the bundled OpenTelemetry Java agent;
+- the optional OpenTelemetry Collector image;
+- the optional Jaeger image.
+
+Use the SBOMs for:
 - **BSI IT-Grundschutz** software supply chain requirements
 - **Vulnerability scanning** (import into tools like Dependency-Track)
 - **License compliance** audits for government procurement

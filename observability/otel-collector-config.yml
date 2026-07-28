@@ -1,0 +1,85 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+
+  # Defence in depth: the application and Java agent are configured not to
+  # capture content, and the Collector removes sensitive/unbounded fields again
+  # before a backend can persist them. Span and event contexts are separated
+  # explicitly so OTTL parsing does not depend on context inference.
+  transform/privacy:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - delete_key(attributes, "url.query")
+          - delete_key(attributes, "http.target")
+          - delete_key(attributes, "http.url")
+          - delete_key(attributes, "enduser.id")
+          - delete_key(attributes, "enduser.role")
+          - delete_key(attributes, "enduser.scope")
+          - delete_key(attributes, "user.id")
+          - delete_key(attributes, "user.email")
+          - delete_key(attributes, "gen_ai.prompt")
+          - delete_key(attributes, "gen_ai.completion")
+          - delete_key(attributes, "gen_ai.request.prompt")
+          - delete_key(attributes, "gen_ai.response.text")
+          - delete_key(attributes, "gen_ai.input.messages")
+          - delete_key(attributes, "gen_ai.output.messages")
+          - delete_key(attributes, "llm.prompt")
+          - delete_key(attributes, "llm.response")
+          - delete_key(attributes, "taxonomy.workspace.name")
+          - delete_key(attributes, "taxonomy.repository.name")
+          - delete_key(attributes, "taxonomy.dsl.source")
+          - delete_key(attributes, "taxonomy.document.filename")
+          - limit(attributes, 64, [])
+          - truncate_all(attributes, 2048)
+      - context: spanevent
+        statements:
+          - delete_key(attributes, "exception.message")
+          - delete_key(attributes, "exception.stacktrace")
+          - limit(attributes, 32, [])
+          - truncate_all(attributes, 2048)
+
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+      queue_size: 512
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 5s
+      max_elapsed_time: 30s
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/privacy, batch]
+      exporters: [otlp/jaeger]
