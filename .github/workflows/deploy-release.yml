@@ -1,6 +1,11 @@
 name: Release Workflow
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/release-request.json'
   workflow_dispatch:
     inputs:
       release_version:
@@ -44,6 +49,41 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
+      - name: Resolve release parameters
+        id: release_parameters
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
+          INPUT_NEXT_DEVELOPMENT_VERSION: ${{ inputs.next_development_version }}
+          INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          if os.environ["EVENT_NAME"] == "push":
+              request_path = Path(".github/release-request.json")
+              request = json.loads(request_path.read_text(encoding="utf-8"))
+              release_version = request["release_version"]
+              next_version = request.get("next_development_version", "")
+              skip_tests = str(bool(request.get("skip_tests", False))).lower()
+              dry_run = str(bool(request.get("dry_run", False))).lower()
+          else:
+              release_version = os.environ["INPUT_RELEASE_VERSION"]
+              next_version = os.environ["INPUT_NEXT_DEVELOPMENT_VERSION"]
+              skip_tests = os.environ["INPUT_SKIP_TESTS"] or "false"
+              dry_run = os.environ["INPUT_DRY_RUN"] or "false"
+
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as output:
+              print(f"release_version={release_version}", file=output)
+              print(f"next_development_version={next_version}", file=output)
+              print(f"skip_tests={skip_tests}", file=output)
+              print(f"dry_run={dry_run}", file=output)
+          PY
+
       - name: Set up JDK 21
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
@@ -71,10 +111,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.release_version }}
-          NEXT_VERSION_INPUT: ${{ inputs.next_development_version }}
-          SKIP_TESTS: ${{ inputs.skip_tests }}
-          DRY_RUN: ${{ inputs.dry_run }}
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+          NEXT_VERSION_INPUT: ${{ steps.release_parameters.outputs.next_development_version }}
+          SKIP_TESTS: ${{ steps.release_parameters.outputs.skip_tests }}
+          DRY_RUN: ${{ steps.release_parameters.outputs.dry_run }}
           SOURCE_BRANCH: ${{ github.ref_name }}
           METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
