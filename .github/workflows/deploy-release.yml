@@ -50,7 +50,7 @@ jobs:
           token: ${{ github.token }}
 
       - name: Resolve release parameters
-        id: release-parameters
+        id: release_parameters
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
@@ -111,10 +111,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ steps.release-parameters.outputs.release_version }}
-          NEXT_VERSION_INPUT: ${{ steps.release-parameters.outputs.next_development_version }}
-          SKIP_TESTS: ${{ steps.release-parameters.outputs.skip_tests }}
-          DRY_RUN: ${{ steps.release-parameters.outputs.dry_run }}
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+          NEXT_VERSION_INPUT: ${{ steps.release_parameters.outputs.next_development_version }}
+          SKIP_TESTS: ${{ steps.release_parameters.outputs.skip_tests }}
+          DRY_RUN: ${{ steps.release_parameters.outputs.dry_run }}
           SOURCE_BRANCH: ${{ github.ref_name }}
           METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
