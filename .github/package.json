@@ -6,7 +6,8 @@
     "node": "24.x"
   },
   "scripts": {
-    "verify:ui": "node scripts/run-ui-suite.mjs"
+    "test:ui-evidence-policy": "node --test scripts/ui-evidence-policy.test.mjs",
+    "verify:ui": "npm run test:ui-evidence-policy && node scripts/run-ui-suite.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
