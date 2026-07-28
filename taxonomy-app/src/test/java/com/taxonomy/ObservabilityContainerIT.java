@@ -45,7 +45,8 @@ class ObservabilityContainerIT {
             "eclipse-temurin:21-jre-jammy@sha256:"
                     + "2c2088115d82ba0022ccf8080f233d2398b7ad3ba3308ed45e860caf511f6b95";
     private static final String COLLECTOR_IMAGE =
-            "otel/opentelemetry-collector-contrib:0.157.0";
+            "otel/opentelemetry-collector-contrib:0.157.0@sha256:"
+                    + "f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6";
     private static final String COLLECTOR_ALIAS = "otel-collector.test";
     private static final String APP_ALIAS = "taxonomy-observability.test";
     private static final String BASIC_AUTH = "Basic "
@@ -71,7 +72,6 @@ class ObservabilityContainerIT {
         collector = new GenericContainer<>(DockerImageName.parse(COLLECTOR_IMAGE))
                 .withNetwork(network)
                 .withNetworkAliases(COLLECTOR_ALIAS)
-                .withExposedPorts(4318)
                 .withCopyFileToContainer(
                         MountableFile.forClasspathResource(
                                 "observability/otel-collector-test-config.yml"),
@@ -153,8 +153,10 @@ class ObservabilityContainerIT {
 
     private Future<String> observedApplicationImage() throws Exception {
         Path root = repositoryRoot();
+        Path targetDir = root.resolve("target");
+        Files.createDirectories(targetDir);
         generatedDockerfile = Files.createTempFile(
-                root.resolve("target"), "Dockerfile-observability-it-", ".dockerfile");
+                targetDir, "Dockerfile-observability-it-", ".dockerfile");
         Files.writeString(generatedDockerfile, """
                 FROM %s AS opentelemetry
                 FROM %s
