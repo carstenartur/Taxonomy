@@ -7,7 +7,8 @@
   },
   "scripts": {
     "test:ui-evidence-policy": "node --test scripts/ui-evidence-policy.test.mjs",
-    "verify:ui": "npm run test:ui-evidence-policy && node scripts/run-ui-suite.mjs"
+    "test:ui-suite-plan": "node --test scripts/ui-suite-plan.test.mjs",
+    "verify:ui": "npm run test:ui-evidence-policy && npm run test:ui-suite-plan && node scripts/run-ui-suite.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
