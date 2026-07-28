@@ -1,0 +1,62 @@
+# Version-control and IDE metadata
+.git
+.github
+.idea
+.vscode
+.settings
+.classpath
+.project
+*.iml
+
+# Maven and generated build output
+**/target
+**/.flattened-pom.xml
+**/dependency-reduced-pom.xml
+
+# Frontend and browser-test dependencies/output
+**/node_modules
+**/playwright-report
+**/test-results
+**/screenshots
+**/videos
+**/traces
+
+# QA, coverage and generated evidence
+artifacts
+reports
+qa-evidence
+ui-evidence
+**/jacoco*.exec
+**/jacoco*.xml
+**/surefire-reports
+**/failsafe-reports
+
+# Local application/runtime data and model caches
+data
+models
+model-cache
+.cache
+**/.cache
+*.db
+*.mv.db
+*.trace.db
+
+# Logs, temporary files and local secrets
+*.log
+*.tmp
+*.swp
+.env
+.env.*
+!.env.example
+
+# Files not required by the image build
+.gitignore
+.gitattributes
+README*.md
+CONTRIBUTING*.md
+SECURITY*.md
+CHANGELOG*.md
+
+# Keep Docker build inputs explicitly copied by Dockerfile available:
+# pom.xml, mvnw, .mvn/wrapper, module pom.xml/src trees, docs,
+# LICENSE, NOTICE, THIRD-PARTY-NOTICES.md and observability configuration.
