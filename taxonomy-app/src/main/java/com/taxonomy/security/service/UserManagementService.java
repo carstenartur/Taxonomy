@@ -7,6 +7,8 @@ import com.taxonomy.security.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,9 @@ import java.util.Set;
 
 /** Application service for local user and role administration. */
 @Service
+@Profile("!keycloak")
+@ConditionalOnProperty(name = "taxonomy.security.local-users-enabled",
+        havingValue = "true", matchIfMissing = true)
 @Transactional
 public class UserManagementService {
 
