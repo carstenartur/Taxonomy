@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ROLE_ACCOUNTS, openRoleSession } from './ui-role-fixtures.mjs';
 import { createEvidence } from './ui-primary-evidence.mjs';
+import { captureFailureEvidence } from './ui-evidence-policy.mjs';
 import { runBasicWorkflows } from './ui-primary-basic-workflows.mjs';
 import { runProposalWorkflows } from './ui-primary-proposal-workflows.mjs';
 import { runRelationWorkflows } from './ui-primary-relation-workflows.mjs';
@@ -23,6 +24,7 @@ let context;
 let page;
 let account;
 let evidence;
+let failureEvidence = null;
 await mkdir(outputDir, { recursive: true });
 
 try {
@@ -46,9 +48,18 @@ try {
   auditError = error?.stack || String(error);
   process.exitCode = 1;
 } finally {
+  if (auditError && page) {
+    try {
+      failureEvidence = await captureFailureEvidence({
+        page, outputDir, prefix: 'failure', selector: '#mainContent'
+      });
+    } catch (error) {
+      failureEvidence = { error: error?.stack || String(error), files: [] };
+    }
+  }
   const details = evidence ? evidence.report(auditError)
-    : { checks: [], axeFindings: [], screenshots: [], auditError };
-  const report = { role, browserName, ...details };
+    : { checks: [], axeFindings: [], states: [], screenshots: [], auditError };
+  const report = { role, browserName, ...details, failureEvidence };
   await writeFile(path.join(outputDir, 'report.json'),
     `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   if (auditError) console.error(`Primary workflow acceptance failed for ${role}:\n${auditError}`);

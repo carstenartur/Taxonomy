@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { openRoleSession, ROLE_ACCOUNTS } from './ui-role-fixtures.mjs';
+import { openRoleSession } from './ui-role-fixtures.mjs';
 import { createRoleStateEvidence } from './ui-role-state-evidence.mjs';
+import { captureFailureEvidence } from './ui-evidence-policy.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
@@ -40,6 +41,8 @@ let auditError = null;
 let browser;
 let context;
 let page;
+let evidence;
+let failureEvidence = null;
 await mkdir(outputDir, { recursive: true });
 
 try {
@@ -69,7 +72,7 @@ try {
   });
   page.on('pageerror', error => consoleErrors.push(error.message));
 
-  const evidence = createRoleStateEvidence({ page, outputDir, checks, findings });
+  evidence = createRoleStateEvidence({ page, outputDir, checks, findings });
   await runRoleStateFlow({
     page, role, zoom, forcedColors, checks, httpFailures,
     externalRequests, consoleErrors, evidence
@@ -78,11 +81,22 @@ try {
   auditError = error?.stack || String(error);
   process.exitCode = 1;
 } finally {
+  if (auditError && page) {
+    try {
+      failureEvidence = await captureFailureEvidence({ page, outputDir, prefix: 'failure' });
+    } catch (error) {
+      failureEvidence = { error: error?.stack || String(error), files: [] };
+    }
+  }
   const report = {
     profileId, browserName, role,
     physicalViewport: { width: physicalWidth, height: physicalHeight },
-    effectiveViewport, zoom, forcedColors, checks, findings,
-    externalRequests, httpFailures, consoleErrors, auditError
+    effectiveViewport, zoom, forcedColors,
+    evidenceMode: evidence?.evidenceMode || null,
+    curatedStates: evidence?.curatedStates || [],
+    states: evidence?.states || [],
+    checks, findings, externalRequests, httpFailures, consoleErrors,
+    auditError, failureEvidence
   };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   if (auditError) {
