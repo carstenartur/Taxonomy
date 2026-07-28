@@ -1,6 +1,5 @@
-# Version-control and repository automation data are not Docker build inputs.
+# Version-control history is not a Docker build input.
 .git
-.github
 
 # Local IDE and operating-system metadata.
 .idea
@@ -14,21 +13,14 @@ target
 **/target
 node_modules
 **/node_modules
+.github/playwright-report
+.github/test-results
 playwright-report
 test-results
 
-# Large local model/data caches and runtime state.
-models
-data
-*.db
-*.log
-*.tmp
-
-# Local archives and package output.
-*.zip
-*.tar
-*.tar.gz
-*.tgz
+# Large root-level model caches and runtime state.
+/models
+/data
 
 # Local deployment overrides and secrets must never enter the build context.
 .env
