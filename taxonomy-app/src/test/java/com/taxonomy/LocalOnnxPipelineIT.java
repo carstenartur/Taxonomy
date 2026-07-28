@@ -33,6 +33,9 @@ class LocalOnnxPipelineIT {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+    private static final Duration SEARCH_INDEX_TIMEOUT = Duration.ofMinutes(2);
+    private static final String FULL_TEXT_SEARCH_PATH =
+            "/api/search?q=Business%20Processes&maxResults=20";
     private static final String BASIC_AUTH = "Basic "
             + Base64.getEncoder().encodeToString(
                     ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
@@ -141,12 +144,28 @@ class LocalOnnxPipelineIT {
     @Test
     @Order(6)
     void fullTextSearchEndpointReturnsResults() throws Exception {
-        HttpResponse<String> response = httpGet(
-                "/api/search?q=Business%20Processes&maxResults=20");
-        assertThat(response.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(response.body());
-        assertThat(body.isArray()).isTrue();
-        assertThat(body.size()).isGreaterThan(0);
+        long deadline = System.nanoTime() + SEARCH_INDEX_TIMEOUT.toNanos();
+        int lastStatus = -1;
+        String lastBody = "";
+
+        while (System.nanoTime() < deadline) {
+            HttpResponse<String> response = httpGet(FULL_TEXT_SEARCH_PATH);
+            lastStatus = response.statusCode();
+            lastBody = response.body();
+            if (lastStatus == 200) {
+                JsonNode body = MAPPER.readTree(lastBody);
+                if (body.isArray() && !body.isEmpty()) {
+                    return;
+                }
+            }
+            Thread.sleep(500);
+        }
+
+        throw new AssertionError(
+                "Full-text index did not become usable within "
+                        + SEARCH_INDEX_TIMEOUT
+                        + "; last status=" + lastStatus
+                        + ", last body=" + lastBody);
     }
 
     @Test
