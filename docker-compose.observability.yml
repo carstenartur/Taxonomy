@@ -1,0 +1,78 @@
+services:
+  taxonomy:
+    build:
+      context: .
+      args:
+        VERSION: ${TAXONOMY_VERSION:-dev}
+    image: taxonomy-observability:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      JAVA_OPTS: >-
+        -XX:+UseSerialGC
+        -Xss512k
+        -XX:MaxRAMPercentage=60.0
+        -Xmx512m
+      JAVA_TOOL_OPTIONS: >-
+        -javaagent:/opt/opentelemetry/opentelemetry-javaagent.jar
+      OTEL_JAVAAGENT_CONFIGURATION_FILE: /opt/opentelemetry/javaagent.properties
+      OTEL_SERVICE_NAME: taxonomy
+      OTEL_RESOURCE_ATTRIBUTES: >-
+        service.namespace=taxonomy,
+        service.version=${TAXONOMY_VERSION:-dev},
+        deployment.environment=local
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_PROPAGATORS: tracecontext,baggage
+      OTEL_TRACES_SAMPLER: always_on
+      OTEL_BSP_MAX_QUEUE_SIZE: "2048"
+      OTEL_BSP_MAX_EXPORT_BATCH_SIZE: "512"
+      OTEL_BSP_SCHEDULE_DELAY: "5000"
+      OTEL_BSP_EXPORT_TIMEOUT: "10000"
+      TAXONOMY_EMBEDDING_ENABLED: "false"
+      TAXONOMY_DATASOURCE_URL: >-
+        jdbc:hsqldb:file:/app/data/taxonomydb;
+        hsqldb.default_table_type=cached;
+        hsqldb.write_delay_millis=0;
+        shutdown=true
+      TAXONOMY_DDL_AUTO: update
+      TAXONOMY_REQUIRE_PASSWORD_CHANGE: "false"
+    volumes:
+      - taxonomy-observability-data:/app/data
+    depends_on:
+      otel-collector:
+        condition: service_started
+    mem_limit: 1g
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.157.0
+    restart: unless-stopped
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    volumes:
+      - ./observability/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
+    expose:
+      - "4317"
+      - "4318"
+      - "13133"
+    depends_on:
+      jaeger:
+        condition: service_started
+    mem_limit: 256m
+
+  jaeger:
+    image: jaegertracing/jaeger:2.20.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:16686:16686"
+    expose:
+      - "4317"
+      - "4318"
+    mem_limit: 512m
+
+volumes:
+  taxonomy-observability-data:
