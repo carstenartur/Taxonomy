@@ -40,6 +40,7 @@
       "name": "Taxonomy application integration test",
       "enabled": true,
       "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
       "secret": "taxonomy-test-secret",
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
@@ -52,13 +53,14 @@
       "attributes": {
         "post.logout.redirect.uris": "http://taxonomy.test:8080/*"
       },
-      "defaultClientScopes": ["profile", "email", "taxonomy-test-roles"]
+      "defaultClientScopes": ["profile", "email", "roles"]
     },
     {
       "clientId": "taxonomy-missing-claims",
       "name": "Missing role claim integration fixture",
       "enabled": true,
       "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
       "secret": "taxonomy-missing-secret",
       "protocol": "openid-connect",
       "standardFlowEnabled": false,
@@ -72,6 +74,7 @@
       "name": "Malformed role claim integration fixture",
       "enabled": true,
       "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
       "secret": "taxonomy-malformed-secret",
       "protocol": "openid-connect",
       "standardFlowEnabled": false,
@@ -104,6 +107,7 @@
       "lastName": "Administrator",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
       "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"]
     },
@@ -114,6 +118,7 @@
       "lastName": "Architect",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{ "type": "password", "value": "architect", "temporary": false }],
       "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT"]
     },
@@ -124,6 +129,7 @@
       "lastName": "User",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{ "type": "password", "value": "user", "temporary": false }],
       "realmRoles": ["ROLE_USER"]
     },
@@ -134,6 +140,7 @@
       "lastName": "Role",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{ "type": "password", "value": "unsupported", "temporary": false }],
       "realmRoles": ["ROLE_UNSUPPORTED"]
     }
