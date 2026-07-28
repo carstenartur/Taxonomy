@@ -315,7 +315,26 @@ class OnnxSeleniumIT {
                         + "arguments[0].dispatchEvent(new Event('input'));",
                 searchInput,
                 query);
-        driver.findElement(By.id("searchBtn")).click();
+
+        WebElement searchButton = driver.findElement(By.id("searchBtn"));
+        ((JavascriptExecutor) driver).executeScript(
+                "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                searchButton);
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(currentDriver -> {
+                    Boolean unobscured = (Boolean) ((JavascriptExecutor) currentDriver)
+                            .executeScript(
+                                    "const button=arguments[0];"
+                                            + "const rect=button.getBoundingClientRect();"
+                                            + "const top=document.elementFromPoint("
+                                            + "rect.left+rect.width/2,rect.top+rect.height/2);"
+                                            + "return top===button || button.contains(top);",
+                                    searchButton);
+                    return Boolean.TRUE.equals(unobscured) && searchButton.isEnabled()
+                            ? searchButton
+                            : null;
+                })
+                .click();
     }
 
     private void waitForSearchResults() {
