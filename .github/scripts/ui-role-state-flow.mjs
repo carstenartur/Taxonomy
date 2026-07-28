@@ -122,6 +122,37 @@ export async function runRoleStateFlow({
   passed(`reflow at ${zoom}x`);
   if (forcedColors) passed('forced-colors media state');
 
+  const taskHierarchy = await page.evaluate(() => {
+    const left = document.getElementById('leftPanel');
+    const right = document.getElementById('rightPanel');
+    const navigation = document.getElementById('mainNavTabs');
+    const visibleLinks = Array.from(navigation?.querySelectorAll('.nav-link') || [])
+      .filter(link => getComputedStyle(link).display !== 'none');
+    const maxLinkHeight = visibleLinks.reduce((maximum, link) =>
+      Math.max(maximum, link.getBoundingClientRect().height), 0);
+    return {
+      viewportWidth: window.innerWidth,
+      leftTop: left?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+      rightTop: right?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+      navigationHeight: navigation?.getBoundingClientRect().height ?? 0,
+      maxLinkHeight,
+      navigationScrollWidth: navigation?.scrollWidth ?? 0,
+      navigationClientWidth: navigation?.clientWidth ?? 0
+    };
+  });
+  if (taskHierarchy.viewportWidth <= 992) {
+    assert(taskHierarchy.rightTop <= taskHierarchy.leftTop,
+      `Primary task must precede taxonomy browser at ${taskHierarchy.viewportWidth}px: `
+      + `${taskHierarchy.rightTop} > ${taskHierarchy.leftTop}`);
+    passed('primary task precedes taxonomy browser at narrow width');
+    assert(taskHierarchy.navigationHeight <= taskHierarchy.maxLinkHeight + 6,
+      `Main navigation wrapped to multiple rows: ${taskHierarchy.navigationHeight} > `
+      + `${taskHierarchy.maxLinkHeight + 6}`);
+    assert(taskHierarchy.navigationScrollWidth >= taskHierarchy.navigationClientWidth,
+      'Main navigation must remain horizontally reachable');
+    passed('single-row scrollable main navigation');
+  }
+
   const expectedHttpFailure = failure => {
     if (failure.status === 503 && failure.path === '/api/analyze') return true;
     return role === 'USER' && failure.status === 403
