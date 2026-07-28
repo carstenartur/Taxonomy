@@ -55,6 +55,19 @@
       "defaultClientScopes": ["openid", "profile", "email", "taxonomy-test-roles"]
     },
     {
+      "clientId": "taxonomy-missing-claims",
+      "name": "Missing role claim integration fixture",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "taxonomy-missing-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["openid", "profile"]
+    },
+    {
       "clientId": "taxonomy-malformed-claims",
       "name": "Malformed role claim integration fixture",
       "enabled": true,
