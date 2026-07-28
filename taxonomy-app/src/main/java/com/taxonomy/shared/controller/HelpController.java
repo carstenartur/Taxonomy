@@ -197,8 +197,8 @@ public class HelpController {
     private String parseResource(ClassPathResource resource, String docName) {
         try (InputStream in = resource.getInputStream()) {
             String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            markdown = markdown.replaceAll("\(\.\./images/([^)]++)\)", "(/help/images/$1)");
-            markdown = markdown.replaceAll("src=\"\.\./images/([^\"]++)\"", "src=\"/help/images/$1\"");
+            markdown = markdown.replaceAll("[(][.][.]/images/([^)]++)[)]", "(/help/images/$1)");
+            markdown = markdown.replaceAll("src=\"[.][.]/images/([^\"]++)\"", "src=\"/help/images/$1\"");
             markdown = rewriteRepositoryDocLinks(markdown);
             Node document = parser.parse(markdown);
             String body = renderer.render(document);
@@ -211,8 +211,8 @@ public class HelpController {
 
     static String rewriteRepositoryDocLinks(String markdown) {
         return markdown
-                .replaceAll("\(\.\./dev/([^)]++)\)", "(" + REPOSITORY_DOCS_URL + "dev/$1)")
-                .replaceAll("\(\.\./internal/([^)]++)\)", "(" + REPOSITORY_DOCS_URL + "internal/$1)");
+                .replaceAll("[(][.][.]/dev/([^)]++)[)]", "(" + REPOSITORY_DOCS_URL + "dev/$1)")
+                .replaceAll("[(][.][.]/internal/([^)]++)[)]", "(" + REPOSITORY_DOCS_URL + "internal/$1)");
     }
 
     private MediaType guessMediaType(String imageName) {
