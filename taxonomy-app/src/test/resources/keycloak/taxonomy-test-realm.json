@@ -52,7 +52,7 @@
       "attributes": {
         "post.logout.redirect.uris": "http://taxonomy.test:8080/*"
       },
-      "defaultClientScopes": ["openid", "profile", "email", "taxonomy-test-roles"]
+      "defaultClientScopes": ["profile", "email", "taxonomy-test-roles"]
     },
     {
       "clientId": "taxonomy-missing-claims",
@@ -65,7 +65,7 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": false,
-      "defaultClientScopes": ["openid", "profile"]
+      "defaultClientScopes": ["profile"]
     },
     {
       "clientId": "taxonomy-malformed-claims",
@@ -78,7 +78,7 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": false,
-      "defaultClientScopes": ["openid", "profile"],
+      "defaultClientScopes": ["profile"],
       "protocolMappers": [
         {
           "name": "malformed realm access",
