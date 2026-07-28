@@ -9,6 +9,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
+      SPRING_PROFILES_ACTIVE: hsqldb,observability
       JAVA_OPTS: >-
         -XX:+UseSerialGC
         -Xss512k
@@ -18,10 +19,7 @@ services:
         -javaagent:/opt/opentelemetry/opentelemetry-javaagent.jar
       OTEL_JAVAAGENT_CONFIGURATION_FILE: /opt/opentelemetry/javaagent.properties
       OTEL_SERVICE_NAME: taxonomy
-      OTEL_RESOURCE_ATTRIBUTES: >-
-        service.namespace=taxonomy,
-        service.version=${TAXONOMY_VERSION:-dev},
-        deployment.environment=local
+      OTEL_RESOURCE_ATTRIBUTES: "service.namespace=taxonomy,service.version=${TAXONOMY_VERSION:-dev},deployment.environment=local"
       OTEL_TRACES_EXPORTER: otlp
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
@@ -34,11 +32,7 @@ services:
       OTEL_BSP_SCHEDULE_DELAY: "5000"
       OTEL_BSP_EXPORT_TIMEOUT: "10000"
       TAXONOMY_EMBEDDING_ENABLED: "false"
-      TAXONOMY_DATASOURCE_URL: >-
-        jdbc:hsqldb:file:/app/data/taxonomydb;
-        hsqldb.default_table_type=cached;
-        hsqldb.write_delay_millis=0;
-        shutdown=true
+      TAXONOMY_DATASOURCE_URL: "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true"
       TAXONOMY_DDL_AUTO: update
       TAXONOMY_REQUIRE_PASSWORD_CHANGE: "false"
     volumes:
