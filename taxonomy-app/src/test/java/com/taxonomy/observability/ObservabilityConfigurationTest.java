@@ -22,13 +22,15 @@ class ObservabilityConfigurationTest {
 
     private static final String AGENT_PATH =
             "/opt/opentelemetry/opentelemetry-javaagent.jar";
+    private static final String AGENT_IMAGE =
+            "otel/autoinstrumentation-java:2.28.1@sha256:"
+                    + "41b92978e61d13d4f32c6eb20c6ae7821a73ffdec8539bc6a73858e884b411d8";
 
     @Test
     void runtimeImageBundlesAgentButDoesNotAttachItByDefault() throws IOException {
         String dockerfile = readRepositoryFile("Dockerfile");
 
-        assertTrue(dockerfile.contains(
-                "FROM otel/autoinstrumentation-java:2.30.0 AS opentelemetry"));
+        assertTrue(dockerfile.contains("FROM " + AGENT_IMAGE + " AS opentelemetry"));
         assertTrue(dockerfile.contains(
                 "COPY --from=opentelemetry --chown=taxonomy:taxonomy /javaagent.jar "
                         + AGENT_PATH));
@@ -96,8 +98,9 @@ class ObservabilityConfigurationTest {
                 "otel.instrumentation.methods.include"));
         assertFalse(targets.isEmpty());
 
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         for (Map.Entry<String, Set<String>> target : targets.entrySet()) {
-            Class<?> type = Class.forName(target.getKey());
+            Class<?> type = Class.forName(target.getKey(), false, classLoader);
             for (String methodName : target.getValue()) {
                 assertTrue(Arrays.stream(type.getMethods())
                                 .anyMatch(method -> method.getName().equals(methodName)),
