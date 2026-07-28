@@ -10,14 +10,21 @@ import org.hibernate.tool.schema.spi.SchemaFilter;
 import org.hibernate.tool.schema.spi.SchemaFilterProvider;
 
 /**
- * Keeps the Flyway-owned JGit Core tables outside Hibernate schema mutation.
+ * Keeps every Flyway-owned JGit Core table outside Hibernate schema mutation.
  *
  * <p>The entities remain mapped and are still included in schema validation. Only
- * create, migrate, truncate and drop operations exclude the two Core tables.</p>
+ * create, migrate, truncate and drop operations exclude the complete released Core
+ * schema. This is deliberately a table allow-list rather than a {@code git_*}
+ * wildcard so an unrelated application table cannot silently escape Hibernate's
+ * lifecycle.</p>
  */
 public final class JgitStorageHibernateSchemaFilterProvider implements SchemaFilterProvider {
 
-    private static final Set<String> FLYWAY_OWNED_TABLES = Set.of("git_packs", "git_reflog");
+    private static final Set<String> FLYWAY_OWNED_TABLES = Set.of(
+            "git_packs",
+            "git_reflog",
+            "git_repository_lock",
+            "git_pack_chunks");
 
     private static final SchemaFilter MUTATION_FILTER = new SchemaFilter() {
         @Override
