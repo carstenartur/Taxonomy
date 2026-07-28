@@ -45,9 +45,10 @@ RUN --mount=type=cache,target=/root/.m2/repository \
     ./mvnw -q -DskipTests package
 
 # ---- optional OpenTelemetry Java agent stage ----
-# This exact version is copied into the runtime image but is never attached by
-# default. Operators opt in explicitly through JAVA_TOOL_OPTIONS.
-FROM otel/autoinstrumentation-java:2.30.0 AS opentelemetry
+# Tag retained for automated update discovery; the multi-platform index digest is
+# authoritative. The agent is copied into the runtime image but is never attached
+# by default. Operators opt in explicitly through JAVA_TOOL_OPTIONS.
+FROM otel/autoinstrumentation-java:2.28.1@sha256:41b92978e61d13d4f32c6eb20c6ae7821a73ffdec8539bc6a73858e884b411d8 AS opentelemetry
 
 # ---- runtime stage ----
 # Tag retained for readability; digest prevents mutable-tag supply-chain drift.
