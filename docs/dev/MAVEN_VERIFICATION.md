@@ -68,6 +68,33 @@ Valid suite names and profiles are defined by `.github/ui-acceptance-matrix.json
 and `.mvn/verification-suites.json`. Evidence is written below
 `target/ui-verification/`.
 
+## UI evidence policy
+
+Browser assertions, axe analysis, console checks, network checks and JSON summaries
+run for every selected state. Successful verification uses compact evidence by
+default: it retains the machine-readable reports and a small curated screenshot
+baseline instead of storing screenshots, HTML and ARIA snapshots for every passing
+state. A failing primary or role/state scenario always captures a viewport
+screenshot, DOM snapshot and ARIA snapshot before the browser closes.
+
+Full successful evidence remains locally reproducible when it is needed for a
+manual audit:
+
+```bash
+TAXONOMY_UI_EVIDENCE_MODE=full \
+  ./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true
+```
+
+The curated compact baseline can be changed without changing test selection:
+
+```bash
+TAXONOMY_UI_CURATED_STATES=analysis-success,dialog-open \
+  ./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true
+```
+
+`TAXONOMY_UI_EVIDENCE_MODE` accepts only `compact` or `full`; invalid values fail
+before browser scenarios execute.
+
 ## Workflow responsibilities
 
 Only eight workflows remain:

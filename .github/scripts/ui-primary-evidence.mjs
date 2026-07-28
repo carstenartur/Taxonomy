@@ -1,11 +1,14 @@
 import AxeBuilder from '@axe-core/playwright';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createEvidencePolicy } from './ui-evidence-policy.mjs';
 
 export function createEvidence(page, outputDir) {
   const checks = [];
   const axeFindings = [];
   const screenshots = [];
+  const states = [];
+  const policy = createEvidencePolicy();
 
   function assert(condition, message) {
     if (!condition) throw new Error(message);
@@ -18,6 +21,10 @@ export function createEvidence(page, outputDir) {
   async function saveState(state, selector = '#mainContent') {
     const target = page.locator(selector);
     await target.waitFor({ state: 'visible', timeout: 20_000 });
+    const captured = policy.shouldCapture(state);
+    states.push({ state, selector, captured });
+    if (!captured) return;
+
     const file = path.join(outputDir, `${state}.png`);
     await target.screenshot({ path: file, animations: 'disabled' });
     screenshots.push(path.basename(file));
@@ -59,6 +66,14 @@ export function createEvidence(page, outputDir) {
     saveState,
     axeState,
     waitForText,
-    report: auditError => ({ checks, axeFindings, screenshots, auditError })
+    report: auditError => ({
+      evidenceMode: policy.mode,
+      curatedStates: policy.curatedStates,
+      checks,
+      axeFindings,
+      states,
+      screenshots,
+      auditError
+    })
   };
 }
