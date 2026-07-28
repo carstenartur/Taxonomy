@@ -14,7 +14,7 @@ class JgitStorageHibernateSchemaFilterProviderTest {
             new JgitStorageHibernateSchemaFilterProvider();
 
     @Test
-    void excludesOnlyCoreTablesFromEveryMutationFilter() {
+    void excludesEveryReleasedCoreTableFromEveryMutationFilter() {
         assertMutationBoundary(provider.getCreateFilter());
         assertMutationBoundary(provider.getDropFilter());
         assertMutationBoundary(provider.getTruncatorFilter());
@@ -22,15 +22,22 @@ class JgitStorageHibernateSchemaFilterProviderTest {
     }
 
     @Test
-    void keepsCoreTablesInSchemaValidation() {
+    void keepsEveryCoreTableInSchemaValidation() {
         assertThat(provider.getValidateFilter().includeTable(table("git_packs"))).isTrue();
         assertThat(provider.getValidateFilter().includeTable(table("git_reflog"))).isTrue();
+        assertThat(provider.getValidateFilter().includeTable(table("git_repository_lock")))
+                .isTrue();
+        assertThat(provider.getValidateFilter().includeTable(table("git_pack_chunks")))
+                .isTrue();
         assertThat(provider.getValidateFilter().includeTable(table("taxonomy_node"))).isTrue();
     }
 
     private static void assertMutationBoundary(SchemaFilter filter) {
         assertThat(filter.includeTable(table("git_packs"))).isFalse();
         assertThat(filter.includeTable(table("GIT_REFLOG"))).isFalse();
+        assertThat(filter.includeTable(table("git_repository_lock"))).isFalse();
+        assertThat(filter.includeTable(table("GIT_PACK_CHUNKS"))).isFalse();
+        assertThat(filter.includeTable(table("git_unrelated_application_table"))).isTrue();
         assertThat(filter.includeTable(table("taxonomy_node"))).isTrue();
     }
 

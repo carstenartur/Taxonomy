@@ -76,7 +76,8 @@
         <hibernate-search.version>8.4.0.Final</hibernate-search.version>
         <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
         <jgit.version>7.7.0.202606012155-r</jgit.version>
-        <jgit-storage-hibernate.version>0.1.13</jgit-storage-hibernate.version>
+        <jgit-storage-hibernate.version>0.1.14</jgit-storage-hibernate.version>
+        <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
         <springdoc.version>3.0.3</springdoc.version>
         <postgresql.version>42.7.12</postgresql.version>
         <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
@@ -128,6 +129,15 @@
                 <version>${jackson-2-bom.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- The aggregate D3 WebJar references 3.0.1, whose generated Maven
+                 metadata is incomplete. Manage the compatible 3.1.2 release so
+                 clean builds resolve complete dependency metadata without a
+                 warning while retaining D3's supported 3.x range. -->
+            <dependency>
+                <groupId>org.webjars.npm</groupId>
+                <artifactId>d3-hierarchy</artifactId>
+                <version>${d3-hierarchy.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.hibernate.search</groupId>
