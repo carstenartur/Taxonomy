@@ -220,9 +220,10 @@ class OnnxSeleniumIT {
         }
 
         assertThat(items).isNotEmpty();
-        String code = items.getFirst().getAttribute("data-code");
+        WebElement firstResult = items.getFirst();
+        String code = firstResult.getAttribute("data-code");
         assertThat(code).isNotNull().isNotEmpty();
-        items.getFirst().click();
+        clickWhenUnobscured(firstResult);
 
         WebElement highlightedHeader = new WebDriverWait(driver, Duration.ofSeconds(10))
                 .until(currentDriver -> currentDriver.findElements(
@@ -298,6 +299,29 @@ class OnnxSeleniumIT {
                 .until(currentDriver -> currentDriver.findElement(
                         By.cssSelector("#searchModeSelect option[value='semantic']"))
                         .isEnabled());
+    }
+
+    private void clickWhenUnobscured(WebElement element) {
+        ((JavascriptExecutor) driver).executeScript(
+                "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                element);
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(currentDriver -> {
+                    Boolean unobscured = (Boolean) ((JavascriptExecutor) currentDriver)
+                            .executeScript(
+                                    "const target=arguments[0];"
+                                            + "const rect=target.getBoundingClientRect();"
+                                            + "const top=document.elementFromPoint("
+                                            + "rect.left+rect.width/2,rect.top+rect.height/2);"
+                                            + "return top===target || target.contains(top);",
+                                    element);
+                    return Boolean.TRUE.equals(unobscured)
+                            && element.isDisplayed()
+                            && element.isEnabled()
+                            ? element
+                            : null;
+                })
+                .click();
     }
 
     private void executeUiSearch(String mode, String query) {
