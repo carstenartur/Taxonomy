@@ -1,20 +1,23 @@
 package com.taxonomy;
 
+import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.api.model.Bind;
+import com.github.dockerjava.api.model.Volume;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.containers.BindMode;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,26 +32,28 @@ class ProductionPersistenceRestartIT {
     private static final String PERSISTENCE_PROVENANCE = "production-persistence-restart-it";
     private static final String AUTHORIZATION = "Basic " + Base64.getEncoder().encodeToString(
             ("admin:" + ADMIN_PASSWORD).getBytes(StandardCharsets.UTF_8));
-
-    @TempDir
-    Path persistentData;
+    private static final Duration PRODUCTION_STARTUP_TIMEOUT = Duration.ofMinutes(3);
 
     @Test
     void relationSurvivesContainerReplacement() throws Exception {
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
+        String dataVolume = "taxonomy-persistence-it-"
+                + UUID.randomUUID().toString().replace("-", "");
+        GenericContainer<?> first = null;
+        GenericContainer<?> second = null;
 
-        long countBeforeWrite;
-        GenericContainer<?> first = persistentAppContainer();
         try {
+            long countBeforeWrite;
+            first = persistentAppContainer(dataVolume);
             first.start();
-            URI origin = origin(first);
-            awaitInitialized(client, origin);
+            URI firstOrigin = origin(first);
+            awaitInitialized(client, firstOrigin);
 
-            countBeforeWrite = relationCount(client, origin);
+            countBeforeWrite = relationCount(client, firstOrigin);
             HttpResponse<String> createResponse = send(client, HttpRequest.newBuilder(
-                    origin.resolve("/api/relations"))
+                    firstOrigin.resolve("/api/relations"))
                     .header("Authorization", AUTHORIZATION)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString("""
@@ -63,19 +68,17 @@ class ProductionPersistenceRestartIT {
                     .build());
             assertThat(createResponse.statusCode()).isEqualTo(200);
             assertThat(createResponse.body()).contains(PERSISTENCE_PROVENANCE);
-            assertThat(relationCount(client, origin)).isGreaterThan(countBeforeWrite);
-        } finally {
-            stopContainerAndRestoreHostPermissions(first);
-        }
+            assertThat(relationCount(client, firstOrigin)).isGreaterThan(countBeforeWrite);
+            first.stop();
+            first = null;
 
-        GenericContainer<?> second = persistentAppContainer();
-        try {
+            second = persistentAppContainer(dataVolume);
             second.start();
-            URI origin = origin(second);
-            awaitInitialized(client, origin);
+            URI secondOrigin = origin(second);
+            awaitInitialized(client, secondOrigin);
 
             HttpResponse<String> relations = send(client, HttpRequest.newBuilder(
-                    origin.resolve("/api/relations"))
+                    secondOrigin.resolve("/api/relations"))
                     .header("Authorization", AUTHORIZATION)
                     .GET()
                     .build());
@@ -87,16 +90,24 @@ class ProductionPersistenceRestartIT {
             // Catalogue-derived relation totals may be normalized during startup. The
             // persistence contract is that the explicit user relation survives and that
             // the repository does not fall below its pre-write baseline.
-            assertThat(relationCount(client, origin)).isGreaterThanOrEqualTo(countBeforeWrite);
+            assertThat(relationCount(client, secondOrigin))
+                    .isGreaterThanOrEqualTo(countBeforeWrite);
         } finally {
-            stopContainerAndRestoreHostPermissions(second);
+            stopQuietly(second);
+            stopQuietly(first);
+            removeVolume(dataVolume);
         }
     }
 
-    private GenericContainer<?> persistentAppContainer() {
+    private GenericContainer<?> persistentAppContainer(String dataVolume) {
         return ContainerTestUtils.appContainer()
-                .withFileSystemBind(persistentData.toAbsolutePath().toString(),
-                        "/app/data", BindMode.READ_WRITE)
+                .withCreateContainerCmdModifier(command -> command.getHostConfig()
+                        .withBinds(new Bind(dataVolume, new Volume("/app/data"))))
+                .waitingFor(Wait.forHttp("/actuator/health")
+                        .forStatusCode(200)
+                        .forPort(8080)
+                        .withStartupTimeout(PRODUCTION_STARTUP_TIMEOUT))
+                .withStartupTimeout(PRODUCTION_STARTUP_TIMEOUT)
                 .withEnv("SPRING_PROFILES_ACTIVE", "production,hsqldb")
                 .withEnv("TAXONOMY_DATASOURCE_URL",
                         "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;"
@@ -111,26 +122,24 @@ class ProductionPersistenceRestartIT {
                 .withEnv("TAXONOMY_THYMELEAF_CACHE", "true");
     }
 
-    /**
-     * The production image deliberately runs as the non-root {@code taxonomy}
-     * user. Files created in a host bind mount therefore have the container UID.
-     * Before JUnit removes its {@link TempDir}, make the persisted contents
-     * writable by the host runner. This preserves the non-root runtime contract
-     * while keeping test cleanup deterministic.
-     */
-    private static void stopContainerAndRestoreHostPermissions(GenericContainer<?> container)
-            throws Exception {
+    private static void stopQuietly(GenericContainer<?> container) {
+        if (container == null) {
+            return;
+        }
         try {
-            if (container.isRunning()) {
-                var result = container.execInContainer(
-                        "sh", "-c",
-                        "find /app/data -mindepth 1 -exec chmod a+rwX {} +");
-                assertThat(result.getExitCode())
-                        .as("restore host cleanup permissions: %s", result.getStderr())
-                        .isZero();
-            }
-        } finally {
             container.stop();
+        } catch (RuntimeException ignored) {
+            // Preserve the original test failure; volume removal below is still attempted.
+        }
+    }
+
+    private static void removeVolume(String volumeName) {
+        try {
+            DockerClientFactory.instance().client()
+                    .removeVolumeCmd(volumeName)
+                    .exec();
+        } catch (NotFoundException ignored) {
+            // A failed container creation may not have created the named volume yet.
         }
     }
 
