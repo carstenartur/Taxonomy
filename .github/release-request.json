@@ -2,5 +2,7 @@
   "release_version": "1.2.7",
   "next_development_version": "1.2.8-SNAPSHOT",
   "skip_tests": false,
-  "dry_run": false
+  "dry_run": false,
+  "request_revision": 2,
+  "requested_after_commit": "92ec72cd2e3744868a91cc4751fafa0ee75d7acf"
 }
