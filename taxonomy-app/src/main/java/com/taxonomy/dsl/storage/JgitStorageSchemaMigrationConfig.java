@@ -49,6 +49,9 @@ public class JgitStorageSchemaMigrationConfig {
     private static final int LEGACY_TAXONOMY_PACK_EXTENSION_LENGTH = 255;
     private static final int REQUIRED_REF_NAME_LENGTH = 1024;
     private static final int LEGACY_TAXONOMY_REF_NAME_LENGTH = 255;
+    private static final String LATEST_CORE_SCHEMA_VERSION = "0.1.14.2";
+    private static final String LATEST_CORE_BASELINE_DESCRIPTION =
+            "jgit-storage-hibernate-core 0.1.14";
 
     private static final Set<String> LEGACY_PACK_COLUMNS = Set.of(
             "ID",
@@ -59,7 +62,8 @@ public class JgitStorageSchemaMigrationConfig {
             "FILE_SIZE",
             "CREATED_AT");
 
-    private static final Set<String> CURRENT_PACK_COLUMNS = Set.of(
+    /** Exact physical pack shape released from 0.1.4 through 0.1.14.1. */
+    private static final Set<String> PRE_WRITE_LEASE_PACK_COLUMNS = Set.of(
             "ID",
             "REPOSITORY_NAME",
             "PACK_NAME",
@@ -69,6 +73,20 @@ public class JgitStorageSchemaMigrationConfig {
             "COMMITTED",
             "CREATED_AT",
             "COMMITTED_AT");
+
+    /** Exact physical pack shape released by jgit-storage-hibernate 0.1.14. */
+    private static final Set<String> CURRENT_PACK_COLUMNS = Set.of(
+            "ID",
+            "REPOSITORY_NAME",
+            "PACK_NAME",
+            "PACK_EXTENSION",
+            "DATA",
+            "FILE_SIZE",
+            "COMMITTED",
+            "CREATED_AT",
+            "COMMITTED_AT",
+            "WRITE_TOKEN",
+            "WRITE_LEASE_UNTIL");
 
     private static final Set<String> REFLOG_COLUMNS = Set.of(
             "ID",
@@ -124,7 +142,7 @@ public class JgitStorageSchemaMigrationConfig {
                 schema = SchemaSnapshot.inspect(dataSource);
             }
 
-            requireCurrentCoreShape(schema);
+            requireMigratableCoreShape(schema);
             log.info("Migrating managed JGit Core schema for {}", family.displayName());
             flyway.migrate();
             requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
@@ -174,26 +192,55 @@ public class JgitStorageSchemaMigrationConfig {
             return;
         }
 
-        if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
-            requireSafePackRows(dataSource, false);
-            requireCurrentCoreColumnLengths(schema);
-            requireCurrentCoreIndexes(schema);
-            log.info(
-                    "Establishing Flyway history for an exact unversioned JGit Core schema on {}",
-                    family.displayName());
-            migrateNormalWithBaseline(
-                    configuration,
-                    family,
-                    CoreSchemaMigrations.LEGACY_SCHEMA_VERSION,
-                    CoreSchemaMigrations.LEGACY_BASELINE_DESCRIPTION);
-            flyway.migrate();
-            requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
+        if (schema.packColumns().equals(PRE_WRITE_LEASE_PACK_COLUMNS)) {
+            establishUnversionedPreWriteLeaseSchema(configuration, family, dataSource, schema);
             return;
         }
 
-        throw unsafeSchema(
-                "git_packs is neither the exact pre-library Taxonomy shape nor the exact released "
-                        + "Core shape. Existing columns: " + schema.packColumns());
+        if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
+            establishUnversionedCurrentSchema(configuration, family, dataSource, schema);
+            return;
+        }
+
+        throw unsupportedPackColumns(schema.packColumns());
+    }
+
+    private static void establishUnversionedPreWriteLeaseSchema(
+            Configuration configuration,
+            DatabaseFamily family,
+            DataSource dataSource,
+            SchemaSnapshot schema) {
+        requireSafePackRows(dataSource, false);
+        requireCurrentCoreColumnLengths(schema);
+        requirePreWriteLeaseCoreIndexes(schema);
+        log.info(
+                "Establishing Flyway history for an exact pre-0.1.14.2 JGit Core schema on {}",
+                family.displayName());
+        migrateNormalWithBaseline(
+                configuration,
+                family,
+                CoreSchemaMigrations.CURRENT_SCHEMA_VERSION,
+                "verified pre-0.1.14.2 JGit Core schema");
+        requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
+    }
+
+    private static void establishUnversionedCurrentSchema(
+            Configuration configuration,
+            DatabaseFamily family,
+            DataSource dataSource,
+            SchemaSnapshot schema) {
+        requireSafePackRows(dataSource, false);
+        requireCurrentCoreColumnLengths(schema);
+        requireCurrentCoreIndexes(schema);
+        log.info(
+                "Establishing Flyway history for an exact unversioned 0.1.14 schema on {}",
+                family.displayName());
+        migrateNormalWithBaseline(
+                configuration,
+                family,
+                LATEST_CORE_SCHEMA_VERSION,
+                LATEST_CORE_BASELINE_DESCRIPTION);
+        requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
     }
 
     private static void migrateLegacyTaxonomySchema(
@@ -232,9 +279,7 @@ public class JgitStorageSchemaMigrationConfig {
             DataSource dataSource,
             SchemaSnapshot schema,
             boolean legacyAdoptionEnabled) {
-        requireExactColumns("git_packs", schema.packColumns(), CURRENT_PACK_COLUMNS);
-        requireExactColumns("git_reflog", schema.reflogColumns(), REFLOG_COLUMNS);
-        requireCurrentCoreIndexes(schema);
+        requireMigratableCoreContract(schema);
 
         boolean currentLengths = hasCurrentCoreColumnLengths(schema);
         if (!currentLengths) {
@@ -259,7 +304,7 @@ public class JgitStorageSchemaMigrationConfig {
         }
 
         migrateExistingAdoptionStream(configuration, family);
-        requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
+        requireMigratableCoreShape(SchemaSnapshot.inspect(dataSource));
     }
 
     private static LegacyCoreSchemaAdoption.LegacySchemaReport requireSafePackRows(
@@ -327,15 +372,39 @@ public class JgitStorageSchemaMigrationConfig {
                 .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
     }
 
-    private static void requireCurrentCoreShape(SchemaSnapshot schema) {
-        if (!schema.hasTable("git_packs") || !schema.hasTable("git_reflog")) {
-            throw unsafeSchema(
-                    "The Core Flyway history exists but one or both owned tables are missing.");
+    /** Accept only exact released shapes that Flyway can safely advance to the pinned release. */
+    private static void requireMigratableCoreShape(SchemaSnapshot schema) {
+        requireMigratableCoreContract(schema);
+        requireCurrentCoreColumnLengths(schema);
+    }
+
+    private static void requireMigratableCoreContract(SchemaSnapshot schema) {
+        requireCoreTables(schema);
+        requireExactColumns("git_reflog", schema.reflogColumns(), REFLOG_COLUMNS);
+        if (schema.packColumns().equals(PRE_WRITE_LEASE_PACK_COLUMNS)) {
+            requirePreWriteLeaseCoreIndexes(schema);
+            return;
         }
+        if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
+            requireCurrentCoreIndexes(schema);
+            return;
+        }
+        throw unsupportedPackColumns(schema.packColumns());
+    }
+
+    private static void requireCurrentCoreShape(SchemaSnapshot schema) {
+        requireCoreTables(schema);
         requireExactColumns("git_packs", schema.packColumns(), CURRENT_PACK_COLUMNS);
         requireExactColumns("git_reflog", schema.reflogColumns(), REFLOG_COLUMNS);
         requireCurrentCoreColumnLengths(schema);
         requireCurrentCoreIndexes(schema);
+    }
+
+    private static void requireCoreTables(SchemaSnapshot schema) {
+        if (!schema.hasTable("git_packs") || !schema.hasTable("git_reflog")) {
+            throw unsafeSchema(
+                    "The Core Flyway history exists but one or both owned tables are missing.");
+        }
     }
 
     private static boolean hasCurrentCoreColumnLengths(SchemaSnapshot schema) {
@@ -397,7 +466,7 @@ public class JgitStorageSchemaMigrationConfig {
                 List.of("REPOSITORY_NAME", "REF_NAME"));
     }
 
-    private static void requireCurrentCoreIndexes(SchemaSnapshot schema) {
+    private static void requirePreWriteLeaseCoreIndexes(SchemaSnapshot schema) {
         requireLegacyCoreIndexes(schema);
         requireIndex(
                 "git_packs",
@@ -409,6 +478,15 @@ public class JgitStorageSchemaMigrationConfig {
                 schema.packIndexes(),
                 true,
                 List.of("REPOSITORY_NAME", "PACK_NAME", "PACK_EXTENSION"));
+    }
+
+    private static void requireCurrentCoreIndexes(SchemaSnapshot schema) {
+        requirePreWriteLeaseCoreIndexes(schema);
+        requireIndex(
+                "git_packs",
+                schema.packIndexes(),
+                false,
+                List.of("REPOSITORY_NAME", "COMMITTED", "WRITE_LEASE_UNTIL"));
     }
 
     private static void requireIndex(
@@ -437,6 +515,18 @@ public class JgitStorageSchemaMigrationConfig {
                     table + " does not match the supported schema; missing=" + missing
                             + ", unexpected=" + unexpected);
         }
+    }
+
+    private static IllegalStateException unsupportedPackColumns(Set<String> actual) {
+        Set<String> missing = new LinkedHashSet<>(CURRENT_PACK_COLUMNS);
+        missing.removeAll(actual);
+        Set<String> unexpected = new LinkedHashSet<>(actual);
+        unexpected.removeAll(CURRENT_PACK_COLUMNS);
+        return unsafeSchema(
+                "git_packs is neither the exact pre-library Taxonomy shape nor an exact released "
+                        + "Core shape; missing from current=" + missing
+                        + ", unexpected=" + unexpected
+                        + ", actual=" + actual);
     }
 
     private static IllegalStateException unsafeSchema(String message) {
