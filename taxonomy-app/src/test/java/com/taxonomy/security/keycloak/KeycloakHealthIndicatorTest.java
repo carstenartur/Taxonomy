@@ -40,7 +40,9 @@ class KeycloakHealthIndicatorTest {
         Health health = healthFor("not a valid URI");
 
         assertThat(health.getStatus().getCode()).isEqualTo("DOWN");
-        assertThat(health.getDetails()).containsKeys("jwksEndpoint", "error");
+        assertThat(health.getDetails()).containsEntry("jwksEndpoint", "not a valid URI");
+        assertThat(health.getDetails().get("error").toString())
+                .startsWith("IllegalArgumentException:");
     }
 
     @Test
@@ -54,9 +56,9 @@ class KeycloakHealthIndicatorTest {
         Health health = healthFor(url);
 
         assertThat(health.getStatus().getCode()).isEqualTo("DOWN");
-        assertThat(health.getDetails())
-                .containsEntry("jwksEndpoint", url)
-                .containsKey("error");
+        assertThat(health.getDetails()).containsEntry("jwksEndpoint", url);
+        assertThat(health.getDetails().get("error").toString())
+                .startsWith("ConnectException");
     }
 
     private static Health healthFor(String jwksEndpoint) {
