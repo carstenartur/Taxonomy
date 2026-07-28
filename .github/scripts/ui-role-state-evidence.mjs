@@ -1,8 +1,12 @@
 import AxeBuilder from '@axe-core/playwright';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createEvidencePolicy } from './ui-evidence-policy.mjs';
 
 export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
+  const policy = createEvidencePolicy();
+  const states = [];
+
   async function saveState(state) {
     const prefix = path.join(outputDir, state);
     const dimensions = await page.evaluate(() => ({
@@ -13,14 +17,16 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
       width: Math.min(dimensions.width, 1440),
       height: Math.min(dimensions.height, 1000)
     };
+    const captured = policy.shouldCapture(state);
     const screenshotFiles = [];
     const segments = [];
-    if (dimensions.width <= 30000 && dimensions.height <= 30000) {
+
+    if (captured && dimensions.width <= 30000 && dimensions.height <= 30000) {
       const file = `${prefix}.png`;
       await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
       screenshotFiles.push(path.basename(file));
       segments.push({ file: path.basename(file), scrollY: 0, fullPage: true });
-    } else {
+    } else if (captured) {
       const maxScrollY = Math.max(0, dimensions.height - viewport.height);
       const targets = [];
       for (let y = 0; y < maxScrollY; y += viewport.height) targets.push(y);
@@ -40,9 +46,20 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
       }
       await page.evaluate(() => window.scrollTo(0, 0));
     }
-    await writeFile(`${prefix}.screenshots.json`, `${JSON.stringify({
-      dimensions, viewport, screenshotFiles, segments
-    }, null, 2)}\n`, 'utf8');
+
+    const stateSummary = {
+      state,
+      evidenceMode: policy.mode,
+      captured,
+      dimensions,
+      viewport,
+      screenshotFiles,
+      segments
+    };
+    states.push(stateSummary);
+    await writeFile(`${prefix}.screenshots.json`, `${JSON.stringify(stateSummary, null, 2)}\n`, 'utf8');
+
+    if (!captured) return;
     await writeFile(`${prefix}.html`, await page.content(), 'utf8');
     const body = page.locator('body');
     const aria = typeof body.ariaSnapshot === 'function'
@@ -65,5 +82,11 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
     checks.push(`axe ${state}`);
   }
 
-  return { saveState, runAxe };
+  return {
+    saveState,
+    runAxe,
+    evidenceMode: policy.mode,
+    curatedStates: policy.curatedStates,
+    states
+  };
 }
