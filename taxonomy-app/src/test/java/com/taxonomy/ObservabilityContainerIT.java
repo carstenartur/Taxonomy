@@ -127,7 +127,8 @@ class ObservabilityContainerIT {
         HttpResponse<String> relations = applicationGet("/api/relations");
         assertThat(relations.statusCode()).isEqualTo(200);
 
-        HttpResponse<String> prometheus = applicationGet("/actuator/prometheus");
+        HttpResponse<String> prometheus = applicationGet(
+                "/actuator/prometheus", "text/plain");
         assertThat(prometheus.statusCode()).isEqualTo(200);
         assertThat(prometheus.body()).contains("jvm_memory");
 
@@ -214,9 +215,14 @@ class ObservabilityContainerIT {
     }
 
     private HttpResponse<String> applicationGet(String path) throws Exception {
+        return applicationGet(path, "application/json");
+    }
+
+    private HttpResponse<String> applicationGet(String path, String accept)
+            throws Exception {
         HttpRequest request = HttpRequest.newBuilder(applicationUri(path))
                 .timeout(Duration.ofSeconds(20))
-                .header("Accept", "application/json")
+                .header("Accept", accept)
                 .header("Authorization", BASIC_AUTH)
                 .GET()
                 .build();
