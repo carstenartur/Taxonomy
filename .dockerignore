@@ -1,0 +1,36 @@
+# Version-control and repository automation data are not Docker build inputs.
+.git
+.github
+
+# Local IDE and operating-system metadata.
+.idea
+.vscode
+*.iml
+.DS_Store
+Thumbs.db
+
+# Maven, Node, browser and generated verification output.
+target
+**/target
+node_modules
+**/node_modules
+playwright-report
+test-results
+
+# Large local model/data caches and runtime state.
+models
+data
+*.db
+*.log
+*.tmp
+
+# Local archives and package output.
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# Local deployment overrides and secrets must never enter the build context.
+.env
+.env.*
+docker-compose*.override.yml
