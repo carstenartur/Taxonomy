@@ -63,7 +63,7 @@ class JgitStoragePostgresMigrationIT {
                         dataSource,
                         CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE));
         assertEquals(
-                List.of(CoreSchemaMigrations.CURRENT_SCHEMA_VERSION),
+                List.of("0.1.5", "0.1.14", "0.1.14.1", "0.1.14.2"),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
 
         SQLException duplicate = assertThrows(
