@@ -16,6 +16,29 @@ Test-scoped fixtures are not matched by the compile/runtime Maven bans. They mus
 still be justified in the test that introduces them and must never enter the
 packaged application.
 
+## Distribution integrity
+
+Taxonomy consumes `jgit-storage-hibernate` from its anonymous, immutable release
+repository. A version is eligible for use only when the upstream release contains:
+
+- Maven POM and binary/source/Javadoc artifacts for every public module;
+- SHA-1 sidecars required by Maven Resolver compatibility;
+- canonical SHA-256 and SHA-512 sidecars;
+- a `releases/<version>.json` manifest recording every file, size and digest;
+- successful anonymous local and remote resolution in the upstream release state
+  machine before the tag is created.
+
+Do not republish or mutate an already consumed version to repair missing metadata.
+Publish a new release and update the centrally managed
+`jgit-storage-hibernate.version` property instead. Taxonomy CI resolves the release
+on a clean hosted runner, so missing POMs, binaries or checksum metadata are visible
+in the canonical Maven evidence rather than hidden by a developer cache.
+
+Generated WebJar metadata is managed explicitly when an aggregate package points to
+an incomplete artifact version. The root `dependencyManagement` section must pin a
+compatible release with complete metadata and explain the mediation; application
+code must not add duplicate JavaScript packages to work around a Maven warning.
+
 ## Verification and diagnostics
 
 ```bash
@@ -30,6 +53,9 @@ python3 .github/scripts/check-dependency-hygiene.py \
 ./mvnw -pl taxonomy-app dependency:tree \
   -Dscope=runtime \
   -Dincludes='org.apache.pdfbox:*,com.vladsch.flexmark:flexmark-pdf-converter,com.openhtmltopdf:*'
+
+./mvnw -pl taxonomy-app dependency:tree \
+  -Dincludes='io.github.carstenartur:*,org.webjars.npm:d3-hierarchy'
 ```
 
 The CI build archives both the focused dependency tree and the SBOM validation
