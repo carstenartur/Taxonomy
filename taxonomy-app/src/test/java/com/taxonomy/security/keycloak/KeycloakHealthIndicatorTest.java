@@ -7,9 +7,15 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class KeycloakHealthIndicatorTest {
 
@@ -59,6 +65,30 @@ class KeycloakHealthIndicatorTest {
         assertThat(health.getDetails()).containsEntry("jwksEndpoint", url);
         assertThat(health.getDetails().get("error").toString())
                 .startsWith("ConnectException");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void preservesThreadInterruptionWhileReportingDown() throws Exception {
+        HttpClient httpClient = mock(HttpClient.class);
+        when(httpClient.send(
+                any(HttpRequest.class),
+                any(HttpResponse.BodyHandler.class)))
+                .thenThrow(new InterruptedException("cancelled"));
+        KeycloakHealthIndicator indicator = new KeycloakHealthIndicator(httpClient);
+        ReflectionTestUtils.setField(
+                indicator, "jwkSetUri", "http://keycloak.test/realms/taxonomy/certs");
+
+        try {
+            Health health = indicator.health();
+
+            assertThat(health.getStatus().getCode()).isEqualTo("DOWN");
+            assertThat(health.getDetails().get("error").toString())
+                    .startsWith("InterruptedException:");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     private static Health healthFor(String jwksEndpoint) {
