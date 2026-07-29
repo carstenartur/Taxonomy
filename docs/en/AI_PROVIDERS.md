@@ -62,7 +62,7 @@ export CUSTOM_LLM_API_KEY=secret-token
 
 With an empty API key, Taxonomy sends no `Authorization` header. With a configured key, it sends Bearer authentication. Both URL and model are mandatory, and the URL must be a complete `http://` or `https://` Chat Completions endpoint.
 
-See [Custom OpenAI-Compatible LLM](CUSTOM_LLM.md) for the JSON contract, Docker examples, security guidance, and troubleshooting.
+See [Custom OpenAI-Compatible LLM](../dev/custom-llm.md) for the JSON contract, Docker examples, security guidance, and troubleshooting.
 
 ---
 
@@ -230,7 +230,7 @@ See the [Configuration Reference](CONFIGURATION_REFERENCE.md) for the canonical 
 
 ## Related Documentation
 
-- [Custom OpenAI-Compatible LLM](CUSTOM_LLM.md)
+- [Custom OpenAI-Compatible LLM](../dev/custom-llm.md)
 - [Configuration Reference](CONFIGURATION_REFERENCE.md)
 - [Preferences](PREFERENCES.md)
 - [Security](SECURITY.md)
