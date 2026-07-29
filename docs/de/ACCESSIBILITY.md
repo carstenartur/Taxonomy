@@ -29,7 +29,7 @@ Bewertet wird die authentifizierte Webanwendung mit Analyse, Taxonomiebaum, Arch
 | Zoom und Reflow | Navigation bleibt eine einzeilige horizontal erreichbare Leiste; Panels und Aktionen brechen ohne wesentlichen horizontalen Inhaltsverlust um | Responsives Stylesheet und Maven-gesteuerte Rollen-/Zustandsmatrix; manuelle Geräteprüfung bleibt erforderlich | Teilweise |
 | Reduzierte Bewegung | Animationen und Übergänge werden bei `prefers-reduced-motion` minimiert | CSS | Umgesetzt |
 | Graphen und Diagramme | Mehrere Ansichten besitzen Tabellen oder Detaildarstellungen; die vollständige inhaltliche Gleichwertigkeit ist noch manuell zu prüfen | Manuelle Prüfung | Teilweise |
-| DSL-Editor | CodeMirror stellt eine eigene Accessibility-Struktur bereit; separate Prüfung nötig | Manuelle Tastatur-/Screenreader-Prüfung | Teilweise |
+| DSL-Editor | CodeMirror bleibt in der automatisierten Browser-/axe-Abdeckung enthalten; seine komplexe Editor-Semantik benötigt zusätzlich eine eigene Tastatur- und Screenreader-Testmatrix | Automatisierte Browsermatrix plus manuelle Tastatur-/Screenreader-Prüfung | Teilweise |
 | Kontraste | Bootstrap-Grundfarben und explizite Textfarben; vollständige Prüfung aller Zustände bleibt erforderlich | axe plus manuelle Prüfung | Teilweise |
 
 ## Automatischer Accessibility-Gate
