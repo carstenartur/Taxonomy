@@ -37,7 +37,8 @@ public class LlmProviderConfig {
 
     /**
      * Internal transport marker used to distinguish an intentionally unauthenticated custom
-     * endpoint from a missing provider configuration. It is never sent as an HTTP header.
+     * endpoint from a missing provider configuration. It is never sent as an HTTP header and
+     * must never be presented as a configured credential in diagnostics.
      */
     static final String CUSTOM_NO_AUTH_API_KEY = "__taxonomy_custom_no_auth__";
 
@@ -146,14 +147,14 @@ public class LlmProviderConfig {
     public String getActiveProviderName() {
         if (llmMock) return "Mock";
         return switch (getActiveProvider()) {
-            case GEMINI       -> "Gemini";
-            case OPENAI       -> "OpenAI";
-            case DEEPSEEK     -> "DeepSeek";
-            case QWEN         -> "Qwen";
-            case LLAMA        -> "Llama";
-            case MISTRAL      -> "Mistral";
+            case GEMINI        -> "Gemini";
+            case OPENAI        -> "OpenAI";
+            case DEEPSEEK      -> "DeepSeek";
+            case QWEN          -> "Qwen";
+            case LLAMA         -> "Llama";
+            case MISTRAL       -> "Mistral";
             case CUSTOM_OPENAI -> "Custom OpenAI-compatible";
-            case LOCAL_ONNX   -> "Local (bge-small-en-v1.5)";
+            case LOCAL_ONNX    -> "Local (bge-small-en-v1.5)";
         };
     }
 
@@ -164,11 +165,11 @@ public class LlmProviderConfig {
     public List<String> getAvailableProviders() {
         List<String> providers = new ArrayList<>();
         providers.add("LOCAL_ONNX");
-        if (hasText(geminiApiKey))  providers.add("GEMINI");
-        if (hasText(openaiApiKey))  providers.add("OPENAI");
+        if (hasText(geminiApiKey)) providers.add("GEMINI");
+        if (hasText(openaiApiKey)) providers.add("OPENAI");
         if (hasText(deepseekApiKey)) providers.add("DEEPSEEK");
-        if (hasText(qwenApiKey))    providers.add("QWEN");
-        if (hasText(llamaApiKey))   providers.add("LLAMA");
+        if (hasText(qwenApiKey)) providers.add("QWEN");
+        if (hasText(llamaApiKey)) providers.add("LLAMA");
         if (hasText(mistralApiKey)) providers.add("MISTRAL");
         if (isCustomOpenAiConfigured()) providers.add("CUSTOM_OPENAI");
         return providers;
@@ -184,25 +185,39 @@ public class LlmProviderConfig {
      */
     public String getApiKey(LlmProvider provider) {
         return switch (provider) {
-            case GEMINI       -> geminiApiKey;
-            case OPENAI       -> openaiApiKey;
-            case DEEPSEEK     -> deepseekApiKey;
-            case QWEN         -> qwenApiKey;
-            case LLAMA        -> llamaApiKey;
-            case MISTRAL      -> mistralApiKey;
+            case GEMINI        -> geminiApiKey;
+            case OPENAI        -> openaiApiKey;
+            case DEEPSEEK      -> deepseekApiKey;
+            case QWEN          -> qwenApiKey;
+            case LLAMA         -> llamaApiKey;
+            case MISTRAL       -> mistralApiKey;
             case CUSTOM_OPENAI -> customOpenAiTransportApiKey();
-            case LOCAL_ONNX   -> null;
+            case LOCAL_ONNX    -> null;
+        };
+    }
+
+    /** Returns whether a real credential, rather than the no-auth transport marker, is configured. */
+    public boolean hasConfiguredApiKey(LlmProvider provider) {
+        return switch (provider) {
+            case GEMINI        -> hasText(geminiApiKey);
+            case OPENAI        -> hasText(openaiApiKey);
+            case DEEPSEEK      -> hasText(deepseekApiKey);
+            case QWEN          -> hasText(qwenApiKey);
+            case LLAMA         -> hasText(llamaApiKey);
+            case MISTRAL       -> hasText(mistralApiKey);
+            case CUSTOM_OPENAI -> hasText(customLlmApiKey);
+            case LOCAL_ONNX    -> false;
         };
     }
 
     /** Returns the API endpoint URL for an OpenAI-compatible provider. */
     public String getOpenAiCompatibleUrl(LlmProvider provider) {
         return switch (provider) {
-            case OPENAI       -> OPENAI_URL;
-            case DEEPSEEK     -> DEEPSEEK_URL;
-            case QWEN         -> QWEN_URL;
-            case LLAMA        -> LLAMA_URL;
-            case MISTRAL      -> MISTRAL_URL;
+            case OPENAI        -> OPENAI_URL;
+            case DEEPSEEK      -> DEEPSEEK_URL;
+            case QWEN          -> QWEN_URL;
+            case LLAMA         -> LLAMA_URL;
+            case MISTRAL       -> MISTRAL_URL;
             case CUSTOM_OPENAI -> trimToEmpty(customLlmUrl);
             default -> throw new IllegalArgumentException("Not an OpenAI-compatible provider: " + provider);
         };
@@ -211,11 +226,11 @@ public class LlmProviderConfig {
     /** Returns the model name for an OpenAI-compatible provider. */
     public String getOpenAiCompatibleModel(LlmProvider provider) {
         return switch (provider) {
-            case OPENAI       -> OPENAI_MODEL;
-            case DEEPSEEK     -> DEEPSEEK_MODEL;
-            case QWEN         -> QWEN_MODEL;
-            case LLAMA        -> LLAMA_MODEL;
-            case MISTRAL      -> MISTRAL_MODEL;
+            case OPENAI        -> OPENAI_MODEL;
+            case DEEPSEEK      -> DEEPSEEK_MODEL;
+            case QWEN          -> QWEN_MODEL;
+            case LLAMA         -> LLAMA_MODEL;
+            case MISTRAL       -> MISTRAL_MODEL;
             case CUSTOM_OPENAI -> trimToEmpty(customLlmModel);
             default -> throw new IllegalArgumentException("Unknown provider: " + provider);
         };
@@ -226,16 +241,24 @@ public class LlmProviderConfig {
         return GEMINI_URL;
     }
 
-    /** Returns whether the custom OpenAI-compatible endpoint has a valid URL and model name. */
+    /**
+     * Returns whether the custom endpoint is a complete OpenAI-compatible Chat Completions URL
+     * and has a model name. The URL is deliberately not written to logs because operator mistakes
+     * can place credentials in user-info or query components.
+     */
     public boolean isCustomOpenAiConfigured() {
         if (!hasText(customLlmUrl) || !hasText(customLlmModel)) return false;
         try {
             URI uri = URI.create(customLlmUrl.trim());
             String scheme = uri.getScheme();
+            String path = uri.getPath();
             return uri.getHost() != null
-                    && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme));
+                    && uri.getUserInfo() == null
+                    && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                    && path != null
+                    && path.endsWith("/chat/completions");
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid custom LLM URL '{}': {}", customLlmUrl, e.getMessage());
+            log.warn("Invalid custom LLM URL configuration: {}", e.getClass().getSimpleName());
             return false;
         }
     }
@@ -243,14 +266,14 @@ public class LlmProviderConfig {
     /** Returns whether all mandatory configuration for the given runtime provider is present. */
     public boolean isProviderConfigured(LlmProvider provider) {
         return switch (provider) {
-            case GEMINI       -> hasText(geminiApiKey);
-            case OPENAI       -> hasText(openaiApiKey);
-            case DEEPSEEK     -> hasText(deepseekApiKey);
-            case QWEN         -> hasText(qwenApiKey);
-            case LLAMA        -> hasText(llamaApiKey);
-            case MISTRAL      -> hasText(mistralApiKey);
+            case GEMINI        -> hasText(geminiApiKey);
+            case OPENAI        -> hasText(openaiApiKey);
+            case DEEPSEEK      -> hasText(deepseekApiKey);
+            case QWEN          -> hasText(qwenApiKey);
+            case LLAMA         -> hasText(llamaApiKey);
+            case MISTRAL       -> hasText(mistralApiKey);
             case CUSTOM_OPENAI -> isCustomOpenAiConfigured();
-            case LOCAL_ONNX   -> localEmbeddingService.isAvailable();
+            case LOCAL_ONNX    -> localEmbeddingService.isAvailable();
         };
     }
 
