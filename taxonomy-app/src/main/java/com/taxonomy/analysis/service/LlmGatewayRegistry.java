@@ -78,6 +78,14 @@ public class LlmGatewayRegistry {
                 0, restTemplate, objectMapper, responseParser,
                 preferencesService, llmRequestFactory, recordReplayService));
 
+        // Custom OpenAI-compatible endpoint: default 0 RPM (operator-controlled server)
+        gateways.put(LlmProvider.CUSTOM_OPENAI, new OpenAiCompatibleGateway(
+                LlmProvider.CUSTOM_OPENAI,
+                providerConfig.getOpenAiCompatibleUrl(LlmProvider.CUSTOM_OPENAI),
+                providerConfig.getOpenAiCompatibleModel(LlmProvider.CUSTOM_OPENAI),
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService));
+
         log.info("LlmGatewayRegistry initialised with {} gateways", gateways.size());
     }
 
