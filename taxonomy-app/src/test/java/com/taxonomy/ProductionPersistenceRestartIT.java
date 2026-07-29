@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.github.dockerjava.api.exception.DockerException;
 import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.Volume;
 import org.awaitility.Awaitility;
@@ -137,7 +138,7 @@ class ProductionPersistenceRestartIT {
             DockerClientFactory.instance().client()
                     .removeVolumeCmd(volumeName)
                     .exec();
-        } catch (RuntimeException ignored) {
+        } catch (DockerException ignored) {
             // Cleanup must never mask the original assertion or container failure. This also
             // covers volumes that were never created or remain attached after a failed stop.
         }
