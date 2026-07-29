@@ -99,21 +99,33 @@ class LlmProviderConfigBranchCoverageTest {
         assertThat(config.getApiKey(LlmProvider.MISTRAL)).isEqualTo("m");
         assertThat(config.getApiKey(LlmProvider.CUSTOM_OPENAI))
                 .isEqualTo(LlmProviderConfig.CUSTOM_NO_AUTH_API_KEY);
+        assertThat(config.hasConfiguredApiKey(LlmProvider.CUSTOM_OPENAI)).isFalse();
         assertThat(config.getApiKey(LlmProvider.LOCAL_ONNX)).isNull();
+        assertThat(config.hasConfiguredApiKey(LlmProvider.LOCAL_ONNX)).isFalse();
         assertThat(config.getGeminiUrl()).contains("generativelanguage.googleapis.com");
 
         set("customLlmApiKey", "custom-secret");
         assertThat(config.getApiKey(LlmProvider.CUSTOM_OPENAI)).isEqualTo("custom-secret");
+        assertThat(config.hasConfiguredApiKey(LlmProvider.CUSTOM_OPENAI)).isTrue();
 
-        for (LlmProvider provider : List.of(LlmProvider.OPENAI, LlmProvider.DEEPSEEK,
-                LlmProvider.QWEN, LlmProvider.LLAMA, LlmProvider.MISTRAL,
-                LlmProvider.CUSTOM_OPENAI)) {
-            assertThat(config.getOpenAiCompatibleUrl(provider)).matches("https?://.*");
+        List<LlmProvider> fixedCloudProviders = List.of(
+                LlmProvider.OPENAI, LlmProvider.DEEPSEEK, LlmProvider.QWEN,
+                LlmProvider.LLAMA, LlmProvider.MISTRAL);
+        for (LlmProvider provider : fixedCloudProviders) {
+            assertThat(config.getOpenAiCompatibleUrl(provider)).startsWith("https://");
             assertThat(config.getOpenAiCompatibleModel(provider)).isNotBlank();
             config.setRequestProvider(provider);
             assertThat(config.getActiveProviderName()).isNotBlank();
             assertThat(config.isProviderConfigured(provider)).isTrue();
+            assertThat(config.hasConfiguredApiKey(provider)).isTrue();
         }
+
+        assertThat(config.getOpenAiCompatibleUrl(LlmProvider.CUSTOM_OPENAI))
+                .isEqualTo("http://llm-server:8080/v1/chat/completions");
+        assertThat(config.getOpenAiCompatibleModel(LlmProvider.CUSTOM_OPENAI))
+                .isEqualTo("local-model");
+        assertThat(config.isProviderConfigured(LlmProvider.CUSTOM_OPENAI)).isTrue();
+
         config.setRequestProvider(LlmProvider.CUSTOM_OPENAI);
         assertThat(config.getActiveProviderName()).isEqualTo("Custom OpenAI-compatible");
         config.setRequestProvider(LlmProvider.GEMINI);
@@ -129,7 +141,7 @@ class LlmProviderConfigBranchCoverageTest {
     }
 
     @Test
-    void customProviderRequiresHttpUrlAndModelButNotApiKey() {
+    void customProviderRequiresCompleteSafeChatCompletionsUrlAndModelButNotApiKey() {
         set("llmProviderConfig", "CUSTOM_OPENAI");
         when(localEmbeddingService.isAvailable()).thenReturn(false);
 
@@ -138,6 +150,15 @@ class LlmProviderConfigBranchCoverageTest {
         assertThat(config.isCustomOpenAiConfigured()).isFalse();
         assertThat(config.getAvailabilityLevel()).isEqualTo(AiAvailabilityLevel.UNAVAILABLE);
         assertThat(config.getApiKey(LlmProvider.CUSTOM_OPENAI)).isEmpty();
+
+        set("customLlmUrl", "http://localhost:11434");
+        assertThat(config.isCustomOpenAiConfigured()).isFalse();
+
+        set("customLlmUrl", "http://localhost:11434/v1/models");
+        assertThat(config.isCustomOpenAiConfigured()).isFalse();
+
+        set("customLlmUrl", "http://user:secret@localhost:11434/v1/chat/completions");
+        assertThat(config.isCustomOpenAiConfigured()).isFalse();
 
         set("customLlmUrl", "http://localhost:11434/v1/chat/completions");
         set("customLlmModel", " ");
@@ -149,6 +170,7 @@ class LlmProviderConfigBranchCoverageTest {
         assertThat(config.getAvailabilityLevel()).isEqualTo(AiAvailabilityLevel.FULL);
         assertThat(config.getApiKey(LlmProvider.CUSTOM_OPENAI))
                 .isEqualTo(LlmProviderConfig.CUSTOM_NO_AUTH_API_KEY);
+        assertThat(config.hasConfiguredApiKey(LlmProvider.CUSTOM_OPENAI)).isFalse();
     }
 
     @Test
