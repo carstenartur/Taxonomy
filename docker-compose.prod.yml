@@ -30,6 +30,9 @@ services:
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - LLAMA_API_KEY=${LLAMA_API_KEY:-}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - CUSTOM_LLM_URL=${CUSTOM_LLM_URL:-}
+      - CUSTOM_LLM_MODEL=${CUSTOM_LLM_MODEL:-}
+      - CUSTOM_LLM_API_KEY=${CUSTOM_LLM_API_KEY:-}
       - LLM_PROVIDER=${LLM_PROVIDER:-}
       # Production must never fall back to a known administrator password.
       - TAXONOMY_ADMIN_PASSWORD=${TAXONOMY_ADMIN_PASSWORD:?Set TAXONOMY_ADMIN_PASSWORD in .env}
