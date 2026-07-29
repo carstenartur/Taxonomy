@@ -6,6 +6,7 @@ import com.taxonomy.preferences.PreferencesService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.HttpClientErrorException;
@@ -17,9 +18,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * Unit tests for {@link OpenAiCompatibleGateway}.
- */
+/** Unit tests for {@link OpenAiCompatibleGateway}. */
 class OpenAiCompatibleGatewayTest {
 
     private RestTemplate restTemplate;
@@ -92,6 +91,50 @@ class OpenAiCompatibleGatewayTest {
             assertThat(result).isEqualTo(responseBody);
         }
 
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        @Test
+        void realApiKey_isSentAsBearerAuthentication() {
+            when(replayService.isReplayMode()).thenReturn(false);
+            when(preferencesService.getInt(eq("llm.rpm.openai"), anyInt())).thenReturn(0);
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                    .thenReturn(ResponseEntity.ok("{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}"));
+
+            gateway.sendHttpRequest("prompt", "secret-key");
+
+            ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+            verify(restTemplate).exchange(eq("https://api.openai.com/v1/chat/completions"),
+                    eq(HttpMethod.POST), entityCaptor.capture(), eq(String.class));
+            HttpEntity<String> entity = entityCaptor.getValue();
+            assertThat(entity.getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
+                    .isEqualTo("Bearer secret-key");
+            assertThat(entity.getBody()).contains("\"model\":\"gpt-4o-mini\"")
+                    .contains("\"content\":\"prompt\"");
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        @Test
+        void customNoAuthMarker_omitsAuthorizationHeader() {
+            OpenAiCompatibleGateway customGateway = new OpenAiCompatibleGateway(
+                    LlmProvider.CUSTOM_OPENAI, "http://llm-server:11434/v1/chat/completions",
+                    "local-model", 0,
+                    restTemplate, objectMapper, responseParser,
+                    preferencesService, requestFactory, replayService);
+            when(replayService.isReplayMode()).thenReturn(false);
+            when(preferencesService.getInt(eq("llm.rpm.custom_openai"), anyInt())).thenReturn(0);
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                    .thenReturn(ResponseEntity.ok("{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}"));
+
+            customGateway.sendHttpRequest("local prompt", LlmProviderConfig.CUSTOM_NO_AUTH_API_KEY);
+
+            ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+            verify(restTemplate).exchange(eq("http://llm-server:11434/v1/chat/completions"),
+                    eq(HttpMethod.POST), entityCaptor.capture(), eq(String.class));
+            HttpEntity<String> entity = entityCaptor.getValue();
+            assertThat(entity.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)).isFalse();
+            assertThat(entity.getBody()).contains("\"model\":\"local-model\"")
+                    .contains("\"content\":\"local prompt\"");
+        }
+
         @SuppressWarnings("unchecked")
         @Test
         void http429_throwsRateLimitException() {
@@ -135,7 +178,6 @@ class OpenAiCompatibleGatewayTest {
                     LlmProvider.DEEPSEEK, "https://deepseek.test/v1/chat", "deepseek-chat",
                     0, restTemplate, objectMapper, responseParser,
                     null, requestFactory, replayService);
-            // Should not throw
             gw.throttle();
         }
 
@@ -147,14 +189,12 @@ class OpenAiCompatibleGatewayTest {
                     preferencesService, requestFactory, replayService);
 
             when(preferencesService.getInt(eq("llm.rpm.deepseek"), eq(0))).thenReturn(0);
-            // Should complete instantly
             gw.throttle();
         }
 
         @Test
         void withinRpmLimit_noSleep() {
             when(preferencesService.getInt(eq("llm.rpm.openai"), anyInt())).thenReturn(60);
-            // Should complete instantly — no calls yet
             gateway.throttle();
         }
     }
