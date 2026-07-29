@@ -130,7 +130,7 @@ class OpenAiCompatibleGatewayTest {
             verify(restTemplate).exchange(eq("http://llm-server:11434/v1/chat/completions"),
                     eq(HttpMethod.POST), entityCaptor.capture(), eq(String.class));
             HttpEntity<String> entity = entityCaptor.getValue();
-            assertThat(entity.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)).isFalse();
+            assertThat(entity.getHeaders().getFirst(HttpHeaders.AUTHORIZATION)).isNull();
             assertThat(entity.getBody()).contains("\"model\":\"local-model\"")
                     .contains("\"content\":\"local prompt\"");
         }
