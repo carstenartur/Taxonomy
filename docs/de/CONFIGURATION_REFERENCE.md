@@ -20,7 +20,7 @@ Produktivinstallationen sollten `TAXONOMY_INIT_RELOAD_EXISTING=false` beibehalte
 
 | Variable | Eigenschaft | Typ | Standard | Beschreibung |
 |---|---|---|---|---|
-| `LLM_PROVIDER` | `llm.provider` | Enum | *(Auto-Erkennung)* | Erzwingt einen bestimmten LLM-Anbieter. Werte: `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `LOCAL_ONNX`. Wenn nicht gesetzt, wird der Anbieter automatisch anhand des ersten verfügbaren API-Schlüssels erkannt (siehe Prioritätsreihenfolge unten). |
+| `LLM_PROVIDER` | `llm.provider` | Enum | *(Auto-Erkennung)* | Erzwingt einen bestimmten LLM-Anbieter. Werte: `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `CUSTOM_OPENAI`, `LOCAL_ONNX`. Wenn nicht gesetzt, wird die erste vollständige Providerkonfiguration automatisch erkannt. |
 | `LLM_MOCK` | `llm.mock` | Boolean | `false` | Wenn `true`, gibt der LLM-Service fest kodierte realistische Bewertungen zurück, anstatt einen echten LLM-Anbieter aufzurufen. Gedacht für CI-Pipelines, Screenshot-Generierung und Offline-Tests. Kein API-Schlüssel erforderlich, wenn der Mock-Modus aktiv ist. |
 | `GEMINI_API_KEY` | `gemini.api.key` | String | *(leer)* | Google Gemini API-Schlüssel. Erhältlich unter [aistudio.google.com](https://aistudio.google.com). |
 | `OPENAI_API_KEY` | `openai.api.key` | String | *(leer)* | OpenAI API-Schlüssel. |
@@ -28,10 +28,13 @@ Produktivinstallationen sollten `TAXONOMY_INIT_RELOAD_EXISTING=false` beibehalte
 | `DASHSCOPE_API_KEY` | `qwen.api.key` | String | *(leer)* | Alibaba Cloud DashScope API-Schlüssel (Qwen-Modell). |
 | `LLAMA_API_KEY` | `llama.api.key` | String | *(leer)* | Llama API-Schlüssel. |
 | `MISTRAL_API_KEY` | `mistral.api.key` | String | *(leer)* | Mistral API-Schlüssel. |
+| `CUSTOM_LLM_URL` | `custom.llm.url` | URI | *(leer)* | Vollständiger HTTP- oder HTTPS-Endpunkt einer OpenAI-kompatiblen Chat-Completions-Schnittstelle. Er muss mit `/chat/completions` enden; eingebettete Benutzerinformationen werden abgelehnt. |
+| `CUSTOM_LLM_MODEL` | `custom.llm.model` | String | *(leer)* | Modellkennung, die unverändert in das Feld `model` der Anfrage übernommen wird. Für `CUSTOM_OPENAI` erforderlich. |
+| `CUSTOM_LLM_API_KEY` | `custom.llm.api.key` | String | *(leer)* | Optionaler Bearer-Token für `CUSTOM_OPENAI`. Bei leerem Wert sendet Taxonomy keinen `Authorization`-Header. |
 
 ### Prioritätsreihenfolge der automatischen LLM-Anbieter-Erkennung
 
-Wenn `LLM_PROVIDER` **nicht gesetzt** ist, prüft die Anwendung verfügbare API-Schlüssel in dieser Reihenfolge:
+Wenn `LLM_PROVIDER` **nicht gesetzt** ist, prüft die Anwendung vollständige Providerkonfigurationen in dieser Reihenfolge:
 
 1. **Gemini** — wenn `GEMINI_API_KEY` gesetzt ist
 2. **OpenAI** — wenn `OPENAI_API_KEY` gesetzt ist
@@ -39,21 +42,31 @@ Wenn `LLM_PROVIDER` **nicht gesetzt** ist, prüft die Anwendung verfügbare API-
 4. **Qwen** — wenn `DASHSCOPE_API_KEY` gesetzt ist
 5. **Llama** — wenn `LLAMA_API_KEY` gesetzt ist
 6. **Mistral** — wenn `MISTRAL_API_KEY` gesetzt ist
+7. **Eigener OpenAI-kompatibler Endpunkt** — wenn `CUSTOM_LLM_URL` und `CUSTOM_LLM_MODEL` gültig sind; `CUSTOM_LLM_API_KEY` ist optional
 
-Der erste Treffer gewinnt. Wenn **kein Schlüssel** gesetzt ist und `LLM_PROVIDER` nicht `LOCAL_ONNX` ist, startet die Anwendung im **Nur-Browser-Modus** (alle Analysebewertungen = 0, Analyse-Schaltfläche deaktiviert).
+Der erste Treffer gewinnt. Wird keine vollständige HTTP-Providerkonfiguration gefunden und
+ist `LLM_PROVIDER` nicht `LOCAL_ONNX`, steht keine generative LLM-Analyse zur Verfügung.
+Ein geladenes lokales Embedding-Modell kann weiterhin eine eingeschränkte semantische
+Bewertung liefern.
 
-Die explizite Einstellung `LLM_PROVIDER=LOCAL_ONNX` aktiviert die Offline-Semantikbewertung — kein API-Schlüssel oder Internetverbindung erforderlich (nach dem ersten Modell-Download).
+Die explizite Einstellung `LLM_PROVIDER=LOCAL_ONNX` aktiviert die Offline-Semantikbewertung — kein API-Schlüssel oder Internetzugang ist erforderlich, sobald das Modell lokal verfügbar ist.
+
+Mit `LLM_PROVIDER=CUSTOM_OPENAI` wird der vom Betreiber definierte Endpunkt verwendet. Der
+[Leitfaden für ein eigenes OpenAI-kompatibles LLM](../dev/custom-llm-de.md) beschreibt
+Schnittstellenvertrag, Docker-Netzwerk, Sicherheit und Fehlerbehebung.
 
 ### Neuen LLM-Anbieter hinzufügen
 
-Anbieter werden über die `LlmProviderExtension`-SPI beschrieben (siehe `docs/dev/07-extension-points.md`
-für die vollständige Erweiterungspunkt-Dokumentation). Um einen neuen Anbieter hinzuzufügen:
+Für jeden Dienst, der den OpenAI-Chat-Completions-Vertrag erfüllt, sollte zunächst
+`CUSTOM_OPENAI` verwendet werden. Neuer Java-Code ist nur erforderlich, wenn Protokoll,
+Authentifizierung oder providerspezifische Fähigkeiten abweichen. Anbieter werden über die
+`LlmProviderExtension`-SPI beschrieben (siehe `docs/dev/07-extension-points.md`).
 
 1. Neue Konstante zur `LlmProvider`-Enum hinzufügen.
 2. Spring-`@Component` erstellen, das `LlmProviderExtension` mit passendem `descriptor().providerId()` implementiert.
-3. Gateway in `LlmGatewayRegistry` registrieren (für OpenAI-kompatible APIs `OpenAiCompatibleGateway` verwenden).
-4. API-Schlüssel-Injection in `LlmProviderConfig` ergänzen und in `getApiKey(...)` sowie `getAvailableProviders()` verdrahten.
-5. Neuen `LLM_PROVIDER`-Enum-Wert und API-Schlüssel-Variable in dieser Tabelle ergänzen.
+3. Gateway in `LlmGatewayRegistry` registrieren.
+4. Pflichtkonfiguration und Verfügbarkeitslogik in `LlmProviderConfig` ergänzen.
+5. Neuen `LLM_PROVIDER`-Enum-Wert und die Konfigurationsvariablen in dieser Tabelle ergänzen.
 
 ---
 
@@ -171,7 +184,7 @@ Setzen Sie `ADMIN_PASSWORD` als geheime Umgebungsvariable im Render-Dashboard
 | — | `spring.application.name` | String | `taxonomy-analyzer` | Anwendungsname (wird in Logs verwendet). |
 | `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | Boolean | `true` | Kompilierte Thymeleaf-Templates zwischenspeichern. Standard ist `true` (Produktion). Setzen Sie `TAXONOMY_THYMELEAF_CACHE=false` für lokale Entwicklung, um Template-Änderungen ohne Neustart zu übernehmen. |
 | `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | Boolean | `true` | Lazy-Bean-Initialisierung — Beans werden erst beim ersten Zugriff erstellt. Reduziert die Spring-Context-Startzeit erheblich (typische Einsparung: 30–50 s). `TaxonomyService` ist mit `@Lazy(false)` annotiert und wird unabhängig von dieser Einstellung immer sofort initialisiert. |
-| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | Boolean | `false` | Wenn `true`, werden Taxonomiedaten in einem Hintergrund-Thread **nach** dem Start der Verbindungsannahme geladen. Empfohlen für Render und ähnliche PaaS-Plattformen, um „No open ports detected"-Deploy-Timeouts zu vermeiden. Standard ist `false` für Abwärtskompatibilität (synchrones Laden). |
+| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | Boolean | `false` | Wenn `true`, werden Taxonomiedaten in einem Hintergrund-Thread **nach** dem Start der Verbindungsannahme geladen. Empfohlen für Render und ähnliche PaaS-Plattformen, um „No open ports detected“-Deploy-Timeouts zu vermeiden. Standard ist `false` für Abwärtskompatibilität (synchrones Laden). |
 
 ---
 
@@ -216,7 +229,7 @@ Aktivieren mit `SPRING_PROFILES_ACTIVE=mssql`. Siehe [DATABASE_SETUP.md](DATABAS
 
 | Eigenschaft | Standard | Beschreibung |
 |---|---|---|
-| `spring.datasource.url` | `jdbc:sqlserver://localhost:1433;databaseName=taxonomy;encrypt=false;trustServerCertificate=true` | SQL Server JDBC-URL. |
+| `spring.datasource.url` | `jdbc:sqlserver://localhost:1433;databaseName=taxonomy;encrypt=false;trustServerCertificate=true` | SQL Server-JDBC-URL. |
 | `spring.datasource.driver-class-name` | `com.microsoft.sqlserver.jdbc.SQLServerDriver` | MSSQL-JDBC-Treiber. |
 | `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | HikariCP-Verbindungspool. |
 | `spring.jpa.database-platform` | `org.hibernate.dialect.SQLServerDialect` | SQL Server-Dialekt. |
@@ -270,6 +283,7 @@ Dies sind Maven-Eigenschaften beziehungsweise Tags, keine Laufzeitvariablen:
 `-DexcludedGroups=real-llm` schließt nur Live-LLMs aus und aktiviert damit
 bewusst die Datenbank-Tags. Siehe
 [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+
 ---
 
 ## Hibernate Search / Lucene
@@ -288,7 +302,7 @@ bewusst die Datenbank-Tags. Siehe
 
 | Variable | Eigenschaft | Typ | Standard | Beschreibung |
 |---|---|---|---|---|
-| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | `taxonomy.rate-limit.per-minute` | Integer | `10` | Maximale LLM-gestützte API-Anfragen pro IP pro Minute. Schützt vor Quota-Erschöpfung bei Gemini/OpenAI. Auf `0` setzen, um die Ratenbegrenzung zu deaktivieren. |
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | `taxonomy.rate-limit.per-minute` | Integer | `10` | Maximale LLM-gestützte API-Anfragen pro IP pro Minute. Schützt vor einer Erschöpfung des Provider-Kontingents. Auf `0` setzen, um die Ratenbegrenzung zu deaktivieren. |
 
 Geschützte Endpunkte: `POST /api/analyze`, `GET /api/analyze-stream`, `GET /api/analyze-node`, `POST /api/justify-leaf`.
 
@@ -390,7 +404,7 @@ Dies ist der moderne Ersatz für JMX (das auf dem Render Free Tier nicht verfüg
 
 ### Zugriff auf geschützte Endpunkte
 
-Endpunkte mit „Ja" erfordern den `X-Admin-Token`-Header, wenn `ADMIN_PASSWORD` konfiguriert ist:
+Endpunkte mit „Ja“ erfordern den `X-Admin-Token`-Header, wenn `ADMIN_PASSWORD` konfiguriert ist:
 
 ```bash
 # Gesundheit (öffentlich)
@@ -456,8 +470,10 @@ Zusätzlich zu Umgebungsvariablen können mehrere Einstellungen zur Laufzeit üb
 
 | Einstellungsschlüssel | Typ | Standard | Beschreibung |
 |---|---|---|---|
-| `llm.rpm` | int | `5` | Ausgehende LLM-API-Anfragen pro Minute |
+| `llm.rpm` | int | `5` | Ausgehende Gemini-Anfragen pro Minute |
+| `llm.rpm.custom_openai` | int | `0` | Ausgehende Anfragen an den eigenen Provider pro Minute; `0` deaktiviert die Drosselung |
 | `llm.timeout.seconds` | int | `30` | HTTP-Lese-Timeout für LLM-Aufrufe |
+| `llm.retry.max` | int | `2` | Wiederholungsversuche bei geeigneten LLM-Serverfehlern und Timeouts |
 | `rate-limit.per-minute` | int | `10` | Eingehende Ratenbegrenzung für Analyse-Endpunkte |
 | `analysis.min-relevance-score` | int | `70` | Mindestbewertungsschwelle für Analyseergebnisse |
 | `dsl.default-branch` | string | `draft` | Aktiver DSL-Branch für die Materialisierung |

@@ -2,12 +2,33 @@
 
 ## Goal
 
-Integrate a new language-model API (e.g., Anthropic Claude, Cohere, Mistral-hosted)
-so that users can select it in the analysis panel alongside the existing providers.
+Integrate a language-model API whose protocol or capabilities are not already covered by the runtime providers, so users can select it in the analysis panel.
 
 > Start with the stable extension anchor in
 > [`docs/dev/07-extension-points.md#llm-providers`](../07-extension-points.md#llm-providers).
-> Use this page for the end-to-end file/test/doc checklist.
+> Use this page for the end-to-end file, test, and documentation checklist.
+
+---
+
+## First decision: is code required?
+
+Do **not** add a provider-specific enum value merely to use another OpenAI-compatible server. The built-in `CUSTOM_OPENAI` provider already supports operator-controlled OpenAI Chat Completions endpoints:
+
+```bash
+LLM_PROVIDER=CUSTOM_OPENAI
+CUSTOM_LLM_URL=https://llm.example.test/v1/chat/completions
+CUSTOM_LLM_MODEL=served-model-name
+CUSTOM_LLM_API_KEY=optional-bearer-token
+```
+
+The API key is optional. See [`docs/dev/custom-llm.md`](../custom-llm.md) and the German operator documentation in `docs/de/AI_PROVIDERS.md`.
+
+Add new Java code only when at least one of these applies:
+
+- request or response JSON is not OpenAI Chat Completions compatible;
+- authentication cannot be represented by an optional Bearer token;
+- the provider needs provider-specific transport, retry, streaming, or structured-output behaviour;
+- the provider exposes capabilities that must be represented separately in the extension metadata.
 
 ---
 
@@ -15,106 +36,100 @@ so that users can select it in the analysis panel alongside the existing provide
 
 | File | What to do |
 |---|---|
-| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java` | Add provider detection and HTTP call |
-| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProvider.java` | Add the new enum value |
-| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProviderConfig.java` | Add the configuration record |
-| `taxonomy-app/src/main/resources/application.properties` | Add the API key property |
+| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProvider.java` | Add the runtime enum value |
+| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProviderConfig.java` | Add configuration, detection, availability, URL/model, and credential handling |
+| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmGatewayRegistry.java` | Register the transport gateway |
+| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/*LlmProviderExtension.java` | Publish provider metadata through the extension SPI |
+| `taxonomy-app/src/main/resources/application.properties` | Map environment variables to Spring properties |
+
+`LlmService` should remain provider-agnostic. Provider-specific HTTP behaviour belongs in an `LlmGateway` implementation, while provider selection and mandatory configuration belong in `LlmProviderConfig`.
 
 ---
 
 ## Files usually touched
 
-- `taxonomy-app/…/analysis/service/LlmService.java` — provider selection switch, HTTP call implementation
-- `taxonomy-app/…/analysis/service/LlmProvider.java` — new enum constant
-- `taxonomy-app/…/analysis/service/LlmProviderConfig.java` — new provider config record
-- `taxonomy-app/…/analysis/service/LlmResponseParser.java` — only if the response JSON schema differs from existing providers
-- `taxonomy-app/src/main/resources/application.properties` — `newprovider.api.key=${NEW_PROVIDER_API_KEY:}`
-- `docs/en/CONFIGURATION_REFERENCE.md` — document the new property
+- `taxonomy-app/…/analysis/service/LlmProvider.java`
+- `taxonomy-app/…/analysis/service/LlmProviderConfig.java`
+- `taxonomy-app/…/analysis/service/LlmGatewayRegistry.java`
+- `taxonomy-app/…/analysis/service/LlmResponseParser.java` only when the response schema differs
+- a provider metadata component implementing `LlmProviderExtension`
+- `taxonomy-app/src/main/resources/application.properties`
+- `docs/en/CONFIGURATION_REFERENCE.md` and the corresponding German documentation
+- `docs/en/AI_PROVIDERS.md` and `docs/de/AI_PROVIDERS.md`
 
 ---
 
 ## Files usually not touched
 
-- `taxonomy-domain/` — no domain type changes needed for a new provider
-- `taxonomy-dsl/` — DSL is unrelated to LLM provider selection
-- `taxonomy-export/` — export formats are independent of LLM providers
-- `taxonomy-app/…/controller/` — the analysis controller is provider-agnostic
-- `taxonomy-app/src/main/resources/prompts/` — existing prompts work with any provider
-  (create a new prompt file only if the new provider requires a different prompt structure)
-- `taxonomy-app/src/main/resources/templates/index.html` — the provider dropdown
-  is populated dynamically from `LlmProvider` enum values; no template change needed
+- `taxonomy-domain/` — no domain-model change is normally required
+- `taxonomy-dsl/` — unrelated to provider transport
+- `taxonomy-export/` — export formats are provider-independent
+- `taxonomy-app/…/controller/` — controllers use provider-agnostic services
+- `taxonomy-app/src/main/resources/prompts/` — existing prompts should remain portable
+- `taxonomy-app/src/main/resources/templates/index.html` — the provider selector is populated dynamically from `/api/ai-status`
 
 ---
 
-## Backend endpoint(s)
+## Backend endpoints
 
-| Endpoint | Controller |
+| Endpoint | Purpose |
 |---|---|
-| `POST /api/analysis/run` | `AnalysisApiController` |
-| `GET /api/analysis/ai-status` | `AnalysisApiController` |
+| `GET /api/ai-status` | Active provider, availability level, and selectable providers |
+| `POST /api/analyze` and related analysis endpoints | Provider-agnostic analysis execution |
+| `GET /api/diagnostics` | Administrative provider diagnostics |
 
-The analysis controller delegates to `LlmService` without knowing which
-provider is active — the provider is resolved from `application.properties`
-at startup.
-
----
-
-## Frontend module(s)
-
-- `taxonomy-app/src/main/resources/static/js/analysis.js` — reads the provider
-  list from `/api/analysis/ai-status` and populates the dropdown.
-  No change needed unless the UI label for the new provider requires special handling.
+The controller must not contain a provider-specific switch.
 
 ---
 
-## DTOs / domain types
+## Implementation checklist
 
-- `com.taxonomy.dto.AiStatusResponse` — returned by `/api/analysis/ai-status`;
-  includes the active provider name. Adjust only if you add new status fields.
-- `com.taxonomy.dto.AnalysisResult` — provider-agnostic; no change needed.
+1. Add the enum value.
+2. Add a matching `LlmProviderExtension` descriptor. The descriptor ID must equal the enum name.
+3. Add mandatory configuration and availability logic in `LlmProviderConfig`.
+4. Reuse `OpenAiCompatibleGateway` when the request is `model` plus `messages` and the response text is `choices[0].message.content`.
+5. Implement a dedicated gateway only for a genuinely different protocol.
+6. Register exactly one independent gateway instance so provider throttles do not share state.
+7. Add environment-property mappings without placing secrets in source control.
+8. Ensure missing mandatory configuration produces an unavailable provider rather than an HTTP 500.
+9. Ensure optional authentication really omits the header; do not send dummy credentials to the remote server.
+10. Update English and German operations documentation.
 
 ---
 
 ## Tests to run
 
 ```bash
-# Fast: unit tests for the app module only
-./mvnw test -pl taxonomy-app
+# Fast provider/unit tests
+./mvnw -pl taxonomy-app test \
+  -Dtest='LlmProviderConfigBranchCoverageTest,LlmGatewayRegistryTest,LlmProviderExtensionRegistryTest,*GatewayTest'
 
-# If you changed application.properties (context-level change)
+# Canonical repository verification
 ./mvnw verify -DexcludedGroups="real-llm"
 ```
 
-Relevant test classes:
-- `LlmServiceTest` — add a test case that mocks the new provider's HTTP response
-- `AnalysisApiControllerTest` — existing tests cover provider-agnostic scenarios
+Required test coverage:
 
-> Do **not** add a test that calls the real API.
-> Tag any tests that require a real API key with `@Tag("real-llm")`.
+- explicit provider selection and automatic detection priority;
+- mandatory versus optional configuration;
+- gateway registration and independent instances;
+- exact request URL, model, message body, and authentication headers;
+- response-text extraction;
+- rate-limit and timeout behaviour where provider-specific;
+- extension descriptor completeness for every runtime enum value;
+- application-context startup with empty optional configuration.
 
----
-
-## Documentation / screenshot updates
-
-- `docs/en/CONFIGURATION_REFERENCE.md` — add the new API key property
-- `docs/en/AI_PROVIDERS.md` — add the new provider to the supported providers table
-- Screenshots: regenerate the AI status screenshot if the provider name appears in it
+Do not call a real external LLM in the normal test suite. Any deliberately real-provider test must be tagged `@Tag("real-llm")`.
 
 ---
 
 ## Common pitfalls
 
-1. **OpenAI-compatible providers:** Many new providers use an OpenAI-compatible REST
-   interface. Before writing a new HTTP client, check whether `OpenAiCompatibleGateway`
-   already handles it — you may only need to configure the base URL.
-
-2. **Rate limits differ by provider:** The default `TAXONOMY_RATE_LIMIT_PER_MINUTE`
-   may be too high for some providers' free tiers.
-   Document the recommended value in `CONFIGURATION_REFERENCE.md`.
-
-3. **Missing API key → graceful degradation:** `LlmService` must handle a missing key
-   gracefully (provider reported as unavailable, not a 500 error).
-   Follow the existing pattern for `GeminiGateway`.
-
-4. **Response format differences:** Some providers wrap the model output in an extra
-   JSON layer. Update `LlmResponseParser` if the new provider's JSON schema differs.
+1. **Duplicating `CUSTOM_OPENAI`:** Prefer deployment configuration over a new enum value for a compatible endpoint.
+2. **Treating an API key as universally mandatory:** Local or trusted internal servers may intentionally be unauthenticated.
+3. **Sending a dummy Bearer token:** Omit `Authorization` when authentication is disabled.
+4. **Registering metadata without a runtime gateway, or vice versa:** The extension registry tests require both models to stay aligned.
+5. **Changing `LlmService` for provider details:** Keep orchestration separate from transport.
+6. **Assuming every 2xx body is parseable:** Verify the provider's text location and add parser tests.
+7. **Logging secrets or credential-bearing URLs:** Log validation failures without exposing configuration values.
+8. **Forgetting Docker networking:** From the Taxonomy container, `localhost` is not the sibling model server.

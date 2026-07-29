@@ -6,6 +6,7 @@ The Taxonomy Architecture Analyzer supports multiple LLM (Large Language Model) 
 
 - [Overview](#overview)
 - [Supported Providers](#supported-providers)
+- [Custom OpenAI-Compatible Endpoint](#custom-openai-compatible-endpoint)
 - [Provider Selection](#provider-selection)
 - [Per-Request Provider Override](#per-request-provider-override)
 - [AI Status Indicator](#ai-status-indicator)
@@ -22,36 +23,60 @@ The Taxonomy Architecture Analyzer supports multiple LLM (Large Language Model) 
 
 ## Overview
 
-The `LlmService` is the central component for AI analysis. It supports 7 providers and implements budget-constrained scoring, streaming analysis, rate limiting, and diagnostics. Provider selection uses a 3-tier priority system, and providers can be switched at runtime without restarting the application.
+The `LlmService` is the central component for AI analysis. It supports eight runtime providers and implements budget-constrained scoring, streaming analysis, rate limiting, diagnostics, and per-request provider selection.
 
 ---
 
 ## Supported Providers
 
-| Provider | Model | API Key Variable | Requires API Key |
+| Provider | Default model | Configuration | API key required |
 |---|---|---|---|
 | **Google Gemini** | gemini-3-flash-preview | `GEMINI_API_KEY` | Yes |
 | **OpenAI** | gpt-4o-mini | `OPENAI_API_KEY` | Yes |
 | **DeepSeek** | deepseek-chat | `DEEPSEEK_API_KEY` | Yes |
-| **Qwen** (Alibaba) | qwen-plus | `QWEN_API_KEY` | Yes |
+| **Qwen** (Alibaba) | qwen-plus | `DASHSCOPE_API_KEY` | Yes |
 | **Llama** | llama3.1-70b | `LLAMA_API_KEY` | Yes |
 | **Mistral** | mistral-small-latest | `MISTRAL_API_KEY` | Yes |
-| **LOCAL_ONNX** | bge-small-en-v1.5 | — | No (runs locally) |
+| **CUSTOM_OPENAI** | operator-defined | `CUSTOM_LLM_URL`, `CUSTOM_LLM_MODEL`, optionally `CUSTOM_LLM_API_KEY` | No |
+| **LOCAL_ONNX** | bge-small-en-v1.5 | local embedding settings | No |
 
-`LOCAL_ONNX` uses a local embedding model and does not require any API key. It is always available as a fallback.
+`CUSTOM_OPENAI` is a generative LLM integration for OpenAI-compatible Chat Completions servers. `LOCAL_ONNX` is different: it provides local embedding-based similarity scoring and does not generate textual LLM responses.
+
+---
+
+## Custom OpenAI-Compatible Endpoint
+
+Use `CUSTOM_OPENAI` to connect Taxonomy to a self-hosted or otherwise operator-controlled OpenAI-compatible server:
+
+```bash
+export LLM_PROVIDER=CUSTOM_OPENAI
+export CUSTOM_LLM_URL=http://llm-server:8000/v1/chat/completions
+export CUSTOM_LLM_MODEL=architecture-model
+```
+
+Authentication is optional:
+
+```bash
+export CUSTOM_LLM_API_KEY=secret-token
+```
+
+With an empty API key, Taxonomy sends no `Authorization` header. With a configured key, it sends Bearer authentication. Both URL and model are mandatory, and the URL must be a complete `http://` or `https://` Chat Completions endpoint.
+
+See [Custom OpenAI-Compatible LLM](../dev/custom-llm.md) for the JSON contract, Docker examples, security guidance, and troubleshooting.
 
 ---
 
 ## Provider Selection
 
-The system uses a **3-tier priority** to determine which provider handles a request:
+The system uses the following priority to determine which provider handles a request:
 
-1. **Per-request override** (highest priority) — Set via `ThreadLocal` when the frontend selects a specific provider for an individual request.
-2. **Explicit configuration** — Set via the `LLM_PROVIDER` environment variable or `llm.provider` property.
-3. **Auto-detection** — The system checks for API keys in this order:
-   - GEMINI → OPENAI → DEEPSEEK → QWEN → LLAMA → MISTRAL
-   - The first provider with a configured API key is selected.
-4. **Default** — If no API key is found, defaults to GEMINI (analysis will fail until an API key is configured).
+1. **Per-request override** — selected by the frontend for an individual request.
+2. **Explicit configuration** — `LLM_PROVIDER` or `llm.provider`.
+3. **Automatic detection** — the first complete configuration in this order:
+   - GEMINI → OPENAI → DEEPSEEK → QWEN → LLAMA → MISTRAL → CUSTOM_OPENAI
+4. **Default** — GEMINI when no provider configuration can be detected.
+
+For the standard cloud providers, automatic detection checks the corresponding API key. For `CUSTOM_OPENAI`, it checks for a valid `CUSTOM_LLM_URL` and a non-empty `CUSTOM_LLM_MODEL`; its API key remains optional.
 
 ### Checking the Active Provider
 
@@ -59,168 +84,126 @@ The system uses a **3-tier priority** to determine which provider handles a requ
 curl http://localhost:8080/api/ai-status
 ```
 
-Response:
+Example:
 
 ```json
 {
   "available": true,
-  "provider": "Google Gemini",
-  "availableProviders": ["Google Gemini", "LOCAL_ONNX"]
+  "provider": "Custom OpenAI-compatible",
+  "availableProviders": ["LOCAL_ONNX", "CUSTOM_OPENAI"]
 }
 ```
 
-The `availableProviders` list always includes `LOCAL_ONNX`. Additional providers appear when their API keys are configured.
+`availableProviders` always contains `LOCAL_ONNX`. Cloud providers are added when their API key is configured; `CUSTOM_OPENAI` is added when URL and model are complete and valid.
 
 ---
 
 ## Per-Request Provider Override
 
-The frontend can select a specific provider for individual analysis requests. This is implemented using a `ThreadLocal<LlmProvider>` in the `LlmService`:
+The frontend can select a provider for an individual analysis request:
 
-1. Before the analysis, `llmService.setRequestProvider(provider)` sets the override.
-2. `getActiveProvider()` checks the `ThreadLocal` first (priority 0).
-3. After the analysis, `llmService.clearRequestProvider()` is called in a `finally` block.
+1. `llmService.setRequestProvider(provider)` stores the override before analysis.
+2. `getActiveProvider()` evaluates the request override first.
+3. `llmService.clearRequestProvider()` removes it in a `finally` block.
 
-This allows users to compare results across different providers without changing the global configuration.
+This allows users to compare providers without changing the global deployment configuration.
 
 ---
 
 ## AI Status Indicator
 
-The navigation bar shows a badge indicating the current AI status:
+The navigation bar shows the current AI state:
 
 | Badge | State | Meaning |
 |---|---|---|
-| 🟢 **AI: [Provider Name]** | Available | AI analysis is active. Shows the provider name (e.g. "Google Gemini"). |
-| 🔴 **AI: Unavailable** | Unavailable | No LLM API key configured. The **Analyze with AI** button is disabled. |
-| ⚠️ **AI: Unknown** | Error | Status check failed (network error or server starting up). Auto-refreshes every 30 seconds. |
+| 🟢 **AI: [Provider Name]** | Full | A generative HTTP provider or mock mode is available. |
+| 🟡 **AI: [Provider Name]** | Limited | Local embedding-based analysis is available. |
+| 🔴 **AI: Unavailable** | Unavailable | The selected provider lacks mandatory configuration and no usable local fallback is loaded. |
+| ⚠️ **AI: Unknown** | Error | The status request failed or the application is still starting. |
 
-If you see a red badge:
-- Set one of the LLM API keys (`GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.) and restart, or
-- Set `LLM_PROVIDER=LOCAL_ONNX` for offline analysis without any API key.
-
-When AI is unavailable, an **inline warning message** appears below the Analyze button listing the required environment variables.
+For `CUSTOM_OPENAI`, verify both `CUSTOM_LLM_URL` and `CUSTOM_LLM_MODEL`. A missing `CUSTOM_LLM_API_KEY` is valid for an unauthenticated trusted server.
 
 ---
 
 ## LLM Diagnostics
 
-The **LLM Diagnostics Panel** (admin only) shows runtime statistics:
+The admin diagnostics panel shows:
 
-- Provider name and model version
-- Whether an API key is configured (with masked prefix)
-- Total number of API calls
-- Successful and failed call counts
-- Average response latency
-- Last call time and status
+- active provider;
+- whether its connection configuration is present;
+- a masked API-key prefix when a real key is configured;
+- total, successful, and failed calls;
+- the time and result of the last call;
+- the last error.
 
 ```bash
-curl -u admin:password http://localhost:8080/api/ai-diagnostics
+curl -u admin:password http://localhost:8080/api/diagnostics
 ```
 
-Example response:
-
-```json
-{
-  "provider": "Google Gemini",
-  "apiKeyConfigured": true,
-  "apiKeyPrefix": "sk-****",
-  "totalCalls": 347,
-  "successfulCalls": 344,
-  "failedCalls": 3,
-  "lastCallTime": "2025-01-15T10:30:45Z",
-  "lastCallSuccess": true
-}
-```
-
-Click **Test Connection** in the diagnostics panel to send a test request to the LLM provider and confirm it is responding correctly.
+Use **Test Connection** in the diagnostics panel to send a real test request.
 
 ---
 
 ## Rate Limiting and Throttling
 
-Two separate rate-limiting mechanisms protect the system:
+### Outgoing LLM throttle
 
-### Outgoing LLM Throttle
+Each HTTP gateway has an independent sliding-window throttle. Provider-specific preferences use:
 
-Controlled by the `llm.rpm` preference (default: 5 requests/minute). Uses a sliding-window algorithm:
+```text
+llm.rpm.<provider-id-in-lowercase>
+```
 
-1. A FIFO queue records timestamps of recent LLM API calls.
-2. Before each call, the system checks if the oldest entry in the queue is older than 60 seconds.
-3. If the limit would be exceeded, the thread sleeps until the oldest call exits the window.
-4. A 50ms grace period is added for clock drift.
+For the custom provider this is:
 
-This can be adjusted at runtime via the [Preferences](PREFERENCES.md) API.
+```text
+llm.rpm.custom_openai
+```
 
-### Incoming Rate Limit
+The custom endpoint defaults to `0`, meaning no outgoing RPM throttle. The Gemini gateway retains its free-tier-oriented default.
 
-Controlled by `TAXONOMY_RATE_LIMIT_PER_MINUTE` (default: 10 requests/minute). Applied to analysis endpoints:
+### Incoming rate limit
 
-- `POST /api/analyze`
-- `POST /api/analyze-stream`
-- `POST /api/analyze-node`
-- `POST /api/justify-leaf`
-
-Returns HTTP `429 Too Many Requests` when exceeded.
+`TAXONOMY_RATE_LIMIT_PER_MINUTE` limits incoming LLM-backed requests per client and returns HTTP `429` when exceeded.
 
 ---
 
 ## Mock Mode
 
-For testing and development, enable mock mode to bypass real LLM calls:
+Enable mock mode to bypass real LLM calls:
 
 ```bash
 LLM_MOCK=true
 ```
 
-Mock mode:
-- Returns pre-computed scores from `classpath:mock-scores/secure-voice-comms.json`
-- Falls back to hardcoded root scores with deterministic variation
-- Does not require any API key
-- Used in CI, screenshots, and development environments
+Mock mode returns deterministic prepared scores, needs no API key, and is intended for tests, screenshots, and offline development.
 
 ---
 
 ## Prompt Template Editor
 
-The **Prompt Templates Editor** (admin only) allows customising the instructions sent to the LLM without redeploying:
-
-1. Select a prompt template from the dropdown.
-2. Edit the template text.
-3. Click **Save** to persist the change, or **Reset** to restore the built-in default.
-
-Changes take effect immediately for the next analysis.
+The admin prompt-template editor changes the instructions sent to the active provider without redeploying. Saved changes apply to the next analysis request.
 
 ---
 
 ## LLM Communication Log
 
-The **LLM Communication Log** (admin only) records the full prompt and raw response for each analysis operation. Use this for:
-
-- Debugging unexpected scoring results
-- Verifying prompt effectiveness
-- Auditing LLM interactions
+The admin communication log records the prompt and raw generated text for analysis calls. Use it to inspect response-format violations, unexpected scores, and prompt effectiveness. Secrets and authorization headers are not written into the prompt body.
 
 ---
 
 ## Timeout Configuration
 
-The HTTP read timeout for LLM API calls is configurable at runtime:
-
-| Setting | Default | Description |
-|---|---|---|
-| `llm.timeout.seconds` | `30` | Seconds to wait for an LLM response |
-
-Update via [Preferences](PREFERENCES.md):
+The runtime preference `llm.timeout.seconds` controls the HTTP read timeout. `llm.retry.max` controls retries for retryable server errors and timeouts.
 
 ```bash
 curl -u admin:password -X PUT \
   -H "Content-Type: application/json" \
-  -d '{"llm.timeout.seconds": 45}' \
+  -d '{"llm.timeout.seconds": 90, "llm.retry.max": 2}' \
   http://localhost:8080/api/preferences
 ```
 
-The timeout is applied dynamically to the `RestTemplate` without restarting.
+Self-hosted models may require a longer timeout during first-model load.
 
 ---
 
@@ -228,24 +211,27 @@ The timeout is applied dynamically to the `RestTemplate` without restarting.
 
 | Variable | Description |
 |---|---|
+| `LLM_PROVIDER` | Explicit provider selection, including `CUSTOM_OPENAI` and `LOCAL_ONNX` |
+| `LLM_MOCK` | Enable deterministic mock mode |
 | `GEMINI_API_KEY` | Google Gemini API key |
 | `OPENAI_API_KEY` | OpenAI API key |
 | `DEEPSEEK_API_KEY` | DeepSeek API key |
-| `QWEN_API_KEY` | Alibaba Qwen API key |
+| `DASHSCOPE_API_KEY` | Alibaba DashScope API key for Qwen |
 | `LLAMA_API_KEY` | Llama API key |
 | `MISTRAL_API_KEY` | Mistral API key |
-| `LLM_PROVIDER` | Explicit provider selection (overrides auto-detection) |
-| `LLM_MOCK` | Enable mock mode (`true`/`false`) |
-| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Incoming rate limit for analysis endpoints |
+| `CUSTOM_LLM_URL` | Complete custom OpenAI-compatible Chat Completions endpoint |
+| `CUSTOM_LLM_MODEL` | Model identifier sent to the custom endpoint |
+| `CUSTOM_LLM_API_KEY` | Optional Bearer token for the custom endpoint |
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Incoming rate limit for LLM-backed endpoints |
 
-See [Configuration Reference](CONFIGURATION_REFERENCE.md) for the complete list of environment variables.
+See the [Configuration Reference](CONFIGURATION_REFERENCE.md) for the canonical property mapping.
 
 ---
 
 ## Related Documentation
 
-- [Configuration Reference](CONFIGURATION_REFERENCE.md) — All environment variables and startup configuration
-- [Preferences](PREFERENCES.md) — Runtime preference management
-- [User Guide](USER_GUIDE.md) — AI Status Indicator and Admin Mode (§14)
-- [Security](SECURITY.md) — Authentication and access control
-- [API Reference](API_REFERENCE.md) — Full REST API documentation
+- [Custom OpenAI-Compatible LLM](../dev/custom-llm.md)
+- [Configuration Reference](CONFIGURATION_REFERENCE.md)
+- [Preferences](PREFERENCES.md)
+- [Security](SECURITY.md)
+- [API Reference](API_REFERENCE.md)

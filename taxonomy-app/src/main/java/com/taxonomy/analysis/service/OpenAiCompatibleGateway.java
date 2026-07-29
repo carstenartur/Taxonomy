@@ -16,10 +16,11 @@ import java.net.SocketTimeoutException;
 import java.util.*;
 
 /**
- * Gateway for OpenAI-compatible LLM APIs (OpenAI, DeepSeek, Qwen, Llama, Mistral).
+ * Gateway for OpenAI-compatible LLM APIs (OpenAI, DeepSeek, Qwen, Llama, Mistral,
+ * and operator-configured custom endpoints).
  *
  * <p>All these providers share the same request/response format (messages array with
- * role/content, Bearer auth), but may have different endpoints, model names, and
+ * role/content), but may have different endpoints, model names, authentication, and
  * rate limits.
  *
  * <p>Each {@code OpenAiCompatibleGateway} instance maintains its own sliding-window
@@ -27,7 +28,7 @@ import java.util.*;
  * penalised by providers with strict limits.
  *
  * <p>When {@code defaultRpm} is 0, no throttling is applied (suitable for self-hosted
- * models like Llama or Mistral with no API rate limit).
+ * models with no API rate limit).
  */
 public class OpenAiCompatibleGateway implements LlmGateway {
 
@@ -108,7 +109,10 @@ public class OpenAiCompatibleGateway implements LlmGateway {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
+        if (apiKey != null && !apiKey.isBlank()
+                && !LlmProviderConfig.CUSTOM_NO_AUTH_API_KEY.equals(apiKey)) {
+            headers.setBearerAuth(apiKey);
+        }
         try {
             HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
 
@@ -186,7 +190,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         }
     }
 
-    // ── Per-gateway RPM throttle (sliding window) ─────────────────────────────
+    // ── Per-provider RPM throttle (sliding window) ────────────────────────────
 
     /**
      * Paces outgoing calls using a sliding-window approach.

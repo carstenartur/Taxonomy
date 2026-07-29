@@ -11,9 +11,7 @@ import org.springframework.web.client.RestTemplate;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-/**
- * Unit tests for {@link LlmGatewayRegistry}.
- */
+/** Unit tests for {@link LlmGatewayRegistry}. */
 class LlmGatewayRegistryTest {
 
     private LlmGatewayRegistry registry;
@@ -22,6 +20,10 @@ class LlmGatewayRegistryTest {
     void setUp() {
         LlmProviderConfig providerConfig = mock(LlmProviderConfig.class);
         when(providerConfig.getGeminiUrl()).thenReturn("https://gemini.test/v1/generate?key=");
+        when(providerConfig.getOpenAiCompatibleUrl(LlmProvider.CUSTOM_OPENAI))
+                .thenReturn("http://custom-llm.test/v1/chat/completions");
+        when(providerConfig.getOpenAiCompatibleModel(LlmProvider.CUSTOM_OPENAI))
+                .thenReturn("custom-model");
 
         RestTemplate restTemplate = mock(RestTemplate.class);
         ObjectMapper objectMapper = JsonMapper.builder().build();
@@ -76,6 +78,13 @@ class LlmGatewayRegistryTest {
     }
 
     @Test
+    void customOpenAi_returnsOpenAiCompatibleGateway() {
+        LlmGateway gw = registry.getGateway(LlmProvider.CUSTOM_OPENAI);
+        assertThat(gw).isInstanceOf(OpenAiCompatibleGateway.class);
+        assertThat(gw.providerName()).isEqualTo("CUSTOM_OPENAI");
+    }
+
+    @Test
     void localOnnx_throwsIllegalArgument() {
         assertThatThrownBy(() -> registry.getGateway(LlmProvider.LOCAL_ONNX))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -87,10 +96,13 @@ class LlmGatewayRegistryTest {
         LlmGateway gemini = registry.getGateway(LlmProvider.GEMINI);
         LlmGateway openai = registry.getGateway(LlmProvider.OPENAI);
         LlmGateway deepseek = registry.getGateway(LlmProvider.DEEPSEEK);
+        LlmGateway custom = registry.getGateway(LlmProvider.CUSTOM_OPENAI);
 
-        // Different instances — each with its own throttle queue
         assertThat(gemini).isNotSameAs(openai);
-        assertThat(openai).isNotSameAs(deepseek);
         assertThat(gemini).isNotSameAs(deepseek);
+        assertThat(gemini).isNotSameAs(custom);
+        assertThat(openai).isNotSameAs(deepseek);
+        assertThat(openai).isNotSameAs(custom);
+        assertThat(deepseek).isNotSameAs(custom);
     }
 }
