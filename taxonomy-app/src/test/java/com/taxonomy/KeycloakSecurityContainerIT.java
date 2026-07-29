@@ -436,10 +436,14 @@ class KeycloakSecurityContainerIT {
                 "client_secret", clientSecret,
                 "username", username,
                 "password", password,
-                "scope", "openid profile email roles"));
+                "scope", "openid profile"));
         HttpResponse<String> response = hostKeycloakPost(
                 "/realms/" + REALM + "/protocol/openid-connect/token", form);
-        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.statusCode())
+                .withFailMessage(
+                        "Keycloak token request failed for client '%s' and user '%s': HTTP %s: %s",
+                        clientId, username, response.statusCode(), response.body())
+                .isEqualTo(200);
         return MAPPER.readTree(response.body()).get("access_token").asText();
     }
 
