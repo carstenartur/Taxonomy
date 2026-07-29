@@ -73,13 +73,16 @@ and `.mvn/verification-suites.json`. Evidence is written below
 The Maven-owned launcher executes every selected browser scenario but does not
 restart the packaged application when scenarios have the same isolation needs:
 
-- `ui`, `accessibility`, text-spacing and offline checks share one application;
+- read-only `ui` and `accessibility` checks share one application;
+- the special-modes suite keeps a fresh application because it performs a real
+  analysis before testing partial-result, text-spacing and offline states;
 - role/state profiles share one application only with profiles for the same role;
 - each primary mutation workflow keeps its own fresh application.
 
 The complete default matrix therefore retains all 18 scenarios while reducing
-application starts from 18 to 7. Execution remains sequential. Primary mutation
-workflows are not allowed to share state, and a role/state scenario can never
+application starts from 18 to 8. Execution remains sequential. Scenarios that
+mutate application state are not allowed to share with read-only browser checks,
+primary mutation workflows remain isolated, and a role/state scenario can never
 share an application with another role. These rules are executable contracts in
 `.github/scripts/ui-suite-plan.test.mjs` rather than implicit CI behavior.
 
