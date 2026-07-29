@@ -40,24 +40,33 @@ public class KeycloakHealthIndicator implements HealthIndicator {
                     .GET()
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(
+                    request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
                 return Health.up()
                         .withDetail("jwksEndpoint", jwkSetUri)
                         .build();
-            } else {
-                return Health.down()
-                        .withDetail("jwksEndpoint", jwkSetUri)
-                        .withDetail("statusCode", response.statusCode())
-                        .build();
             }
-        } catch (Exception e) {
-            log.debug("Keycloak health check failed: {}", e.getMessage());
             return Health.down()
                     .withDetail("jwksEndpoint", jwkSetUri)
-                    .withDetail("error", e.getMessage())
+                    .withDetail("statusCode", response.statusCode())
+                    .build();
+        } catch (Exception error) {
+            String description = describe(error);
+            log.debug("Keycloak health check failed: {}", description, error);
+            return Health.down()
+                    .withDetail("jwksEndpoint", jwkSetUri)
+                    .withDetail("error", description)
                     .build();
         }
+    }
+
+    private static String describe(Throwable error) {
+        String type = error.getClass().getSimpleName();
+        String message = error.getMessage();
+        return message == null || message.isBlank()
+                ? type
+                : type + ": " + message;
     }
 }

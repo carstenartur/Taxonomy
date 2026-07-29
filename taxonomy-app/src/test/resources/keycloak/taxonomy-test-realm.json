@@ -1,0 +1,194 @@
+{
+  "realm": "taxonomy-test",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "roles": {
+    "realm": [
+      { "name": "ROLE_USER", "description": "Read-only user" },
+      { "name": "ROLE_ARCHITECT", "description": "Can mutate architecture" },
+      { "name": "ROLE_ADMIN", "description": "Full administration" },
+      { "name": "ROLE_UNSUPPORTED", "description": "Must not map to an application authority" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "taxonomy-app",
+      "name": "Taxonomy application integration test",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "taxonomy-test-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": ["http://taxonomy.test:8080/login/oauth2/code/keycloak"],
+      "webOrigins": ["http://taxonomy.test:8080"],
+      "baseUrl": "http://taxonomy.test:8080/",
+      "attributes": {
+        "post.logout.redirect.uris": "http://taxonomy.test:8080/*"
+      },
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "protocolMappers": [
+        {
+          "name": "preferred username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "application realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "usermodel.realmRoleMapping.rolePrefix": "",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "taxonomy-missing-claims",
+      "name": "Missing role claim integration fixture",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "taxonomy-missing-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["profile"],
+      "protocolMappers": [
+        {
+          "name": "preferred username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "taxonomy-malformed-claims",
+      "name": "Malformed role claim integration fixture",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "taxonomy-malformed-secret",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "defaultClientScopes": ["profile"],
+      "protocolMappers": [
+        {
+          "name": "preferred username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "malformed realm access",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "realm_access",
+            "claim.value": "not-an-object",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@taxonomy.test",
+      "firstName": "Test",
+      "lastName": "Administrator",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
+      "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"]
+    },
+    {
+      "username": "architect",
+      "email": "architect@taxonomy.test",
+      "firstName": "Test",
+      "lastName": "Architect",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [{ "type": "password", "value": "architect", "temporary": false }],
+      "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT"]
+    },
+    {
+      "username": "user",
+      "email": "user@taxonomy.test",
+      "firstName": "Test",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [{ "type": "password", "value": "user", "temporary": false }],
+      "realmRoles": ["ROLE_USER"]
+    },
+    {
+      "username": "unsupported",
+      "email": "unsupported@taxonomy.test",
+      "firstName": "Unsupported",
+      "lastName": "Role",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [{ "type": "password", "value": "unsupported", "temporary": false }],
+      "realmRoles": ["ROLE_UNSUPPORTED"]
+    }
+  ]
+}

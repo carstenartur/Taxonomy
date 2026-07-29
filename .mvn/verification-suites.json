@@ -3,7 +3,7 @@
   "canonicalCommand": "./mvnw -B verify -Pci",
   "profiles": {
     "ci": {
-      "purpose": "Required pull-request verification: unit tests, core and PostgreSQL integration tests, quality gates, browser matrix and accessibility audit",
+      "purpose": "Required pull-request verification: unit tests, core, PostgreSQL and Keycloak integration tests, quality gates, browser matrix and accessibility audit",
       "requires": ["Java 21", "Docker", "Python 3", "POSIX shell"]
     },
     "core-integration": {
@@ -17,6 +17,13 @@
     "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},
     "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,CatalogFacadeTest"},
     "ui-tests": {"runner": ".github/scripts/run-ui-suite.mjs"}
+  },
+  "focusedCommands": {
+    "keycloak-security": {
+      "command": "./mvnw -B verify -pl taxonomy-app -am -DskipITs=false -Dit.test=KeycloakSecurityContainerIT",
+      "purpose": "Imported-realm browser OIDC, bearer JWT, CSRF, role, Swagger, logout and health verification",
+      "requires": ["Java 21", "Docker"]
+    }
   },
   "workflowResponsibilities": {
     "ci-cd.yml": "authoritative Maven verification and report publication",
