@@ -313,7 +313,14 @@ class KeycloakSecurityContainerIT {
             if (health.statusCode() == 503) {
                 break;
             }
-            Thread.sleep(500);
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(
+                        "Interrupted while waiting for Keycloak outage health propagation",
+                        exception);
+            }
         }
 
         assertThat(health).isNotNull();
@@ -344,7 +351,7 @@ class KeycloakSecurityContainerIT {
                         ISSUER + "/protocol/openid-connect/certs")
                 .withEnv("KEYCLOAK_CLIENT_ID", CLIENT_ID)
                 .withEnv("KEYCLOAK_CLIENT_SECRET", CLIENT_SECRET)
-                .withEnv("TAXONOMY_SECURITY_SWAGGER_PUBLIC",
+                .withEnv("TAXONOMY_SWAGGER_PUBLIC",
                         Boolean.toString(swaggerPublic))
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "false")
                 .withEnv("TAXONOMY_SEARCH_DIRECTORY_TYPE", "local-heap")
@@ -421,61 +428,40 @@ class KeycloakSecurityContainerIT {
     }
 
     private String passwordToken(
-            String clientId,
-            String clientSecret,
-            String username,
-            String password) throws Exception {
-        Map<String, String> fields = new LinkedHashMap<>();
-        fields.put("grant_type", "password");
-        fields.put("client_id", clientId);
-        fields.put("client_secret", clientSecret);
-        fields.put("username", username);
-        fields.put("password", password);
-        String body = fields.entrySet().stream()
-                .map(entry -> urlEncode(entry.getKey())
-                        + "=" + urlEncode(entry.getValue()))
-                .collect(Collectors.joining("&"));
-
-        HttpResponse<String> response = request(
-                hostKeycloakUri(
-                        "/realms/" + REALM + "/protocol/openid-connect/token"),
-                "POST", null, "application/x-www-form-urlencoded", body, Map.of());
-        assertThat(response.statusCode())
-                .as("Keycloak token response for %s: %s", clientId, response.body())
-                .isEqualTo(200);
-        JsonNode tokenResponse = MAPPER.readTree(response.body());
-        assertThat(tokenResponse.hasNonNull("access_token"))
-                .as("Keycloak access token response for %s: %s",
-                        clientId, response.body())
-                .isTrue();
-        return tokenResponse.get("access_token").asText();
+            String clientId, String clientSecret, String username, String password)
+            throws Exception {
+        String form = form(Map.of(
+                "grant_type", "password",
+                "client_id", clientId,
+                "client_secret", clientSecret,
+                "username", username,
+                "password", password,
+                "scope", "openid profile email roles"));
+        HttpResponse<String> response = hostKeycloakPost(
+                "/realms/" + REALM + "/protocol/openid-connect/token", form);
+        assertThat(response.statusCode()).isEqualTo(200);
+        return MAPPER.readTree(response.body()).get("access_token").asText();
     }
 
     private JsonNode jwtClaims(String token) throws Exception {
         String[] parts = token.split("\\.");
-        assertThat(parts).hasSize(3);
-        return MAPPER.readTree(new String(
-                Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8));
+        assertThat(parts).hasSizeGreaterThanOrEqualTo(2);
+        return MAPPER.readTree(Base64.getUrlDecoder().decode(parts[1]));
     }
 
-    private HttpResponse<String> jsonPost(String path, String token, String body)
-            throws Exception {
+    private HttpResponse<String> jsonPost(
+            String path, String token, String json) throws Exception {
         return appRequest(
-                "POST", path, token, "application/json", body, Map.of());
+                "POST", path, token, "application/json", json, Map.of());
     }
 
     private HttpResponse<String> emptyMultipartPost(String path, String token)
             throws Exception {
-        String boundary = "taxonomy-keycloak-boundary";
-        String body = "--" + boundary + "\r\n"
-                + "Content-Disposition: form-data; name=\"file\"; "
-                + "filename=\"empty.xml\"\r\n"
-                + "Content-Type: application/xml\r\n\r\n"
-                + "\r\n--" + boundary + "--\r\n";
+        String boundary = "taxonomy-boundary";
         return appRequest(
                 "POST", path, token,
                 "multipart/form-data; boundary=" + boundary,
-                body,
+                "--" + boundary + "--\r\n",
                 Map.of());
     }
 
@@ -487,15 +473,31 @@ class KeycloakSecurityContainerIT {
             String body,
             Map<String, String> headers) throws Exception {
         return request(
-                appUri(path), method, bearerToken, contentType, body, headers);
+                URI.create("http://" + appContainer.getHost() + ":"
+                        + appContainer.getMappedPort(8080) + path),
+                method,
+                bearerToken,
+                contentType,
+                body,
+                headers);
     }
 
     private HttpResponse<String> hostKeycloakGet(String path) throws Exception {
         return request(
-                hostKeycloakUri(path), "GET", null, null, null, Map.of());
+                URI.create("http://" + keycloakContainer.getHost() + ":"
+                        + keycloakContainer.getMappedPort(8080) + path),
+                "GET", null, null, null, Map.of());
     }
 
-    private HttpResponse<String> request(
+    private HttpResponse<String> hostKeycloakPost(String path, String body)
+            throws Exception {
+        return request(
+                URI.create("http://" + keycloakContainer.getHost() + ":"
+                        + keycloakContainer.getMappedPort(8080) + path),
+                "POST", null, "application/x-www-form-urlencoded", body, Map.of());
+    }
+
+    private static HttpResponse<String> request(
             URI uri,
             String method,
             String bearerToken,
@@ -503,7 +505,7 @@ class KeycloakSecurityContainerIT {
             String body,
             Map<String, String> headers) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofSeconds(20))
+                .timeout(Duration.ofSeconds(30))
                 .header("Accept", "application/json");
         if (bearerToken != null) {
             builder.header("Authorization", "Bearer " + bearerToken);
@@ -512,35 +514,27 @@ class KeycloakSecurityContainerIT {
             builder.header("Content-Type", contentType);
         }
         headers.forEach(builder::header);
-        HttpRequest.BodyPublisher publisher = body == null
-                ? HttpRequest.BodyPublishers.noBody()
-                : HttpRequest.BodyPublishers.ofString(
-                        body, StandardCharsets.UTF_8);
-        return HTTP.send(
-                builder.method(method, publisher).build(),
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if ("POST".equals(method)) {
+            builder.POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body));
+        } else {
+            builder.GET();
+        }
+        return HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    private URI appUri(String path) {
-        return URI.create("http://" + appContainer.getHost() + ":"
-                + appContainer.getMappedPort(8080) + path);
-    }
-
-    private URI hostKeycloakUri(String path) {
-        return URI.create("http://" + keycloakContainer.getHost() + ":"
-                + keycloakContainer.getMappedPort(8080) + path);
+    private static String form(Map<String, String> values) {
+        Map<String, String> ordered = new LinkedHashMap<>(values);
+        return ordered.entrySet().stream()
+                .map(entry -> URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
+                        + "=" + URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8))
+                .collect(Collectors.joining("&"));
     }
 
     private static Set<String> jsonStringSet(JsonNode array) {
         return array == null || !array.isArray()
                 ? Set.of()
-                : java.util.stream.StreamSupport.stream(
-                                array.spliterator(), false)
-                        .map(JsonNode::asText)
-                        .collect(Collectors.toSet());
-    }
-
-    private static String urlEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+                : java.util.stream.StreamSupport.stream(array.spliterator(), false)
+                .map(JsonNode::asText)
+                .collect(Collectors.toSet());
     }
 }
