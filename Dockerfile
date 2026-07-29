@@ -52,7 +52,7 @@ FROM otel/autoinstrumentation-java:2.28.1@sha256:41b92978e61d13d4f32c6eb20c6ae78
 
 # ---- runtime stage ----
 # Tag retained for readability; digest prevents mutable-tag supply-chain drift.
-FROM eclipse-temurin:21-jre-jammy@sha256:2c2088115d82ba0022ccf8080f233d2398b7ad3ba3308ed45e860caf511f6b95
+FROM eclipse-temurin:21-jre-jammy@sha256:d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13
 # OCI Image Specification labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.description="Spring Boot web application that loads a C3-taxonomy catalogue and provides full-text search, KNN vector search, architecture-overlay DSL editing, and LLM-assisted analysis." \
@@ -61,7 +61,7 @@ LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.documentation="https://github.com/carstenartur/Taxonomy#readme" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Carsten Hammer" \
-      org.opencontainers.image.base.name="eclipse-temurin:21-jre-jammy@sha256:2c2088115d82ba0022ccf8080f233d2398b7ad3ba3308ed45e860caf511f6b95"
+      org.opencontainers.image.base.name="eclipse-temurin:21-jre-jammy@sha256:d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13"
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION
