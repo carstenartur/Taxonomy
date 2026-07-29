@@ -11,19 +11,29 @@ function scenario(suite, id, role) {
   };
 }
 
-test('groups browser-only suites into one shared application', () => {
+test('groups read-only browser suites into one shared application', () => {
   const groups = groupScenarios([
     scenario('ui', 'desktop-chromium'),
-    scenario('accessibility', 'mobile'),
-    scenario('special-modes', 'text-spacing-and-offline')
+    scenario('accessibility', 'mobile')
   ]);
 
   assert.equal(groups.length, 1);
   assert.equal(groups[0].id, 'shared-browser-nonmutating');
   assert.deepEqual(groups[0].scenarios.map(item => item.id), [
     'desktop-chromium',
-    'mobile',
-    'text-spacing-and-offline'
+    'mobile'
+  ]);
+});
+
+test('isolates special modes because partial analysis mutates application state', () => {
+  const groups = groupScenarios([
+    scenario('ui', 'desktop-chromium'),
+    scenario('special-modes', 'text-spacing-and-offline')
+  ]);
+
+  assert.deepEqual(groups.map(group => group.id), [
+    'shared-browser-nonmutating',
+    'special-modes-text-spacing-and-offline'
   ]);
 });
 
@@ -61,7 +71,7 @@ test('keeps every primary mutation workflow isolated', () => {
   ]);
 });
 
-test('maps the complete current matrix from eighteen scenarios to seven starts', () => {
+test('maps the complete current matrix from eighteen scenarios to eight starts', () => {
   const scenarios = [
     scenario('ui', 'desktop-chromium'),
     scenario('ui', 'desktop-firefox'),
@@ -86,9 +96,10 @@ test('maps the complete current matrix from eighteen scenarios to seven starts',
   const groups = groupScenarios(scenarios);
 
   assert.equal(scenarios.length, 18);
-  assert.equal(groups.length, 7);
+  assert.equal(groups.length, 8);
   assert.deepEqual(groups.map(group => group.id), [
     'shared-browser-nonmutating',
+    'special-modes-text-spacing-and-offline',
     'primary-primary-user-chromium',
     'primary-primary-architect-chromium',
     'primary-primary-admin-chromium',
