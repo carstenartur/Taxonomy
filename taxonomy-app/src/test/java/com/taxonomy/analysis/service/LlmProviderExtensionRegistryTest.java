@@ -50,9 +50,12 @@ class LlmProviderExtensionRegistryTest {
     }
 
     @Test
-    void findByIdIsCaseInsensitiveAndHandlesUnknownValues() {
+    void findByIdIsCaseInsensitiveTrimsWhitespaceAndHandlesUnknownValues() {
+        assertThat(registry.findById("GEMINI")).isPresent();
         assertThat(registry.findById("gemini")).isPresent();
+        assertThat(registry.findById(" Gemini ")).isPresent();
         assertThat(registry.findById("CUSTOM_OPENAI")).isPresent();
+        assertThat(registry.findById("custom_openai")).isPresent();
         assertThat(registry.findById(" custom_openai ")).isPresent();
         assertThat(registry.findById("unknown")).isEmpty();
         assertThat(registry.findById(null)).isEmpty();
