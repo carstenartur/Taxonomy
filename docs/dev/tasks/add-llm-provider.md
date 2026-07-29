@@ -21,7 +21,7 @@ CUSTOM_LLM_MODEL=served-model-name
 CUSTOM_LLM_API_KEY=optional-bearer-token
 ```
 
-The API key is optional. See `docs/en/CUSTOM_LLM.md` and `docs/de/CUSTOM_LLM.md`.
+The API key is optional. See [`docs/dev/custom-llm.md`](../custom-llm.md) and the German operator documentation in `docs/de/AI_PROVIDERS.md`.
 
 Add new Java code only when at least one of these applies:
 
