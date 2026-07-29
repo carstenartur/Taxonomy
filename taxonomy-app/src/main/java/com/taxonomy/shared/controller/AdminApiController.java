@@ -1,5 +1,7 @@
 package com.taxonomy.shared.controller;
 
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
@@ -36,17 +38,20 @@ import java.util.Map;
 public class AdminApiController {
 
     private final LlmService llmService;
+    private final LlmProviderConfig llmProviderConfig;
     private final PromptTemplateService promptTemplateService;
     private final TaxonomyService taxonomyService;
     private final LogRingBufferService logRingBufferService;
     private final HealthSummaryService healthSummaryService;
 
     public AdminApiController(LlmService llmService,
+                              LlmProviderConfig llmProviderConfig,
                               PromptTemplateService promptTemplateService,
                               TaxonomyService taxonomyService,
                               LogRingBufferService logRingBufferService,
                               HealthSummaryService healthSummaryService) {
         this.llmService = llmService;
+        this.llmProviderConfig = llmProviderConfig;
         this.promptTemplateService = promptTemplateService;
         this.taxonomyService = taxonomyService;
         this.logRingBufferService = logRingBufferService;
@@ -100,7 +105,25 @@ public class AdminApiController {
         if (!isAdminAuthorized(request)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        return ResponseEntity.ok(llmService.getDiagnostics());
+
+        Map<String, Object> diagnostics = new LinkedHashMap<>(llmService.getDiagnostics());
+        LlmProvider provider = llmService.getActiveProvider();
+        diagnostics.put("providerConfigured", llmProviderConfig.isProviderConfigured(provider));
+
+        if (provider == LlmProvider.CUSTOM_OPENAI
+                && !llmProviderConfig.hasConfiguredApiKey(provider)) {
+            // The custom endpoint is intentionally usable without authentication. Do not expose
+            // the internal transport marker as though it were a configured operator secret.
+            diagnostics.put("apiKeyConfigured", false);
+            diagnostics.put("apiKeyPrefix", null);
+            diagnostics.put("authenticationMode", "NONE");
+        } else if (llmProviderConfig.hasConfiguredApiKey(provider)) {
+            diagnostics.put("authenticationMode", "BEARER");
+        } else {
+            diagnostics.put("authenticationMode", "NOT_APPLICABLE");
+        }
+
+        return ResponseEntity.ok(diagnostics);
     }
 
     @Operation(summary = "Check admin UI authorization",
