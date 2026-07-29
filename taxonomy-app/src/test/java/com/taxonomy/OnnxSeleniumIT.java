@@ -224,7 +224,9 @@ class OnnxSeleniumIT {
         WebElement firstResult = items.getFirst();
         String code = firstResult.getAttribute("data-code");
         assertThat(code).isNotNull().isNotEmpty();
-        clickWhenUnobscured(firstResult);
+        clickWhenUnobscured(By.cssSelector(
+                "#searchResultsArea .search-result-item[data-code='"
+                        + code.replace("'", "\\'") + "']"));
 
         WebElement highlightedHeader = new WebDriverWait(driver, Duration.ofSeconds(10))
                 .until(currentDriver -> currentDriver.findElements(
@@ -309,13 +311,14 @@ class OnnxSeleniumIT {
                         .isEnabled());
     }
 
-    private void clickWhenUnobscured(WebElement element) {
-        ((JavascriptExecutor) driver).executeScript(
-                "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
-                element);
+    private void clickWhenUnobscured(By locator) {
         new WebDriverWait(driver, Duration.ofSeconds(10))
                 .ignoring(StaleElementReferenceException.class)
                 .until(currentDriver -> {
+                    WebElement element = currentDriver.findElement(locator);
+                    ((JavascriptExecutor) currentDriver).executeScript(
+                            "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                            element);
                     Boolean unobscured = (Boolean) ((JavascriptExecutor) currentDriver)
                             .executeScript(
                                     "const target=arguments[0];"
@@ -348,7 +351,7 @@ class OnnxSeleniumIT {
                         + "arguments[0].dispatchEvent(new Event('input'));",
                 searchInput,
                 query);
-        clickWhenUnobscured(driver.findElement(By.id("searchBtn")));
+        clickWhenUnobscured(By.id("searchBtn"));
     }
 
     private void waitForSearchResults() {
