@@ -29,9 +29,9 @@ final class ContainerTestUtils {
      */
     static final String TEST_ADMIN_PASSWORD = "admin";
 
-    /** Same immutable runtime base used by the production Dockerfile. */
+    /** Same immutable runtime manifest used by the production Dockerfile. */
     private static final String APP_RUNTIME_IMAGE =
-            "eclipse-temurin:21-jre-jammy@sha256:"
+            "eclipse-temurin@sha256:"
                     + "d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13";
 
     private static final Future<String> SHARED_IMAGE = new ImageFromDockerfile(
