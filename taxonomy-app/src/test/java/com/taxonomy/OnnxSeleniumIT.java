@@ -10,6 +10,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -272,7 +273,14 @@ class OnnxSeleniumIT {
                     return;
                 }
             }
-            Thread.sleep(1_000);
+            try {
+                Thread.sleep(1_000);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(
+                        "Interrupted while waiting for the LOCAL_ONNX semantic index",
+                        exception);
+            }
         }
 
         throw new AssertionError(
@@ -306,6 +314,7 @@ class OnnxSeleniumIT {
                 "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
                 element);
         new WebDriverWait(driver, Duration.ofSeconds(10))
+                .ignoring(StaleElementReferenceException.class)
                 .until(currentDriver -> {
                     Boolean unobscured = (Boolean) ((JavascriptExecutor) currentDriver)
                             .executeScript(
