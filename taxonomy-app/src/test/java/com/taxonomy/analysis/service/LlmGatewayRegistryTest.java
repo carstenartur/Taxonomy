@@ -99,8 +99,10 @@ class LlmGatewayRegistryTest {
         LlmGateway custom = registry.getGateway(LlmProvider.CUSTOM_OPENAI);
 
         assertThat(gemini).isNotSameAs(openai);
-        assertThat(openai).isNotSameAs(deepseek);
-        assertThat(deepseek).isNotSameAs(custom);
+        assertThat(gemini).isNotSameAs(deepseek);
         assertThat(gemini).isNotSameAs(custom);
+        assertThat(openai).isNotSameAs(deepseek);
+        assertThat(openai).isNotSameAs(custom);
+        assertThat(deepseek).isNotSameAs(custom);
     }
 }
