@@ -3,7 +3,7 @@ function roleName(scenario) {
 }
 
 export function isolationGroupId(scenario) {
-  if (['ui', 'accessibility', 'special-modes'].includes(scenario.suite)) {
+  if (['ui', 'accessibility'].includes(scenario.suite)) {
     return 'shared-browser-nonmutating';
   }
   if (scenario.suite === 'role-state') {
