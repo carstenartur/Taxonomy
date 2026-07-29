@@ -45,7 +45,7 @@ class ObservabilityContainerIT {
             "eclipse-temurin:21-jre-jammy@sha256:"
                     + "d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13";
     private static final String COLLECTOR_IMAGE =
-            "otel/opentelemetry-collector-contrib:0.157.0@sha256:"
+            "otel/opentelemetry-collector-contrib@sha256:"
                     + "f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6";
     private static final String COLLECTOR_ALIAS = "otel-collector.test";
     private static final String APP_ALIAS = "taxonomy-observability.test";
