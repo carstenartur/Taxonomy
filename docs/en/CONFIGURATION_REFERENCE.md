@@ -22,7 +22,7 @@ Persistent production deployments should leave `TAXONOMY_INIT_RELOAD_EXISTING=fa
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| `LLM_PROVIDER` | `llm.provider` | Enum | *(auto-detect)* | Force a specific LLM provider. Values: `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `LOCAL_ONNX`. When not set, the provider is auto-detected from the first available API key (see priority order below). |
+| `LLM_PROVIDER` | `llm.provider` | Enum | *(auto-detect)* | Force a specific LLM provider. Values: `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `CUSTOM_OPENAI`, `LOCAL_ONNX`. When not set, the provider is auto-detected from the first complete provider configuration (see priority order below). |
 | `LLM_MOCK` | `llm.mock` | Boolean | `false` | When `true`, the LLM service returns hardcoded realistic scores instead of calling a real LLM provider. Intended for CI pipelines, screenshot generation, and offline testing. No API key is required when mock mode is active. |
 | `GEMINI_API_KEY` | `gemini.api.key` | String | *(empty)* | Google Gemini API key. Obtain from [aistudio.google.com](https://aistudio.google.com). |
 | `OPENAI_API_KEY` | `openai.api.key` | String | *(empty)* | OpenAI API key. |
@@ -30,10 +30,13 @@ Persistent production deployments should leave `TAXONOMY_INIT_RELOAD_EXISTING=fa
 | `DASHSCOPE_API_KEY` | `qwen.api.key` | String | *(empty)* | Alibaba Cloud DashScope API key (Qwen model). |
 | `LLAMA_API_KEY` | `llama.api.key` | String | *(empty)* | Llama API key. |
 | `MISTRAL_API_KEY` | `mistral.api.key` | String | *(empty)* | Mistral API key. |
+| `CUSTOM_LLM_URL` | `custom.llm.url` | URI | *(empty)* | Complete HTTP or HTTPS OpenAI-compatible Chat Completions endpoint. It must end with `/chat/completions`; embedded user-info credentials are rejected. |
+| `CUSTOM_LLM_MODEL` | `custom.llm.model` | String | *(empty)* | Model identifier copied into the `model` field of requests to `CUSTOM_LLM_URL`. Required with `CUSTOM_OPENAI`. |
+| `CUSTOM_LLM_API_KEY` | `custom.llm.api.key` | String | *(empty)* | Optional Bearer token for `CUSTOM_OPENAI`. When empty, Taxonomy sends no `Authorization` header. |
 
 ### LLM Provider Auto-Detection Priority Order
 
-When `LLM_PROVIDER` is **not set**, the application checks for available API keys in this order:
+When `LLM_PROVIDER` is **not set**, the application checks for complete provider configurations in this order:
 
 1. **Gemini** — if `GEMINI_API_KEY` is set
 2. **OpenAI** — if `OPENAI_API_KEY` is set
@@ -41,26 +44,33 @@ When `LLM_PROVIDER` is **not set**, the application checks for available API key
 4. **Qwen** — if `DASHSCOPE_API_KEY` is set
 5. **Llama** — if `LLAMA_API_KEY` is set
 6. **Mistral** — if `MISTRAL_API_KEY` is set
+7. **Custom OpenAI-compatible** — if both `CUSTOM_LLM_URL` and `CUSTOM_LLM_MODEL` are valid; `CUSTOM_LLM_API_KEY` is optional
 
-The first match wins. If **no key** is set and `LLM_PROVIDER` is not `LOCAL_ONNX`, the
-application starts in **browser-only mode** (all analysis scores = 0, Analyze button disabled).
+The first match wins. If no complete HTTP provider configuration is found and
+`LLM_PROVIDER` is not `LOCAL_ONNX`, the application starts without generative LLM
+analysis. A loaded local embedding model may still provide limited semantic scoring.
 
 Setting `LLM_PROVIDER=LOCAL_ONNX` explicitly activates offline semantic scoring — no API
-key or internet connection is required (after the first model download).
+key or internet connection is required after the model is available locally.
+
+Setting `LLM_PROVIDER=CUSTOM_OPENAI` selects the operator-defined endpoint. See
+[Custom OpenAI-Compatible LLM](../dev/custom-llm.md) for the request/response contract,
+Docker networking, security guidance, and troubleshooting.
 
 ### Adding a New LLM Provider
 
-Providers are described via the `LlmProviderExtension` SPI (see `docs/dev/07-extension-points.md`
-for the full extension-point documentation).  To add a new provider:
+Before adding Java code, use `CUSTOM_OPENAI` for any service that implements the OpenAI
+Chat Completions request and response contract. A new provider implementation is needed
+only for a different protocol, authentication model, or provider-specific capability.
+Providers are described via the `LlmProviderExtension` SPI (see
+`docs/dev/07-extension-points.md` for the full extension-point documentation). To add one:
 
-1. Add a new constant to `LlmProvider` enum.
-2. Create a Spring `@Component` implementing `LlmProviderExtension` with the matching
+1. Add a new constant to the `LlmProvider` enum.
+2. Create a Spring `@Component` implementing `LlmProviderExtension` with a matching
    `descriptor().providerId()`.
-3. Register a gateway in `LlmGatewayRegistry` (use `OpenAiCompatibleGateway` for
-   OpenAI-compatible APIs).
-4. Add API key injection in `LlmProviderConfig` and wire it into `getApiKey(...)` and
-   `getAvailableProviders()`.
-5. Add the new `LLM_PROVIDER` enum value and API key variable to this table.
+3. Register a gateway in `LlmGatewayRegistry`.
+4. Add mandatory configuration and availability handling in `LlmProviderConfig`.
+5. Add the new `LLM_PROVIDER` enum value and configuration variables to this table.
 
 ---
 
@@ -277,6 +287,7 @@ These are Maven properties/tags, not runtime environment variables:
 Passing `-DexcludedGroups=real-llm` deliberately includes all database tags
 while still excluding live LLM calls. See
 [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+
 ---
 
 ## Hibernate Search / Lucene
@@ -295,7 +306,7 @@ while still excluding live LLM calls. See
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | `taxonomy.rate-limit.per-minute` | Integer | `10` | Maximum LLM-backed API requests per IP per minute. Protects against Gemini/OpenAI quota exhaustion. Set to `0` to disable rate limiting. |
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | `taxonomy.rate-limit.per-minute` | Integer | `10` | Maximum LLM-backed API requests per IP per minute. Protects against provider quota exhaustion. Set to `0` to disable rate limiting. |
 
 Protected endpoints: `POST /api/analyze`, `GET /api/analyze-stream`, `GET /api/analyze-node`, `POST /api/justify-leaf`.
 
@@ -463,8 +474,10 @@ In addition to environment variables, several settings can be changed at runtime
 
 | Preference Key | Type | Default | Description |
 |---|---|---|---|
-| `llm.rpm` | int | `5` | Outgoing LLM API requests per minute |
+| `llm.rpm` | int | `5` | Outgoing Gemini requests per minute |
+| `llm.rpm.custom_openai` | int | `0` | Outgoing custom-provider requests per minute; `0` disables throttling |
 | `llm.timeout.seconds` | int | `30` | HTTP read timeout for LLM calls |
+| `llm.retry.max` | int | `2` | Retry count for retryable LLM server errors and timeouts |
 | `rate-limit.per-minute` | int | `10` | Incoming rate limit for analysis endpoints |
 | `analysis.min-relevance-score` | int | `70` | Minimum score threshold for analysis results |
 | `dsl.default-branch` | string | `draft` | Active DSL branch for materialization |
