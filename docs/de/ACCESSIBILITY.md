@@ -78,3 +78,41 @@ Prüfung von Diagrammalternativen.
 4. 400-%-Zoom und alle unterstützten mobilen Geräte sind nicht unabhängig zertifiziert.
 5. Expertenbereiche wie selektiver Transfer, rohe DSL, Git-Historie und Konfliktauflösung besitzen weiterhin hohe kognitive Last.
 6. Drittanbieter-Browserressourcen müssen lokal bereitgestellt sein, bevor eine Installation als vollständig netzisoliert bezeichnet werden kann.
+
+## Softwareergonomische Regeln
+
+Neue oder geänderte Workflows müssen:
+
+- Erkennen statt Erinnern unterstützen: suchbare Auswahl statt roher IDs oder Commit-Hashes.
+- pro Aufgabenbereich eine klare Primäraktion zeigen.
+- Diagnose- und Systemmetriken aus der Standardarbeitsfläche heraushalten.
+- wesentliche Aktionen nicht ausschließlich hinter Hover verstecken.
+- Farbe nie als einzigen Informationsträger verwenden.
+- keine nativen `alert()`-/`prompt()`-Dialoge verwenden.
+- Eingaben nach Validierungs- oder Netzwerkfehlern erhalten.
+- asynchrone Ergebnisse und Fehler über Live-Regionen ankündigen.
+- zu jedem Graphen und Diagramm eine nichtgrafische Darstellung bereitstellen.
+
+## Vorlage für die Konformitätserklärung
+
+Bis zum Abschluss einer formalen Prüfung sollte eine einsetzende Stelle sinngemäß formulieren:
+
+> Der Taxonomy Architecture Analyzer ist teilweise konform mit BITV 2.0 / WCAG 2.1 Level AA. Automatisierte axe-Prüfungen decken die zentralen authentifizierten Anwendungsbereiche ab. Verbleibende Einschränkungen betreffen komplexe Visualisierungen, den DSL-Editor, umfassende Screenreader-Prüfungen und die formale BIK-BITV-Zertifizierung.
+
+Die veröffentlichte Erklärung muss Kontaktweg, Erstellungsdatum, Prüfmethode, bekannte Barrieren und das Schlichtungsverfahren enthalten.
+
+## Verwandte Dokumente
+
+- [Benutzerhandbuch](USER_GUIDE.md)
+- [Deployment-Checkliste](DEPLOYMENT_CHECKLIST.md)
+- [Sicherheit](SECURITY.md)
+- [Datenschutz](DATA_PROTECTION.md)
+- [Digitale Souveränität](DIGITAL_SOVEREIGNTY.md)
+
+## Automatisierte Browser-Abdeckungsmatrix
+
+Die gepflegte Browser-, Viewport-, CodeMirror-, Tastatur-, Reduced-Motion- und
+axe-Abdeckung ist in
+[`docs/dev/BROWSER_QA.md`](../dev/BROWSER_QA.md) beschrieben. Neue moderate
+axe-Befunde werden gegen eine geprüfte Baseline blockiert; CodeMirror ist nicht
+von der Prüfung ausgeschlossen.
