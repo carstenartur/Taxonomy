@@ -125,6 +125,7 @@ export async function runRoleStateFlow({
   const taskHierarchy = await page.evaluate(() => {
     const left = document.getElementById('leftPanel');
     const right = document.getElementById('rightPanel');
+    const row = left?.parentElement;
     const navigation = document.getElementById('mainNavTabs');
     const visibleLinks = Array.from(navigation?.querySelectorAll('.nav-link') || [])
       .filter(link => getComputedStyle(link).display !== 'none');
@@ -134,6 +135,11 @@ export async function runRoleStateFlow({
       viewportWidth: window.innerWidth,
       leftTop: left?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
       rightTop: right?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+      rightPrecedesLeftInDom: Boolean(right && left
+        && (right.compareDocumentPosition(left) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      leftPrecedesRightInDom: Boolean(left && right
+        && (left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      taskOrder: row?.dataset.taskOrder || '',
       navigationHeight: navigation?.getBoundingClientRect().height ?? 0,
       maxLinkHeight,
       navigationScrollWidth: navigation?.scrollWidth ?? 0,
@@ -144,13 +150,19 @@ export async function runRoleStateFlow({
     assert(taskHierarchy.rightTop <= taskHierarchy.leftTop,
       `Primary task must precede taxonomy browser at ${taskHierarchy.viewportWidth}px: `
       + `${taskHierarchy.rightTop} > ${taskHierarchy.leftTop}`);
-    passed('primary task precedes taxonomy browser at narrow width');
+    assert(taskHierarchy.rightPrecedesLeftInDom && taskHierarchy.taskOrder === 'primary-first',
+      'Primary task must also precede the taxonomy browser in reading and focus order');
+    passed('primary task precedes taxonomy browser visually and structurally');
     assert(taskHierarchy.navigationHeight <= taskHierarchy.maxLinkHeight + 6,
       `Main navigation wrapped to multiple rows: ${taskHierarchy.navigationHeight} > `
       + `${taskHierarchy.maxLinkHeight + 6}`);
     assert(taskHierarchy.navigationScrollWidth >= taskHierarchy.navigationClientWidth,
       'Main navigation must remain horizontally reachable');
     passed('single-row scrollable main navigation');
+  } else {
+    assert(taskHierarchy.leftPrecedesRightInDom && taskHierarchy.taskOrder === 'reference-first',
+      'Desktop reading and focus order must match the left-to-right panel layout');
+    passed('desktop panel reading order matches visual layout');
   }
 
   const expectedHttpFailure = failure => {
