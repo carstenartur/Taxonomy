@@ -1,6 +1,6 @@
 # Nachweismatrix zur Barrierefreiheit (BITV 2.0 / WCAG 2.1)
 
-**Letzte codebasierte Prüfung:** 21. Juli 2026  
+**Letzte codebasierte Prüfung:** 29. Juli 2026  
 **Ziel:** WCAG 2.1 Level AA / EN 301 549 / BITV 2.0  
 **Aktueller Stand:** Teilweise konform – eine formale BIK-BITV-Prüfung wurde noch nicht durchgeführt.
 
@@ -25,7 +25,8 @@ Bewertet wird die authentifizierte Webanwendung mit Analyse, Taxonomiebaum, Arch
 | Administration | Berechtigung ausschließlich über `ROLE_ADMIN`; Symbolschaltfläche besitzt zugänglichen Namen | Security- und UI-Regressionstests | Umgesetzt |
 | Veraltete Ergebnisse | Änderung der Anforderung nach einer Analyse erzeugt Warnung und Rücksetzaktion | Screenshot- und Verhaltenstest | Umgesetzt |
 | Touch-Bedienung | Knotenaktionen werden bei groben Zeigegeräten eingeblendet; wichtige Bedienelemente erhalten 44-Pixel-Ziele | Responsives Ergonomie-Stylesheet | Umgesetzt |
-| Zoom und Reflow | Navigation, Panels und Aktionen brechen auf schmalen beziehungsweise gezoomten Ansichten um | CSS; manuelle Endprüfung erforderlich | Teilweise |
+| Responsive Aufgabenreihenfolge | Bei schmalen beziehungsweise gezoomten Ansichten wird die primäre Analyseaufgabe im tatsächlichen DOM vor den Referenzbaum verschoben; beim Desktop-Layout wird die ursprüngliche Reihenfolge wiederhergestellt | `taxonomy-utils.js` sowie Rollen-/Zustandstests für Geometrie, DOM-, Lese- und Fokusreihenfolge | Umgesetzt |
+| Zoom und Reflow | Navigation bleibt eine einzeilige horizontal erreichbare Leiste; Panels und Aktionen brechen ohne wesentlichen horizontalen Inhaltsverlust um | Responsives Stylesheet und Maven-gesteuerte Rollen-/Zustandsmatrix; manuelle Geräteprüfung bleibt erforderlich | Teilweise |
 | Reduzierte Bewegung | Animationen und Übergänge werden bei `prefers-reduced-motion` minimiert | CSS | Umgesetzt |
 | Graphen und Diagramme | Mehrere Ansichten besitzen Tabellen oder Detaildarstellungen; die vollständige inhaltliche Gleichwertigkeit ist noch manuell zu prüfen | Manuelle Prüfung | Teilweise |
 | DSL-Editor | CodeMirror stellt eine eigene Accessibility-Struktur bereit; separate Prüfung nötig | Manuelle Tastatur-/Screenreader-Prüfung | Teilweise |
@@ -77,41 +78,3 @@ Prüfung von Diagrammalternativen.
 4. 400-%-Zoom und alle unterstützten mobilen Geräte sind nicht unabhängig zertifiziert.
 5. Expertenbereiche wie selektiver Transfer, rohe DSL, Git-Historie und Konfliktauflösung besitzen weiterhin hohe kognitive Last.
 6. Drittanbieter-Browserressourcen müssen lokal bereitgestellt sein, bevor eine Installation als vollständig netzisoliert bezeichnet werden kann.
-
-## Softwareergonomische Regeln
-
-Neue oder geänderte Workflows müssen:
-
-- Erkennen statt Erinnern unterstützen: suchbare Auswahl statt roher IDs oder Commit-Hashes.
-- pro Aufgabenbereich eine klare Primäraktion zeigen.
-- Diagnose- und Systemmetriken aus der Standardarbeitsfläche heraushalten.
-- wesentliche Aktionen nicht ausschließlich hinter Hover verstecken.
-- Farbe nie als einzigen Informationsträger verwenden.
-- keine nativen `alert()`-/`prompt()`-Dialoge verwenden.
-- Eingaben nach Validierungs- oder Netzwerkfehlern erhalten.
-- asynchrone Ergebnisse und Fehler über Live-Regionen ankündigen.
-- zu jedem Graphen und Diagramm eine nichtgrafische Darstellung bereitstellen.
-
-## Vorlage für die Konformitätserklärung
-
-Bis zum Abschluss einer formalen Prüfung sollte eine einsetzende Stelle sinngemäß formulieren:
-
-> Der Taxonomy Architecture Analyzer ist teilweise konform mit BITV 2.0 / WCAG 2.1 Level AA. Automatisierte axe-Prüfungen decken die zentralen authentifizierten Anwendungsbereiche ab. Verbleibende Einschränkungen betreffen komplexe Visualisierungen, den DSL-Editor, umfassende Screenreader-Prüfungen und die formale BIK-BITV-Zertifizierung.
-
-Die veröffentlichte Erklärung muss Kontaktweg, Erstellungsdatum, Prüfmethode, bekannte Barrieren und das Schlichtungsverfahren enthalten.
-
-## Verwandte Dokumente
-
-- [Benutzerhandbuch](USER_GUIDE.md)
-- [Deployment-Checkliste](DEPLOYMENT_CHECKLIST.md)
-- [Sicherheit](SECURITY.md)
-- [Datenschutz](DATA_PROTECTION.md)
-- [Digitale Souveränität](DIGITAL_SOVEREIGNTY.md)
-
-## Automatisierte Browser-Abdeckungsmatrix
-
-Die gepflegte Browser-, Viewport-, CodeMirror-, Tastatur-, Reduced-Motion- und
-axe-Abdeckung ist in
-[`docs/dev/BROWSER_QA.md`](../dev/BROWSER_QA.md) beschrieben. Neue moderate
-axe-Befunde werden gegen eine geprüfte Baseline blockiert; CodeMirror ist nicht
-von der Prüfung ausgeschlossen.
