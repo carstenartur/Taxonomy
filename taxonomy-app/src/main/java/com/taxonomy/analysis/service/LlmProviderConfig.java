@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,6 +34,12 @@ public class LlmProviderConfig {
     static final String QWEN_URL     = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
     static final String LLAMA_URL    = "https://api.llama-api.com/chat/completions";
     static final String MISTRAL_URL  = "https://api.mistral.ai/v1/chat/completions";
+
+    /**
+     * Internal transport marker used to distinguish an intentionally unauthenticated custom
+     * endpoint from a missing provider configuration. It is never sent as an HTTP header.
+     */
+    static final String CUSTOM_NO_AUTH_API_KEY = "__taxonomy_custom_no_auth__";
 
     // ── Default model names ───────────────────────────────────────────────────
 
@@ -72,6 +79,15 @@ public class LlmProviderConfig {
     @Value("${mistral.api.key:}")
     private String mistralApiKey;
 
+    @Value("${custom.llm.url:}")
+    private String customLlmUrl;
+
+    @Value("${custom.llm.model:}")
+    private String customLlmModel;
+
+    @Value("${custom.llm.api.key:}")
+    private String customLlmApiKey;
+
     private final LocalEmbeddingService localEmbeddingService;
 
     public LlmProviderConfig(LocalEmbeddingService localEmbeddingService) {
@@ -98,7 +114,7 @@ public class LlmProviderConfig {
      * <ol>
      *   <li>Per-request override via {@link #setRequestProvider}</li>
      *   <li>Explicit {@code llm.provider} config / {@code LLM_PROVIDER} env var</li>
-     *   <li>Auto-detect from available API keys</li>
+     *   <li>Auto-detect from available API keys or a complete custom endpoint configuration</li>
      *   <li>Default: {@link LlmProvider#GEMINI}</li>
      * </ol>
      */
@@ -115,126 +131,160 @@ public class LlmProviderConfig {
             }
         }
 
-        if (geminiApiKey  != null && !geminiApiKey.isBlank())  return LlmProvider.GEMINI;
-        if (openaiApiKey  != null && !openaiApiKey.isBlank())  return LlmProvider.OPENAI;
-        if (deepseekApiKey != null && !deepseekApiKey.isBlank()) return LlmProvider.DEEPSEEK;
-        if (qwenApiKey    != null && !qwenApiKey.isBlank())    return LlmProvider.QWEN;
-        if (llamaApiKey   != null && !llamaApiKey.isBlank())   return LlmProvider.LLAMA;
-        if (mistralApiKey != null && !mistralApiKey.isBlank()) return LlmProvider.MISTRAL;
+        if (hasText(geminiApiKey))  return LlmProvider.GEMINI;
+        if (hasText(openaiApiKey))  return LlmProvider.OPENAI;
+        if (hasText(deepseekApiKey)) return LlmProvider.DEEPSEEK;
+        if (hasText(qwenApiKey))    return LlmProvider.QWEN;
+        if (hasText(llamaApiKey))   return LlmProvider.LLAMA;
+        if (hasText(mistralApiKey)) return LlmProvider.MISTRAL;
+        if (isCustomOpenAiConfigured()) return LlmProvider.CUSTOM_OPENAI;
 
         return LlmProvider.GEMINI;
     }
 
-    /**
-     * Returns a human-readable name for the active provider (e.g. "Gemini", "OpenAI").
-     */
+    /** Returns a human-readable name for the active provider. */
     public String getActiveProviderName() {
         if (llmMock) return "Mock";
         return switch (getActiveProvider()) {
-            case GEMINI      -> "Gemini";
-            case OPENAI      -> "OpenAI";
-            case DEEPSEEK    -> "DeepSeek";
-            case QWEN        -> "Qwen";
-            case LLAMA       -> "Llama";
-            case MISTRAL     -> "Mistral";
-            case LOCAL_ONNX  -> "Local (bge-small-en-v1.5)";
+            case GEMINI       -> "Gemini";
+            case OPENAI       -> "OpenAI";
+            case DEEPSEEK     -> "DeepSeek";
+            case QWEN         -> "Qwen";
+            case LLAMA        -> "Llama";
+            case MISTRAL      -> "Mistral";
+            case CUSTOM_OPENAI -> "Custom OpenAI-compatible";
+            case LOCAL_ONNX   -> "Local (bge-small-en-v1.5)";
         };
     }
 
     /**
      * Returns the list of currently available providers.
-     * {@code LOCAL_ONNX} is always included (no API key required).
-     * Cloud providers are included only when their API key is configured.
+     * {@code LOCAL_ONNX} is always included because it may become available after model loading.
      */
     public List<String> getAvailableProviders() {
         List<String> providers = new ArrayList<>();
         providers.add("LOCAL_ONNX");
-        if (geminiApiKey  != null && !geminiApiKey.isBlank())  providers.add("GEMINI");
-        if (openaiApiKey  != null && !openaiApiKey.isBlank())  providers.add("OPENAI");
-        if (deepseekApiKey != null && !deepseekApiKey.isBlank()) providers.add("DEEPSEEK");
-        if (qwenApiKey    != null && !qwenApiKey.isBlank())    providers.add("QWEN");
-        if (llamaApiKey   != null && !llamaApiKey.isBlank())   providers.add("LLAMA");
-        if (mistralApiKey != null && !mistralApiKey.isBlank()) providers.add("MISTRAL");
+        if (hasText(geminiApiKey))  providers.add("GEMINI");
+        if (hasText(openaiApiKey))  providers.add("OPENAI");
+        if (hasText(deepseekApiKey)) providers.add("DEEPSEEK");
+        if (hasText(qwenApiKey))    providers.add("QWEN");
+        if (hasText(llamaApiKey))   providers.add("LLAMA");
+        if (hasText(mistralApiKey)) providers.add("MISTRAL");
+        if (isCustomOpenAiConfigured()) providers.add("CUSTOM_OPENAI");
         return providers;
     }
 
     /**
-     * Returns the API key for the given provider, or {@code null} for
-     * {@link LlmProvider#LOCAL_ONNX} which requires no key.
+     * Returns the API key used by the HTTP gateway.
+     *
+     * <p>{@link LlmProvider#CUSTOM_OPENAI} supports endpoints without authentication. For such
+     * endpoints this method returns an internal marker that passes the existing provider-agnostic
+     * readiness check; {@link OpenAiCompatibleGateway} removes that marker and sends no
+     * {@code Authorization} header.
      */
     public String getApiKey(LlmProvider provider) {
         return switch (provider) {
-            case GEMINI      -> geminiApiKey;
-            case OPENAI      -> openaiApiKey;
-            case DEEPSEEK    -> deepseekApiKey;
-            case QWEN        -> qwenApiKey;
-            case LLAMA       -> llamaApiKey;
-            case MISTRAL     -> mistralApiKey;
-            case LOCAL_ONNX  -> null;
+            case GEMINI       -> geminiApiKey;
+            case OPENAI       -> openaiApiKey;
+            case DEEPSEEK     -> deepseekApiKey;
+            case QWEN         -> qwenApiKey;
+            case LLAMA        -> llamaApiKey;
+            case MISTRAL      -> mistralApiKey;
+            case CUSTOM_OPENAI -> customOpenAiTransportApiKey();
+            case LOCAL_ONNX   -> null;
         };
     }
 
-    /**
-     * Returns the API endpoint URL for the given provider.
-     *
-     * @throws IllegalArgumentException for {@link LlmProvider#LOCAL_ONNX} or
-     *         {@link LlmProvider#GEMINI} (which uses a different call pattern)
-     */
+    /** Returns the API endpoint URL for an OpenAI-compatible provider. */
     public String getOpenAiCompatibleUrl(LlmProvider provider) {
         return switch (provider) {
-            case OPENAI   -> OPENAI_URL;
-            case DEEPSEEK -> DEEPSEEK_URL;
-            case QWEN     -> QWEN_URL;
-            case LLAMA    -> LLAMA_URL;
-            case MISTRAL  -> MISTRAL_URL;
+            case OPENAI       -> OPENAI_URL;
+            case DEEPSEEK     -> DEEPSEEK_URL;
+            case QWEN         -> QWEN_URL;
+            case LLAMA        -> LLAMA_URL;
+            case MISTRAL      -> MISTRAL_URL;
+            case CUSTOM_OPENAI -> trimToEmpty(customLlmUrl);
             default -> throw new IllegalArgumentException("Not an OpenAI-compatible provider: " + provider);
         };
     }
 
-    /**
-     * Returns the default model name for the given OpenAI-compatible provider.
-     *
-     * @throws IllegalArgumentException for non-OpenAI-compatible providers
-     */
+    /** Returns the model name for an OpenAI-compatible provider. */
     public String getOpenAiCompatibleModel(LlmProvider provider) {
         return switch (provider) {
-            case OPENAI   -> OPENAI_MODEL;
-            case DEEPSEEK -> DEEPSEEK_MODEL;
-            case QWEN     -> QWEN_MODEL;
-            case LLAMA    -> LLAMA_MODEL;
-            case MISTRAL  -> MISTRAL_MODEL;
+            case OPENAI       -> OPENAI_MODEL;
+            case DEEPSEEK     -> DEEPSEEK_MODEL;
+            case QWEN         -> QWEN_MODEL;
+            case LLAMA        -> LLAMA_MODEL;
+            case MISTRAL      -> MISTRAL_MODEL;
+            case CUSTOM_OPENAI -> trimToEmpty(customLlmModel);
             default -> throw new IllegalArgumentException("Unknown provider: " + provider);
         };
     }
 
-    /** Returns the Gemini endpoint URL (including the query-parameter key placeholder). */
+    /** Returns the Gemini endpoint URL, including the query-parameter key placeholder. */
     public String getGeminiUrl() {
         return GEMINI_URL;
     }
 
+    /** Returns whether the custom OpenAI-compatible endpoint has a valid URL and model name. */
+    public boolean isCustomOpenAiConfigured() {
+        if (!hasText(customLlmUrl) || !hasText(customLlmModel)) return false;
+        try {
+            URI uri = URI.create(customLlmUrl.trim());
+            String scheme = uri.getScheme();
+            return uri.getHost() != null
+                    && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme));
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid custom LLM URL '{}': {}", customLlmUrl, e.getMessage());
+            return false;
+        }
+    }
+
+    /** Returns whether all mandatory configuration for the given runtime provider is present. */
+    public boolean isProviderConfigured(LlmProvider provider) {
+        return switch (provider) {
+            case GEMINI       -> hasText(geminiApiKey);
+            case OPENAI       -> hasText(openaiApiKey);
+            case DEEPSEEK     -> hasText(deepseekApiKey);
+            case QWEN         -> hasText(qwenApiKey);
+            case LLAMA        -> hasText(llamaApiKey);
+            case MISTRAL      -> hasText(mistralApiKey);
+            case CUSTOM_OPENAI -> isCustomOpenAiConfigured();
+            case LOCAL_ONNX   -> localEmbeddingService.isAvailable();
+        };
+    }
+
     // ── Availability checks ───────────────────────────────────────────────────
 
-    /** Returns {@code true} if at least one cloud LLM API key is configured. */
+    /** Returns {@code true} if at least one real cloud/custom API key is configured. */
     public boolean hasAnyCloudApiKey() {
-        return (geminiApiKey   != null && !geminiApiKey.isBlank())
-            || (openaiApiKey   != null && !openaiApiKey.isBlank())
-            || (deepseekApiKey != null && !deepseekApiKey.isBlank())
-            || (qwenApiKey     != null && !qwenApiKey.isBlank())
-            || (llamaApiKey    != null && !llamaApiKey.isBlank())
-            || (mistralApiKey  != null && !mistralApiKey.isBlank());
+        return hasText(geminiApiKey)
+            || hasText(openaiApiKey)
+            || hasText(deepseekApiKey)
+            || hasText(qwenApiKey)
+            || hasText(llamaApiKey)
+            || hasText(mistralApiKey)
+            || hasText(customLlmApiKey);
+    }
+
+    /** Returns {@code true} if at least one HTTP-based provider can be called. */
+    public boolean hasAnyHttpProviderConfiguration() {
+        return hasText(geminiApiKey)
+            || hasText(openaiApiKey)
+            || hasText(deepseekApiKey)
+            || hasText(qwenApiKey)
+            || hasText(llamaApiKey)
+            || hasText(mistralApiKey)
+            || isCustomOpenAiConfigured();
     }
 
     /**
-     * Returns the three-state availability level.
+     * Returns the three-state availability level for the active provider.
      *
      * <ul>
-     *   <li>{@link AiAvailabilityLevel#FULL} – mock mode active, or a cloud
-     *       provider with a configured API key is the active provider.</li>
-     *   <li>{@link AiAvailabilityLevel#LIMITED} – either the active provider
-     *       is explicitly set to {@link LlmProvider#LOCAL_ONNX}, or no cloud API key is
-     *       configured and the local embedding model loaded successfully (implicit fallback).</li>
-     *   <li>{@link AiAvailabilityLevel#UNAVAILABLE} – no API key configured
-     *       and the local embedding model is not available.</li>
+     *   <li>{@link AiAvailabilityLevel#FULL}: mock mode or a fully configured HTTP provider.</li>
+     *   <li>{@link AiAvailabilityLevel#LIMITED}: local embedding is selected/available.</li>
+     *   <li>{@link AiAvailabilityLevel#UNAVAILABLE}: mandatory provider configuration is missing.</li>
      * </ul>
      */
     public AiAvailabilityLevel getAvailabilityLevel() {
@@ -245,17 +295,13 @@ public class LlmProviderConfig {
                     ? AiAvailabilityLevel.LIMITED
                     : AiAvailabilityLevel.UNAVAILABLE;
         }
-        if (hasAnyCloudApiKey()) return AiAvailabilityLevel.FULL;
+        if (isProviderConfigured(provider)) return AiAvailabilityLevel.FULL;
         return localEmbeddingService.isAvailable()
                 ? AiAvailabilityLevel.LIMITED
                 : AiAvailabilityLevel.UNAVAILABLE;
     }
 
-    /**
-     * Returns {@code true} if at least one provider has a configured API key,
-     * or if the active provider is {@link LlmProvider#LOCAL_ONNX} (which requires no key),
-     * or if mock mode is active.
-     */
+    /** Returns whether either a full or limited AI capability is currently available. */
     public boolean isAvailable() {
         return getAvailabilityLevel() != AiAvailabilityLevel.UNAVAILABLE;
     }
@@ -263,5 +309,18 @@ public class LlmProviderConfig {
     /** Returns {@code true} when mock mode is enabled via {@code llm.mock=true}. */
     public boolean isMockMode() {
         return llmMock;
+    }
+
+    private String customOpenAiTransportApiKey() {
+        if (!isCustomOpenAiConfigured()) return "";
+        return hasText(customLlmApiKey) ? customLlmApiKey : CUSTOM_NO_AUTH_API_KEY;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static String trimToEmpty(String value) {
+        return value == null ? "" : value.trim();
     }
 }
