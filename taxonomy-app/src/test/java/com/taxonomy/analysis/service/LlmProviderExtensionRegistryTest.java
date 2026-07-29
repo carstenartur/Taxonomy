@@ -26,6 +26,7 @@ class LlmProviderExtensionRegistryTest {
                 new QwenLlmProviderExtension(),
                 new LlamaLlmProviderExtension(),
                 new MistralLlmProviderExtension(),
+                new CustomOpenAiLlmProviderExtension(),
                 new LocalOnnxLlmProviderExtension()));
     }
 
@@ -51,8 +52,8 @@ class LlmProviderExtensionRegistryTest {
     @Test
     void findByIdIsCaseInsensitiveAndHandlesUnknownValues() {
         assertThat(registry.findById("gemini")).isPresent();
-        assertThat(registry.findById("GEMINI")).isPresent();
-        assertThat(registry.findById(" Gemini ")).isPresent();
+        assertThat(registry.findById("CUSTOM_OPENAI")).isPresent();
+        assertThat(registry.findById(" custom_openai ")).isPresent();
         assertThat(registry.findById("unknown")).isEmpty();
         assertThat(registry.findById(null)).isEmpty();
         assertThat(registry.findById("  ")).isEmpty();
@@ -66,17 +67,24 @@ class LlmProviderExtensionRegistryTest {
     }
 
     @Test
-    void capabilityMetadataDistinguishesLocalAndCloudProviders() {
+    void capabilityMetadataDistinguishesLocalCustomAndCloudProviders() {
         LlmProviderDescriptor local = registry.getRequired(LlmProvider.LOCAL_ONNX).descriptor();
         assertThat(local.requiresApiKey()).isFalse();
         assertThat(local.supportsLocalExecution()).isTrue();
+
+        LlmProviderDescriptor custom = registry.getRequired(LlmProvider.CUSTOM_OPENAI).descriptor();
+        assertThat(custom.providerName()).isEqualTo("Custom OpenAI-compatible");
+        assertThat(custom.requiresApiKey()).isFalse();
+        assertThat(custom.supportsLocalExecution()).isTrue();
+        assertThat(custom.configurationProperties()).containsExactly(
+                "custom.llm.url", "custom.llm.model", "custom.llm.api.key");
 
         for (LlmProvider provider : LlmProvider.values()) {
             LlmProviderDescriptor descriptor = registry.getRequired(provider).descriptor();
             assertThat(descriptor.providerId()).isNotBlank();
             assertThat(descriptor.providerName()).isNotBlank();
             assertThat(descriptor.configurationProperties()).isNotNull();
-            if (provider != LlmProvider.LOCAL_ONNX) {
+            if (provider != LlmProvider.LOCAL_ONNX && provider != LlmProvider.CUSTOM_OPENAI) {
                 assertThat(descriptor.requiresApiKey())
                         .as("Provider %s should require an API key", provider)
                         .isTrue();
