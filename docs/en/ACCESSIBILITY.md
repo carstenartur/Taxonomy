@@ -29,7 +29,7 @@ The assessment covers the authenticated single-page application, including analy
 | Zoom and reflow | Navigation remains a single horizontally reachable row; panels and actions reflow without essential horizontal loss | Responsive stylesheet and Maven-owned role/state matrix; manual device verification still required | Partial |
 | Reduced motion | Animations and transitions are minimized when `prefers-reduced-motion` is active | Responsive ergonomics stylesheet | Implemented |
 | Graphs and diagrams | Several views provide tables or detail lists, but not every visual relation is guaranteed to have an equivalent linear representation | Manual review required | Partial |
-| DSL editor | CodeMirror exposes its own accessibility tree; it is excluded from the general axe scan and must be tested separately | Manual keyboard/screen-reader test | Partial |
+| DSL editor | CodeMirror remains included in automated browser/axe coverage, but its complex editor semantics also require a dedicated keyboard and screen-reader test matrix | Automated browser matrix plus manual keyboard/screen-reader test | Partial |
 | Contrast | Bootstrap defaults and explicit high-score text colors are used; a full state-by-state contrast audit remains necessary | axe detects many contrast failures, but manual checks are still required | Partial |
 
 ## Automated accessibility gate
