@@ -27,9 +27,17 @@ public class KeycloakHealthIndicator implements HealthIndicator {
     @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:http://localhost:8180/realms/taxonomy/protocol/openid-connect/certs}")
     private String jwkSetUri;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    private final HttpClient httpClient;
+
+    public KeycloakHealthIndicator() {
+        this(HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build());
+    }
+
+    KeycloakHealthIndicator(HttpClient httpClient) {
+        this.httpClient = httpClient;
+    }
 
     @Override
     public Health health() {
@@ -52,14 +60,21 @@ public class KeycloakHealthIndicator implements HealthIndicator {
                     .withDetail("jwksEndpoint", jwkSetUri)
                     .withDetail("statusCode", response.statusCode())
                     .build();
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return down(error);
         } catch (Exception error) {
-            String description = describe(error);
-            log.debug("Keycloak health check failed: {}", description, error);
-            return Health.down()
-                    .withDetail("jwksEndpoint", jwkSetUri)
-                    .withDetail("error", description)
-                    .build();
+            return down(error);
         }
+    }
+
+    private Health down(Throwable error) {
+        String description = describe(error);
+        log.debug("Keycloak health check failed: {}", description, error);
+        return Health.down()
+                .withDetail("jwksEndpoint", jwkSetUri)
+                .withDetail("error", description)
+                .build();
     }
 
     private static String describe(Throwable error) {
