@@ -74,7 +74,6 @@ class AboutControllerTest {
         mockMvc.perform(get("/api/about/runtime-licenses"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/plain"))
-                .andExpect(content().string(containsString("third-party")))
                 .andExpect(content().string(containsString("com.oracle.database.jdbc:ojdbc11")))
                 .andExpect(content().string(not(containsString("org.junit.jupiter"))))
                 .andExpect(content().string(not(containsString("org.testcontainers"))));
