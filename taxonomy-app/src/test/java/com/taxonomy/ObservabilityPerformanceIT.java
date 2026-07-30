@@ -29,7 +29,6 @@ import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -82,10 +81,10 @@ class ObservabilityPerformanceIT {
 
     private Network network;
     private GenericContainer<?> collector;
-    private Future<String> applicationImage;
+    private String applicationImage;
 
     @BeforeAll
-    void startCollectorAndBuildApplicationImage() {
+    void startCollectorAndBuildApplicationImage() throws Exception {
         network = Network.newNetwork();
         collector = new GenericContainer<>(DockerImageName.parse(COLLECTOR_IMAGE))
                 .withNetwork(network)
@@ -98,7 +97,16 @@ class ObservabilityPerformanceIT {
                 .waitingFor(Wait.forLogMessage(".*Everything is ready.*\\n", 1)
                         .withStartupTimeout(Duration.ofMinutes(2)));
         collector.start();
-        applicationImage = performanceApplicationImage();
+
+        // Resolve the lazy Testcontainers image future before any stopwatch is
+        // started. Otherwise the first (baseline) start would include the one-off
+        // Docker build while the agent modes would reuse the finished image.
+        applicationImage = performanceApplicationImage().get();
+
+        // Prime Docker's filesystem/page cache with an unmeasured application
+        // lifecycle. This keeps the comparison focused on agent/runtime effects
+        // rather than a first-ever container start on the runner.
+        warmApplicationRuntime();
     }
 
     @AfterAll
@@ -154,9 +162,11 @@ class ObservabilityPerformanceIT {
                 WARMUP_REQUESTS,
                 MEASURED_REQUESTS,
                 "/api/relations",
+                true,
                 List.of(baseline, alwaysOn, sampled),
                 budget);
         Path reportDirectory = writeReport(report);
+        System.out.println(markdown(report));
 
         if (Boolean.getBoolean("taxonomy.observability.performance.enforce")) {
             assertThat(budget.hardBudgetExceeded())
@@ -164,6 +174,18 @@ class ObservabilityPerformanceIT {
                             reportDirectory.resolve("report.md"))
                     .isFalse();
         }
+    }
+
+    private void warmApplicationRuntime() throws Exception {
+        GenericContainer<?> application = applicationContainer(
+                new Mode("unmeasured-prewarm", false, "none", null));
+        application.start();
+        try {
+            assertSuccessful(applicationGet(application, "/api/relations"));
+        } finally {
+            application.stop();
+        }
+        awaitCollectorQuiet();
     }
 
     private ModeResult measure(Mode mode) throws Exception {
@@ -220,7 +242,8 @@ class ObservabilityPerformanceIT {
     }
 
     private GenericContainer<?> applicationContainer(Mode mode) {
-        GenericContainer<?> application = new GenericContainer<>(applicationImage)
+        GenericContainer<?> application = new GenericContainer<>(
+                DockerImageName.parse(applicationImage))
                 .withNetwork(network)
                 .withExposedPorts(8080)
                 .withEnv("SPRING_PROFILES_ACTIVE", "hsqldb,observability")
@@ -254,7 +277,7 @@ class ObservabilityPerformanceIT {
         return application;
     }
 
-    private Future<String> performanceApplicationImage() {
+    private ImageFromDockerfile performanceApplicationImage() {
         Path root = repositoryRoot();
         String dockerfile = """
                 FROM %s AS opentelemetry
@@ -384,6 +407,8 @@ class ObservabilityPerformanceIT {
         StringBuilder markdown = new StringBuilder("# OpenTelemetry performance evidence\n\n")
                 .append("Generated: `").append(report.generatedAt()).append("`  \n")
                 .append("Java: `").append(report.javaVersion()).append("`  \n")
+                .append("Application image built and runtime-prewarmed before timing: `")
+                .append(report.imageBuiltAndRuntimePrewarmed()).append("`  \n")
                 .append("Workload: ").append(report.measuredRequests())
                 .append(" requests to `").append(report.endpoint()).append("` after ")
                 .append(report.warmupRequests()).append(" warm-up requests.\n\n")
@@ -472,6 +497,7 @@ class ObservabilityPerformanceIT {
             int warmupRequests,
             int measuredRequests,
             String endpoint,
+            boolean imageBuiltAndRuntimePrewarmed,
             List<ModeResult> modes,
             BudgetEvaluation budget) {
     }
