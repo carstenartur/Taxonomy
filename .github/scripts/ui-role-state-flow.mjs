@@ -32,21 +32,48 @@ export async function runRoleStateFlow({
   if (await interactive.isChecked()) await interactive.uncheck();
   await page.locator('#businessText').fill(
     'Provide resilient hospital communications with traceable architecture decisions.');
+  // Reused applications can complete a warm mock analysis before Playwright's next
+  // wait begins. Observe the real feedback surface before activation and verify the
+  // final visible score state independently.
+  await page.evaluate(() => {
+    window.__taxonomyQaAnalysisStatusObserver?.disconnect();
+    const status = document.getElementById('statusArea');
+    if (!status) throw new Error('Missing #statusArea');
+    const events = [];
+    window.__taxonomyQaAnalysisStatusEvents = events;
+    const observer = new MutationObserver(mutations => {
+      const mutationText = mutations.flatMap(mutation => {
+        if (mutation.type === 'characterData') return [mutation.target.data || ''];
+        return Array.from(mutation.addedNodes || [], node => node.textContent || '');
+      }).join(' ').trim();
+      const currentText = status.textContent?.trim() || '';
+      const visible = getComputedStyle(status).display !== 'none'
+        && getComputedStyle(status).visibility !== 'hidden'
+        && status.getClientRects().length > 0;
+      if (mutationText || currentText || visible) {
+        events.push({ mutationText, currentText, visible });
+      }
+    });
+    observer.observe(status, {
+      attributes: true, childList: true, subtree: true, characterData: true
+    });
+    window.__taxonomyQaAnalysisStatusObserver = observer;
+  });
   await page.locator('#analyzeBtn').focus();
   await page.keyboard.press('Enter');
-  await page.locator('#statusArea').waitFor({ state: 'visible', timeout: 30_000 });
-  await page.waitForFunction(() => {
-    const text = document.querySelector('#statusArea')?.textContent?.toLowerCase() || '';
-    return text.includes('complete') || text.includes('completed');
-  }, null, { timeout: 120_000 });
-  // At extreme zoom the analysis status can settle before the asynchronous tree
-  // renderer has committed its score badges. Wait for both model and visible
-  // rendering so the acceptance still proves perceivable scored output.
+  // The final model and rendered badges remain authoritative even when the
+  // transient completion message has already been cleared.
   await page.waitForFunction(() => {
     const scores = window.TaxonomyState?.currentScores;
     return scores && Object.keys(scores).length > 0
       && document.querySelectorAll('.tax-pct').length > 0;
-  }, null, { timeout: 30_000 });
+  }, null, { timeout: 120_000 });
+  const statusEvents = await page.evaluate(() => {
+    window.__taxonomyQaAnalysisStatusObserver?.disconnect();
+    return window.__taxonomyQaAnalysisStatusEvents || [];
+  });
+  assert(statusEvents.length > 0,
+    'Analysis completed without a perceivable status transition');
   passed('analysis loading and success');
   await runAxe('analysis-success');
   await saveState('analysis-success');
@@ -124,8 +151,14 @@ export async function runRoleStateFlow({
 
   const expectedHttpFailure = failure => {
     if (failure.status === 503 && failure.path === '/api/analyze') return true;
-    return role === 'USER' && failure.status === 403
-      && failure.path === '/api/proposals/from-hypothesis';
+    if (failure.path === '/api/proposals/from-hypothesis') {
+      if (role === 'USER' && failure.status === 403) return true;
+      // Reused role applications intentionally preserve accepted proposals. A
+      // later scenario may therefore receive the already-supported idempotency
+      // conflict instead of creating a duplicate proposal.
+      if (role !== 'USER' && failure.status === 409) return true;
+    }
+    return false;
   };
   const unexpected = httpFailures.filter(failure => !expectedHttpFailure(failure));
   assert(unexpected.length === 0, `Unexpected HTTP failures: ${JSON.stringify(unexpected)}`);
