@@ -165,10 +165,11 @@ its licence and attribution and include it in container-level inventory.
 
 ## Build and audit commands
 
-Generate and verify the runtime licence report together with the application:
+Generate and verify the runtime licence report together with the complete
+release-grade application test suite:
 
 ```bash
-./mvnw clean verify
+./mvnw -B clean verify -Pci
 ```
 
 The report is packaged as `THIRD-PARTY-RUNTIME.txt`. A missing runtime licence
