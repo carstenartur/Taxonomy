@@ -2,12 +2,14 @@ package com.taxonomy.security.service;
 
 import com.taxonomy.security.model.AppUser;
 import com.taxonomy.security.repository.UserRepository;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Domain service for validating and applying local-user password changes. */
 @Service
+@Profile("!keycloak")
 public class PasswordChangeService {
 
     public static final int MINIMUM_PASSWORD_LENGTH = 12;

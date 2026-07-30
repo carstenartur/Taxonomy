@@ -24,11 +24,16 @@ import java.io.IOException;
  * {@code X-Forwarded-*} / {@code Forwarded} headers when
  * {@code server.forward-headers-strategy=framework} is enabled.
  * <p>
+ * After Keycloak has invalidated its session, the browser returns through the
+ * application's OIDC authorization endpoint. This produces a fresh Keycloak
+ * login challenge instead of leaving the user on a public application page,
+ * while still proving that silent SSO re-authentication is no longer possible.
+ * <p>
  * Keycloak end_session_endpoint:
  * <pre>
  *   {issuer}/protocol/openid-connect/logout?
  *     id_token_hint={id_token}&amp;
- *     post_logout_redirect_uri={app_url}
+ *     post_logout_redirect_uri={app_oidc_entry}
  * </pre>
  */
 @Component
@@ -47,27 +52,20 @@ public class KeycloakLogoutHandler implements LogoutSuccessHandler {
     public void onLogoutSuccess(HttpServletRequest request,
                                 HttpServletResponse response,
                                 Authentication authentication) throws IOException, ServletException {
-        // Invalidate the HTTP session
         if (request.getSession(false) != null) {
             request.getSession().invalidate();
         }
 
-        // Build the Keycloak end_session_endpoint URL
         String logoutUrl = issuerUri + "/protocol/openid-connect/logout";
-
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(logoutUrl);
 
-        // Include id_token_hint for Keycloak to identify the session
         if (authentication != null && authentication.getPrincipal() instanceof OidcUser oidcUser) {
-            String idToken = oidcUser.getIdToken().getTokenValue();
-            builder.queryParam("id_token_hint", idToken);
+            builder.queryParam("id_token_hint", oidcUser.getIdToken().getTokenValue());
         }
 
-        // Derive the post-logout redirect URI from the current request.
-        // ServletUriComponentsBuilder respects X-Forwarded-* headers behind a
-        // reverse proxy (when server.forward-headers-strategy=framework is set).
         String postLogoutRedirectUri = ServletUriComponentsBuilder.fromRequest(request)
-                .replacePath(request.getContextPath() + "/")
+                .replacePath(request.getContextPath()
+                        + "/oauth2/authorization/keycloak")
                 .replaceQuery(null)
                 .fragment(null)
                 .build()

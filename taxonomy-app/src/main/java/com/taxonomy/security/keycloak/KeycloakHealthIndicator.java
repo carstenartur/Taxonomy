@@ -27,9 +27,17 @@ public class KeycloakHealthIndicator implements HealthIndicator {
     @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri:http://localhost:8180/realms/taxonomy/protocol/openid-connect/certs}")
     private String jwkSetUri;
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    private final HttpClient httpClient;
+
+    public KeycloakHealthIndicator() {
+        this(HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build());
+    }
+
+    KeycloakHealthIndicator(HttpClient httpClient) {
+        this.httpClient = httpClient;
+    }
 
     @Override
     public Health health() {
@@ -40,24 +48,40 @@ public class KeycloakHealthIndicator implements HealthIndicator {
                     .GET()
                     .build();
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(
+                    request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
                 return Health.up()
                         .withDetail("jwksEndpoint", jwkSetUri)
                         .build();
-            } else {
-                return Health.down()
-                        .withDetail("jwksEndpoint", jwkSetUri)
-                        .withDetail("statusCode", response.statusCode())
-                        .build();
             }
-        } catch (Exception e) {
-            log.debug("Keycloak health check failed: {}", e.getMessage());
             return Health.down()
                     .withDetail("jwksEndpoint", jwkSetUri)
-                    .withDetail("error", e.getMessage())
+                    .withDetail("statusCode", response.statusCode())
                     .build();
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return down(error);
+        } catch (Exception error) {
+            return down(error);
         }
+    }
+
+    private Health down(Throwable error) {
+        String description = describe(error);
+        log.debug("Keycloak health check failed: {}", description, error);
+        return Health.down()
+                .withDetail("jwksEndpoint", jwkSetUri)
+                .withDetail("error", description)
+                .build();
+    }
+
+    private static String describe(Throwable error) {
+        String type = error.getClass().getSimpleName();
+        String message = error.getMessage();
+        return message == null || message.isBlank()
+                ? type
+                : type + ": " + message;
     }
 }
