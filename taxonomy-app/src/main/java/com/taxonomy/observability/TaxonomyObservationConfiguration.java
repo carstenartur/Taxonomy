@@ -4,6 +4,8 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.aop.framework.Advised;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.aop.support.AopUtils;
@@ -120,6 +122,9 @@ public class TaxonomyObservationConfiguration {
 
     static final class TaxonomyObservationInterceptor implements MethodInterceptor {
 
+        private static final Logger log = LoggerFactory.getLogger(
+                TaxonomyObservationInterceptor.class);
+
         private final ObservationRegistry observationRegistry;
         private final TargetDescriptor descriptor;
 
@@ -144,12 +149,16 @@ public class TaxonomyObservationConfiguration {
             try (Observation.Scope ignored = observation.openScope()) {
                 Object result = invocation.proceed();
                 observation.lowCardinalityKeyValue("outcome", "success");
+                log.debug("Observed taxonomy operation component={} operation={} outcome=success",
+                        descriptor.component(), operation);
                 return result;
             } catch (Throwable failure) {
-                // The exception is deliberately not attached to the Observation because its
-                // message may contain imported, DSL or LLM content. Agent method spans retain
+                // The exception is deliberately not attached to the Observation or log because
+                // its message may contain imported, DSL or LLM content. Agent method spans retain
                 // exception type and error status independently.
                 observation.lowCardinalityKeyValue("outcome", "error");
+                log.debug("Observed taxonomy operation component={} operation={} outcome=error",
+                        descriptor.component(), operation);
                 throw failure;
             } finally {
                 observation.stop();
