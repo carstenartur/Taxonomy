@@ -1,21 +1,36 @@
-/* taxonomy-onboarding.js – Welcome overlay, task focus & progressive disclosure */
+/* taxonomy-onboarding.js – Welcome overlay, task hierarchy and progressive disclosure */
 
 (function () {
     'use strict';
     var t = TaxonomyI18n.t;
 
     var STORAGE_KEY = 'taxonomy_onboarded';
+    var TASK_STAGES = [
+        {
+            id: 'taskStageDescribe',
+            labelKey: 'analysis.task.stage.describe.label',
+            descriptionKey: 'analysis.task.stage.describe.description'
+        },
+        {
+            id: 'taskStageAnalyze',
+            labelKey: 'analysis.task.stage.analyze.label',
+            descriptionKey: 'analysis.task.stage.analyze.description'
+        },
+        {
+            id: 'taskStageReview',
+            labelKey: 'analysis.task.stage.review.label',
+            descriptionKey: 'analysis.task.stage.review.description'
+        },
+        {
+            id: 'taskStageContinue',
+            labelKey: 'analysis.task.stage.continue.label',
+            descriptionKey: 'analysis.task.stage.continue.description'
+        }
+    ];
 
-    function text(en, de) {
-        return document.documentElement.lang.toLowerCase().startsWith('de') ? de : en;
-    }
-
-    /**
-     * Show the welcome overlay if the user has not dismissed it before.
-     */
-    function init() {
+    function initWelcomeOverlay() {
         if (localStorage.getItem(STORAGE_KEY)) {
-            return; // User already dismissed the overlay
+            return;
         }
 
         var overlay = document.createElement('div');
@@ -34,15 +49,12 @@
             '</div>';
 
         document.body.appendChild(overlay);
-
         var dismissBtn = document.getElementById('onboardingDismiss');
         if (dismissBtn) {
             dismissBtn.addEventListener('click', dismiss);
         }
-
-        // Also dismiss on clicking the overlay backdrop
-        overlay.addEventListener('click', function (e) {
-            if (e.target === overlay) {
+        overlay.addEventListener('click', function (event) {
+            if (event.target === overlay) {
                 dismiss();
             }
         });
@@ -58,258 +70,297 @@
         }
     }
 
-    /**
-     * Reset onboarding (for testing or admin use).
-     */
     function reset() {
         localStorage.removeItem(STORAGE_KEY);
     }
 
-    function createOperationalContext() {
-        if (document.getElementById('operationalContextDetails')) return;
+    function createTaskProgress() {
+        var analyzePane = document.getElementById('tab-analyze');
+        var firstCard = analyzePane && analyzePane.querySelector('.card');
+        if (!analyzePane || !firstCard || document.getElementById('analysisTaskProgress')) {
+            return;
+        }
 
+        var progress = document.createElement('section');
+        progress.id = 'analysisTaskProgress';
+        progress.className = 'analysis-task-progress card shadow-sm mb-3';
+        progress.setAttribute('aria-label', t('analysis.task.progress.label'));
+
+        var list = document.createElement('ol');
+        list.className = 'analysis-task-stages';
+        TASK_STAGES.forEach(function (stage, index) {
+            var item = document.createElement('li');
+            item.id = stage.id;
+            item.className = 'analysis-task-stage';
+            item.dataset.state = index === 0 ? 'current' : 'upcoming';
+            if (index === 0) {
+                item.setAttribute('aria-current', 'step');
+            }
+
+            var number = document.createElement('span');
+            number.className = 'analysis-task-number';
+            number.textContent = String(index + 1);
+            number.setAttribute('aria-hidden', 'true');
+
+            var copy = document.createElement('span');
+            copy.className = 'analysis-task-copy';
+            var label = document.createElement('strong');
+            label.textContent = t(stage.labelKey);
+            var description = document.createElement('small');
+            description.textContent = t(stage.descriptionKey);
+            copy.append(label, description);
+            item.append(number, copy);
+            list.appendChild(item);
+        });
+
+        var next = document.createElement('div');
+        next.className = 'analysis-task-next';
+        var nextAction = document.createElement('button');
+        nextAction.id = 'taskNextAction';
+        nextAction.type = 'button';
+        nextAction.className = 'btn btn-sm btn-outline-primary';
+        nextAction.disabled = true;
+        nextAction.textContent = t('analysis.task.next.enter');
+        nextAction.addEventListener('click', performNextAction);
+        next.appendChild(nextAction);
+
+        progress.append(list, next);
+        firstCard.parentElement.insertBefore(progress, firstCard);
+    }
+
+    function createOperationalContext() {
         var navigation = document.getElementById('mainNavTabs');
-        var navigationBar = navigation ? navigation.closest('.bg-dark') : null;
-        var mainContent = document.getElementById('mainContent');
-        if (!navigationBar || !mainContent) return;
+        if (!navigation || document.getElementById('operationalContextDetails')) {
+            return;
+        }
 
         var details = document.createElement('details');
         details.id = 'operationalContextDetails';
-        details.className = 'operational-context-details';
-        details.innerHTML =
-            '<summary>' +
-            '  <span class="operational-context-title">' +
-                text('Operational context', 'Betriebszustand') +
-            '  </span>' +
-            '  <span id="operationalContextSummary" class="badge bg-secondary">' +
-                text('Loading', 'Wird geladen') +
-            '  </span>' +
-            '</summary>' +
-            '<div id="operationalContextContent" class="operational-context-content" role="region" aria-label="' +
-                text('Repository, model and workspace details', 'Repository-, Modell- und Arbeitsbereichsdetails') +
-            '"></div>';
-        navigationBar.insertAdjacentElement('afterend', details);
+        details.className = 'operational-context';
+        var summary = document.createElement('summary');
+        var title = document.createElement('strong');
+        title.textContent = t('analysis.task.operational.summary');
+        var hint = document.createElement('span');
+        hint.className = 'operational-context-hint';
+        hint.textContent = t('analysis.task.operational.hint');
+        summary.append(title, hint);
+        var body = document.createElement('div');
+        body.className = 'operational-context-body';
+        details.append(summary, body);
 
-        var content = document.getElementById('operationalContextContent');
-        ['aiStatusBadge', 'embeddingStatusBadge', 'workspaceUserBadge',
-            'gitStatusBar', 'contextBar'].forEach(function (id) {
-            var element = document.getElementById(id);
-            if (element) content.appendChild(element);
+        var navigationShell = navigation.closest('.bg-dark');
+        navigationShell.parentElement.insertBefore(details, navigationShell.nextSibling);
+
+        [
+            document.getElementById('aiStatusBadge'),
+            document.getElementById('embeddingStatusBadge'),
+            document.getElementById('workspaceUserBadge'),
+            document.getElementById('gitStatusBar'),
+            document.getElementById('contextBar')
+        ].filter(Boolean).forEach(function (surface) {
+            body.appendChild(surface);
         });
 
         var languageSelector = document.getElementById('langSelector');
-        if (languageSelector) languageSelector.classList.add('ms-auto');
-
-        function updateSummary() {
-            var summary = document.getElementById('operationalContextSummary');
-            if (!summary) return;
-            var visibleElements = Array.from(content.children).filter(function (element) {
-                return !element.classList.contains('d-none') &&
-                    getComputedStyle(element).display !== 'none';
-            });
-            var combined = visibleElements.map(function (element) {
-                return element.textContent || '';
-            }).join(' ').toLowerCase();
-            var danger = /error|failed|unavailable|conflict|diverged|fehler|nicht verfügbar|konflikt/.test(combined)
-                || visibleElements.some(function (element) {
-                    return element.classList.contains('bg-danger') ||
-                        Boolean(element.querySelector('.bg-danger,.alert-danger,.text-danger'));
-                });
-            var warning = /warning|unknown|stale|behind|ahead|warnung|unbekannt|veraltet/.test(combined)
-                || visibleElements.some(function (element) {
-                    return element.classList.contains('bg-warning') ||
-                        Boolean(element.querySelector('.bg-warning,.alert-warning,.text-warning'));
-                });
-
-            summary.className = 'badge ' + (danger ? 'bg-danger' : warning ?
-                'bg-warning text-dark' : visibleElements.length ? 'bg-success' : 'bg-secondary');
-            summary.textContent = danger ? text('Action required', 'Eingreifen erforderlich') :
-                warning ? text('Check details', 'Details prüfen') :
-                visibleElements.length ? text('Ready', 'Bereit') : text('Loading', 'Wird geladen');
-            if (danger) details.open = true;
+        if (languageSelector) {
+            languageSelector.classList.add('ms-auto');
         }
+        monitorOperationalState(details, body);
+    }
 
-        new MutationObserver(updateSummary).observe(content, {
-            attributes: true, childList: true, subtree: true, characterData: true
+    function monitorOperationalState(details, body) {
+        function refresh() {
+            var text = body.textContent || '';
+            var actionable = /error|failed|unavailable|conflict|warning|degraded|fehler|fehlgeschlagen|nicht verfügbar|konflikt|warnung|beeinträchtigt/i.test(text);
+            var danger = Boolean(body.querySelector(
+                '.bg-danger, .text-danger, .alert-danger, .git-status-error, [data-state="error"]'));
+            details.classList.toggle('has-actionable-status', actionable || danger);
+            if (actionable || danger) {
+                details.open = true;
+            }
+        }
+        new MutationObserver(refresh).observe(body, {
+            attributes: true,
+            attributeFilter: ['class', 'style'],
+            childList: true,
+            subtree: true,
+            characterData: true
         });
-        updateSummary();
+        refresh();
     }
 
     function createSecondaryToolsDisclosure() {
-        if (document.getElementById('analysisSecondaryTools')) return;
-        var analyzeTab = document.getElementById('tab-analyze');
-        if (!analyzeTab) return;
+        var analyzePane = document.getElementById('tab-analyze');
+        if (!analyzePane || document.getElementById('analysisSecondaryTools')) {
+            return;
+        }
 
         var details = document.createElement('details');
         details.id = 'analysisSecondaryTools';
         details.className = 'analysis-secondary-tools mt-3';
-        details.innerHTML =
-            '<summary class="fw-semibold">' +
-                text('Additional analysis tools', 'Weitere Analysewerkzeuge') +
-            '</summary>' +
-            '<div id="analysisSecondaryToolsContent" class="analysis-secondary-tools-content"></div>';
-        analyzeTab.appendChild(details);
-        var content = document.getElementById('analysisSecondaryToolsContent');
-        ['searchPanel', 'analysisLog', 'llmCommLog', 'gapAnalysisPanel',
-            'patternDetectionPanel', 'recommendationPanel', 'documentImportPanel']
-            .forEach(function (id) {
-                var element = document.getElementById(id);
-                if (element) content.appendChild(element);
-            });
+        var summary = document.createElement('summary');
+        summary.className = 'fw-semibold';
+        summary.textContent = t('analysis.task.secondary.summary');
+        var body = document.createElement('div');
+        body.className = 'analysis-secondary-tools-body';
+        details.append(summary, body);
 
-        var legend = document.querySelector('#tab-analyze .legend-box');
-        var legendCard = legend ? legend.closest('.card') : null;
-        if (legendCard && !document.getElementById('scoreLegendDetails')) {
+        [
+            'searchPanel',
+            'analysisLog',
+            'llmCommLog',
+            'gapAnalysisPanel',
+            'patternDetectionPanel',
+            'recommendationPanel',
+            'documentImportPanel',
+            'provenancePanel'
+        ].forEach(function (id) {
+            var tool = document.getElementById(id);
+            if (tool) {
+                body.appendChild(tool);
+            }
+        });
+        analyzePane.appendChild(details);
+
+        var legend = Array.from(analyzePane.querySelectorAll('.card')).find(function (card) {
+            return card.querySelector('.legend-box');
+        });
+        if (legend) {
             var legendDetails = document.createElement('details');
-            legendDetails.id = 'scoreLegendDetails';
-            legendDetails.className = 'score-legend-details mb-3';
-            legendDetails.innerHTML = '<summary class="fw-semibold">' +
-                text('How scores are shown', 'Darstellung der Bewertungen') + '</summary>';
-            legendCard.parentNode.insertBefore(legendDetails, legendCard);
-            legendCard.classList.remove('mb-3');
-            legendCard.classList.add('mt-2');
-            legendDetails.appendChild(legendCard);
+            legendDetails.id = 'analysisScoreLegend';
+            legendDetails.className = 'analysis-score-legend mb-3';
+            var legendSummary = document.createElement('summary');
+            legendSummary.textContent = t('analysis.task.legend.summary');
+            legend.parentElement.insertBefore(legendDetails, legend);
+            legendDetails.append(legendSummary, legend);
         }
     }
 
-    function createTaskProgress() {
-        if (document.getElementById('analysisTaskProgress')) return;
-        var analyzeTab = document.getElementById('tab-analyze');
-        var firstCard = analyzeTab ? analyzeTab.querySelector('.card') : null;
-        if (!analyzeTab || !firstCard) return;
+    function setTaskState(activeIndex, state) {
+        TASK_STAGES.forEach(function (stage, index) {
+            var item = document.getElementById(stage.id);
+            if (!item) {
+                return;
+            }
+            item.removeAttribute('aria-current');
+            if (index < activeIndex) {
+                item.dataset.state = 'complete';
+            } else if (index === activeIndex) {
+                item.dataset.state = state || 'current';
+                item.setAttribute('aria-current', 'step');
+            } else {
+                item.dataset.state = 'upcoming';
+            }
+        });
+    }
 
-        var progress = document.createElement('section');
-        progress.id = 'analysisTaskProgress';
-        progress.className = 'analysis-task-progress mb-3';
-        progress.setAttribute('aria-label', text('Analysis progress', 'Fortschritt der Analyse'));
-        progress.innerHTML =
-            '<ol class="analysis-task-stages">' +
-            '  <li id="taskStageDescribe" data-state="current"><span>1</span>' +
-                text('Describe', 'Beschreiben') + '</li>' +
-            '  <li id="taskStageAnalyze" data-state="pending"><span>2</span>' +
-                text('Analyze', 'Analysieren') + '</li>' +
-            '  <li id="taskStageReview" data-state="pending"><span>3</span>' +
-                text('Review', 'Prüfen') + '</li>' +
-            '  <li id="taskStageNext" data-state="pending"><span>4</span>' +
-                text('Continue', 'Weiterarbeiten') + '</li>' +
-            '</ol>' +
-            '<div class="analysis-next-action">' +
-            '  <span id="taskGuidance" class="small"></span>' +
-            '  <button id="taskNextAction" type="button" class="btn btn-sm btn-primary"></button>' +
-            '</div>';
-        firstCard.parentNode.insertBefore(progress, firstCard);
-
-        var businessText = document.getElementById('businessText');
+    function syncTaskProgress() {
+        var input = document.getElementById('businessText');
         var analyzeButton = document.getElementById('analyzeBtn');
-        var statusArea = document.getElementById('statusArea');
-        var taxonomyTree = document.getElementById('taxonomyTree');
+        var spinner = document.getElementById('analyzeSpinner');
+        var status = document.getElementById('statusArea');
         var nextAction = document.getElementById('taskNextAction');
-        var guidance = document.getElementById('taskGuidance');
-        var action = 'describe';
+        if (!input || !analyzeButton || !nextAction) {
+            return;
+        }
 
-        function setStage(current, state) {
-            ['describe', 'analyze', 'review', 'next'].forEach(function (name) {
-                var element = document.getElementById('taskStage' +
-                    name.charAt(0).toUpperCase() + name.slice(1));
-                if (!element) return;
-                var order = ['describe', 'analyze', 'review', 'next'];
-                var elementIndex = order.indexOf(name);
-                var currentIndex = order.indexOf(current);
-                element.dataset.state = name === current ? state || 'current' :
-                    elementIndex < currentIndex ? 'complete' : 'pending';
-                if (name === current) element.setAttribute('aria-current', 'step');
-                else element.removeAttribute('aria-current');
+        var text = input.value.trim();
+        var scores = window.TaxonomyState && window.TaxonomyState.currentScores;
+        var hasScores = scores && Object.keys(scores).length > 0;
+        var stale = input.classList.contains('stale-results');
+        var running = analyzeButton.disabled || (spinner && !spinner.classList.contains('d-none'));
+        var statusText = status ? status.textContent || '' : '';
+        var error = /error|failed|unavailable|503|fehler|fehlgeschlagen|nicht verfügbar/i.test(statusText);
+
+        nextAction.className = 'btn btn-sm btn-outline-primary';
+        nextAction.disabled = false;
+        if (!text) {
+            setTaskState(0, 'current');
+            nextAction.textContent = t('analysis.task.next.enter');
+            nextAction.disabled = true;
+            nextAction.dataset.action = 'focus-input';
+        } else if (running) {
+            setTaskState(1, 'current');
+            nextAction.textContent = t('analysis.task.next.running');
+            nextAction.disabled = true;
+            nextAction.dataset.action = 'running';
+        } else if (error) {
+            setTaskState(1, 'error');
+            nextAction.textContent = t('analysis.task.next.retry');
+            nextAction.className = 'btn btn-sm btn-outline-danger';
+            nextAction.dataset.action = 'analyze';
+        } else if (stale) {
+            setTaskState(1, 'current');
+            nextAction.textContent = t('analysis.task.next.update');
+            nextAction.dataset.action = 'analyze';
+        } else if (hasScores) {
+            setTaskState(2, 'current');
+            nextAction.textContent = t('analysis.task.next.results');
+            nextAction.dataset.action = 'review-results';
+        } else {
+            setTaskState(1, 'current');
+            nextAction.textContent = t('analysis.task.next.run');
+            nextAction.dataset.action = 'analyze';
+        }
+    }
+
+    function performNextAction() {
+        var button = document.getElementById('taskNextAction');
+        var action = button && button.dataset.action;
+        if (action === 'analyze') {
+            document.getElementById('analyzeBtn')?.click();
+        } else if (action === 'review-results') {
+            var firstMatch = document.querySelector('.tax-node .tax-pct');
+            if (firstMatch) {
+                firstMatch.closest('.tax-node')?.scrollIntoView({ block: 'center' });
+                firstMatch.closest('.tax-node')?.focus({ preventScroll: true });
+            }
+        } else {
+            document.getElementById('businessText')?.focus();
+        }
+    }
+
+    function monitorTaskProgress() {
+        var input = document.getElementById('businessText');
+        var analyzeButton = document.getElementById('analyzeBtn');
+        var status = document.getElementById('statusArea');
+        var tree = document.getElementById('taxonomyTree');
+        if (input) {
+            input.addEventListener('input', syncTaskProgress);
+        }
+        if (analyzeButton) {
+            analyzeButton.addEventListener('click', function () {
+                setTaskState(1, 'current');
+                requestAnimationFrame(syncTaskProgress);
             });
         }
-
-        function configure(nextActionName, buttonText, guidanceText, disabled) {
-            action = nextActionName;
-            nextAction.textContent = buttonText;
-            nextAction.disabled = Boolean(disabled);
-            guidance.textContent = guidanceText;
-        }
-
-        function hasScores() {
-            var scores = window.TaxonomyState && window.TaxonomyState.currentScores;
-            return Boolean(scores && Object.keys(scores).length &&
-                document.querySelector('#taxonomyTree .tax-pct'));
-        }
-
-        function sync() {
-            var value = businessText ? businessText.value.trim() : '';
-            var status = statusArea ? (statusArea.textContent || '').toLowerCase() : '';
-            var error = /error|failed|unavailable|503|fehler|fehlgeschlagen|nicht verfügbar/.test(status);
-            var stale = businessText && businessText.classList.contains('stale-results');
-            var running = analyzeButton && (analyzeButton.disabled ||
-                !document.getElementById('analyzeSpinner')?.classList.contains('d-none'));
-
-            if (error) {
-                setStage('analyze', 'error');
-                configure('analyze', text('Retry analysis', 'Analyse erneut starten'),
-                    text('Review the message, then retry the primary action.',
-                        'Hinweis prüfen und anschließend die Hauptaktion erneut starten.'), false);
-            } else if (running) {
-                setStage('analyze', 'current');
-                configure('none', text('Analysis running…', 'Analyse läuft…'),
-                    text('The result state and next action will appear here.',
-                        'Ergebniszustand und nächste Aktion erscheinen hier.'), true);
-            } else if (hasScores() && !stale) {
-                setStage('review', 'current');
-                configure('review', text('Review highest matches', 'Beste Treffer prüfen'),
-                    text('The analysis is complete. Inspect the strongest matches next.',
-                        'Die Analyse ist abgeschlossen. Prüfen Sie nun die stärksten Treffer.'), false);
-            } else if (value) {
-                setStage('analyze', 'current');
-                configure('analyze', text('Run analysis', 'Analyse starten'),
-                    text('The requirement is ready for the primary action.',
-                        'Die Anforderung ist bereit für die Hauptaktion.'), false);
-            } else {
-                setStage('describe', 'current');
-                configure('describe', text('Enter requirement', 'Anforderung eingeben'),
-                    text('Start with the requirement or capability to evaluate.',
-                        'Beginnen Sie mit der zu bewertenden Anforderung oder Fähigkeit.'), false);
-            }
-        }
-
-        nextAction.addEventListener('click', function () {
-            if (action === 'describe') {
-                businessText?.focus();
-            } else if (action === 'analyze') {
-                analyzeButton?.focus();
-                analyzeButton?.click();
-            } else if (action === 'review') {
-                var firstScore = document.querySelector('#taxonomyTree .tax-pct');
-                firstScore?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                setStage('next', 'current');
-                configure('architecture', text('Open architecture', 'Architektur öffnen'),
-                    text('Continue with relations and architecture decisions.',
-                        'Fahren Sie mit Beziehungen und Architekturentscheidungen fort.'), false);
-            } else if (action === 'architecture') {
-                document.querySelector('#mainNavTabs [data-page="architecture"]')?.click();
-            }
+        [status, tree, analyzeButton].filter(Boolean).forEach(function (surface) {
+            new MutationObserver(syncTaskProgress).observe(surface, {
+                attributes: true,
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
         });
-
-        businessText?.addEventListener('input', sync);
-        analyzeButton?.addEventListener('click', function () {
-            setStage('analyze', 'current');
-            configure('none', text('Analysis running…', 'Analyse läuft…'),
-                text('The result state and next action will appear here.',
-                    'Ergebniszustand und nächste Aktion erscheinen hier.'), true);
-            setTimeout(sync, 0);
-        });
-        if (statusArea) new MutationObserver(sync).observe(statusArea,
-            { attributes: true, childList: true, subtree: true, characterData: true });
-        if (taxonomyTree) new MutationObserver(sync).observe(taxonomyTree,
-            { attributes: true, childList: true, subtree: true });
-        sync();
+        syncTaskProgress();
     }
 
-    function installKeyboardShortcuts() {
+    function installExpertShortcuts() {
+        var analyzeLink = document.querySelector('#mainNavTabs [data-page="analyze"]');
+        var operationalSummary = document.querySelector('#operationalContextDetails > summary');
+        if (analyzeLink) {
+            analyzeLink.title = t('analysis.task.shortcut.analyze');
+        }
+        if (operationalSummary) {
+            operationalSummary.title = t('analysis.task.shortcut.operational');
+        }
         document.addEventListener('keydown', function (event) {
-            if (!event.altKey || !event.shiftKey) return;
+            if (!event.altKey || !event.shiftKey) {
+                return;
+            }
             if (event.key.toLowerCase() === 'a') {
                 event.preventDefault();
-                document.querySelector('#mainNavTabs [data-page="analyze"]')?.click();
+                analyzeLink?.click();
                 document.getElementById('businessText')?.focus();
             } else if (event.key.toLowerCase() === 'o') {
                 event.preventDefault();
@@ -322,24 +373,25 @@
         });
     }
 
-    function initTaskFocus() {
-        createOperationalContext();
+    function initTaskHierarchy() {
         createTaskProgress();
+        createOperationalContext();
         createSecondaryToolsDisclosure();
-        installKeyboardShortcuts();
+        monitorTaskProgress();
+        installExpertShortcuts();
     }
 
-    // Auto-init on DOMContentLoaded
-    document.addEventListener('DOMContentLoaded', function () {
-        init();
-        initTaskFocus();
-    });
+    function init() {
+        initWelcomeOverlay();
+        initTaskHierarchy();
+    }
 
-    // Public API
+    document.addEventListener('DOMContentLoaded', init);
+
     window.TaxonomyOnboarding = {
         init: init,
         dismiss: dismiss,
         reset: reset,
-        initTaskFocus: initTaskFocus
+        syncTaskProgress: syncTaskProgress
     };
 })();
