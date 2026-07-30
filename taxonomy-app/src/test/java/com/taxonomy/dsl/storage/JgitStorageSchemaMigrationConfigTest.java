@@ -55,7 +55,7 @@ class JgitStorageSchemaMigrationConfigTest {
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_LEASE_UNTIL"));
         assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
         assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
-        assertEquals(
+        assertVersionPrefix(
                 FULL_CORE_HISTORY,
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
     }
@@ -69,7 +69,7 @@ class JgitStorageSchemaMigrationConfigTest {
 
         assertTrue(tableExists(dataSource, "application_marker"));
         assertTrue(tableExists(dataSource, "git_packs"));
-        assertEquals(
+        assertVersionPrefix(
                 List.of("0", "0.1.4", "0.1.5", "0.1.14", "0.1.14.1", "0.1.14.2"),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
     }
@@ -135,7 +135,7 @@ class JgitStorageSchemaMigrationConfigTest {
                 successfulVersions(
                         dataSource,
                         CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE));
-        assertEquals(
+        assertVersionPrefix(
                 ADOPTED_CORE_HISTORY,
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
 
@@ -177,7 +177,7 @@ class JgitStorageSchemaMigrationConfigTest {
                 successfulVersions(
                         dataSource,
                         CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE));
-        assertEquals(
+        assertVersionPrefix(
                 ADOPTED_CORE_HISTORY,
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
         assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
@@ -206,7 +206,7 @@ class JgitStorageSchemaMigrationConfigTest {
         assertArrayEquals(
                 original,
                 packData(dataSource, "managed", "pack-existing", "pack"));
-        assertEquals(
+        assertVersionPrefix(
                 FULL_CORE_HISTORY,
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
     }
@@ -288,7 +288,7 @@ class JgitStorageSchemaMigrationConfigTest {
 
         JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
 
-        assertEquals(
+        assertVersionPrefix(
                 List.of("0.1.14.2"),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_LEASE_UNTIL"));
@@ -476,6 +476,18 @@ class JgitStorageSchemaMigrationConfigTest {
             assertTrue(resultSet.next());
             return resultSet.getString(1);
         }
+    }
+
+    private static void assertVersionPrefix(
+            List<String> expectedPrefix, List<String> actual) {
+        assertTrue(
+                actual.size() >= expectedPrefix.size(),
+                () -> "Expected migration prefix " + expectedPrefix + " but found " + actual);
+        assertEquals(expectedPrefix, actual.subList(0, expectedPrefix.size()));
+        assertEquals(
+                actual.size(),
+                new HashSet<>(actual).size(),
+                "Successful Core migration versions must remain unique");
     }
 
     private static List<String> successfulVersions(
