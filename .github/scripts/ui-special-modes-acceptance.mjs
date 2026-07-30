@@ -37,6 +37,14 @@ async function screenshot(state, selector) {
   await writeFile(path.join(outputDir, `${state}.html`), await target.evaluate(node => node.outerHTML), 'utf8');
 }
 
+async function openAnalysisSecondaryTools() {
+  const secondaryTools = page.locator('#analysisSecondaryTools');
+  await secondaryTools.waitFor({ state: 'visible', timeout: 20_000 });
+  if (!(await secondaryTools.getAttribute('open'))) {
+    await secondaryTools.locator(':scope > summary').click();
+  }
+}
+
 async function testPartialAnalysis() {
   await navigateToPage(page, 'analyze');
   const interactive = page.locator('#interactiveMode');
@@ -117,6 +125,7 @@ async function testTextSpacing() {
   await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.ready), null, { timeout: 20_000 });
   await page.evaluate(() => window.TaxonomyRoleSurface.ready);
   await navigateToPage(page, 'analyze');
+  await openAnalysisSecondaryTools();
   const documentPanel = page.locator('#documentImportPanel');
   await documentPanel.waitFor({ state: 'visible', timeout: 20_000 });
   if (!(await documentPanel.getAttribute('open'))) {
