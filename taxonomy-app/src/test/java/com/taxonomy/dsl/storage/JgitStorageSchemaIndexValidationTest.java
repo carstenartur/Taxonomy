@@ -36,7 +36,7 @@ class JgitStorageSchemaIndexValidationTest {
                 () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(
                         flyway(dataSource), false));
 
-        assertTrue(error.getMessage().contains("unique index"));
+        assertTrue(error.getMessage().contains("REPOSITORY_NAME, PACK_NAME"));
         assertFalse(tableExists(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
     }
 

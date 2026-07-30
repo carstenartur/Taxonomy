@@ -466,18 +466,38 @@ public class JgitStorageSchemaMigrationConfig {
                 List.of("REPOSITORY_NAME", "REF_NAME"));
     }
 
-    private static void requirePreWriteLeaseCoreIndexes(SchemaSnapshot schema) {
-        requireLegacyCoreIndexes(schema);
-        requireIndex(
+    /**
+     * Validate the actual managed lookup paths rather than redundant exact indexes.
+     *
+     * <p>Since Core 0.1.17 the unique pack identity index supplies the left prefixes
+     * {@code (repository_name)} and {@code (repository_name, pack_name)}, while the
+     * ordered reflog index extends {@code (repository_name, ref_name)} with the row id.
+     * Older released schemas remain valid because their exact indexes satisfy the same
+     * left-prefix contract.</p>
+     */
+    private static void requireManagedCoreIndexes(SchemaSnapshot schema) {
+        requireIndexPrefix(
                 "git_packs",
                 schema.packIndexes(),
-                false,
-                List.of("REPOSITORY_NAME", "COMMITTED"));
+                List.of("REPOSITORY_NAME", "PACK_NAME"));
         requireIndex(
                 "git_packs",
                 schema.packIndexes(),
                 true,
                 List.of("REPOSITORY_NAME", "PACK_NAME", "PACK_EXTENSION"));
+        requireIndex(
+                "git_packs",
+                schema.packIndexes(),
+                false,
+                List.of("REPOSITORY_NAME", "COMMITTED"));
+        requireIndexPrefix(
+                "git_reflog",
+                schema.reflogIndexes(),
+                List.of("REPOSITORY_NAME", "REF_NAME"));
+    }
+
+    private static void requirePreWriteLeaseCoreIndexes(SchemaSnapshot schema) {
+        requireManagedCoreIndexes(schema);
     }
 
     private static void requireCurrentCoreIndexes(SchemaSnapshot schema) {
@@ -487,6 +507,22 @@ public class JgitStorageSchemaMigrationConfig {
                 schema.packIndexes(),
                 false,
                 List.of("REPOSITORY_NAME", "COMMITTED", "WRITE_LEASE_UNTIL"));
+    }
+
+    private static void requireIndexPrefix(
+            String table,
+            Map<String, IndexSignature> indexes,
+            List<String> columns) {
+        boolean covered = indexes.values().stream()
+                .map(IndexSignature::columns)
+                .anyMatch(indexColumns -> indexColumns.size() >= columns.size()
+                        && indexColumns.subList(0, columns.size()).equals(columns));
+        if (covered) {
+            return;
+        }
+        throw unsafeSchema(
+                table + " is missing an index with leading columns " + columns
+                        + "; actual indexes=" + indexes);
     }
 
     private static void requireIndex(
