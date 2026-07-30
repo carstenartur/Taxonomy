@@ -1,6 +1,6 @@
 # Accessibility Evidence and Conformance Plan (BITV 2.0 / WCAG 2.1)
 
-**Last code-based review:** 29 July 2026  
+**Last code-based review:** 30 July 2026  
 **Target:** WCAG 2.1 Level AA / EN 301 549 / BITV 2.0  
 **Current status:** Partially conformant — no formal BIK BITV certification has been completed.
 
@@ -25,35 +25,55 @@ The assessment covers the authenticated single-page application, including analy
 | Admin control | Admin state derives from authenticated `ROLE_ADMIN`; icon-only display has an accessible name | Security and UI regression tests | Implemented |
 | Stale-result feedback | Editing a requirement after analysis adds a visible warning and reset action | Screenshot and UI behavior tests | Implemented |
 | Touch operation | Node actions are displayed on coarse pointers; important controls receive 44 px touch targets | Responsive ergonomics stylesheet | Implemented |
-| Responsive task order | At narrow/zoomed widths the primary analysis task is moved before the reference tree in the actual DOM; desktop order is restored when the two-column layout returns | `taxonomy-utils.js` plus role/state assertions for geometry, DOM, reading and focus order | Implemented |
+| Responsive task order | At narrow/zoomed widths the primary analysis task is moved before the reference tree in the actual DOM; desktop order is restored when the two-column layout returns | Role/state assertions for geometry, DOM, reading and focus order | Implemented |
+| Explicit task hierarchy | Analysis exposes describe, analyze, review and continue stages plus one contextual next action | Real role/browser task flow and task-state assertions | Implemented |
+| Progressive disclosure | Healthy repository, workspace, model/provider and expert-tool detail is collapsed by default; actionable failures open operational detail | Browser assertions and automatic error-state evidence | Implemented |
+| Expert keyboard access | `Alt+Shift+A` focuses the analysis task and `Alt+Shift+O` toggles/focuses operational context | Role/state keyboard assertions | Implemented |
+| Localised dynamic UI | Task stages and disclosures use the same English/German message-source inventory as the server-rendered UI | i18n controller integration tests and browser startup contract | Implemented |
 | Zoom and reflow | Navigation remains a single horizontally reachable row; panels and actions reflow without essential horizontal loss | Responsive stylesheet and Maven-owned role/state matrix; manual device verification still required | Partial |
 | Reduced motion | Animations and transitions are minimized when `prefers-reduced-motion` is active | Responsive ergonomics stylesheet | Implemented |
 | Graphs and diagrams | Several views provide tables or detail lists, but not every visual relation is guaranteed to have an equivalent linear representation | Manual review required | Partial |
 | DSL editor | CodeMirror remains included in automated browser/axe coverage, but its complex editor semantics also require a dedicated keyboard and screen-reader test matrix | Automated browser matrix plus manual keyboard/screen-reader test | Partial |
 | Contrast | Bootstrap defaults and explicit high-score text colors are used; a full state-by-state contrast audit remains necessary | axe detects many contrast failures, but manual checks are still required | Partial |
 
+## Automated task and usability evidence
+
+The Maven-owned role/state suite executes four explicit tasks rather than applying one generic visual assertion to every role:
+
+1. a USER enters and analyzes a requirement;
+2. a narrow/mobile profile opens the completed result and finds the next action before the reference taxonomy tree;
+3. an ARCHITECT reviews a real pending relation proposal, decides it, creates a variant through the UI and returns to the origin context;
+4. an ADMIN opens the health dashboard, identifies bounded component states and refreshes them.
+
+Each profile writes a `taskMeasurements` object to its `report.json`, including:
+
+- task completion and the failed step;
+- time until the primary action is visible, enabled and focusable;
+- time to task completion;
+- pixels and viewport ratio before the task surface;
+- page transitions and navigation errors;
+- whether the primary and contextual next action are inside the viewport;
+- whether operational and secondary detail is collapsed by default.
+
+The first complete run establishes the repository-owned baseline. Budgets must be derived from reviewed evidence, checked in with rationale and kept separate from axe accessibility findings.
+
 ## Automated accessibility gate
 
-Accessibility is part of the Maven-owned browser suite rather than a separate
-GitHub workflow:
+Accessibility is part of the Maven-owned browser suite rather than a separate GitHub workflow:
 
 ```bash
 ./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true \
   -Dtaxonomy.ui.suite=accessibility
 ```
 
-The `ci` profile runs the same authenticated axe scenarios together with the
-primary-workflow and role/state matrix. Maven installs the pinned Node,
-Playwright and axe dependencies, starts the real Spring Boot application and
-writes reports below `target/ui-verification/accessibility/`.
+The `ci` profile runs the same authenticated axe scenarios together with the primary-workflow and role/state matrix. Maven installs the pinned Node, Playwright and axe dependencies, starts the real Spring Boot application and writes reports below `target/ui-verification/accessibility/`.
 
 Pinned packages:
 
 - `@playwright/test` 1.61.1
 - `@axe-core/playwright` 4.12.1
 
-Automated checks do not prove complete conformity and do not replace keyboard,
-screen-reader, zoom, cognitive-load or diagram-equivalence review.
+Automated checks do not prove complete conformity and do not replace keyboard, screen-reader, zoom, cognitive-load or diagram-equivalence review.
 
 ## Required manual release checks
 
@@ -61,6 +81,8 @@ Perform these checks for every UI release:
 
 - [ ] Operate the complete primary workflow without a mouse.
 - [ ] Verify logical focus order and focus restoration for every modal.
+- [ ] Verify the four task stages, contextual next action and both expert shortcuts in English and German.
+- [ ] Confirm that healthy operational detail stays collapsed and blocking failures are immediately discoverable.
 - [ ] Test at 200 % and 400 % browser zoom without horizontal loss of essential content.
 - [ ] Test at 320 CSS pixels and on a touch device.
 - [ ] Test with Windows High Contrast / forced-colors mode.
@@ -88,6 +110,7 @@ New or changed workflows must follow these rules:
 - Prefer recognition over recall: searchable selectors instead of raw IDs or commit hashes.
 - Show one clear primary action per task area.
 - Keep diagnostics and system metrics out of the default user workspace.
+- Open hidden operational detail automatically when it contains a blocking failure.
 - Do not hide essential actions behind hover-only interaction.
 - Never use color as the only carrier of meaning.
 - Avoid native `alert()` and `prompt()`; use labelled application dialogs and inline validation.
@@ -113,7 +136,4 @@ The statement must include a feedback contact, preparation date, test method, kn
 
 ## Automated browser coverage matrix
 
-The maintained browser, viewport, CodeMirror, keyboard, reduced-motion, and axe
-coverage is documented in
-[`docs/dev/BROWSER_QA.md`](../dev/BROWSER_QA.md). New moderate axe findings are
-blocked against a reviewed baseline; CodeMirror is not excluded from the audit.
+The maintained browser, viewport, CodeMirror, keyboard, reduced-motion, and axe coverage is documented in [`docs/dev/BROWSER_QA.md`](../dev/BROWSER_QA.md). New moderate axe findings are blocked against a reviewed baseline; CodeMirror is not excluded from the audit.
