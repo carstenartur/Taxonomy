@@ -132,6 +132,11 @@ class ObservabilityContainerIT {
                 "/actuator/prometheus", "text/plain");
         assertThat(prometheus.statusCode()).isEqualTo(200);
         assertThat(prometheus.body()).contains("jvm_memory");
+        assertThat(prometheus.body())
+                .contains("taxonomy_workspace_resolve_seconds_count")
+                .contains("taxonomy_component=\"workspace\"")
+                .contains("taxonomy_operation=\"resolveCurrentContext\"")
+                .contains("outcome=\"success\"");
 
         TraceEvidence evidence = awaitCorrelatedTrace();
         assertThat(evidence.spanNames())
