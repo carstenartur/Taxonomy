@@ -102,10 +102,17 @@ class OnnxSeleniumIT {
                             .getAttribute("data-view-rendered");
                     return rendered != null && !rendered.isEmpty();
                 });
+        // Dynamic task/disclosure surfaces are created only after the browser
+        // translation bundle is ready. Waiting for that contract prevents the
+        // welcome overlay or relocated status/search controls from appearing
+        // after this setup method has already continued.
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.id("analysisTaskProgress")));
 
         List<WebElement> dismissButtons = driver.findElements(By.id("onboardingDismiss"));
         if (!dismissButtons.isEmpty()) {
-            dismissButtons.getFirst().click();
+            clickWhenUnobscured(By.id("onboardingDismiss"));
             new WebDriverWait(driver, Duration.ofSeconds(5))
                     .until(ExpectedConditions.invisibilityOfElementLocated(
                             By.id("onboardingOverlay")));
@@ -181,12 +188,14 @@ class OnnxSeleniumIT {
     @Test
     @Order(11)
     void aiStatusBadgeShowsLimited() {
+        openDetails(By.id("operationalContextDetails"));
         WebElement badge = new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(currentDriver -> {
                     WebElement candidate = currentDriver.findElement(By.id("aiStatusBadge"));
-                    String text = candidate.getText();
-                    return text != null
-                            && !text.isEmpty()
+                    String text = candidate.getAttribute("textContent");
+                    return candidate.isDisplayed()
+                            && text != null
+                            && !text.isBlank()
                             && !text.contains("Unknown")
                             ? candidate
                             : null;
@@ -311,6 +320,26 @@ class OnnxSeleniumIT {
                         .isEnabled());
     }
 
+    private void openDetails(By locator) {
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .ignoring(StaleElementReferenceException.class)
+                .until(currentDriver -> {
+                    WebElement details = currentDriver.findElement(locator);
+                    if (details.getAttribute("open") != null) {
+                        return true;
+                    }
+                    WebElement summary = details.findElement(By.xpath("./summary"));
+                    ((JavascriptExecutor) currentDriver).executeScript(
+                            "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                            summary);
+                    if (!summary.isDisplayed() || !summary.isEnabled()) {
+                        return false;
+                    }
+                    summary.click();
+                    return currentDriver.findElement(locator).getAttribute("open") != null;
+                });
+    }
+
     private void clickWhenUnobscured(By locator) {
         new WebDriverWait(driver, Duration.ofSeconds(10))
                 .ignoring(StaleElementReferenceException.class)
@@ -338,10 +367,10 @@ class OnnxSeleniumIT {
     }
 
     private void executeUiSearch(String mode, String query) {
-        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
-        if (searchPanel.getAttribute("open") == null) {
-            searchPanel.findElement(By.tagName("summary")).click();
-        }
+        // Search is intentionally secondary to the primary analysis task. Open
+        // both disclosure layers through their visible summaries before using it.
+        openDetails(By.id("analysisSecondaryTools"));
+        openDetails(By.id("searchPanel"));
 
         ((JavascriptExecutor) driver).executeScript(
                 "document.getElementById('searchModeSelect').value = arguments[0];",
