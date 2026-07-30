@@ -326,6 +326,7 @@ window.TaxonomyUtils = (function () {
                 resolve(value);
             });
             dialog.showModal();
+            input.focus();
         });
     }
 
