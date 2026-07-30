@@ -10,6 +10,24 @@ export async function runRoleStateFlow({
 }) {
   const passed = name => checks.push(name);
   const { runAxe, saveState } = evidence;
+  const taskStartedAt = Date.now();
+  const taskMeasurements = {
+    roleTask: role === 'ADMIN' ? 'diagnose availability'
+      : role === 'ARCHITECT' ? 'review relation and continue architecture work'
+        : 'analyze a requirement',
+    taskCompleted: false,
+    failedStep: null,
+    timeToPrimaryActionMs: null,
+    timeToTaskCompletionMs: null,
+    preTaskViewportPixels: null,
+    preTaskViewportRatio: null,
+    pageTransitionsBeforePrimaryAction: 1,
+    navigationErrors: 0,
+    primaryActionInsideInitialViewport: false,
+    nextActionInsideInitialViewport: false,
+    operationalContextCollapsedByDefault: false,
+    secondaryToolsCollapsedByDefault: false
+  };
 
   const adminTab = page.locator('#adminNavTab');
   if (role === 'ADMIN') {
@@ -30,10 +48,62 @@ export async function runRoleStateFlow({
   await page.locator('#mainNavTabs [data-page="analyze"]').click();
   await page.locator('#taxonomyTree [role="treeitem"]').first()
     .waitFor({ state: 'visible', timeout: 90_000 });
+
+  const taskSurface = await page.evaluate(() => {
+    const progress = document.getElementById('analysisTaskProgress');
+    const primary = document.getElementById('analyzeBtn');
+    const operations = document.getElementById('operationalContextDetails');
+    const secondary = document.getElementById('analysisSecondaryTools');
+    const progressRect = progress?.getBoundingClientRect();
+    const primaryRect = primary?.getBoundingClientRect();
+    const focusable = Boolean(primary && !primary.disabled
+      && primary.tabIndex >= 0 && getComputedStyle(primary).visibility !== 'hidden');
+    return {
+      progressVisible: Boolean(progressRect && progressRect.width > 0 && progressRect.height > 0),
+      progressTop: progressRect?.top ?? Number.POSITIVE_INFINITY,
+      viewportHeight: window.innerHeight,
+      primaryVisible: Boolean(primaryRect && primaryRect.width > 0 && primaryRect.height > 0),
+      primaryEnabled: Boolean(primary && !primary.disabled),
+      primaryFocusable: focusable,
+      primaryInsideViewport: Boolean(primaryRect && primaryRect.top >= 0
+        && primaryRect.bottom <= window.innerHeight),
+      currentStage: progress?.querySelector('[aria-current="step"]')?.id || '',
+      operationalCollapsed: Boolean(operations && !operations.open),
+      operationalContainsOriginalSurfaces: Boolean(operations
+        && operations.contains(document.getElementById('gitStatusBar'))
+        && operations.contains(document.getElementById('contextBar'))),
+      secondaryCollapsed: Boolean(secondary && !secondary.open),
+      secondaryContainsExpertTools: Boolean(secondary
+        && secondary.contains(document.getElementById('searchPanel'))
+        && secondary.contains(document.getElementById('llmCommLog')))
+    };
+  });
+  assert(taskSurface.progressVisible, 'Explicit analysis task progression is not visible');
+  assert(taskSurface.currentStage === 'taskStageDescribe',
+    `Initial analysis stage was ${taskSurface.currentStage}, expected describe`);
+  assert(taskSurface.primaryVisible && taskSurface.primaryEnabled && taskSurface.primaryFocusable,
+    'Primary Analyze action is not visible, enabled and focusable');
+  assert(taskSurface.operationalCollapsed && taskSurface.operationalContainsOriginalSurfaces,
+    'Operational status must be collapsed by default while retaining original detail surfaces');
+  assert(taskSurface.secondaryCollapsed && taskSurface.secondaryContainsExpertTools,
+    'Secondary analysis tools must be collapsed by default and remain available');
+  taskMeasurements.timeToPrimaryActionMs = Date.now() - taskStartedAt;
+  taskMeasurements.preTaskViewportPixels = Math.max(0, Math.round(taskSurface.progressTop));
+  taskMeasurements.preTaskViewportRatio = Number((Math.max(0, taskSurface.progressTop)
+    / taskSurface.viewportHeight).toFixed(4));
+  taskMeasurements.primaryActionInsideInitialViewport = taskSurface.primaryInsideViewport;
+  taskMeasurements.operationalContextCollapsedByDefault = taskSurface.operationalCollapsed;
+  taskMeasurements.secondaryToolsCollapsedByDefault = taskSurface.secondaryCollapsed;
+  passed('measured primary task visibility and progressive disclosure');
+
   const interactive = page.locator('#interactiveMode');
   if (await interactive.isChecked()) await interactive.uncheck();
   await page.locator('#businessText').fill(
     'Provide resilient hospital communications with traceable architecture decisions.');
+  await page.waitForFunction(() =>
+    document.querySelector('#taskStageAnalyze[data-state="current"]'));
+  passed('requirement entry advances explicit task stage');
+
   // Reused applications can complete a warm mock analysis before Playwright's next
   // wait begins. Observe the real feedback surface before activation and verify the
   // final visible score state independently.
@@ -70,20 +140,43 @@ export async function runRoleStateFlow({
     return scores && Object.keys(scores).length > 0
       && document.querySelectorAll('.tax-pct').length > 0;
   }, null, { timeout: 120_000 });
+  await page.waitForFunction(() =>
+    document.querySelector('#taskStageReview[data-state="current"]')
+      && !document.getElementById('taskNextAction')?.disabled,
+  null, { timeout: 10_000 });
   const statusEvents = await page.evaluate(() => {
     window.__taxonomyQaAnalysisStatusObserver?.disconnect();
     return window.__taxonomyQaAnalysisStatusEvents || [];
   });
   assert(statusEvents.length > 0,
     'Analysis completed without a perceivable status transition');
-  passed('analysis loading and success');
+  const completedTaskState = await page.evaluate(() => {
+    const nextAction = document.getElementById('taskNextAction');
+    const rect = nextAction?.getBoundingClientRect();
+    return {
+      currentStage: document.querySelector('#analysisTaskProgress [aria-current="step"]')?.id || '',
+      nextActionVisible: Boolean(rect && rect.width > 0 && rect.height > 0),
+      nextActionInsideViewport: Boolean(rect && rect.top >= 0 && rect.bottom <= window.innerHeight),
+      nextActionText: nextAction?.textContent?.trim() || ''
+    };
+  });
+  assert(completedTaskState.currentStage === 'taskStageReview',
+    `Completed analysis stage was ${completedTaskState.currentStage}, expected review`);
+  assert(completedTaskState.nextActionVisible && completedTaskState.nextActionText,
+    'Completed analysis has no visible contextual next action');
+  taskMeasurements.taskCompleted = true;
+  taskMeasurements.timeToTaskCompletionMs = Date.now() - taskStartedAt;
+  taskMeasurements.nextActionInsideInitialViewport = completedTaskState.nextActionInsideViewport;
+  passed('analysis loading, success and contextual next action');
   await runAxe('analysis-success');
   await saveState('analysis-success');
 
   await page.locator('#businessText').fill(
     'Provide resilient hospital communications with an emergency notification capability.');
   await page.locator('#businessText.stale-results').waitFor({ state: 'visible', timeout: 10_000 });
-  passed('stale-result indication');
+  await page.waitForFunction(() =>
+    document.querySelector('#taskStageAnalyze[data-state="current"]'));
+  passed('stale-result indication returns focus to analysis stage');
 
   const sunburst = page.locator('#viewSunburst');
   await sunburst.scrollIntoViewIfNeeded();
@@ -100,7 +193,10 @@ export async function runRoleStateFlow({
     return text.includes('error') || text.includes('failed') || text.includes('503')
       || text.includes('unavailable');
   }, null, { timeout: 30_000 });
-  passed('analysis provider error state');
+  await page.waitForFunction(() =>
+    document.querySelector('#taskStageAnalyze[data-state="error"]')
+      && !document.getElementById('taskNextAction')?.disabled);
+  passed('analysis provider error retains hierarchy and retry action');
   await runAxe('analysis-error');
   await saveState('analysis-error');
 
@@ -137,6 +233,17 @@ export async function runRoleStateFlow({
   assert(await page.evaluate(() => document.activeElement?.id === 'businessText'),
     'Dialog did not restore focus to its invoker');
   passed('dialog focus entry and restoration');
+
+  const operationalWasOpen = await page.locator('#operationalContextDetails').evaluate(el => el.open);
+  await page.keyboard.press('Alt+Shift+O');
+  await page.waitForFunction(previous =>
+    document.getElementById('operationalContextDetails')?.open !== previous,
+  operationalWasOpen);
+  assert(await page.evaluate(() =>
+    document.activeElement === document.querySelector('#operationalContextDetails > summary')),
+  'Operational-context shortcut did not move focus to the disclosure');
+  await page.keyboard.press('Alt+Shift+O');
+  passed('expert keyboard access to primary task and operational context');
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -214,4 +321,6 @@ export async function runRoleStateFlow({
   assert(consoleErrors.length === 0,
     `Browser console errors: ${consoleErrors.join(' | ')}`);
   passed('local assets and clean console');
+
+  return taskMeasurements;
 }
