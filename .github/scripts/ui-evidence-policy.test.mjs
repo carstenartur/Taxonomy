@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createEvidencePolicy } from './ui-evidence-policy.mjs';
+import { createEvidencePolicy, screenshotStrategy } from './ui-evidence-policy.mjs';
 
 test('compact mode retains only curated successful states', () => {
   const policy = createEvidencePolicy({ mode: 'compact', curatedStates: 'analysis-success' });
@@ -28,4 +28,25 @@ test('unsupported evidence mode fails before browser execution', () => {
     () => createEvidencePolicy({ mode: 'everything' }),
     /expected compact or full/
   );
+});
+
+test('compact captured states always use one bounded viewport image', () => {
+  assert.equal(screenshotStrategy({
+    mode: 'compact', captured: true, width: 120_000, height: 240_000
+  }), 'viewport');
+});
+
+test('full mode keeps complete evidence with bounded or segmented capture', () => {
+  assert.equal(screenshotStrategy({
+    mode: 'full', captured: true, width: 1_440, height: 10_000
+  }), 'full-page');
+  assert.equal(screenshotStrategy({
+    mode: 'full', captured: true, width: 1_440, height: 30_001
+  }), 'segmented');
+});
+
+test('uncaptured states never create screenshots', () => {
+  assert.equal(screenshotStrategy({
+    mode: 'compact', captured: false, width: 1_440, height: 10_000
+  }), 'none');
 });
