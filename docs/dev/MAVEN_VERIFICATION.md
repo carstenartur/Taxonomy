@@ -94,6 +94,31 @@ Valid suite names, profiles and focused commands are defined by
 evidence is written below `target/ui-verification/`; Java integration results are
 written to the normal Failsafe report directory.
 
+## UI process isolation and timings
+
+The Maven-owned launcher executes every selected browser scenario but does not
+restart the packaged application when scenarios have the same isolation needs:
+
+- read-only `ui` and `accessibility` checks share one application;
+- the special-modes suite keeps a fresh application because it performs a real
+  analysis before testing partial-result, text-spacing and offline states;
+- role/state profiles share one application only with profiles for the same role;
+- each primary mutation workflow keeps its own fresh application.
+
+The complete default matrix therefore retains all 18 scenarios while reducing
+application starts from 18 to 8. Execution remains sequential. Scenarios that
+mutate application state are not allowed to share with read-only browser checks,
+primary mutation workflows remain isolated, and a role/state scenario can never
+share an application with another role. These rules are executable contracts in
+`.github/scripts/ui-suite-plan.test.mjs` rather than implicit CI behavior.
+
+Each scenario contains `application-log.txt`, which points to the log of its
+isolation group. The launcher also writes `target/ui-verification/timings.json`
+with application startup duration, scenario duration, group duration, total
+duration and pass/fail outcome. This report is produced even when a scenario
+fails, so performance and startup regressions can be compared without reading
+the full Maven log.
+
 ## UI evidence policy
 
 Browser assertions, axe analysis, console checks, network checks and JSON summaries
