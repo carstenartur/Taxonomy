@@ -42,6 +42,7 @@ let browser;
 let context;
 let page;
 let evidence;
+let taskMeasurements = null;
 let failureEvidence = null;
 await mkdir(outputDir, { recursive: true });
 
@@ -73,7 +74,7 @@ try {
   page.on('pageerror', error => consoleErrors.push(error.message));
 
   evidence = createRoleStateEvidence({ page, outputDir, checks, findings });
-  await runRoleStateFlow({
+  taskMeasurements = await runRoleStateFlow({
     page, role, zoom, forcedColors, checks, httpFailures,
     externalRequests, consoleErrors, evidence
   });
@@ -95,6 +96,7 @@ try {
     evidenceMode: evidence?.evidenceMode || null,
     curatedStates: evidence?.curatedStates || [],
     states: evidence?.states || [],
+    taskMeasurements,
     checks, findings, externalRequests, httpFailures, consoleErrors,
     auditError, failureEvidence
   };
