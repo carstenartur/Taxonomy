@@ -110,7 +110,8 @@ window.TaxonomyUtils = (function () {
         if (!leftPanel || !rightPanel || leftPanel.parentElement !== rightPanel.parentElement) return;
 
         var row = leftPanel.parentElement;
-        var narrowViewport = window.matchMedia('(max-width: 992px)');
+        // Bootstrap's lg columns become the desktop two-column layout at 992px.
+        var narrowViewport = window.matchMedia('(max-width: 991.98px)');
         var synchronize = function () {
             if (narrowViewport.matches) {
                 if (rightPanel.nextElementSibling !== leftPanel) {
@@ -325,7 +326,6 @@ window.TaxonomyUtils = (function () {
                 resolve(value);
             });
             dialog.showModal();
-            input.focus();
         });
     }
 
