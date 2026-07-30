@@ -49,6 +49,7 @@ class ObservabilityContainerIT {
                     + "f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6";
     private static final String COLLECTOR_ALIAS = "otel-collector.test";
     private static final String APP_ALIAS = "taxonomy-observability.test";
+    private static final String DEBUG_EXPORT_START = "ResourceSpans #";
     private static final String BASIC_AUTH = "Basic "
             + Base64.getEncoder().encodeToString(
                     ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
@@ -133,7 +134,7 @@ class ObservabilityContainerIT {
                 .anyMatch(name -> name.contains("/api/relations"));
         assertThat(evidence.spanNames())
                 .anyMatch(name -> name.contains("resolveCurrentContext"));
-        assertThat(evidence.collectorLogs())
+        assertThat(evidence.exportedTelemetry())
                 .doesNotContain(
                         "taxonomy.workspace.name",
                         "taxonomy.repository.name",
@@ -185,7 +186,9 @@ class ObservabilityContainerIT {
                         .anyMatch(name -> name.contains("resolveCurrentContext"));
                 if (http && taxonomy) {
                     return new TraceEvidence(
-                            trace.getKey(), Set.copyOf(trace.getValue()), lastLogs);
+                            trace.getKey(),
+                            Set.copyOf(trace.getValue()),
+                            exportedTelemetry(lastLogs));
                 }
             }
             Thread.sleep(250);
@@ -195,6 +198,15 @@ class ObservabilityContainerIT {
         throw new AssertionError(
                 "No correlated HTTP and Taxonomy spans were exported. Collector tail:\n"
                         + lastLogs.substring(start));
+    }
+
+    private static String exportedTelemetry(String collectorLogs) {
+        int start = collectorLogs.indexOf(DEBUG_EXPORT_START);
+        if (start < 0) {
+            throw new AssertionError(
+                    "Collector reported spans but no detailed debug export was found");
+        }
+        return collectorLogs.substring(start);
     }
 
     private static Map<String, Set<String>> spansByTrace(String logs) {
@@ -246,6 +258,6 @@ class ObservabilityContainerIT {
     private record TraceEvidence(
             String traceId,
             Set<String> spanNames,
-            String collectorLogs) {
+            String exportedTelemetry) {
     }
 }
