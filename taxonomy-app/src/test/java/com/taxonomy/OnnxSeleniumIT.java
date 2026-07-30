@@ -327,13 +327,14 @@ class OnnxSeleniumIT {
                                             + "rect.left+rect.width/2,rect.top+rect.height/2);"
                                             + "return top===target || target.contains(top);",
                                     element);
-                    return Boolean.TRUE.equals(unobscured)
-                            && element.isDisplayed()
-                            && element.isEnabled()
-                            ? element
-                            : null;
-                })
-                .click();
+                    if (!Boolean.TRUE.equals(unobscured)
+                            || !element.isDisplayed()
+                            || !element.isEnabled()) {
+                        return false;
+                    }
+                    element.click();
+                    return true;
+                });
     }
 
     private void executeUiSearch(String mode, String query) {
