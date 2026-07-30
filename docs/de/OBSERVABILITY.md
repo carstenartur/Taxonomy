@@ -133,6 +133,14 @@ OTEL_METRICS_EXPORTER=none
 
 Dadurch entsteht kein zweiter Metrikpfad und es werden Spring-Boot-, JVM-, Hibernate- und Connection-Pool-Metriken nicht doppelt exportiert. Hibernate-Statistiken sind in der Anwendung bereits aktiviert und über den vorhandenen Micrometer-/Prometheus-Pfad verfügbar.
 
+Taxonomy-eigene Micrometer-Observations ergänzen am selben Endpunkt begrenzte fachliche Timer. Der Metrikname wird aus der Observation-Grenze abgeleitet, beispielsweise:
+
+```text
+taxonomy_workspace_resolve_seconds_count
+```
+
+Verwendet werden ausschließlich feste, niedrig-kardinale Labels: `taxonomy.component`, `taxonomy.operation` und das normalisierte `outcome` (`success` oder `error`). Benutzernamen, Workspace- oder Repository-Namen, Suchanfragen, Prompts, Dateinamen und Exception-Meldungen werden niemals Metrik-Labels. Die Live-Containerprüfung ruft `/api/relations` auf und verlangt den Workspace-Timer mit `component=workspace`, `operation=resolveCurrentContext` und `outcome=success`.
+
 ## Log-Korrelation
 
 Das Spring-Profil `observability` formatiert die OpenTelemetry-MDC-Felder so:
@@ -142,6 +150,14 @@ Das Spring-Profil `observability` formatiert die OpenTelemetry-MDC-Felder so:
 ```
 
 Mit diesen Kennungen kann der zugehörige Trace beziehungsweise Span gefunden werden. Wenn kein Span aktiv ist, erscheint `none`. Logs bleiben in dieser ersten Implementierung bei der Anwendung; der OTLP-Logexport ist deaktiviert.
+
+Taxonomy kann an einer beobachteten fachlichen Grenze zusätzlich genau eine begrenzte DEBUG-Meldung ausgeben:
+
+```text
+Observed taxonomy operation component=workspace operation=resolveCurrentContext outcome=success
+```
+
+Sie wird nur bei Bedarf mit `LOGGING_LEVEL_COM_TAXONOMY_OBSERVABILITY=DEBUG` aktiviert. Der normale INFO-Betrieb bleibt unverändert. Die Meldung enthält ausschließlich feste Komponenten-/Operationsnamen und ein normalisiertes Ergebnis; Methodenargumente, Rückgabewerte, Identitäten, Inhalte und Exception-Meldungen werden nie ausgegeben. Der Live-Abnahmetest verlangt für diese Zeile dieselbe `trace_id` wie im exportierten HTTP-/Domain-Trace.
 
 ## Datenminimierung
 
