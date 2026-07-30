@@ -42,7 +42,24 @@ let browser;
 let context;
 let page;
 let evidence;
-let taskMeasurements = null;
+let taskMeasurements = {
+  schemaVersion: 1,
+  roleTask: role === 'ADMIN' ? 'diagnose availability'
+    : role === 'ARCHITECT' ? 'review relation and continue architecture work'
+      : 'analyze a requirement',
+  taskCompleted: false,
+  failedStep: 'initialization',
+  timeToPrimaryActionMs: null,
+  timeToTaskCompletionMs: null,
+  preTaskViewportPixels: null,
+  preTaskViewportRatio: null,
+  pageTransitionsBeforePrimaryAction: 0,
+  navigationErrors: 0,
+  primaryActionInsideInitialViewport: false,
+  nextActionInsideInitialViewport: false,
+  operationalContextCollapsedByDefault: false,
+  secondaryToolsCollapsedByDefault: false
+};
 let failureEvidence = null;
 await mkdir(outputDir, { recursive: true });
 
@@ -52,6 +69,7 @@ try {
     adminUsername, adminPassword,
     forcedColors, reducedMotion: true
   }));
+  taskMeasurements.failedStep = 'authenticated application startup';
   checks.push('keyboard authentication');
   const baseOrigin = new URL(baseUrl).origin;
   page.on('request', requestEvent => {
@@ -74,12 +92,19 @@ try {
   page.on('pageerror', error => consoleErrors.push(error.message));
 
   evidence = createRoleStateEvidence({ page, outputDir, checks, findings });
+  taskMeasurements.failedStep = 'role task and state flow';
   taskMeasurements = await runRoleStateFlow({
     page, role, zoom, forcedColors, checks, httpFailures,
     externalRequests, consoleErrors, evidence
   });
+  taskMeasurements.schemaVersion = 1;
+  taskMeasurements.failedStep = null;
 } catch (error) {
   auditError = error?.stack || String(error);
+  taskMeasurements.taskCompleted = false;
+  taskMeasurements.failedStep ||= 'unknown role-state step';
+  taskMeasurements.navigationErrors += 1;
+  taskMeasurements.failure = error?.message || String(error);
   process.exitCode = 1;
 } finally {
   if (auditError && page) {
