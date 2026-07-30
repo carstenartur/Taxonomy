@@ -1,18 +1,26 @@
 package com.taxonomy.observability;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import org.aopalliance.intercept.MethodInvocation;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Method;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaxonomyObservationConfigurationTest {
 
@@ -40,6 +48,33 @@ class TaxonomyObservationConfigurationTest {
     }
 
     @Test
+    void resolvesRegistryWhenInfrastructureBecomesAvailableLater() throws Throwable {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        ObservationRegistry realRegistry = ObservationRegistry.create();
+        realRegistry.observationConfig().observationHandler(
+                new DefaultMeterObservationHandler(meterRegistry));
+        AtomicReference<ObservationRegistry> currentRegistry =
+                new AtomicReference<>(ObservationRegistry.NOOP);
+
+        var descriptor = new TaxonomyObservationConfiguration.TargetDescriptor(
+                "taxonomy.test", "test-component", Set.of("work"));
+        var interceptor = new TaxonomyObservationConfiguration.TaxonomyObservationInterceptor(
+                currentRegistry::get, descriptor);
+
+        interceptor.invoke(new StubInvocation(false));
+        currentRegistry.set(realRegistry);
+        interceptor.invoke(new StubInvocation(false));
+
+        Timer timer = meterRegistry.get("taxonomy.test")
+                .tag("taxonomy.component", "test-component")
+                .tag("taxonomy.operation", "work")
+                .tag("outcome", "success")
+                .timer();
+        assertEquals(1, timer.count(),
+                "only the invocation after the real registry appears should be metered");
+    }
+
+    @Test
     void recordsNormalizedErrorOutcomeWithoutExceptionContent() {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         ObservationRegistry observationRegistry = ObservationRegistry.create();
@@ -60,6 +95,41 @@ class TaxonomyObservationConfigurationTest {
                 .tag("outcome", "error")
                 .timer();
         assertEquals(1, timer.count());
+    }
+
+    @Test
+    void logsOnlyBoundedOperationMetadata() throws Throwable {
+        Logger logger = (Logger) LoggerFactory.getLogger(
+                TaxonomyObservationConfiguration.TaxonomyObservationInterceptor.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+        try {
+            var descriptor = new TaxonomyObservationConfiguration.TargetDescriptor(
+                    "taxonomy.test", "test-component", Set.of("work"));
+            var interceptor =
+                    new TaxonomyObservationConfiguration.TaxonomyObservationInterceptor(
+                            ObservationRegistry.NOOP, descriptor);
+
+            interceptor.invoke(new StubInvocation(false));
+            assertThrows(IllegalStateException.class,
+                    () -> interceptor.invoke(new StubInvocation(true)));
+
+            String logged = appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .reduce("", (left, right) -> left + "\n" + right);
+            assertTrue(logged.contains(
+                    "component=test-component operation=work outcome=success"));
+            assertTrue(logged.contains(
+                    "component=test-component operation=work outcome=error"));
+            assertFalse(logged.contains("sensitive content"));
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
     }
 
     private static final class StubInvocation implements MethodInvocation {

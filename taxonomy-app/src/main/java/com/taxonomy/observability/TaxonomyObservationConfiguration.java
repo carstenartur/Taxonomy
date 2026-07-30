@@ -4,6 +4,8 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.aop.framework.Advised;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.aop.support.AopUtils;
@@ -17,6 +19,7 @@ import org.springframework.util.ClassUtils;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Adds low-cardinality Micrometer observations to Taxonomy-owned service boundaries.
@@ -33,9 +36,12 @@ public class TaxonomyObservationConfiguration {
     @Bean
     static BeanPostProcessor taxonomyObservationBeanPostProcessor(
             ObjectProvider<ObservationRegistry> registryProvider) {
-        ObservationRegistry registry = registryProvider.getIfAvailable(
+        // BeanPostProcessors are created before many ordinary infrastructure beans.
+        // Resolve the registry only when an observed operation is invoked so an early
+        // NOOP fallback cannot become permanent for the lifetime of the application.
+        Supplier<ObservationRegistry> registrySupplier = () -> registryProvider.getIfAvailable(
                 () -> ObservationRegistry.NOOP);
-        return new TaxonomyObservationBeanPostProcessor(registry);
+        return new TaxonomyObservationBeanPostProcessor(registrySupplier);
     }
 
     record TargetDescriptor(String observationName, String component,
@@ -84,10 +90,11 @@ public class TaxonomyObservationConfiguration {
                                         "importFromJson")))
         );
 
-        private final ObservationRegistry observationRegistry;
+        private final Supplier<ObservationRegistry> registrySupplier;
 
-        TaxonomyObservationBeanPostProcessor(ObservationRegistry observationRegistry) {
-            this.observationRegistry = observationRegistry;
+        TaxonomyObservationBeanPostProcessor(
+                Supplier<ObservationRegistry> registrySupplier) {
+            this.registrySupplier = registrySupplier;
         }
 
         @Override
@@ -100,7 +107,7 @@ public class TaxonomyObservationConfiguration {
             }
 
             MethodInterceptor interceptor =
-                    new TaxonomyObservationInterceptor(observationRegistry, descriptor);
+                    new TaxonomyObservationInterceptor(registrySupplier, descriptor);
             if (bean instanceof Advised advised) {
                 advised.addAdvice(interceptor);
                 return bean;
@@ -120,12 +127,20 @@ public class TaxonomyObservationConfiguration {
 
     static final class TaxonomyObservationInterceptor implements MethodInterceptor {
 
-        private final ObservationRegistry observationRegistry;
+        private static final Logger log = LoggerFactory.getLogger(
+                TaxonomyObservationInterceptor.class);
+
+        private final Supplier<ObservationRegistry> registrySupplier;
         private final TargetDescriptor descriptor;
 
         TaxonomyObservationInterceptor(ObservationRegistry observationRegistry,
                                        TargetDescriptor descriptor) {
-            this.observationRegistry = observationRegistry;
+            this(() -> observationRegistry, descriptor);
+        }
+
+        TaxonomyObservationInterceptor(Supplier<ObservationRegistry> registrySupplier,
+                                       TargetDescriptor descriptor) {
+            this.registrySupplier = registrySupplier;
             this.descriptor = descriptor;
         }
 
@@ -136,6 +151,10 @@ public class TaxonomyObservationConfiguration {
                 return invocation.proceed();
             }
 
+            ObservationRegistry observationRegistry = registrySupplier.get();
+            if (observationRegistry == null) {
+                observationRegistry = ObservationRegistry.NOOP;
+            }
             Observation observation = Observation.createNotStarted(
                             descriptor.observationName(), observationRegistry)
                     .lowCardinalityKeyValue("taxonomy.component", descriptor.component())
@@ -144,12 +163,16 @@ public class TaxonomyObservationConfiguration {
             try (Observation.Scope ignored = observation.openScope()) {
                 Object result = invocation.proceed();
                 observation.lowCardinalityKeyValue("outcome", "success");
+                log.debug("Observed taxonomy operation component={} operation={} outcome=success",
+                        descriptor.component(), operation);
                 return result;
             } catch (Throwable failure) {
-                // The exception is deliberately not attached to the Observation because its
-                // message may contain imported, DSL or LLM content. Agent method spans retain
+                // The exception is deliberately not attached to the Observation or log because
+                // its message may contain imported, DSL or LLM content. Agent method spans retain
                 // exception type and error status independently.
                 observation.lowCardinalityKeyValue("outcome", "error");
+                log.debug("Observed taxonomy operation component={} operation={} outcome=error",
+                        descriptor.component(), operation);
                 throw failure;
             } finally {
                 observation.stop();

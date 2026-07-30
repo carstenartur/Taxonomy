@@ -50,6 +50,9 @@ class ObservabilityContainerIT {
     private static final String COLLECTOR_ALIAS = "otel-collector.test";
     private static final String APP_ALIAS = "taxonomy-observability.test";
     private static final String DEBUG_EXPORT_START = "ResourceSpans #";
+    private static final String SAFE_OPERATION_LOG =
+            "Observed taxonomy operation component=workspace "
+                    + "operation=resolveCurrentContext outcome=success";
     private static final String BASIC_AUTH = "Basic "
             + Base64.getEncoder().encodeToString(
                     ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
@@ -93,6 +96,7 @@ class ObservabilityContainerIT {
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "false")
                 .withEnv("TAXONOMY_THYMELEAF_CACHE", "false")
                 .withEnv("LLM_MOCK", "true")
+                .withEnv("LOGGING_LEVEL_COM_TAXONOMY_OBSERVABILITY", "DEBUG")
                 .withEnv("JAVA_TOOL_OPTIONS",
                         "-javaagent:/tmp/opentelemetry-javaagent.jar")
                 .withEnv("OTEL_JAVAAGENT_CONFIGURATION_FILE",
@@ -128,6 +132,11 @@ class ObservabilityContainerIT {
                 "/actuator/prometheus", "text/plain");
         assertThat(prometheus.statusCode()).isEqualTo(200);
         assertThat(prometheus.body()).contains("jvm_memory");
+        assertThat(prometheus.body())
+                .contains("taxonomy_workspace_resolve_seconds_count")
+                .contains("taxonomy_component=\"workspace\"")
+                .contains("taxonomy_operation=\"resolveCurrentContext\"")
+                .contains("outcome=\"success\"");
 
         TraceEvidence evidence = awaitCorrelatedTrace();
         assertThat(evidence.spanNames())
@@ -142,6 +151,7 @@ class ObservabilityContainerIT {
                         "taxonomy.document.filename",
                         "gen_ai.prompt",
                         "llm.prompt");
+        awaitCorrelatedApplicationLog(evidence.traceId());
 
         collector.stop();
 
@@ -198,6 +208,28 @@ class ObservabilityContainerIT {
         throw new AssertionError(
                 "No correlated HTTP and Taxonomy spans were exported. Collector tail:\n"
                         + lastLogs.substring(start));
+    }
+
+    private void awaitCorrelatedApplicationLog(String traceId)
+            throws InterruptedException {
+        Pattern correlatedLog = Pattern.compile(
+                "trace_id=" + Pattern.quote(traceId)
+                        + "\\s+span_id=[0-9a-fA-F]{16}.*"
+                        + Pattern.quote(SAFE_OPERATION_LOG),
+                Pattern.CASE_INSENSITIVE);
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        String lastLogs = "";
+        while (System.nanoTime() < deadline) {
+            lastLogs = application.getLogs();
+            if (correlatedLog.matcher(lastLogs).find()) {
+                return;
+            }
+            Thread.sleep(100);
+        }
+        int start = Math.max(0, lastLogs.length() - 8_000);
+        throw new AssertionError(
+                "No safe application log was correlated with trace " + traceId
+                        + ". Application tail:\n" + lastLogs.substring(start));
     }
 
     private static String exportedTelemetry(String collectorLogs) {
