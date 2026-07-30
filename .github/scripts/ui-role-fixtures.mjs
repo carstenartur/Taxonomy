@@ -85,10 +85,17 @@ export async function openRoleSession({
     page.keyboard.press('Enter')
   ]);
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
+
+  // The task hierarchy intentionally waits for the asynchronous browser message
+  // bundle. Wait for the same contract before checking the welcome overlay so a
+  // late i18n response cannot create a modal after the fixture has moved on.
+  await page.evaluate(() => window.TaxonomyI18n?.ready?.());
+  await page.locator('#analysisTaskProgress').waitFor({ state: 'visible', timeout: 20_000 });
   const onboardingDismiss = page.locator('#onboardingDismiss');
   if (await onboardingDismiss.isVisible().catch(() => false)) {
     await onboardingDismiss.focus();
     await page.keyboard.press('Enter');
+    await page.locator('#onboardingOverlay').waitFor({ state: 'detached', timeout: 5_000 });
   }
   await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.ready), null, { timeout: 20_000 });
   await page.evaluate(() => window.TaxonomyRoleSurface.ready);
