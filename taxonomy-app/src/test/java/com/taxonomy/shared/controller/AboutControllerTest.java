@@ -75,4 +75,17 @@ class AboutControllerTest {
                 .andExpect(content().contentTypeCompatibleWith("text/plain"))
                 .andExpect(content().string(containsString("third-party")));
     }
+
+    @Test
+    void sbomEndpointsReturnBuildSpecificCycloneDxDocuments() throws Exception {
+        mockMvc.perform(get("/api/about/sbom.json"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(content().string(containsString("\"bomFormat\" : \"CycloneDX\"")));
+
+        mockMvc.perform(get("/api/about/sbom.xml"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/xml"))
+                .andExpect(content().string(containsString("<bom")));
+    }
 }
