@@ -27,6 +27,13 @@ export async function runRoleStateFlow({
     passed('role-specific navigation');
   }
 
+  // The analysis contract requires a loaded taxonomy. Waiting for the first
+  // rendered tree item also prevents early Firefox interactions from racing
+  // the asynchronous application bootstrap and being reset by startup work.
+  await page.locator('#taxonomyTree [role="treeitem"]').first()
+    .waitFor({ state: 'visible', timeout: 90_000 });
+  passed('taxonomy readiness');
+
   await page.locator('#mainNavTabs [data-page="analyze"]').click();
   const interactive = page.locator('#interactiveMode');
   if (await interactive.isChecked()) await interactive.uncheck();
