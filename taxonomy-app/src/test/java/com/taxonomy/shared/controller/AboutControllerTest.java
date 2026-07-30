@@ -8,6 +8,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -69,11 +70,14 @@ class AboutControllerTest {
     }
 
     @Test
-    void runtimeLicenseEndpointReturnsBuildGeneratedDependencyReport() throws Exception {
+    void runtimeLicenseEndpointContainsRuntimeButNoTestDependencies() throws Exception {
         mockMvc.perform(get("/api/about/runtime-licenses"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/plain"))
-                .andExpect(content().string(containsString("third-party")));
+                .andExpect(content().string(containsString("third-party")))
+                .andExpect(content().string(containsString("com.oracle.database.jdbc:ojdbc11")))
+                .andExpect(content().string(not(containsString("org.junit.jupiter"))))
+                .andExpect(content().string(not(containsString("org.testcontainers"))));
     }
 
     @Test
