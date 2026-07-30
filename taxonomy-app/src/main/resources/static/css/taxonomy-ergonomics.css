@@ -175,8 +175,9 @@
     }
 }
 
-/* Prevent tiny controls even with mouse/trackpad when zoomed. */
-@media (max-width: 992px) {
+/* Prevent tiny controls even with mouse/trackpad when zoomed. Bootstrap's lg
+   columns become two-column at 992px, so the stacking contract ends below it. */
+@media (max-width: 991.98px) {
     .tax-node-actions {
         display: inline-flex;
         flex-wrap: wrap;
