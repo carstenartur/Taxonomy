@@ -19,7 +19,8 @@ public class I18nConfig {
                 "classpath:i18n/messages",
                 "classpath:i18n/messages_document_import",
                 "classpath:i18n/messages_jgit_storage",
-                "classpath:i18n/messages_observability");
+                "classpath:i18n/messages_observability",
+                "classpath:i18n/messages_task_focus");
         ms.setDefaultEncoding("UTF-8");
         ms.setFallbackToSystemLocale(false);
         return ms;
