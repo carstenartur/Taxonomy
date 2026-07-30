@@ -3,6 +3,11 @@ import { navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.m
 export async function runImportWorkflows({ page, evidence }) {
   const { assert, passed, axeState, saveState, waitForText } = evidence;
   await navigateToPage(page, 'analyze');
+  const secondaryTools = page.locator('#analysisSecondaryTools');
+  await secondaryTools.waitFor({ state: 'visible', timeout: 20_000 });
+  if (!(await secondaryTools.getAttribute('open'))) {
+    await secondaryTools.locator(':scope > summary').click();
+  }
   const documentPanel = page.locator('#documentImportPanel');
   if (!(await documentPanel.getAttribute('open'))) {
     await documentPanel.locator('summary').click();
