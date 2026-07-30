@@ -63,7 +63,6 @@ class ObservabilityContainerIT {
     private Network network;
     private GenericContainer<?> collector;
     private GenericContainer<?> application;
-    private Path generatedDockerfile;
 
     @BeforeAll
     void startObservedApplication() throws Exception {
@@ -116,9 +115,6 @@ class ObservabilityContainerIT {
     @AfterAll
     void stopContainers() throws Exception {
         ContainerTestUtils.closeAll(application, collector, network);
-        if (generatedDockerfile != null) {
-            Files.deleteIfExists(generatedDockerfile);
-        }
     }
 
     @Test
@@ -152,13 +148,9 @@ class ObservabilityContainerIT {
         assertThat(withoutCollector.statusCode()).isEqualTo(200);
     }
 
-    private Future<String> observedApplicationImage() throws Exception {
+    private Future<String> observedApplicationImage() {
         Path root = repositoryRoot();
-        Path targetDir = root.resolve("target");
-        Files.createDirectories(targetDir);
-        generatedDockerfile = Files.createTempFile(
-                targetDir, "Dockerfile-observability-it-", ".dockerfile");
-        Files.writeString(generatedDockerfile, """
+        String dockerfile = """
                 FROM %s AS opentelemetry
                 FROM %s
                 WORKDIR /app
@@ -167,10 +159,13 @@ class ObservabilityContainerIT {
                 COPY --from=opentelemetry /javaagent.jar /tmp/opentelemetry-javaagent.jar
                 EXPOSE 8080
                 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
-                """.formatted(AGENT_IMAGE, RUNTIME_IMAGE));
+                """.formatted(AGENT_IMAGE, RUNTIME_IMAGE);
 
+        // Keep every input in Testcontainers' virtual build context. A
+        // filesystem Dockerfile under target/ is excluded by the repository's
+        // .dockerignore and therefore cannot reliably see app.jar in CI.
         return new ImageFromDockerfile("taxonomy-observability-it", false)
-                .withDockerfile(generatedDockerfile)
+                .withFileFromString("Dockerfile", dockerfile)
                 .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
                 .withFileFromPath(
                         "javaagent.properties",
