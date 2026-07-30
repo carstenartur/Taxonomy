@@ -172,9 +172,10 @@ Generate and verify the runtime licence report together with the application:
 ```
 
 The report is packaged as `THIRD-PARTY-RUNTIME.txt`. A missing runtime licence
-causes the Maven build to fail. Verified metadata exceptions belong in
-`src/license/THIRD-PARTY.properties` and must cite the canonical upstream
-licence during review.
+causes the Maven build to fail. Verified metadata overrides belong in
+`taxonomy-app/src/license/override-THIRD-PARTY.properties`. The build reads this
+file but never generates or deletes it. Every override must cite the canonical
+upstream licence in its reviewing pull request.
 
 Generate the CycloneDX SBOM through the normal Maven lifecycle:
 
