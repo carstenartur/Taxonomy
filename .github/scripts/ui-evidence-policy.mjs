@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const VALID_MODES = new Set(['compact', 'full']);
 const DEFAULT_CURATED_STATES = 'analysis-success';
+const MAX_FULL_PAGE_DIMENSION = 30_000;
 
 function normalizeStates(value) {
   const candidates = Array.isArray(value) ? value : String(value || '').split(',');
@@ -24,6 +25,14 @@ export function createEvidencePolicy({
     curatedStates: normalizedStates,
     shouldCapture: state => normalizedMode === 'full' || curated.has(state)
   };
+}
+
+export function screenshotStrategy({ mode, captured, width, height }) {
+  if (!captured) return 'none';
+  if (mode === 'compact') return 'viewport';
+  return width <= MAX_FULL_PAGE_DIMENSION && height <= MAX_FULL_PAGE_DIMENSION
+    ? 'full-page'
+    : 'segmented';
 }
 
 export async function captureFailureEvidence({
