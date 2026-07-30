@@ -80,7 +80,7 @@
         <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
         <springdoc.version>3.0.3</springdoc.version>
         <postgresql.version>42.7.12</postgresql.version>
-        <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
+        <jackson-2-bom.version>2.22.1</jackson-2-bom.version>
         <jackson-bom.version>3.1.5</jackson-bom.version>
         <selenium.version>4.46.0</selenium.version>
         <selenium.container.image>selenium/standalone-chrome:4.46.0-20260707</selenium.container.image>
