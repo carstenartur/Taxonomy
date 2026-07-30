@@ -1,6 +1,6 @@
 # Nachweismatrix zur Barrierefreiheit (BITV 2.0 / WCAG 2.1)
 
-**Letzte codebasierte Prüfung:** 29. Juli 2026  
+**Letzte codebasierte Prüfung:** 30. Juli 2026  
 **Ziel:** WCAG 2.1 Level AA / EN 301 549 / BITV 2.0  
 **Aktueller Stand:** Teilweise konform – eine formale BIK-BITV-Prüfung wurde noch nicht durchgeführt.
 
@@ -25,42 +25,62 @@ Bewertet wird die authentifizierte Webanwendung mit Analyse, Taxonomiebaum, Arch
 | Administration | Berechtigung ausschließlich über `ROLE_ADMIN`; Symbolschaltfläche besitzt zugänglichen Namen | Security- und UI-Regressionstests | Umgesetzt |
 | Veraltete Ergebnisse | Änderung der Anforderung nach einer Analyse erzeugt Warnung und Rücksetzaktion | Screenshot- und Verhaltenstest | Umgesetzt |
 | Touch-Bedienung | Knotenaktionen werden bei groben Zeigegeräten eingeblendet; wichtige Bedienelemente erhalten 44-Pixel-Ziele | Responsives Ergonomie-Stylesheet | Umgesetzt |
-| Responsive Aufgabenreihenfolge | Bei schmalen beziehungsweise gezoomten Ansichten wird die primäre Analyseaufgabe im tatsächlichen DOM vor den Referenzbaum verschoben; beim Desktop-Layout wird die ursprüngliche Reihenfolge wiederhergestellt | `taxonomy-utils.js` sowie Rollen-/Zustandstests für Geometrie, DOM-, Lese- und Fokusreihenfolge | Umgesetzt |
+| Responsive Aufgabenreihenfolge | Bei schmalen beziehungsweise gezoomten Ansichten wird die primäre Analyseaufgabe im tatsächlichen DOM vor den Referenzbaum verschoben; beim Desktop-Layout wird die ursprüngliche Reihenfolge wiederhergestellt | Rollen-/Zustandstests für Geometrie, DOM-, Lese- und Fokusreihenfolge | Umgesetzt |
+| Explizite Aufgabenhierarchie | Die Analyse zeigt die Stufen Beschreiben, Analysieren, Prüfen und Weiterarbeiten sowie genau eine kontextabhängige Folgeaktion | Reale Rollen-/Browseraufgaben und Zustandsassertionen | Umgesetzt |
+| Progressive Offenlegung | Gesunder Repository-, Arbeitsbereichs-, Modell-/Anbieter- und Expertenstatus ist standardmäßig eingeklappt; handlungsrelevante Fehler öffnen den Betriebszustand | Browserassertionen und automatische Fehlerzustandsnachweise | Umgesetzt |
+| Experten-Tastaturzugriff | `Alt+Umschalt+A` fokussiert die Analyseaufgabe; `Alt+Umschalt+O` schaltet den Betriebszustand um und fokussiert ihn | Rollen-/Zustandsassertionen | Umgesetzt |
+| Lokalisierte dynamische UI | Aufgabenstufen und Offenlegungen verwenden dieselbe englisch/deutsche Nachrichteninventarliste wie die serverseitig gerenderte UI | i18n-Controller-Integrationstest und Browser-Startvertrag | Umgesetzt |
 | Zoom und Reflow | Navigation bleibt eine einzeilige horizontal erreichbare Leiste; Panels und Aktionen brechen ohne wesentlichen horizontalen Inhaltsverlust um | Responsives Stylesheet und Maven-gesteuerte Rollen-/Zustandsmatrix; manuelle Geräteprüfung bleibt erforderlich | Teilweise |
 | Reduzierte Bewegung | Animationen und Übergänge werden bei `prefers-reduced-motion` minimiert | CSS | Umgesetzt |
 | Graphen und Diagramme | Mehrere Ansichten besitzen Tabellen oder Detaildarstellungen; die vollständige inhaltliche Gleichwertigkeit ist noch manuell zu prüfen | Manuelle Prüfung | Teilweise |
 | DSL-Editor | CodeMirror bleibt in der automatisierten Browser-/axe-Abdeckung enthalten; seine komplexe Editor-Semantik benötigt zusätzlich eine eigene Tastatur- und Screenreader-Testmatrix | Automatisierte Browsermatrix plus manuelle Tastatur-/Screenreader-Prüfung | Teilweise |
 | Kontraste | Bootstrap-Grundfarben und explizite Textfarben; vollständige Prüfung aller Zustände bleibt erforderlich | axe plus manuelle Prüfung | Teilweise |
 
+## Automatisierte Aufgaben- und Ergonomienachweise
+
+Die Maven-gesteuerte Rollen-/Zustandssuite führt vier konkrete Aufgaben aus, anstatt dieselbe visuelle Prüfung nur mit unterschiedlichen Rollenbezeichnungen zu versehen:
+
+1. Ein USER gibt eine Anforderung ein und analysiert sie.
+2. Ein schmales/mobiles Profil öffnet das fertige Ergebnis und findet die Folgeaktion vor dem Referenzbaum.
+3. Ein ARCHITECT prüft einen echten offenen Relationsvorschlag, entscheidet ihn, erstellt über die Oberfläche eine Variante und kehrt in den Ursprungskontext zurück.
+4. Ein ADMIN öffnet das Health Dashboard, erkennt die begrenzten Komponentenstatus und aktualisiert sie.
+
+Jedes Profil schreibt ein `taskMeasurements`-Objekt in seine `report.json` mit:
+
+- Aufgabenerfolg und fehlgeschlagenem Schritt;
+- Zeit bis die Primäraktion sichtbar, aktiv und fokussierbar ist;
+- Zeit bis zum Aufgabenabschluss;
+- Pixeln und Viewport-Anteil vor der Aufgabenoberfläche;
+- Seitenwechseln und Navigationsfehlern;
+- Sichtbarkeit von Primär- und Folgeaktion im Viewport;
+- standardmäßig eingeklapptem Betriebszustand und weiteren Werkzeugen.
+
+Der erste vollständige Lauf bildet die repository-eigene Baseline. Zahlenbudgets werden aus geprüften Nachweisen abgeleitet, mit Begründung eingecheckt und getrennt von axe-Befunden behandelt.
+
 ## Automatischer Accessibility-Gate
 
-Accessibility ist Teil der Maven-gesteuerten Browser-Suite und kein eigener
-GitHub-Workflow mehr:
+Accessibility ist Teil der Maven-gesteuerten Browser-Suite und kein eigener GitHub-Workflow mehr:
 
 ```bash
 ./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true \
   -Dtaxonomy.ui.suite=accessibility
 ```
 
-Das Profil `ci` führt dieselben authentifizierten axe-Szenarien zusammen mit
-der Primärworkflow- und Rollen-/Zustandsmatrix aus. Maven installiert die fest
-gepinnten Node-, Playwright- und axe-Abhängigkeiten, startet die echte
-Spring-Boot-Anwendung und schreibt Berichte unter
-`target/ui-verification/accessibility/`.
+Das Profil `ci` führt dieselben authentifizierten axe-Szenarien zusammen mit der Primärworkflow- und Rollen-/Zustandsmatrix aus. Maven installiert die fest gepinnten Node-, Playwright- und axe-Abhängigkeiten, startet die echte Spring-Boot-Anwendung und schreibt Berichte unter `target/ui-verification/accessibility/`.
 
 Fest gepinnte Pakete:
 
 - `@playwright/test` 1.61.1
 - `@axe-core/playwright` 4.12.1
 
-Automatische Prüfungen belegen keine vollständige Konformität und ersetzen
-weder Tastatur-, Screenreader-, Zoom- und Kognitionstests noch die fachliche
-Prüfung von Diagrammalternativen.
+Automatische Prüfungen belegen keine vollständige Konformität und ersetzen weder Tastatur-, Screenreader-, Zoom- und Kognitionstests noch die fachliche Prüfung von Diagrammalternativen.
 
 ## Verbindliche manuelle Release-Prüfungen
 
 - [ ] Primären Workflow vollständig ohne Maus bedienen.
 - [ ] Fokusreihenfolge und Fokusrückgabe für jeden Dialog prüfen.
+- [ ] Die vier Aufgabenstufen, die kontextabhängige Folgeaktion und beide Expertenkürzel auf Deutsch und Englisch prüfen.
+- [ ] Bestätigen, dass gesunde Betriebsdetails eingeklappt bleiben und blockierende Fehler sofort auffindbar sind.
 - [ ] 200 % und 400 % Browser-Zoom ohne Verlust wesentlicher Inhalte testen.
 - [ ] 320 CSS-Pixel sowie ein Touch-Gerät testen.
 - [ ] Windows High Contrast / Forced Colors testen.
@@ -86,6 +106,7 @@ Neue oder geänderte Workflows müssen:
 - Erkennen statt Erinnern unterstützen: suchbare Auswahl statt roher IDs oder Commit-Hashes.
 - pro Aufgabenbereich eine klare Primäraktion zeigen.
 - Diagnose- und Systemmetriken aus der Standardarbeitsfläche heraushalten.
+- verborgene Betriebsdetails automatisch öffnen, wenn sie einen blockierenden Fehler enthalten.
 - wesentliche Aktionen nicht ausschließlich hinter Hover verstecken.
 - Farbe nie als einzigen Informationsträger verwenden.
 - keine nativen `alert()`-/`prompt()`-Dialoge verwenden.
@@ -111,8 +132,4 @@ Die veröffentlichte Erklärung muss Kontaktweg, Erstellungsdatum, Prüfmethode,
 
 ## Automatisierte Browser-Abdeckungsmatrix
 
-Die gepflegte Browser-, Viewport-, CodeMirror-, Tastatur-, Reduced-Motion- und
-axe-Abdeckung ist in
-[`docs/dev/BROWSER_QA.md`](../dev/BROWSER_QA.md) beschrieben. Neue moderate
-axe-Befunde werden gegen eine geprüfte Baseline blockiert; CodeMirror ist nicht
-von der Prüfung ausgeschlossen.
+Die gepflegte Browser-, Viewport-, CodeMirror-, Tastatur-, Reduced-Motion- und axe-Abdeckung ist in [`docs/dev/BROWSER_QA.md`](../dev/BROWSER_QA.md) beschrieben. Neue moderate axe-Befunde werden gegen eine geprüfte Baseline blockiert; CodeMirror ist nicht von der Prüfung ausgeschlossen.
