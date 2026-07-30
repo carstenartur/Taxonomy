@@ -1,6 +1,6 @@
 package com.taxonomy;
 
-import com.github.dockerjava.api.exception.NotFoundException;
+import com.github.dockerjava.api.exception.DockerException;
 import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.Volume;
 import org.awaitility.Awaitility;
@@ -138,8 +138,9 @@ class ProductionPersistenceRestartIT {
             DockerClientFactory.instance().client()
                     .removeVolumeCmd(volumeName)
                     .exec();
-        } catch (NotFoundException ignored) {
-            // A failed container creation may not have created the named volume yet.
+        } catch (DockerException ignored) {
+            // Cleanup must never mask the original assertion or container failure. This also
+            // covers volumes that were never created or remain attached after a failed stop.
         }
     }
 

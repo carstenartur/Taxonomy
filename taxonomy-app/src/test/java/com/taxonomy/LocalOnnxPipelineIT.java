@@ -158,7 +158,13 @@ class LocalOnnxPipelineIT {
                     return;
                 }
             }
-            Thread.sleep(500);
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(
+                        "Interrupted while waiting for the full-text index", exception);
+            }
         }
 
         throw new AssertionError(
