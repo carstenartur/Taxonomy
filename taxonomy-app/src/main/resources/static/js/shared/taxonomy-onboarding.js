@@ -386,10 +386,18 @@
         initTaskHierarchy();
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    function scheduleInit() {
+        TaxonomyI18n.ready().then(init);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', scheduleInit);
+    } else {
+        scheduleInit();
+    }
 
     window.TaxonomyOnboarding = {
-        init: init,
+        init: scheduleInit,
         dismiss: dismiss,
         reset: reset,
         syncTaskProgress: syncTaskProgress
