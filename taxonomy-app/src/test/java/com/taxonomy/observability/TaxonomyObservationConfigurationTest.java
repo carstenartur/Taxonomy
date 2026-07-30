@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Method;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -44,6 +45,33 @@ class TaxonomyObservationConfigurationTest {
                 .tag("outcome", "success")
                 .timer();
         assertEquals(1, timer.count());
+    }
+
+    @Test
+    void resolvesRegistryWhenInfrastructureBecomesAvailableLater() throws Throwable {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        ObservationRegistry realRegistry = ObservationRegistry.create();
+        realRegistry.observationConfig().observationHandler(
+                new DefaultMeterObservationHandler(meterRegistry));
+        AtomicReference<ObservationRegistry> currentRegistry =
+                new AtomicReference<>(ObservationRegistry.NOOP);
+
+        var descriptor = new TaxonomyObservationConfiguration.TargetDescriptor(
+                "taxonomy.test", "test-component", Set.of("work"));
+        var interceptor = new TaxonomyObservationConfiguration.TaxonomyObservationInterceptor(
+                currentRegistry::get, descriptor);
+
+        interceptor.invoke(new StubInvocation(false));
+        currentRegistry.set(realRegistry);
+        interceptor.invoke(new StubInvocation(false));
+
+        Timer timer = meterRegistry.get("taxonomy.test")
+                .tag("taxonomy.component", "test-component")
+                .tag("taxonomy.operation", "work")
+                .tag("outcome", "success")
+                .timer();
+        assertEquals(1, timer.count(),
+                "only the invocation after the real registry appears should be metered");
     }
 
     @Test
