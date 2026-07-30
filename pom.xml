@@ -75,7 +75,7 @@
              The platform BOM coordinates mapper, backend, ORM and Lucene. -->
         <hibernate-search.version>8.4.0.Final</hibernate-search.version>
         <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
-        <jgit.version>7.7.0.202606012155-r</jgit.version>
+        <jgit.version>7.7.1.202607240634-r</jgit.version>
         <jgit-storage-hibernate.version>0.1.14</jgit-storage-hibernate.version>
         <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
         <springdoc.version>3.0.3</springdoc.version>
