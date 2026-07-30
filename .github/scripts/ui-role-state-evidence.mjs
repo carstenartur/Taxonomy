@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { createEvidencePolicy } from './ui-evidence-policy.mjs';
+import { createEvidencePolicy, screenshotStrategy } from './ui-evidence-policy.mjs';
 
 export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
   const policy = createEvidencePolicy();
@@ -18,15 +18,35 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
       height: Math.min(dimensions.height, 1000)
     };
     const captured = policy.shouldCapture(state);
+    const strategy = screenshotStrategy({
+      mode: policy.mode,
+      captured,
+      width: dimensions.width,
+      height: dimensions.height
+    });
     const screenshotFiles = [];
     const segments = [];
 
-    if (captured && dimensions.width <= 30000 && dimensions.height <= 30000) {
+    if (strategy === 'viewport') {
+      const mainContent = page.locator('#mainContent');
+      if (await mainContent.count()) await mainContent.scrollIntoViewIfNeeded();
+      const actualY = await page.evaluate(() => window.scrollY);
+      const file = `${prefix}.png`;
+      await page.screenshot({ path: file, fullPage: false, animations: 'disabled' });
+      screenshotFiles.push(path.basename(file));
+      segments.push({
+        file: path.basename(file),
+        scrollY: actualY,
+        width: viewport.width,
+        height: viewport.height,
+        fullPage: false
+      });
+    } else if (strategy === 'full-page') {
       const file = `${prefix}.png`;
       await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
       screenshotFiles.push(path.basename(file));
       segments.push({ file: path.basename(file), scrollY: 0, fullPage: true });
-    } else if (captured) {
+    } else if (strategy === 'segmented') {
       const maxScrollY = Math.max(0, dimensions.height - viewport.height);
       const targets = [];
       for (let y = 0; y < maxScrollY; y += viewport.height) targets.push(y);
@@ -50,6 +70,7 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
     const stateSummary = {
       state,
       evidenceMode: policy.mode,
+      captureStrategy: strategy,
       captured,
       dimensions,
       viewport,
