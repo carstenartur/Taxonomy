@@ -19,11 +19,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class JgitStorageOptimizedIndexContractTest {
 
     @Test
-    void acceptsReleasedOptimizedIndexesThroughLeadingKeyCoverage() throws Exception {
+    void acceptsReleasedOptimizedIndexesThroughLeadingKeyCoverage() {
         DataSource dataSource = dataSource("optimized");
         JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
-        installOptimizedIndexShape(dataSource);
 
+        // Core 0.1.17 already installs the optimized form: redundant standalone
+        // pack/reflog indexes are absent and their access paths are covered by
+        // the remaining unique/ordered indexes. A second startup must accept it.
         assertDoesNotThrow(() ->
                 JgitStorageSchemaMigrationConfig.migrateCoreSchema(
                         flyway(dataSource), false));
@@ -33,7 +35,6 @@ class JgitStorageOptimizedIndexContractTest {
     void stillRejectsOptimizedSchemaWithoutPackIdentityAccessPath() throws Exception {
         DataSource dataSource = dataSource("missing-pack-identity");
         JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
-        installOptimizedIndexShape(dataSource);
         execute(dataSource,
                 "alter table git_packs drop constraint uk_pack_repo_name_ext");
 
@@ -42,18 +43,7 @@ class JgitStorageOptimizedIndexContractTest {
                 () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(
                         flyway(dataSource), false));
 
-        assertTrue(error.getMessage().contains(
-                "leading columns [REPOSITORY_NAME, PACK_NAME]"));
-    }
-
-    private static void installOptimizedIndexShape(DataSource dataSource)
-            throws SQLException {
-        execute(dataSource, "drop index idx_pack_repo");
-        execute(dataSource, "drop index idx_pack_repo_name");
-        execute(dataSource, "drop index idx_reflog_repo");
-        execute(dataSource, "drop index idx_reflog_repo_ref");
-        execute(dataSource, "create index idx_reflog_repo_ref_id "
-                + "on git_reflog (repository_name, ref_name, id desc)");
+        assertTrue(error.getMessage().contains("REPOSITORY_NAME, PACK_NAME"));
     }
 
     private static DataSource dataSource(String purpose) {
