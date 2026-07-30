@@ -7,8 +7,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Integration tests for {@link AboutController}.
@@ -22,7 +26,7 @@ class AboutControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void aboutEndpointReturnsOk() throws Exception {
+    void aboutEndpointReturnsBuildAndLegalResourceLinks() throws Exception {
         mockMvc.perform(get("/api/about"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.product").value("Taxonomy Architecture Analyzer"))
@@ -30,16 +34,61 @@ class AboutControllerTest {
                 .andExpect(jsonPath("$.copyright").value("Copyright 2026 Carsten Hammer"))
                 .andExpect(jsonPath("$.sourceUrl").value("https://github.com/carstenartur/Taxonomy"))
                 .andExpect(jsonPath("$.apiDocsUrl").value("/swagger-ui.html"))
-                .andExpect(jsonPath("$.thirdPartyNoticesUrl").value("/THIRD-PARTY-NOTICES.md"))
+                .andExpect(jsonPath("$.projectLicenseUrl").value("/api/about/license"))
+                .andExpect(jsonPath("$.noticeUrl").value("/api/about/notice"))
+                .andExpect(jsonPath("$.thirdPartyNoticesUrl").value("/api/about/third-party"))
+                .andExpect(jsonPath("$.runtimeThirdPartyLicensesUrl").value("/api/about/runtime-licenses"))
+                .andExpect(jsonPath("$.sbomJsonUrl").value("/api/about/sbom.json"))
+                .andExpect(jsonPath("$.sbomXmlUrl").value("/api/about/sbom.xml"))
                 .andExpect(jsonPath("$.version").exists())
                 .andExpect(jsonPath("$.commit").exists())
                 .andExpect(jsonPath("$.branch").exists());
     }
 
     @Test
-    void aboutThirdPartyEndpointReturnsOk() throws Exception {
+    void projectLicenseEndpointReturnsPackagedMitText() throws Exception {
+        mockMvc.perform(get("/api/about/license"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/plain"))
+                .andExpect(content().string(containsString("MIT License")));
+    }
+
+    @Test
+    void noticeEndpointReturnsPackagedProductNotice() throws Exception {
+        mockMvc.perform(get("/api/about/notice"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/plain"))
+                .andExpect(content().string(containsString("Taxonomy Architecture Analyzer")));
+    }
+
+    @Test
+    void curatedThirdPartyEndpointReturnsNotices() throws Exception {
         mockMvc.perform(get("/api/about/third-party"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyString())));
+                .andExpect(content().contentTypeCompatibleWith("text/markdown"))
+                .andExpect(content().string(containsString("Third-Party Notices")));
+    }
+
+    @Test
+    void runtimeLicenseEndpointContainsRuntimeButNoTestDependencies() throws Exception {
+        mockMvc.perform(get("/api/about/runtime-licenses"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/plain"))
+                .andExpect(content().string(containsString("com.oracle.database.jdbc:ojdbc11")))
+                .andExpect(content().string(not(containsString("org.junit.jupiter"))))
+                .andExpect(content().string(not(containsString("org.testcontainers"))));
+    }
+
+    @Test
+    void sbomEndpointsReturnBuildSpecificCycloneDxDocuments() throws Exception {
+        mockMvc.perform(get("/api/about/sbom.json"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(content().string(containsString("\"bomFormat\" : \"CycloneDX\"")));
+
+        mockMvc.perform(get("/api/about/sbom.xml"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/xml"))
+                .andExpect(content().string(containsString("<bom")));
     }
 }
