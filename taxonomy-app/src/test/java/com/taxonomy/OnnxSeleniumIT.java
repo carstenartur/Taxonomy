@@ -181,6 +181,7 @@ class OnnxSeleniumIT {
     @Test
     @Order(11)
     void aiStatusBadgeShowsLimited() {
+        openDetails("operationalContextDetails");
         WebElement badge = new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(currentDriver -> {
                     WebElement candidate = currentDriver.findElement(By.id("aiStatusBadge"));
@@ -337,7 +338,19 @@ class OnnxSeleniumIT {
                 });
     }
 
+    private void openDetails(String id) {
+        WebElement details = driver.findElement(By.id(id));
+        if (details.getAttribute("open") != null) {
+            return;
+        }
+        clickWhenUnobscured(By.cssSelector("#" + id + " > summary"));
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(currentDriver -> currentDriver.findElement(By.id(id))
+                        .getAttribute("open") != null);
+    }
+
     private void executeUiSearch(String mode, String query) {
+        openDetails("analysisSecondaryTools");
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
         if (searchPanel.getAttribute("open") == null) {
             searchPanel.findElement(By.tagName("summary")).click();
