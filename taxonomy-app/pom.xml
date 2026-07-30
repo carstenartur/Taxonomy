@@ -324,6 +324,34 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>license-maven-plugin</artifactId>
+                <version>2.7.1</version>
+                <executions>
+                    <execution>
+                        <id>generate-runtime-third-party-report</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>add-third-party</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/generated-resources/runtime-licenses</outputDirectory>
+                            <thirdPartyFilename>THIRD-PARTY-RUNTIME.txt</thirdPartyFilename>
+                            <addOutputDirectoryAsResourceDir>true</addOutputDirectoryAsResourceDir>
+                            <includedScopes>compile,runtime</includedScopes>
+                            <excludedGroups>com\.taxonomy</excludedGroups>
+                            <includeTransitiveDependencies>true</includeTransitiveDependencies>
+                            <includeOptional>true</includeOptional>
+                            <useMissingFile>true</useMissingFile>
+                            <missingFile>${maven.multiModuleProjectDirectory}/src/license/THIRD-PARTY.properties</missingFile>
+                            <useRepositoryMissingFiles>false</useRepositoryMissingFiles>
+                            <deployMissingFile>false</deployMissingFile>
+                            <failOnMissing>true</failOnMissing>
+                            <force>true</force>
+                            <sortArtifactByName>true</sortArtifactByName>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
@@ -392,6 +420,14 @@
                                         <include>NOTICE</include>
                                         <include>THIRD-PARTY-NOTICES.md</include>
                                         <include>LICENSE</include>
+                                    </includes>
+                                </resource>
+                                <resource>
+                                    <directory>${maven.multiModuleProjectDirectory}/target</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>taxonomy-sbom.json</include>
+                                        <include>taxonomy-sbom.xml</include>
                                     </includes>
                                 </resource>
                             </resources>
