@@ -175,7 +175,8 @@ export async function runRoleStateFlow({
       navigationClientWidth: navigation?.clientWidth ?? 0
     };
   });
-  if (taskHierarchy.viewportWidth <= 992) {
+  // Bootstrap's lg columns become the desktop two-column layout at exactly 992px.
+  if (taskHierarchy.viewportWidth < 992) {
     assert(taskHierarchy.rightTop <= taskHierarchy.leftTop,
       `Primary task must precede taxonomy browser at ${taskHierarchy.viewportWidth}px: `
       + `${taskHierarchy.rightTop} > ${taskHierarchy.leftTop}`);
