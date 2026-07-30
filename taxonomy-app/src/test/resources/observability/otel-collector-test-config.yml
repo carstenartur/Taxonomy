@@ -5,21 +5,15 @@ extensions:
 receivers:
   otlp:
     protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
 
 processors:
   memory_limiter:
     check_interval: 1s
-    limit_mib: 128
-    spike_limit_mib: 32
+    limit_mib: 96
+    spike_limit_mib: 24
 
-  # Defence in depth: the application and Java agent are configured not to
-  # capture content, and the Collector removes sensitive/unbounded fields again
-  # before a backend can persist them. Span and event contexts are separated
-  # explicitly so OTTL parsing does not depend on context inference.
   transform/privacy:
     error_mode: ignore
     trace_statements:
@@ -45,33 +39,19 @@ processors:
           - delete_key(span.attributes, "taxonomy.repository.name")
           - delete_key(span.attributes, "taxonomy.dsl.source")
           - delete_key(span.attributes, "taxonomy.document.filename")
-          - limit(span.attributes, 64, [])
-          - truncate_all(span.attributes, 2048)
       - context: spanevent
         statements:
           - delete_key(spanevent.attributes, "exception.message")
           - delete_key(spanevent.attributes, "exception.stacktrace")
-          - limit(spanevent.attributes, 32, [])
-          - truncate_all(spanevent.attributes, 2048)
 
   batch:
-    timeout: 5s
-    send_batch_size: 512
-    send_batch_max_size: 1024
+    timeout: 200ms
+    send_batch_size: 1
+    send_batch_max_size: 64
 
 exporters:
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
-    sending_queue:
-      enabled: true
-      queue_size: 512
-    retry_on_failure:
-      enabled: true
-      initial_interval: 1s
-      max_interval: 5s
-      max_elapsed_time: 30s
+  debug:
+    verbosity: detailed
 
 service:
   extensions: [health_check]
@@ -82,4 +62,4 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, transform/privacy, batch]
-      exporters: [otlp/jaeger]
+      exporters: [debug]
