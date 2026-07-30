@@ -1,6 +1,6 @@
 # Nachweismatrix zur Barrierefreiheit (BITV 2.0 / WCAG 2.1)
 
-**Letzte codebasierte Prüfung:** 21. Juli 2026  
+**Letzte codebasierte Prüfung:** 29. Juli 2026  
 **Ziel:** WCAG 2.1 Level AA / EN 301 549 / BITV 2.0  
 **Aktueller Stand:** Teilweise konform – eine formale BIK-BITV-Prüfung wurde noch nicht durchgeführt.
 
@@ -25,10 +25,11 @@ Bewertet wird die authentifizierte Webanwendung mit Analyse, Taxonomiebaum, Arch
 | Administration | Berechtigung ausschließlich über `ROLE_ADMIN`; Symbolschaltfläche besitzt zugänglichen Namen | Security- und UI-Regressionstests | Umgesetzt |
 | Veraltete Ergebnisse | Änderung der Anforderung nach einer Analyse erzeugt Warnung und Rücksetzaktion | Screenshot- und Verhaltenstest | Umgesetzt |
 | Touch-Bedienung | Knotenaktionen werden bei groben Zeigegeräten eingeblendet; wichtige Bedienelemente erhalten 44-Pixel-Ziele | Responsives Ergonomie-Stylesheet | Umgesetzt |
-| Zoom und Reflow | Navigation, Panels und Aktionen brechen auf schmalen beziehungsweise gezoomten Ansichten um | CSS; manuelle Endprüfung erforderlich | Teilweise |
+| Responsive Aufgabenreihenfolge | Bei schmalen beziehungsweise gezoomten Ansichten wird die primäre Analyseaufgabe im tatsächlichen DOM vor den Referenzbaum verschoben; beim Desktop-Layout wird die ursprüngliche Reihenfolge wiederhergestellt | `taxonomy-utils.js` sowie Rollen-/Zustandstests für Geometrie, DOM-, Lese- und Fokusreihenfolge | Umgesetzt |
+| Zoom und Reflow | Navigation bleibt eine einzeilige horizontal erreichbare Leiste; Panels und Aktionen brechen ohne wesentlichen horizontalen Inhaltsverlust um | Responsives Stylesheet und Maven-gesteuerte Rollen-/Zustandsmatrix; manuelle Geräteprüfung bleibt erforderlich | Teilweise |
 | Reduzierte Bewegung | Animationen und Übergänge werden bei `prefers-reduced-motion` minimiert | CSS | Umgesetzt |
 | Graphen und Diagramme | Mehrere Ansichten besitzen Tabellen oder Detaildarstellungen; die vollständige inhaltliche Gleichwertigkeit ist noch manuell zu prüfen | Manuelle Prüfung | Teilweise |
-| DSL-Editor | CodeMirror stellt eine eigene Accessibility-Struktur bereit; separate Prüfung nötig | Manuelle Tastatur-/Screenreader-Prüfung | Teilweise |
+| DSL-Editor | CodeMirror bleibt in der automatisierten Browser-/axe-Abdeckung enthalten; seine komplexe Editor-Semantik benötigt zusätzlich eine eigene Tastatur- und Screenreader-Testmatrix | Automatisierte Browsermatrix plus manuelle Tastatur-/Screenreader-Prüfung | Teilweise |
 | Kontraste | Bootstrap-Grundfarben und explizite Textfarben; vollständige Prüfung aller Zustände bleibt erforderlich | axe plus manuelle Prüfung | Teilweise |
 
 ## Automatischer Accessibility-Gate

@@ -103,6 +103,37 @@ window.TaxonomyUtils = (function () {
         });
     }
 
+    // ── Responsive task reading and focus order ───────────────────────────
+    function installResponsiveTaskOrder() {
+        var leftPanel = document.getElementById('leftPanel');
+        var rightPanel = document.getElementById('rightPanel');
+        if (!leftPanel || !rightPanel || leftPanel.parentElement !== rightPanel.parentElement) return;
+
+        var row = leftPanel.parentElement;
+        // Bootstrap's lg columns become the desktop two-column layout at 992px.
+        var narrowViewport = window.matchMedia('(max-width: 991.98px)');
+        var synchronize = function () {
+            if (narrowViewport.matches) {
+                if (rightPanel.nextElementSibling !== leftPanel) {
+                    row.insertBefore(rightPanel, leftPanel);
+                }
+                row.dataset.taskOrder = 'primary-first';
+            } else {
+                if (leftPanel.nextElementSibling !== rightPanel) {
+                    row.insertBefore(leftPanel, rightPanel);
+                }
+                row.dataset.taskOrder = 'reference-first';
+            }
+        };
+
+        synchronize();
+        if (typeof narrowViewport.addEventListener === 'function') {
+            narrowViewport.addEventListener('change', synchronize);
+        } else {
+            narrowViewport.addListener(synchronize);
+        }
+    }
+
     // ── Dynamic tree accessibility ────────────────────────────────────────
     function syncTreeItemAccessibility(item) {
         if (!item || item.getAttribute('role') !== 'treeitem') return;
@@ -332,6 +363,7 @@ window.TaxonomyUtils = (function () {
         loadErgonomicsStyles();
         syncMainNavigation();
         installMainNavigationKeyboardSupport();
+        installResponsiveTaskOrder();
         installTreeAccessibilityObserver();
         installManualScoreDialog();
         window.alert = function (message) { showMessage(message); };

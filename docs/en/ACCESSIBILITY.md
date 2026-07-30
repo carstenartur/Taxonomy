@@ -1,6 +1,6 @@
 # Accessibility Evidence and Conformance Plan (BITV 2.0 / WCAG 2.1)
 
-**Last code-based review:** 21 July 2026  
+**Last code-based review:** 29 July 2026  
 **Target:** WCAG 2.1 Level AA / EN 301 549 / BITV 2.0  
 **Current status:** Partially conformant — no formal BIK BITV certification has been completed.
 
@@ -25,10 +25,11 @@ The assessment covers the authenticated single-page application, including analy
 | Admin control | Admin state derives from authenticated `ROLE_ADMIN`; icon-only display has an accessible name | Security and UI regression tests | Implemented |
 | Stale-result feedback | Editing a requirement after analysis adds a visible warning and reset action | Screenshot and UI behavior tests | Implemented |
 | Touch operation | Node actions are displayed on coarse pointers; important controls receive 44 px touch targets | Responsive ergonomics stylesheet | Implemented |
-| Zoom and reflow | Navigation, panels and node actions wrap on narrow/zoomed layouts | Responsive ergonomics stylesheet; manual verification still required | Partial |
+| Responsive task order | At narrow/zoomed widths the primary analysis task is moved before the reference tree in the actual DOM; desktop order is restored when the two-column layout returns | `taxonomy-utils.js` plus role/state assertions for geometry, DOM, reading and focus order | Implemented |
+| Zoom and reflow | Navigation remains a single horizontally reachable row; panels and actions reflow without essential horizontal loss | Responsive stylesheet and Maven-owned role/state matrix; manual device verification still required | Partial |
 | Reduced motion | Animations and transitions are minimized when `prefers-reduced-motion` is active | Responsive ergonomics stylesheet | Implemented |
 | Graphs and diagrams | Several views provide tables or detail lists, but not every visual relation is guaranteed to have an equivalent linear representation | Manual review required | Partial |
-| DSL editor | CodeMirror exposes its own accessibility tree; it is excluded from the general axe scan and must be tested separately | Manual keyboard/screen-reader test | Partial |
+| DSL editor | CodeMirror remains included in automated browser/axe coverage, but its complex editor semantics also require a dedicated keyboard and screen-reader test matrix | Automated browser matrix plus manual keyboard/screen-reader test | Partial |
 | Contrast | Bootstrap defaults and explicit high-score text colors are used; a full state-by-state contrast audit remains necessary | axe detects many contrast failures, but manual checks are still required | Partial |
 
 ## Automated accessibility gate
