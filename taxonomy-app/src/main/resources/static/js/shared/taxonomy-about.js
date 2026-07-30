@@ -1,11 +1,12 @@
 /**
  * About Modal — fetches /api/about and displays version, build, commit info,
- * copyright, and third-party notices.
+ * packaged legal resources, third-party notices and supply-chain evidence.
  */
 window.TaxonomyAbout = (function () {
     'use strict';
 
     var noticesLoaded = false;
+    var aboutInfo = null;
 
     function el(id) { return document.getElementById(id); }
 
@@ -17,10 +18,67 @@ window.TaxonomyAbout = (function () {
         try { return new Date(val).toLocaleString(); } catch (e) { return String(val); }
     }
 
+    function localized(english, german) {
+        var language = (document.documentElement.lang || navigator.language || '').toLowerCase();
+        return language.indexOf('de') === 0 ? german : english;
+    }
+
+    function appendResourceLink(container, label, url) {
+        if (!url) return;
+        var link = document.createElement('a');
+        link.className = 'btn btn-sm btn-outline-secondary';
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = label;
+        container.appendChild(link);
+    }
+
+    function renderLegalResources(data) {
+        var contentEl = el('aboutThirdPartyContent');
+        if (!contentEl || !contentEl.parentNode) return;
+
+        var container = el('aboutLegalResources');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'aboutLegalResources';
+            container.className = 'mb-3 p-2 border rounded bg-light';
+            contentEl.parentNode.insertBefore(container, contentEl);
+        }
+        container.textContent = '';
+
+        var heading = document.createElement('div');
+        heading.className = 'fw-semibold mb-1';
+        heading.textContent = localized('Legal and supply-chain evidence', 'Lizenz- und Lieferkettennachweise');
+        container.appendChild(heading);
+
+        var explanation = document.createElement('div');
+        explanation.className = 'small text-muted mb-2';
+        explanation.textContent = localized(
+            'The runtime report and SBOM describe this exact build; the curated notices cover non-Maven and optional components.',
+            'Der Runtime-Bericht und die SBOM beschreiben exakt diesen Build; die kuratierten Hinweise decken Nicht-Maven- und optionale Komponenten ab.'
+        );
+        container.appendChild(explanation);
+
+        var links = document.createElement('div');
+        links.className = 'd-flex flex-wrap gap-2';
+        appendResourceLink(links, 'LICENSE', data.projectLicenseUrl);
+        appendResourceLink(links, 'NOTICE', data.noticeUrl);
+        appendResourceLink(links,
+            localized('Curated notices', 'Kuratierte Hinweise'), data.thirdPartyNoticesUrl);
+        appendResourceLink(links,
+            localized('Runtime licenses', 'Runtime-Lizenzen'), data.runtimeThirdPartyLicensesUrl);
+        appendResourceLink(links, 'CycloneDX JSON', data.sbomJsonUrl);
+        appendResourceLink(links, 'CycloneDX XML', data.sbomXmlUrl);
+        container.appendChild(links);
+    }
+
     function loadAboutInfo() {
         fetch('/api/about')
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (data) {
+                aboutInfo = data;
+
                 // Update navbar version
                 var navVer = el('navbarVersion');
                 if (navVer && data.version && data.version !== 'unknown') {
@@ -57,9 +115,10 @@ window.TaxonomyAbout = (function () {
 
                 var branchEl = el('aboutBranch');
                 if (branchEl) branchEl.textContent = data.branch || '—';
+                renderLegalResources(data);
             })
             .catch(function () {
-                // silently fail — info not critical
+                // Build information is useful but not required for the main UI.
             });
     }
 
@@ -68,7 +127,9 @@ window.TaxonomyAbout = (function () {
         noticesLoaded = true;
         var contentEl = el('aboutThirdPartyContent');
         if (!contentEl) return;
-        fetch('/api/about/third-party')
+        var noticesUrl = aboutInfo && aboutInfo.thirdPartyNoticesUrl
+            ? aboutInfo.thirdPartyNoticesUrl : '/api/about/third-party';
+        fetch(noticesUrl)
             .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
             .then(function (text) {
                 contentEl.textContent = text;
@@ -83,7 +144,7 @@ window.TaxonomyAbout = (function () {
         tabs.forEach(function (tab) {
             tab.addEventListener('click', function (e) {
                 e.preventDefault();
-                tabs.forEach(function (t) { t.classList.remove('active'); });
+                tabs.forEach(function (candidate) { candidate.classList.remove('active'); });
                 tab.classList.add('active');
 
                 var target = tab.getAttribute('data-about-tab');
@@ -117,7 +178,7 @@ window.TaxonomyAbout = (function () {
 
         initTabs();
 
-        // Update navbar version on page load
+        // Update navbar version and legal-resource links on page load.
         loadAboutInfo();
     });
 
