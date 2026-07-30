@@ -8,10 +8,6 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function insideViewport(rect, viewportHeight) {
-  return Boolean(rect && rect.top >= 0 && rect.bottom <= viewportHeight);
-}
-
 async function createReviewCandidate(page, role) {
   const rationalePrefix = `Role acceptance ${Date.now().toString(36)}`;
   if (role === 'USER') {
@@ -61,6 +57,25 @@ async function measureArchitectTask(page, proposal) {
     return container && !/Loading proposals|Loading…/i.test(container.textContent || '');
   }, null, { timeout: 20_000 });
 
+  const primarySurface = await page.evaluate(() => {
+    const table = document.getElementById('proposalsTableContainer');
+    const filter = document.getElementById('filterPending');
+    const rect = filter?.getBoundingClientRect();
+    return {
+      tableVisible: Boolean(table && table.getClientRects().length),
+      primaryVisible: Boolean(rect && rect.width > 0 && rect.height > 0),
+      primaryFocusable: Boolean(filter && !filter.disabled && filter.tabIndex >= 0),
+      primaryInsideViewport: Boolean(rect && rect.top >= 0 && rect.bottom <= window.innerHeight),
+      preTaskPixels: Math.max(0, Math.round(
+        document.getElementById('proposalsPanel')?.getBoundingClientRect().top || 0)),
+      viewportHeight: window.innerHeight
+    };
+  });
+  assert(primarySurface.tableVisible && primarySurface.primaryVisible
+    && primarySurface.primaryFocusable,
+  'ARCHITECT proposal decision surface is not visible and keyboard reachable');
+  const timeToPrimaryActionMs = Date.now() - startedAt;
+
   if (proposal.status === 200 && proposal.json?.id) {
     const accept = page.getByRole('button', {
       name: `Accept proposal ${proposal.json.id}`
@@ -82,27 +97,6 @@ async function measureArchitectTask(page, proposal) {
       return container && !/Loading proposals|Loading…/i.test(container.textContent || '');
     }, null, { timeout: 20_000 });
   }
-
-  const primarySurface = await page.evaluate(() => {
-    const table = document.getElementById('proposalsTableContainer');
-    const filter = document.getElementById('filterPending');
-    const rect = filter?.getBoundingClientRect();
-    return {
-      tableVisible: Boolean(table && table.getClientRects().length),
-      primaryVisible: Boolean(rect && rect.width > 0 && rect.height > 0),
-      primaryFocusable: Boolean(filter && !filter.disabled && filter.tabIndex >= 0),
-      primaryInsideViewport: insideViewportForPage(rect),
-      preTaskPixels: Math.max(0, Math.round(
-        document.getElementById('proposalsPanel')?.getBoundingClientRect().top || 0)),
-      viewportHeight: window.innerHeight
-    };
-    function insideViewportForPage(candidate) {
-      return Boolean(candidate && candidate.top >= 0 && candidate.bottom <= window.innerHeight);
-    }
-  });
-  assert(primarySurface.tableVisible && primarySurface.primaryVisible
-    && primarySurface.primaryFocusable,
-  'ARCHITECT proposal decision surface is not visible and keyboard reachable');
 
   const variantName = `qa-variant-${Date.now().toString(36)}-${Math.random()
     .toString(36).slice(2, 7)}`;
@@ -126,7 +120,7 @@ async function measureArchitectTask(page, proposal) {
     role: 'ARCHITECT',
     taskCompleted: true,
     failedStep: null,
-    timeToPrimaryActionMs: Date.now() - startedAt,
+    timeToPrimaryActionMs,
     timeToTaskCompletionMs: Date.now() - startedAt,
     preTaskViewportPixels: primarySurface.preTaskPixels,
     preTaskViewportRatio: Number((primarySurface.preTaskPixels
@@ -155,6 +149,8 @@ async function measureAdminTask(page) {
       focusable: element.tabIndex >= 0
     };
   });
+  assert(primary.focusable, 'ADMIN health summary is not keyboard focusable');
+  const timeToPrimaryActionMs = Date.now() - startedAt;
   await summary.click();
   await page.waitForFunction(() => {
     const ids = ['healthOverallBadge', 'healthAiBadge', 'healthEmbeddingBadge',
@@ -172,17 +168,20 @@ async function measureAdminTask(page) {
   ]));
   assert(Object.values(statuses).every(Boolean),
     `ADMIN health task returned incomplete component states: ${JSON.stringify(statuses)}`);
-  await page.locator('#healthRefreshBtn').click();
-  await page.waitForFunction(previous =>
-    document.getElementById('healthOverallBadge')?.textContent?.trim() === previous,
-  statuses.overall, { timeout: 20_000 });
+  await Promise.all([
+    page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/admin/health-summary'
+        && response.status() === 200,
+    { timeout: 20_000 }),
+    page.locator('#healthRefreshBtn').click()
+  ]);
 
   return {
     id: 'admin-diagnose-availability',
     role: 'ADMIN',
     taskCompleted: true,
     failedStep: null,
-    timeToPrimaryActionMs: Date.now() - startedAt,
+    timeToPrimaryActionMs,
     timeToTaskCompletionMs: Date.now() - startedAt,
     preTaskViewportPixels: primary.top,
     preTaskViewportRatio: Number((primary.top / primary.viewportHeight).toFixed(4)),
@@ -191,10 +190,7 @@ async function measureAdminTask(page) {
     primaryActionInsideInitialViewport: primary.insideViewport,
     nextActionInsideInitialViewport: await page.locator('#healthRefreshBtn').evaluate(element => {
       const rect = element.getBoundingClientRect();
-      return insideViewport(rect, window.innerHeight);
-      function insideViewport(candidate, height) {
-        return Boolean(candidate && candidate.top >= 0 && candidate.bottom <= height);
-      }
+      return Boolean(rect && rect.top >= 0 && rect.bottom <= window.innerHeight);
     }),
     componentStates: statuses
   };
