@@ -188,8 +188,35 @@
     #rightPanel {
         width: 100% !important;
     }
+    /* The requirement-analysis task is the primary workflow. When the two
+       desktop columns stack, put that task before the reference taxonomy tree. */
+    #rightPanel {
+        order: 1;
+    }
+    #leftPanel {
+        order: 2;
+    }
     .card-body[style*="max-height"] {
         max-height: none !important;
+    }
+    /* Keep every destination directly available without spending several rows
+       of the initial viewport on wrapped navigation tabs. */
+    #mainNavTabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-inline: contain;
+        scroll-snap-type: inline proximity;
+        scrollbar-width: thin;
+        -webkit-overflow-scrolling: touch;
+    }
+    #mainNavTabs .nav-item {
+        flex: 0 0 auto;
+        scroll-snap-align: start;
+    }
+    #mainNavTabs .nav-link {
+        width: auto;
+        white-space: nowrap;
     }
 }
 
@@ -198,13 +225,27 @@
     .navbar-brand {
         width: 100%;
         white-space: normal;
+        font-size: 1rem;
+        line-height: 1.25;
+    }
+    /* These badges duplicate information available in the analysis and context
+       surfaces. Hiding the duplicates preserves controls while reducing the
+       mobile header from several rows to the brand plus one utility row. */
+    #aiStatusBadge,
+    #embeddingStatusBadge,
+    #workspaceUserBadge {
+        display: none !important;
+    }
+    #navbarVersion {
+        display: none;
     }
     #mainNavTabs .nav-item {
-        flex: 1 1 9rem;
+        flex: 0 0 auto;
     }
     #mainNavTabs .nav-link {
-        width: 100%;
-        text-align: left;
+        width: auto;
+        min-width: max-content;
+        text-align: center;
     }
     #businessText {
         min-height: 12rem;
