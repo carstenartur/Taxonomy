@@ -80,7 +80,7 @@
         <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
         <springdoc.version>3.0.3</springdoc.version>
         <postgresql.version>42.7.12</postgresql.version>
-        <jackson-2-bom.version>2.21.5</jackson-2-bom.version>
+        <jackson-2-bom.version>2.22.1</jackson-2-bom.version>
         <jackson-bom.version>3.1.5</jackson-bom.version>
         <selenium.version>4.46.0</selenium.version>
         <selenium.container.image>selenium/standalone-chrome:4.46.0-20260707</selenium.container.image>
@@ -98,7 +98,7 @@
         <maven-enforcer.version>3.6.3</maven-enforcer.version>
         <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
         <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
-        <frontend-maven-plugin.version>2.0.0</frontend-maven-plugin.version>
+        <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
         <node.version>v24.18.0</node.version>
         <taxonomy.model.revision>5c38ec7c405ec4b44b94cc5a9bb96e735b38267a</taxonomy.model.revision>
         <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
