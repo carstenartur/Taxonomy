@@ -341,7 +341,8 @@
                             <includeTransitiveDependencies>true</includeTransitiveDependencies>
                             <includeOptional>true</includeOptional>
                             <useMissingFile>true</useMissingFile>
-                            <missingFile>${maven.multiModuleProjectDirectory}/src/license/THIRD-PARTY.properties</missingFile>
+                            <missingFile>${project.build.directory}/missing-runtime-licenses.properties</missingFile>
+                            <overrideFile>${maven.multiModuleProjectDirectory}/src/license/THIRD-PARTY.properties</overrideFile>
                             <useRepositoryMissingFiles>false</useRepositoryMissingFiles>
                             <deployMissingFile>false</deployMissingFile>
                             <failOnMissing>true</failOnMissing>
