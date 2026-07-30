@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up Java 21
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
@@ -37,6 +38,32 @@ jobs:
 
       - name: Verify Docker availability
         run: docker info
+
+      - name: Detect observability performance changes
+        id: observability-performance-scope
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet "${{ github.event.pull_request.base.sha }}...HEAD" -- \
+            observability \
+            taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java \
+            taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java \
+            taxonomy-app/src/test/resources/observability \
+            .github/scripts/run-observability-performance.sh \
+            docs/dev/OBSERVABILITY_PERFORMANCE.md \
+            .github/workflows/ci-cd.yml; then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Measure OpenTelemetry performance budget
+        if: steps.observability-performance-scope.outputs.run == 'true'
+        env:
+          TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true'
+        shell: bash
+        run: bash .github/scripts/run-observability-performance.sh
 
       - name: Run the canonical Maven verification suite
         env:
@@ -89,6 +116,11 @@ jobs:
             target/taxonomy-vex.json; do
             if [ -f "$evidence" ]; then cp "$evidence" target/quality-reports/evidence/; fi
           done
+          if [ -d target/observability-performance ]; then
+            mkdir -p target/quality-reports/evidence/observability-performance
+            cp -a target/observability-performance/. \
+              target/quality-reports/evidence/observability-performance/
+          fi
           printf 'Verified commit: %s\n' "$GITHUB_SHA" > target/quality-reports/README.txt
 
       - name: Upload verified reports
