@@ -1,0 +1,40 @@
+{{- /* Fail chart rendering before Kubernetes resources are emitted. */ -}}
+{{- $_ := include "taxonomy.image" . -}}
+{{- $replicas := int .Values.replicaCount -}}
+{{- if lt $replicas 1 -}}
+{{- fail "replicaCount must be at least 1" -}}
+{{- end -}}
+{{- if and (gt $replicas 1) (not .Values.scaling.allowMultipleReplicas) -}}
+{{- fail "replicaCount > 1 requires scaling.allowMultipleReplicas=true after explicitly validating shared state, indexing and job ownership" -}}
+{{- end -}}
+{{- if and .Values.persistence.enabled (gt $replicas 1) -}}
+{{- fail "persistence.enabled cannot be combined with multiple replicas; shared writable Lucene storage is unsupported" -}}
+{{- end -}}
+{{- if and .Values.podDisruptionBudget.enabled (lt $replicas 2) -}}
+{{- fail "podDisruptionBudget.enabled requires at least two replicas" -}}
+{{- end -}}
+{{- if and (gt (len .Values.secretEnv) 0) (empty .Values.existingSecret) -}}
+{{- fail "existingSecret is required while secretEnv contains credential mappings" -}}
+{{- end -}}
+{{- if ge (int .Values.preStopDelaySeconds) (int .Values.terminationGracePeriodSeconds) -}}
+{{- fail "preStopDelaySeconds must be lower than terminationGracePeriodSeconds" -}}
+{{- end -}}
+{{- $directoryType := index .Values.config "TAXONOMY_SEARCH_DIRECTORY_TYPE" | default "local-heap" -}}
+{{- if and (eq $directoryType "local-filesystem") (not .Values.persistence.enabled) -}}
+{{- fail "TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem requires persistence.enabled=true" -}}
+{{- end -}}
+{{- if and (gt $replicas 1) (eq $directoryType "local-filesystem") -}}
+{{- fail "local-filesystem search indexes are restricted to a single replica" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled .Values.networkPolicy.enabled (eq (len .Values.networkPolicy.ingressFrom) 0) -}}
+{{- fail "ingress.enabled with NetworkPolicy requires networkPolicy.ingressFrom rules for the ingress controller" -}}
+{{- end -}}
+{{- if and .Values.serviceMonitor.enabled .Values.serviceMonitor.authorization.enabled -}}
+{{- $metricsSecret := include "taxonomy.metricsSecretName" . | trim -}}
+{{- if empty $metricsSecret -}}
+{{- fail "ServiceMonitor Bearer authorization requires serviceMonitor.authorization.secretName or existingSecret" -}}
+{{- end -}}
+{{- if empty .Values.serviceMonitor.authorization.secretKey -}}
+{{- fail "serviceMonitor.authorization.secretKey is required when authorization is enabled" -}}
+{{- end -}}
+{{- end -}}
