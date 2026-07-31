@@ -65,6 +65,14 @@ class TaskHierarchyStyleContractTest {
                 .contains("window.navigateToPage('architecture')");
     }
 
+    @Test
+    void continuationActionIsAvailableInBothSupportedLocales() throws Exception {
+        assertThat(resource("/i18n/messages_task_focus.properties"))
+                .contains("analysis.task.next.continue=Explore architecture context");
+        assertThat(resource("/i18n/messages_task_focus_de.properties"))
+                .contains("analysis.task.next.continue=Architekturkontext erkunden");
+    }
+
     private static String resource(String path) throws IOException {
         try (InputStream input = TaskHierarchyStyleContractTest.class.getResourceAsStream(path)) {
             assertThat(input).as("classpath resource %s", path).isNotNull();
