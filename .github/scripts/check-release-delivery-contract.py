@@ -31,10 +31,14 @@ def main() -> int:
 
     for needle in (
         "DEFER_RELEASE_PUBLICATION: 'true'",
+        "- name: Record exact final main snapshot",
         "- name: Package and stage immutable Helm artifacts",
         "- name: Build and publish immutable release image",
-        "- name: Verify final main snapshot with canonical CI",
+        "- name: Verify exact final main snapshot with canonical CI",
         "- name: Publish complete release and trigger deployment",
+        "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
+        '--commit "$EXPECTED_MAIN_SHA"',
+        'run_sha=$(gh run view "$run_id" --json headSha --jq \'.headSha\')',
         'docker buildx imagetools inspect "$image"',
         'gh release edit "$tag" --draft=false --latest',
         "Draft release is missing required Helm asset",
@@ -42,20 +46,38 @@ def main() -> int:
     ):
         require(workflow, needle, RELEASE_WORKFLOW, failures)
 
+    if "main_sha=$(git rev-parse origin/main)" in workflow:
+        failures.append(
+            "deploy-release.yml must not substitute the then-current main SHA "
+            "for the release-generated snapshot"
+        )
+
     try:
-        stage = workflow.index("- name: Build and stage release, then prepare next development version")
+        stage = workflow.index(
+            "- name: Build and stage release, then prepare next development version"
+        )
+        record_main = workflow.index("- name: Record exact final main snapshot")
         checkout_tag = workflow.index("- name: Checkout immutable release source")
         image = workflow.index("- name: Build and publish immutable release image")
-        final_ci = workflow.index("- name: Verify final main snapshot with canonical CI")
-        publish = workflow.index("- name: Publish complete release and trigger deployment")
-        if not stage < checkout_tag < image < final_ci < publish:
+        final_ci = workflow.index(
+            "- name: Verify exact final main snapshot with canonical CI"
+        )
+        publish = workflow.index(
+            "- name: Publish complete release and trigger deployment"
+        )
+        if not stage < record_main < checkout_tag < image < final_ci < publish:
             failures.append(
-                "deploy-release.yml must stage first, then build the immutable image, "
-                "verify final main, and publish last"
+                "deploy-release.yml must stage first, record the exact main commit, "
+                "build the immutable image, verify that exact commit, and publish last"
             )
         stage_block = workflow[stage:checkout_tag]
         if "RENDER_DEPLOY_HOOK_URL" in stage_block:
             failures.append("The staging step must not receive the deployment hook")
+        final_ci_block = workflow[final_ci:publish]
+        if 'run_sha" != "$EXPECTED_MAIN_SHA' not in final_ci_block:
+            failures.append(
+                "The final CI step must compare the selected run head to the recorded SHA"
+            )
         publish_block = workflow[publish:]
         if "RENDER_DEPLOY_HOOK_URL" not in publish_block:
             failures.append("Only the final publication step may trigger deployment")
@@ -68,7 +90,10 @@ def main() -> int:
             print(f"- {failure}", file=sys.stderr)
         return 1
 
-    print("Release delivery contract is atomic: publication remains the final gate.")
+    print(
+        "Release delivery contract is atomic: the exact release-generated main "
+        "snapshot is verified and publication remains the final gate."
+    )
     return 0
 
 
