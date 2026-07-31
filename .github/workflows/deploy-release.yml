@@ -40,7 +40,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build, publish and advance to the next snapshot
+    name: Build, stage and advance to the next snapshot
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -125,7 +125,7 @@ jobs:
       - name: Test version-state guard
         run: python3 .github/scripts/test-check-version-state.py
 
-      - name: Build, publish and prepare next development version
+      - name: Build and stage release, then prepare next development version
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -133,11 +133,11 @@ jobs:
           NEXT_VERSION_INPUT: ${{ steps.release_parameters.outputs.next_development_version }}
           SKIP_TESTS: ${{ steps.release_parameters.outputs.skip_tests }}
           DRY_RUN: ${{ steps.release_parameters.outputs.dry_run }}
+          DEFER_RELEASE_PUBLICATION: 'true'
           SOURCE_BRANCH: ${{ github.ref_name }}
           METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
           VERSION_STATE_HELPER: ${{ runner.temp }}/check-version-state.py
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: "$RUNNER_TEMP/release.sh"
@@ -146,7 +146,7 @@ jobs:
         if: steps.release_parameters.outputs.dry_run != 'true'
         run: git checkout --detach "v${{ steps.release_parameters.outputs.release_version }}"
 
-      - name: Package and publish immutable Helm artifacts
+      - name: Package and stage immutable Helm artifacts
         if: steps.release_parameters.outputs.dry_run != 'true' && hashFiles('deploy/helm/taxonomy/Chart.yaml') != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -184,6 +184,7 @@ jobs:
             --set existingSecret=taxonomy-secrets \
             > "$manifest"
           grep -Fq "image: \"ghcr.io/carstenartur/taxonomy:${tag}\"" "$manifest"
+          grep -Fq 'namespace: taxonomy' "$manifest"
           grep -Fq 'readOnlyRootFilesystem: true' "$manifest"
           grep -Fq 'runAsUser: 10001' "$manifest"
 
@@ -256,3 +257,46 @@ jobs:
             exit 1
           fi
           gh run watch "$run_id" --exit-status
+
+      - name: Publish complete release and trigger deployment
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${RELEASE_VERSION}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/taxonomy:${tag}"
+
+          if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+            assets=$(gh release view "$tag" --json assets --jq '.assets[].name')
+            for expected in \
+              "taxonomy-${RELEASE_VERSION}.tgz" \
+              "taxonomy-${RELEASE_VERSION}-kubernetes.yaml" \
+              "taxonomy-${RELEASE_VERSION}-helm.sha256"; do
+              if ! grep -Fxq "$expected" <<< "$assets"; then
+                echo "::error::Draft release is missing required Helm asset $expected"
+                exit 1
+              fi
+            done
+          fi
+
+          docker buildx imagetools inspect "$image" >/dev/null
+
+          is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
+          if [[ "$is_draft" == "true" ]]; then
+            gh release edit "$tag" --draft=false --latest
+          elif [[ "$is_draft" != "false" ]]; then
+            echo "::error::Unexpected draft state for $tag: $is_draft"
+            exit 1
+          fi
+          test "$(gh release view "$tag" --json isDraft --jq '.isDraft')" = false
+
+          if [[ -n "$RENDER_DEPLOY_HOOK_URL" ]]; then
+            curl -fSL --retry 3 "$RENDER_DEPLOY_HOOK_URL"
+            echo "Render deployment triggered after complete release publication."
+          else
+            echo "::notice::RENDER_DEPLOY_HOOK_URL secret not set - skipping Render deploy"
+          fi
