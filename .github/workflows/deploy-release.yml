@@ -91,12 +91,22 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Set up Helm 3.19.0
+        uses: Azure/setup-helm@7a9c28ba04c99ae42726a8472c6eba25beab7bee # v5.0.1
+        with:
+          version: v3.19.0
+
       - name: Cache Maven dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
+
+      - name: Verify release Helm chart before publication
+        if: hashFiles('deploy/helm/taxonomy/Chart.yaml') != ''
+        shell: bash
+        run: bash deploy/helm/taxonomy/verify.sh "$RUNNER_TEMP/taxonomy-helm-preflight.yaml"
 
       - name: Preserve release scripts
         run: |
@@ -134,6 +144,55 @@ jobs:
       - name: Checkout immutable release source
         if: steps.release_parameters.outputs.dry_run != 'true'
         run: git checkout --detach "v${{ steps.release_parameters.outputs.release_version }}"
+
+      - name: Package and publish immutable Helm artifacts
+        if: steps.release_parameters.outputs.dry_run != 'true' && hashFiles('deploy/helm/taxonomy/Chart.yaml') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${RELEASE_VERSION}"
+          artifact_dir="$RUNNER_TEMP/helm-release"
+          mkdir -p "$artifact_dir"
+
+          python3 .github/scripts/check-version-state.py \
+            --mode release --expected-version "$RELEASE_VERSION" --tag "$tag"
+          helm lint deploy/helm/taxonomy \
+            --set "image.tag=${tag}" \
+            --set existingSecret=taxonomy-secrets
+          helm package deploy/helm/taxonomy \
+            --destination "$artifact_dir" \
+            --version "$RELEASE_VERSION" \
+            --app-version "$RELEASE_VERSION"
+          chart_archive="$artifact_dir/taxonomy-${RELEASE_VERSION}.tgz"
+          test -f "$chart_archive"
+
+          chart_version=$(helm show chart "$chart_archive" \
+            | awk '$1 == "version:" {print $2; exit}')
+          app_version=$(helm show chart "$chart_archive" \
+            | awk '$1 == "appVersion:" {gsub(/\"/, "", $2); print $2; exit}')
+          test "$chart_version" = "$RELEASE_VERSION"
+          test "$app_version" = "$RELEASE_VERSION"
+
+          manifest="$artifact_dir/taxonomy-${RELEASE_VERSION}-kubernetes.yaml"
+          helm template taxonomy deploy/helm/taxonomy \
+            --namespace taxonomy \
+            --set "image.tag=${tag}" \
+            --set existingSecret=taxonomy-secrets \
+            > "$manifest"
+          grep -Fq "image: \"ghcr.io/carstenartur/taxonomy:${tag}\"" "$manifest"
+          grep -Fq 'readOnlyRootFilesystem: true' "$manifest"
+          grep -Fq 'runAsUser: 10001' "$manifest"
+
+          (
+            cd "$artifact_dir"
+            sha256sum "taxonomy-${RELEASE_VERSION}.tgz" \
+              "taxonomy-${RELEASE_VERSION}-kubernetes.yaml" \
+              > "taxonomy-${RELEASE_VERSION}-helm.sha256"
+          )
+          gh release upload "$tag" "$artifact_dir"/* --clobber
 
       - name: Describe immutable release source
         id: release_source
