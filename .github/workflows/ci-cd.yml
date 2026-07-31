@@ -48,10 +48,11 @@ jobs:
             python3 .github/scripts/check-version-state.py --mode development
           fi
 
-      - name: Set up Helm 3.19.0
-        uses: Azure/setup-helm@7a9c28ba04c99ae42726a8472c6eba25beab7bee # v5.0.1
-        with:
-          version: v3.19.0
+      - name: Install verified Helm 3.21.0
+        env:
+          HELM_VERSION: v3.21.0
+        shell: bash
+        run: bash .github/scripts/install-helm.sh
 
       - name: Verify Docker availability
         run: docker info
