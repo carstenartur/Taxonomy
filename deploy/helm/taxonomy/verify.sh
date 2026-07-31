@@ -64,6 +64,22 @@ helm template taxonomy "${CHART_DIR}" \
   >"${PRERELEASE_OUTPUT}"
 grep -Fq 'image: "ghcr.io/carstenartur/taxonomy:v1.2.3-rc.1"' "${PRERELEASE_OUTPUT}"
 
+OPENSHIFT_OUTPUT="${TMP_DIR}/openshift.yaml"
+helm template taxonomy "${CHART_DIR}" \
+  --namespace taxonomy \
+  --values "${CHART_DIR}/values-openshift.yaml" \
+  --set "image.tag=${VALID_TAG}" \
+  --set existingSecret=taxonomy-secrets \
+  >"${OPENSHIFT_OUTPUT}"
+grep -Fq 'runAsNonRoot: true' "${OPENSHIFT_OUTPUT}"
+grep -Fq 'readOnlyRootFilesystem: true' "${OPENSHIFT_OUTPUT}"
+for forbidden in 'runAsUser:' 'runAsGroup:' 'fsGroup:' 'fsGroupChangePolicy:'; do
+  if grep -Fq "${forbidden}" "${OPENSHIFT_OUTPUT}"; then
+    echo "OpenShift profile must leave ${forbidden%:} to the cluster SCC" >&2
+    exit 1
+  fi
+done
+
 PERSISTENCE_OUTPUT="${TMP_DIR}/persistence.yaml"
 helm template taxonomy "${CHART_DIR}" \
   "${COMMON_VALUES[@]}" \
