@@ -97,6 +97,18 @@ def update_citation_md(version: str, release_date: str | None) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def update_helm_chart(version: str) -> None:
+    path = ROOT / "deploy" / "helm" / "taxonomy" / "Chart.yaml"
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    pattern = r'^appVersion:\s*.*$'
+    line = f'appVersion: "{version}"'
+    if not re.search(pattern, text, flags=re.MULTILINE):
+        raise SystemExit(f"{path} has no appVersion field")
+    path.write_text(re.sub(pattern, line, text, flags=re.MULTILINE), encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("version", help="Version to write to metadata files")
@@ -107,6 +119,7 @@ def main() -> None:
     update_zenodo(args.version, release_date)
     update_codemeta(args.version, release_date)
     update_citation_md(args.version, release_date)
+    update_helm_chart(args.version)
 
 
 if __name__ == "__main__":

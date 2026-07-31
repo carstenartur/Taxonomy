@@ -36,6 +36,18 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - name: Verify repository version state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test-check-version-state.py
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            python3 .github/scripts/check-version-state.py \
+              --mode release --tag "${GITHUB_REF_NAME}"
+          else
+            python3 .github/scripts/check-version-state.py --mode development
+          fi
+
       - name: Verify Docker availability
         run: docker info
 
