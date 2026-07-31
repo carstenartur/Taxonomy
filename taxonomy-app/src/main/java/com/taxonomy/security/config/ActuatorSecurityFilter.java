@@ -21,8 +21,9 @@ import java.security.MessageDigest;
  *   <li>{@code /actuator/health} and {@code /actuator/health/**} are PUBLIC (needed for platform probes)</li>
  *   <li>{@code /actuator/info} is PUBLIC (non-sensitive)</li>
  *   <li>All other {@code /actuator/**} endpoints require either the legacy
- *       {@code X-Admin-Token} header or an {@code Authorization: Bearer ...}
- *       header matching the {@code ADMIN_PASSWORD} environment variable.</li>
+ *       {@code X-Admin-Token} header or an Authorization header in the form
+ *       {@code Authorization: Bearer ADMIN_PASSWORD_VALUE}, where the Bearer
+ *       value matches the {@code ADMIN_PASSWORD} environment variable.</li>
  *   <li>If no {@code ADMIN_PASSWORD} is configured, all endpoints are accessible (backward compatible).</li>
  * </ul>
  */
