@@ -8,6 +8,7 @@ on:
       - 'taxonomy-*/src/**'
       - 'Dockerfile'
       - 'docker-compose*.yml'
+      - 'deploy/helm/**'
       - '.github/workflows/**'
       - '.github/scripts/**'
   push:

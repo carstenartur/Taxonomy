@@ -48,8 +48,27 @@ jobs:
             python3 .github/scripts/check-version-state.py --mode development
           fi
 
+      - name: Verify release delivery contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/release.sh
+          bash -n .github/scripts/install-helm.sh
+          bash -n deploy/helm/taxonomy/verify.sh
+          python3 .github/scripts/check-release-delivery-contract.py
+
+      - name: Install verified Helm 3.21.0
+        env:
+          HELM_VERSION: v3.21.0
+        shell: bash
+        run: bash .github/scripts/install-helm.sh
+
       - name: Verify Docker availability
         run: docker info
+
+      - name: Validate production Helm chart
+        shell: bash
+        run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
 
       - name: Detect observability performance changes
         id: observability-performance-scope
@@ -125,7 +144,8 @@ jobs:
             target/supply-chain-pins.json \
             target/taxonomy-sbom.json \
             target/taxonomy-sbom.xml \
-            target/taxonomy-vex.json; do
+            target/taxonomy-vex.json \
+            target/taxonomy-helm-rendered.yaml; do
             if [ -f "$evidence" ]; then cp "$evidence" target/quality-reports/evidence/; fi
           done
           if [ -d target/observability-performance ]; then

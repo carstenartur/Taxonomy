@@ -40,7 +40,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build, publish and advance to the next snapshot
+    name: Build, stage and advance to the next snapshot
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -91,12 +91,23 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Install verified Helm 3.21.0
+        env:
+          HELM_VERSION: v3.21.0
+        shell: bash
+        run: bash .github/scripts/install-helm.sh
+
       - name: Cache Maven dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
+
+      - name: Verify release Helm chart before publication
+        if: hashFiles('deploy/helm/taxonomy/Chart.yaml') != ''
+        shell: bash
+        run: bash deploy/helm/taxonomy/verify.sh "$RUNNER_TEMP/taxonomy-helm-preflight.yaml"
 
       - name: Preserve release scripts
         run: |
@@ -111,10 +122,17 @@ jobs:
             "$RUNNER_TEMP/check-version-state.py" \
             "$RUNNER_TEMP/generate-vex.py"
 
-      - name: Test version-state guard
-        run: python3 .github/scripts/test-check-version-state.py
+      - name: Test release guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test-check-version-state.py
+          bash -n .github/scripts/release.sh
+          bash -n .github/scripts/install-helm.sh
+          bash -n deploy/helm/taxonomy/verify.sh
+          python3 .github/scripts/check-release-delivery-contract.py
 
-      - name: Build, publish and prepare next development version
+      - name: Build and stage release, then prepare next development version
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -122,18 +140,83 @@ jobs:
           NEXT_VERSION_INPUT: ${{ steps.release_parameters.outputs.next_development_version }}
           SKIP_TESTS: ${{ steps.release_parameters.outputs.skip_tests }}
           DRY_RUN: ${{ steps.release_parameters.outputs.dry_run }}
+          DEFER_RELEASE_PUBLICATION: 'true'
           SOURCE_BRANCH: ${{ github.ref_name }}
           METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
           VERSION_STATE_HELPER: ${{ runner.temp }}/check-version-state.py
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: "$RUNNER_TEMP/release.sh"
 
+      - name: Record exact final main snapshot
+        id: final_main
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=$(git rev-parse HEAD)
+          git fetch origin main --force
+          remote_sha=$(git rev-parse origin/main)
+          if [[ "$remote_sha" != "$expected_sha" ]]; then
+            echo "::error::release.sh ended at $expected_sha, but origin/main is $remote_sha"
+            exit 1
+          fi
+          echo "sha=$expected_sha" >> "$GITHUB_OUTPUT"
+
       - name: Checkout immutable release source
         if: steps.release_parameters.outputs.dry_run != 'true'
         run: git checkout --detach "v${{ steps.release_parameters.outputs.release_version }}"
+
+      - name: Package and stage immutable Helm artifacts
+        if: steps.release_parameters.outputs.dry_run != 'true' && hashFiles('deploy/helm/taxonomy/Chart.yaml') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${RELEASE_VERSION}"
+          artifact_dir="$RUNNER_TEMP/helm-release"
+          mkdir -p "$artifact_dir"
+
+          python3 .github/scripts/check-version-state.py \
+            --mode release --expected-version "$RELEASE_VERSION" --tag "$tag"
+          helm lint deploy/helm/taxonomy \
+            --set "image.tag=${tag}" \
+            --set existingSecret=taxonomy-secrets
+          helm package deploy/helm/taxonomy \
+            --destination "$artifact_dir" \
+            --version "$RELEASE_VERSION" \
+            --app-version "$RELEASE_VERSION"
+          chart_archive="$artifact_dir/taxonomy-${RELEASE_VERSION}.tgz"
+          test -f "$chart_archive"
+
+          chart_version=$(helm show chart "$chart_archive" \
+            | awk '$1 == "version:" {print $2; exit}')
+          app_version=$(helm show chart "$chart_archive" \
+            | awk '$1 == "appVersion:" {gsub(/\"/, "", $2); print $2; exit}')
+          test "$chart_version" = "$RELEASE_VERSION"
+          test "$app_version" = "$RELEASE_VERSION"
+
+          manifest="$artifact_dir/taxonomy-${RELEASE_VERSION}-kubernetes.yaml"
+          helm template taxonomy deploy/helm/taxonomy \
+            --namespace taxonomy \
+            --set "image.tag=${tag}" \
+            --set existingSecret=taxonomy-secrets \
+            > "$manifest"
+          grep -Fq "image: \"ghcr.io/carstenartur/taxonomy:${tag}\"" "$manifest"
+          grep -Fq 'namespace: taxonomy' "$manifest"
+          grep -Fq 'readOnlyRootFilesystem: true' "$manifest"
+          grep -Fq 'runAsUser: 10001' "$manifest"
+
+          (
+            cd "$artifact_dir"
+            sha256sum "taxonomy-${RELEASE_VERSION}.tgz" \
+              "taxonomy-${RELEASE_VERSION}-kubernetes.yaml" \
+              > "taxonomy-${RELEASE_VERSION}-helm.sha256"
+          )
+          gh release upload "$tag" "$artifact_dir"/* --clobber
 
       - name: Describe immutable release source
         id: release_source
@@ -168,31 +251,100 @@ jobs:
             VCS_REF=${{ steps.release_source.outputs.sha }}
             VERSION=${{ steps.release_parameters.outputs.release_version }}
 
-      - name: Verify final main snapshot with canonical CI
+      - name: Verify exact final main snapshot with canonical CI
         if: steps.release_parameters.outputs.dry_run != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main --force
-          main_sha=$(git rev-parse origin/main)
-          gh workflow run ci-cd.yml --ref main
-
           run_id=""
-          for _ in $(seq 1 60); do
+
+          # Updating main through the refs API normally emits a push run. Reuse it
+          # so the exact commit is tested even when main advances again meanwhile.
+          for _ in $(seq 1 24); do
             run_id=$(gh run list \
               --workflow ci-cd.yml \
-              --event workflow_dispatch \
-              --commit "$main_sha" \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId // empty')
+              --commit "$EXPECTED_MAIN_SHA" \
+              --limit 10 \
+              --json databaseId,createdAt \
+              --jq 'sort_by(.createdAt) | last | .databaseId // empty')
             if [[ -n "$run_id" ]]; then break; fi
             sleep 5
           done
+
           if [[ -z "$run_id" ]]; then
-            echo "::error::Could not locate the post-release CI run for $main_sha"
+            git fetch origin main --force
+            remote_sha=$(git rev-parse origin/main)
+            if [[ "$remote_sha" != "$EXPECTED_MAIN_SHA" ]]; then
+              echo "::error::No CI run exists for $EXPECTED_MAIN_SHA and main moved to $remote_sha"
+              exit 1
+            fi
+            gh workflow run ci-cd.yml --ref main
+            for _ in $(seq 1 60); do
+              run_id=$(gh run list \
+                --workflow ci-cd.yml \
+                --event workflow_dispatch \
+                --commit "$EXPECTED_MAIN_SHA" \
+                --limit 10 \
+                --json databaseId,createdAt \
+                --jq 'sort_by(.createdAt) | last | .databaseId // empty')
+              if [[ -n "$run_id" ]]; then break; fi
+              sleep 5
+            done
+          fi
+
+          if [[ -z "$run_id" ]]; then
+            echo "::error::Could not locate canonical CI for exact commit $EXPECTED_MAIN_SHA"
+            exit 1
+          fi
+          run_sha=$(gh run view "$run_id" --json headSha --jq '.headSha')
+          if [[ "$run_sha" != "$EXPECTED_MAIN_SHA" ]]; then
+            echo "::error::Selected CI run $run_id verifies $run_sha, not $EXPECTED_MAIN_SHA"
             exit 1
           fi
           gh run watch "$run_id" --exit-status
+
+      - name: Publish complete release and trigger deployment
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${RELEASE_VERSION}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/taxonomy:${tag}"
+
+          if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+            assets=$(gh release view "$tag" --json assets --jq '.assets[].name')
+            for expected in \
+              "taxonomy-${RELEASE_VERSION}.tgz" \
+              "taxonomy-${RELEASE_VERSION}-kubernetes.yaml" \
+              "taxonomy-${RELEASE_VERSION}-helm.sha256"; do
+              if ! grep -Fxq "$expected" <<< "$assets"; then
+                echo "::error::Draft release is missing required Helm asset $expected"
+                exit 1
+              fi
+            done
+          fi
+
+          docker buildx imagetools inspect "$image" >/dev/null
+
+          is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
+          if [[ "$is_draft" == "true" ]]; then
+            gh release edit "$tag" --draft=false --latest
+          elif [[ "$is_draft" != "false" ]]; then
+            echo "::error::Unexpected draft state for $tag: $is_draft"
+            exit 1
+          fi
+          test "$(gh release view "$tag" --json isDraft --jq '.isDraft')" = false
+
+          if [[ -n "$RENDER_DEPLOY_HOOK_URL" ]]; then
+            curl -fSL --retry 3 "$RENDER_DEPLOY_HOOK_URL"
+            echo "Render deployment triggered after complete release publication."
+          else
+            echo "::notice::RENDER_DEPLOY_HOOK_URL secret not set - skipping Render deploy"
+          fi

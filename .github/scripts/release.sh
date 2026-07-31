@@ -12,6 +12,7 @@ SKIP_TESTS=${SKIP_TESTS:-false}
 DRY_RUN=${DRY_RUN:-false}
 SOURCE_BRANCH=${SOURCE_BRANCH:-main}
 RENDER_DEPLOY_HOOK_URL=${RENDER_DEPLOY_HOOK_URL:-}
+DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}
 
 TAG_NAME="v${RELEASE_VERSION}"
 MAJOR_MINOR=$(echo "${RELEASE_VERSION}" | sed 's/\.[^.]*$//')
@@ -31,6 +32,9 @@ if [[ "$SOURCE_BRANCH" != "main" && "$DRY_RUN" != "true" ]]; then
 fi
 if [[ "$SKIP_TESTS" == "true" && "$DRY_RUN" != "true" ]]; then
   fail "skip_tests is allowed only for a dry run; published releases require the canonical verification suite"
+fi
+if [[ "$DEFER_RELEASE_PUBLICATION" != "true" && "$DEFER_RELEASE_PUBLICATION" != "false" ]]; then
+  fail "DEFER_RELEASE_PUBLICATION must be true or false"
 fi
 
 if [[ -n "$NEXT_VERSION_INPUT" ]]; then
@@ -200,6 +204,7 @@ echo "Current version: $CURRENT_VERSION"
 echo "Next development version: $NEXT_VERSION"
 echo "Release state: $STATE"
 echo "Main already advanced: $MAIN_ALREADY_ADVANCED"
+echo "Defer release publication: $DEFER_RELEASE_PUBLICATION"
 echo "Dry run: $DRY_RUN"
 
 ./mvnw -B validate
@@ -297,12 +302,21 @@ if [[ "$DRY_RUN" != "true" && "$STATE" == "draft" ]]; then
   else
     echo "::warning::No release artifacts found to upload"
   fi
-  gh release edit "$TAG_NAME" --draft=false --latest
-  STATE=published
-  PUBLISHED_THIS_RUN=true
+  if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then
+    echo "Release $TAG_NAME remains a draft until downstream artifacts and final CI succeed."
+  else
+    gh release edit "$TAG_NAME" --draft=false --latest
+    STATE=published
+    PUBLISHED_THIS_RUN=true
+  fi
 fi
 if [[ "$DRY_RUN" != "true" ]]; then
-  test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = false
+  RELEASE_IS_DRAFT=$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')
+  if [[ "$STATE" == "draft" ]]; then
+    test "$RELEASE_IS_DRAFT" = true
+  else
+    test "$RELEASE_IS_DRAFT" = false
+  fi
 fi
 
 if [[ "$DRY_RUN" != "true" && "$PUBLISHED_THIS_RUN" == "true" ]]; then

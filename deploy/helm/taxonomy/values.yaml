@@ -1,0 +1,182 @@
+replicaCount: 1
+
+# Multi-replica operation is not enabled by default because sessions, local Lucene
+# indexes, initialization and background-job ownership are not yet coordinated.
+scaling:
+  allowMultipleReplicas: false
+
+image:
+  repository: ghcr.io/carstenartur/taxonomy
+  # Required: use vX.Y.Z, sha-<commit>, or set digest to sha256:<64 hex>.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+revisionHistoryLimit: 3
+progressDeadlineSeconds: 600
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: taxonomy.example.invalid
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 768Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+startupProbe:
+  failureThreshold: 60
+  periodSeconds: 5
+  timeoutSeconds: 3
+readinessProbe:
+  failureThreshold: 6
+  periodSeconds: 10
+  timeoutSeconds: 3
+livenessProbe:
+  failureThreshold: 3
+  periodSeconds: 20
+  timeoutSeconds: 3
+
+terminationGracePeriodSeconds: 45
+preStopDelaySeconds: 5
+
+tmpVolume:
+  sizeLimit: 1Gi
+
+persistence:
+  enabled: false
+  accessModes: ["ReadWriteOnce"]
+  size: 10Gi
+  storageClass: ""
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# The default policy permits application access only from the same namespace.
+# When ingress is enabled, add the ingress-controller namespace/pod selectors to
+# ingressFrom. Egress remains open because PostgreSQL, LLM and optional model
+# endpoints are deployment-specific; replace it with explicit rules as required.
+networkPolicy:
+  enabled: true
+  allowSameNamespace: true
+  ingressFrom: []
+  egress:
+    - {}
+
+# Existing Secret containing the keys referenced by secretEnv. Required while
+# secretEnv is non-empty; credentials are never rendered into chart values.
+existingSecret: ""
+secretEnv:
+  SPRING_DATASOURCE_URL:
+    key: SPRING_DATASOURCE_URL
+    optional: false
+  SPRING_DATASOURCE_USERNAME:
+    key: SPRING_DATASOURCE_USERNAME
+    optional: false
+  SPRING_DATASOURCE_PASSWORD:
+    key: SPRING_DATASOURCE_PASSWORD
+    optional: false
+  ADMIN_PASSWORD:
+    key: ADMIN_PASSWORD
+    optional: false
+  GEMINI_API_KEY:
+    key: GEMINI_API_KEY
+    optional: true
+  OPENAI_API_KEY:
+    key: OPENAI_API_KEY
+    optional: true
+  DEEPSEEK_API_KEY:
+    key: DEEPSEEK_API_KEY
+    optional: true
+  DASHSCOPE_API_KEY:
+    key: DASHSCOPE_API_KEY
+    optional: true
+  LLAMA_API_KEY:
+    key: LLAMA_API_KEY
+    optional: true
+  MISTRAL_API_KEY:
+    key: MISTRAL_API_KEY
+    optional: true
+  CUSTOM_LLM_API_KEY:
+    key: CUSTOM_LLM_API_KEY
+    optional: true
+
+config:
+  SPRING_PROFILES_ACTIVE: postgres,kubernetes
+  TAXONOMY_INIT_ASYNC: "true"
+  TAXONOMY_INIT_RELOAD_EXISTING: "false"
+  TAXONOMY_DDL_AUTO: validate
+  TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap
+  TAXONOMY_SEARCH_SYNC_STRATEGY: write-sync
+  TAXONOMY_SPRINGDOC_ENABLED: "false"
+  TAXONOMY_FORWARD_HEADERS_STRATEGY: framework
+  TAXONOMY_EMBEDDING_ENABLED: "false"
+  TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
+  JAVA_OPTS: -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=20.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp
+
+# Prometheus Operator integration. The application accepts the ADMIN_PASSWORD as
+# a Bearer token for /actuator/prometheus; the ServiceMonitor reads it from a Secret.
+serviceMonitor:
+  enabled: false
+  additionalLabels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+  authorization:
+    enabled: true
+    secretName: ""
+    secretKey: ADMIN_PASSWORD
+  relabelings: []
+  metricRelabelings: []
+
+extraEnv: []
+extraEnvFrom: []
+extraVolumes: []
+extraVolumeMounts: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
