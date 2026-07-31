@@ -171,7 +171,9 @@
     function monitorOperationalState(details, body) {
         function refresh() {
             var text = body.textContent || '';
-            var actionable = /error|failed|unavailable|conflict|warning|degraded|fehler|fehlgeschlagen|nicht verfügbar|konflikt|warnung|beeinträchtigt/i.test(text);
+            // Optional capabilities can be unavailable by configuration. Keep that neutral state
+            // collapsed; explicit warnings, conflicts, failures and danger styling remain actionable.
+            var actionable = /error|failed|conflict|warning|degraded|fehler|fehlgeschlagen|konflikt|warnung|beeinträchtigt/i.test(text);
             var danger = Boolean(body.querySelector(
                 '.bg-danger, .text-danger, .alert-danger, .git-status-error, [data-state="error"]'));
             details.classList.toggle('has-actionable-status', actionable || danger);
