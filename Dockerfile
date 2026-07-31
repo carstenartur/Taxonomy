@@ -69,9 +69,9 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.version="${VERSION}"
 
-# A fixed numeric identity provides a secure portable default. Writable image
-# paths are also root-group compatible so OpenShift can inject an arbitrary
-# non-root UID without rebuilding the image.
+# A fixed numeric identity provides a secure portable default. Image paths are
+# also root-group readable so OpenShift can inject an arbitrary non-root UID;
+# only the explicit data directory becomes group-writable.
 ARG TAXONOMY_UID=10001
 ARG TAXONOMY_GID=10001
 # curl is used only by the container-native healthcheck. The application itself
@@ -89,11 +89,11 @@ RUN mkdir -p /app/data /opt/opentelemetry \
 COPY --from=build --chown=taxonomy:taxonomy /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
 COPY --from=opentelemetry --chown=taxonomy:taxonomy /javaagent.jar /opt/opentelemetry/opentelemetry-javaagent.jar
 COPY --chown=taxonomy:taxonomy observability/javaagent.properties /opt/opentelemetry/javaagent.properties
-# OpenShift runs arbitrary UIDs with root-group membership. Mirror owner
-# permissions to group 0 after all copies so those UIDs can read the application
-# and write only to the explicitly writable data directory when it is mounted.
+# OpenShift runs arbitrary UIDs with root-group membership. Preserve the
+# read-only modes of application code and the agent while granting group write
+# only to the explicit data directory. /tmp is supplied as a writable volume.
 RUN chgrp -R 0 /app /opt/opentelemetry \
-    && chmod -R g=u /app /opt/opentelemetry
+    && chmod -R g=u /app/data
 
 # Port 8080 is for INTERNAL communication only (e.g. Caddy or a Kubernetes Service).
 # NEVER publish this port directly to the internet. Terminate TLS at a trusted proxy.
