@@ -289,7 +289,7 @@
         } else if (error) {
             setTaskState(1, 'error');
             nextAction.textContent = t('analysis.task.next.retry');
-            nextAction.className = 'btn btn-sm btn-outline-danger';
+            nextAction.className = 'btn btn-sm btn-danger';
             nextAction.dataset.action = 'analyze';
         } else if (stale) {
             setTaskState(1, 'current');
