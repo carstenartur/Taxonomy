@@ -149,6 +149,21 @@ jobs:
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: "$RUNNER_TEMP/release.sh"
 
+      - name: Record exact final main snapshot
+        id: final_main
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_sha=$(git rev-parse HEAD)
+          git fetch origin main --force
+          remote_sha=$(git rev-parse origin/main)
+          if [[ "$remote_sha" != "$expected_sha" ]]; then
+            echo "::error::release.sh ended at $expected_sha, but origin/main is $remote_sha"
+            exit 1
+          fi
+          echo "sha=$expected_sha" >> "$GITHUB_OUTPUT"
+
       - name: Checkout immutable release source
         if: steps.release_parameters.outputs.dry_run != 'true'
         run: git checkout --detach "v${{ steps.release_parameters.outputs.release_version }}"
@@ -236,31 +251,57 @@ jobs:
             VCS_REF=${{ steps.release_source.outputs.sha }}
             VERSION=${{ steps.release_parameters.outputs.release_version }}
 
-      - name: Verify final main snapshot with canonical CI
+      - name: Verify exact final main snapshot with canonical CI
         if: steps.release_parameters.outputs.dry_run != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin main --force
-          main_sha=$(git rev-parse origin/main)
-          gh workflow run ci-cd.yml --ref main
-
           run_id=""
-          for _ in $(seq 1 60); do
+
+          # Updating main through the refs API normally emits a push run. Reuse it
+          # so the exact commit is tested even when main advances again meanwhile.
+          for _ in $(seq 1 24); do
             run_id=$(gh run list \
               --workflow ci-cd.yml \
-              --event workflow_dispatch \
-              --commit "$main_sha" \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId // empty')
+              --commit "$EXPECTED_MAIN_SHA" \
+              --limit 10 \
+              --json databaseId,createdAt \
+              --jq 'sort_by(.createdAt) | last | .databaseId // empty')
             if [[ -n "$run_id" ]]; then break; fi
             sleep 5
           done
+
           if [[ -z "$run_id" ]]; then
-            echo "::error::Could not locate the post-release CI run for $main_sha"
+            git fetch origin main --force
+            remote_sha=$(git rev-parse origin/main)
+            if [[ "$remote_sha" != "$EXPECTED_MAIN_SHA" ]]; then
+              echo "::error::No CI run exists for $EXPECTED_MAIN_SHA and main moved to $remote_sha"
+              exit 1
+            fi
+            gh workflow run ci-cd.yml --ref main
+            for _ in $(seq 1 60); do
+              run_id=$(gh run list \
+                --workflow ci-cd.yml \
+                --event workflow_dispatch \
+                --commit "$EXPECTED_MAIN_SHA" \
+                --limit 10 \
+                --json databaseId,createdAt \
+                --jq 'sort_by(.createdAt) | last | .databaseId // empty')
+              if [[ -n "$run_id" ]]; then break; fi
+              sleep 5
+            done
+          fi
+
+          if [[ -z "$run_id" ]]; then
+            echo "::error::Could not locate canonical CI for exact commit $EXPECTED_MAIN_SHA"
+            exit 1
+          fi
+          run_sha=$(gh run view "$run_id" --json headSha --jq '.headSha')
+          if [[ "$run_sha" != "$EXPECTED_MAIN_SHA" ]]; then
+            echo "::error::Selected CI run $run_id verifies $run_sha, not $EXPECTED_MAIN_SHA"
             exit 1
           fi
           gh run watch "$run_id" --exit-status
