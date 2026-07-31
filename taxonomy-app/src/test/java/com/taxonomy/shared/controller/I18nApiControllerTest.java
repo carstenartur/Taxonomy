@@ -12,10 +12,13 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.aMapWithSize;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Integration tests for {@link I18nApiController}.
@@ -37,31 +40,44 @@ class I18nApiControllerTest {
     }
 
     @Test
-    void englishLocaleContainsExpectedKeys() throws Exception {
+    void englishLocaleContainsExpectedKeysFromAllBundles() throws Exception {
         mockMvc.perform(get("/api/i18n/en").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.['app.title']").value("Taxonomy Architecture Analyzer"))
+                .andExpect(jsonPath("$.['app.title']")
+                        .value("Taxonomy Architecture Analyzer"))
                 .andExpect(jsonPath("$.['nav.analyze']").value("Analyze"))
                 .andExpect(jsonPath("$.['nav.help']").value("Help"))
-                .andExpect(jsonPath("$.['lang.selector.label']").value("Language"));
+                .andExpect(jsonPath("$.['lang.selector.label']").value("Language"))
+                .andExpect(jsonPath("$.['analysis.task.stage.describe.label']")
+                        .value("Describe"))
+                .andExpect(jsonPath("$.['analysis.task.operational.summary']")
+                        .value("Operational context"));
     }
 
     @Test
-    void germanLocaleReturnsTranslatedValues() throws Exception {
+    void germanLocaleReturnsTranslatedValuesFromAllBundles() throws Exception {
         mockMvc.perform(get("/api/i18n/de").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.['app.title']").value("Taxonomie Architektur Analysator"))
+                .andExpect(jsonPath("$.['app.title']")
+                        .value("Taxonomie Architektur Analysator"))
                 .andExpect(jsonPath("$.['nav.analyze']").value("Analyse"))
                 .andExpect(jsonPath("$.['nav.help']").value("Hilfe"))
-                .andExpect(jsonPath("$.['lang.selector.label']").value("Sprache"));
+                .andExpect(jsonPath("$.['lang.selector.label']").value("Sprache"))
+                .andExpect(jsonPath("$.['analysis.task.stage.describe.label']")
+                        .value("Beschreiben"))
+                .andExpect(jsonPath("$.['analysis.task.operational.summary']")
+                        .value("Betriebszustand"));
     }
 
     @Test
     void unknownLocaleFallsBackToEnglish() throws Exception {
         mockMvc.perform(get("/api/i18n/fr").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.['app.title']").value("Taxonomy Architecture Analyzer"))
-                .andExpect(jsonPath("$.['nav.analyze']").value("Analyze"));
+                .andExpect(jsonPath("$.['app.title']")
+                        .value("Taxonomy Architecture Analyzer"))
+                .andExpect(jsonPath("$.['nav.analyze']").value("Analyze"))
+                .andExpect(jsonPath("$.['analysis.task.stage.describe.label']")
+                        .value("Describe"));
     }
 
     @Test
@@ -72,8 +88,8 @@ class I18nApiControllerTest {
                 .andReturn().getResponse().getContentAsString();
 
         ObjectMapper mapper = new ObjectMapper();
-        Map<String, String> enKeys = mapper.readValue(enJson, new TypeReference<>() {});
-        Map<String, String> deKeys = mapper.readValue(deJson, new TypeReference<>() {});
+        Map<String, String> enKeys = mapper.readValue(enJson, new TypeReference<>() { });
+        Map<String, String> deKeys = mapper.readValue(deJson, new TypeReference<>() { });
 
         assertEquals(enKeys.keySet(), deKeys.keySet(),
                 "English and German must have identical translation key sets");

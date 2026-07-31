@@ -16,6 +16,19 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function openDetails(selector) {
+  const details = page.locator(selector);
+  await details.waitFor({ state: 'attached', timeout: 20_000 });
+  if (!(await details.getAttribute('open'))) {
+    const summary = details.locator(':scope > summary');
+    await summary.scrollIntoViewIfNeeded();
+    await summary.click();
+    await page.waitForFunction(candidate =>
+      document.querySelector(candidate)?.hasAttribute('open'), selector,
+    { timeout: 10_000 });
+  }
+}
+
 async function runAxe(state, include) {
   const result = await new AxeBuilder({ page })
     .include(include)
@@ -114,14 +127,18 @@ async function testTextSpacing() {
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.evaluate(() => window.TaxonomyI18n?.ready?.());
+  await page.locator('#analysisTaskProgress').waitFor({ state: 'visible', timeout: 20_000 });
+  const onboardingDismiss = page.locator('#onboardingDismiss');
+  if (await onboardingDismiss.isVisible().catch(() => false)) {
+    await onboardingDismiss.click();
+    await page.locator('#onboardingOverlay').waitFor({ state: 'detached', timeout: 5_000 });
+  }
   await page.waitForFunction(() => Boolean(window.TaxonomyRoleSurface?.ready), null, { timeout: 20_000 });
   await page.evaluate(() => window.TaxonomyRoleSurface.ready);
   await navigateToPage(page, 'analyze');
-  const documentPanel = page.locator('#documentImportPanel');
-  await documentPanel.waitFor({ state: 'visible', timeout: 20_000 });
-  if (!(await documentPanel.getAttribute('open'))) {
-    await documentPanel.locator('summary').click();
-  }
+  await openDetails('#analysisSecondaryTools');
+  await openDetails('#documentImportPanel');
   await page.locator('#documentImportPanel p').waitFor({ state: 'visible', timeout: 10_000 });
 
   const spacing = await page.evaluate(() => {

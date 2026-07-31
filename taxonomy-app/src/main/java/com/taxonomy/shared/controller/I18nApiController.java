@@ -1,5 +1,6 @@
 package com.taxonomy.shared.controller;
 
+import com.taxonomy.shared.config.I18nConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSource;
@@ -12,9 +13,11 @@ import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * Exposes all GUI message-bundle keys as a JSON map so that client-side
@@ -45,23 +48,30 @@ public class I18nApiController {
         Locale resolved = Locale.forLanguageTag(locale);
         Map<String, String> messages = new HashMap<>();
 
-        // Load all keys from the default (English) properties file and resolve
-        // each key for the requested locale via the MessageSource.
-        try {
-            Properties defaultProps = new Properties();
-            ClassPathResource resource = new ClassPathResource("i18n/messages.properties");
-            if (resource.exists()) {
-                try (InputStream in = resource.getInputStream()) {
-                    defaultProps.load(in);
-                }
-            }
-            for (String key : defaultProps.stringPropertyNames()) {
-                messages.put(key, messageSource.getMessage(key, null, key, resolved));
-            }
-        } catch (IOException e) {
-            log.warn("Failed to load i18n properties: {}", e.getMessage());
+        for (String key : defaultMessageKeys()) {
+            messages.put(key, messageSource.getMessage(key, null, key, resolved));
         }
-
         return messages;
+    }
+
+    private Set<String> defaultMessageKeys() {
+        Set<String> keys = new LinkedHashSet<>();
+        for (String basename : I18nConfig.MESSAGE_BASENAMES) {
+            ClassPathResource resource = new ClassPathResource(
+                    "i18n/" + basename + ".properties");
+            if (!resource.exists()) {
+                log.warn("Configured i18n bundle is missing: {}", resource.getPath());
+                continue;
+            }
+            try (InputStream in = resource.getInputStream()) {
+                Properties properties = new Properties();
+                properties.load(in);
+                keys.addAll(properties.stringPropertyNames());
+            } catch (IOException exception) {
+                log.warn("Failed to load i18n bundle {}: {}",
+                        resource.getPath(), exception.getMessage());
+            }
+        }
+        return keys;
     }
 }

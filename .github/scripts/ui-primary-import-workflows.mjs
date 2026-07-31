@@ -1,12 +1,26 @@
 import { navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.mjs';
 
+async function openDetails(page, selector) {
+  const details = page.locator(selector);
+  await details.waitFor({ state: 'attached', timeout: 20_000 });
+  if (!(await details.getAttribute('open'))) {
+    const summary = details.locator(':scope > summary');
+    await summary.scrollIntoViewIfNeeded();
+    await summary.click();
+    await page.waitForFunction(candidate =>
+      document.querySelector(candidate)?.hasAttribute('open'), selector,
+    { timeout: 10_000 });
+  }
+}
+
 export async function runImportWorkflows({ page, evidence }) {
   const { assert, passed, axeState, saveState, waitForText } = evidence;
   await navigateToPage(page, 'analyze');
-  const documentPanel = page.locator('#documentImportPanel');
-  if (!(await documentPanel.getAttribute('open'))) {
-    await documentPanel.locator('summary').click();
-  }
+  // Document import is deliberately secondary to the primary requirement task.
+  // Exercise the real nested disclosure path instead of clicking a descendant
+  // hidden by its closed parent.
+  await openDetails(page, '#analysisSecondaryTools');
+  await openDetails(page, '#documentImportPanel');
   await page.locator('#docImportUploadBtn').waitFor({ state: 'visible', timeout: 10_000 });
 
   const successBody = JSON.stringify({ fileName: 'requirements.pdf', mimeType: 'application/pdf',

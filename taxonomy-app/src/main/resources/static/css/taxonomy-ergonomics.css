@@ -8,6 +8,159 @@
     display: block;
 }
 
+/* Keep operational detail available without occupying the default task area. */
+.operational-context-details {
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    background: var(--bs-tertiary-bg, #f8f9fa);
+}
+.operational-context-details > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 2.5rem;
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    list-style: none;
+}
+.operational-context-details > summary::-webkit-details-marker {
+    display: none;
+}
+.operational-context-details > summary::before {
+    content: "▸";
+    flex: 0 0 auto;
+}
+.operational-context-details[open] > summary::before {
+    content: "▾";
+}
+.operational-context-title {
+    flex: 1 1 auto;
+}
+.operational-context-content {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0 1rem 0.75rem;
+}
+.operational-context-content > #gitStatusBar,
+.operational-context-content > #contextBar {
+    flex: 1 1 100%;
+    margin: 0;
+}
+
+/* Present the primary analysis as an explicit, persistent task progression. */
+.analysis-task-progress {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    background: var(--bs-tertiary-bg, #f8f9fa);
+    padding: 0.8rem;
+}
+.analysis-task-stages {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+    padding: 0;
+    margin: 0 0 0.75rem;
+    list-style: none;
+}
+.analysis-task-stages li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.4rem;
+    background: var(--bs-body-bg, #fff);
+    color: var(--bs-secondary-color, #6c757d);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+.analysis-task-stages li > .analysis-task-number {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 1.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--bs-secondary-bg, #e9ecef);
+}
+.analysis-task-copy {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+.analysis-task-copy small {
+    font-weight: 400;
+}
+.analysis-task-stages li[data-state="current"] {
+    border-color: var(--bs-primary, #0d6efd);
+    color: var(--bs-body-color, #212529);
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.12);
+}
+.analysis-task-stages li[data-state="current"] > .analysis-task-number {
+    background: var(--bs-primary, #0d6efd);
+    color: #fff;
+}
+.analysis-task-stages li[data-state="complete"] {
+    border-color: var(--bs-success, #198754);
+    color: var(--bs-body-color, #212529);
+}
+.analysis-task-stages li[data-state="complete"] > .analysis-task-number {
+    background: var(--bs-success, #198754);
+    color: #fff;
+}
+.analysis-task-stages li[data-state="error"] {
+    border-color: var(--bs-danger, #dc3545);
+    color: var(--bs-danger-text-emphasis, #842029);
+}
+.analysis-task-stages li[data-state="error"] > .analysis-task-number {
+    background: var(--bs-danger, #dc3545);
+    color: #fff;
+}
+.analysis-next-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.analysis-next-action #taskGuidance {
+    max-width: 42rem;
+}
+.analysis-next-action #taskNextAction {
+    flex: 0 0 auto;
+    min-height: 2.5rem;
+}
+
+/* Secondary tools and score explanations remain one keyboard-reachable disclosure. */
+.analysis-secondary-tools,
+.score-legend-details {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.4rem;
+    background: var(--bs-body-bg, #fff);
+}
+.analysis-secondary-tools > summary,
+.score-legend-details > summary {
+    min-height: 2.5rem;
+    padding: 0.55rem 0.75rem;
+    cursor: pointer;
+}
+.analysis-secondary-tools-content {
+    padding: 0 0.75rem 0.75rem;
+}
+.analysis-secondary-tools-content > details,
+.analysis-secondary-tools-content > div {
+    margin-top: 0.75rem !important;
+}
+.score-legend-details > .card {
+    border: 0;
+    box-shadow: none !important;
+}
+
 /* Keep dense toolbars usable at high zoom and on narrow viewports. */
 #mainNavTabs,
 .card-header,
@@ -60,7 +213,10 @@
 .tax-node-actions button:focus-visible,
 .taxonomy-accessible-dialog button:focus-visible,
 .taxonomy-accessible-dialog input:focus-visible,
-.table-responsive:focus-visible {
+.table-responsive:focus-visible,
+.operational-context-details > summary:focus-visible,
+.analysis-secondary-tools > summary:focus-visible,
+.score-legend-details > summary:focus-visible {
     outline: 3px solid #0d6efd;
     outline-offset: 2px;
 }
@@ -164,7 +320,8 @@
     .tax-toggle,
     #mainNavTabs .nav-link,
     .navbar button,
-    .navbar select {
+    .navbar select,
+    .analysis-next-action button {
         min-height: 44px;
         min-width: 44px;
     }
@@ -219,6 +376,9 @@
         width: auto;
         white-space: nowrap;
     }
+    .analysis-task-stages {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 /* 200–400 % zoom: allow navigation and analysis controls to reflow. */
@@ -229,12 +389,11 @@
         font-size: 1rem;
         line-height: 1.25;
     }
-    /* These badges duplicate information available in the analysis and context
-       surfaces. Hiding the duplicates preserves controls while reducing the
-       mobile header from several rows to the brand plus one utility row. */
-    #aiStatusBadge,
-    #embeddingStatusBadge,
-    #workspaceUserBadge {
+    /* These badges are moved to the compact operational-context disclosure.
+       Hide only a legacy badge that still remains inside the navbar. */
+    .navbar #aiStatusBadge,
+    .navbar #embeddingStatusBadge,
+    .navbar #workspaceUserBadge {
         display: none !important;
     }
     #navbarVersion {
@@ -264,12 +423,37 @@
     #copilotBtn {
         min-width: 0;
     }
+    .analysis-task-stages {
+        grid-template-columns: 1fr;
+    }
+    .analysis-next-action {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .analysis-next-action #taskNextAction {
+        width: 100%;
+    }
+    .operational-context-details > summary {
+        padding-inline: 0.75rem;
+    }
+    .operational-context-content {
+        padding-inline: 0.75rem;
+    }
     .tax-node {
         font-size: 1rem;
     }
     .tax-pct,
     .tax-justify-btn {
         font-size: 0.875rem;
+    }
+}
+
+@media (forced-colors: active) {
+    .analysis-task-stages li[data-state="current"],
+    .analysis-task-stages li[data-state="complete"],
+    .analysis-task-stages li[data-state="error"] {
+        border-width: 3px;
+        box-shadow: none;
     }
 }
 
@@ -290,6 +474,9 @@
     #systemStatusBar,
     #gitStatusBar,
     #contextBar,
+    #operationalContextDetails,
+    #analysisTaskProgress,
+    #analysisSecondaryTools,
     .tax-node-actions,
     .taxonomy-accessible-dialog {
         display: none !important;
