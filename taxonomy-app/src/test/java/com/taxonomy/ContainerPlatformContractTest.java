@@ -23,7 +23,8 @@ class ContainerPlatformContractTest {
                 .contains("ENV HOME=/tmp")
                 .contains("-Djava.io.tmpdir=/tmp")
                 .contains("RUN chgrp -R 0 /app /opt/opentelemetry")
-                .contains("&& chmod -R g=u /app /opt/opentelemetry")
+                .contains("&& chmod -R g=u /app/data")
+                .doesNotContain("chmod -R g=u /app /opt/opentelemetry")
                 .contains("STOPSIGNAL SIGTERM")
                 .doesNotContain("USER root");
     }
