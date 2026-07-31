@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up Java 21
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
@@ -35,8 +36,68 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - name: Verify repository version state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test-check-version-state.py
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            python3 .github/scripts/check-version-state.py \
+              --mode release --tag "${GITHUB_REF_NAME}"
+          else
+            python3 .github/scripts/check-version-state.py --mode development
+          fi
+
+      - name: Verify release and performance-scope contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/release.sh
+          bash -n .github/scripts/install-helm.sh
+          bash -n deploy/helm/taxonomy/verify.sh
+          python3 .github/scripts/check-release-delivery-contract.py
+          python3 .github/scripts/check-observability-performance-scope.py
+
+      - name: Install verified Helm 3.21.0
+        env:
+          HELM_VERSION: v3.21.0
+        shell: bash
+        run: bash .github/scripts/install-helm.sh
+
       - name: Verify Docker availability
         run: docker info
+
+      - name: Validate production Helm chart
+        shell: bash
+        run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
+
+      - name: Detect observability performance changes
+        id: observability-performance-scope
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
+            observability \
+            taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java \
+            taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java \
+            taxonomy-app/src/test/resources/observability \
+            .github/scripts/run-observability-performance.sh \
+            docs/dev/OBSERVABILITY_PERFORMANCE.md; then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Measure OpenTelemetry performance budget
+        if: steps.observability-performance-scope.outputs.run == 'true'
+        env:
+          TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true'
+        shell: bash
+        run: bash .github/scripts/run-observability-performance.sh
 
       - name: Run the canonical Maven verification suite
         env:
@@ -86,9 +147,15 @@ jobs:
             target/supply-chain-pins.json \
             target/taxonomy-sbom.json \
             target/taxonomy-sbom.xml \
-            target/taxonomy-vex.json; do
+            target/taxonomy-vex.json \
+            target/taxonomy-helm-rendered.yaml; do
             if [ -f "$evidence" ]; then cp "$evidence" target/quality-reports/evidence/; fi
           done
+          if [ -d target/observability-performance ]; then
+            mkdir -p target/quality-reports/evidence/observability-performance
+            cp -a target/observability-performance/. \
+              target/quality-reports/evidence/observability-performance/
+          fi
           printf 'Verified commit: %s\n' "$GITHUB_SHA" > target/quality-reports/README.txt
 
       - name: Upload verified reports
