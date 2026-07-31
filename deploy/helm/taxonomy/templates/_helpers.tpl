@@ -44,10 +44,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s@%s" .Values.image.repository $digest -}}
 {{- else -}}
 {{- $requiredTag := required "image.tag or image.digest is required" $tag -}}
-{{- $releaseTag := regexMatch "^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$" $requiredTag -}}
+{{- $releaseTag := regexMatch "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$" $requiredTag -}}
 {{- $commitTag := regexMatch "^sha-[0-9a-f]{7,40}$" $requiredTag -}}
 {{- if not (or $releaseTag $commitTag) -}}
-{{- fail "image.tag must be an immutable release tag (vX.Y.Z) or sha-<7-40 lowercase hex commit>" -}}
+{{- fail "image.tag must be an immutable release tag (vX.Y.Z with optional Docker-safe prerelease suffix) or sha-<7-40 lowercase hex commit>" -}}
 {{- end -}}
 {{- printf "%s:%s" .Values.image.repository $requiredTag -}}
 {{- end -}}
