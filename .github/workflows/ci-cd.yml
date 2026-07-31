@@ -48,6 +48,15 @@ jobs:
             python3 .github/scripts/check-version-state.py --mode development
           fi
 
+      - name: Verify release delivery contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/release.sh
+          bash -n .github/scripts/install-helm.sh
+          bash -n deploy/helm/taxonomy/verify.sh
+          python3 .github/scripts/check-release-delivery-contract.py
+
       - name: Install verified Helm 3.21.0
         env:
           HELM_VERSION: v3.21.0
