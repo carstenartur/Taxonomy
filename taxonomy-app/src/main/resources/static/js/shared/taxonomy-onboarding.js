@@ -114,7 +114,7 @@
         });
 
         var next = document.createElement('div');
-        next.className = 'analysis-task-next';
+        next.className = 'analysis-next-action';
         var nextAction = document.createElement('button');
         nextAction.id = 'taskNextAction';
         nextAction.type = 'button';
@@ -136,16 +136,17 @@
 
         var details = document.createElement('details');
         details.id = 'operationalContextDetails';
-        details.className = 'operational-context';
+        details.className = 'operational-context-details';
         var summary = document.createElement('summary');
         var title = document.createElement('strong');
+        title.className = 'operational-context-title';
         title.textContent = t('analysis.task.operational.summary');
         var hint = document.createElement('span');
         hint.className = 'operational-context-hint';
         hint.textContent = t('analysis.task.operational.hint');
         summary.append(title, hint);
         var body = document.createElement('div');
-        body.className = 'operational-context-body';
+        body.className = 'operational-context-content';
         details.append(summary, body);
 
         var navigationShell = navigation.closest('.bg-dark');
@@ -204,7 +205,7 @@
         summary.className = 'fw-semibold';
         summary.textContent = t('analysis.task.secondary.summary');
         var body = document.createElement('div');
-        body.className = 'analysis-secondary-tools-body';
+        body.className = 'analysis-secondary-tools-content';
         details.append(summary, body);
 
         [
@@ -230,7 +231,7 @@
         if (legend) {
             var legendDetails = document.createElement('details');
             legendDetails.id = 'analysisScoreLegend';
-            legendDetails.className = 'analysis-score-legend mb-3';
+            legendDetails.className = 'score-legend-details mb-3';
             var legendSummary = document.createElement('summary');
             legendSummary.textContent = t('analysis.task.legend.summary');
             legend.parentElement.insertBefore(legendDetails, legend);
