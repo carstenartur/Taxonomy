@@ -48,8 +48,17 @@ jobs:
             python3 .github/scripts/check-version-state.py --mode development
           fi
 
+      - name: Set up Helm 3.19.0
+        uses: Azure/setup-helm@7a9c28ba04c99ae42726a8472c6eba25beab7bee # v5.0.1
+        with:
+          version: v3.19.0
+
       - name: Verify Docker availability
         run: docker info
+
+      - name: Validate production Helm chart
+        shell: bash
+        run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
 
       - name: Detect observability performance changes
         id: observability-performance-scope
@@ -125,7 +134,8 @@ jobs:
             target/supply-chain-pins.json \
             target/taxonomy-sbom.json \
             target/taxonomy-sbom.xml \
-            target/taxonomy-vex.json; do
+            target/taxonomy-vex.json \
+            target/taxonomy-helm-rendered.yaml; do
             if [ -f "$evidence" ]; then cp "$evidence" target/quality-reports/evidence/; fi
           done
           if [ -d target/observability-performance ]; then
