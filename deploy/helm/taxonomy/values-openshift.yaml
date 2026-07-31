@@ -1,0 +1,17 @@
+# OpenShift restricted-v2 SCC assigns an arbitrary non-root UID and suitable
+# supplemental groups. Null values remove the fixed Kubernetes defaults while
+# retaining runAsNonRoot, seccomp and container hardening.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: null
+  runAsGroup: null
+  fsGroup: null
+  fsGroupChangePolicy: null
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
