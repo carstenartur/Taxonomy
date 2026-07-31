@@ -48,7 +48,7 @@ jobs:
             python3 .github/scripts/check-version-state.py --mode development
           fi
 
-      - name: Verify release delivery contract
+      - name: Verify release and performance-scope contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -56,6 +56,7 @@ jobs:
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
           python3 .github/scripts/check-release-delivery-contract.py
+          python3 .github/scripts/check-observability-performance-scope.py
 
       - name: Install verified Helm 3.21.0
         env:
@@ -73,17 +74,19 @@ jobs:
       - name: Detect observability performance changes
         id: observability-performance-scope
         if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet "${{ github.event.pull_request.base.sha }}...HEAD" -- \
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
             observability \
             taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java \
             taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java \
             taxonomy-app/src/test/resources/observability \
             .github/scripts/run-observability-performance.sh \
-            docs/dev/OBSERVABILITY_PERFORMANCE.md \
-            .github/workflows/ci-cd.yml; then
+            docs/dev/OBSERVABILITY_PERFORMANCE.md; then
             echo 'run=false' >> "$GITHUB_OUTPUT"
           else
             echo 'run=true' >> "$GITHUB_OUTPUT"
