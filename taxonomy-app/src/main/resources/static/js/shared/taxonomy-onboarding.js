@@ -5,6 +5,7 @@
     var t = TaxonomyI18n.t;
 
     var STORAGE_KEY = 'taxonomy_onboarded';
+    var reviewAcknowledged = false;
     var TASK_STAGES = [
         {
             id: 'taskStageDescribe',
@@ -278,29 +279,38 @@
         nextAction.className = 'btn btn-sm btn-outline-primary';
         nextAction.disabled = false;
         if (!text) {
+            reviewAcknowledged = false;
             setTaskState(0, 'current');
             nextAction.textContent = t('analysis.task.next.enter');
             nextAction.disabled = true;
             nextAction.dataset.action = 'focus-input';
         } else if (running) {
+            reviewAcknowledged = false;
             setTaskState(1, 'current');
             nextAction.textContent = t('analysis.task.next.running');
             nextAction.disabled = true;
             nextAction.dataset.action = 'running';
         } else if (error) {
+            reviewAcknowledged = false;
             setTaskState(1, 'error');
             nextAction.textContent = t('analysis.task.next.retry');
             nextAction.className = 'btn btn-sm btn-danger';
             nextAction.dataset.action = 'analyze';
         } else if (stale) {
+            reviewAcknowledged = false;
             setTaskState(1, 'current');
             nextAction.textContent = t('analysis.task.next.update');
             nextAction.dataset.action = 'analyze';
+        } else if (hasScores && reviewAcknowledged) {
+            setTaskState(3, 'current');
+            nextAction.textContent = t('analysis.task.next.continue');
+            nextAction.dataset.action = 'open-architecture';
         } else if (hasScores) {
             setTaskState(2, 'current');
             nextAction.textContent = t('analysis.task.next.results');
             nextAction.dataset.action = 'review-results';
         } else {
+            reviewAcknowledged = false;
             setTaskState(1, 'current');
             nextAction.textContent = t('analysis.task.next.run');
             nextAction.dataset.action = 'analyze';
@@ -317,6 +327,14 @@
             if (firstMatch) {
                 firstMatch.closest('.tax-node')?.scrollIntoView({ block: 'center' });
                 firstMatch.closest('.tax-node')?.focus({ preventScroll: true });
+                reviewAcknowledged = true;
+                syncTaskProgress();
+            }
+        } else if (action === 'open-architecture') {
+            if (typeof window.navigateToPage === 'function') {
+                window.navigateToPage('architecture');
+            } else {
+                document.querySelector('#mainNavTabs [data-page="architecture"]')?.click();
             }
         } else {
             document.getElementById('businessText')?.focus();
@@ -329,10 +347,14 @@
         var status = document.getElementById('statusArea');
         var tree = document.getElementById('taxonomyTree');
         if (input) {
-            input.addEventListener('input', syncTaskProgress);
+            input.addEventListener('input', function () {
+                reviewAcknowledged = false;
+                syncTaskProgress();
+            });
         }
         if (analyzeButton) {
             analyzeButton.addEventListener('click', function () {
+                reviewAcknowledged = false;
                 setTaskState(1, 'current');
                 requestAnimationFrame(syncTaskProgress);
             });
