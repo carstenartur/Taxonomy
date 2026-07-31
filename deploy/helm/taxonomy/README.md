@@ -41,7 +41,7 @@ Replace the example release tag with the intended published version. Supported i
 - `image.tag=sha-<7-40 lowercase hexadecimal commit characters>`;
 - `image.digest=sha256:<64 lowercase hexadecimal characters>`.
 
-The chart rejects an empty image reference, `latest`, arbitrary mutable tags, and simultaneous tag/digest configuration.
+The chart rejects an empty image reference, `latest`, arbitrary mutable tags, Docker-invalid SemVer build metadata and simultaneous tag/digest configuration.
 
 ## Rancher without a visible Helm command
 
@@ -61,6 +61,24 @@ helm template taxonomy deploy/helm/taxonomy \
 ```
 
 Create the Secret separately before importing the rendered YAML. Never insert real credentials into the rendered file or ordinary Rancher chart values.
+
+## OpenShift restricted security context
+
+OpenShift commonly assigns an arbitrary non-root UID through the `restricted-v2` Security Context Constraint. The image mirrors owner permissions to group `0`, and the supplied profile removes fixed UID/GID/fsGroup values while retaining `runAsNonRoot`, seccomp, dropped capabilities, no privilege escalation and a read-only root filesystem.
+
+Install with the OpenShift profile:
+
+```bash
+helm upgrade --install taxonomy deploy/helm/taxonomy \
+  --namespace taxonomy \
+  --values deploy/helm/taxonomy/values-openshift.yaml \
+  --set existingSecret=taxonomy-secrets \
+  --set image.tag=v1.2.8
+```
+
+The profile does not request a custom SCC, privileged execution or a fixed UID range. The cluster remains authoritative for the assigned UID and supplemental groups. Use the generic Kubernetes `Ingress` resources from this chart when an ingress controller supports them, or disable `ingress.enabled` and expose the Service through an independently managed OpenShift Route.
+
+Do not combine the OpenShift profile with command-line overrides that restore `podSecurityContext.runAsUser`, `runAsGroup` or `fsGroup` unless the cluster administrator has explicitly allocated those identities.
 
 ## Ingress and TLS
 
@@ -113,7 +131,7 @@ The startup probe permits up to five minutes for initialization. Increase it for
 
 ## Read-only filesystem and persistence
 
-The container runs as numeric user/group `10001:10001`, drops all capabilities and expects a read-only root filesystem. Writable locations are explicit:
+The portable Kubernetes default runs as numeric user/group `10001:10001`, drops all capabilities and expects a read-only root filesystem. The OpenShift profile delegates the numeric identity to the cluster while preserving the same effective restrictions. Writable locations are explicit:
 
 - `/tmp`: ephemeral `emptyDir`;
 - `/app/data`: `emptyDir` by default, or a PVC when `persistence.enabled=true`;
@@ -188,7 +206,7 @@ Run the same chart checks as CI:
 bash deploy/helm/taxonomy/verify.sh
 ```
 
-The script performs linting, renders a hardened deployment with ServiceMonitor evidence, and proves that unsafe configurations are rejected.
+The script performs linting, renders Kubernetes and OpenShift variants with monitoring evidence, and proves that unsafe configurations are rejected.
 
 After deployment:
 
