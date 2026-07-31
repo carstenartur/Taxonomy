@@ -122,8 +122,15 @@ jobs:
             "$RUNNER_TEMP/check-version-state.py" \
             "$RUNNER_TEMP/generate-vex.py"
 
-      - name: Test version-state guard
-        run: python3 .github/scripts/test-check-version-state.py
+      - name: Test release guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test-check-version-state.py
+          bash -n .github/scripts/release.sh
+          bash -n .github/scripts/install-helm.sh
+          bash -n deploy/helm/taxonomy/verify.sh
+          python3 .github/scripts/check-release-delivery-contract.py
 
       - name: Build and stage release, then prepare next development version
         env:
