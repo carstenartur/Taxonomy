@@ -4,6 +4,7 @@ set -euo pipefail
 : "${RELEASE_VERSION:?RELEASE_VERSION is required}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 : "${METADATA_HELPER:?METADATA_HELPER is required}"
+: "${VERSION_STATE_HELPER:?VERSION_STATE_HELPER is required}"
 : "${VEX_HELPER:?VEX_HELPER is required}"
 
 NEXT_VERSION_INPUT=${NEXT_VERSION_INPUT:-}
@@ -15,29 +16,21 @@ RENDER_DEPLOY_HOOK_URL=${RENDER_DEPLOY_HOOK_URL:-}
 TAG_NAME="v${RELEASE_VERSION}"
 MAJOR_MINOR=$(echo "${RELEASE_VERSION}" | sed 's/\.[^.]*$//')
 MAINTENANCE_BRANCH="maintenance/${MAJOR_MINOR}.x"
+TEMP_BRANCH="release-temp-${RELEASE_VERSION}"
+
+fail() {
+  echo "::error::$*"
+  exit 1
+}
 
 if ! [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "::error::release_version must use X.Y.Z without a leading v"
-  exit 1
+  fail "release_version must use X.Y.Z without a leading v"
 fi
-
 if [[ "$SOURCE_BRANCH" != "main" && "$DRY_RUN" != "true" ]]; then
-  echo "::error::Real releases must be dispatched from main, not $SOURCE_BRANCH"
-  exit 1
+  fail "Real releases must be dispatched from main, not $SOURCE_BRANCH"
 fi
-
-CURRENT_VERSION=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
-if [[ "$CURRENT_VERSION" != *-SNAPSHOT ]]; then
-  echo "::error::Current Maven version must be a SNAPSHOT, but was $CURRENT_VERSION"
-  exit 1
-fi
-if [[ "${CURRENT_VERSION%-SNAPSHOT}" != "$RELEASE_VERSION" ]]; then
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "::warning::Release $RELEASE_VERSION does not match current version $CURRENT_VERSION"
-  else
-    echo "::error::Release $RELEASE_VERSION does not match current version $CURRENT_VERSION"
-    exit 1
-  fi
+if [[ "$SKIP_TESTS" == "true" && "$DRY_RUN" != "true" ]]; then
+  fail "skip_tests is allowed only for a dry run; published releases require the canonical verification suite"
 fi
 
 if [[ -n "$NEXT_VERSION_INPUT" ]]; then
@@ -47,73 +40,18 @@ else
   NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-SNAPSHOT"
 fi
 if ! [[ "$NEXT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$ ]]; then
-  echo "::error::next_development_version must use X.Y.Z-SNAPSHOT"
-  exit 1
+  fail "next_development_version must use X.Y.Z-SNAPSHOT"
 fi
-
-verify_metadata() {
-  local expected=$1
-  local release_mode=$2
-  local maven_version
-  maven_version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
-  if [[ "$maven_version" != "$expected" ]]; then
-    echo "::error::Maven version $maven_version != $expected"
-    exit 1
-  fi
-
-  EXPECTED_VERSION="$expected" RELEASE_MODE="$release_mode" python3 - <<'PY'
-import json
+RELEASE_VERSION="$RELEASE_VERSION" NEXT_VERSION="$NEXT_VERSION" python3 - <<'PY'
 import os
-import re
-from pathlib import Path
-
-expected = os.environ['EXPECTED_VERSION']
-release_mode = os.environ['RELEASE_MODE'] == 'true'
-
-citation = Path('CITATION.cff').read_text(encoding='utf-8')
-version_match = re.search(r'^version: "([^"]+)"$', citation, flags=re.MULTILINE)
-if not version_match or version_match.group(1) != expected:
-    raise SystemExit(f'CITATION.cff version does not match {expected!r}')
-has_date_released = bool(re.search(r'^date-released: ', citation, flags=re.MULTILINE))
-if release_mode and not has_date_released:
-    raise SystemExit('CITATION.cff date-released is missing')
-if not release_mode and has_date_released:
-    raise SystemExit('CITATION.cff still contains date-released for a development snapshot')
-
-citation_md = Path('CITATION.md').read_text(encoding='utf-8')
-preferred = re.search(r'Taxonomy Architecture Analyzer\*\*\. Version ([^.]+(?:\.[^.]+){1,2}(?:-SNAPSHOT)?)\.', citation_md)
-bibtex = re.search(r'^\s*version\s+= \{([^}]+)\},$', citation_md, flags=re.MULTILINE)
-if not preferred or preferred.group(1) != expected:
-    raise SystemExit(f'CITATION.md preferred citation version does not match {expected!r}')
-if not bibtex or bibtex.group(1) != expected:
-    raise SystemExit(f'CITATION.md BibTeX version does not match {expected!r}')
-has_bibtex_date = bool(re.search(r'^\s*date\s+= \{[^}]+\},$', citation_md, flags=re.MULTILINE))
-if release_mode and not has_bibtex_date:
-    raise SystemExit('CITATION.md BibTeX release date is missing')
-if not release_mode and has_bibtex_date:
-    raise SystemExit('CITATION.md still contains a BibTeX release date for a development snapshot')
-
-with open('.zenodo.json', encoding='utf-8') as handle:
-    zenodo = json.load(handle)
-if zenodo.get('version') != expected:
-    raise SystemExit(f'.zenodo.json version {zenodo.get("version")!r} != {expected!r}')
-has_publication_date = 'publication_date' in zenodo
-if release_mode and not has_publication_date:
-    raise SystemExit('.zenodo.json publication_date is missing')
-if not release_mode and has_publication_date:
-    raise SystemExit('.zenodo.json still contains publication_date for a development snapshot')
-
-with open('codemeta.json', encoding='utf-8') as handle:
-    codemeta = json.load(handle)
-if codemeta.get('version') != expected:
-    raise SystemExit(f'codemeta.json version {codemeta.get("version")!r} != {expected!r}')
-has_date_published = 'datePublished' in codemeta
-if release_mode and not has_date_published:
-    raise SystemExit('codemeta.json datePublished is missing')
-if not release_mode and has_date_published:
-    raise SystemExit('codemeta.json still contains datePublished for a development snapshot')
+release = tuple(map(int, os.environ['RELEASE_VERSION'].split('.')))
+next_version = tuple(map(int, os.environ['NEXT_VERSION'].removesuffix('-SNAPSHOT').split('.')))
+if next_version <= release:
+    raise SystemExit(
+        f"next development version {os.environ['NEXT_VERSION']} must be newer than "
+        f"release {os.environ['RELEASE_VERSION']}"
+    )
 PY
-}
 
 ensure_no_snapshot_poms() {
   local remaining
@@ -137,7 +75,6 @@ generate_release_notes() {
     | head -n 1 || true)
 
   if [[ -n "$previous_tag" ]]; then
-    echo "Getting closed issues since $previous_tag"
     local previous_date
     previous_date=$(git log -1 --format=%aI "$previous_tag")
     gh issue list --state closed --search "closed:>$previous_date" \
@@ -154,7 +91,6 @@ generate_release_notes() {
 collect_release_artifacts() {
   rm -rf target/release-artifacts
   mkdir -p target/release-artifacts
-
   find . -path './target/release-artifacts' -prune -o \
     -path '*/target/*.jar' -type f \
     ! -name '*-sources.jar' \
@@ -162,33 +98,20 @@ collect_release_artifacts() {
     ! -name 'original-*' \
     -exec cp {} target/release-artifacts/ \;
 
-  for f in target/taxonomy-sbom.json target/taxonomy-sbom.xml target/taxonomy-vex.json; do
-    if [[ -f "$f" ]]; then
-      cp "$f" target/release-artifacts/
+  for file in target/taxonomy-sbom.json target/taxonomy-sbom.xml target/taxonomy-vex.json; do
+    if [[ -f "$file" ]]; then
+      cp "$file" target/release-artifacts/
     else
-      echo "::warning::$f not found"
+      echo "::warning::$file not found"
     fi
   done
-
-  echo "Release artifacts:"
   find target/release-artifacts -maxdepth 1 -type f -print | sort
 }
 
-push_release_commit_to_main() {
+materialize_commit() {
   local commit_sha=$1
-  local temp_branch="release-temp-${RELEASE_VERSION}"
-
-  git push origin ":refs/heads/${temp_branch}" || true
-  git push origin "${commit_sha}:refs/heads/${temp_branch}"
-
-  if gh api "repos/${GITHUB_REPOSITORY}/git/refs/heads/main" \
-      --method PATCH \
-      -f sha="$commit_sha"; then
-    git push origin ":refs/heads/${temp_branch}" || true
-  else
-    git push origin ":refs/heads/${temp_branch}" || true
-    return 1
-  fi
+  git push origin ":refs/heads/${TEMP_BRANCH}" >/dev/null 2>&1 || true
+  git push origin "${commit_sha}:refs/heads/${TEMP_BRANCH}"
 }
 
 create_tag_ref() {
@@ -219,30 +142,40 @@ create_maintenance_branch_if_missing() {
   fi
 }
 
+remote_main_version() {
+  git show origin/main:pom.xml | python3 -c '
+import sys, xml.etree.ElementTree as ET
+root = ET.fromstring(sys.stdin.read())
+ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+value = root.findtext("m:version", namespaces=ns)
+if not value:
+    raise SystemExit("origin/main pom.xml has no project version")
+print(value.strip())
+'
+}
+
 git config user.name 'github-actions[bot]'
 git config user.email 'github-actions[bot]@users.noreply.github.com'
 
-echo "Release version: $RELEASE_VERSION"
-echo "Current version: $CURRENT_VERSION"
-echo "Next development version: $NEXT_VERSION"
-echo "Dry run: $DRY_RUN"
-echo "Skip tests: $SKIP_TESTS"
+git fetch origin main --tags --force
+ORIGINAL_HEAD=$(git rev-parse HEAD)
+ORIGINAL_MAIN=$(git rev-parse origin/main)
+if [[ "$DRY_RUN" != "true" && "$ORIGINAL_HEAD" != "$ORIGINAL_MAIN" ]]; then
+  fail "Checked-out commit $ORIGINAL_HEAD is stale; origin/main is $ORIGINAL_MAIN"
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+  fail "Release checkout is not clean before version preparation"
+fi
 
-verify_metadata "$CURRENT_VERSION" false
-./mvnw -B validate
-
-git fetch origin --tags --force
+CURRENT_VERSION=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
 TAG_EXISTS=false
 if git rev-parse "${TAG_NAME}^{commit}" >/dev/null 2>&1; then
   TAG_EXISTS=true
 fi
-
 RELEASE_STATE=$(gh release view "$TAG_NAME" --json isDraft --jq 'if .isDraft then "draft" else "published" end' 2>/dev/null || true)
 if [[ -n "$RELEASE_STATE" && "$TAG_EXISTS" != "true" ]]; then
-  echo "::error::A GitHub release exists for ${TAG_NAME}, but its tag is missing"
-  exit 1
+  fail "A GitHub release exists for ${TAG_NAME}, but its tag is missing"
 fi
-
 if [[ -n "$RELEASE_STATE" ]]; then
   STATE=$RELEASE_STATE
 elif [[ "$TAG_EXISTS" == "true" ]]; then
@@ -251,18 +184,42 @@ else
   STATE=new
 fi
 
+MAIN_ALREADY_ADVANCED=false
+if [[ "$CURRENT_VERSION" == "$NEXT_VERSION" && "$TAG_EXISTS" == "true" ]]; then
+  MAIN_ALREADY_ADVANCED=true
+  python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
+elif [[ "$CURRENT_VERSION" == "${RELEASE_VERSION}-SNAPSHOT" ]]; then
+  python3 "$VERSION_STATE_HELPER" --mode development \
+    --expected-version "${RELEASE_VERSION}-SNAPSHOT"
+else
+  fail "Current version $CURRENT_VERSION is neither ${RELEASE_VERSION}-SNAPSHOT nor finalized $NEXT_VERSION"
+fi
+
+echo "Release version: $RELEASE_VERSION"
+echo "Current version: $CURRENT_VERSION"
+echo "Next development version: $NEXT_VERSION"
 echo "Release state: $STATE"
+echo "Main already advanced: $MAIN_ALREADY_ADVANCED"
+echo "Dry run: $DRY_RUN"
+
+./mvnw -B validate
 
 if [[ "$STATE" == "new" ]]; then
   ./mvnw -B versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
   python3 "$METADATA_HELPER" "$RELEASE_VERSION" --release
-  verify_metadata "$RELEASE_VERSION" true
+  python3 "$VERSION_STATE_HELPER" --mode release --expected-version "$RELEASE_VERSION"
   ensure_no_snapshot_poms
   git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
+  if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+    git add deploy/helm/taxonomy/Chart.yaml
+  fi
   git commit -m "Release version $RELEASE_VERSION"
+  RELEASE_COMMIT=$(git rev-parse HEAD)
 else
-  git checkout --detach "$TAG_NAME"
-  verify_metadata "$RELEASE_VERSION" true
+  RELEASE_COMMIT=$(git rev-parse "${TAG_NAME}^{commit}")
+  git checkout --detach "$RELEASE_COMMIT"
+  python3 "$VERSION_STATE_HELPER" --mode release \
+    --expected-version "$RELEASE_VERSION" --tag "$TAG_NAME"
 fi
 
 if [[ "$SKIP_TESTS" == "true" ]]; then
@@ -270,21 +227,17 @@ if [[ "$SKIP_TESTS" == "true" ]]; then
 else
   ./mvnw -B clean verify -Pci
 fi
-
 python3 "$VEX_HELPER"
 collect_release_artifacts
-
 generate_release_notes
 
 PUBLISHED_THIS_RUN=false
 if [[ "$DRY_RUN" != "true" && "$STATE" == "new" ]]; then
-  RELEASE_COMMIT=$(git rev-parse HEAD)
-  push_release_commit_to_main "$RELEASE_COMMIT"
+  materialize_commit "$RELEASE_COMMIT"
   create_tag_ref "$RELEASE_COMMIT"
   create_maintenance_branch_if_missing "$RELEASE_COMMIT"
   STATE=tagged
 fi
-
 if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then
   gh release create "$TAG_NAME" \
     --verify-tag \
@@ -293,6 +246,48 @@ if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then
     --notes-file release_notes.md \
     --generate-notes
   STATE=draft
+fi
+
+# Prepare the next snapshot before publishing the release. main therefore remains a
+# development snapshot throughout: it moves once, by fast-forward, from the old
+# snapshot to the next snapshot while the release commit is addressed only by tag.
+if [[ "$MAIN_ALREADY_ADVANCED" == "true" ]]; then
+  git checkout --detach "$ORIGINAL_MAIN"
+  python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
+else
+  git checkout --detach "$RELEASE_COMMIT"
+  ./mvnw -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
+  python3 "$METADATA_HELPER" "$NEXT_VERSION"
+  python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
+  git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
+  if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+    git add deploy/helm/taxonomy/Chart.yaml
+  fi
+  git commit -m "Prepare next development version $NEXT_VERSION"
+  NEXT_COMMIT=$(git rev-parse HEAD)
+
+  if [[ "$DRY_RUN" != "true" ]]; then
+    git fetch origin main --force
+    REMOTE_MAIN=$(git rev-parse origin/main)
+    if [[ "$REMOTE_MAIN" != "$ORIGINAL_MAIN" ]]; then
+      fail "origin/main moved from $ORIGINAL_MAIN to $REMOTE_MAIN during the release; refusing to overwrite it"
+    fi
+    git merge-base --is-ancestor "$ORIGINAL_MAIN" "$NEXT_COMMIT" \
+      || fail "Next-development commit is not a fast-forward of the original main"
+    git push origin "${NEXT_COMMIT}:refs/heads/${TEMP_BRANCH}" --force
+    gh api "repos/${GITHUB_REPOSITORY}/git/refs/heads/main" \
+      --method PATCH \
+      -f sha="$NEXT_COMMIT"
+    git fetch origin main --force
+    if [[ "$(git rev-parse origin/main)" != "$NEXT_COMMIT" ]]; then
+      fail "origin/main did not advance to the prepared development commit"
+    fi
+    if [[ "$(remote_main_version)" != "$NEXT_VERSION" ]]; then
+      fail "origin/main does not expose development version $NEXT_VERSION"
+    fi
+    git push origin ":refs/heads/${TEMP_BRANCH}" || true
+    echo "main advanced atomically from ${RELEASE_VERSION}-SNAPSHOT to $NEXT_VERSION."
+  fi
 fi
 
 if [[ "$DRY_RUN" != "true" && "$STATE" == "draft" ]]; then
@@ -306,10 +301,8 @@ if [[ "$DRY_RUN" != "true" && "$STATE" == "draft" ]]; then
   STATE=published
   PUBLISHED_THIS_RUN=true
 fi
-
 if [[ "$DRY_RUN" != "true" ]]; then
-  IS_DRAFT=$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')
-  test "$IS_DRAFT" = false
+  test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = false
 fi
 
 if [[ "$DRY_RUN" != "true" && "$PUBLISHED_THIS_RUN" == "true" ]]; then
@@ -321,56 +314,6 @@ if [[ "$DRY_RUN" != "true" && "$PUBLISHED_THIS_RUN" == "true" ]]; then
   fi
 fi
 
-./mvnw -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
-python3 "$METADATA_HELPER" "$NEXT_VERSION"
-verify_metadata "$NEXT_VERSION" false
-
-NEXT_BRANCH="release/prepare-next-${NEXT_VERSION}"
-git switch -C "$NEXT_BRANCH"
-git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
-if git diff --cached --quiet; then
-  echo "No next-development version changes to commit"
-else
-  git commit -m "Prepare next development version $NEXT_VERSION"
-fi
-
-if [[ "$DRY_RUN" != "true" ]]; then
-  REMOTE_SHA=$(git ls-remote --heads origin "refs/heads/${NEXT_BRANCH}" | awk '{print $1}')
-  if [[ -n "$REMOTE_SHA" ]]; then
-    git push --force-with-lease="refs/heads/${NEXT_BRANCH}:${REMOTE_SHA}" origin "HEAD:refs/heads/${NEXT_BRANCH}"
-  else
-    git push origin "HEAD:refs/heads/${NEXT_BRANCH}"
-  fi
-
-  cat > /tmp/next-development-pr.md <<EOF
-Automated follow-up after release ${RELEASE_VERSION}.
-
-## Changes
-- Bump all Maven modules to ${NEXT_VERSION}
-- Update CITATION.cff to ${NEXT_VERSION}
-- Update CITATION.md to ${NEXT_VERSION}
-- Update .zenodo.json to ${NEXT_VERSION}
-- Update codemeta.json to ${NEXT_VERSION}
-- Remove release-only date metadata from the development snapshot
-
-## Release notes
-
-EOF
-  cat release_notes.md >> /tmp/next-development-pr.md
-
-  EXISTING_PR=$(gh pr list --base main --head "$NEXT_BRANCH" \
-    --state open --json number --jq '.[0].number // empty')
-  if [[ -n "$EXISTING_PR" ]]; then
-    gh pr edit "$EXISTING_PR" \
-      --title "Prepare next development version ${NEXT_VERSION}" \
-      --body-file /tmp/next-development-pr.md
-  else
-    gh pr create \
-      --title "Prepare next development version ${NEXT_VERSION}" \
-      --body-file /tmp/next-development-pr.md \
-      --base main \
-      --head "$NEXT_BRANCH"
-  fi
-else
-  echo "Dry run completed; no remote refs, release, deploy hook or PR were changed."
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "Dry run completed; no remote refs, release or deploy hook were changed."
 fi
