@@ -401,6 +401,15 @@ export async function runRoleStateFlow({
   await runAxe('analysis-success');
   await saveState('analysis-success');
 
+  await page.locator('#taskNextAction').click();
+  await page.waitForFunction(() => {
+    const nextAction = document.getElementById('taskNextAction');
+    return document.querySelector('#taskStageContinue[data-state="current"]')
+      && nextAction?.dataset.action === 'open-architecture'
+      && !nextAction.disabled;
+  });
+  passed('review action advances explicit continuation stage');
+
   await page.locator('#businessText').fill(
     'Provide resilient hospital communications with an emergency notification capability.');
   await page.locator('#businessText.stale-results').waitFor({ state: 'visible', timeout: 10_000 });
