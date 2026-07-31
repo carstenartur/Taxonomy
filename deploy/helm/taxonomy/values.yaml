@@ -48,7 +48,7 @@ service:
   targetPort: 8080
   annotations: {}
 
- ingress:
+ingress:
   enabled: false
   className: ""
   annotations: {}
