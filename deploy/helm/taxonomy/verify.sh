@@ -33,6 +33,7 @@ expect_failure() {
 helm lint "${CHART_DIR}" "${COMMON_VALUES[@]}"
 helm template taxonomy "${CHART_DIR}" \
   "${COMMON_VALUES[@]}" \
+  --namespace taxonomy \
   --set serviceMonitor.enabled=true \
   >"${OUTPUT_FILE}"
 
@@ -40,6 +41,7 @@ for required in \
   'kind: Deployment' \
   'kind: NetworkPolicy' \
   'kind: ServiceMonitor' \
+  'namespace: taxonomy' \
   'automountServiceAccountToken: false' \
   'runAsNonRoot: true' \
   'runAsUser: 10001' \
@@ -53,6 +55,14 @@ for required in \
     exit 1
   fi
 done
+
+PRERELEASE_OUTPUT="${TMP_DIR}/prerelease.yaml"
+helm template taxonomy "${CHART_DIR}" \
+  --namespace taxonomy \
+  --set image.tag=v1.2.3-rc.1 \
+  --set existingSecret=taxonomy-secrets \
+  >"${PRERELEASE_OUTPUT}"
+grep -Fq 'image: "ghcr.io/carstenartur/taxonomy:v1.2.3-rc.1"' "${PRERELEASE_OUTPUT}"
 
 PERSISTENCE_OUTPUT="${TMP_DIR}/persistence.yaml"
 helm template taxonomy "${CHART_DIR}" \
@@ -80,6 +90,9 @@ expect_failure 'mutable latest image tag' \
 expect_failure 'arbitrary mutable image tag' \
   helm template taxonomy "${CHART_DIR}" \
     --set image.tag=stable --set existingSecret=taxonomy-secrets
+expect_failure 'Docker-invalid SemVer build metadata' \
+  helm template taxonomy "${CHART_DIR}" \
+    --set image.tag=v1.2.3+metadata --set existingSecret=taxonomy-secrets
 expect_failure 'simultaneous image tag and digest' \
   helm template taxonomy "${CHART_DIR}" \
     "${COMMON_VALUES[@]}" \
