@@ -64,7 +64,7 @@ Create the Secret separately before importing the rendered YAML. Never insert re
 
 ## OpenShift restricted security context
 
-OpenShift commonly assigns an arbitrary non-root UID through the `restricted-v2` Security Context Constraint. The image mirrors owner permissions to group `0`, and the supplied profile removes fixed UID/GID/fsGroup values while retaining `runAsNonRoot`, seccomp, dropped capabilities, no privilege escalation and a read-only root filesystem.
+OpenShift commonly assigns an arbitrary non-root UID through the `restricted-v2` Security Context Constraint. The image assigns application paths to group `0` for read access while granting group write only to `/app/data`; the supplied profile removes fixed UID/GID/fsGroup values while retaining `runAsNonRoot`, seccomp, dropped capabilities, no privilege escalation and a read-only root filesystem.
 
 Install with the OpenShift profile:
 
