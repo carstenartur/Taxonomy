@@ -322,15 +322,20 @@ export async function runRoleStateFlow({
   });
   await page.locator('#analyzeBtn').focus();
   await page.keyboard.press('Enter');
+  // Treat the analysis as complete only when model state, rendered scores and
+  // the task hierarchy agree. A separate short follow-up wait raced Firefox on
+  // the large taxonomy DOM and could fail even though the captured page had
+  // already reached the correct Review state.
   await page.waitForFunction(() => {
     const scores = window.TaxonomyState?.currentScores;
+    const reviewStage = document.querySelector('#taskStageReview[data-state="current"]');
+    const nextAction = document.getElementById('taskNextAction');
     return scores && Object.keys(scores).length > 0
-      && document.querySelectorAll('.tax-pct').length > 0;
+      && document.querySelectorAll('.tax-pct').length > 0
+      && reviewStage
+      && nextAction
+      && !nextAction.disabled;
   }, null, { timeout: 120_000 });
-  await page.waitForFunction(() =>
-    document.querySelector('#taskStageReview[data-state="current"]')
-      && !document.getElementById('taskNextAction')?.disabled,
-  null, { timeout: 10_000 });
   const statusEvents = await page.evaluate(() => {
     window.__taxonomyQaAnalysisStatusObserver?.disconnect();
     return window.__taxonomyQaAnalysisStatusEvents || [];
