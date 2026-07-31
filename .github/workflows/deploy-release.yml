@@ -91,10 +91,11 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Set up Helm 3.19.0
-        uses: Azure/setup-helm@7a9c28ba04c99ae42726a8472c6eba25beab7bee # v5.0.1
-        with:
-          version: v3.19.0
+      - name: Install verified Helm 3.21.0
+        env:
+          HELM_VERSION: v3.21.0
+        shell: bash
+        run: bash .github/scripts/install-helm.sh
 
       - name: Cache Maven dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
