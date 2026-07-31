@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Locks the generated task-hierarchy DOM to its ergonomic CSS contract. */
+/** Locks the generated task-hierarchy DOM to its ergonomic CSS and progression contract. */
 class TaskHierarchyStyleContractTest {
 
     @Test
@@ -51,6 +51,18 @@ class TaskHierarchyStyleContractTest {
         assertThat(source)
                 .contains("nextAction.className = 'btn btn-sm btn-danger'")
                 .doesNotContain("nextAction.className = 'btn btn-sm btn-outline-danger'");
+    }
+
+    @Test
+    void reviewingResultsAdvancesToARealContinuationStage() throws Exception {
+        String source = resource("/static/js/shared/taxonomy-onboarding.js");
+
+        assertThat(source)
+                .contains("reviewAcknowledged = true")
+                .contains("setTaskState(3, 'current')")
+                .contains("nextAction.textContent = t('analysis.task.next.continue')")
+                .contains("nextAction.dataset.action = 'open-architecture'")
+                .contains("window.navigateToPage('architecture')");
     }
 
     private static String resource(String path) throws IOException {
