@@ -135,6 +135,14 @@ jobs:
         if: steps.release_parameters.outputs.dry_run != 'true'
         run: git checkout --detach "v${{ steps.release_parameters.outputs.release_version }}"
 
+      - name: Describe immutable release source
+        id: release_source
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        shell: bash
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "created=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Log in to GitHub Container Registry
         if: steps.release_parameters.outputs.dry_run != 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -154,10 +162,10 @@ jobs:
             org.opencontainers.image.title=Taxonomy Architecture Analyzer
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.release_parameters.outputs.release_version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ steps.release_source.outputs.sha }}
           build-args: |
-            BUILD_DATE=${{ github.event.repository.updated_at }}
-            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.release_source.outputs.created }}
+            VCS_REF=${{ steps.release_source.outputs.sha }}
             VERSION=${{ steps.release_parameters.outputs.release_version }}
 
       - name: Verify final main snapshot with canonical CI
