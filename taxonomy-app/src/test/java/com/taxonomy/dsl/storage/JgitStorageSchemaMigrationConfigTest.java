@@ -37,9 +37,20 @@ import org.junit.jupiter.api.Test;
 class JgitStorageSchemaMigrationConfigTest {
 
     private static final List<String> FULL_CORE_HISTORY = List.of(
-            "0.1.4", "0.1.5", "0.1.14", "0.1.14.1", "0.1.14.2");
+            "0.1.4",
+            "0.1.5",
+            "0.1.14",
+            "0.1.14.1",
+            "0.1.14.2",
+            "0.1.17",
+            "0.1.18");
     private static final List<String> ADOPTED_CORE_HISTORY = List.of(
-            "0.1.5", "0.1.14", "0.1.14.1", "0.1.14.2");
+            "0.1.5",
+            "0.1.14",
+            "0.1.14.1",
+            "0.1.14.2",
+            "0.1.17",
+            "0.1.18");
 
     @Test
     void installsCoreSchemaIntoEmptyDatabase() throws Exception {
@@ -50,9 +61,12 @@ class JgitStorageSchemaMigrationConfigTest {
         assertTrue(tableExists(dataSource, "git_packs"));
         assertTrue(tableExists(dataSource, "git_reflog"));
         assertTrue(tableExists(dataSource, "git_repository_lock"));
+        assertTrue(tableExists(dataSource, "git_repository_lifecycle"));
         assertTrue(tableExists(dataSource, "git_pack_chunks"));
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_TOKEN"));
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_LEASE_UNTIL"));
+        assertTrue(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
+        assertTrue(columns(dataSource, "git_packs").contains("LAST_MODIFIED"));
         assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
         assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
         assertVersionPrefix(
@@ -69,8 +83,17 @@ class JgitStorageSchemaMigrationConfigTest {
 
         assertTrue(tableExists(dataSource, "application_marker"));
         assertTrue(tableExists(dataSource, "git_packs"));
+        assertTrue(tableExists(dataSource, "git_repository_lifecycle"));
         assertVersionPrefix(
-                List.of("0", "0.1.4", "0.1.5", "0.1.14", "0.1.14.1", "0.1.14.2"),
+                List.of(
+                        "0",
+                        "0.1.4",
+                        "0.1.5",
+                        "0.1.14",
+                        "0.1.14.1",
+                        "0.1.14.2",
+                        "0.1.17",
+                        "0.1.18"),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
     }
 
@@ -111,7 +134,9 @@ class JgitStorageSchemaMigrationConfigTest {
         assertTrue(packColumns.contains("COMMITTED_AT"));
         assertTrue(packColumns.contains("WRITE_TOKEN"));
         assertTrue(packColumns.contains("WRITE_LEASE_UNTIL"));
+        assertTrue(packColumns.contains("PACK_SOURCE"));
         assertTrue(tableExists(dataSource, "git_repository_lock"));
+        assertTrue(tableExists(dataSource, "git_repository_lifecycle"));
         assertTrue(tableExists(dataSource, "git_pack_chunks"));
         assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
         assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
@@ -183,6 +208,8 @@ class JgitStorageSchemaMigrationConfigTest {
         assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
         assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_LEASE_UNTIL"));
+        assertTrue(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
+        assertTrue(tableExists(dataSource, "git_repository_lifecycle"));
         assertArrayEquals(original, packData(dataSource, "legacy", "pack-v1", "reftable"));
         assertEquals(refName, reflogRefName(dataSource));
 
@@ -201,11 +228,31 @@ class JgitStorageSchemaMigrationConfigTest {
 
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_TOKEN"));
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_LEASE_UNTIL"));
+        assertTrue(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
         assertTrue(tableExists(dataSource, "git_repository_lock"));
+        assertTrue(tableExists(dataSource, "git_repository_lifecycle"));
         assertTrue(tableExists(dataSource, "git_pack_chunks"));
         assertArrayEquals(
                 original,
                 packData(dataSource, "managed", "pack-existing", "pack"));
+        assertVersionPrefix(
+                FULL_CORE_HISTORY,
+                successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
+    }
+
+    @Test
+    void upgradesManagedPrePackDescriptionSchemaAndPreservesPackPayload() throws Exception {
+        DataSource dataSource = dataSource("managed-017");
+        flyway(dataSource, "0.1.17").migrate();
+        byte[] original = new byte[] {21, 22, 23, 24};
+        insertVersionedPack(dataSource, "managed", "pack-017", "pack", original);
+        assertFalse(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
+
+        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
+
+        assertTrue(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
+        assertTrue(tableExists(dataSource, "git_repository_lifecycle"));
+        assertArrayEquals(original, packData(dataSource, "managed", "pack-017", "pack"));
         assertVersionPrefix(
                 FULL_CORE_HISTORY,
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
@@ -281,6 +328,21 @@ class JgitStorageSchemaMigrationConfigTest {
     }
 
     @Test
+    void establishesHistoryForExactUnversionedPrePackDescriptionCoreSchema() throws Exception {
+        DataSource dataSource = dataSource("unversioned-017");
+        flyway(dataSource, "0.1.17").migrate();
+        dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+
+        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
+
+        assertVersionPrefix(
+                List.of("0.1.14.2", "0.1.17", "0.1.18"),
+                successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
+        assertTrue(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
+        assertTrue(tableExists(dataSource, "git_repository_lifecycle"));
+    }
+
+    @Test
     void establishesHistoryForExactUnversionedCurrentCoreSchema() throws Exception {
         DataSource dataSource = dataSource("unversioned-current");
         flyway(dataSource).migrate();
@@ -289,9 +351,11 @@ class JgitStorageSchemaMigrationConfigTest {
         JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
 
         assertVersionPrefix(
-                List.of("0.1.14.2"),
+                List.of("0.1.18"),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_LEASE_UNTIL"));
+        assertTrue(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
+        assertTrue(tableExists(dataSource, "git_repository_lifecycle"));
     }
 
     private static DataSource dataSource(String purpose) {
