@@ -32,9 +32,13 @@ def main() -> int:
         require(script, needle, RELEASE_SCRIPT, failures)
 
     for needle in (
-        "resume_staged_release:",
+        "next_version_increment:",
+        "type: choice",
+        "INPUT_NEXT_VERSION_INCREMENT:",
         "run: python3 .github/scripts/resolve-release-parameters.py",
         "python3 .github/scripts/test-resolve-release-parameters.py",
+        "ref: main",
+        "SOURCE_BRANCH: main",
         "if: steps.release_parameters.outputs.resume_staged_release != 'true'",
         "- name: Validate staged release for resume",
         "if: steps.release_parameters.outputs.resume_staged_release == 'true'",
@@ -56,6 +60,20 @@ def main() -> int:
         "Render deployment triggered after complete release publication.",
     ):
         require(workflow, needle, RELEASE_WORKFLOW, failures)
+
+    for forbidden in (
+        "      release_version:",
+        "      next_development_version:",
+        "      resume_staged_release:",
+        "INPUT_RELEASE_VERSION:",
+        "INPUT_NEXT_DEVELOPMENT_VERSION:",
+        "INPUT_RESUME_STAGED_RELEASE:",
+    ):
+        if forbidden in workflow:
+            failures.append(
+                f"{RELEASE_WORKFLOW.relative_to(ROOT)} still exposes or forwards "
+                f"free-form release input {forbidden!r}"
+            )
 
     require(
         ci_workflow,
@@ -146,9 +164,9 @@ def main() -> int:
         return 1
 
     print(
-        "Release delivery contract is atomic and resumable: immutable sources are "
-        "fetched explicitly, the exact main snapshot is verified, and publication "
-        "remains the final gate."
+        "Release delivery contract is atomic, repository-derived and resumable: "
+        "immutable sources are fetched explicitly, the exact main snapshot is "
+        "verified, and publication remains the final gate."
     )
     return 0
 
