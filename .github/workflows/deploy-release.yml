@@ -8,15 +8,15 @@ on:
       - '.github/release-request.json'
   workflow_dispatch:
     inputs:
-      release_version:
-        description: 'Release version without leading v, for example 1.2.3. Must match the current SNAPSHOT base or the staged tag when resuming.'
+      next_version_increment:
+        description: 'Select how the development version advances after this release.'
         required: true
-        type: string
-      next_development_version:
-        description: 'Next development version, for example 1.2.4-SNAPSHOT. Required when resuming; otherwise leave empty to increment patch.'
-        required: false
-        type: string
-        default: ''
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
       skip_tests:
         description: 'Skip tests in a dry run only. Published releases always run the canonical verification suite.'
         required: false
@@ -24,11 +24,6 @@ on:
         default: false
       dry_run:
         description: 'Validate and build without changing remote refs, releases, images or deploy hooks.'
-        required: false
-        type: boolean
-        default: false
-      resume_staged_release:
-        description: 'Resume artifacts, image, final CI and publication for an existing staged tag and draft release.'
         required: false
         type: boolean
         default: false
@@ -49,9 +44,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - name: Checkout repository
+      - name: Checkout authoritative main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ github.token }}
 
@@ -59,11 +55,9 @@ jobs:
         id: release_parameters
         env:
           EVENT_NAME: ${{ github.event_name }}
-          INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
-          INPUT_NEXT_DEVELOPMENT_VERSION: ${{ inputs.next_development_version }}
+          INPUT_NEXT_VERSION_INCREMENT: ${{ inputs.next_version_increment }}
           INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
-          INPUT_RESUME_STAGED_RELEASE: ${{ inputs.resume_staged_release }}
         run: python3 .github/scripts/resolve-release-parameters.py
 
       - name: Set up JDK 21
@@ -124,7 +118,7 @@ jobs:
           SKIP_TESTS: ${{ steps.release_parameters.outputs.skip_tests }}
           DRY_RUN: ${{ steps.release_parameters.outputs.dry_run }}
           DEFER_RELEASE_PUBLICATION: 'true'
-          SOURCE_BRANCH: ${{ github.ref_name }}
+          SOURCE_BRANCH: main
           METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
           VERSION_STATE_HELPER: ${{ runner.temp }}/check-version-state.py
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
