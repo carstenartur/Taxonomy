@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for repository-derived release workflow parameters."""
+"""Regression tests for freely selectable release workflow parameters."""
 
 from __future__ import annotations
 
@@ -35,17 +35,14 @@ def write_pom(root: Path, version: str) -> None:
 
 
 class ReleaseParameterTest(unittest.TestCase):
-    def test_dispatch_derives_patch_versions_from_repository_state(self) -> None:
+    def test_dispatch_uses_exact_next_development_version(self) -> None:
         parameters = MODULE.resolve_parameters(
             "workflow_dispatch",
             {
                 "INPUT_NEXT_VERSION_INCREMENT": "patch",
+                "INPUT_NEXT_DEVELOPMENT_VERSION": " 2.0.0-SNAPSHOT ",
                 "INPUT_SKIP_TESTS": "false",
                 "INPUT_DRY_RUN": "false",
-                # Legacy values are deliberately ignored: the public workflow no
-                # longer accepts version strings from a dispatch payload.
-                "INPUT_RELEASE_VERSION": "9.9.9 ",
-                "INPUT_NEXT_DEVELOPMENT_VERSION": "9.9.10-SNAPSHOT ",
             },
             current_version="1.2.9-SNAPSHOT",
         )
@@ -53,7 +50,7 @@ class ReleaseParameterTest(unittest.TestCase):
         self.assertEqual(
             {
                 "release_version": "1.2.9",
-                "next_development_version": "1.2.10-SNAPSHOT",
+                "next_development_version": "2.0.0-SNAPSHOT",
                 "skip_tests": "false",
                 "dry_run": "false",
                 "resume_staged_release": "false",
@@ -61,15 +58,45 @@ class ReleaseParameterTest(unittest.TestCase):
             parameters,
         )
 
-    def test_dispatch_supports_minor_and_major_choices(self) -> None:
+    def test_exact_next_version_may_skip_multiple_versions(self) -> None:
+        parameters = MODULE.resolve_parameters(
+            "workflow_dispatch",
+            {
+                "INPUT_NEXT_VERSION_INCREMENT": "minor",
+                "INPUT_NEXT_DEVELOPMENT_VERSION": "3.7.4-SNAPSHOT",
+            },
+            current_version="1.2.9-SNAPSHOT",
+        )
+        self.assertEqual(
+            "3.7.4-SNAPSHOT", parameters["next_development_version"]
+        )
+
+    def test_dispatch_derives_patch_version_when_exact_value_is_empty(self) -> None:
+        parameters = MODULE.resolve_parameters(
+            "workflow_dispatch",
+            {
+                "INPUT_NEXT_VERSION_INCREMENT": "patch",
+                "INPUT_NEXT_DEVELOPMENT_VERSION": "   ",
+            },
+            current_version="1.2.9-SNAPSHOT",
+        )
+        self.assertEqual("1.2.10-SNAPSHOT", parameters["next_development_version"])
+
+    def test_dispatch_fallback_supports_minor_and_major_choices(self) -> None:
         minor = MODULE.resolve_parameters(
             "workflow_dispatch",
-            {"INPUT_NEXT_VERSION_INCREMENT": "minor"},
+            {
+                "INPUT_NEXT_VERSION_INCREMENT": "minor",
+                "INPUT_NEXT_DEVELOPMENT_VERSION": "",
+            },
             current_version="1.2.9-SNAPSHOT",
         )
         major = MODULE.resolve_parameters(
             "workflow_dispatch",
-            {"INPUT_NEXT_VERSION_INCREMENT": "major"},
+            {
+                "INPUT_NEXT_VERSION_INCREMENT": "major",
+                "INPUT_NEXT_DEVELOPMENT_VERSION": "",
+            },
             current_version="1.2.9-SNAPSHOT",
         )
 
@@ -137,13 +164,27 @@ class ReleaseParameterTest(unittest.TestCase):
                 },
             )
 
-    def test_dispatch_rejects_invalid_increment(self) -> None:
+    def test_dispatch_rejects_invalid_increment_when_fallback_is_used(self) -> None:
         with self.assertRaisesRegex(ValueError, "patch, minor or major"):
             MODULE.resolve_parameters(
                 "workflow_dispatch",
-                {"INPUT_NEXT_VERSION_INCREMENT": "custom"},
+                {
+                    "INPUT_NEXT_VERSION_INCREMENT": "custom",
+                    "INPUT_NEXT_DEVELOPMENT_VERSION": "",
+                },
                 current_version="1.2.9-SNAPSHOT",
             )
+
+    def test_exact_value_overrides_irrelevant_increment(self) -> None:
+        parameters = MODULE.resolve_parameters(
+            "workflow_dispatch",
+            {
+                "INPUT_NEXT_VERSION_INCREMENT": "not-used",
+                "INPUT_NEXT_DEVELOPMENT_VERSION": "2.0.0-SNAPSHOT",
+            },
+            current_version="1.2.9-SNAPSHOT",
+        )
+        self.assertEqual("2.0.0-SNAPSHOT", parameters["next_development_version"])
 
     def test_dispatch_rejects_non_snapshot_repository_version(self) -> None:
         with self.assertRaisesRegex(ValueError, "must use X.Y.Z-SNAPSHOT"):
@@ -151,6 +192,14 @@ class ReleaseParameterTest(unittest.TestCase):
                 "workflow_dispatch",
                 {"INPUT_NEXT_VERSION_INCREMENT": "patch"},
                 current_version="1.2.9",
+            )
+
+    def test_dispatch_rejects_next_version_not_newer_than_release(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be newer"):
+            MODULE.resolve_parameters(
+                "workflow_dispatch",
+                {"INPUT_NEXT_DEVELOPMENT_VERSION": "1.2.9-SNAPSHOT"},
+                current_version="1.2.9-SNAPSHOT",
             )
 
     def test_push_rejects_next_version_not_newer_than_release(self) -> None:
@@ -168,14 +217,15 @@ class ReleaseParameterTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported release event"):
             MODULE.resolve_parameters("schedule", {})
 
-    def test_cli_derives_versions_and_writes_stable_outputs(self) -> None:
+    def test_cli_preserves_exact_major_transition_and_writes_stable_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_pom(root, "1.2.9-SNAPSHOT")
             output_path = root / "github-output"
             environment = os.environ | {
                 "EVENT_NAME": "workflow_dispatch",
-                "INPUT_NEXT_VERSION_INCREMENT": "minor",
+                "INPUT_NEXT_VERSION_INCREMENT": "patch",
+                "INPUT_NEXT_DEVELOPMENT_VERSION": " 2.0.0-SNAPSHOT ",
                 "INPUT_SKIP_TESTS": "false",
                 "INPUT_DRY_RUN": "false",
                 "GITHUB_OUTPUT": str(output_path),
@@ -193,7 +243,7 @@ class ReleaseParameterTest(unittest.TestCase):
             self.assertEqual(
                 [
                     "release_version=1.2.9",
-                    "next_development_version=1.3.0-SNAPSHOT",
+                    "next_development_version=2.0.0-SNAPSHOT",
                     "skip_tests=false",
                     "dry_run=false",
                     "resume_staged_release=false",
@@ -211,7 +261,7 @@ class ReleaseParameterTest(unittest.TestCase):
                         ("resume_staged_release", "true"),
                         ("dry_run", "false"),
                         ("skip_tests", "true"),
-                        ("next_development_version", "1.3.0-SNAPSHOT"),
+                        ("next_development_version", "2.0.0-SNAPSHOT"),
                         ("release_version", "1.2.9"),
                     ]
                 ),
@@ -219,7 +269,7 @@ class ReleaseParameterTest(unittest.TestCase):
             self.assertEqual(
                 [
                     "release_version=1.2.9",
-                    "next_development_version=1.3.0-SNAPSHOT",
+                    "next_development_version=2.0.0-SNAPSHOT",
                     "skip_tests=true",
                     "dry_run=false",
                     "resume_staged_release=true",
@@ -253,6 +303,7 @@ class ReleaseParameterTest(unittest.TestCase):
             environment = os.environ | {
                 "EVENT_NAME": "workflow_dispatch",
                 "INPUT_NEXT_VERSION_INCREMENT": "patch",
+                "INPUT_NEXT_DEVELOPMENT_VERSION": "",
             }
             environment.pop("GITHUB_OUTPUT", None)
             result = subprocess.run(
