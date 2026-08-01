@@ -32,8 +32,11 @@ def main() -> int:
         require(script, needle, RELEASE_SCRIPT, failures)
 
     for needle in (
+        "next_development_version:",
+        "Exact next development version",
         "next_version_increment:",
         "type: choice",
+        "INPUT_NEXT_DEVELOPMENT_VERSION:",
         "INPUT_NEXT_VERSION_INCREMENT:",
         "run: python3 .github/scripts/resolve-release-parameters.py",
         "python3 .github/scripts/test-resolve-release-parameters.py",
@@ -53,7 +56,7 @@ def main() -> int:
         "- name: Publish complete release and trigger deployment",
         "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
         '--commit "$EXPECTED_MAIN_SHA"',
-        'run_sha=$(gh run view "$run_id" --json headSha --jq \'.headSha\')',
+        "run_sha=$(gh run view \"$run_id\" --json headSha --jq '.headSha')",
         'docker buildx imagetools inspect "$image"',
         'gh release edit "$tag" --draft=false --latest',
         "Draft release is missing required Helm asset",
@@ -63,16 +66,14 @@ def main() -> int:
 
     for forbidden in (
         "      release_version:",
-        "      next_development_version:",
         "      resume_staged_release:",
         "INPUT_RELEASE_VERSION:",
-        "INPUT_NEXT_DEVELOPMENT_VERSION:",
         "INPUT_RESUME_STAGED_RELEASE:",
     ):
         if forbidden in workflow:
             failures.append(
                 f"{RELEASE_WORKFLOW.relative_to(ROOT)} still exposes or forwards "
-                f"free-form release input {forbidden!r}"
+                f"unsupported release input {forbidden!r}"
             )
 
     require(
@@ -123,7 +124,7 @@ def main() -> int:
             'git fetch origin "refs/tags/${tag}:refs/tags/${tag}"',
             'git merge-base --is-ancestor "$tag" origin/main',
             '--mode release --expected-version "$RELEASE_VERSION" --tag "$tag"',
-            "--mode development --expected-version \"$NEXT_VERSION_INPUT\"",
+            '--mode development --expected-version "$NEXT_VERSION_INPUT"',
             'if [[ "$is_draft" != "true" ]]; then',
         ):
             if needle not in resume_block:
@@ -164,7 +165,8 @@ def main() -> int:
         return 1
 
     print(
-        "Release delivery contract is atomic, repository-derived and resumable: "
+        "Release delivery contract is atomic, freely versionable and resumable: "
+        "an exact next development version may override the convenience increment, "
         "immutable sources are fetched explicitly, the exact main snapshot is "
         "verified, and publication remains the final gate."
     )
