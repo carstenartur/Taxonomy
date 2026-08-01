@@ -24,7 +24,7 @@ _OUTPUT_KEYS = (
 
 
 def normalize_version(value: object, field: str, *, optional: bool = False) -> str:
-    """Normalize a version stored in a reviewed release request."""
+    """Return a canonical version while rejecting malformed content."""
     if value is None and optional:
         return ""
     if not isinstance(value, str):
@@ -33,8 +33,16 @@ def normalize_version(value: object, field: str, *, optional: bool = False) -> s
     normalized = value.strip()
     if optional and not normalized:
         return ""
-    pattern = _DEVELOPMENT_VERSION if field == "next_development_version" else _RELEASE_VERSION
-    expected = "X.Y.Z-SNAPSHOT" if field == "next_development_version" else "X.Y.Z"
+    pattern = (
+        _DEVELOPMENT_VERSION
+        if field == "next_development_version"
+        else _RELEASE_VERSION
+    )
+    expected = (
+        "X.Y.Z-SNAPSHOT"
+        if field == "next_development_version"
+        else "X.Y.Z"
+    )
     if not pattern.fullmatch(normalized):
         raise ValueError(f"{field} must use {expected}")
     return normalized
@@ -59,21 +67,17 @@ def repository_version(root: Path) -> str:
     return value.strip()
 
 
-def derive_release_versions(current_version: str, increment: str) -> tuple[str, str]:
-    """Derive release and next SNAPSHOT from a repository development version."""
-    if not _DEVELOPMENT_VERSION.fullmatch(current_version):
-        raise ValueError(
-            f"current project version {current_version!r} must use X.Y.Z-SNAPSHOT"
-        )
+def version_tuple(version: str) -> tuple[int, int, int]:
+    return tuple(map(int, version.removesuffix("-SNAPSHOT").split(".")))
 
+
+def default_next_version(release_version: str, increment: str) -> str:
+    """Calculate a conventional next version when no exact version was supplied."""
     normalized_increment = increment.strip().lower()
     if normalized_increment not in _INCREMENT_VALUES:
-        raise ValueError(
-            "next_version_increment must be patch, minor or major"
-        )
+        raise ValueError("next_version_increment must be patch, minor or major")
 
-    release_version = current_version.removesuffix("-SNAPSHOT")
-    major, minor, patch = map(int, release_version.split("."))
+    major, minor, patch = version_tuple(release_version)
     if normalized_increment == "patch":
         patch += 1
     elif normalized_increment == "minor":
@@ -83,7 +87,34 @@ def derive_release_versions(current_version: str, increment: str) -> tuple[str, 
         major += 1
         minor = 0
         patch = 0
-    next_version = f"{major}.{minor}.{patch}-SNAPSHOT"
+    return f"{major}.{minor}.{patch}-SNAPSHOT"
+
+
+def derive_release_versions(
+    current_version: str,
+    increment: str,
+    exact_next_version: object = "",
+) -> tuple[str, str]:
+    """Derive the release and preserve an optional exact next development version."""
+    if not _DEVELOPMENT_VERSION.fullmatch(current_version):
+        raise ValueError(
+            f"current project version {current_version!r} must use X.Y.Z-SNAPSHOT"
+        )
+
+    release_version = current_version.removesuffix("-SNAPSHOT")
+    next_version = normalize_version(
+        exact_next_version,
+        "next_development_version",
+        optional=True,
+    )
+    if not next_version:
+        next_version = default_next_version(release_version, increment)
+
+    if version_tuple(next_version) <= version_tuple(release_version):
+        raise ValueError(
+            f"next development version {next_version} must be newer than "
+            f"release {release_version}"
+        )
     return release_version, next_version
 
 
@@ -115,6 +146,7 @@ def resolve_parameters(
         release_version, next_version = derive_release_versions(
             current_version,
             environment.get("INPUT_NEXT_VERSION_INCREMENT", "patch") or "patch",
+            environment.get("INPUT_NEXT_DEVELOPMENT_VERSION", ""),
         )
         skip_value = environment.get("INPUT_SKIP_TESTS", "false") or "false"
         dry_run_value = environment.get("INPUT_DRY_RUN", "false") or "false"
@@ -132,22 +164,15 @@ def resolve_parameters(
         ),
     }
 
-    if next_version:
-        release_tuple = tuple(map(int, release_version.split(".")))
-        next_tuple = tuple(
-            map(int, next_version.removesuffix("-SNAPSHOT").split("."))
+    if next_version and version_tuple(next_version) <= version_tuple(release_version):
+        raise ValueError(
+            f"next development version {next_version} must be newer than "
+            f"release {release_version}"
         )
-        if next_tuple <= release_tuple:
-            raise ValueError(
-                f"next development version {next_version} must be newer than "
-                f"release {release_version}"
-            )
 
     if parameters["resume_staged_release"] == "true":
         if parameters["dry_run"] == "true":
-            raise ValueError(
-                "resume_staged_release cannot be combined with dry_run"
-            )
+            raise ValueError("resume_staged_release cannot be combined with dry_run")
         if not parameters["next_development_version"]:
             raise ValueError(
                 "next_development_version is required when "
