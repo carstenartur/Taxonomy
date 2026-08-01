@@ -23,10 +23,32 @@ class AdminHealthStatusContrastContractTest {
                 .contains("#healthAiBadge.text-warning")
                 .contains("#healthEmbeddingBadge.text-warning")
                 .contains("#healthMemoryBadge.text-warning")
-                .contains("color: #664d03 !important;")
-                .contains("body.dark-mode #healthOverallBadge.text-warning")
-                .contains("color: #ffda6a !important;")
-                .contains("color: CanvasText !important;");
+                .contains("""
+                        #healthOverallBadge.text-warning,
+                        #healthAiBadge.text-warning,
+                        #healthEmbeddingBadge.text-warning,
+                        #healthMemoryBadge.text-warning {
+                            color: #664d03 !important;
+                        }
+                        """.stripIndent())
+                .contains("""
+                        [data-bs-theme="dark"] #healthOverallBadge.text-warning,
+                        [data-bs-theme="dark"] #healthAiBadge.text-warning,
+                        [data-bs-theme="dark"] #healthEmbeddingBadge.text-warning,
+                        [data-bs-theme="dark"] #healthMemoryBadge.text-warning {
+                            color: #ffda6a !important;
+                        }
+                        """.stripIndent())
+                .contains("""
+                        @media (forced-colors: active) {
+                            #healthOverallBadge.text-warning,
+                            #healthAiBadge.text-warning,
+                            #healthEmbeddingBadge.text-warning,
+                            #healthMemoryBadge.text-warning {
+                                color: CanvasText !important;
+                            }
+                        }
+                        """.stripIndent());
 
         assertThat(contrastRatio("#664d03", "#ffffff"))
                 .isGreaterThanOrEqualTo(WCAG_AA_NORMAL_TEXT);

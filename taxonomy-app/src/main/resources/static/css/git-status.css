@@ -470,10 +470,10 @@ body.dark-mode .restore-preview {
     color: #664d03 !important;
 }
 
-body.dark-mode #healthOverallBadge.text-warning,
-body.dark-mode #healthAiBadge.text-warning,
-body.dark-mode #healthEmbeddingBadge.text-warning,
-body.dark-mode #healthMemoryBadge.text-warning {
+[data-bs-theme="dark"] #healthOverallBadge.text-warning,
+[data-bs-theme="dark"] #healthAiBadge.text-warning,
+[data-bs-theme="dark"] #healthEmbeddingBadge.text-warning,
+[data-bs-theme="dark"] #healthMemoryBadge.text-warning {
     color: #ffda6a !important;
 }
 
