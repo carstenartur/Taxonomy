@@ -23,6 +23,9 @@ def main() -> int:
 
     for needle in (
         "DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}",
+        "trim_surrounding_whitespace() {",
+        'RELEASE_VERSION=$(trim_surrounding_whitespace "$RELEASE_VERSION")',
+        'NEXT_VERSION_INPUT=$(trim_surrounding_whitespace "$NEXT_VERSION_INPUT")',
         'if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then',
         "remains a draft until downstream artifacts and final CI succeed",
         'test "$RELEASE_IS_DRAFT" = true',
@@ -38,7 +41,7 @@ def main() -> int:
         "- name: Publish complete release and trigger deployment",
         "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
         '--commit "$EXPECTED_MAIN_SHA"',
-        'run_sha=$(gh run view "$run_id" --json headSha --jq \'.headSha\')',
+        "run_sha=$(gh run view \"$run_id\" --json headSha --jq '.headSha')",
         'docker buildx imagetools inspect "$image"',
         'gh release edit "$tag" --draft=false --latest',
         "Draft release is missing required Helm asset",
@@ -51,6 +54,22 @@ def main() -> int:
             "deploy-release.yml must not substitute the then-current main SHA "
             "for the release-generated snapshot"
         )
+
+    try:
+        normalize_release = script.index(
+            'RELEASE_VERSION=$(trim_surrounding_whitespace "$RELEASE_VERSION")'
+        )
+        validate_release = script.index('if ! [[ "$RELEASE_VERSION" =~')
+        normalize_next = script.index(
+            'NEXT_VERSION_INPUT=$(trim_surrounding_whitespace "$NEXT_VERSION_INPUT")'
+        )
+        select_next = script.index('if [[ -n "$NEXT_VERSION_INPUT" ]]')
+        if not normalize_release < validate_release or not normalize_next < select_next:
+            failures.append(
+                "release.sh must normalize version inputs before validating or using them"
+            )
+    except ValueError as error:
+        failures.append(f"Could not determine release input normalization order: {error}")
 
     try:
         stage = workflow.index(
