@@ -175,3 +175,4 @@ jobs:
           name: ui-verification
           path: target/ui-verification/**
           if-no-files-found: warn
+          retention-days: 14
