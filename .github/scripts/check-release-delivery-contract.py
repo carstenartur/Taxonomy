@@ -9,6 +9,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE_SCRIPT = ROOT / ".github" / "scripts" / "release.sh"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-release.yml"
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-cd.yml"
 
 
 def require(text: str, needle: str, source: Path, failures: list[str]) -> None:
@@ -19,6 +20,7 @@ def require(text: str, needle: str, source: Path, failures: list[str]) -> None:
 def main() -> int:
     script = RELEASE_SCRIPT.read_text(encoding="utf-8")
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     failures: list[str] = []
 
     for needle in (
@@ -30,6 +32,8 @@ def main() -> int:
         require(script, needle, RELEASE_SCRIPT, failures)
 
     for needle in (
+        "run: python3 .github/scripts/resolve-release-parameters.py",
+        "python3 .github/scripts/test-resolve-release-parameters.py",
         "DEFER_RELEASE_PUBLICATION: 'true'",
         "- name: Record exact final main snapshot",
         "- name: Package and stage immutable Helm artifacts",
@@ -45,6 +49,13 @@ def main() -> int:
         "Render deployment triggered after complete release publication.",
     ):
         require(workflow, needle, RELEASE_WORKFLOW, failures)
+
+    require(
+        ci_workflow,
+        "python3 .github/scripts/test-resolve-release-parameters.py",
+        CI_WORKFLOW,
+        failures,
+    )
 
     if "main_sha=$(git rev-parse origin/main)" in workflow:
         failures.append(
