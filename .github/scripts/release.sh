@@ -14,6 +14,16 @@ SOURCE_BRANCH=${SOURCE_BRANCH:-main}
 RENDER_DEPLOY_HOOK_URL=${RENDER_DEPLOY_HOOK_URL:-}
 DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}
 
+trim_surrounding_whitespace() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+RELEASE_VERSION=$(trim_surrounding_whitespace "$RELEASE_VERSION")
+NEXT_VERSION_INPUT=$(trim_surrounding_whitespace "$NEXT_VERSION_INPUT")
+
 TAG_NAME="v${RELEASE_VERSION}"
 MAJOR_MINOR=$(echo "${RELEASE_VERSION}" | sed 's/\.[^.]*$//')
 MAINTENANCE_BRANCH="maintenance/${MAJOR_MINOR}.x"
