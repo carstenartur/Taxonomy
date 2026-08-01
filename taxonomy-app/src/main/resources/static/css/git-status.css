@@ -457,3 +457,31 @@ body.dark-mode .restore-preview {
         color: ButtonText !important;
     }
 }
+
+/* ── ADMIN health status contrast ─────────────────────────
+ * Bootstrap's warning yellow (#ffc107) has only 1.63:1 contrast on a white
+ * card. Keep the semantic warning class set by the dashboard while overriding
+ * its foreground on the four health values to WCAG AA colours.
+ */
+#healthOverallBadge.text-warning,
+#healthAiBadge.text-warning,
+#healthEmbeddingBadge.text-warning,
+#healthMemoryBadge.text-warning {
+    color: #664d03 !important;
+}
+
+[data-bs-theme="dark"] #healthOverallBadge.text-warning,
+[data-bs-theme="dark"] #healthAiBadge.text-warning,
+[data-bs-theme="dark"] #healthEmbeddingBadge.text-warning,
+[data-bs-theme="dark"] #healthMemoryBadge.text-warning {
+    color: #ffda6a !important;
+}
+
+@media (forced-colors: active) {
+    #healthOverallBadge.text-warning,
+    #healthAiBadge.text-warning,
+    #healthEmbeddingBadge.text-warning,
+    #healthMemoryBadge.text-warning {
+        color: CanvasText !important;
+    }
+}
