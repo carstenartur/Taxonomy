@@ -8,15 +8,20 @@ on:
       - '.github/release-request.json'
   workflow_dispatch:
     inputs:
-      release_version:
-        description: 'Release version without leading v, for example 1.2.3. Must match the current SNAPSHOT base.'
-        required: true
-        type: string
       next_development_version:
-        description: 'Next development version, for example 1.2.4-SNAPSHOT. Leave empty to increment patch.'
+        description: 'Exact next development version, for example 1.3.0-SNAPSHOT. Leave empty to use the increment choice.'
         required: false
         type: string
         default: ''
+      next_version_increment:
+        description: 'Select how the development version advances when no exact version is supplied.'
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
       skip_tests:
         description: 'Skip tests in a dry run only. Published releases always run the canonical verification suite.'
         required: false
@@ -35,7 +40,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-main
   cancel-in-progress: false
 
 jobs:
@@ -44,9 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - name: Checkout repository
+      - name: Checkout authoritative release source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event_name == 'push' && github.sha || 'main' }}
           fetch-depth: 0
           token: ${{ github.token }}
 
@@ -54,36 +60,11 @@ jobs:
         id: release_parameters
         env:
           EVENT_NAME: ${{ github.event_name }}
-          INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
           INPUT_NEXT_DEVELOPMENT_VERSION: ${{ inputs.next_development_version }}
+          INPUT_NEXT_VERSION_INCREMENT: ${{ inputs.next_version_increment }}
           INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          if os.environ["EVENT_NAME"] == "push":
-              request_path = Path(".github/release-request.json")
-              request = json.loads(request_path.read_text(encoding="utf-8"))
-              release_version = request["release_version"]
-              next_version = request.get("next_development_version", "")
-              skip_tests = str(bool(request.get("skip_tests", False))).lower()
-              dry_run = str(bool(request.get("dry_run", False))).lower()
-          else:
-              release_version = os.environ["INPUT_RELEASE_VERSION"]
-              next_version = os.environ["INPUT_NEXT_DEVELOPMENT_VERSION"]
-              skip_tests = os.environ["INPUT_SKIP_TESTS"] or "false"
-              dry_run = os.environ["INPUT_DRY_RUN"] or "false"
-
-          output_path = Path(os.environ["GITHUB_OUTPUT"])
-          with output_path.open("a", encoding="utf-8") as output:
-              print(f"release_version={release_version}", file=output)
-              print(f"next_development_version={next_version}", file=output)
-              print(f"skip_tests={skip_tests}", file=output)
-              print(f"dry_run={dry_run}", file=output)
-          PY
+        run: python3 .github/scripts/resolve-release-parameters.py
 
       - name: Set up JDK 21
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
@@ -126,6 +107,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 .github/scripts/test-resolve-release-parameters.py
           python3 .github/scripts/test-check-version-state.py
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
@@ -133,6 +115,7 @@ jobs:
           python3 .github/scripts/check-release-delivery-contract.py
 
       - name: Build and stage release, then prepare next development version
+        if: steps.release_parameters.outputs.resume_staged_release != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -149,6 +132,44 @@ jobs:
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: "$RUNNER_TEMP/release.sh"
 
+      - name: Validate staged release for resume
+        if: steps.release_parameters.outputs.resume_staged_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+          NEXT_VERSION_INPUT: ${{ steps.release_parameters.outputs.next_development_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${RELEASE_VERSION}"
+
+          git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
+          git fetch origin "refs/tags/${tag}:refs/tags/${tag}"
+
+          if ! git merge-base --is-ancestor "$tag" origin/main; then
+            echo "::error::Staged tag $tag is not an ancestor of origin/main"
+            exit 1
+          fi
+
+          git checkout --detach "$tag"
+          python3 "$RUNNER_TEMP/check-version-state.py" \
+            --mode release --expected-version "$RELEASE_VERSION" --tag "$tag"
+
+          release_tag=$(gh release view "$tag" --json tagName --jq '.tagName')
+          is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
+          if [[ "$release_tag" != "$tag" ]]; then
+            echo "::error::Release lookup returned $release_tag instead of $tag"
+            exit 1
+          fi
+          if [[ "$is_draft" != "true" ]]; then
+            echo "::error::Release $tag must still be a draft before publication resumes"
+            exit 1
+          fi
+
+          git checkout --detach origin/main
+          python3 "$RUNNER_TEMP/check-version-state.py" \
+            --mode development --expected-version "$NEXT_VERSION_INPUT"
+
       - name: Record exact final main snapshot
         id: final_main
         if: steps.release_parameters.outputs.dry_run != 'true'
@@ -156,17 +177,22 @@ jobs:
         run: |
           set -euo pipefail
           expected_sha=$(git rev-parse HEAD)
-          git fetch origin main --force
+          git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
           remote_sha=$(git rev-parse origin/main)
           if [[ "$remote_sha" != "$expected_sha" ]]; then
-            echo "::error::release.sh ended at $expected_sha, but origin/main is $remote_sha"
+            echo "::error::Publication candidate is $expected_sha, but origin/main is $remote_sha"
             exit 1
           fi
           echo "sha=$expected_sha" >> "$GITHUB_OUTPUT"
 
       - name: Checkout immutable release source
         if: steps.release_parameters.outputs.dry_run != 'true'
-        run: git checkout --detach "v${{ steps.release_parameters.outputs.release_version }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${{ steps.release_parameters.outputs.release_version }}"
+          git fetch origin "refs/tags/${tag}:refs/tags/${tag}"
+          git checkout --detach "$tag"
 
       - name: Package and stage immutable Helm artifacts
         if: steps.release_parameters.outputs.dry_run != 'true' && hashFiles('deploy/helm/taxonomy/Chart.yaml') != ''
@@ -275,7 +301,7 @@ jobs:
           done
 
           if [[ -z "$run_id" ]]; then
-            git fetch origin main --force
+            git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
             remote_sha=$(git rev-parse origin/main)
             if [[ "$remote_sha" != "$EXPECTED_MAIN_SHA" ]]; then
               echo "::error::No CI run exists for $EXPECTED_MAIN_SHA and main moved to $remote_sha"
