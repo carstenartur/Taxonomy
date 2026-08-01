@@ -12,6 +12,12 @@ from typing import Mapping
 
 _RELEASE_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _DEVELOPMENT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$")
+_OUTPUT_KEYS = (
+    "release_version",
+    "next_development_version",
+    "skip_tests",
+    "dry_run",
+)
 
 
 def normalize_version(value: object, field: str, *, optional: bool = False) -> str:
@@ -79,13 +85,20 @@ def resolve_parameters(
 
 def append_outputs(output_path: Path, parameters: Mapping[str, str]) -> None:
     with output_path.open("a", encoding="utf-8") as output:
-        for key, value in parameters.items():
-            print(f"{key}={value}", file=output)
+        for key in _OUTPUT_KEYS:
+            print(f"{key}={parameters[key]}", file=output)
+
+
+def require_env(name: str) -> str:
+    value = os.environ.get(name)
+    if value is None:
+        raise ValueError(f"{name} environment variable is required")
+    return value
 
 
 def main() -> int:
     try:
-        event_name = os.environ["EVENT_NAME"]
+        event_name = require_env("EVENT_NAME")
         request = None
         if event_name == "push":
             request_path = Path(
@@ -97,8 +110,8 @@ def main() -> int:
             request = loaded
 
         parameters = resolve_parameters(event_name, os.environ, request)
-        append_outputs(Path(os.environ["GITHUB_OUTPUT"]), parameters)
-    except (KeyError, OSError, json.JSONDecodeError, ValueError) as error:
+        append_outputs(Path(require_env("GITHUB_OUTPUT")), parameters)
+    except (OSError, json.JSONDecodeError, ValueError) as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1
     return 0

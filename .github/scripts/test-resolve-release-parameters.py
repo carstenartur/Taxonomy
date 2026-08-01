@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+from collections import OrderedDict
 import subprocess
 import sys
 import tempfile
@@ -114,6 +115,74 @@ class ReleaseParameterTest(unittest.TestCase):
                 ],
                 output_path.read_text(encoding="utf-8").splitlines(),
             )
+
+    def test_append_outputs_uses_explicit_stable_key_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory, "github-output")
+
+            MODULE.append_outputs(
+                output_path,
+                OrderedDict(
+                    [
+                        ("dry_run", "false"),
+                        ("skip_tests", "true"),
+                        ("next_development_version", "1.3.0-SNAPSHOT"),
+                        ("release_version", "1.2.9"),
+                    ]
+                ),
+            )
+
+            self.assertEqual(
+                [
+                    "release_version=1.2.9",
+                    "next_development_version=1.3.0-SNAPSHOT",
+                    "skip_tests=true",
+                    "dry_run=false",
+                ],
+                output_path.read_text(encoding="utf-8").splitlines(),
+            )
+
+    def test_cli_reports_missing_event_name_clearly(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory, "github-output")
+            environment = os.environ | {
+                "GITHUB_OUTPUT": str(output_path),
+            }
+            environment.pop("EVENT_NAME", None)
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT)],
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn(
+                "::error::EVENT_NAME environment variable is required", result.stderr
+            )
+
+    def test_cli_reports_missing_github_output_clearly(self) -> None:
+        environment = os.environ | {
+            "EVENT_NAME": "workflow_dispatch",
+            "INPUT_RELEASE_VERSION": "1.2.9",
+            "INPUT_NEXT_DEVELOPMENT_VERSION": "1.3.0-SNAPSHOT",
+            "INPUT_SKIP_TESTS": "false",
+            "INPUT_DRY_RUN": "false",
+        }
+        environment.pop("GITHUB_OUTPUT", None)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)],
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn(
+            "::error::GITHUB_OUTPUT environment variable is required", result.stderr
+        )
 
 
 if __name__ == "__main__":
