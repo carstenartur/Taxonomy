@@ -35,37 +35,40 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private final DslGitRepositoryFactory repositoryFactory;
     private final SemanticGitMergeService semanticMergeService;
     private final PortfolioGitService portfolioGitService;
+    private final WorkspaceContextResolver contextResolver;
 
     public GitNativeSyncIntegrationService(SyncStateRepository syncStateRepository,
                                            UserWorkspaceRepository workspaceRepository,
                                            SystemRepositoryService systemRepositoryService,
                                            DslGitRepositoryFactory repositoryFactory,
                                            SemanticGitMergeService semanticMergeService,
-                                           PortfolioGitService portfolioGitService) {
+                                           PortfolioGitService portfolioGitService,
+                                           WorkspaceContextResolver contextResolver) {
         super(syncStateRepository, workspaceRepository, systemRepositoryService, repositoryFactory);
         this.syncStateRepository = syncStateRepository;
         this.systemRepositoryService = systemRepositoryService;
         this.repositoryFactory = repositoryFactory;
         this.semanticMergeService = semanticMergeService;
         this.portfolioGitService = portfolioGitService;
+        this.contextResolver = contextResolver;
     }
 
     @Override
     public String syncFromShared(String username, String userBranch) throws IOException {
         WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
         if (context.workspaceId() == null) {
-            return mergeWithinRepository(username, userBranch, true);
+            return mergeWithinRepository(username, context.currentBranch(), true);
         }
-        return pullAcrossRepositories(username, context, userBranch);
+        return pullAcrossRepositories(username, context, context.currentBranch());
     }
 
     @Override
     public String publishToShared(String username, String userBranch) throws IOException {
         WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
         if (context.workspaceId() == null) {
-            return mergeWithinRepository(username, userBranch, false);
+            return mergeWithinRepository(username, context.currentBranch(), false);
         }
-        return publishAcrossRepositories(username, context, userBranch);
+        return publishAcrossRepositories(username, context, context.currentBranch());
     }
 
     @Override
@@ -239,10 +242,27 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         }
     }
 
-    private WorkspaceContext resolveWorkspaceContext(String username, String branch) {
-        return syncStateRepository.findByUsername(username)
-                .map(state -> new WorkspaceContext(username, state.getWorkspaceId(), branch))
-                .orElse(WorkspaceContext.SHARED);
+    /**
+     * Resolve the persistent active branch. The legacy in-memory workspace state
+     * starts at {@code draft}; after isolated repository provisioning the durable
+     * branch is normally {@code main}. An explicitly selected non-draft variant
+     * still takes precedence.
+     */
+    private WorkspaceContext resolveWorkspaceContext(String username, String requestedBranch) {
+        WorkspaceContext persistent = contextResolver.resolveForUser(username);
+        if (persistent.workspaceId() == null) {
+            return WorkspaceContext.SHARED;
+        }
+        String branch = requestedBranch;
+        if (branch == null || branch.isBlank()
+                || (SEEDED_BRANCH.equals(branch)
+                && persistent.currentBranch() != null
+                && !persistent.currentBranch().isBlank()
+                && !SEEDED_BRANCH.equals(persistent.currentBranch()))) {
+            branch = persistent.currentBranch();
+        }
+        if (branch == null || branch.isBlank()) branch = WORKSPACE_BRANCH;
+        return new WorkspaceContext(username, persistent.workspaceId(), branch);
     }
 
     private String sharedBranch() {
