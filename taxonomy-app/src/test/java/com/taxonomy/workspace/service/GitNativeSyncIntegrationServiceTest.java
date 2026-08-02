@@ -30,6 +30,7 @@ class GitNativeSyncIntegrationServiceTest {
     private final DslGitRepositoryFactory repositoryFactory = mock(DslGitRepositoryFactory.class);
     private final SemanticGitMergeService semanticMergeService = mock(SemanticGitMergeService.class);
     private final PortfolioGitService portfolioGitService = mock(PortfolioGitService.class);
+    private final WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
     private final DslGitRepository systemRepository = mock(DslGitRepository.class);
     private final DslGitRepository isolatedWorkspaceRepository = mock(DslGitRepository.class);
 
@@ -44,7 +45,8 @@ class GitNativeSyncIntegrationServiceTest {
                 systemRepositoryService,
                 repositoryFactory,
                 semanticMergeService,
-                portfolioGitService);
+                portfolioGitService,
+                contextResolver);
 
         state = new SyncState();
         state.setUsername("alice");
@@ -54,6 +56,8 @@ class GitNativeSyncIntegrationServiceTest {
         when(syncStateRepository.findByUsername("alice")).thenReturn(Optional.of(state));
         when(syncStateRepository.save(any(SyncState.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        when(contextResolver.resolveForUser("alice"))
+                .thenReturn(new WorkspaceContext("alice", "workspace-a", "feature/alice"));
         when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
         when(repositoryFactory.getSystemRepository()).thenReturn(systemRepository);
         when(repositoryFactory.getWorkspaceRepository("workspace-a"))
@@ -94,6 +98,39 @@ class GitNativeSyncIntegrationServiceTest {
                 eq(merged), eq("alice"),
                 eq(new WorkspaceContext("alice", "workspace-a", "feature/alice")));
         assertThat(state.getLastSyncedCommitId()).isEqualTo("shared-head");
+    }
+
+    @Test
+    void staleDraftFromVolatileUiStateIsReplacedByPersistentMainBranch()
+            throws Exception {
+        when(contextResolver.resolveForUser("alice"))
+                .thenReturn(new WorkspaceContext("alice", "workspace-a", "main"));
+        String base = "requirement REQ-BASE {\n  text: \"base\";\n}\n";
+        String ours = base + "requirement REQ-LOCAL {\n  text: \"local\";\n}\n";
+        String theirs = base + "requirement REQ-SHARED {\n  text: \"shared\";\n}\n";
+        String merged = ours + "requirement REQ-SHARED {\n  text: \"shared\";\n}\n";
+
+        when(isolatedWorkspaceRepository.getDslAtHead("sync-base")).thenReturn(base);
+        when(isolatedWorkspaceRepository.getDslAtHead("main")).thenReturn(ours);
+        when(systemRepository.getDslAtHead("draft")).thenReturn(theirs);
+        when(semanticMergeService.mergeContent(base, ours, theirs))
+                .thenReturn(new TaxDslMergeResult(merged, List.of()));
+        when(isolatedWorkspaceRepository.commitDsl(
+                eq("main"), eq(merged), eq("alice"), any(String.class)))
+                .thenReturn("main-merge-commit");
+        when(isolatedWorkspaceRepository.commitDsl(
+                eq("sync-base"), eq(merged), eq("alice"), any(String.class)))
+                .thenReturn("tracking-commit");
+        when(systemRepository.getHeadCommit("draft")).thenReturn("shared-head");
+
+        String commit = service.syncFromShared("alice", "draft");
+
+        assertThat(commit).isEqualTo("main-merge-commit");
+        verify(isolatedWorkspaceRepository).getDslAtHead("main");
+        verify(isolatedWorkspaceRepository, never()).getDslAtHead("draft");
+        verify(portfolioGitService).commit(
+                eq("main"), any(String.class), eq("alice"),
+                eq(new WorkspaceContext("alice", "workspace-a", "main")));
     }
 
     @Test
