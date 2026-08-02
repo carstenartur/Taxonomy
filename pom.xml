@@ -100,6 +100,8 @@
         <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
         <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
         <node.version>v24.18.0</node.version>
+        <releaseCheckCurrentState>development</releaseCheckCurrentState>
+        <releaseCheckRequireClean>true</releaseCheckRequireClean>
         <taxonomy.model.revision>5c38ec7c405ec4b44b94cc5a9bb96e735b38267a</taxonomy.model.revision>
         <taxonomy.model.download.skip>true</taxonomy.model.download.skip>
         <taxonomy.ui.skip>true</taxonomy.ui.skip>
@@ -311,6 +313,45 @@
                 <taxonomy.quality.skip>false</taxonomy.quality.skip>
                 <taxonomy.ui.suite>all</taxonomy.ui.suite>
             </properties>
+        </profile>
+        <profile>
+            <id>release-check</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>${exec-maven-plugin.version}</version>
+                        <inherited>false</inherited>
+                        <executions>
+                            <execution>
+                                <id>validate-release-plan</id>
+                                <phase>validate</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                                    <executable>python3</executable>
+                                    <arguments>
+                                        <argument>.github/scripts/check-release-plan.py</argument>
+                                        <argument>--root</argument>
+                                        <argument>${maven.multiModuleProjectDirectory}</argument>
+                                        <argument>--current-version</argument>
+                                        <argument>${project.version}</argument>
+                                        <argument>--release-version</argument>
+                                        <argument>${releaseVersion}</argument>
+                                        <argument>--next-development-version</argument>
+                                        <argument>${nextDevelopmentVersion}</argument>
+                                        <argument>--state</argument>
+                                        <argument>${releaseCheckCurrentState}</argument>
+                                        <argument>--require-clean</argument>
+                                        <argument>${releaseCheckRequireClean}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
         <profile>
             <id>quality</id>
