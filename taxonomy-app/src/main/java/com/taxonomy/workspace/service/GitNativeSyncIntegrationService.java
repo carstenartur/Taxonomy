@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.List;
 
 /**
  * Portfolio-aware replacement for the legacy copy-based synchronization path.
@@ -28,6 +27,7 @@ import java.util.List;
 public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
     private static final String WORKSPACE_BRANCH = "main";
+    private static final String SEEDED_BRANCH = "draft";
     private static final String TRACKING_BRANCH = "sync-base";
 
     private final SyncStateRepository syncStateRepository;
@@ -50,21 +50,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         this.portfolioGitService = portfolioGitService;
     }
 
-    /**
-     * Pull through the normal workspace API.
-     *
-     * <p>When an isolated workspace repository exists, this method deliberately
-     * routes to the cross-repository three-way merge. The previous implementation
-     * tried to merge the workspace's stale local copy of the shared branch and
-     * therefore did not actually pull changes from the system repository.</p>
-     */
     @Override
     public String syncFromShared(String username, String userBranch) throws IOException {
         WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
-        if (context.workspaceId() != null) {
-            return syncFromSharedToWorkspace(username, context.workspaceId(), userBranch);
-        }
-
         portfolioGitService.commit(userBranch,
                 "Project requirements before sync from shared", username, context);
         DslGitRepository repository = repositoryFactory.resolveRepository(context);
@@ -76,14 +64,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         return outcome.commitId();
     }
 
-    /** Route the normal publish API to cross-repository semantic push when needed. */
     @Override
     public String publishToShared(String username, String userBranch) throws IOException {
         WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
-        if (context.workspaceId() != null) {
-            return publishFromWorkspaceToShared(username, context.workspaceId(), userBranch);
-        }
-
         portfolioGitService.commit(userBranch,
                 "Project requirements before publish", username, context);
         DslGitRepository repository = repositoryFactory.resolveRepository(context);
@@ -98,31 +81,30 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
 
     @Override
     public String syncFromSharedToWorkspace(String username, String workspaceId) throws IOException {
-        return syncFromSharedToWorkspace(username, workspaceId, WORKSPACE_BRANCH);
-    }
-
-    private String syncFromSharedToWorkspace(String username,
-                                             String workspaceId,
-                                             String workspaceBranch) throws IOException {
         WorkspaceContext workspaceContext = new WorkspaceContext(
-                username, workspaceId, workspaceBranch);
+                username, workspaceId, WORKSPACE_BRANCH);
         DslGitRepository sharedRepository = repositoryFactory.getSystemRepository();
         DslGitRepository workspaceRepository = repositoryFactory.getWorkspaceRepository(workspaceId);
 
+        initialiseWorkspaceMergeBase(
+                workspaceRepository, sharedRepository, username);
+
         // Preserve local relational edits in Git before incorporating shared changes.
-        portfolioGitService.commit(workspaceBranch,
+        portfolioGitService.commit(WORKSPACE_BRANCH,
                 "Project requirements before pull", username, workspaceContext);
 
-        String base = valueOrEmpty(workspaceRepository.getDslAtHead(TRACKING_BRANCH));
-        String ours = valueOrEmpty(workspaceRepository.getDslAtHead(workspaceBranch));
-        String theirs = valueOrEmpty(sharedRepository.getDslAtHead(sharedBranch()));
-        if (theirs.isBlank()) throw new IOException("Shared branch has no content");
+        String base = requiredDsl(workspaceRepository, TRACKING_BRANCH,
+                "Workspace semantic sync base is missing");
+        String ours = requiredDsl(workspaceRepository, WORKSPACE_BRANCH,
+                "Workspace main branch has no content");
+        String theirs = requiredDsl(sharedRepository, sharedBranch(),
+                "Shared branch has no content");
 
         TaxDslMergeResult merge = semanticMergeService.mergeContent(base, ours, theirs);
         requireSuccess("Pull from shared", merge);
-        String localCommit = commitIfChanged(
+        String commit = commitIfChanged(
                 workspaceRepository,
-                workspaceBranch,
+                WORKSPACE_BRANCH,
                 merge.mergedText(),
                 ours,
                 username,
@@ -130,62 +112,43 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         trackBase(workspaceRepository, merge.mergedText(), username);
         portfolioGitService.materialize(
                 merge.mergedText(), username, workspaceContext);
-
-        String sharedHead = sharedRepository.getHeadCommit(sharedBranch());
-        updateAfterSync(username, sharedHead != null ? sharedHead : localCommit);
-        return localCommit;
+        updateAfterSync(username, commit);
+        return commit;
     }
 
     @Override
     public String publishFromWorkspaceToShared(String username, String workspaceId) throws IOException {
-        return publishFromWorkspaceToShared(username, workspaceId, WORKSPACE_BRANCH);
-    }
-
-    private String publishFromWorkspaceToShared(String username,
-                                                String workspaceId,
-                                                String workspaceBranch) throws IOException {
         WorkspaceContext workspaceContext = new WorkspaceContext(
-                username, workspaceId, workspaceBranch);
+                username, workspaceId, WORKSPACE_BRANCH);
         DslGitRepository sharedRepository = repositoryFactory.getSystemRepository();
         DslGitRepository workspaceRepository = repositoryFactory.getWorkspaceRepository(workspaceId);
 
-        portfolioGitService.commit(workspaceBranch,
+        initialiseWorkspaceMergeBase(
+                workspaceRepository, sharedRepository, username);
+
+        portfolioGitService.commit(WORKSPACE_BRANCH,
                 "Project requirements before push", username, workspaceContext);
 
-        String base = valueOrEmpty(workspaceRepository.getDslAtHead(TRACKING_BRANCH));
-        String sharedBefore = valueOrEmpty(sharedRepository.getDslAtHead(sharedBranch()));
-        String workspaceBefore = valueOrEmpty(workspaceRepository.getDslAtHead(workspaceBranch));
-        if (workspaceBefore.isBlank()) throw new IOException("Workspace has no content");
+        String base = requiredDsl(workspaceRepository, TRACKING_BRANCH,
+                "Workspace semantic sync base is missing");
+        String ours = valueOrEmpty(sharedRepository.getDslAtHead(sharedBranch()));
+        String theirs = requiredDsl(workspaceRepository, WORKSPACE_BRANCH,
+                "Workspace has no content");
 
-        TaxDslMergeResult merge = semanticMergeService.mergeContent(
-                base, sharedBefore, workspaceBefore);
+        TaxDslMergeResult merge = semanticMergeService.mergeContent(base, ours, theirs);
         requireSuccess("Push to shared", merge);
-        String sharedCommit = commitIfChanged(
+        String commit = commitIfChanged(
                 sharedRepository,
                 sharedBranch(),
                 merge.mergedText(),
-                sharedBefore,
+                ours,
                 username,
                 "Semantic publish from workspace " + workspaceId);
-
-        // A push can incorporate concurrent changes already present on shared.
-        // Bring the local branch to exactly the merged state as well, otherwise
-        // the next pull would start from a base that the local branch never had.
-        commitIfChanged(
-                workspaceRepository,
-                workspaceBranch,
-                merge.mergedText(),
-                workspaceBefore,
-                username,
-                "Synchronize workspace after semantic publish");
         trackBase(workspaceRepository, merge.mergedText(), username);
-
         portfolioGitService.materialize(
                 merge.mergedText(), "shared", WorkspaceContext.SHARED);
-        portfolioGitService.materialize(
-                merge.mergedText(), username, workspaceContext);
-        updateAfterPublish(username, sharedCommit);
-        return sharedCommit;
+        updateAfterPublish(username, commit);
+        return commit;
     }
 
     @Override
@@ -197,6 +160,37 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             return "Semantically merged shared into your branch: " + abbreviate(commit);
         }
         return super.resolveDiverged(username, userBranch, strategy);
+    }
+
+    /**
+     * Establish the first common ancestor before any local portfolio projection
+     * is committed. New workspace repositories are seeded on {@code draft}; the
+     * collaboration workflow uses {@code main} and {@code sync-base}.
+     */
+    private void initialiseWorkspaceMergeBase(DslGitRepository workspaceRepository,
+                                              DslGitRepository sharedRepository,
+                                              String username) throws IOException {
+        String shared = valueOrEmpty(sharedRepository.getDslAtHead(sharedBranch()));
+        String seeded = valueOrEmpty(workspaceRepository.getDslAtHead(SEEDED_BRANCH));
+        String commonBase = !seeded.isBlank() ? seeded : shared;
+        if (commonBase.isBlank()) {
+            throw new IOException("Neither shared nor workspace seed contains architecture DSL");
+        }
+
+        if (valueOrEmpty(workspaceRepository.getDslAtHead(WORKSPACE_BRANCH)).isBlank()) {
+            workspaceRepository.commitDsl(
+                    WORKSPACE_BRANCH,
+                    commonBase,
+                    username,
+                    "Initialize workspace main from shared architecture");
+        }
+        if (valueOrEmpty(workspaceRepository.getDslAtHead(TRACKING_BRANCH)).isBlank()) {
+            workspaceRepository.commitDsl(
+                    TRACKING_BRANCH,
+                    commonBase,
+                    username,
+                    "Initialize semantic synchronization base");
+        }
     }
 
     private WorkspaceContext resolveWorkspaceContext(String username, String branch) {
@@ -254,6 +248,14 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         state.setUnpublishedCommitCount(0);
         state.setUpdatedAt(Instant.now());
         syncStateRepository.save(state);
+    }
+
+    private static String requiredDsl(DslGitRepository repository,
+                                      String branch,
+                                      String error) throws IOException {
+        String dsl = valueOrEmpty(repository.getDslAtHead(branch));
+        if (dsl.isBlank()) throw new IOException(error);
+        return dsl;
     }
 
     private static void requireSuccess(String operation,
