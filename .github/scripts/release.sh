@@ -24,6 +24,16 @@ fail() {
   exit 1
 }
 
+run_maven_release_check() {
+  local state=$1
+  local profiles=$2
+  shift 2
+  ./mvnw -B "-P${profiles}" "$@" \
+    -DreleaseVersion="$RELEASE_VERSION" \
+    -DnextDevelopmentVersion="$NEXT_VERSION" \
+    -DreleaseCheckCurrentState="$state"
+}
+
 if ! [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   fail "release_version must use X.Y.Z without a leading v"
 fi
@@ -189,8 +199,10 @@ else
 fi
 
 MAIN_ALREADY_ADVANCED=false
+RELEASE_CHECK_STATE=development
 if [[ "$CURRENT_VERSION" == "$NEXT_VERSION" && "$TAG_EXISTS" == "true" ]]; then
   MAIN_ALREADY_ADVANCED=true
+  RELEASE_CHECK_STATE=advanced
   python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
 elif [[ "$CURRENT_VERSION" == "${RELEASE_VERSION}-SNAPSHOT" ]]; then
   python3 "$VERSION_STATE_HELPER" --mode development \
@@ -207,7 +219,7 @@ echo "Main already advanced: $MAIN_ALREADY_ADVANCED"
 echo "Defer release publication: $DEFER_RELEASE_PUBLICATION"
 echo "Dry run: $DRY_RUN"
 
-./mvnw -B validate
+run_maven_release_check "$RELEASE_CHECK_STATE" release-check validate
 
 if [[ "$STATE" == "new" ]]; then
   ./mvnw -B versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
@@ -228,9 +240,9 @@ else
 fi
 
 if [[ "$SKIP_TESTS" == "true" ]]; then
-  ./mvnw -B clean package -DskipTests
+  run_maven_release_check release release-check clean package -DskipTests
 else
-  ./mvnw -B clean verify -Pci
+  run_maven_release_check release release-check,ci clean verify
 fi
 python3 "$VEX_HELPER"
 collect_release_artifacts

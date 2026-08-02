@@ -53,11 +53,23 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/test-resolve-release-parameters.py
+          python3 .github/scripts/test-check-release-plan.py
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
           python3 .github/scripts/check-release-delivery-contract.py
           python3 .github/scripts/check-observability-performance-scope.py
+
+          current_version=$(./mvnw -q -DforceStdout help:evaluate \
+            -Dexpression=project.version)
+          if [[ "$current_version" == *-SNAPSHOT ]]; then
+            release_version=${current_version%-SNAPSHOT}
+            IFS='.' read -r major minor patch <<< "$release_version"
+            next_version="${major}.${minor}.$((patch + 1))-SNAPSHOT"
+            ./mvnw -B -Prelease-check validate \
+              -DreleaseVersion="$release_version" \
+              -DnextDevelopmentVersion="$next_version"
+          fi
 
       - name: Install verified Helm 3.21.0
         env:

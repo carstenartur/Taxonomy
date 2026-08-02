@@ -3,9 +3,12 @@ target/
 taxonomy-app/codemirror-build/node_modules/
 taxonomy-app/codemirror-build/package-lock.json
 
+# Python guard tests import repository scripts during local and CI verification.
+__pycache__/
+*.py[cod]
+
 # LLM recording manifest is a runtime artifact, not a source file
 **/llm-recordings/manifest.json
-
 
 # Maven-owned browser tooling is installed locally from package-lock.json
 .github/node_modules/

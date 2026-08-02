@@ -2,7 +2,9 @@
 
 All functional verification is Maven-owned. Start with the smallest applicable
 profile and finish a pull request with the canonical command documented in
-[Maven Verification Authority](MAVEN_VERIFICATION.md).
+[Maven Verification Authority](MAVEN_VERIFICATION.md). Release preparation and
+publication are documented separately in
+[Release Verification and Publication](RELEASE_PROCESS.md).
 
 ## Commands by change type
 
@@ -22,6 +24,7 @@ profile and finish a pull request with the canonical command documented in
 | Local ONNX | `./mvnw -B verify -Ponnx` | `./mvnw -B verify -Pci` |
 | UI/CSS/JavaScript | `./mvnw -B verify -Pui-tests -DskipTests -DskipITs=true` | `./mvnw -B verify -Pci` |
 | Dependency or workflow policy | `./mvnw -B verify -Pquality -DskipTests -DskipITs=true` | `./mvnw -B verify -Pci` |
+| Release plan or release code | `./mvnw -B -Prelease-check validate -DreleaseVersion=X.Y.Z -DnextDevelopmentVersion=X.Y.Z-SNAPSHOT` | `./mvnw -B -Prelease-check,ci clean verify` with the same versions |
 | Documentation screenshots | `./mvnw -B verify -Pscreenshots` | manual visual review before publication |
 
 ## Stable lifecycle scopes
