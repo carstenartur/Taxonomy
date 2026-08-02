@@ -34,7 +34,7 @@ class PortfolioAnalysisWorkQueueClaimTest {
     private PortfolioAnalysisWorkQueue workQueue;
 
     @Test
-    void pendingWorkItemCanBeClaimedOnlyOnce() {
+    void pendingWorkItemCanBeClaimedOnlyOnceWithoutPrematureJobCompletion() {
         String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         WorkspaceContext context = new WorkspaceContext(
                 "claim-" + suffix.toLowerCase(), "ws-claim-" + suffix, "draft");
@@ -76,11 +76,14 @@ class PortfolioAnalysisWorkQueueClaimTest {
                 context);
 
         var firstClaim = workQueue.pending(job.id(), project.id());
+        var prematureCompletion = persistenceService.completeJob(job.id(), project.id());
         var secondClaim = workQueue.pending(job.id(), project.id());
 
         assertThat(firstClaim).singleElement()
                 .satisfies(item -> assertThat(item.requirementId()).isEqualTo(requirement.id()));
         assertThat(secondClaim).isEmpty();
+        assertThat(prematureCompletion.status()).isEqualTo(AnalysisStatus.RUNNING);
+        assertThat(prematureCompletion.completedAt()).isNull();
         assertThat(persistenceService.getJob(
                 job.id(), project.id(), context.username(), context).items())
                 .singleElement()
