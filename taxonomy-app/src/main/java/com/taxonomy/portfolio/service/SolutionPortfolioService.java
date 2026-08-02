@@ -268,7 +268,8 @@ public class SolutionPortfolioService {
         if (snapshotId == null || snapshotId.isBlank()) {
             snapshotId = requirement.getCurrentAnalysisSnapshotId();
         }
-        validateSnapshot(snapshotId, projectId, requirement.getId());
+        final String effectiveSnapshotId = snapshotId;
+        validateSnapshot(effectiveSnapshotId, projectId, requirement.getId());
         int coverage = normalizePercentage(request.coveragePercent(), "coveragePercent");
         Instant now = Instant.now();
         RequirementSolutionLink link = requirementLinkRepository
@@ -276,7 +277,7 @@ public class SolutionPortfolioService {
                 .orElseGet(() -> new RequirementSolutionLink(
                         projectSolution,
                         requirement,
-                        snapshotId,
+                        effectiveSnapshotId,
                         coverage,
                         request.role() != null ? request.role() : RequirementSolutionRole.USES,
                         request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,
@@ -285,7 +286,7 @@ public class SolutionPortfolioService {
                         now));
         if (link.getId() != null) {
             link.update(
-                    snapshotId,
+                    effectiveSnapshotId,
                     coverage,
                     request.role(),
                     request.reviewStatus(),
