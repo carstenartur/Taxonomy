@@ -31,7 +31,8 @@ import java.util.Objects;
  * <p>Database primary keys are not part of the collaboration contract. The
  * current requirement version is represented and restored by its project-local,
  * monotonically increasing version number so the same DSL can be materialized
- * in another database or workspace.</p>
+ * in another database or workspace. Durable solution and product decisions are
+ * contributed through stable business keys as part of the same Git document.</p>
  */
 @Service
 @Primary
@@ -43,6 +44,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
     private final ProjectRequirementVersionRepository versionRepository;
+    private final PortfolioDecisionGitContributor decisionContributor;
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
@@ -52,19 +54,22 @@ public class PortablePortfolioGitService extends PortfolioGitService {
             ProjectRequirementRepository requirementRepository,
             ProjectRequirementVersionRepository versionRepository,
             RequirementElementMappingRepository elementMappingRepository,
-            DslGitRepositoryFactory repositoryFactory) {
+            DslGitRepositoryFactory repositoryFactory,
+            PortfolioDecisionGitContributor decisionContributor) {
         super(projectService, projectRepository, requirementRepository,
                 versionRepository, elementMappingRepository, repositoryFactory);
         this.projectRepository = projectRepository;
         this.requirementRepository = requirementRepository;
         this.versionRepository = versionRepository;
+        this.decisionContributor = decisionContributor;
     }
 
     @Override
     @Transactional(readOnly = true)
     public String exportPortfolio(String username, WorkspaceContext context) {
-        return addPortableCurrentVersion(
+        String requirements = addPortableCurrentVersion(
                 super.exportPortfolio(username, context), username, context);
+        return decisionContributor.contributeTo(requirements, username, context);
     }
 
     @Override
@@ -72,8 +77,9 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     public String contributeTo(String existingDsl,
                                String username,
                                WorkspaceContext context) {
-        return addPortableCurrentVersion(
+        String requirements = addPortableCurrentVersion(
                 super.contributeTo(existingDsl, username, context), username, context);
+        return decisionContributor.contributeTo(requirements, username, context);
     }
 
     @Override
@@ -83,7 +89,15 @@ public class PortablePortfolioGitService extends PortfolioGitService {
                                          WorkspaceContext context) {
         MaterializeResult result = super.materialize(dsl, username, context);
         restorePortableCurrentVersions(dsl, username, context);
-        return result;
+        PortfolioDecisionGitContributor.DecisionMaterializeResult decisions =
+                decisionContributor.materialize(dsl, username, context);
+        List<String> warnings = new ArrayList<>(result.warnings());
+        warnings.addAll(decisions.warnings());
+        return new MaterializeResult(
+                result.projectsCreated(),
+                result.requirementsCreated(),
+                result.versionsCreated(),
+                List.copyOf(warnings));
     }
 
     private String addPortableCurrentVersion(String dsl,
