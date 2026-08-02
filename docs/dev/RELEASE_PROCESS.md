@@ -21,7 +21,7 @@ Run this before starting a release:
 
 The command is non-mutating. It verifies:
 
-1. the current root and reactor versions match `1.3.0-SNAPSHOT`;
+1. the current root and reactor versions match `${releaseVersion}-SNAPSHOT`;
 2. the release version uses `X.Y.Z` and the next version uses
    `X.Y.Z-SNAPSHOT`;
 3. the next version is numerically newer, including freely selected major or
