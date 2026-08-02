@@ -204,6 +204,11 @@ public class TaxDslSerializer {
      */
     private String escapeForQuoting(String value) {
         if (value == null) return "";
+        if (value.indexOf('\\') < 0 && value.indexOf('"') < 0
+                && value.indexOf('\n') < 0 && value.indexOf('\r') < 0
+                && value.indexOf('\t') < 0) {
+            return value;
+        }
         return value
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")

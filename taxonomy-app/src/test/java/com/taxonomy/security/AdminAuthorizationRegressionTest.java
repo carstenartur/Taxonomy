@@ -69,13 +69,13 @@ class AdminAuthorizationRegressionTest {
     void architectCanReachWorkspacePullAndPublishOperations() throws Exception {
         mockMvc.perform(post("/api/workspace/sync-from-shared").with(csrf()))
                 .andExpect(result -> assertThat(result.getResponse().getStatus())
-                        .as("architect pull must pass authorization")
-                        .isNotEqualTo(403));
+                        .as("architect pull must pass authorization (200 = success, 500 = no git config; 403 = forbidden, 404 = endpoint missing)")
+                        .isIn(200, 500));
 
         mockMvc.perform(post("/api/workspace/publish").with(csrf()))
                 .andExpect(result -> assertThat(result.getResponse().getStatus())
-                        .as("architect publish must pass authorization")
-                        .isNotEqualTo(403));
+                        .as("architect publish must pass authorization (200 = success, 500 = no git config; 403 = forbidden, 404 = endpoint missing)")
+                        .isIn(200, 500));
     }
 
     @Test
