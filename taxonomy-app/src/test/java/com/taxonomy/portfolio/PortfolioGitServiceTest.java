@@ -50,6 +50,7 @@ class PortfolioGitServiceTest {
         assertThat(dsl)
                 .contains("project P-GIT-ROUNDTRIP")
                 .contains("projectRequirement P-GIT-ROUNDTRIP REQ-A-001")
+                .contains("currentVersionNumber: 2")
                 .contains("requirementVersion P-GIT-ROUNDTRIP REQ-A-001 1")
                 .contains("requirementVersion P-GIT-ROUNDTRIP REQ-A-001 2")
                 .contains("requirement P-GIT-ROUNDTRIP__REQ-A-001");
@@ -67,6 +68,21 @@ class PortfolioGitServiceTest {
                 bobProjects.getFirst().id(), "bob", bob);
         assertThat(bobRequirements).hasSize(1);
         assertThat(bobRequirements.getFirst().currentVersion().text())
+                .isEqualTo("Reviewed secure voice requirement");
+
+        // A target database may already contain a later local version with unrelated
+        // primary keys. Re-materializing the Git model must restore the portable
+        // version number from the DSL rather than a foreign database ID.
+        projectService.addRequirementVersion(
+                bobProjects.getFirst().id(), bobRequirements.getFirst().id(),
+                new CreateRequirementVersionRequest(
+                        "Unpublished Bob draft", "Local experiment", null),
+                "bob", bob);
+        portfolioGitService.materialize(dsl, "bob", bob);
+        var restored = projectService.getRequirement(
+                bobProjects.getFirst().id(), bobRequirements.getFirst().id(), "bob", bob);
+        assertThat(restored.currentVersion().versionNumber()).isEqualTo(2);
+        assertThat(restored.currentVersion().text())
                 .isEqualTo("Reviewed secure voice requirement");
     }
 }
