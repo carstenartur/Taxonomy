@@ -96,7 +96,7 @@ public class RequirementAnalysisJob {
                                   Instant createdAt) {
         this.id = id;
         this.project = project;
-        this.idempotencyKey = idempotencyKey;
+        this.idempotencyKey = idempotencyKey != null ? idempotencyKey : "auto:" + id;
         this.provider = provider;
         this.maxArchitectureNodes = maxArchitectureNodes;
         this.requestedBy = requestedBy;
