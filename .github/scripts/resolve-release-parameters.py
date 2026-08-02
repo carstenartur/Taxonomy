@@ -112,8 +112,11 @@ def derive_release_versions(
 
     if version_tuple(next_version) <= version_tuple(release_version):
         raise ValueError(
-            f"next development version {next_version} must be newer than "
-            f"release {release_version}"
+            f"current project version {current_version} means this run releases "
+            f"{release_version}; next development version {next_version} must be "
+            "newer. Leave next_development_version empty to use the selected "
+            "patch, minor or major increment, or enter a higher X.Y.Z-SNAPSHOT "
+            "version."
         )
     return release_version, next_version
 
