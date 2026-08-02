@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -72,12 +73,53 @@ def expected_current_version(
     raise ValueError(f"releaseCheckCurrentState must be one of {sorted(STATES)}")
 
 
-def pom_paths(root: Path) -> list[Path]:
-    return sorted(
-        path
-        for path in root.rglob("pom.xml")
-        if ".git" not in path.parts and "target" not in path.parts
-    )
+def reactor_pom_paths(root: Path) -> list[Path]:
+    """Return only POMs reachable through Maven's declared module graph."""
+    root = root.resolve()
+    root_pom = root / "pom.xml"
+    if not root_pom.is_file():
+        raise ValueError(f"root pom.xml does not exist below {root}")
+
+    pending: deque[Path] = deque([root_pom])
+    discovered: list[Path] = []
+    seen: set[Path] = set()
+    while pending:
+        pom = pending.popleft().resolve()
+        if pom in seen:
+            continue
+        if not pom.is_file():
+            raise ValueError(f"declared Maven module POM does not exist: {pom}")
+        try:
+            pom.relative_to(root)
+        except ValueError as error:
+            raise ValueError(f"declared Maven module escapes repository root: {pom}") from error
+
+        project = ET.parse(pom).getroot()
+        seen.add(pom)
+        discovered.append(pom)
+        for module_element in project.findall("m:modules/m:module", NS):
+            module = text(module_element)
+            if not module:
+                raise ValueError(
+                    f"{pom.relative_to(root)} contains an empty Maven module declaration"
+                )
+            module_path = (pom.parent / module).resolve()
+            module_pom = (
+                module_path if module_path.name == "pom.xml" else module_path / "pom.xml"
+            )
+            try:
+                relative_module = module_pom.relative_to(root)
+            except ValueError as error:
+                raise ValueError(
+                    f"{pom.relative_to(root)} declares module {module!r} outside the repository"
+                ) from error
+            if not module_pom.is_file():
+                raise ValueError(
+                    f"{pom.relative_to(root)} declares module {module!r}, but "
+                    f"{relative_module} does not exist"
+                )
+            pending.append(module_pom)
+    return discovered
 
 
 def model_for(path: Path) -> PomModel:
@@ -89,6 +131,10 @@ def model_for(path: Path) -> PomModel:
         group_id = group_id or child_text(parent, "groupId")
         version = version or child_text(parent, "version")
     artifact_id = child_text(root, "artifactId")
+    if not group_id or not artifact_id or not version:
+        raise ValueError(
+            f"{path}: Maven coordinates must provide effective groupId, artifactId and version"
+        )
     properties = {
         property_element.tag.rsplit("}", 1)[-1]: text(property_element)
         for property_element in root.findall("m:properties/*", NS)
@@ -128,8 +174,7 @@ def resolve_properties(value: str, properties: dict[str, str]) -> str:
             changed = True
             return replacement
 
-        resolved = PROPERTY_PATTERN.sub(replace, result)
-        result = resolved
+        result = PROPERTY_PATTERN.sub(replace, result)
         if not changed:
             break
     return result
@@ -141,6 +186,20 @@ def effective_properties(model: PomModel, root_properties: dict[str, str]) -> di
 
 def versioned_elements(model: PomModel) -> list[tuple[str, Coordinate | None, str]]:
     entries: list[tuple[str, Coordinate | None, str]] = []
+    parent = model.root.find("m:parent", NS)
+    if parent is not None:
+        parent_version = child_text(parent, "version")
+        if parent_version:
+            entries.append(
+                (
+                    "parent",
+                    Coordinate(
+                        child_text(parent, "groupId"),
+                        child_text(parent, "artifactId"),
+                    ),
+                    parent_version,
+                )
+            )
     for dependency in model.root.findall(".//m:dependency", NS):
         version = child_text(dependency, "version")
         if version:
@@ -240,11 +299,11 @@ def validate_release_plan(
             f"but Maven resolved {current_version}"
         )
 
-    paths = pom_paths(root)
-    if not paths or root / "pom.xml" not in paths:
-        raise ValueError(f"no root pom.xml found below {root}")
+    paths = reactor_pom_paths(root)
     models = [model_for(path) for path in paths]
-    root_model = next(model for model in models if model.path == root / "pom.xml")
+    root_model = models[0]
+    if root_model.path != root / "pom.xml":
+        raise ValueError("reactor discovery did not start at the root pom.xml")
     if root_model.version != current_version:
         raise ValueError(
             f"root pom.xml declares {root_model.version}, not Maven's {current_version}"
@@ -256,7 +315,7 @@ def validate_release_plan(
     failures: list[str] = []
     for model in models:
         relative = model.path.relative_to(root)
-        if model.group_id == root_model.group_id and model.version != current_version:
+        if model.version != current_version:
             failures.append(
                 f"{relative}: reactor version {model.version!r} differs from {current_version}"
             )
@@ -271,7 +330,7 @@ def validate_release_plan(
             if "SNAPSHOT" not in resolved.upper():
                 continue
             if (
-                kind == "dependency"
+                kind in {"dependency", "parent"}
                 and coordinate in internal_coordinates
                 and resolved == current_version
                 and state in {"development", "advanced"}
