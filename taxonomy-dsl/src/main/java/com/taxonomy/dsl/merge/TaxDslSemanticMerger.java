@@ -10,7 +10,6 @@ import com.taxonomy.dsl.serializer.TaxDslSerializer;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,12 +22,10 @@ import java.util.function.Function;
 /**
  * Three-way semantic merge for Taxonomy DSL documents.
  *
- * <p>The ordinary JGit text merger remains the fast path. This merger is the
- * deterministic fallback for the single canonical {@code architecture.taxdsl}
- * file. It identifies blocks by their kind and complete header rather than by
+ * <p>Blocks are identified by their kind and complete header rather than by
  * line numbers. Independent requirements, mappings, solutions and products can
- * therefore be added on different branches without producing a textual conflict.
- * Conflicting edits to the same property are reported explicitly.</p>
+ * therefore be added on different branches without textual conflicts.
+ * Concurrent edits to the same property remain explicit review conflicts.</p>
  */
 public final class TaxDslSemanticMerger {
 
@@ -53,11 +50,11 @@ public final class TaxDslSemanticMerger {
         DocumentAst theirs = parse(theirsText, "theirs.taxdsl");
 
         List<TaxDslMergeConflict> conflicts = new ArrayList<>();
-        MetaAst meta = mergeMeta(base.meta(), ours.meta(), theirs.meta(), conflicts);
+        MetaAst meta = mergeMeta(base.getMeta(), ours.getMeta(), theirs.getMeta(), conflicts);
 
-        Map<String, BlockAst> baseBlocks = index(base.blocks(), "base", conflicts);
-        Map<String, BlockAst> ourBlocks = index(ours.blocks(), "ours", conflicts);
-        Map<String, BlockAst> theirBlocks = index(theirs.blocks(), "theirs", conflicts);
+        Map<String, BlockAst> baseBlocks = index(base.getBlocks(), "base", conflicts);
+        Map<String, BlockAst> ourBlocks = index(ours.getBlocks(), "ours", conflicts);
+        Map<String, BlockAst> theirBlocks = index(theirs.getBlocks(), "theirs", conflicts);
 
         Set<String> identities = new TreeSet<>();
         identities.addAll(baseBlocks.keySet());
@@ -72,22 +69,20 @@ public final class TaxDslSemanticMerger {
                     ourBlocks.get(identity),
                     theirBlocks.get(identity),
                     conflicts);
-            if (merged != null) {
-                mergedBlocks.add(merged);
-            }
+            if (merged != null) mergedBlocks.add(merged);
         }
 
         if (!conflicts.isEmpty()) {
             return new TaxDslMergeResult(null, conflicts);
         }
-        DocumentAst merged = new DocumentAst("semantic-merge.taxdsl", meta, mergedBlocks);
-        return new TaxDslMergeResult(serializer.serialize(merged), List.of());
+        return new TaxDslMergeResult(
+                serializer.serialize(new DocumentAst(meta, mergedBlocks)),
+                List.of());
     }
 
     private DocumentAst parse(String text, String sourceName) {
         if (text == null || text.isBlank()) {
             return new DocumentAst(
-                    sourceName,
                     new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, "default", GENERATED),
                     List.of());
         }
@@ -128,19 +123,17 @@ public final class TaxDslSemanticMerger {
             if (previous != null) {
                 conflicts.add(new TaxDslMergeConflict(
                         identity, null, "duplicate block on " + side,
-                        null, side.equals("ours") ? renderBlock(previous) : null,
+                        null,
+                        side.equals("ours") ? renderBlock(previous) : null,
                         side.equals("theirs") ? renderBlock(block) : null));
             }
         }
         return indexed;
     }
 
-    /**
-     * Stable identity: block type plus every header token. Using all tokens is
-     * essential for relations, mappings and project-qualified portfolio blocks.
-     */
+    /** Stable identity: block kind plus every header token. */
     public String identity(BlockAst block) {
-        return block.blockType() + " " + String.join(" ", block.headerTokens());
+        return block.getKind() + " " + String.join(" ", block.getHeaderTokens());
     }
 
     private BlockAst mergeBlock(String identity,
@@ -155,16 +148,19 @@ public final class TaxDslSemanticMerger {
         if (base == null) {
             if (ours == null) return copy(theirs);
             if (theirs == null) return copy(ours);
-            conflicts.add(blockConflict(identity, "different blocks added with the same identity", null, ours, theirs));
+            conflicts.add(blockConflict(identity,
+                    "different blocks added with the same identity", null, ours, theirs));
             return null;
         }
         if (ours == null && theirs == null) return null;
         if (ours == null) {
-            conflicts.add(blockConflict(identity, "deleted in ours but modified in theirs", base, null, theirs));
+            conflicts.add(blockConflict(identity,
+                    "deleted in ours but modified in theirs", base, null, theirs));
             return null;
         }
         if (theirs == null) {
-            conflicts.add(blockConflict(identity, "modified in ours but deleted in theirs", base, ours, null));
+            conflicts.add(blockConflict(identity,
+                    "modified in ours but deleted in theirs", base, ours, null));
             return null;
         }
 
@@ -184,6 +180,7 @@ public final class TaxDslSemanticMerger {
         keys.addAll(ourProperties.keySet());
         keys.addAll(theirProperties.keySet());
 
+        int conflictsBefore = conflicts.size();
         List<PropertyAst> mergedProperties = new ArrayList<>();
         for (String key : keys) {
             PropertyAst baseProperty = baseProperties.get(key);
@@ -197,19 +194,20 @@ public final class TaxDslSemanticMerger {
                     propertyValue(theirProperty),
                     conflicts);
             if (mergedValue != null) {
-                SourceLocation location = firstLocation(ourProperty, theirProperty, baseProperty);
-                mergedProperties.add(new PropertyAst(key, mergedValue, location));
+                mergedProperties.add(new PropertyAst(
+                        key, mergedValue,
+                        firstPropertyLocation(ourProperty, theirProperty, baseProperty)));
             }
         }
+        if (conflicts.size() > conflictsBefore) return null;
 
-        if (conflicts.stream().anyMatch(conflict -> identity.equals(conflict.blockIdentity()))) {
-            return null;
-        }
         return new BlockAst(
-                ours.blockType(),
-                List.copyOf(ours.headerTokens()),
+                ours.getKind(),
+                List.copyOf(ours.getHeaderTokens()),
                 mergedProperties,
-                firstLocation(ours, theirs, base));
+                List.of(),
+                Map.of(),
+                firstBlockLocation(ours, theirs, base));
     }
 
     private String mergeScalar(String identity,
@@ -230,13 +228,19 @@ public final class TaxDslSemanticMerger {
         return property == null ? null : property.value();
     }
 
-    private static SourceLocation firstLocation(Object... objects) {
-        for (Object object : objects) {
-            if (object instanceof PropertyAst property && property.sourceLocation() != null) {
+    private static SourceLocation firstPropertyLocation(PropertyAst... properties) {
+        for (PropertyAst property : properties) {
+            if (property != null && property.sourceLocation() != null) {
                 return property.sourceLocation();
             }
-            if (object instanceof BlockAst block && block.sourceLocation() != null) {
-                return block.sourceLocation();
+        }
+        return GENERATED;
+    }
+
+    private static SourceLocation firstBlockLocation(BlockAst... blocks) {
+        for (BlockAst block : blocks) {
+            if (block != null && block.getSourceLocation() != null) {
+                return block.getSourceLocation();
             }
         }
         return GENERATED;
@@ -244,7 +248,7 @@ public final class TaxDslSemanticMerger {
 
     private static Map<String, PropertyAst> propertyMap(BlockAst block) {
         Map<String, PropertyAst> result = new LinkedHashMap<>();
-        for (PropertyAst property : block.properties()) {
+        for (PropertyAst property : block.getProperties()) {
             result.put(property.key(), property);
         }
         return result;
@@ -252,7 +256,7 @@ public final class TaxDslSemanticMerger {
 
     private static boolean hasDuplicatePropertyKeys(BlockAst block) {
         Set<String> keys = new LinkedHashSet<>();
-        for (PropertyAst property : block.properties()) {
+        for (PropertyAst property : block.getProperties()) {
             if (!keys.add(property.key())) return true;
         }
         return false;
@@ -261,17 +265,13 @@ public final class TaxDslSemanticMerger {
     private static boolean equivalent(BlockAst left, BlockAst right) {
         if (left == right) return true;
         if (left == null || right == null) return false;
-        if (!Objects.equals(left.blockType(), right.blockType())
-                || !Objects.equals(left.headerTokens(), right.headerTokens())) {
-            return false;
-        }
-        List<String> leftProperties = normalizedProperties(left);
-        List<String> rightProperties = normalizedProperties(right);
-        return leftProperties.equals(rightProperties);
+        return Objects.equals(left.getKind(), right.getKind())
+                && Objects.equals(left.getHeaderTokens(), right.getHeaderTokens())
+                && normalizedProperties(left).equals(normalizedProperties(right));
     }
 
     private static List<String> normalizedProperties(BlockAst block) {
-        return block.properties().stream()
+        return block.getProperties().stream()
                 .map(property -> property.key() + "\u0000" + property.value())
                 .sorted()
                 .toList();
@@ -279,13 +279,17 @@ public final class TaxDslSemanticMerger {
 
     private static BlockAst copy(BlockAst block) {
         if (block == null) return null;
-        List<PropertyAst> properties = block.properties().stream()
+        List<PropertyAst> properties = block.getProperties().stream()
                 .map(property -> new PropertyAst(
                         property.key(), property.value(), property.sourceLocation()))
                 .toList();
         return new BlockAst(
-                block.blockType(), List.copyOf(block.headerTokens()),
-                properties, block.sourceLocation());
+                block.getKind(),
+                List.copyOf(block.getHeaderTokens()),
+                properties,
+                List.copyOf(block.getChildren()),
+                Map.copyOf(block.getExtensions()),
+                block.getSourceLocation());
     }
 
     private TaxDslMergeConflict blockConflict(String identity,
@@ -301,7 +305,6 @@ public final class TaxDslSemanticMerger {
     private String renderBlock(BlockAst block) {
         if (block == null) return null;
         DocumentAst document = new DocumentAst(
-                "block.taxdsl",
                 new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, "merge", GENERATED),
                 List.of(block));
         String text = serializer.serialize(document);
