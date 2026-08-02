@@ -28,8 +28,8 @@ import java.util.Objects;
 /**
  * Portable Git projection variant.
  *
- * <p>Database primary keys are kept only as diagnostic metadata. The current
- * requirement version is represented and restored by its project-local,
+ * <p>Database primary keys are not part of the collaboration contract. The
+ * current requirement version is represented and restored by its project-local,
  * monotonically increasing version number so the same DSL can be materialized
  * in another database or workspace.</p>
  */
@@ -38,6 +38,7 @@ import java.util.Objects;
 public class PortablePortfolioGitService extends PortfolioGitService {
 
     private static final String CURRENT_VERSION_NUMBER = "currentVersionNumber";
+    private static final String DATABASE_CURRENT_VERSION_ID = "currentVersionId";
 
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
@@ -106,7 +107,8 @@ public class PortablePortfolioGitService extends PortfolioGitService {
             }
             List<PropertyAst> properties = new ArrayList<>();
             for (PropertyAst property : block.getProperties()) {
-                if (!CURRENT_VERSION_NUMBER.equals(property.key())) {
+                if (!CURRENT_VERSION_NUMBER.equals(property.key())
+                        && !DATABASE_CURRENT_VERSION_ID.equals(property.key())) {
                     properties.add(property);
                 }
             }
