@@ -26,7 +26,7 @@ public class PortfolioGitPortAdapter
                                   String message,
                                   String username,
                                   WorkspaceContext context) throws IOException {
-        return portfolioGitService.commit(branch, message, username, context);
+        return portfolioGitService.commit(branch, message, username, context).commitId();
     }
 
     @Override
