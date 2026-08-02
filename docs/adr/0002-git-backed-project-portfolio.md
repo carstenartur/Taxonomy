@@ -1,4 +1,4 @@
-# ADR 0002: Git-backed project requirement portfolio and semantic merge
+# ADR 0002: Git-backed project, requirement, solution and product portfolio
 
 - **Status:** Accepted
 - **Date:** 2026-08-02
@@ -6,37 +6,82 @@
 
 ## Context
 
-The first portfolio increment stored projects, stable requirements, immutable requirement versions, analysis snapshots, solutions and products relationally. The architecture DSL was already Git-backed, but a pull or push between isolated workspace repositories copied the complete `architecture.taxdsl` file. Two people could therefore model independently, but publishing one complete file could overwrite the other person's requirements.
+Taxonomy already versions the canonical architecture DSL with JGit, while the project portfolio originally stored its durable business objects only in relational tables. That split prevented two architects from modelling requirements independently and then combining the complete project portfolio through normal pull, push and merge operations.
 
-Line-oriented Git conflicts are also unnecessarily broad for the deterministic DSL. Two contributors adding different requirement blocks should merge automatically even when both additions occur near the same serialized location.
+Copying a complete `architecture.taxdsl` file between isolated workspace repositories is not sufficient: concurrent additions can overwrite one another, and a line-oriented conflict describes serialization layout rather than business identity.
+
+The collaboration contract must also remain portable across different workspaces and databases. Relational primary keys and target-workspace snapshot foreign keys therefore cannot be Git identities.
 
 ## Decision
 
-### Durable business state is projected into the canonical DSL
+### Git is the authoritative collaboration history
 
-The following information is written into `architecture.taxdsl` before pull or push:
+Durable, human-reviewable portfolio state is projected into `architecture.taxdsl` before commit, pull or publish and materialized into the destination relational projection after a successful integration.
 
-- `project` blocks,
-- `projectRequirement` blocks with stable project-qualified identities,
-- every immutable `requirementVersion`,
-- a canonical typed `requirement` block for the current version,
-- current `mapping` blocks from requirements to taxonomy elements, including review and action metadata.
+The contract contains stable-key blocks for:
 
-Operational job state, rate-limit information, caches and large immutable analysis payloads remain relational. The Git document stores their stable references and hashes rather than duplicating operational data.
+- projects,
+- requirements and every immutable text version,
+- requirement-to-taxonomy mappings and review/action decisions,
+- reusable solution definitions and taxonomy coverage,
+- project-specific solution decisions,
+- requirement-to-solution decisions,
+- sourced product definitions and taxonomy coverage,
+- reviewed solution-to-product decisions.
+
+Database primary keys are projection details only. References use stable business keys such as project key, requirement key, solution key and product key.
+
+### Operational data remains relational
+
+The following data is intentionally not copied into Git:
+
+- running analysis jobs and retry state,
+- rate-limit and queue state,
+- full large analysis payloads,
+- caches and diagnostics.
+
+Snapshot identifiers can be retained as provenance strings. When materializing another workspace they are not assumed to be valid foreign keys.
 
 ### Portfolio-owned blocks are replaceable projections
 
-A projection replaces only blocks carrying `x-portfolio-managed: true` and the dedicated portfolio block kinds. Elements, relations, views, evidence and manually maintained DSL content remain untouched.
+A projection replaces only blocks carrying `x-portfolio-managed: true` and dedicated portfolio block kinds. Elements, relations, views, evidence and manually maintained DSL content remain untouched.
+
+The durable block kinds include:
+
+```text
+project
+projectRequirement
+requirementVersion
+requirement
+mapping
+solutionDefinition
+solutionTaxonomyCoverage
+projectSolutionDecision
+requirementSolutionDecision
+productDefinition
+productTaxonomyCoverage
+solutionProductDecision
+```
+
+### Deterministic, lossless serialization
+
+TaxDSL output is deterministically sorted. Newlines, carriage returns and tabs in requirement, evidence or source text are represented as `\n`, `\r` and `\t`, then restored exactly on parsing. Quotation marks and backslashes are escaped as well. This keeps each property on one physical line without losing content.
 
 ### Semantic three-way merge
 
-The normal JGit merge remains the fast path. If the canonical DSL file conflicts textually, the system performs a semantic three-way merge using:
+The normal JGit merge remains the fast path. If the canonical DSL conflicts textually, the system performs a semantic three-way merge using:
 
 - merge base,
-- target branch (`ours`),
-- incoming branch (`theirs`).
+- target state (`ours`),
+- incoming state (`theirs`).
 
-Blocks are identified by block kind plus all header tokens. This makes relation and mapping identities unambiguous and permits project-qualified portfolio blocks.
+A block is identified by its kind and complete header, for example:
+
+```text
+projectRequirement P-001 REQ-A-001
+projectSolutionDecision P-001 SOL-001
+solutionProductDecision P-001 SOL-001 PRD-001
+```
 
 Rules:
 
@@ -45,62 +90,76 @@ Rules:
 3. Different properties of the same block are combined.
 4. The same property changed differently on both sides is a conflict.
 5. Delete-versus-modify is a conflict.
-6. Blocks with repeated property keys, such as views with several `include` entries, are merged atomically when both sides changed them.
+6. Blocks with repeated property keys are merged atomically when both sides changed them.
 
-Conflict identifiers name the exact block and property, for example:
+Conflict identifiers name the exact block and property:
 
 ```text
-projectRequirement P-001 REQ-001:text
-mapping P-001__REQ-001 -> CR-1047:x-action-status
+projectRequirement P-001 REQ-A-001:title
+mapping P-001__REQ-A-001 -> CR-1047:x-action-status
+projectSolutionDecision P-001 SOL-001:actionStatus
+solutionProductDecision P-001 SOL-001 PRD-001:selectionStatus
 ```
 
-### Same-repository branch merges preserve Git ancestry
+### Same-repository merges preserve Git ancestry
 
 When semantic fallback is needed inside one repository, the resulting commit has both branch heads as parents. It is therefore a real merge commit, not an overwrite commit.
 
-### Cross-repository workspace synchronization uses a tracked merge base
+### Isolated workspaces use a tracked merge base
 
-Each isolated workspace repository maintains a `sync-base` branch. Pull and push use the DSL at that branch as the common semantic base:
+Each isolated workspace repository maintains a private `sync-base` branch containing the last integrated semantic state.
+
+Pull uses:
 
 ```text
 base   = workspace/sync-base
-ours   = destination HEAD
-other  = source HEAD
+ours   = workspace/<active branch>
+theirs = shared/draft
 ```
 
-After a successful synchronization, `sync-base` is advanced to the merged content. This prevents a later contributor from overwriting changes that were already integrated.
+Publish reverses source and target but uses the same tracked base. The merged result is committed to the shared repository and back to the local active branch. The old copy-and-replace implementation is no longer used.
 
-### Materialization follows every successful merge
+The persistent active workspace branch is authoritative. A stale volatile default such as `draft` must not redirect an operation away from the provisioned `main` or a selected variant branch.
 
-After branch merge, pull or push, the merged project and requirement blocks are materialized into the destination workspace projection. Materialization is additive/updating. A missing block does not silently delete a business record; deletion and archival remain explicit reviewed operations.
+### Materialization follows every successful integration
+
+After branch merge, pull or publish, the merged portfolio is materialized into the destination workspace projection. Materialization is additive/updating. A missing block does not silently delete a business record; retirement and archival remain explicit reviewed decisions.
+
+A product can remain `SELECTED` after materialization only when its review is `CONFIRMED` and it has no hard exclusion. Invalid imported selections are reduced to a candidate state and reported as warnings.
+
+### Authorization
+
+Pull, publish and semantic divergence resolution mutate architecture history and require `ARCHITECT` or `ADMIN`. Read-only users cannot publish changes. Global workspace administration remains restricted to `ADMIN`.
 
 ## Consequences
 
 ### Positive
 
-- Different people can model requirements on separate branches or workspace repositories.
-- Independent requirements merge automatically into one architecture model.
-- Requirement text conflicts are precise and reviewable.
-- The shared architecture preserves requirement IDs, versions, provenance and taxonomy mappings.
-- Pull/push no longer replaces the complete destination model.
-- The relational UI is rebuilt from the merged Git source after synchronization.
+- Different people can model requirements, solutions and product evaluations on separate branches or workspaces.
+- Independent contributions merge automatically into one architecture model.
+- Requirement text and decision conflicts are precise and reviewable.
+- Git history records who introduced or changed every durable decision.
+- The same DSL can rebuild a portfolio in another workspace or database.
+- Pull and publish no longer replace the complete destination model.
+- Product selection retains source and verification provenance.
 
 ### Trade-offs
 
-- Cross-repository synchronization creates a semantic content commit rather than transferring the complete foreign Git object graph.
+- Cross-repository synchronization creates semantic content commits rather than transferring the complete foreign Git object graph.
 - Large analysis payloads remain external to Git and are verified through stable references and fingerprints.
-- Removing a requirement block does not automatically delete the relational requirement.
-- Product and solution projections can be expanded using the same generic block contract, but requirement identity and architecture mapping are the mandatory first merge boundary.
+- Removing a block does not automatically delete its relational projection.
+- Changing the same requirement text or decision on two branches still requires human resolution.
+- New durable portfolio concepts require stable DSL block contracts and backward-compatible materialization.
 
 ## Rejected alternatives
 
-### Keep database-only requirements
+### Keep database-only portfolio objects
 
-Rejected because database rows from isolated workspaces cannot be reviewed, pushed, pulled or semantically merged as architecture contributions.
+Rejected because rows from isolated workspaces cannot be reviewed, pushed, pulled or semantically merged as architecture contributions.
 
 ### Copy the complete workspace DSL on publish
 
-Rejected because the last publisher can erase previously integrated requirements.
+Rejected because the last publisher can erase previously integrated requirements or decisions.
 
 ### Use only line-oriented merge
 
@@ -108,4 +167,19 @@ Rejected because deterministic reordering and nearby independent block additions
 
 ### Store every LLM payload in Git
 
-Rejected because operational payload volume would dominate architecture history. Immutable payloads remain in persistence; stable results and decisions are projected into the DSL.
+Rejected because operational payload volume would dominate architecture history. Immutable payloads remain in persistence; stable results and reviewed decisions are projected into the DSL.
+
+## Verification
+
+The implementation is covered by tests for:
+
+- independent requirement additions,
+- changes to different properties of one block,
+- same-property conflicts and delete-versus-modify,
+- real two-parent semantic merge commits,
+- isolated cross-repository pull and publish,
+- persistent active-branch resolution,
+- complete requirement-version roundtrip,
+- multiline text roundtrip,
+- solution, project-solution, product and selected-product roundtrip across workspaces,
+- contradictory product selections reported as semantic conflicts.
