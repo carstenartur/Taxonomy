@@ -34,6 +34,20 @@ run_maven_release_check() {
     -DreleaseCheckCurrentState="$state"
 }
 
+stage_version_metadata() {
+  local -a tracked_poms=()
+  mapfile -d '' tracked_poms < <(
+    git ls-files -z -- 'pom.xml' ':(glob)**/pom.xml'
+  )
+  if [[ ${#tracked_poms[@]} -eq 0 ]]; then
+    fail "No tracked Maven POMs found for release version staging"
+  fi
+  git add -- "${tracked_poms[@]}" CITATION.cff CITATION.md .zenodo.json codemeta.json
+  if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+    git add -- deploy/helm/taxonomy/Chart.yaml
+  fi
+}
+
 if ! [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   fail "release_version must use X.Y.Z without a leading v"
 fi
@@ -226,10 +240,7 @@ if [[ "$STATE" == "new" ]]; then
   python3 "$METADATA_HELPER" "$RELEASE_VERSION" --release
   python3 "$VERSION_STATE_HELPER" --mode release --expected-version "$RELEASE_VERSION"
   ensure_no_snapshot_poms
-  git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
-  if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
-    git add deploy/helm/taxonomy/Chart.yaml
-  fi
+  stage_version_metadata
   git commit -m "Release version $RELEASE_VERSION"
   RELEASE_COMMIT=$(git rev-parse HEAD)
 else
@@ -276,10 +287,7 @@ else
   ./mvnw -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
   python3 "$METADATA_HELPER" "$NEXT_VERSION"
   python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
-  git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
-  if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
-    git add deploy/helm/taxonomy/Chart.yaml
-  fi
+  stage_version_metadata
   git commit -m "Prepare next development version $NEXT_VERSION"
   NEXT_COMMIT=$(git rev-parse HEAD)
 
