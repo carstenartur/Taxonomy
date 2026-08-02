@@ -3,7 +3,6 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.portfolio.service.PortfolioGitService;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.SyncState;
 import com.taxonomy.workspace.repository.SyncStateRepository;
@@ -19,6 +18,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,7 +29,7 @@ class GitNativeSyncIntegrationServiceTest {
     private final SystemRepositoryService systemRepositoryService = mock(SystemRepositoryService.class);
     private final DslGitRepositoryFactory repositoryFactory = mock(DslGitRepositoryFactory.class);
     private final SemanticGitMergeService semanticMergeService = mock(SemanticGitMergeService.class);
-    private final PortfolioGitService portfolioGitService = mock(PortfolioGitService.class);
+    private final WorkspacePortfolioGitPort portfolioGitPort = mock(WorkspacePortfolioGitPort.class);
     private final WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
     private final DslGitRepository systemRepository = mock(DslGitRepository.class);
     private final DslGitRepository isolatedWorkspaceRepository = mock(DslGitRepository.class);
@@ -45,7 +45,7 @@ class GitNativeSyncIntegrationServiceTest {
                 systemRepositoryService,
                 repositoryFactory,
                 semanticMergeService,
-                portfolioGitService,
+                portfolioGitPort,
                 contextResolver);
 
         state = new SyncState();
@@ -91,10 +91,12 @@ class GitNativeSyncIntegrationServiceTest {
 
         assertThat(commit).isEqualTo("local-merge-commit");
         verify(systemRepository).getDslAtHead("draft");
-        verify(isolatedWorkspaceRepository).getDslAtHead("feature/alice");
+        // Once before projection to validate initialization, once afterwards to
+        // merge the exact DSL committed by the portfolio port.
+        verify(isolatedWorkspaceRepository, times(2)).getDslAtHead("feature/alice");
         verify(semanticMergeService).mergeContent(base, ours, theirs);
         verify(semanticMergeService, never()).mergeBranches(any(), any(), any(), any());
-        verify(portfolioGitService).materialize(
+        verify(portfolioGitPort).materializePortfolio(
                 eq(merged), eq("alice"),
                 eq(new WorkspaceContext("alice", "workspace-a", "feature/alice")));
         assertThat(state.getLastSyncedCommitId()).isEqualTo("shared-head");
@@ -126,9 +128,9 @@ class GitNativeSyncIntegrationServiceTest {
         String commit = service.syncFromShared("alice", "draft");
 
         assertThat(commit).isEqualTo("main-merge-commit");
-        verify(isolatedWorkspaceRepository).getDslAtHead("main");
+        verify(isolatedWorkspaceRepository, times(2)).getDslAtHead("main");
         verify(isolatedWorkspaceRepository, never()).getDslAtHead("draft");
-        verify(portfolioGitService).commit(
+        verify(portfolioGitPort).commitPortfolio(
                 eq("main"), any(String.class), eq("alice"),
                 eq(new WorkspaceContext("alice", "workspace-a", "main")));
     }
@@ -165,9 +167,9 @@ class GitNativeSyncIntegrationServiceTest {
                 eq("draft"), eq(merged), eq("alice"), any(String.class));
         verify(isolatedWorkspaceRepository).commitDsl(
                 eq("feature/alice"), eq(merged), eq("alice"), any(String.class));
-        verify(portfolioGitService).materialize(
+        verify(portfolioGitPort).materializePortfolio(
                 eq(merged), eq("shared"), eq(WorkspaceContext.SHARED));
-        verify(portfolioGitService).materialize(
+        verify(portfolioGitPort).materializePortfolio(
                 eq(merged), eq("alice"),
                 eq(new WorkspaceContext("alice", "workspace-a", "feature/alice")));
         verify(semanticMergeService, never()).mergeBranches(any(), any(), any(), any());
