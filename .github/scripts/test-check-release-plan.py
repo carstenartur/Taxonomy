@@ -35,13 +35,14 @@ MODULE_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>com.taxonomy</groupId>
-    <artifactId>taxonomy</artifactId>
+    <groupId>{parent_group_id}</groupId>
+    <artifactId>{parent_artifact_id}</artifactId>
     <version>{parent_version}</version>
   </parent>
   {group_id}
   <artifactId>{artifact_id}</artifactId>
   {version}
+  {properties}
   <dependencies>
     <dependency>
       <groupId>com.taxonomy</groupId>
@@ -69,10 +70,13 @@ def write_module(
     root: Path,
     path: str = "module-a",
     *,
+    parent_group_id: str = "com.taxonomy",
+    parent_artifact_id: str = "taxonomy",
     parent_version: str = "1.3.0-SNAPSHOT",
     artifact_id: str = "module-a",
     group_id: str = "",
     version: str = "",
+    properties: str = "",
     dependency: str = "",
     extra: str = "",
 ) -> None:
@@ -80,10 +84,13 @@ def write_module(
     module.mkdir(parents=True, exist_ok=True)
     module.joinpath("pom.xml").write_text(
         MODULE_TEMPLATE.format(
+            parent_group_id=parent_group_id,
+            parent_artifact_id=parent_artifact_id,
             parent_version=parent_version,
             artifact_id=artifact_id,
             group_id=f"<groupId>{group_id}</groupId>" if group_id else "",
             version=f"<version>{version}</version>" if version else "",
+            properties=properties,
             dependency=dependency,
             extra=extra,
         ),
@@ -122,11 +129,7 @@ def write_project(
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=True,
+        ["git", *args], cwd=root, text=True, capture_output=True, check=True
     )
 
 
@@ -135,13 +138,9 @@ def commit_project(root: Path) -> None:
     git(root, "add", ".")
     git(
         root,
-        "-c",
-        "user.name=Release QA",
-        "-c",
-        "user.email=qa@example.invalid",
-        "commit",
-        "-qm",
-        "initial",
+        "-c", "user.name=Release QA",
+        "-c", "user.email=qa@example.invalid",
+        "commit", "-qm", "initial",
     )
 
 
@@ -157,20 +156,14 @@ class ReleasePlanTest(unittest.TestCase):
         require_clean: bool = False,
     ) -> dict[str, object]:
         return MODULE.validate_release_plan(
-            root,
-            current,
-            release,
-            next_version,
-            state,
-            require_clean=require_clean,
+            root, current, release, next_version, state, require_clean=require_clean
         )
 
     def test_development_plan_allows_internal_snapshot_reactor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_project(root)
-            result = self.validate(root)
-            self.assertEqual(2, result["pom_count"])
+            self.assertEqual(2, self.validate(root)["pom_count"])
 
     def test_nested_declared_modules_are_discovered(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -186,11 +179,86 @@ class ReleasePlanTest(unittest.TestCase):
             write_module(
                 root,
                 "module-a/nested",
+                parent_artifact_id="module-a",
                 artifact_id="nested",
-                parent_version="1.3.0-SNAPSHOT",
             )
-            result = self.validate(root)
-            self.assertEqual(3, result["pom_count"])
+            self.assertEqual(3, self.validate(root)["pom_count"])
+
+    def test_nested_parent_snapshot_property_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_project(root)
+            aggregator = root / "module-a" / "pom.xml"
+            aggregator.write_text(
+                aggregator.read_text(encoding="utf-8").replace(
+                    "</project>",
+                    "<properties><nested.external.version>9.0.0-SNAPSHOT"
+                    "</nested.external.version></properties>"
+                    "<modules><module>nested</module></modules></project>",
+                ),
+                encoding="utf-8",
+            )
+            dependency = """<dependency>
+              <groupId>example</groupId><artifactId>nested-unstable</artifactId>
+              <version>${nested.external.version}</version>
+            </dependency>"""
+            write_module(
+                root,
+                "module-a/nested",
+                parent_artifact_id="module-a",
+                artifact_id="nested",
+                dependency=dependency,
+            )
+            with self.assertRaisesRegex(
+                ValueError, "external dependency example:nested-unstable"
+            ):
+                self.validate(root)
+
+    def test_nested_parent_stable_property_is_inherited(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_project(root)
+            aggregator = root / "module-a" / "pom.xml"
+            aggregator.write_text(
+                aggregator.read_text(encoding="utf-8").replace(
+                    "</project>",
+                    "<properties><nested.external.version>9.0.0"
+                    "</nested.external.version></properties>"
+                    "<modules><module>nested</module></modules></project>",
+                ),
+                encoding="utf-8",
+            )
+            dependency = """<dependency>
+              <groupId>example</groupId><artifactId>nested-stable</artifactId>
+              <version>${nested.external.version}</version>
+            </dependency>"""
+            write_module(
+                root,
+                "module-a/nested",
+                parent_artifact_id="module-a",
+                artifact_id="nested",
+                dependency=dependency,
+            )
+            self.assertEqual(3, self.validate(root)["pom_count"])
+
+    def test_unresolved_dependency_property_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dependency = """<dependency>
+              <groupId>example</groupId><artifactId>unknown</artifactId>
+              <version>${missing.version}</version>
+            </dependency>"""
+            write_project(root, dependency=dependency)
+            with self.assertRaisesRegex(ValueError, "unresolved version property"):
+                self.validate(root)
+
+    def test_duplicate_reactor_coordinate_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_project(root, modules=("module-a", "module-b"))
+            write_module(root, "module-b", artifact_id="module-a")
+            with self.assertRaisesRegex(ValueError, "duplicate Maven reactor coordinate"):
+                self.validate(root)
 
     def test_unrelated_pom_is_not_part_of_the_reactor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -208,8 +276,7 @@ class ReleasePlanTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            result = self.validate(root)
-            self.assertEqual(2, result["pom_count"])
+            self.assertEqual(2, self.validate(root)["pom_count"])
 
     def test_missing_declared_module_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -263,17 +330,18 @@ class ReleasePlanTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_project(root, version="1.3.0")
-            result = self.validate(root, current="1.3.0", state="release")
-            self.assertEqual("release", result["state"])
+            self.assertEqual(
+                "release", self.validate(root, current="1.3.0", state="release")["state"]
+            )
 
     def test_advanced_state_accepts_next_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_project(root, version="1.3.1-SNAPSHOT")
-            result = self.validate(
-                root, current="1.3.1-SNAPSHOT", state="advanced"
+            self.assertEqual(
+                "advanced",
+                self.validate(root, current="1.3.1-SNAPSHOT", state="advanced")["state"],
             )
-            self.assertEqual("advanced", result["state"])
 
     def test_external_snapshot_parent_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -373,8 +441,7 @@ class ReleasePlanTest(unittest.TestCase):
             root = Path(directory)
             write_project(root)
             commit_project(root)
-            result = self.validate(root, require_clean=True)
-            self.assertEqual(2, result["pom_count"])
+            self.assertEqual(2, self.validate(root, require_clean=True)["pom_count"])
 
     def test_linked_worktree_dirty_state_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
