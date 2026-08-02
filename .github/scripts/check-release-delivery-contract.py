@@ -49,6 +49,9 @@ def main() -> int:
         'state in {"development", "advanced"}',
         'if state == "release"',
         "def reactor_pom_paths",
+        "def reactor_models_by_coordinate",
+        "def effective_properties",
+        "unresolved version property",
         'kind in {"dependency", "parent"}',
         "declares module",
     ):
@@ -60,6 +63,8 @@ def main() -> int:
         "stage_version_metadata()",
         "git ls-files -z -- 'pom.xml' ':(glob)**/pom.xml'",
         'run_maven_release_check "$RELEASE_CHECK_STATE" release-check validate',
+        "run_maven_release_check release release-check validate",
+        "-DreleaseCheckRequireClean=false",
         "run_maven_release_check release release-check,ci clean verify",
         'if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then',
         "remains a draft until downstream artifacts and final CI succeed",
@@ -75,6 +80,10 @@ def main() -> int:
     if "git add pom.xml */pom.xml" in script:
         failures.append(
             "release.sh must not use a one-directory POM glob that omits nested modules"
+        )
+    if 'grep -R "SNAPSHOT" --include="pom.xml"' in script:
+        failures.append(
+            "release.sh must not scan unrelated POMs instead of validating the declared reactor"
         )
     if "./mvnw -B clean verify -Pci" in script:
         failures.append(
