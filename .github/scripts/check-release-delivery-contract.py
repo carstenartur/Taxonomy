@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed when release staging, recovery and publication cease to be atomic."""
+"""Fail closed when release verification or publication ceases to be atomic."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+ROOT_POM = ROOT / "pom.xml"
+RELEASE_PLAN_CHECK = ROOT / ".github" / "scripts" / "check-release-plan.py"
 RELEASE_SCRIPT = ROOT / ".github" / "scripts" / "release.sh"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-cd.yml"
@@ -18,18 +20,52 @@ def require(text: str, needle: str, source: Path, failures: list[str]) -> None:
 
 
 def main() -> int:
+    pom = ROOT_POM.read_text(encoding="utf-8")
+    plan_check = RELEASE_PLAN_CHECK.read_text(encoding="utf-8")
     script = RELEASE_SCRIPT.read_text(encoding="utf-8")
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     failures: list[str] = []
 
     for needle in (
+        "<id>release-check</id>",
+        ".github/scripts/check-release-plan.py",
+        "<argument>${releaseVersion}</argument>",
+        "<argument>${nextDevelopmentVersion}</argument>",
+        "<argument>${releaseCheckCurrentState}</argument>",
+        "<argument>${releaseCheckRequireClean}</argument>",
+    ):
+        require(pom, needle, ROOT_POM, failures)
+
+    if "<artifactId>maven-release-plugin</artifactId>" in pom:
+        failures.append(
+            "pom.xml must not introduce maven-release-plugin as a competing SCM authority"
+        )
+
+    for needle in (
+        "release verification requires a clean checkout",
+        "maven-release-plugin would create a second SCM release authority",
+        "external {kind}",
+        'state in {"development", "advanced"}',
+        'if state == "release"',
+    ):
+        require(plan_check, needle, RELEASE_PLAN_CHECK, failures)
+
+    for needle in (
         "DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}",
+        "run_maven_release_check()",
+        'run_maven_release_check "$RELEASE_CHECK_STATE" release-check validate',
+        "run_maven_release_check release release-check,ci clean verify",
         'if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then',
         "remains a draft until downstream artifacts and final CI succeed",
         'test "$RELEASE_IS_DRAFT" = true',
     ):
         require(script, needle, RELEASE_SCRIPT, failures)
+
+    if "./mvnw -B clean verify -Pci" in script:
+        failures.append(
+            "release.sh bypasses the Maven release-check profile during verification"
+        )
 
     for needle in (
         "next_development_version:",
@@ -80,12 +116,14 @@ def main() -> int:
                 f"unsafe or unsupported release configuration {forbidden!r}"
             )
 
-    require(
-        ci_workflow,
+    for needle in (
         "python3 .github/scripts/test-resolve-release-parameters.py",
-        CI_WORKFLOW,
-        failures,
-    )
+        "python3 .github/scripts/test-check-release-plan.py",
+        "./mvnw -B -Prelease-check validate",
+        '-DreleaseVersion="$release_version"',
+        '-DnextDevelopmentVersion="$next_version"',
+    ):
+        require(ci_workflow, needle, CI_WORKFLOW, failures)
 
     if "main_sha=$(git rev-parse origin/main)" in workflow:
         failures.append(
@@ -186,9 +224,9 @@ def main() -> int:
         return 1
 
     print(
-        "Release delivery contract is atomic, freely versionable and resumable: "
-        "the triggering source is preserved, an exact next development version may "
-        "override the convenience increment, immutable sources are fetched "
+        "Release delivery contract is Maven-verifiable, atomic, freely versionable "
+        "and resumable: the local profile validates the release plan without SCM "
+        "mutation, the triggering source is preserved, immutable sources are fetched "
         "explicitly, the exact main snapshot is verified, and publication remains "
         "the final gate."
     )
