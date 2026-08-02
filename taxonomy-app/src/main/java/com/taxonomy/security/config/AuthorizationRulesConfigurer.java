@@ -83,6 +83,33 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.PUT, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
 
+        // Project analysis is an end-user operation. More general project writes
+        // remain restricted below. The specific matchers must precede /api/projects/**.
+        auth.requestMatchers(HttpMethod.POST,
+                        "/api/projects/*/analyses",
+                        "/api/projects/*/requirements/*/analyses",
+                        "/api/projects/*/analysis-jobs/*/retry-failed")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+
+        // Project, solution and sourced product portfolio mutation.
+        auth.requestMatchers(HttpMethod.POST, "/api/projects/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PATCH, "/api/projects/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/projects/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/projects/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+
+        auth.requestMatchers(HttpMethod.POST, "/api/solutions/**", "/api/products/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PATCH, "/api/solutions/**", "/api/products/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/solutions/**", "/api/products/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/solutions/**", "/api/products/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+
         // End-user analysis and export operations.
         auth.requestMatchers(HttpMethod.POST, "/api/export/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/report/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
