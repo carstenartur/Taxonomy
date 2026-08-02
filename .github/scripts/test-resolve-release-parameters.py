@@ -195,12 +195,17 @@ class ReleaseParameterTest(unittest.TestCase):
             )
 
     def test_dispatch_rejects_next_version_not_newer_than_release(self) -> None:
-        with self.assertRaisesRegex(ValueError, "must be newer"):
+        with self.assertRaisesRegex(
+            ValueError,
+            "current project version 1.3.0-SNAPSHOT means this run releases 1.3.0",
+        ) as raised:
             MODULE.resolve_parameters(
                 "workflow_dispatch",
-                {"INPUT_NEXT_DEVELOPMENT_VERSION": "1.2.9-SNAPSHOT"},
-                current_version="1.2.9-SNAPSHOT",
+                {"INPUT_NEXT_DEVELOPMENT_VERSION": "1.3.0-SNAPSHOT"},
+                current_version="1.3.0-SNAPSHOT",
             )
+        self.assertIn("Leave next_development_version empty", str(raised.exception))
+        self.assertIn("patch, minor or major", str(raised.exception))
 
     def test_push_rejects_next_version_not_newer_than_release(self) -> None:
         with self.assertRaisesRegex(ValueError, "must be newer"):
