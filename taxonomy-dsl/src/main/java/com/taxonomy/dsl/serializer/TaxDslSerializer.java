@@ -17,7 +17,8 @@ import java.util.*;
  *   <li>Properties within a block follow a canonical order (known properties first, then extensions).</li>
  *   <li>String values are quoted; bare values (numbers, identifiers) are not.</li>
  *   <li>Extension attributes ({@code x-*}) are serialized after known attributes.</li>
- *   <li>Special characters in quoted values are escaped ({@code \"} and {@code \\}).</li>
+ *   <li>Special characters in quoted values are escaped ({@code \"}, {@code \\},
+ *       {@code \n}, {@code \r}, and {@code \t}).</li>
  * </ul>
  */
 public class TaxDslSerializer {
@@ -92,7 +93,7 @@ public class TaxDslSerializer {
                     return idx >= 0 ? idx : BLOCK_KIND_ORDER.size();
                 })
                 .thenComparing(BlockAst::getKind)
-                .thenComparing(b -> blockSortKey(b)));
+                .thenComparing(this::blockSortKey));
         return sorted;
     }
 
@@ -118,13 +119,13 @@ public class TaxDslSerializer {
     private void serializeMeta(MetaAst meta, StringBuilder sb) {
         sb.append("meta {\n");
         if (meta.language() != null) {
-            sb.append("  language: \"").append(meta.language()).append("\";\n");
+            sb.append("  language: \"").append(escapeForQuoting(meta.language())).append("\";\n");
         }
         if (meta.version() != null) {
-            sb.append("  version: \"").append(meta.version()).append("\";\n");
+            sb.append("  version: \"").append(escapeForQuoting(meta.version())).append("\";\n");
         }
         if (meta.namespace() != null) {
-            sb.append("  namespace: \"").append(meta.namespace()).append("\";\n");
+            sb.append("  namespace: \"").append(escapeForQuoting(meta.namespace())).append("\";\n");
         }
         sb.append("}\n");
     }
@@ -197,12 +198,22 @@ public class TaxDslSerializer {
     }
 
     /**
-     * Escape special characters for a quoted string value:
-     * {@code \} → {@code \\}, {@code "} → {@code \"}.
+     * Escape quoted text into a single physical DSL line. Escaping backslashes
+     * first ensures the subsequently introduced control-character escapes are
+     * interpreted exactly once by the parser.
      */
     private String escapeForQuoting(String value) {
         if (value == null) return "";
-        if (value.indexOf('\\') < 0 && value.indexOf('"') < 0) return value;
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        if (value.indexOf('\\') < 0 && value.indexOf('"') < 0
+                && value.indexOf('\n') < 0 && value.indexOf('\r') < 0
+                && value.indexOf('\t') < 0) {
+            return value;
+        }
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 }

@@ -205,7 +205,10 @@ public class TaxDslParser {
     }
 
     /**
-     * Unescape a quoted string value: {@code \"} → {@code "}, {@code \\} → {@code \}.
+     * Unescape a quoted string value. In addition to quotes and backslashes,
+     * control characters are represented by the portable single-line escapes
+     * {@code \n}, {@code \r}, and {@code \t} so long requirement texts remain
+     * lossless in line-oriented Git diffs.
      */
     private String unescapeQuotedValue(String raw) {
         if (raw == null || raw.indexOf('\\') < 0) return raw;
@@ -214,11 +217,19 @@ public class TaxDslParser {
             char c = raw.charAt(i);
             if (c == '\\' && i + 1 < raw.length()) {
                 char next = raw.charAt(i + 1);
-                if (next == '"' || next == '\\') {
-                    sb.append(next);
-                    i++;
-                    continue;
+                switch (next) {
+                    case '"' -> sb.append('"');
+                    case '\\' -> sb.append('\\');
+                    case 'n' -> sb.append('\n');
+                    case 'r' -> sb.append('\r');
+                    case 't' -> sb.append('\t');
+                    default -> {
+                        // Preserve unknown escapes literally for forward compatibility.
+                        sb.append('\\').append(next);
+                    }
                 }
+                i++;
+                continue;
             }
             sb.append(c);
         }

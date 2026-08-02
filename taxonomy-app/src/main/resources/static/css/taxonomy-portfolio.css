@@ -1,0 +1,250 @@
+.portfolio-page {
+    min-height: 100vh;
+}
+
+.portfolio-sidebar {
+    position: sticky;
+    top: 4.75rem;
+    max-height: calc(100vh - 6rem);
+    overflow: hidden;
+}
+
+.portfolio-sidebar .card-body {
+    overflow-y: auto;
+}
+
+#projectList .list-group-item {
+    border-left: 0.25rem solid transparent;
+    cursor: pointer;
+}
+
+#projectList .list-group-item:hover,
+#projectList .list-group-item:focus-visible {
+    background: var(--bs-tertiary-bg);
+}
+
+#projectList .list-group-item.active {
+    border-left-color: var(--bs-primary);
+}
+
+.portfolio-actions .btn {
+    white-space: nowrap;
+}
+
+.portfolio-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+}
+
+.portfolio-tabs .nav-link {
+    white-space: nowrap;
+}
+
+.portfolio-metric {
+    min-height: 6.75rem;
+}
+
+.portfolio-metric .metric-value {
+    font-size: clamp(1.45rem, 2vw, 2rem);
+    line-height: 1;
+    font-weight: 700;
+}
+
+.portfolio-metric .metric-label {
+    color: var(--bs-secondary-color);
+    font-size: 0.82rem;
+}
+
+.portfolio-empty {
+    padding: 3rem 1rem;
+    text-align: center;
+    color: var(--bs-secondary-color);
+}
+
+.portfolio-empty > span {
+    display: block;
+    font-size: 2.4rem;
+    margin-bottom: 0.5rem;
+}
+
+.portfolio-matrix {
+    max-height: 32rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+}
+
+.portfolio-matrix table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+
+.portfolio-matrix thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bs-tertiary-bg);
+}
+
+.portfolio-matrix th:first-child,
+.portfolio-matrix td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--bs-body-bg);
+    min-width: 9rem;
+}
+
+.portfolio-matrix thead th:first-child {
+    z-index: 3;
+    background: var(--bs-tertiary-bg);
+}
+
+.matrix-cell {
+    min-width: 4.25rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.matrix-cell[data-value="0"] {
+    color: var(--bs-secondary-color);
+}
+
+.matrix-cell[data-value]:not([data-value="0"]) {
+    font-weight: 600;
+}
+
+.portfolio-taxonomy-card,
+.portfolio-solution-card,
+.portfolio-product-card,
+.portfolio-conflict-card {
+    height: 100%;
+}
+
+.portfolio-taxonomy-card .taxonomy-code,
+.portfolio-snapshot-code {
+    font-family: var(--bs-font-monospace);
+}
+
+.portfolio-requirement-text,
+.portfolio-evidence {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.portfolio-status-dot {
+    display: inline-block;
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+    margin-right: 0.35rem;
+}
+
+.portfolio-status-dot.success {
+    background: var(--bs-success);
+}
+
+.portfolio-status-dot.partial {
+    background: var(--bs-warning);
+}
+
+.portfolio-status-dot.failed {
+    background: var(--bs-danger);
+}
+
+.portfolio-status-dot.pending {
+    background: var(--bs-secondary);
+}
+
+.portfolio-busy {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bs-body-bg) 82%, transparent);
+    backdrop-filter: blur(2px);
+    font-weight: 600;
+}
+
+.portfolio-busy .spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+.portfolio-snapshot-detail pre {
+    max-height: 24rem;
+    overflow: auto;
+    padding: 0.75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-tertiary-bg);
+    font-size: 0.78rem;
+}
+
+.portfolio-snapshot-detail .mapping-list {
+    max-height: 18rem;
+    overflow-y: auto;
+}
+
+.portfolio-card-meta {
+    display: grid;
+    grid-template-columns: minmax(7rem, auto) 1fr;
+    gap: 0.25rem 0.75rem;
+    font-size: 0.86rem;
+}
+
+.portfolio-card-meta dt {
+    color: var(--bs-secondary-color);
+    font-weight: 600;
+}
+
+.portfolio-card-meta dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 1199.98px) {
+    .portfolio-sidebar {
+        position: static;
+        max-height: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .portfolio-busy {
+        backdrop-filter: none;
+    }
+}
+
+@media print {
+    nav,
+    .portfolio-actions,
+    .btn,
+    .modal,
+    .portfolio-sidebar,
+    #portfolioBusy {
+        display: none !important;
+    }
+
+    main,
+    #projectWorkspace,
+    .tab-content,
+    .tab-pane {
+        display: block !important;
+        width: 100% !important;
+    }
+
+    .card {
+        box-shadow: none !important;
+        break-inside: avoid;
+    }
+
+    .portfolio-matrix {
+        max-height: none;
+        overflow: visible;
+    }
+}

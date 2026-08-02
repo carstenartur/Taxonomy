@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title>Project Requirement Portfolio — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"
+          href="/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+</head>
+<body class="portfolio-page bg-body-tertiary">
+<a href="#portfolioMain" class="skip-link">Skip to project portfolio</a>
+<div id="portfolioStatus" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="portfolioAlert" class="visually-hidden" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Project portfolio navigation">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand fw-semibold" th:href="@{/}">
+            <span aria-hidden="true">🌐</span> Taxonomy
+        </a>
+        <span class="navbar-text text-white fw-semibold me-auto" data-i18n="page.title">
+            Project Requirement Portfolio
+        </span>
+        <a class="btn btn-sm btn-outline-light" th:href="@{/}" data-i18n="nav.analysis">Analysis workspace</a>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Language">
+            <a class="btn btn-outline-light" href="?lang=en" hreflang="en">EN</a>
+            <a class="btn btn-outline-light" href="?lang=de" hreflang="de">DE</a>
+        </div>
+    </div>
+</nav>
+
+<main id="portfolioMain" class="container-fluid py-3 px-lg-4">
+    <div id="portfolioError" class="alert alert-danger d-none" role="alert"></div>
+    <div id="portfolioInfo" class="alert alert-info d-none" role="status"></div>
+
+    <div class="row g-3">
+        <aside class="col-12 col-xl-3" aria-labelledby="projectListHeading">
+            <section class="card shadow-sm portfolio-sidebar">
+                <div class="card-header d-flex justify-content-between align-items-center gap-2">
+                    <h1 id="projectListHeading" class="h5 mb-0" data-i18n="projects.title">Projects</h1>
+                    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal"
+                            data-bs-target="#projectModal" data-i18n="projects.new">New project</button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom">
+                        <label for="projectFilter" class="form-label small fw-semibold" data-i18n="projects.filter">
+                            Filter projects
+                        </label>
+                        <input id="projectFilter" type="search" class="form-control form-control-sm"
+                               autocomplete="off" placeholder="Key or title"/>
+                    </div>
+                    <div id="projectList" class="list-group list-group-flush" role="listbox"
+                         aria-label="Projects"></div>
+                    <div id="projectListEmpty" class="p-4 text-center text-body-secondary d-none">
+                        <div class="display-6" aria-hidden="true">📁</div>
+                        <p class="mb-0" data-i18n="projects.empty">No projects in this workspace.</p>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+        <section class="col-12 col-xl-9" aria-labelledby="selectedProjectTitle">
+            <div id="noProjectSelected" class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <div class="display-4" aria-hidden="true">🧭</div>
+                    <h2 class="h4 mt-3" data-i18n="project.select.title">Select or create a project</h2>
+                    <p class="text-body-secondary mb-0" data-i18n="project.select.help">
+                        Requirements, analyses, solutions and products remain traceable inside one project.
+                    </p>
+                </div>
+            </div>
+
+            <div id="projectWorkspace" class="d-none">
+                <section class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                            <div>
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span id="selectedProjectKey" class="badge text-bg-primary"></span>
+                                    <span id="selectedProjectStatus" class="badge text-bg-secondary"></span>
+                                </div>
+                                <h2 id="selectedProjectTitle" class="h3 mt-2 mb-1"></h2>
+                                <p id="selectedProjectDescription" class="text-body-secondary mb-0"></p>
+                            </div>
+                            <div class="d-flex align-items-start gap-2 flex-wrap portfolio-actions">
+                                <button id="refreshPortfolioBtn" class="btn btn-outline-secondary" type="button">
+                                    ↻ <span data-i18n="action.refresh">Refresh</span>
+                                </button>
+                                <button id="analyzeAllBtn" class="btn btn-primary" type="button">
+                                    ▶ <span data-i18n="action.analyze.all">Analyze all</span>
+                                </button>
+                                <button id="proposeSolutionsBtn" class="btn btn-outline-primary" type="button">
+                                    💡 <span data-i18n="action.propose.solutions">Propose solutions</span>
+                                </button>
+                                <button id="detectConflictsBtn" class="btn btn-outline-warning" type="button">
+                                    ⚠ <span data-i18n="action.detect.conflicts">Detect conflicts</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section aria-labelledby="portfolioMetricsHeading" class="mb-3">
+                    <h2 id="portfolioMetricsHeading" class="visually-hidden">Portfolio metrics</h2>
+                    <div id="portfolioMetrics" class="row row-cols-2 row-cols-md-3 row-cols-xxl-6 g-2"></div>
+                </section>
+
+                <section class="card shadow-sm">
+                    <div class="card-header p-0 border-bottom-0">
+                        <ul class="nav nav-tabs portfolio-tabs px-2 pt-2" id="portfolioTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="requirements-tab" data-bs-toggle="tab"
+                                        data-bs-target="#requirementsPane" type="button" role="tab"
+                                        aria-controls="requirementsPane" aria-selected="true">
+                                    <span aria-hidden="true">📋</span> <span data-i18n="tab.requirements">Requirements</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="taxonomy-tab" data-bs-toggle="tab"
+                                        data-bs-target="#taxonomyPane" type="button" role="tab"
+                                        aria-controls="taxonomyPane" aria-selected="false">
+                                    <span aria-hidden="true">🌳</span> <span data-i18n="tab.taxonomy">Taxonomy</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="solutions-tab" data-bs-toggle="tab"
+                                        data-bs-target="#solutionsPane" type="button" role="tab"
+                                        aria-controls="solutionsPane" aria-selected="false">
+                                    <span aria-hidden="true">🧩</span> <span data-i18n="tab.solutions">Solutions</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="products-tab" data-bs-toggle="tab"
+                                        data-bs-target="#productsPane" type="button" role="tab"
+                                        aria-controls="productsPane" aria-selected="false">
+                                    <span aria-hidden="true">📦</span> <span data-i18n="tab.products">Products</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="conflicts-tab" data-bs-toggle="tab"
+                                        data-bs-target="#conflictsPane" type="button" role="tab"
+                                        aria-controls="conflictsPane" aria-selected="false">
+                                    <span aria-hidden="true">⚠️</span> <span data-i18n="tab.conflicts">Conflicts</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="snapshots-tab" data-bs-toggle="tab"
+                                        data-bs-target="#snapshotsPane" type="button" role="tab"
+                                        aria-controls="snapshotsPane" aria-selected="false">
+                                    <span aria-hidden="true">🕒</span> <span data-i18n="tab.snapshots">Snapshots</span>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body tab-content" id="portfolioTabContent">
+                        <div class="tab-pane fade show active" id="requirementsPane" role="tabpanel"
+                             aria-labelledby="requirements-tab" tabindex="0">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+                                <div>
+                                    <h3 class="h5 mb-1" data-i18n="requirements.title">Project requirements</h3>
+                                    <p class="small text-body-secondary mb-0" data-i18n="requirements.help">
+                                        Every row has a stable identity, immutable text versions and its own analysis history.
+                                    </p>
+                                </div>
+                                <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal"
+                                        data-bs-target="#requirementModal" data-i18n="requirements.new">New requirement</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle" id="requirementsTable">
+                                    <thead>
+                                    <tr>
+                                        <th scope="col" data-i18n="column.key">Key</th>
+                                        <th scope="col" data-i18n="column.requirement">Requirement</th>
+                                        <th scope="col" data-i18n="column.version">Version</th>
+                                        <th scope="col" data-i18n="column.analysis">Analysis</th>
+                                        <th scope="col" data-i18n="column.review">Review</th>
+                                        <th scope="col" class="text-end" data-i18n="column.actions">Actions</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div id="requirementsEmpty" class="portfolio-empty d-none">
+                                <span aria-hidden="true">📋</span>
+                                <p data-i18n="requirements.empty">No requirements have been recorded.</p>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="taxonomyPane" role="tabpanel"
+                             aria-labelledby="taxonomy-tab" tabindex="0">
+                            <h3 class="h5" data-i18n="taxonomy.title">Requirement–taxonomy coverage</h3>
+                            <p class="small text-body-secondary" data-i18n="taxonomy.help">
+                                Values come only from each requirement's current immutable snapshot.
+                            </p>
+                            <div id="taxonomySummary" class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 mb-3"></div>
+                            <div id="requirementTaxonomyMatrix" class="table-responsive portfolio-matrix"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="solutionsPane" role="tabpanel"
+                             aria-labelledby="solutions-tab" tabindex="0">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+                                <div>
+                                    <h3 class="h5 mb-1" data-i18n="solutions.title">Project solutions</h3>
+                                    <p class="small text-body-secondary mb-0" data-i18n="solutions.help">
+                                        One reusable solution can cover several requirements; decisions remain reviewable.
+                                    </p>
+                                </div>
+                                <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal"
+                                        data-bs-target="#solutionModal" data-i18n="solutions.new">New solution</button>
+                            </div>
+                            <div id="solutionsList" class="row g-3"></div>
+                            <div id="requirementSolutionMatrix" class="table-responsive portfolio-matrix mt-3"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="productsPane" role="tabpanel"
+                             aria-labelledby="products-tab" tabindex="0">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+                                <div>
+                                    <h3 class="h5 mb-1" data-i18n="products.title">Sourced product catalogue</h3>
+                                    <p class="small text-body-secondary mb-0" data-i18n="products.help">
+                                        Product claims always show their source and verification date.
+                                    </p>
+                                </div>
+                                <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="modal"
+                                        data-bs-target="#productModal" data-i18n="products.new">New product</button>
+                            </div>
+                            <div id="productsList" class="row g-3"></div>
+                            <div id="solutionProductMatrix" class="table-responsive portfolio-matrix mt-3"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="conflictsPane" role="tabpanel"
+                             aria-labelledby="conflicts-tab" tabindex="0">
+                            <h3 class="h5" data-i18n="conflicts.title">Requirement conflict hypotheses</h3>
+                            <p class="small text-body-secondary" data-i18n="conflicts.help">
+                                Detection is evidence-backed but never auto-confirmed.
+                            </p>
+                            <div id="conflictsList" class="vstack gap-2"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="snapshotsPane" role="tabpanel"
+                             aria-labelledby="snapshots-tab" tabindex="0">
+                            <h3 class="h5" data-i18n="snapshots.title">Analysis snapshot history</h3>
+                            <p class="small text-body-secondary" data-i18n="snapshots.help">
+                                Select a requirement in the Requirements tab to inspect and compare snapshots.
+                            </p>
+                            <div class="row g-3">
+                                <div class="col-12 col-lg-4">
+                                    <div id="snapshotList" class="list-group"></div>
+                                </div>
+                                <div class="col-12 col-lg-8">
+                                    <div id="snapshotDetail" class="border rounded p-3 bg-body">
+                                        <p class="text-body-secondary mb-0" data-i18n="snapshots.none">No snapshot selected.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </div>
+</main>
+
+<!-- Project modal -->
+<div class="modal fade" id="projectModal" tabindex="-1" aria-labelledby="projectModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <form id="projectForm" class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="projectModalTitle" data-i18n="projects.new">New project</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="projectKey" class="form-label" data-i18n="field.project.key">Project key</label>
+                        <input id="projectKey" name="projectKey" class="form-control" maxlength="64" required
+                               placeholder="P-001"/>
+                    </div>
+                    <div class="col-md-8">
+                        <label for="projectTitle" class="form-label" data-i18n="field.title">Title</label>
+                        <input id="projectTitle" name="title" class="form-control" maxlength="240" required/>
+                    </div>
+                    <div class="col-12">
+                        <label for="projectDescription" class="form-label" data-i18n="field.description">Description</label>
+                        <textarea id="projectDescription" name="description" class="form-control" rows="3" maxlength="4000"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="action.cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary" data-i18n="action.create">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Requirement modal -->
+<div class="modal fade" id="requirementModal" tabindex="-1" aria-labelledby="requirementModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <form id="requirementForm" class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="requirementModalTitle" data-i18n="requirements.new">New requirement</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="requirementKey" class="form-label" data-i18n="field.requirement.key">Requirement key</label>
+                        <input id="requirementKey" name="requirementKey" class="form-control" maxlength="64" required
+                               placeholder="REQ-001"/>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="requirementTitle" class="form-label" data-i18n="field.title">Title</label>
+                        <input id="requirementTitle" name="title" class="form-control" maxlength="240" required/>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="requirementType" class="form-label" data-i18n="field.type">Type</label>
+                        <select id="requirementType" name="requirementType" class="form-select">
+                            <option value="FUNCTIONAL">Functional</option>
+                            <option value="NON_FUNCTIONAL">Non-functional</option>
+                            <option value="ORGANIZATIONAL">Organizational</option>
+                            <option value="TECHNICAL">Technical</option>
+                            <option value="LEGAL">Legal</option>
+                            <option value="PROCESS">Process</option>
+                            <option value="SECURITY">Security</option>
+                            <option value="DATA">Data</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label for="requirementText" class="form-label" data-i18n="field.requirement.text">Requirement text</label>
+                        <textarea id="requirementText" name="text" class="form-control font-monospace" rows="8" required></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="action.cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary" data-i18n="action.create">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Solution modal -->
+<div class="modal fade" id="solutionModal" tabindex="-1" aria-labelledby="solutionModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <form id="solutionForm" class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="solutionModalTitle" data-i18n="solutions.new">New solution</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="solutionKey" class="form-label" data-i18n="field.solution.key">Solution key</label>
+                        <input id="solutionKey" name="solutionKey" class="form-control" maxlength="64" required placeholder="SOL-001"/>
+                    </div>
+                    <div class="col-md-8">
+                        <label for="solutionTitle" class="form-label" data-i18n="field.title">Title</label>
+                        <input id="solutionTitle" name="title" class="form-control" maxlength="240" required/>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="solutionType" class="form-label" data-i18n="field.type">Type</label>
+                        <select id="solutionType" name="solutionType" class="form-select">
+                            <option value="SERVICE">Service</option>
+                            <option value="APPLICATION">Application</option>
+                            <option value="PLATFORM">Platform</option>
+                            <option value="PROCESS">Process</option>
+                            <option value="ORGANIZATIONAL">Organizational</option>
+                            <option value="DATA">Data</option>
+                            <option value="INFRASTRUCTURE">Infrastructure</option>
+                            <option value="SECURITY">Security</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="solutionOperatingModel" class="form-label" data-i18n="field.operating.model">Operating model</label>
+                        <select id="solutionOperatingModel" name="operatingModel" class="form-select">
+                            <option value="UNSPECIFIED">Unspecified</option>
+                            <option value="ON_PREMISES">On premises</option>
+                            <option value="PRIVATE_CLOUD">Private cloud</option>
+                            <option value="PUBLIC_CLOUD">Public cloud</option>
+                            <option value="SAAS">SaaS</option>
+                            <option value="HYBRID">Hybrid</option>
+                            <option value="ORGANIZATIONAL">Organizational</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label for="solutionDescription" class="form-label" data-i18n="field.description">Description</label>
+                        <textarea id="solutionDescription" name="description" class="form-control" rows="3" maxlength="4000"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="action.cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary" data-i18n="action.create">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Product modal -->
+<div class="modal fade" id="productModal" tabindex="-1" aria-labelledby="productModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <form id="productForm" class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="productModalTitle" data-i18n="products.new">New product</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="productKey" class="form-label" data-i18n="field.product.key">Product key</label>
+                        <input id="productKey" name="productKey" class="form-control" maxlength="64" required placeholder="PRD-001"/>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="productManufacturer" class="form-label" data-i18n="field.manufacturer">Manufacturer</label>
+                        <input id="productManufacturer" name="manufacturer" class="form-control" maxlength="240" required/>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="productName" class="form-label" data-i18n="field.product.name">Product name</label>
+                        <input id="productName" name="productName" class="form-control" maxlength="240" required/>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="productVersion" class="form-label" data-i18n="field.version">Version</label>
+                        <input id="productVersion" name="editionVersion" class="form-control" maxlength="160"/>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="productOperatingModel" class="form-label" data-i18n="field.operating.model">Operating model</label>
+                        <select id="productOperatingModel" name="operatingModel" class="form-select">
+                            <option value="UNSPECIFIED">Unspecified</option>
+                            <option value="ON_PREMISES">On premises</option>
+                            <option value="PRIVATE_CLOUD">Private cloud</option>
+                            <option value="PUBLIC_CLOUD">Public cloud</option>
+                            <option value="SAAS">SaaS</option>
+                            <option value="HYBRID">Hybrid</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="productVerifiedAt" class="form-label" data-i18n="field.verified.at">Verified at</label>
+                        <input id="productVerifiedAt" name="verifiedAt" type="datetime-local" class="form-control" required/>
+                    </div>
+                    <div class="col-12">
+                        <label for="productSource" class="form-label" data-i18n="field.source">Source</label>
+                        <textarea id="productSource" name="sourceReference" class="form-control" rows="3" required
+                                  placeholder="Document, URL or catalogue reference and version"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="action.cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary" data-i18n="action.create">Create</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="portfolioBusy" class="portfolio-busy d-none" role="status" aria-live="polite">
+    <div class="spinner-border" aria-hidden="true"></div>
+    <span data-i18n="status.working">Working…</span>
+</div>
+
+<script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/portfolio/taxonomy-portfolio.js}"></script>
+</body>
+</html>

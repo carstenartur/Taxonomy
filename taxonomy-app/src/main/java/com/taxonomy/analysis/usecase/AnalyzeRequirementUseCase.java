@@ -71,9 +71,11 @@ public class AnalyzeRequirementUseCase {
         }
         result.setProvisionalRelations(analysisRelationGenerator.generate(result.getScores()));
         if (!result.getProvisionalRelations().isEmpty()) {
+            String stableSessionId = command.provenance() != null
+                    ? command.provenance().analysisSessionId() : null;
             hypothesisService.persistFromAnalysis(
                     result.getProvisionalRelations(),
-                    null,
+                    stableSessionId,
                     command.workspaceContext());
         }
     }

@@ -72,6 +72,15 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.GET,  "/api/workspace/**").authenticated();
+        // Pull, publish and semantic divergence resolution are ordinary
+        // architecture collaboration operations. They are scoped to the current
+        // user's workspace and therefore require ARCHITECT, not global ADMIN.
+        // These specific rules must precede the administrative workspace fallback.
+        auth.requestMatchers(HttpMethod.POST,
+                        "/api/workspace/sync-from-shared",
+                        "/api/workspace/publish",
+                        "/api/workspace/resolve-diverged")
+                .hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/workspace/**").hasRole("ADMIN");
 
         // Import preview is read-only, while materialization and provenance
@@ -82,6 +91,33 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
+
+        // Project analysis is an end-user operation. More general project writes
+        // remain restricted below. The specific matchers must precede /api/projects/**.
+        auth.requestMatchers(HttpMethod.POST,
+                        "/api/projects/*/analyses",
+                        "/api/projects/*/requirements/*/analyses",
+                        "/api/projects/*/analysis-jobs/*/retry-failed")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+
+        // Project, solution and sourced product portfolio mutation.
+        auth.requestMatchers(HttpMethod.POST, "/api/projects/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PATCH, "/api/projects/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/projects/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/projects/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+
+        auth.requestMatchers(HttpMethod.POST, "/api/solutions/**", "/api/products/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PATCH, "/api/solutions/**", "/api/products/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/solutions/**", "/api/products/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/solutions/**", "/api/products/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
 
         // End-user analysis and export operations.
         auth.requestMatchers(HttpMethod.POST, "/api/export/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");

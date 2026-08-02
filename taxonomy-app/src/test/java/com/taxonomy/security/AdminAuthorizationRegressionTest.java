@@ -15,6 +15,7 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -61,6 +62,27 @@ class AdminAuthorizationRegressionTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true))
                 .andExpect(jsonPath("$.token").value("role-admin"));
+    }
+
+    @Test
+    @WithMockUser(username = "architect", roles = "ARCHITECT")
+    void architectCanReachWorkspacePullAndPublishOperations() throws Exception {
+        mockMvc.perform(post("/api/workspace/sync-from-shared").with(csrf()))
+                .andExpect(result -> assertThat(result.getResponse().getStatus())
+                        .as("architect pull must pass authorization (200 = success, 500 = no git config; 403 = forbidden, 404 = endpoint missing)")
+                        .isIn(200, 500));
+
+        mockMvc.perform(post("/api/workspace/publish").with(csrf()))
+                .andExpect(result -> assertThat(result.getResponse().getStatus())
+                        .as("architect publish must pass authorization (200 = success, 500 = no git config; 403 = forbidden, 404 = endpoint missing)")
+                        .isIn(200, 500));
+    }
+
+    @Test
+    @WithMockUser(username = "reader", roles = "USER")
+    void readerCannotPublishArchitectureChangesToShared() throws Exception {
+        mockMvc.perform(post("/api/workspace/publish").with(csrf()))
+                .andExpect(status().isForbidden());
     }
 
     @Test
