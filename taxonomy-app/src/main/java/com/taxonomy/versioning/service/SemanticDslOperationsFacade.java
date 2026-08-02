@@ -6,7 +6,6 @@ import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.portfolio.service.PortfolioGitService;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -24,7 +23,7 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
     private final RepositoryStateService repositoryStateService;
     private final WorkspaceResolver workspaceResolver;
     private final SemanticGitMergeService semanticMergeService;
-    private final PortfolioGitService portfolioGitService;
+    private final VersioningPortfolioGitPort portfolioGitPort;
 
     public SemanticDslOperationsFacade(TaxDslExportService exportService,
                                        DslMaterializeService materializeService,
@@ -36,7 +35,7 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
                                        RepositoryStateService repositoryStateService,
                                        WorkspaceResolver workspaceResolver,
                                        SemanticGitMergeService semanticMergeService,
-                                       PortfolioGitService portfolioGitService) {
+                                       VersioningPortfolioGitPort portfolioGitPort) {
         super(exportService, materializeService, documentRepository, repositoryFactory,
                 commitIndexService, conflictDetectionService, stateGuard,
                 repositoryStateService, workspaceResolver);
@@ -44,7 +43,7 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
         this.semanticMergeService = semanticMergeService;
-        this.portfolioGitService = portfolioGitService;
+        this.portfolioGitPort = portfolioGitPort;
     }
 
     @Override
@@ -54,7 +53,8 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
         SemanticGitMergeService.MergeOutcome outcome = semanticMergeService.mergeBranches(
                 repository, fromBranch, intoBranch, context.username());
         if (!outcome.success()) return null;
-        portfolioGitService.materializeHead(intoBranch, context.username(), context);
+        portfolioGitPort.materializePortfolioHead(
+                intoBranch, context.username(), context);
         return outcome.commitId();
     }
 
