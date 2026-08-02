@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -32,6 +33,7 @@ class PomModel:
     artifact_id: str
     version: str
     properties: dict[str, str]
+    parent_coordinate: Coordinate | None
 
 
 def text(element: ET.Element | None) -> str:
@@ -72,23 +74,75 @@ def expected_current_version(
     raise ValueError(f"releaseCheckCurrentState must be one of {sorted(STATES)}")
 
 
-def pom_paths(root: Path) -> list[Path]:
-    return sorted(
-        path
-        for path in root.rglob("pom.xml")
-        if ".git" not in path.parts and "target" not in path.parts
-    )
+def reactor_pom_paths(root: Path) -> list[Path]:
+    """Return only POMs reachable through Maven's declared module graph."""
+    root = root.resolve()
+    root_pom = root / "pom.xml"
+    if not root_pom.is_file():
+        raise ValueError(f"root pom.xml does not exist below {root}")
+
+    pending: deque[Path] = deque([root_pom])
+    discovered: list[Path] = []
+    seen: set[Path] = set()
+    while pending:
+        pom = pending.popleft().resolve()
+        if pom in seen:
+            continue
+        if not pom.is_file():
+            raise ValueError(f"declared Maven module POM does not exist: {pom}")
+        try:
+            pom.relative_to(root)
+        except ValueError as error:
+            raise ValueError(
+                f"declared Maven module escapes repository root: {pom}"
+            ) from error
+
+        project = ET.parse(pom).getroot()
+        seen.add(pom)
+        discovered.append(pom)
+        for module_element in project.findall("m:modules/m:module", NS):
+            module = text(module_element)
+            if not module:
+                raise ValueError(
+                    f"{pom.relative_to(root)} contains an empty Maven module declaration"
+                )
+            module_path = (pom.parent / module).resolve()
+            module_pom = (
+                module_path if module_path.name == "pom.xml" else module_path / "pom.xml"
+            )
+            try:
+                relative_module = module_pom.relative_to(root)
+            except ValueError as error:
+                raise ValueError(
+                    f"{pom.relative_to(root)} declares module {module!r} outside the repository"
+                ) from error
+            if not module_pom.is_file():
+                raise ValueError(
+                    f"{pom.relative_to(root)} declares module {module!r}, but "
+                    f"{relative_module} does not exist"
+                )
+            pending.append(module_pom)
+    return discovered
 
 
 def model_for(path: Path) -> PomModel:
     root = ET.parse(path).getroot()
     parent = root.find("m:parent", NS)
+    parent_coordinate = None
     group_id = child_text(root, "groupId")
     version = child_text(root, "version")
     if parent is not None:
-        group_id = group_id or child_text(parent, "groupId")
+        parent_coordinate = Coordinate(
+            child_text(parent, "groupId"), child_text(parent, "artifactId")
+        )
+        group_id = group_id or parent_coordinate.group_id
         version = version or child_text(parent, "version")
     artifact_id = child_text(root, "artifactId")
+    if not group_id or not artifact_id or not version:
+        raise ValueError(
+            f"{path}: Maven coordinates must provide effective groupId, artifactId and version"
+        )
+
     properties = {
         property_element.tag.rsplit("}", 1)[-1]: text(property_element)
         for property_element in root.findall("m:properties/*", NS)
@@ -106,12 +160,20 @@ def model_for(path: Path) -> PomModel:
     if parent is not None:
         properties.update(
             {
-                "project.parent.groupId": child_text(parent, "groupId"),
-                "project.parent.artifactId": child_text(parent, "artifactId"),
+                "project.parent.groupId": parent_coordinate.group_id,
+                "project.parent.artifactId": parent_coordinate.artifact_id,
                 "project.parent.version": child_text(parent, "version"),
             }
         )
-    return PomModel(path, root, group_id, artifact_id, version, properties)
+    return PomModel(
+        path,
+        root,
+        group_id,
+        artifact_id,
+        version,
+        properties,
+        parent_coordinate,
+    )
 
 
 def resolve_properties(value: str, properties: dict[str, str]) -> str:
@@ -121,26 +183,71 @@ def resolve_properties(value: str, properties: dict[str, str]) -> str:
 
         def replace(match: re.Match[str]) -> str:
             nonlocal changed
-            key = match.group(1)
-            replacement = properties.get(key)
+            replacement = properties.get(match.group(1))
             if replacement is None:
                 return match.group(0)
             changed = True
             return replacement
 
-        resolved = PROPERTY_PATTERN.sub(replace, result)
-        result = resolved
+        updated = PROPERTY_PATTERN.sub(replace, result)
+        result = updated
         if not changed:
             break
     return result
 
 
-def effective_properties(model: PomModel, root_properties: dict[str, str]) -> dict[str, str]:
-    return root_properties | model.properties
+def reactor_models_by_coordinate(models: list[PomModel]) -> dict[Coordinate, PomModel]:
+    indexed: dict[Coordinate, PomModel] = {}
+    for model in models:
+        coordinate = Coordinate(model.group_id, model.artifact_id)
+        previous = indexed.get(coordinate)
+        if previous is not None:
+            raise ValueError(
+                "duplicate Maven reactor coordinate "
+                f"{coordinate.group_id}:{coordinate.artifact_id}: "
+                f"{previous.path} and {model.path}"
+            )
+        indexed[coordinate] = model
+    return indexed
+
+
+def effective_properties(
+    model: PomModel,
+    models_by_coordinate: dict[Coordinate, PomModel],
+    cache: dict[Path, dict[str, str]],
+    visiting: set[Path] | None = None,
+) -> dict[str, str]:
+    cached = cache.get(model.path)
+    if cached is not None:
+        return cached
+
+    visiting = set() if visiting is None else visiting
+    if model.path in visiting:
+        raise ValueError(f"cyclic Maven parent relationship involving {model.path}")
+    visiting.add(model.path)
+
+    inherited: dict[str, str] = {}
+    if model.parent_coordinate is not None:
+        parent_model = models_by_coordinate.get(model.parent_coordinate)
+        if parent_model is not None:
+            inherited = effective_properties(
+                parent_model, models_by_coordinate, cache, visiting
+            )
+
+    result = inherited | model.properties
+    cache[model.path] = result
+    visiting.remove(model.path)
+    return result
 
 
 def versioned_elements(model: PomModel) -> list[tuple[str, Coordinate | None, str]]:
     entries: list[tuple[str, Coordinate | None, str]] = []
+    parent = model.root.find("m:parent", NS)
+    if parent is not None:
+        parent_version = child_text(parent, "version")
+        if parent_version:
+            entries.append(("parent", model.parent_coordinate, parent_version))
+
     for dependency in model.root.findall(".//m:dependency", NS):
         version = child_text(dependency, "version")
         if version:
@@ -240,27 +347,34 @@ def validate_release_plan(
             f"but Maven resolved {current_version}"
         )
 
-    paths = pom_paths(root)
-    if not paths or root / "pom.xml" not in paths:
-        raise ValueError(f"no root pom.xml found below {root}")
+    paths = reactor_pom_paths(root)
     models = [model_for(path) for path in paths]
-    root_model = next(model for model in models if model.path == root / "pom.xml")
-    if root_model.version != current_version:
-        raise ValueError(
-            f"root pom.xml declares {root_model.version}, not Maven's {current_version}"
-        )
+    root_model = models[0]
+    if root_model.path != root / "pom.xml":
+        raise ValueError("reactor discovery did not start at the root pom.xml")
 
-    internal_coordinates = {
-        Coordinate(model.group_id, model.artifact_id) for model in models
-    }
+    models_by_coordinate = reactor_models_by_coordinate(models)
+    internal_coordinates = set(models_by_coordinate)
+    property_cache: dict[Path, dict[str, str]] = {}
     failures: list[str] = []
+
     for model in models:
         relative = model.path.relative_to(root)
-        if model.group_id == root_model.group_id and model.version != current_version:
+        properties = effective_properties(
+            model, models_by_coordinate, property_cache
+        )
+        resolved_model_version = resolve_properties(model.version, properties)
+        if PROPERTY_PATTERN.search(resolved_model_version):
             failures.append(
-                f"{relative}: reactor version {model.version!r} differs from {current_version}"
+                f"{relative}: reactor version {model.version!r} contains an "
+                f"unresolved version property (resolved as {resolved_model_version!r})"
             )
-        properties = effective_properties(model, root_model.properties)
+        elif resolved_model_version != current_version:
+            failures.append(
+                f"{relative}: reactor version {resolved_model_version!r} differs from "
+                f"{current_version}"
+            )
+
         for kind, coordinate, raw_version in versioned_elements(model):
             if kind == "forbidden-plugin":
                 failures.append(
@@ -268,18 +382,24 @@ def validate_release_plan(
                 )
                 continue
             resolved = resolve_properties(raw_version, properties)
+            coordinate_text = (
+                f" {coordinate.group_id}:{coordinate.artifact_id}" if coordinate else ""
+            )
+            if PROPERTY_PATTERN.search(resolved):
+                failures.append(
+                    f"{relative}: {kind}{coordinate_text} uses unresolved version property "
+                    f"{raw_version!r} (resolved as {resolved!r})"
+                )
+                continue
             if "SNAPSHOT" not in resolved.upper():
                 continue
             if (
-                kind == "dependency"
+                kind in {"dependency", "parent"}
                 and coordinate in internal_coordinates
                 and resolved == current_version
                 and state in {"development", "advanced"}
             ):
                 continue
-            coordinate_text = (
-                f" {coordinate.group_id}:{coordinate.artifact_id}" if coordinate else ""
-            )
             failures.append(
                 f"{relative}: external {kind}{coordinate_text} uses snapshot version "
                 f"{raw_version!r} (resolved as {resolved!r})"

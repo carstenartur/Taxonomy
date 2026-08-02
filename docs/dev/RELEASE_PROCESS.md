@@ -21,15 +21,21 @@ Run this before starting a release:
 
 The command is non-mutating. It verifies:
 
-1. the current root and reactor versions match `${releaseVersion}-SNAPSHOT`;
+1. the current root and every declared reactor-module version match
+   `${releaseVersion}-SNAPSHOT`;
 2. the release version uses `X.Y.Z` and the next version uses
    `X.Y.Z-SNAPSHOT`;
 3. the next version is numerically newer, including freely selected major or
    minor transitions;
-4. all Taxonomy modules use one consistent reactor version;
-5. no external dependency, plugin or build extension uses a SNAPSHOT version;
-6. the checkout is clean;
-7. no `release.properties`, `pom.xml.releaseBackup` or
+4. the reactor is recursively derived from Maven `<modules>` declarations;
+   missing modules and module paths outside the repository fail closed, while
+   unrelated example POMs are not misclassified as release modules;
+5. reactor coordinates are unique and version properties inherited through
+   internal parent POMs are resolved with child-over-parent precedence;
+6. no external parent, dependency, plugin or build extension uses a SNAPSHOT
+   version, and no explicit version may retain an unresolved `${...}` property;
+7. the checkout is clean, including linked Git worktrees;
+8. no `release.properties`, `pom.xml.releaseBackup` or
    `maven-release-plugin` configuration introduces a competing release path.
 
 For example, a major transition is valid:

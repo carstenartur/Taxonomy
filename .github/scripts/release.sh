@@ -34,6 +34,23 @@ run_maven_release_check() {
     -DreleaseCheckCurrentState="$state"
 }
 
+stage_version_metadata() {
+  local -a tracked_poms=()
+  mapfile -d '' tracked_poms < <(
+    git ls-files -z -- 'pom.xml' ':(glob)**/pom.xml'
+  )
+  if [[ ${#tracked_poms[@]} -eq 0 ]]; then
+    fail "No tracked Maven POMs found for release version staging"
+  fi
+  # The checkout was required to be clean before versions:set. Adding every tracked
+  # POM therefore stages only files changed by the version transition, including
+  # nested reactor modules, while excluding generated and untracked example POMs.
+  git add -- "${tracked_poms[@]}" CITATION.cff CITATION.md .zenodo.json codemeta.json
+  if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+    git add -- deploy/helm/taxonomy/Chart.yaml
+  fi
+}
+
 if ! [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   fail "release_version must use X.Y.Z without a leading v"
 fi
@@ -66,19 +83,6 @@ if next_version <= release:
         f"release {os.environ['RELEASE_VERSION']}"
     )
 PY
-
-ensure_no_snapshot_poms() {
-  local remaining
-  remaining=$(grep -R "SNAPSHOT" --include="pom.xml" . \
-    | grep -v "target/" \
-    | grep -v "\.git/" \
-    || true)
-  if [[ -n "$remaining" ]]; then
-    echo "::error::SNAPSHOT references still found in pom.xml files after release version update:"
-    echo "$remaining"
-    exit 1
-  fi
-}
 
 generate_release_notes() {
   echo "Generating release notes..."
@@ -225,11 +229,12 @@ if [[ "$STATE" == "new" ]]; then
   ./mvnw -B versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
   python3 "$METADATA_HELPER" "$RELEASE_VERSION" --release
   python3 "$VERSION_STATE_HELPER" --mode release --expected-version "$RELEASE_VERSION"
-  ensure_no_snapshot_poms
-  git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
-  if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
-    git add deploy/helm/taxonomy/Chart.yaml
-  fi
+  # Validate the actual release-state reactor before committing it. The clean-check
+  # is disabled only for this deliberate, uncommitted transition; the subsequent
+  # canonical release verification runs from the clean immutable commit.
+  run_maven_release_check release release-check validate \
+    -DreleaseCheckRequireClean=false
+  stage_version_metadata
   git commit -m "Release version $RELEASE_VERSION"
   RELEASE_COMMIT=$(git rev-parse HEAD)
 else
@@ -276,10 +281,7 @@ else
   ./mvnw -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
   python3 "$METADATA_HELPER" "$NEXT_VERSION"
   python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
-  git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
-  if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
-    git add deploy/helm/taxonomy/Chart.yaml
-  fi
+  stage_version_metadata
   git commit -m "Prepare next development version $NEXT_VERSION"
   NEXT_COMMIT=$(git rev-parse HEAD)
 
