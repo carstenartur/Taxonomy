@@ -12,6 +12,9 @@ public interface ProjectRequirementVersionRepository extends JpaRepository<Proje
 
     Optional<ProjectRequirementVersion> findFirstByRequirementIdOrderByVersionNumberDesc(Long requirementId);
 
+    Optional<ProjectRequirementVersion> findByRequirementIdAndVersionNumber(
+            Long requirementId, int versionNumber);
+
     Optional<ProjectRequirementVersion> findByRequirementIdAndContentHash(Long requirementId, String contentHash);
 
     Optional<ProjectRequirementVersion> findByIdAndRequirementId(Long id, Long requirementId);
