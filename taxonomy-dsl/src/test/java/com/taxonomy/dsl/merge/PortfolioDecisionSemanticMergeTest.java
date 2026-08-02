@@ -67,9 +67,9 @@ class PortfolioDecisionSemanticMergeTest {
         assertThat(result.conflicts()).singleElement().satisfies(conflict -> {
             assertThat(conflict.blockIdentity())
                     .isEqualTo("solutionProductDecision P-001 SOL-001 PRD-001");
-            assertThat(conflict.property()).isEqualTo("selectionStatus");
-            assertThat(conflict.ours()).isEqualTo("SELECTED");
-            assertThat(conflict.theirs()).isEqualTo("REJECTED");
+            assertThat(conflict.propertyKey()).isEqualTo("selectionStatus");
+            assertThat(conflict.oursValue()).isEqualTo("SELECTED");
+            assertThat(conflict.theirsValue()).isEqualTo("REJECTED");
         });
     }
 }
