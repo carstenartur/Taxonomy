@@ -30,10 +30,12 @@ The command is non-mutating. It verifies:
 4. the reactor is recursively derived from Maven `<modules>` declarations;
    missing modules and module paths outside the repository fail closed, while
    unrelated example POMs are not misclassified as release modules;
-5. no external parent, dependency, plugin or build extension uses a SNAPSHOT
-   version;
-6. the checkout is clean, including linked Git worktrees;
-7. no `release.properties`, `pom.xml.releaseBackup` or
+5. reactor coordinates are unique and version properties inherited through
+   internal parent POMs are resolved with child-over-parent precedence;
+6. no external parent, dependency, plugin or build extension uses a SNAPSHOT
+   version, and no explicit version may retain an unresolved `${...}` property;
+7. the checkout is clean, including linked Git worktrees;
+8. no `release.properties`, `pom.xml.releaseBackup` or
    `maven-release-plugin` configuration introduces a competing release path.
 
 For example, a major transition is valid:
