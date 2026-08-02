@@ -38,7 +38,8 @@ public class RequirementAnalysisJob {
     @Column(nullable = false, length = 32)
     private AnalysisStatus status = AnalysisStatus.PENDING;
 
-    @Column(name = "idempotency_key", length = 160)
+    /** Always populated; automatically generated keys keep SQL Server uniqueness portable. */
+    @Column(name = "idempotency_key", nullable = false, length = 160)
     private String idempotencyKey;
 
     @Column(length = 40)
