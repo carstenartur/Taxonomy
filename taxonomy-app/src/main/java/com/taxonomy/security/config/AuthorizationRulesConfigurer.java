@@ -72,6 +72,15 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.GET,  "/api/workspace/**").authenticated();
+        // Pull, publish and semantic divergence resolution are ordinary
+        // architecture collaboration operations. They are scoped to the current
+        // user's workspace and therefore require ARCHITECT, not global ADMIN.
+        // These specific rules must precede the administrative workspace fallback.
+        auth.requestMatchers(HttpMethod.POST,
+                        "/api/workspace/sync-from-shared",
+                        "/api/workspace/publish",
+                        "/api/workspace/resolve-diverged")
+                .hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/workspace/**").hasRole("ADMIN");
 
         // Import preview is read-only, while materialization and provenance
