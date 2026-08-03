@@ -4,8 +4,10 @@ import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AddProjectSolutionRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateSolutionRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.LinkRequirementSolutionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProductView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectSolutionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementSolutionLinkView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SolutionProductCandidateView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SolutionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.TaxonomyCoverageView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectSolutionRequest;
@@ -25,6 +27,7 @@ import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.model.RequirementElementMapping;
 import com.taxonomy.portfolio.model.RequirementSolutionLink;
 import com.taxonomy.portfolio.model.SolutionDefinition;
+import com.taxonomy.portfolio.model.SolutionProductCandidate;
 import com.taxonomy.portfolio.model.SolutionTaxonomyCoverage;
 import com.taxonomy.portfolio.repository.ProjectSolutionRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
@@ -38,11 +41,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /** Reusable solution catalogue plus project-specific solution decisions and coverage. */
 @Service
@@ -125,27 +132,25 @@ public class SolutionPortfolioService {
                         request.responsibleOrganization(), 240, "responsibleOrganization"),
                 now);
         solution.update(
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
+                null, null, null, null, null, null, null, null,
                 costAmount,
                 costCurrency,
                 ProjectPortfolioService.limited(request.riskNotes(), 2000, "riskNotes"),
                 leadTimeDays,
                 extensionAttributesJson,
                 now);
-        return toSolutionView(solutionRepository.save(solution));
+        return toSolutionView(solutionRepository.save(solution), List.of());
     }
 
     @Transactional(readOnly = true)
     public List<SolutionView> listSolutions(String username, WorkspaceContext context) {
-        return solutionRepository.findByScopeKeyOrderByTitleAsc(PortfolioScope.key(username, context))
-                .stream().map(this::toSolutionView).toList();
+        List<SolutionDefinition> solutions = solutionRepository
+                .findByScopeKeyOrderByTitleAsc(PortfolioScope.key(username, context));
+        Map<Long, List<SolutionTaxonomyCoverage>> coverage = solutionCoverageById(solutions);
+        return solutions.stream()
+                .map(solution -> toSolutionView(
+                        solution, coverage.getOrDefault(solution.getId(), List.of())))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -184,20 +189,15 @@ public class SolutionPortfolioService {
                 request.title() != null
                         ? ProjectPortfolioService.requireText(request.title(), "title", 240) : null,
                 ProjectPortfolioService.limited(request.description(), 4000, "description"),
-                request.solutionType(),
-                request.operatingModel(),
-                request.lifecycleStatus(),
+                request.solutionType(), request.operatingModel(), request.lifecycleStatus(),
                 request.maturityLevel() != null ? normalizeMaturity(request.maturityLevel()) : null,
                 request.ownerUsername() != null && !request.ownerUsername().isBlank()
                         ? ProjectPortfolioService.requireText(request.ownerUsername(), "ownerUsername", 160) : null,
                 ProjectPortfolioService.limited(
                         request.responsibleOrganization(), 240, "responsibleOrganization"),
-                requestedAmount,
-                requestedCurrency,
+                requestedAmount, requestedCurrency,
                 ProjectPortfolioService.limited(request.riskNotes(), 2000, "riskNotes"),
-                leadTimeDays,
-                extensionAttributesJson,
-                Instant.now());
+                leadTimeDays, extensionAttributesJson, Instant.now());
         return toSolutionView(solution);
     }
 
@@ -214,20 +214,16 @@ public class SolutionPortfolioService {
         SolutionTaxonomyCoverage mapping = coverageRepository
                 .findBySolutionIdAndNodeCode(solutionId, nodeCode)
                 .orElseGet(() -> new SolutionTaxonomyCoverage(
-                        solution,
-                        nodeCode,
-                        coverage,
+                        solution, nodeCode, coverage,
                         ProjectPortfolioService.limited(request.evidence(), 2000, "evidence"),
                         request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,
-                        PortfolioScope.username(username, context),
-                        now));
+                        PortfolioScope.username(username, context), now));
         if (mapping.getId() != null) {
             mapping.update(
                     coverage,
                     ProjectPortfolioService.limited(request.evidence(), 2000, "evidence"),
                     request.reviewStatus(),
-                    PortfolioScope.username(username, context),
-                    now);
+                    PortfolioScope.username(username, context), now);
         }
         coverageRepository.save(mapping);
         return toSolutionView(solution);
@@ -245,21 +241,17 @@ public class SolutionPortfolioService {
         ProjectSolution projectSolution = projectSolutionRepository
                 .findByProjectIdAndSolutionId(projectId, solution.getId())
                 .orElseGet(() -> new ProjectSolution(
-                        project,
-                        solution,
+                        project, solution,
                         request.status() != null ? request.status() : ProjectSolutionStatus.PROPOSED,
                         request.actionStatus() != null ? request.actionStatus() : ActionStatus.UNDECIDED,
                         normalizePriority(request.priority()),
                         ProjectPortfolioService.limited(request.rationale(), 2000, "rationale"),
-                        PortfolioScope.username(username, context),
-                        now));
+                        PortfolioScope.username(username, context), now));
         if (projectSolution.getId() != null) {
             projectSolution.update(
-                    request.status(),
-                    request.actionStatus(),
+                    request.status(), request.actionStatus(),
                     request.priority() != null ? normalizePriority(request.priority()) : null,
-                    ProjectPortfolioService.limited(request.rationale(), 2000, "rationale"),
-                    now);
+                    ProjectPortfolioService.limited(request.rationale(), 2000, "rationale"), now);
         }
         projectSolutionRepository.save(projectSolution);
         return toProjectSolutionView(projectSolution);
@@ -275,8 +267,7 @@ public class SolutionPortfolioService {
         projectService.requireProject(projectId, username, context);
         ProjectSolution projectSolution = requireProjectSolution(projectId, projectSolutionId);
         projectSolution.update(
-                request.status(),
-                request.actionStatus(),
+                request.status(), request.actionStatus(),
                 request.priority() != null ? normalizePriority(request.priority()) : null,
                 ProjectPortfolioService.limited(request.rationale(), 2000, "rationale"),
                 Instant.now());
@@ -305,33 +296,22 @@ public class SolutionPortfolioService {
         RequirementSolutionLink link = requirementLinkRepository
                 .findByProjectSolutionIdAndRequirementId(projectSolutionId, requirement.getId())
                 .orElseGet(() -> new RequirementSolutionLink(
-                        projectSolution,
-                        requirement,
-                        effectiveSnapshotId,
-                        coverage,
+                        projectSolution, requirement, effectiveSnapshotId, coverage,
                         request.role() != null ? request.role() : RequirementSolutionRole.USES,
                         request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,
                         ProjectPortfolioService.limited(request.evidence(), 2000, "evidence"),
-                        PortfolioScope.username(username, context),
-                        now));
+                        PortfolioScope.username(username, context), now));
         if (link.getId() != null) {
             link.update(
-                    effectiveSnapshotId,
-                    coverage,
-                    request.role(),
-                    request.reviewStatus(),
+                    effectiveSnapshotId, coverage, request.role(), request.reviewStatus(),
                     ProjectPortfolioService.limited(request.evidence(), 2000, "evidence"),
-                    PortfolioScope.username(username, context),
-                    now);
+                    PortfolioScope.username(username, context), now);
         }
         requirementLinkRepository.save(link);
         return toProjectSolutionView(projectSolution);
     }
 
-    /**
-     * Deterministically proposes reuse candidates from confirmed solution-to-taxonomy coverage.
-     * Every generated link remains PROPOSED; no action or selection decision is automated.
-     */
+    /** Deterministically proposes reusable solutions without queries inside mapping loops. */
     @Transactional
     public List<ProjectSolutionView> proposeFromCurrentMappings(Long projectId,
                                                                 String username,
@@ -340,54 +320,69 @@ public class SolutionPortfolioService {
         String scopeKey = PortfolioScope.key(username, context);
         List<RequirementElementMapping> mappings = elementMappingRepository
                 .findCurrentMappingsForProject(projectId);
+        if (mappings.isEmpty()) return List.of();
+
+        Set<String> nodeCodes = mappings.stream()
+                .map(RequirementElementMapping::getNodeCode)
+                .collect(Collectors.toSet());
+        Map<String, List<SolutionTaxonomyCoverage>> coverageByNode = coverageRepository
+                .findByNodeCodeIn(nodeCodes).stream()
+                .filter(coverage -> coverage.getReviewStatus() == ReviewStatus.CONFIRMED)
+                .filter(coverage -> scopeKey.equals(coverage.getSolution().getScopeKey()))
+                .collect(Collectors.groupingBy(
+                        SolutionTaxonomyCoverage::getNodeCode,
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        Map<Long, ProjectSolution> projectSolutionByDefinition = projectSolutionRepository
+                .findByProjectIdOrderByPriorityDescSolutionTitleAsc(projectId).stream()
+                .collect(Collectors.toMap(
+                        item -> item.getSolution().getId(), Function.identity(),
+                        (left, right) -> left, LinkedHashMap::new));
+        Map<String, RequirementSolutionLink> linksByPair = requirementLinkRepository
+                .findByProjectId(projectId).stream()
+                .collect(Collectors.toMap(
+                        link -> pairKey(link.getProjectSolution().getId(), link.getRequirement().getId()),
+                        Function.identity(), (left, right) -> left, LinkedHashMap::new));
+
         Map<Long, ProjectSolution> touched = new LinkedHashMap<>();
         Instant now = Instant.now();
-
         for (RequirementElementMapping element : mappings) {
-            for (SolutionTaxonomyCoverage coverage : coverageRepository.findByNodeCode(element.getNodeCode())) {
+            for (SolutionTaxonomyCoverage coverage
+                    : coverageByNode.getOrDefault(element.getNodeCode(), List.of())) {
                 SolutionDefinition solution = coverage.getSolution();
-                if (!scopeKey.equals(solution.getScopeKey())
-                        || coverage.getReviewStatus() != ReviewStatus.CONFIRMED) {
-                    continue;
+                ProjectSolution projectSolution = projectSolutionByDefinition.get(solution.getId());
+                if (projectSolution == null) {
+                    projectSolution = projectSolutionRepository.save(new ProjectSolution(
+                            project, solution, ProjectSolutionStatus.PROPOSED,
+                            ActionStatus.UNDECIDED, Math.max(1, element.getDirectScore()),
+                            "Proposed from confirmed taxonomy coverage; human decision required",
+                            PortfolioScope.username(username, context), now));
+                    projectSolutionByDefinition.put(solution.getId(), projectSolution);
                 }
-                ProjectSolution projectSolution = projectSolutionRepository
-                        .findByProjectIdAndSolutionId(projectId, solution.getId())
-                        .orElseGet(() -> projectSolutionRepository.save(new ProjectSolution(
-                                project,
-                                solution,
-                                ProjectSolutionStatus.PROPOSED,
-                                ActionStatus.UNDECIDED,
-                                Math.max(1, element.getDirectScore()),
-                                "Proposed from confirmed taxonomy coverage; human decision required",
-                                PortfolioScope.username(username, context),
-                                now)));
                 touched.put(projectSolution.getId(), projectSolution);
 
                 ProjectRequirement requirement = element.getSnapshot().getRequirement();
+                String pair = pairKey(projectSolution.getId(), requirement.getId());
+                if (linksByPair.containsKey(pair)) continue;
+
                 int effectiveCoverage = (int) Math.round(
-                        coverage.getCoveragePercent() * Math.max(0.0, Math.min(1.0, element.getRelevance())));
-                RequirementSolutionLink link = requirementLinkRepository
-                        .findByProjectSolutionIdAndRequirementId(
-                                projectSolution.getId(), requirement.getId())
-                        .orElseGet(() -> new RequirementSolutionLink(
-                                projectSolution,
-                                requirement,
-                                element.getSnapshot().getId(),
-                                effectiveCoverage,
-                                RequirementSolutionRole.USES,
+                        coverage.getCoveragePercent()
+                                * Math.max(0.0, Math.min(1.0, element.getRelevance())));
+                RequirementSolutionLink link = requirementLinkRepository.save(
+                        new RequirementSolutionLink(
+                                projectSolution, requirement, element.getSnapshot().getId(),
+                                effectiveCoverage, RequirementSolutionRole.USES,
                                 ReviewStatus.PROPOSED,
                                 "Solution covers " + element.getNodeCode()
                                         + " at " + coverage.getCoveragePercent()
                                         + "% and the requirement relevance is "
                                         + Math.round(element.getRelevance() * 100) + "%",
-                                PortfolioScope.username(username, context),
-                                now));
-                if (link.getId() == null) {
-                    requirementLinkRepository.save(link);
-                }
+                                PortfolioScope.username(username, context), now));
+                linksByPair.put(pair, link);
             }
         }
-        return touched.values().stream().map(this::toProjectSolutionView).toList();
+        return assembleProjectSolutionViews(touched.values());
     }
 
     @Transactional(readOnly = true)
@@ -395,8 +390,8 @@ public class SolutionPortfolioService {
                                                           String username,
                                                           WorkspaceContext context) {
         projectService.requireProject(projectId, username, context);
-        return projectSolutionRepository.findByProjectIdOrderByPriorityDescSolutionTitleAsc(projectId)
-                .stream().map(this::toProjectSolutionView).toList();
+        return assembleProjectSolutionViews(
+                projectSolutionRepository.findByProjectIdOrderByPriorityDescSolutionTitleAsc(projectId));
     }
 
     @Transactional(readOnly = true)
@@ -409,69 +404,98 @@ public class SolutionPortfolioService {
     }
 
     public SolutionView toSolutionView(SolutionDefinition solution) {
-        List<TaxonomyCoverageView> coverage = coverageRepository
-                .findBySolutionIdOrderByNodeCodeAsc(solution.getId()).stream()
-                .map(mapping -> new TaxonomyCoverageView(
-                        mapping.getId(),
-                        mapping.getNodeCode(),
-                        mapping.getCoveragePercent(),
-                        mapping.getEvidence(),
-                        mapping.getReviewStatus(),
-                        mapping.getUpdatedBy(),
-                        mapping.getUpdatedAt()))
-                .toList();
-        return new SolutionView(
-                solution.getId(),
-                solution.getSolutionKey(),
-                solution.getTitle(),
-                solution.getDescription(),
-                solution.getSolutionType(),
-                solution.getOperatingModel(),
-                solution.getLifecycleStatus(),
-                solution.getMaturityLevel(),
-                solution.getOwnerUsername(),
-                solution.getResponsibleOrganization(),
-                solution.getCostAmount(),
-                solution.getCostCurrency(),
-                solution.getRiskNotes(),
-                solution.getLeadTimeDays(),
-                jsonCodec.readStringMap(solution.getExtensionAttributesJson()),
-                solution.getCreatedAt(),
-                solution.getUpdatedAt(),
-                coverage);
+        return toSolutionView(solution,
+                coverageRepository.findBySolutionIdOrderByNodeCodeAsc(solution.getId()));
     }
 
     public ProjectSolutionView toProjectSolutionView(ProjectSolution projectSolution) {
-        List<RequirementSolutionLinkView> requirements = requirementLinkRepository
-                .findByProjectSolutionIdOrderByRequirementRequirementKeyAsc(projectSolution.getId()).stream()
-                .map(link -> new RequirementSolutionLinkView(
-                        link.getId(),
-                        link.getRequirement().getId(),
-                        link.getRequirement().getRequirementKey(),
-                        link.getSnapshotId(),
-                        link.getCoveragePercent(),
-                        link.getRole(),
-                        link.getReviewStatus(),
-                        link.getEvidence(),
-                        link.getUpdatedBy(),
-                        link.getUpdatedAt()))
+        return assembleProjectSolutionViews(List.of(projectSolution)).get(0);
+    }
+
+    private List<ProjectSolutionView> assembleProjectSolutionViews(
+            Collection<ProjectSolution> projectSolutions) {
+        List<ProjectSolution> ordered = List.copyOf(projectSolutions);
+        if (ordered.isEmpty()) return List.of();
+
+        List<Long> projectSolutionIds = ordered.stream().map(ProjectSolution::getId).toList();
+        Map<Long, List<RequirementSolutionLink>> links = requirementLinkRepository
+                .findByProjectSolutionIdInOrderByProjectSolutionIdAscRequirementRequirementKeyAsc(
+                        projectSolutionIds).stream()
+                .collect(Collectors.groupingBy(
+                        link -> link.getProjectSolution().getId(),
+                        LinkedHashMap::new, Collectors.toList()));
+        Map<Long, List<SolutionProductCandidate>> candidates = productCandidateRepository
+                .findByProjectSolutionIdInOrderByProjectSolutionIdAscCoveragePercentDesc(
+                        projectSolutionIds).stream()
+                .collect(Collectors.groupingBy(
+                        candidate -> candidate.getProjectSolution().getId(),
+                        LinkedHashMap::new, Collectors.toList()));
+        Map<Long, List<SolutionTaxonomyCoverage>> solutionCoverage = solutionCoverageById(
+                ordered.stream().map(ProjectSolution::getSolution).toList());
+        Map<Long, ProductView> productViews = productService.toProductViews(candidates.values().stream()
+                .flatMap(List::stream)
+                .map(SolutionProductCandidate::getProduct)
+                .toList());
+
+        return ordered.stream().map(projectSolution -> {
+            List<RequirementSolutionLinkView> requirementViews = links
+                    .getOrDefault(projectSolution.getId(), List.of()).stream()
+                    .map(this::toRequirementLinkView).toList();
+            List<SolutionProductCandidateView> candidateViews = candidates
+                    .getOrDefault(projectSolution.getId(), List.of()).stream()
+                    .map(candidate -> productService.toCandidateView(candidate, productViews))
+                    .toList();
+            SolutionDefinition solution = projectSolution.getSolution();
+            return new ProjectSolutionView(
+                    projectSolution.getId(), projectSolution.getProject().getId(),
+                    toSolutionView(solution,
+                            solutionCoverage.getOrDefault(solution.getId(), List.of())),
+                    projectSolution.getStatus(), projectSolution.getActionStatus(),
+                    projectSolution.getPriority(), projectSolution.getRationale(),
+                    projectSolution.getCreatedBy(), projectSolution.getCreatedAt(),
+                    projectSolution.getUpdatedAt(), requirementViews, candidateViews);
+        }).toList();
+    }
+
+    private Map<Long, List<SolutionTaxonomyCoverage>> solutionCoverageById(
+            Collection<SolutionDefinition> solutions) {
+        List<Long> ids = solutions.stream().map(SolutionDefinition::getId).distinct().toList();
+        if (ids.isEmpty()) return Map.of();
+        return coverageRepository.findBySolutionIdInOrderBySolutionIdAscNodeCodeAsc(ids).stream()
+                .collect(Collectors.groupingBy(
+                        mapping -> mapping.getSolution().getId(),
+                        LinkedHashMap::new, Collectors.toList()));
+    }
+
+    private SolutionView toSolutionView(SolutionDefinition solution,
+                                        List<SolutionTaxonomyCoverage> mappings) {
+        List<TaxonomyCoverageView> coverage = mappings.stream()
+                .map(mapping -> new TaxonomyCoverageView(
+                        mapping.getId(), mapping.getNodeCode(), mapping.getCoveragePercent(),
+                        mapping.getEvidence(), mapping.getReviewStatus(), mapping.getUpdatedBy(),
+                        mapping.getUpdatedAt()))
                 .toList();
-        return new ProjectSolutionView(
-                projectSolution.getId(),
-                projectSolution.getProject().getId(),
-                toSolutionView(projectSolution.getSolution()),
-                projectSolution.getStatus(),
-                projectSolution.getActionStatus(),
-                projectSolution.getPriority(),
-                projectSolution.getRationale(),
-                projectSolution.getCreatedBy(),
-                projectSolution.getCreatedAt(),
-                projectSolution.getUpdatedAt(),
-                requirements,
-                productCandidateRepository
-                        .findByProjectSolutionIdOrderByCoveragePercentDesc(projectSolution.getId()).stream()
-                        .map(productService::toCandidateView)
-                        .toList());
+        return new SolutionView(
+                solution.getId(), solution.getSolutionKey(), solution.getTitle(),
+                solution.getDescription(), solution.getSolutionType(), solution.getOperatingModel(),
+                solution.getLifecycleStatus(), solution.getMaturityLevel(),
+                solution.getOwnerUsername(), solution.getResponsibleOrganization(),
+                solution.getCostAmount(), solution.getCostCurrency(), solution.getRiskNotes(),
+                solution.getLeadTimeDays(),
+                jsonCodec.readStringMap(solution.getExtensionAttributesJson()),
+                solution.getCreatedAt(), solution.getUpdatedAt(), coverage);
+    }
+
+    private RequirementSolutionLinkView toRequirementLinkView(RequirementSolutionLink link) {
+        return new RequirementSolutionLinkView(
+                link.getId(), link.getRequirement().getId(),
+                link.getRequirement().getRequirementKey(), link.getSnapshotId(),
+                link.getCoveragePercent(), link.getRole(), link.getReviewStatus(),
+                link.getEvidence(), link.getUpdatedBy(), link.getUpdatedAt());
+    }
+
+    private static String pairKey(Long projectSolutionId, Long requirementId) {
+        return projectSolutionId + ":" + requirementId;
     }
 
     private ProjectSolution requireProjectSolutionScoped(Long projectId,
