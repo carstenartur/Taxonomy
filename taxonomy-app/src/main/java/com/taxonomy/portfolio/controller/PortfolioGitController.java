@@ -98,14 +98,15 @@ public class PortfolioGitController {
                 true, outcome.commitId(), outcome.semanticFallback(), List.of(), materialized));
     }
 
+    /**
+     * Resolves the authenticated user's workspace and deliberately fails closed.
+     * Falling back to the shared repository after a provisioning or persistence
+     * error could mutate another collaboration scope.
+     */
     private RequestContext context() {
         String username = workspaceResolver.resolveCurrentUsername();
-        try {
-            repositoryStateService.ensureWorkspaceState(username);
-            return new RequestContext(username, workspaceResolver.resolveCurrentContext());
-        } catch (RuntimeException exception) {
-            return new RequestContext(username, WorkspaceContext.SHARED);
-        }
+        repositoryStateService.ensureWorkspaceState(username);
+        return new RequestContext(username, workspaceResolver.resolveCurrentContext());
     }
 
     private static boolean blank(String value) {

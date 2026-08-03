@@ -121,6 +121,17 @@ public class RequirementAnalysisJob {
         this.partialItems = partialItems;
         this.failedItems = failedItems;
         this.errorSummary = errorSummary;
+
+        int completedItems = successfulItems + partialItems + failedItems;
+        if (completedItems < totalItems) {
+            // Another worker may still own RUNNING items. Never expose a
+            // premature SUCCESS state merely because this request claimed no
+            // additional work.
+            this.status = AnalysisStatus.RUNNING;
+            this.completedAt = null;
+            return;
+        }
+
         this.completedAt = now;
         if (failedItems == totalItems && totalItems > 0) {
             this.status = AnalysisStatus.FAILED;

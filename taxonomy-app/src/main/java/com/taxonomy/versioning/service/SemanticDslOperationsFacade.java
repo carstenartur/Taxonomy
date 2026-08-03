@@ -58,13 +58,14 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
         return outcome.commitId();
     }
 
+    /**
+     * Resolves the request-bound workspace and fails closed when provisioning or
+     * context lookup fails. A silent shared fallback would make a semantic merge
+     * cross the user's repository boundary.
+     */
     private WorkspaceContext resolveContext() {
-        try {
-            String username = workspaceResolver.resolveCurrentUsername();
-            repositoryStateService.ensureWorkspaceState(username);
-            return workspaceResolver.resolveCurrentContext();
-        } catch (RuntimeException exception) {
-            return WorkspaceContext.SHARED;
-        }
+        String username = workspaceResolver.resolveCurrentUsername();
+        repositoryStateService.ensureWorkspaceState(username);
+        return workspaceResolver.resolveCurrentContext();
     }
 }
