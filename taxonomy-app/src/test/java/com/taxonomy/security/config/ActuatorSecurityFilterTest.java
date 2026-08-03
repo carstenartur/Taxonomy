@@ -12,62 +12,66 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ActuatorSecurityFilterTest {
 
-    private static final String ADMIN_TOKEN = "test-admin-token";
+    private static final String METRICS_TOKEN = "test-metrics-token";
 
     private ActuatorSecurityFilter filter;
 
     @BeforeEach
     void setUp() {
         filter = new ActuatorSecurityFilter();
-        ReflectionTestUtils.setField(filter, "adminPassword", ADMIN_TOKEN);
+        ReflectionTestUtils.setField(filter, "metricsToken", METRICS_TOKEN);
+        ReflectionTestUtils.setField(filter, "allowUnauthenticated", false);
     }
 
     @Test
     void healthEndpointsRemainPublicForPlatformProbes() throws Exception {
-        MockHttpServletResponse response = invoke("/actuator/health/readiness", null, null);
-
-        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(invoke("/actuator/health/readiness", null, null).getStatus())
+                .isEqualTo(200);
     }
 
     @Test
     void sensitiveEndpointRejectsMissingCredentials() throws Exception {
         MockHttpServletResponse response = invoke("/actuator/prometheus", null, null);
-
         assertThat(response.getStatus()).isEqualTo(401);
-        assertThat(response.getContentAsString()).contains("Admin authentication required");
+        assertThat(response.getContentType()).contains("application/problem+json");
     }
 
     @Test
-    void sensitiveEndpointAcceptsLegacyAdminHeader() throws Exception {
-        MockHttpServletResponse response = invoke(
-                "/actuator/prometheus", "X-Admin-Token", ADMIN_TOKEN);
-
-        assertThat(response.getStatus()).isEqualTo(200);
+    void sensitiveEndpointAcceptsDedicatedHeader() throws Exception {
+        assertThat(invoke(
+                "/actuator/prometheus", "X-Metrics-Token", METRICS_TOKEN).getStatus())
+                .isEqualTo(200);
     }
 
     @Test
-    void sensitiveEndpointAcceptsBearerTokenForPrometheusOperator() throws Exception {
-        MockHttpServletResponse response = invoke(
-                "/actuator/prometheus", HttpHeaders.AUTHORIZATION, "Bearer " + ADMIN_TOKEN);
-
-        assertThat(response.getStatus()).isEqualTo(200);
+    void sensitiveEndpointAcceptsBearerMetricsToken() throws Exception {
+        assertThat(invoke(
+                "/actuator/prometheus", HttpHeaders.AUTHORIZATION,
+                "Bearer " + METRICS_TOKEN).getStatus())
+                .isEqualTo(200);
     }
 
     @Test
     void sensitiveEndpointRejectsIncorrectBearerToken() throws Exception {
-        MockHttpServletResponse response = invoke(
-                "/actuator/prometheus", HttpHeaders.AUTHORIZATION, "Bearer wrong-token");
-
-        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(invoke(
+                "/actuator/prometheus", HttpHeaders.AUTHORIZATION,
+                "Bearer wrong-token").getStatus())
+                .isEqualTo(401);
     }
 
     @Test
-    void blankAdminTokenPreservesDevelopmentCompatibility() throws Exception {
-        ReflectionTestUtils.setField(filter, "adminPassword", "");
+    void blankTokenFailsClosedByDefault() throws Exception {
+        ReflectionTestUtils.setField(filter, "metricsToken", "");
+        assertThat(invoke("/actuator/prometheus", null, null).getStatus())
+                .isEqualTo(401);
+    }
 
-        MockHttpServletResponse response = invoke("/actuator/prometheus", null, null);
-
-        assertThat(response.getStatus()).isEqualTo(200);
+    @Test
+    void developmentCompatibilityMustBeExplicit() throws Exception {
+        ReflectionTestUtils.setField(filter, "metricsToken", "");
+        ReflectionTestUtils.setField(filter, "allowUnauthenticated", true);
+        assertThat(invoke("/actuator/prometheus", null, null).getStatus())
+                .isEqualTo(200);
     }
 
     private MockHttpServletResponse invoke(String path, String header, String value)
