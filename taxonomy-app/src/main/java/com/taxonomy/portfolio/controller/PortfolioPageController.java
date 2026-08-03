@@ -23,4 +23,9 @@ public class PortfolioPageController {
     public String matrices(@PathVariable Long projectId) {
         return "portfolio-matrices";
     }
+
+    @GetMapping("/projects/{projectId}/import")
+    public String documentImport(@PathVariable Long projectId) {
+        return "portfolio-import";
+    }
 }
