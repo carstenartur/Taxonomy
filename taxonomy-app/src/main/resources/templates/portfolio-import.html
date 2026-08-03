@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title>Import requirements — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#importMain">Skip to requirement import</a>
+<div id="importLive" class="visually-hidden" role="status" aria-live="polite"></div>
+<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Import navigation">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
+        <span class="navbar-text text-white fw-semibold me-auto" id="importPageTitle">Import requirements</span>
+        <a class="btn btn-sm btn-outline-light" id="portfolioBack" href="/projects">Portfolio</a>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Language">
+            <a class="btn btn-outline-light" href="?lang=en">EN</a>
+            <a class="btn btn-outline-light" href="?lang=de">DE</a>
+        </div>
+    </div>
+</nav>
+
+<main id="importMain" class="container-fluid py-3 px-lg-4">
+    <div id="importError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
+    <div id="importInfo" class="alert alert-info d-none" role="status"></div>
+
+    <section class="card shadow-sm mb-3" aria-labelledby="importHeading">
+        <div class="card-body">
+            <h1 id="importHeading" class="h2 mb-1">Guided document import</h1>
+            <p id="importProject" class="text-body-secondary mb-0"></p>
+        </div>
+    </section>
+
+    <ol class="nav nav-pills nav-fill gap-2 mb-3" aria-label="Import progress">
+        <li class="nav-item"><span class="nav-link active" id="stepUpload">1. Document</span></li>
+        <li class="nav-item"><span class="nav-link disabled" id="stepReview">2. Review candidates</span></li>
+        <li class="nav-item"><span class="nav-link disabled" id="stepSummary">3. Confirm import</span></li>
+    </ol>
+
+    <section id="uploadStep" class="card shadow-sm mb-3" aria-labelledby="uploadHeading">
+        <div class="card-header"><h2 id="uploadHeading" class="h5 mb-0">Choose PDF or DOCX</h2></div>
+        <form id="uploadForm" class="card-body">
+            <div class="row g-3">
+                <div class="col-12 col-lg-6"><label for="documentFile" class="form-label">Document</label><input id="documentFile" name="file" type="file" class="form-control" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required/></div>
+                <div class="col-12 col-md-6 col-lg-3"><label for="documentTitle" class="form-label">Source title</label><input id="documentTitle" class="form-control" maxlength="240"/></div>
+                <div class="col-12 col-md-6 col-lg-3"><label for="sourceType" class="form-label">Source type</label><select id="sourceType" class="form-select"><option value="REGULATION">Regulation</option><option value="POLICY">Policy</option><option value="STANDARD">Standard</option><option value="UPLOADED_DOCUMENT">Document</option></select></div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-3"><button type="submit" class="btn btn-primary">Parse document</button><button id="restoreDraft" type="button" class="btn btn-outline-secondary d-none">Restore saved review</button></div>
+        </form>
+    </section>
+
+    <section id="reviewStep" class="card shadow-sm mb-3 d-none" aria-labelledby="reviewHeading">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div><h2 id="reviewHeading" class="h5 mb-1">Review candidates before persistence</h2><p id="parseSummary" class="small text-body-secondary mb-0"></p></div>
+            <div class="d-flex flex-wrap gap-2"><button id="extractAi" type="button" class="btn btn-outline-primary">Add AI candidates</button><button id="addManualCandidate" type="button" class="btn btn-outline-secondary">Add manually</button></div>
+        </div>
+        <div class="card-body">
+            <div id="candidateWarnings"></div>
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6"><label for="candidateSearch" class="form-label">Filter candidates</label><input id="candidateSearch" type="search" class="form-control"/></div>
+                <div class="col-12 col-md-3"><label for="candidateStateFilter" class="form-label">Decision</label><select id="candidateStateFilter" class="form-select"><option value="">All</option><option value="NEW">New requirement</option><option value="VERSION">New version</option><option value="MERGE">Merge</option><option value="DISCARD">Discard</option></select></div>
+                <div class="col-12 col-md-3 d-flex align-items-end"><button id="saveDraft" type="button" class="btn btn-outline-secondary w-100">Save review draft</button></div>
+            </div>
+            <div id="candidateList" class="vstack gap-3"></div>
+        </div>
+        <div class="card-footer d-flex justify-content-between gap-2"><button id="backToUpload" type="button" class="btn btn-outline-secondary">Back</button><button id="reviewSummaryButton" type="button" class="btn btn-primary">Review import summary</button></div>
+    </section>
+
+    <section id="summaryStep" class="card shadow-sm d-none" aria-labelledby="summaryHeading">
+        <div class="card-header"><h2 id="summaryHeading" class="h5 mb-0">Confirm import</h2></div>
+        <div class="card-body">
+            <div id="importSummary"></div>
+            <div class="form-check mt-3"><input id="analyzeAfterImport" class="form-check-input" type="checkbox" checked/><label class="form-check-label" for="analyzeAfterImport">Start separate analysis for every imported or versioned requirement</label></div>
+        </div>
+        <div class="card-footer d-flex justify-content-between gap-2"><button id="backToReview" type="button" class="btn btn-outline-secondary">Back to review</button><button id="confirmImport" type="button" class="btn btn-success">Import requirements</button></div>
+    </section>
+</main>
+
+<div id="importBusy" class="portfolio-busy d-none" role="status" aria-live="polite"><div class="spinner-border" aria-hidden="true"></div><span id="importBusyText">Working…</span></div>
+<script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/portfolio/portfolio-import.js}"></script>
+</body>
+</html>
