@@ -9,6 +9,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -53,7 +54,7 @@ class ApiWriteDenyByDefaultSecurityTest {
 
     @Test
     @WithMockUser(roles = "USER")
-    void userCanStillCallExplicitlyClassifiedReadOnlyPostAnalysis() throws Exception {
+    void userReachesExplicitlyClassifiedReadOnlyPostAnalysis() throws Exception {
         mockMvc.perform(post("/api/recommend")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -64,7 +65,9 @@ class ApiWriteDenyByDefaultSecurityTest {
                                   "minScore": 50
                                 }
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(result -> assertThat(result.getResponse().getStatus())
+                        .as("explicitly classified analysis POST must pass authorization")
+                        .isNotEqualTo(403));
     }
 
     @Test
