@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -122,10 +123,10 @@ class ProjectRequirementThousandScaleContractTest {
                 .isLessThanOrEqualTo(MAXIMUM_READ_STATEMENTS);
         assertThat(elapsed)
                 .as("controlled in-memory database read duration; fixture creation excluded")
-                .isLessThan(MAXIMUM_READ_DURATION);
+                .isLessThanOrEqualTo(MAXIMUM_READ_DURATION);
     }
 
     private static String shortId() {
-        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
     }
 }
