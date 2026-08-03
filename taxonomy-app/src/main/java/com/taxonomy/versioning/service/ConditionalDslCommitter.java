@@ -44,6 +44,7 @@ final class ConditionalDslCommitter {
                             + " to " + actualHead);
         }
 
+        String commitMessage = message != null ? message : "Selective transfer";
         PersonIdent actor = new PersonIdent(
                 author != null && !author.isBlank() ? author : "taxonomy",
                 author != null && !author.isBlank() ? author : "taxonomy@system");
@@ -59,7 +60,7 @@ final class ConditionalDslCommitter {
             commit.setParentId(ref.getObjectId());
             commit.setAuthor(actor);
             commit.setCommitter(actor);
-            commit.setMessage(message != null ? message : "Selective transfer");
+            commit.setMessage(commitMessage);
             ObjectId commitId = inserter.insert(commit);
             inserter.flush();
 
@@ -67,7 +68,7 @@ final class ConditionalDslCommitter {
             update.setNewObjectId(commitId);
             update.setExpectedOldObjectId(ObjectId.fromString(expectedHead));
             update.setRefLogIdent(actor);
-            update.setRefLogMessage("selective-transfer: " + commit.getMessage(), true);
+            update.setRefLogMessage("selective-transfer: " + commitMessage, true);
             RefUpdate.Result result = update.update();
             if (result != RefUpdate.Result.FAST_FORWARD
                     && result != RefUpdate.Result.NEW
