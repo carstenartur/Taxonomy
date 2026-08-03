@@ -27,6 +27,11 @@
     border-left-color: var(--bs-primary);
 }
 
+#projectList .list-group-item.active .opacity-75 {
+    color: var(--bs-white);
+    opacity: 1 !important;
+}
+
 .portfolio-actions .btn {
     white-space: nowrap;
 }
@@ -38,6 +43,10 @@
 
 .portfolio-tabs .nav-link {
     white-space: nowrap;
+}
+
+.portfolio-tabs .nav-link:not(.active) {
+    color: var(--bs-primary-text-emphasis);
 }
 
 .portfolio-metric {
