@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title>Portfolio matrices — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#matrixMain">Skip to matrices</a>
+<div id="matrixLive" class="visually-hidden" role="status" aria-live="polite"></div>
+<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Portfolio matrix navigation">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
+        <span class="navbar-text text-white fw-semibold me-auto" id="matrixPageTitle">Portfolio matrices</span>
+        <a class="btn btn-sm btn-outline-light" id="portfolioBack" href="/projects">Portfolio</a>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Language">
+            <a class="btn btn-outline-light" href="?lang=en">EN</a>
+            <a class="btn btn-outline-light" href="?lang=de">DE</a>
+        </div>
+    </div>
+</nav>
+<main id="matrixMain" class="container-fluid py-3 px-lg-4">
+    <div id="matrixError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
+    <section class="card shadow-sm mb-3" aria-labelledby="matrixHeading">
+        <div class="card-body">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                <div><h1 id="matrixHeading" class="h2 mb-1">Portfolio matrices</h1><p id="matrixProject" class="text-body-secondary mb-0"></p></div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button id="exportCsv" type="button" class="btn btn-outline-primary">Export filtered CSV</button>
+                    <button id="exportJson" type="button" class="btn btn-outline-primary">Export filtered JSON</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm mb-3" aria-labelledby="filterHeading">
+        <div class="card-header"><h2 id="filterHeading" class="h5 mb-0">Filters</h2></div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-5"><label for="matrixSearch" class="form-label">Search rows and columns</label><input id="matrixSearch" type="search" class="form-control" autocomplete="off"/></div>
+                <div class="col-6 col-md-3"><label for="minimumValue" class="form-label">Minimum coverage</label><input id="minimumValue" type="number" min="0" max="100" value="0" class="form-control"/></div>
+                <div class="col-6 col-md-2"><label for="relationState" class="form-label">Relationship</label><select id="relationState" class="form-select"><option value="all">All</option><option value="related">Related</option><option value="empty">Empty</option></select></div>
+                <div class="col-12 col-md-2"><button id="resetFilters" type="button" class="btn btn-outline-secondary w-100">Reset</button></div>
+            </div>
+            <div id="activeFilters" class="small text-body-secondary mt-3"></div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm">
+        <div class="card-header p-0 border-bottom-0">
+            <ul class="nav nav-tabs px-2 pt-2 flex-nowrap overflow-x-auto" role="tablist">
+                <li class="nav-item"><button class="nav-link active" id="taxonomyMatrixTab" data-bs-toggle="tab" data-bs-target="#taxonomyMatrixPane" type="button" role="tab">Requirements × taxonomy</button></li>
+                <li class="nav-item"><button class="nav-link" id="solutionMatrixTab" data-bs-toggle="tab" data-bs-target="#solutionMatrixPane" type="button" role="tab">Requirements × solutions</button></li>
+                <li class="nav-item"><button class="nav-link" id="productMatrixTab" data-bs-toggle="tab" data-bs-target="#productMatrixPane" type="button" role="tab">Solutions × products</button></li>
+            </ul>
+        </div>
+        <div class="card-body tab-content">
+            <div class="tab-pane fade show active" id="taxonomyMatrixPane" role="tabpanel" tabindex="0"><div id="taxonomyMatrix" class="portfolio-matrix table-responsive"></div></div>
+            <div class="tab-pane fade" id="solutionMatrixPane" role="tabpanel" tabindex="0"><div id="solutionMatrix" class="portfolio-matrix table-responsive"></div></div>
+            <div class="tab-pane fade" id="productMatrixPane" role="tabpanel" tabindex="0"><div id="productMatrix" class="portfolio-matrix table-responsive"></div></div>
+        </div>
+    </section>
+</main>
+
+<div class="offcanvas offcanvas-end" tabindex="-1" id="cellDetail" aria-labelledby="cellDetailTitle">
+    <div class="offcanvas-header"><h2 class="offcanvas-title h5" id="cellDetailTitle">Relationship detail</h2><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button></div>
+    <div class="offcanvas-body"><div id="cellDetailBody"></div></div>
+</div>
+
+<div id="matrixBusy" class="portfolio-busy d-none" role="status" aria-live="polite"><div class="spinner-border" aria-hidden="true"></div><span>Loading…</span></div>
+<script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/portfolio/portfolio-matrices.js}"></script>
+</body>
+</html>
