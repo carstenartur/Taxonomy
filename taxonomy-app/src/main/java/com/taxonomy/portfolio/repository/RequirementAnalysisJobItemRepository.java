@@ -18,6 +18,10 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
     List<RequirementAnalysisJobItem> findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
             String jobId, AnalysisStatus status);
 
+    List<RequirementAnalysisJobItem>
+            findByJobIdAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
+                    String jobId, AnalysisStatus status, Instant startedBefore);
+
     Optional<RequirementAnalysisJobItem> findByJobIdAndRequirementId(String jobId, Long requirementId);
 
     /**
