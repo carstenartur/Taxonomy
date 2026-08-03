@@ -105,6 +105,7 @@ class PortfolioApiContractTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Portfolio resource not found"))
                 .andExpect(jsonPath("$.type").value("urn:taxonomy:portfolio:not_found"));
     }
 
