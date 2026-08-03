@@ -1798,3 +1798,85 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 **Nein.** Die Ausfallauswirkungsansicht (⚠️-Schaltfläche) ist eine bewusste Funktion, kein Fehlerzustand. Sie hebt alle Knoten hervor, die betroffen wären, wenn der ausgewählte Knoten ausfällt oder entfernt wird. Verwenden Sie sie für Änderungsauswirkungs-Analysen und Risikobewertungen. Siehe [Abschnitt 8 — Graph Explorer](#8-den-graph-explorer-verwenden) für alle Details.
 
 ![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
+
+---
+
+## 19. Projekt-Portfolio
+
+Der Projekt-Portfolio-Arbeitsbereich (`/projects`) bietet einen rückverfolgbaren Mehranforderungs-Workflow. Er ist vom hauptsächlichen Ad-hoc-Analyse-Arbeitsbereich unter `/` getrennt.
+
+### 19.1 Projekt anlegen
+
+1. Navigieren Sie in der Seitenleiste zu **Projekte**.
+2. Klicken Sie auf **Neues Projekt**.
+3. Geben Sie einen **Projektschlüssel** (eindeutig im Workspace, z. B. `P-001`), einen Titel und optionale Metadaten ein.
+4. Klicken Sie auf **Erstellen**.
+
+### 19.2 Anforderungen hinzufügen
+
+Anforderungen haben einen stabilen Schlüssel (z. B. `REQ-001`) und eine unveränderliche Texthistorie.
+
+1. Öffnen Sie das Projekt und wechseln Sie zur Registerkarte **Anforderungen**.
+2. Klicken Sie auf **Anforderung hinzufügen**.
+3. Geben Sie Schlüssel, Titel, Text, Status, Priorität, Typ und Kritikalität ein.
+4. Klicken Sie auf **Speichern**. Die erste **Version** wird automatisch erstellt.
+
+### 19.3 Anforderungen analysieren
+
+1. Klicken Sie auf **Alle analysieren** oder wählen Sie einzelne Anforderungen aus und klicken Sie auf **Ausgewählte analysieren**.
+2. Der Server akzeptiert die Anfrage sofort mit `202 Accepted` und erstellt einen Analyse-Job.
+3. Die Registerkarte **Analyse-Jobs** zeigt den Live-Status (PENDING → RUNNING → SUCCESS/PARTIAL/FAILED).
+4. Bei `SUCCESS` oder `PARTIAL` wird ein **unveränderlicher Snapshot** erstellt.
+
+**Fehlgeschlagene Items wiederholen:** Klicken Sie in der Registerkarte **Analyse-Jobs** auf **Fehler wiederholen**. Nur fehlgeschlagene Items werden erneut eingereiht; erfolgreiche Snapshots bleiben erhalten.
+
+### 19.4 Analyse-Snapshots prüfen
+
+1. Öffnen Sie eine Anforderung und wechseln Sie zur Registerkarte **Snapshots**.
+2. Klicken Sie auf einen Snapshot, um die vollständige Analyse anzuzeigen.
+3. Verwenden Sie **Vergleichen**, um zwei Snapshots semantisch zu vergleichen.
+4. Klicken Sie auf **Zuordnung prüfen**, um eine Element- oder Beziehungszuordnung zu klassifizieren.
+
+### 19.5 Lösungskatalog
+
+1. Navigieren Sie zu **Lösungen** und klicken Sie auf **Neue Lösung**.
+2. Ordnen Sie die Lösung einer Anforderung über die Registerkarte **Lösungszuordnungen** zu.
+3. Wählen Sie einen Entscheidungstyp: `ADOPT`, `TRIAL`, `ASSESS` oder `HOLD`.
+
+### 19.6 Produktkatalog
+
+1. Navigieren Sie zu **Produkte** und klicken Sie auf **Neues Produkt**.
+2. Verknüpfen Sie das Produkt mit einer Lösung über die Registerkarte **Produkte** der Lösung.
+
+### 19.7 Konfliktregister
+
+1. Öffnen Sie ein Projekt und klicken Sie auf die Registerkarte **Konflikte**.
+2. Klicken Sie auf **Konflikt registrieren**, um einen neuen Konflikt mit Schweregrad zu erfassen.
+3. Setzen Sie den Status auf `MITIGATED` oder `ACCEPTED` mit einer Lösungsnotiz.
+
+### 19.8 Portfolio-Matrizen
+
+Die Registerkarte **Matrizen** bietet drei konsolidierte Ansichten:
+
+| Matrix | Beschreibung |
+|---|---|
+| **Abdeckung** | Welche Anforderungen haben bestätigte, teilweise oder fehlende Lösungszuordnungen |
+| **Konflikte** | Offene Konflikte nach Anforderungspaar und Schweregrad |
+| **Entscheidungen** | Vollständige Entscheidungspipeline: Anforderung → Analyse → Lösung → Produkt |
+
+### 19.9 Portfolio-Git-Projektion
+
+1. Klicken Sie in der Registerkarte **Git** auf **Exportieren**, um die DSL-Ausgabe in der Vorschau anzuzeigen.
+2. Klicken Sie auf **Commit**, um den aktuellen Zustand in einem benannten Branch zu persistieren.
+3. Verwenden Sie **Merge** für semantisches Zusammenführen zweier Branches.
+4. Verwenden Sie **Materialisieren**, um den Branch-HEAD in die Datenbank zurückzuladen.
+
+Die Workspace-Isolation ist **fail-closed**: Kann der Workspace nicht aufgelöst werden, wird die Git-Operation abgelehnt.
+
+### 19.10 Batch-Limits
+
+| Limit | Standard | Konfigurierbar über |
+|---|---|---|
+| Anforderungen pro Analyse-Job | 100 | `taxonomy.portfolio.max-analysis-batch` |
+| Dokumentimport-Kandidaten | 500 | `taxonomy.portfolio.max-import-candidates` |
+| Anforderungstextlänge | 100.000 Zeichen | `taxonomy.limits.max-text-length` |

@@ -40,6 +40,26 @@ Eine Funktion gilt nur als abgeschlossen, wenn alle erforderlichen Spalten ✅ z
 | KI-gestützte Anforderungsextraktion | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
 | Vorschriften-Architektur-Zuordnung | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
 
+## Projekt-Portfolio-Funktionen (GUI + REST)
+
+| Funktion | GUI | REST | Benutzerhandbuch | Screenshot | Hilfe/Tooltip | DE/EN i18n | Status |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|---|
+| Projekt-CRUD | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §1 | — | ✅ | ✅ | ✅ Vollständig |
+| Anforderungs-Versionierung (unveränderliche Texthistorie) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §2 | — | ✅ | ✅ | ✅ Vollständig |
+| Batch-Analyse (per Anforderung, atomare Claims) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Vollständig |
+| Asynchrone Analyse (202 Accepted + Polling) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Vollständig |
+| Analyse-Job-Wiederholung / -Wiederherstellung | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Vollständig |
+| Unveränderliche Analyse-Snapshots | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §4 | — | ✅ | ✅ | ✅ Vollständig |
+| Snapshot-Differenz (semantischer Vergleich) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §4 | — | ✅ | ✅ | ✅ Vollständig |
+| Lösungskatalog (CRUD + Lebenszyklus) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §5 | — | ✅ | ✅ | ✅ Vollständig |
+| Lösungs-Anforderungs-Zuordnung + Review | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §5 | — | ✅ | ✅ | ✅ Vollständig |
+| Produktkatalog (CRUD) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §6 | — | ✅ | ✅ | ✅ Vollständig |
+| Konfliktregister + Review | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §7 | — | ✅ | ✅ | ✅ Vollständig |
+| Portfolio-Matrizen (Abdeckung, Konflikt, Lösung) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §8 | — | ✅ | ✅ | ✅ Vollständig |
+| Portfolio-Git-Projektion (DSL-Commit, Merge, Materialisierung) | ✅ | ✅ | ✅ PROJECT_PORTFOLIO_GIT_COLLABORATION | — | ✅ | ✅ | ✅ Vollständig |
+| Portfolio-Workspace-Isolation (fail-closed) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §9 | — | ✅ | ✅ | ✅ Vollständig |
+| Schema-Migration (Flyway V2, PostgreSQL) | — | — | ✅ PROJECT_PORTFOLIO_OPERATIONS | — | — | ✅ | ✅ Vollständig |
+
 ## Admin-/Automatisierungsfunktionen (API-first — keine GUI erforderlich)
 
 | Funktion | REST | API-Doku | Status |

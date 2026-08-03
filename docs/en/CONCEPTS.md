@@ -397,3 +397,64 @@ Every Git operation (merge, cherry-pick, publish, sync, branch delete) produces 
 - ✅ Success with operation summary
 - ❌ Failure with error details
 - ⚠️ Warnings (e.g. conflict detected)
+
+---
+
+## Project Portfolio
+
+A traceable multi-requirement workflow container. A **project** holds a set of stable requirements, the current solution and product decisions, a conflict registry and consolidated matrices. Each project lives in a workspace scope, so users can only access their own projects.
+
+## Requirement and Requirement Version
+
+A requirement has a stable identity key (e.g. `REQ-001`). Its text is never overwritten. A changed text creates a new **immutable numbered version** that carries:
+
+- SHA-256 content fingerprint,
+- author and timestamp,
+- change reason,
+- optional source artifact, source version and source fragment references.
+
+Submitting identical text returns the existing version.
+
+## Analysis Job
+
+A persisted record of one requested batch of requirement analyses. Each requirement in the batch is tracked as an independent **analysis item** with its own status lifecycle:
+
+| Status | Description |
+|---|---|
+| `PENDING` | Waiting to be claimed by an async worker |
+| `RUNNING` | Claimed by a worker (with `claimedAt` timestamp for lease tracking) |
+| `SUCCESS` | LLM analysis completed and snapshot persisted |
+| `PARTIAL` | Analysis completed with warnings |
+| `FAILED` | LLM call failed; eligible for retry |
+| `CANCELLED` | Item was cancelled before it ran |
+
+Items are claimed with **compare-and-set semantics** (`UPDATE … WHERE status = PENDING`) so competing workers cannot double-process the same item. Stale `RUNNING` items (claim age > `analysis-claim-timeout-seconds`) are automatically reset by the recovery service.
+
+## Analysis Snapshot
+
+An **immutable** record of one completed requirement analysis. Contains: exact requirement version, complete score set, architecture view, relation hypotheses, gap analysis, pattern detection, recommendation, provider, prompt and taxonomy fingerprints, workspace, branch, Git commit, warnings, runtime and author. Snapshots can be compared semantically via the diff endpoint.
+
+## Solution Catalog
+
+A workspace-scoped library of named **solutions** (software products, platforms, services or processes). Solutions have a lifecycle status (`ACTIVE`, `DEPRECATED`, …) and a maturity level. A solution can be mapped to one or more requirements with a **decision type** (`ADOPT`, `TRIAL`, `ASSESS`, `HOLD`).
+
+## Product Catalog
+
+A workspace-scoped registry of procurable **products** and versions. Products are linked to solutions as sourcing candidates. Product selection requires the requirement's review status to be confirmed and prohibits hard exclusions.
+
+## Conflict Registry
+
+A project-level log of identified **architecture conflicts** between requirements, solutions or product choices. Each conflict has a severity, a status (`OPEN`, `MITIGATED`, `ACCEPTED`, `CLOSED`) and an optional resolution note.
+
+## Portfolio Workspace Isolation
+
+All portfolio mutations (create project, start analysis, commit Git) resolve the workspace **fail-closed**. If the workspace cannot be resolved unambiguously, the operation is rejected with a `5xx` error. Falling back to the shared repository on a provisioning error is explicitly prohibited by ADR 0001/0002.
+
+## Portfolio Git Projection
+
+The DSL projection serializes the current project and requirement state into architecture DSL blocks and commits them into the user's workspace Git repository. The projection can be:
+
+- **exported** as a read-only DSL document,
+- **committed** to a named branch,
+- **merged** semantically across branches (using the same conflict resolution engine as the main DSL),
+- **materialized** from a branch HEAD back into the relational database.

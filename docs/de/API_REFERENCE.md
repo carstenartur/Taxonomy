@@ -771,11 +771,76 @@ curl -u alice:password http://localhost:8080/api/workspace/topology
 
 ---
 
+## Projekt-Portfolio
+
+Das Projekt-Portfolio wandelt die ad-hoc-Anforderungsanalyse in einen rückverfolgbaren Mehranforderungs-Workflow mit versionierten Anforderungen, unveränderlichen Analyse-Snapshots, Lösungs-/Produktkatalogen und Git-gesicherter DSL-Projektion um.
+
+Alle Portfolio-Endpunkte erfordern Authentifizierung. Der Projektzugriff ist workspace-gültig; ein Benutzer kann nur seine eigenen Projekte lesen und schreiben.
+
+### Projekt anlegen
+
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{"projectKey":"P-001","title":"Migrationsplattform","status":"ACTIVE"}'
+```
+
+### Analyse-Job starten (202 Accepted, asynchron)
+
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/analyses \
+  -H "Content-Type: application/json" \
+  -d '{"all":true}'
+```
+
+Der `Location`-Response-Header enthält die Polling-URL, z. B. `/api/projects/1/analysis-jobs/550e8400-…`.
+
+### Job-Status abfragen
+
+```bash
+curl -u alice:password \
+  http://localhost:8080/api/projects/1/analysis-jobs/550e8400-e29b-41d4-a716-446655440000
+```
+
+**Terminale Statuswerte:** `SUCCESS`, `PARTIAL`, `FAILED`, `CANCELLED`.
+
+### Fehlgeschlagene Items wiederholen
+
+```bash
+curl -u alice:password -X POST \
+  http://localhost:8080/api/projects/1/analysis-jobs/550e8400-e29b-41d4-a716-446655440000/retry-failed
+```
+
+### Portfolio-Git-Projektion
+
+```bash
+# Portfolio als DSL exportieren
+curl -u alice:password http://localhost:8080/api/projects/git/export
+
+# Aktuellen Zustand in Git committen
+curl -u alice:password -X POST http://localhost:8080/api/projects/git/commit?branch=draft \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Portfolio-Snapshot nach REQ-001-Analyse"}'
+```
+
+### Limits und Konfiguration
+
+| Eigenschaft | Standard | Beschreibung |
+|---|---|---|
+| `taxonomy.portfolio.max-analysis-batch` | `100` | Maximale Anforderungen pro Analyse-Job |
+| `taxonomy.portfolio.analysis-claim-timeout-seconds` | `900` | Sekunden, bis ein RUNNING-Item als veraltet gilt |
+| `taxonomy.portfolio.max-import-candidates` | `500` | Maximale Kandidaten pro Dokumentimport |
+
+---
+
 ## Weitere Referenzen
 
 | Dokument | Inhalt |
 |---|---|
 | [cURL-Beispiele für Automatisierung](CURL_EXAMPLES.md) | Kopierbare cURL-Befehle für jeden Endpunkt |
+| [Projekt-Portfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) | Vollständiger Portfolio-Workflow-Leitfaden |
+| [Portfolio-Betrieb](PROJECT_PORTFOLIO_OPERATIONS.md) | Migration, Backup, Recovery und Job-Betrieb |
+| [Portfolio-Git-Kollaboration](PROJECT_PORTFOLIO_GIT_COLLABORATION.md) | DSL-Projektion und semantischer Merge |
 | [Sicherheit](SECURITY.md) | Authentifizierung, Rollen, Deployment-Härtung |
 | [Konfiguration](CONFIGURATION_REFERENCE.md) | Umgebungsvariablen und Einstellungen |
 | [Swagger UI](http://localhost:8080/swagger-ui.html) | Interaktiver API-Explorer (wenn die Anwendung läuft) |

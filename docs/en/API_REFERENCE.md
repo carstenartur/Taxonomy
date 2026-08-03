@@ -811,11 +811,162 @@ curl -u alice:password http://localhost:8080/api/workspace/topology
 
 ---
 
+## Project Portfolio
+
+The Project Portfolio turns ad-hoc requirement analysis into a traceable multi-requirement workflow with versioned requirements, immutable analysis snapshots, solution/product catalogues, and Git-backed DSL projection.
+
+All portfolio endpoints require authentication. Project access is workspace-scoped; a user can only read and write their own projects.
+
+### Create a project
+
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{"projectKey":"P-001","title":"Migration Platform","status":"ACTIVE"}'
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 1,
+  "projectKey": "P-001",
+  "title": "Migration Platform",
+  "status": "ACTIVE",
+  "requirementCount": 0,
+  "solutionCount": 0,
+  "openConflicts": 0
+}
+```
+
+### Add a requirement
+
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/requirements \
+  -H "Content-Type: application/json" \
+  -d '{"requirementKey":"REQ-001","title":"Single sign-on","text":"All users must authenticate via OIDC.","status":"APPROVED","priority":80,"requirementType":"FUNCTIONAL","criticality":"HIGH"}'
+```
+
+### Start an analysis job (202 Accepted, async)
+
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/analyses \
+  -H "Content-Type: application/json" \
+  -d '{"all":true}'
+```
+
+**Response (202 Accepted):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "PENDING",
+  "totalItems": 3,
+  "successfulItems": 0,
+  "failedItems": 0
+}
+```
+
+The `Location` response header contains the polling URL, e.g. `/api/projects/1/analysis-jobs/550e8400-…`.
+
+### Poll a job
+
+```bash
+curl -u alice:password http://localhost:8080/api/projects/1/analysis-jobs/550e8400-e29b-41d4-a716-446655440000
+```
+
+**Terminal statuses:** `SUCCESS`, `PARTIAL`, `FAILED`, `CANCELLED`.
+
+### Retry failed items
+
+```bash
+curl -u alice:password -X POST \
+  http://localhost:8080/api/projects/1/analysis-jobs/550e8400-e29b-41d4-a716-446655440000/retry-failed
+```
+
+### List snapshots for a requirement
+
+```bash
+curl -u alice:password \
+  http://localhost:8080/api/projects/1/requirements/1/snapshots
+```
+
+### Compare two snapshots
+
+```bash
+curl -u alice:password \
+  "http://localhost:8080/api/projects/1/snapshots/diff?older=SNAP-A&newer=SNAP-B"
+```
+
+### Solution catalog
+
+```bash
+# Create solution
+curl -u alice:password -X POST http://localhost:8080/api/solutions \
+  -H "Content-Type: application/json" \
+  -d '{"solutionKey":"SOL-001","title":"Keycloak OIDC","solutionType":"SOFTWARE","operatingModel":"SAAS","lifecycleStatus":"ACTIVE","maturityLevel":3}'
+
+# Map solution to requirement
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/solution-mappings \
+  -H "Content-Type: application/json" \
+  -d '{"requirementId":1,"solutionId":1,"decisionType":"ADOPT"}'
+```
+
+### Product catalog
+
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/products \
+  -H "Content-Type: application/json" \
+  -d '{"productKey":"PROD-001","title":"Keycloak 24","vendor":"Red Hat","version":"24.0","lifecycleStatus":"ACTIVE"}'
+```
+
+### Portfolio Git projection
+
+```bash
+# Export portfolio as DSL
+curl -u alice:password http://localhost:8080/api/projects/git/export
+
+# Commit current state into Git
+curl -u alice:password -X POST http://localhost:8080/api/projects/git/commit?branch=draft \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Portfolio snapshot after REQ-001 analysis"}'
+
+# Semantic merge two branches
+curl -u alice:password -X POST http://localhost:8080/api/projects/git/merge \
+  -H "Content-Type: application/json" \
+  -d '{"fromBranch":"feature/sso","intoBranch":"draft"}'
+```
+
+### Portfolio matrices
+
+```bash
+# Requirement-coverage matrix
+curl -u alice:password http://localhost:8080/api/projects/1/matrices/coverage
+
+# Conflict matrix
+curl -u alice:password http://localhost:8080/api/projects/1/matrices/conflicts
+
+# Decision pipeline (project → requirements → solutions → products)
+curl -u alice:password http://localhost:8080/api/projects/1/matrices/decisions
+```
+
+### Limits and configuration
+
+| Property | Default | Description |
+|---|---|---|
+| `taxonomy.portfolio.max-analysis-batch` | `100` | Maximum requirements per analysis job |
+| `taxonomy.portfolio.analysis-claim-timeout-seconds` | `900` | Seconds before a RUNNING item is considered stale and eligible for recovery |
+| `taxonomy.portfolio.max-import-candidates` | `500` | Maximum candidates per document import |
+| `taxonomy.limits.max-text-length` | `100000` | Maximum character length per requirement text |
+
+---
+
 ## Additional References
 
 | Document | Contents |
 |---|---|
 | [Curl Examples for Automation](CURL_EXAMPLES.md) | Copy-paste curl commands for every endpoint |
+| [Project Portfolio](PROJECT_REQUIREMENT_PORTFOLIO.md) | Full portfolio workflow guide |
+| [Portfolio Operations](PROJECT_PORTFOLIO_OPERATIONS.md) | Migration, backup, recovery and job operations |
+| [Portfolio Git Collaboration](PROJECT_PORTFOLIO_GIT_COLLABORATION.md) | DSL projection and semantic merge |
 | [Security](SECURITY.md) | Authentication, roles, deployment hardening |
 | [Configuration](CONFIGURATION_REFERENCE.md) | Environment variables and settings |
 | [Swagger UI](http://localhost:8080/swagger-ui.html) | Interactive API explorer (when running) |

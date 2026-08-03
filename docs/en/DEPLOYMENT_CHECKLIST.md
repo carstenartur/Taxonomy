@@ -10,6 +10,8 @@ This checklist is a release gate for controlled Taxonomy deployments. A checked 
   - file-backed HSQLDB only for small controlled installations.
 - [ ] **No in-memory production database** — `jdbc:hsqldb:mem:` is not used for persistent deployments.
 - [ ] **Schema management defined** — use the production profile; plan migration tooling before incompatible schema changes.
+- [ ] **Flyway schema migration verified** — for PostgreSQL deployments, the versioned Flyway migration stream (`V1__taxonomy_application_baseline.sql`, `V2__project_portfolio.sql`) must run cleanly before starting the application with `TAXONOMY_DDL_AUTO=validate`. Verify on both fresh-install and upgrade scenarios.
+- [ ] **Portfolio schema upgrade tested** — if upgrading from a pre-portfolio release, confirm that `V2__project_portfolio.sql` runs without error and that the application starts with `ddl-auto=validate` on the migrated schema.
 - [ ] **Persistent Lucene index configured** — `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem` and a persistent root path.
 - [ ] **Persistent storage mounted** — `/app/data` or the database volume survives container recreation.
 - [ ] **Restart persistence test passed** — create a user/workspace/change, restart or recreate the container, and verify the state remains available.
@@ -109,6 +111,10 @@ For larger or business-critical deployments, use the `production` profile togeth
 - [ ] ArchiMate, Visio, Mermaid, JSON and report exports open in their target tools.
 - [ ] Restart persistence test is repeated against the deployed environment.
 - [ ] Backup restoration is verified on a separate instance.
+- [ ] **Portfolio CRUD and analysis:** create a project, add three requirements, start an analysis job, poll until SUCCESS, review snapshots, map a solution, register a product, check the coverage matrix.
+- [ ] **Portfolio Git round-trip:** commit the portfolio to a draft branch, merge to a second branch, materialize and verify the database reflects the merged state.
+- [ ] **Analysis job recovery:** force-expire a RUNNING item (set `claimedAt` to the past), call `retry-failed`, verify the item transitions back to PENDING and eventually SUCCESS.
+- [ ] **Workspace isolation:** confirm that a second user cannot access the first user's projects (expect `403` or empty list).
 
 ## Sign-off
 

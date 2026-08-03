@@ -1814,3 +1814,103 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 **No.** The Failure Impact view (⚠️ button) is a deliberate feature, not an error state. It highlights all nodes that would be affected if the selected node failed or was removed. Use it for change-impact analysis and risk assessment. See [Section 8 — Graph Explorer](#8-using-the-graph-explorer) for full details.
 
 ![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
+
+---
+
+## 19. Project Portfolio
+
+The Project Portfolio workspace (`/projects`) provides a traceable multi-requirement workflow. It is separate from the main ad-hoc analysis workspace at `/`.
+
+### 19.1 Creating a project
+
+1. Navigate to **Projects** in the sidebar.
+2. Click **New Project**.
+3. Enter a **Project Key** (unique within your workspace, e.g. `P-001`), a title, and optional metadata (target date, budget, description).
+4. Click **Create**. The project opens in the detail view.
+
+### 19.2 Adding requirements
+
+Requirements have a stable key (e.g. `REQ-001`) and an immutable text history.
+
+1. Open the project and switch to the **Requirements** tab.
+2. Click **Add Requirement**.
+3. Enter the requirement key, title, text, status, priority, type and criticality.
+4. Click **Save**. The first **version** is created automatically.
+
+If you later change the text, a new immutable version is created. The old version remains visible in the version history.
+
+### 19.3 Analysing requirements
+
+1. In the **Requirements** tab, click **Analyse All** or select individual requirements and click **Analyse Selected**.
+2. The server accepts the request immediately with `202 Accepted` and creates an analysis job.
+3. The **Analysis Jobs** tab shows live status (PENDING → RUNNING → SUCCESS/PARTIAL/FAILED).
+4. When a job item reaches `SUCCESS` or `PARTIAL`, an **immutable snapshot** is created and visible in the requirement's snapshot history.
+
+**Retry failed items:** In the **Analysis Jobs** tab, click **Retry Failed** next to a job with failed items. Only the failed items are requeued; successful snapshots are preserved.
+
+### 19.4 Reviewing analysis snapshots
+
+1. Open a requirement and switch to the **Snapshots** tab.
+2. Click a snapshot to view the full analysis: scores, architecture view, relation hypotheses, gap analysis and recommendations.
+3. Use **Compare** to select two snapshots and see a semantic diff.
+4. Click **Review Mapping** on any element or relation mapping to classify the action (ADOPT, REUSE, ADAPT, PROCURE, NEW, ORGANISATIONAL, EXCLUDE).
+
+### 19.5 Solution catalog
+
+Solutions are reusable entries (software, platforms, services) that you can map to requirements.
+
+1. Navigate to **Solutions** and click **New Solution**.
+2. Enter a solution key, title, type, operating model, lifecycle status and maturity level.
+3. Map the solution to a requirement via the requirement's **Solution Mappings** tab.
+4. Choose a decision type: `ADOPT`, `TRIAL`, `ASSESS` or `HOLD`.
+
+### 19.6 Product catalog
+
+Products are specific procurable items linked to solutions.
+
+1. Navigate to **Products** and click **New Product**.
+2. Enter a product key, title, vendor, version, lifecycle status and optional cost information.
+3. Link the product to a solution via the solution's **Products** tab.
+
+Product selection requires the requirement mapping to have a confirmed review status and prohibits entries with a hard exclusion.
+
+### 19.7 Conflict registry
+
+Conflicts between requirements, solutions or product choices are tracked in the **Conflicts** tab.
+
+1. Open a project and click the **Conflicts** tab.
+2. Click **Register Conflict** to log a new conflict with severity (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+3. Set the status to `MITIGATED` or `ACCEPTED` with a resolution note to close out a tracked conflict.
+
+### 19.8 Portfolio matrices
+
+The **Matrices** tab provides three consolidated views:
+
+| Matrix | Description |
+|---|---|
+| **Coverage** | Which requirements have confirmed, partial or missing solution mappings |
+| **Conflicts** | Open conflicts by requirement pair and severity |
+| **Decisions** | Full decision pipeline: requirement → analysis → solution → product |
+
+### 19.9 Portfolio Git projection
+
+The portfolio can be serialized into the architecture DSL and stored in Git alongside the main taxonomy model.
+
+1. In the **Git** tab, click **Export** to preview the DSL output.
+2. Click **Commit** to persist the current state to a named branch (default: `draft`).
+3. Use **Merge** to semantically merge a feature branch into `draft` using the same conflict resolution engine as the main DSL.
+4. Use **Materialize** to load the DSL HEAD from a branch back into the database.
+
+Workspace isolation is enforced **fail-closed**: if the system cannot resolve your workspace, the Git operation is rejected. No write operation ever falls back silently to the shared repository.
+
+### 19.10 Batch limits
+
+To prevent resource exhaustion, the following limits apply:
+
+| Limit | Default | Override |
+|---|---|---|
+| Requirements per analysis job | 100 | `taxonomy.portfolio.max-analysis-batch` |
+| Document import candidates | 500 | `taxonomy.portfolio.max-import-candidates` |
+| Requirement text length | 100,000 chars | `taxonomy.limits.max-text-length` |
+
+Jobs that exceed the batch limit are split automatically. Import requests that exceed the candidate limit are rejected with `400 Bad Request`.

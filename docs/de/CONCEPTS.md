@@ -397,3 +397,55 @@ Jede Git-Operation (Merge, Cherry-Pick, Veröffentlichen, Sync, Branch-Löschung
 - ✅ Erfolg mit Operationszusammenfassung
 - ❌ Fehler mit Fehlerdetails
 - ⚠️ Warnungen (z. B. Konflikt erkannt)
+
+---
+
+## Projekt-Portfolio
+
+Ein rückverfolgbarer Mehranforderungs-Workflow-Container. Ein **Projekt** enthält eine Menge stabiler Anforderungen, die aktuellen Lösungs- und Produktentscheidungen, ein Konfliktregister und konsolidierte Matrizen. Jedes Projekt lebt in einem Workspace-Scope, sodass Benutzer nur auf ihre eigenen Projekte zugreifen können.
+
+## Anforderung und Anforderungsversion
+
+Eine Anforderung hat einen stabilen Identifikationsschlüssel (z. B. `REQ-001`). Ihr Text wird nie überschrieben. Ein geänderter Text erzeugt eine neue **unveränderliche nummerierte Version** mit:
+
+- SHA-256-Inhaltsfingerabdruck,
+- Autor und Zeitstempel,
+- Änderungsgrund,
+- optionalen Quellartifakt-, Quellversions- und Quellfragmentreferenzen.
+
+Das Einreichen eines identischen Textes gibt die bestehende Version zurück.
+
+## Analyse-Job
+
+Ein persistierter Datensatz einer angeforderten Batch-Anforderungsanalyse. Jede Anforderung im Batch wird als unabhängiges **Analyse-Item** mit eigenem Status-Lebenszyklus verfolgt:
+
+| Status | Beschreibung |
+|---|---|
+| `PENDING` | Wartet auf Übernahme durch einen asynchronen Worker |
+| `RUNNING` | Von einem Worker beansprucht (mit `claimedAt`-Zeitstempel für Lease-Tracking) |
+| `SUCCESS` | LLM-Analyse abgeschlossen und Snapshot persistiert |
+| `PARTIAL` | Analyse mit Warnungen abgeschlossen |
+| `FAILED` | LLM-Aufruf fehlgeschlagen; für Wiederholung berechtigt |
+| `CANCELLED` | Item wurde vor der Ausführung abgebrochen |
+
+Items werden mit **Compare-and-Set-Semantik** beansprucht (`UPDATE … WHERE status = PENDING`), sodass konkurrierende Worker dasselbe Item nicht doppelt verarbeiten können. Veraltete `RUNNING`-Items (Claim-Alter > `analysis-claim-timeout-seconds`) werden automatisch durch den Recovery-Service zurückgesetzt.
+
+## Analyse-Snapshot
+
+Ein **unveränderlicher** Datensatz einer abgeschlossenen Anforderungsanalyse. Enthält: genaue Anforderungsversion, vollständigen Score-Satz, Architekturansicht, Beziehungshypothesen, Lückenanalyse, Mustererkennung, Empfehlung, Provider, Prompt- und Taxonomie-Fingerabdrücke, Workspace, Branch, Git-Commit, Warnungen, Laufzeit und Autor.
+
+## Lösungskatalog
+
+Eine workspace-bezogene Bibliothek benannter **Lösungen** (Softwareprodukte, Plattformen, Dienste oder Prozesse). Lösungen haben einen Lebenszyklusstatus (`ACTIVE`, `DEPRECATED`, …) und einen Reifegrad.
+
+## Produktkatalog
+
+Ein workspace-bezogenes Register beschaffbarer **Produkte** und Versionen. Produkte sind Lösungen als Beschaffungskandidaten zugeordnet.
+
+## Portfolio-Workspace-Isolation
+
+Alle Portfolio-Mutationen (Projekt anlegen, Analyse starten, Git-Commit) lösen den Workspace **fail-closed** auf. Kann der Workspace nicht eindeutig aufgelöst werden, wird die Operation mit einem `5xx`-Fehler abgelehnt.
+
+## Portfolio-Git-Projektion
+
+Die DSL-Projektion serialisiert den aktuellen Projekt- und Anforderungszustand in Architektur-DSL-Blöcke und committed sie in das Git-Repository des Benutzers. Die Projektion kann exportiert, committed, semantisch gemergt oder aus einem Branch-HEAD materialisiert werden.

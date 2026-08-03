@@ -40,6 +40,26 @@ A feature is only complete when all required columns show ✅.
 | AI-assisted requirement extraction | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
 | Regulation-to-architecture mapping | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
 
+## Project Portfolio Features (GUI + REST)
+
+| Feature | GUI | REST | User Guide | Screenshot | Help/Tooltip | DE/EN i18n | Status |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|---|
+| Project CRUD | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §1 | — | ✅ | ✅ | ✅ Complete |
+| Requirement versioning (immutable text history) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §2 | — | ✅ | ✅ | ✅ Complete |
+| Batch analysis (per-requirement, atomic claims) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Complete |
+| Async analysis dispatch (202 Accepted + polling) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Complete |
+| Analysis job retry / recovery | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Complete |
+| Immutable analysis snapshots | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §4 | — | ✅ | ✅ | ✅ Complete |
+| Snapshot diff (semantic comparison) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §4 | — | ✅ | ✅ | ✅ Complete |
+| Solution catalog (CRUD + lifecycle) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §5 | — | ✅ | ✅ | ✅ Complete |
+| Solution-to-requirement mapping + review | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §5 | — | ✅ | ✅ | ✅ Complete |
+| Product catalog (CRUD) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §6 | — | ✅ | ✅ | ✅ Complete |
+| Conflict registry + review | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §7 | — | ✅ | ✅ | ✅ Complete |
+| Portfolio matrices (coverage, conflict, solution) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §8 | — | ✅ | ✅ | ✅ Complete |
+| Portfolio Git projection (DSL commit, merge, materialize) | ✅ | ✅ | ✅ PROJECT_PORTFOLIO_GIT_COLLABORATION | — | ✅ | ✅ | ✅ Complete |
+| Portfolio workspace isolation (fail-closed) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §9 | — | ✅ | ✅ | ✅ Complete |
+| Schema migration (Flyway V2, PostgreSQL) | — | — | ✅ PROJECT_PORTFOLIO_OPERATIONS | — | — | ✅ | ✅ Complete |
+
 ## Admin/Automation Features (API-first — no GUI required)
 
 | Feature | REST | API Docs | Status |

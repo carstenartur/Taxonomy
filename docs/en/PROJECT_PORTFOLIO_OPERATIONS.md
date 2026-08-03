@@ -53,3 +53,57 @@ The 10,000-case evidence is a **controlled summary boundary contract**, not a cl
 The default limit of 100 requirements applies to one **analysis job**. Projects may contain more requirements; large portfolios are analysed through multiple jobs. The 1,000- and 10,000-case contracts therefore do not override provider budgets or batch limits.
 
 A production capacity commitment additionally requires environment-specific measurements with the deployed PostgreSQL version, representative text and snapshot sizes, network latency, heap limits and concurrent users. Repository tests secure the algorithmic and query-level lower bound; they do not promise one universal response time for every infrastructure configuration.
+
+## Schema migration
+
+The portfolio schema is managed by the versioned Flyway migration stream under `db/migration/taxonomy/postgresql/`.
+
+| Script | Purpose |
+|---|---|
+| `V1__taxonomy_application_baseline.sql` | Core taxonomy tables (nodes, relations, workspaces, …) |
+| `V2__project_portfolio.sql` | Portfolio tables (projects, requirements, versions, analysis jobs, solutions, products, conflicts, …) |
+
+All `CREATE TABLE` and `CREATE INDEX` statements use `IF NOT EXISTS` guards so that the migration is safe to apply on installations that previously used `hibernate.ddl-auto=update`.
+
+### Fresh install (Kubernetes / Helm)
+
+1. Deploy the new image with `SPRING_PROFILES_ACTIVE=postgres,kubernetes` and `TAXONOMY_DDL_AUTO=validate`.
+2. Flyway runs automatically on startup and applies `V1` and `V2` in order.
+3. Hibernate validates the schema produced by Flyway; startup fails fast if any column or constraint is missing.
+
+### Upgrade from a pre-portfolio release
+
+1. Ensure a database backup exists before starting.
+2. Deploy the new image. Flyway detects that `V1` is already applied and applies only `V2`.
+3. The application starts with `ddl-auto=validate`; existing data in the baseline tables is unaffected.
+4. Create a test project, add a requirement, start an analysis job and verify the response is `202 Accepted`.
+
+### Rollback
+
+Flyway does not automatically reverse an applied migration. To roll back:
+
+1. Stop the application.
+2. Run the reverse DDL statements from `V2__project_portfolio.sql` (drop the portfolio tables in reverse dependency order: `req_analysis_snapshot`, `req_analysis_item`, `req_analysis_job`, `req_mapping_*`, `project_solution_*`, `product_definition`, `solution_definition`, `project_conflict`, `project_req_version`, `project_requirement`, `arch_project`).
+3. Remove the `flyway_schema_history` row for V2.
+4. Deploy the previous image. It starts without portfolio tables and without the `V2` migration record.
+
+### Restart / pod recovery
+
+If a pod stops while analysis items are `RUNNING`, those items remain in `RUNNING` state with their original `claimedAt` timestamp. After the configured `analysis-claim-timeout-seconds` (default: 900 s), the next `retry-failed` call (or the next analysis dispatch) will find them stale and reset them to `PENDING`. No manual database intervention is required.
+
+To force immediate recovery after a planned maintenance window shorter than the lease timeout, call:
+
+```bash
+curl -u alice:password -X POST \
+  /api/projects/{projectId}/analysis-jobs/{jobId}/retry-failed
+```
+
+### Backup
+
+Include the following in your database backup:
+
+- All portfolio tables (prefix `arch_project`, `project_*`, `req_*`, `solution_*`, `product_*`)
+- The `flyway_schema_history` table
+- The JGit/DSL repository storage path (`TAXONOMY_SEARCH_DIRECTORY_ROOT` / `/app/data`)
+
+Portfolio snapshots reference requirement versions by ID; both must be present in the same backup for a consistent restore.
