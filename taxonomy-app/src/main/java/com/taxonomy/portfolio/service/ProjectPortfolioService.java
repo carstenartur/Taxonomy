@@ -41,6 +41,8 @@ public class ProjectPortfolioService {
 
     private static final Pattern BUSINESS_KEY =
             Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
+    private static final List<ConflictStatus> CLOSED_CONFLICT_STATUSES =
+            List.of(ConflictStatus.REJECTED, ConflictStatus.RESOLVED);
 
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
@@ -324,13 +326,9 @@ public class ProjectPortfolioService {
     @Transactional(readOnly = true)
     public ProjectView toProjectView(ArchitectureProject project) {
         int requirementCount = Math.toIntExact(requirementRepository.countByProjectId(project.getId()));
-        int solutionCount = projectSolutionRepository.findByProjectIdOrderByPriorityDescSolutionTitleAsc(
-                project.getId()).size();
-        int openConflicts = (int) conflictRepository
-                .findByProjectIdOrderByConfidenceDescDetectedAtDesc(project.getId()).stream()
-                .filter(conflict -> conflict.getStatus() != ConflictStatus.REJECTED
-                        && conflict.getStatus() != ConflictStatus.RESOLVED)
-                .count();
+        int solutionCount = Math.toIntExact(projectSolutionRepository.countByProjectId(project.getId()));
+        int openConflicts = Math.toIntExact(conflictRepository.countByProjectIdAndStatusNotIn(
+                project.getId(), CLOSED_CONFLICT_STATUSES));
         return new ProjectView(
                 project.getId(),
                 project.getProjectKey(),
