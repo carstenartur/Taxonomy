@@ -3,6 +3,7 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.workspace.model.UserWorkspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -11,13 +12,10 @@ import org.springframework.stereotype.Service;
  * Resolves the current {@link WorkspaceContext} from the security context
  * and the persistent workspace metadata.
  *
- * <p>Combines the username (from Spring Security) with the
- * workspace metadata (from {@link WorkspaceManager}) to produce a
- * consistent context value that downstream services can use for
- * data isolation (workspace-scoped relations, hypotheses, proposals, etc.).
- *
- * <p>Falls back to {@link WorkspaceContext#SHARED} when no provisioned
- * workspace exists for the current user.
+ * <p>Authenticated users are isolated by default. A shared context is returned
+ * only for the configured default/system user or when the operator has
+ * explicitly enabled shared workspace mode. Missing or inconsistent workspace
+ * metadata therefore fails closed in multi-user deployments.</p>
  */
 @Service
 public class WorkspaceContextResolver {
@@ -26,33 +24,29 @@ public class WorkspaceContextResolver {
 
     private final WorkspaceManager workspaceManager;
     private final SystemRepositoryService systemRepositoryService;
+    private final boolean sharedModeEnabled;
 
     public WorkspaceContextResolver(WorkspaceManager workspaceManager,
-                                     SystemRepositoryService systemRepositoryService) {
+                                    SystemRepositoryService systemRepositoryService,
+                                    @Value("${taxonomy.workspace.shared-mode-enabled:true}")
+                                    boolean sharedModeEnabled) {
         this.workspaceManager = workspaceManager;
         this.systemRepositoryService = systemRepositoryService;
+        this.sharedModeEnabled = sharedModeEnabled;
     }
 
-    /**
-     * Resolve the workspace context for the currently authenticated user.
-     *
-     * @return the active workspace context (never {@code null})
-     */
+    /** Resolve the workspace context for the currently authenticated user. */
     public WorkspaceContext resolveCurrentContext() {
-        String username = resolveUsername();
-        return resolveForUser(username);
+        return resolveForUser(resolveUsername());
     }
 
     /**
      * Resolve the workspace context for a specific user.
      *
-     * <p>Only users with an explicitly provisioned persistent workspace
-     * receive a workspace-scoped context. Users with only a default
-     * in-memory workspace state receive the {@link WorkspaceContext#SHARED}
-     * fallback (backward-compatible, no data isolation).
-     *
-     * @param username the username to resolve context for
-     * @return the workspace context (never {@code null})
+     * @return an isolated context, or the explicit shared context when shared
+     *         mode is enabled
+     * @throws IllegalStateException when an authenticated user has no isolated
+     *         workspace and shared mode is disabled
      */
     public WorkspaceContext resolveForUser(String username) {
         if (username == null || username.isBlank()
@@ -60,31 +54,37 @@ public class WorkspaceContextResolver {
             return WorkspaceContext.SHARED;
         }
 
-        // Try active workspace first (multi-workspace aware)
-        UserWorkspace ws = workspaceManager.findActiveWorkspace(username);
-        if (ws == null) {
-            // Fall back to legacy single-workspace lookup for backward compatibility
-            ws = workspaceManager.findUserWorkspace(username);
+        UserWorkspace workspace = workspaceManager.findActiveWorkspace(username);
+        if (workspace == null) {
+            workspace = workspaceManager.findUserWorkspace(username);
         }
 
-        if (ws != null && ws.getWorkspaceId() != null) {
-            String branch = ws.getCurrentBranch() != null
-                    ? ws.getCurrentBranch()
+        if (workspace != null && workspace.getWorkspaceId() != null
+                && !workspace.getWorkspaceId().isBlank()) {
+            String branch = workspace.getCurrentBranch() != null
+                    && !workspace.getCurrentBranch().isBlank()
+                    ? workspace.getCurrentBranch()
                     : systemRepositoryService.getSharedBranch();
             log.debug("Resolved workspace context for user '{}': workspace={}, branch={}",
-                    username, ws.getWorkspaceId(), branch);
-            return new WorkspaceContext(username, ws.getWorkspaceId(), branch);
+                    username, workspace.getWorkspaceId(), branch);
+            return new WorkspaceContext(username, workspace.getWorkspaceId(), branch);
         }
 
-        log.debug("No provisioned workspace for user '{}'; falling back to SHARED", username);
-        return WorkspaceContext.SHARED;
+        if (sharedModeEnabled) {
+            log.warn("Explicit shared workspace mode is active for user '{}'; no data isolation applies",
+                    username);
+            return WorkspaceContext.SHARED;
+        }
+
+        throw new IllegalStateException(
+                "No isolated workspace is provisioned for authenticated user '" + username + "'");
     }
 
     private String resolveUsername() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated()
-                && !"anonymousUser".equals(auth.getPrincipal())) {
-            return auth.getName();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()
+                && !"anonymousUser".equals(authentication.getPrincipal())) {
+            return authentication.getName();
         }
         return WorkspaceManager.DEFAULT_USER;
     }
