@@ -39,6 +39,39 @@ async function submitModal(page, modalId, fill, responsePattern) {
   await waitUntilIdle(page);
 }
 
+async function verifyAnalysisCompletion(page, response) {
+  const submitted = await response.json();
+  assert(submitted.totalItems === 1,
+    `Expected one independently analysed requirement, got ${submitted.totalItems}`);
+
+  const asyncUiEnabled = await page.locator(
+    'script[src*="taxonomy-portfolio-async.js"]').count() > 0;
+  if (asyncUiEnabled) {
+    assert(response.status() === 202,
+      `Asynchronous portfolio UI must receive HTTP 202, got ${response.status()}`);
+    const location = await response.headerValue('location');
+    assert(location, 'Asynchronous analysis response lacks a canonical Location header');
+    await waitUntilIdle(page);
+    const terminal = await page.evaluate(async jobUrl => {
+      const result = await fetch(jobUrl, { headers: { Accept: 'application/json' } });
+      return { status: result.status, body: await result.json() };
+    }, new URL(location, baseUrl).toString());
+    assert(terminal.status === 200,
+      `Terminal analysis job could not be read: HTTP ${terminal.status}`);
+    assert(terminal.body.status === 'SUCCESS' || terminal.body.status === 'PARTIAL',
+      `Analysis job did not finish successfully: ${terminal.body.status}`);
+    assert(terminal.body.successfulItems + terminal.body.partialItems === 1,
+      'Asynchronous analysis did not create a successful or partial snapshot');
+    return;
+  }
+
+  assert(response.status() === 200,
+    `Synchronous compatibility path must receive HTTP 200, got ${response.status()}`);
+  assert(submitted.successfulItems + submitted.partialItems === 1,
+    'Requirement analysis did not create a successful or partial snapshot');
+  await waitUntilIdle(page);
+}
+
 await mkdir(outputDir, { recursive: true });
 const reportPath = path.join(outputDir, 'report.json');
 const screenshotPath = path.join(outputDir, 'screenshot.png');
@@ -143,12 +176,7 @@ try {
   await page.locator('#analyzeAllBtn').click();
   const analysis = await analysisResponse;
   assert(analysis.ok(), `Portfolio analysis failed with HTTP ${analysis.status()}`);
-  await waitUntilIdle(page);
-  const analysisBody = await analysis.json();
-  assert(analysisBody.totalItems === 1,
-    `Expected one independently analysed requirement, got ${analysisBody.totalItems}`);
-  assert(analysisBody.successfulItems + analysisBody.partialItems === 1,
-    'Requirement analysis did not create a successful or partial snapshot');
+  await verifyAnalysisCompletion(page, analysis);
   checks.push('independent mock analysis and persisted snapshot');
 
   await page.locator('#taxonomy-tab').click();
