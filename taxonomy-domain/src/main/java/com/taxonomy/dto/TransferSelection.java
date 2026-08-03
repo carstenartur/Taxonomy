@@ -3,13 +3,13 @@ package com.taxonomy.dto;
 import java.util.Set;
 
 /**
- * Selection of elements and relations to transfer between contexts.
+ * Selection of elements and relations to transfer between two exact commits.
  *
- * @param sourceContextId     the context to copy from
- * @param targetContextId     the context to copy into
- * @param selectedElementIds  which elements to transfer
- * @param selectedRelationIds which relations to transfer
- * @param mode                how to perform the transfer
+ * @param sourceContextId     source commit SHA
+ * @param targetContextId     expected target branch HEAD SHA
+ * @param selectedElementIds  elements to transfer
+ * @param selectedRelationIds relations to transfer
+ * @param mode                conflict handling for the selected items
  */
 public record TransferSelection(
     String sourceContextId,
@@ -19,15 +19,11 @@ public record TransferSelection(
     TransferMode mode
 ) {
 
-    /**
-     * How the selective transfer is performed.
-     */
+    /** How conflicts in the selected subset are handled. */
     public enum TransferMode {
-        /** Copy selected items into the target, overwriting any conflicts. */
+        /** Copy selected items into the target and overwrite selected conflicts. */
         COPY,
-        /** Cherry-pick the commit containing the selected items. */
-        CHERRY_PICK,
-        /** Merge only the selected items from the source. */
+        /** Merge only conflict-free selected items; conflicts abort without mutation. */
         MERGE_SELECTED
     }
 }
