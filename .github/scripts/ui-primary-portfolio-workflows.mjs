@@ -41,9 +41,13 @@ export async function runPortfolioWorkflows({ page, baseUrl, evidence }) {
   const skipLink = page.locator('.skip-link');
   await skipLink.focus();
   await page.keyboard.press('Enter');
-  evidence.assert(await page.evaluate(() => document.activeElement?.id === 'portfolioMain'),
-    'Portfolio skip link did not move focus to the main region');
-  evidence.passed('portfolio skip link focus');
+  await page.waitForFunction(() => window.location.hash === '#portfolioMain');
+  await page.keyboard.press('Tab');
+  evidence.assert(await page.evaluate(() => {
+    const main = document.querySelector('#portfolioMain');
+    return Boolean(main && document.activeElement && main.contains(document.activeElement));
+  }), 'Portfolio skip link did not bypass navigation into the main region');
+  evidence.passed('portfolio skip link keyboard bypass');
 
   await page.locator('[data-bs-target="#projectModal"]').click();
   await submitModal(page, 'projectModal', async modal => {
