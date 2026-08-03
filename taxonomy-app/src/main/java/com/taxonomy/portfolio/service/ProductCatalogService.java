@@ -69,10 +69,13 @@ public class ProductCatalogService {
         }
         String source = ProjectPortfolioService.requireText(
                 request.sourceReference(), "sourceReference", 100_000);
-        if (request.verifiedAt() == null) {
-            throw PortfolioException.validation("verifiedAt is required for product claims");
-        }
         Instant now = Instant.now();
+        var costAmount = PortfolioValueValidator.money(request.costAmount(), "costAmount");
+        String costCurrency = normalizeCurrency(request.costCurrency());
+        PortfolioValueValidator.requireMoneyPair(
+                costAmount, costCurrency, "costAmount", "costCurrency");
+        Instant verifiedAt = PortfolioValueValidator.verifiedAt(request.verifiedAt(), now, true);
+
         ProductCatalogEntry product = new ProductCatalogEntry(
                 scopeKey,
                 PortfolioScope.workspaceId(context),
@@ -88,11 +91,11 @@ public class ProductCatalogService {
                 ProjectPortfolioService.limited(request.supportedPlatforms(), 2000, "supportedPlatforms"),
                 ProjectPortfolioService.limited(request.securityFeatures(), 4000, "securityFeatures"),
                 ProjectPortfolioService.limited(request.complianceFeatures(), 4000, "complianceFeatures"),
-                request.costAmount(),
-                normalizeCurrency(request.costCurrency()),
+                costAmount,
+                costCurrency,
                 ProjectPortfolioService.limited(request.costBasis(), 500, "costBasis"),
                 source,
-                request.verifiedAt(),
+                verifiedAt,
                 PortfolioScope.username(username, context),
                 now);
         return toProductView(productRepository.save(product));
@@ -117,6 +120,20 @@ public class ProductCatalogService {
                                      WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("product update is required");
         ProductCatalogEntry product = requireProduct(productId, username, context);
+        Instant now = Instant.now();
+        var requestedAmount = request.costAmount() != null
+                ? PortfolioValueValidator.money(request.costAmount(), "costAmount") : null;
+        String requestedCurrency = request.costCurrency() != null
+                ? normalizeCurrency(request.costCurrency()) : null;
+        var effectiveAmount = request.costAmount() != null
+                ? requestedAmount : product.getCostAmount();
+        String effectiveCurrency = request.costCurrency() != null
+                ? requestedCurrency : product.getCostCurrency();
+        PortfolioValueValidator.requireMoneyPair(
+                effectiveAmount, effectiveCurrency, "costAmount", "costCurrency");
+        Instant verifiedAt = request.verifiedAt() != null
+                ? PortfolioValueValidator.verifiedAt(request.verifiedAt(), now, false) : null;
+
         product.update(
                 request.manufacturer() != null
                         ? ProjectPortfolioService.requireText(request.manufacturer(), "manufacturer", 240) : null,
@@ -131,14 +148,14 @@ public class ProductCatalogService {
                 ProjectPortfolioService.limited(request.supportedPlatforms(), 2000, "supportedPlatforms"),
                 ProjectPortfolioService.limited(request.securityFeatures(), 4000, "securityFeatures"),
                 ProjectPortfolioService.limited(request.complianceFeatures(), 4000, "complianceFeatures"),
-                request.costAmount(),
-                normalizeCurrency(request.costCurrency()),
+                requestedAmount,
+                requestedCurrency,
                 ProjectPortfolioService.limited(request.costBasis(), 500, "costBasis"),
                 request.sourceReference() != null
                         ? ProjectPortfolioService.requireText(
                                 request.sourceReference(), "sourceReference", 100_000) : null,
-                request.verifiedAt(),
-                Instant.now());
+                verifiedAt,
+                now);
         return toProductView(product);
     }
 
@@ -349,11 +366,6 @@ public class ProductCatalogService {
     }
 
     private static String normalizeCurrency(String value) {
-        if (value == null || value.isBlank()) return null;
-        String normalized = value.strip().toUpperCase(Locale.ROOT);
-        if (!normalized.matches("[A-Z]{3}")) {
-            throw PortfolioException.validation("costCurrency must be a three-letter ISO currency code");
-        }
-        return normalized;
+        return PortfolioValueValidator.currency(value, "costCurrency");
     }
 }
