@@ -9,6 +9,7 @@ import { runRelationWorkflows } from './ui-primary-relation-workflows.mjs';
 import { runImportWorkflows } from './ui-primary-import-workflows.mjs';
 import { runPortfolioWorkflows } from './ui-primary-portfolio-workflows.mjs';
 import { runPortfolioDetailWorkflows } from './ui-primary-portfolio-detail-workflows.mjs';
+import { runPortfolioImportWorkflows } from './ui-primary-portfolio-import-workflows.mjs';
 import { runPasswordWorkflows, runWorkspaceSyncWorkflows,
   verifyUserMutationDenied } from './ui-primary-account-workflows.mjs';
 
@@ -48,6 +49,7 @@ try {
     await runWorkspaceSyncWorkflows(workflow);
     await runPortfolioWorkflows(workflow);
     await runPortfolioDetailWorkflows(workflow);
+    await runPortfolioImportWorkflows(workflow);
   }
   if (role === 'USER') await runPasswordWorkflows(workflow);
 } catch (error) {
