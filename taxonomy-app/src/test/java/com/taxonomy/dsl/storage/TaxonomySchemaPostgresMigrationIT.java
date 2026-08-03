@@ -131,10 +131,15 @@ class TaxonomySchemaPostgresMigrationIT {
         execute(admin, "create schema " + schema);
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName("org.postgresql.Driver");
-        dataSource.setUrl(database.getJdbcUrl() + "?currentSchema=" + schema);
+        dataSource.setUrl(withCurrentSchema(database.getJdbcUrl(), schema));
         dataSource.setUsername(database.getUsername());
         dataSource.setPassword(database.getPassword());
         return dataSource;
+    }
+
+    private static String withCurrentSchema(String jdbcUrl, String schema) {
+        return jdbcUrl + (jdbcUrl.contains("?") ? "&" : "?")
+                + "currentSchema=" + schema;
     }
 
     private static DataSource baseDataSource() {
