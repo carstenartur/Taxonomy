@@ -60,11 +60,11 @@ class WorkspaceRequestIsolationTest {
     }
 
     @Test
-    void failedPreResolutionStopsDslRequestBeforeControllerExecution() {
+    void failedPreResolutionStopsRequestBeforeControllerExecution() {
         WorkspaceResolver resolver = mock(WorkspaceResolver.class);
         RepositoryStateService repositoryStateService = mock(RepositoryStateService.class);
         DslWorkspacePreResolutionInterceptor interceptor =
-                new DslWorkspacePreResolutionInterceptor(resolver, repositoryStateService);
+                new DslWorkspacePreResolutionInterceptor(resolver, repositoryStateService, false);
         when(resolver.resolveCurrentUsername()).thenReturn("architect");
         doThrow(new IllegalStateException("workspace database unavailable"))
                 .when(repositoryStateService).ensureWorkspaceState("architect");
@@ -77,11 +77,11 @@ class WorkspaceRequestIsolationTest {
     }
 
     @Test
-    void sharedFallbackIsRejectedAtDslRequestBoundary() {
+    void sharedFallbackIsRejectedWhenSharedModeIsDisabled() {
         WorkspaceResolver resolver = mock(WorkspaceResolver.class);
         RepositoryStateService repositoryStateService = mock(RepositoryStateService.class);
         DslWorkspacePreResolutionInterceptor interceptor =
-                new DslWorkspacePreResolutionInterceptor(resolver, repositoryStateService);
+                new DslWorkspacePreResolutionInterceptor(resolver, repositoryStateService, false);
         when(resolver.resolveCurrentUsername()).thenReturn("architect");
         when(resolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
 
@@ -89,6 +89,20 @@ class WorkspaceRequestIsolationTest {
                 new MockHttpServletRequest(), new MockHttpServletResponse(), new Object()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("did not resolve an isolated workspace");
+    }
+
+    @Test
+    void sharedContextIsAllowedOnlyInExplicitSharedMode() {
+        WorkspaceResolver resolver = mock(WorkspaceResolver.class);
+        RepositoryStateService repositoryStateService = mock(RepositoryStateService.class);
+        DslWorkspacePreResolutionInterceptor interceptor =
+                new DslWorkspacePreResolutionInterceptor(resolver, repositoryStateService, true);
+        when(resolver.resolveCurrentUsername()).thenReturn("architect");
+        when(resolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
+
+        assertThat(interceptor.preHandle(
+                new MockHttpServletRequest(), new MockHttpServletResponse(), new Object()))
+                .isTrue();
     }
 
     private static void bindRequest() {
