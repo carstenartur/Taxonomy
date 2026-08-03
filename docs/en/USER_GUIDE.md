@@ -1841,12 +1841,12 @@ If you later change the text, a new immutable version is created. The old versio
 
 ### 19.3 Analysing requirements
 
-1. In the **Requirements** tab, click **Analyse All** or select individual requirements and click **Analyse Selected**.
-2. The server accepts the request immediately with `202 Accepted` and creates an analysis job.
-3. The **Analysis Jobs** tab shows live status (PENDING → RUNNING → SUCCESS/PARTIAL/FAILED).
-4. When a job item reaches `SUCCESS` or `PARTIAL`, an **immutable snapshot** is created and visible in the requirement's snapshot history.
+1. In the project header, click **Analyze all** to analyze every recorded requirement.
+2. In the **Requirements** tab, use the row action **Analyze** to re-analyze one specific requirement.
+3. The server accepts the request immediately with `202 Accepted` and creates one or more background analysis job items.
+4. When a job item reaches `SUCCESS` or `PARTIAL`, an **immutable snapshot** is created and becomes visible in the requirement's snapshot history.
 
-**Retry failed items:** In the **Analysis Jobs** tab, click **Retry Failed** next to a job with failed items. Only the failed items are requeued; successful snapshots are preserved.
+The current `/projects` GUI does **not** expose a dedicated analysis-job tab or a retry button. Use the API endpoints documented in the API reference if you need job polling or `retry-failed`.
 
 ### 19.4 Reviewing analysis snapshots
 
@@ -1884,22 +1884,19 @@ Conflicts between requirements, solutions or product choices are tracked in the 
 
 ### 19.8 Portfolio matrices
 
-The **Matrices** tab provides three consolidated views:
+The current `/projects` GUI exposes the three portfolio matrices inside the existing tabs:
 
 | Matrix | Description |
 |---|---|
-| **Coverage** | Which requirements have confirmed, partial or missing solution mappings |
-| **Conflicts** | Open conflicts by requirement pair and severity |
-| **Decisions** | Full decision pipeline: requirement → analysis → solution → product |
+| **Requirement–taxonomy** | Requirement coverage derived from the current immutable snapshots |
+| **Requirement–solution** | Reviewed solution coverage per requirement |
+| **Solution–product** | Candidate and selected products per solution |
 
 ### 19.9 Portfolio Git projection
 
 The portfolio can be serialized into the architecture DSL and stored in Git alongside the main taxonomy model.
 
-1. In the **Git** tab, click **Export** to preview the DSL output.
-2. Click **Commit** to persist the current state to a named branch (default: `draft`).
-3. Use **Merge** to semantically merge a feature branch into `draft` using the same conflict resolution engine as the main DSL.
-4. Use **Materialize** to load the DSL HEAD from a branch back into the database.
+The current `/projects` GUI does **not** expose a dedicated Git tab for export, commit, merge or materialize. Use the REST endpoints documented in the API reference for these operations.
 
 Workspace isolation is enforced **fail-closed**: if the system cannot resolve your workspace, the Git operation is rejected. No write operation ever falls back silently to the shared repository.
 

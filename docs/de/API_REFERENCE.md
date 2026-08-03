@@ -866,7 +866,7 @@ curl -u alice:password -X POST http://localhost:8080/api/products \
 curl -u alice:password http://localhost:8080/api/projects/1/portfolio
 ```
 
-Die konsolidierte Portfolio-Antwort enthält die Matrizen für Abdeckung, Konflikte und Entscheidungspipeline.
+Die konsolidierte Portfolio-Antwort enthält die Matrizen Anforderung–Taxonomie, Anforderung–Lösung und Lösung–Produkt.
 
 ### Portfolio-Git-Projektion
 

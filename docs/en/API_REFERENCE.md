@@ -946,7 +946,7 @@ curl -u alice:password -X POST http://localhost:8080/api/projects/git/merge \
 curl -u alice:password http://localhost:8080/api/projects/1/portfolio
 ```
 
-The consolidated portfolio view includes the requirement coverage, conflicts, and decision pipeline matrices in one response.
+The consolidated portfolio view includes the requirement–taxonomy, requirement–solution, and solution–product matrices in one response.
 
 ### Limits and configuration
 

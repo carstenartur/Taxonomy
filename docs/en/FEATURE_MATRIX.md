@@ -44,21 +44,21 @@ A feature is only complete when all required columns show ✅.
 
 | Feature | GUI | REST | User Guide | Screenshot | Help/Tooltip | DE/EN i18n | Status |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|---|
-| Project CRUD | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §1 | — | ✅ | ✅ | ✅ Complete |
-| Requirement versioning (immutable text history) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §2 | — | ✅ | ✅ | ✅ Complete |
-| Batch analysis (per-requirement, atomic claims) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Complete |
-| Async analysis dispatch (202 Accepted + polling) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Complete |
-| Analysis job retry / recovery | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ✅ Complete |
-| Immutable analysis snapshots | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §4 | — | ✅ | ✅ | ✅ Complete |
-| Snapshot diff (semantic comparison) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §4 | — | ✅ | ✅ | ✅ Complete |
-| Solution catalog (CRUD + lifecycle) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §5 | — | ✅ | ✅ | ✅ Complete |
-| Solution-to-requirement mapping + review | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §5 | — | ✅ | ✅ | ✅ Complete |
-| Product catalog (CRUD) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §6 | — | ✅ | ✅ | ✅ Complete |
-| Conflict registry + review | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §7 | — | ✅ | ✅ | ✅ Complete |
-| Portfolio matrices (coverage, conflict, solution) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §8 | — | ✅ | ✅ | ✅ Complete |
-| Portfolio Git projection (DSL commit, merge, materialize) | ✅ | ✅ | ✅ PROJECT_PORTFOLIO_GIT_COLLABORATION | — | ✅ | ✅ | ✅ Complete |
-| Portfolio workspace isolation (fail-closed) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §9 | — | ✅ | ✅ | ✅ Complete |
-| Schema migration (Flyway V2, PostgreSQL) | — | — | ✅ PROJECT_PORTFOLIO_OPERATIONS | — | — | ✅ | ✅ Complete |
+| Project CRUD | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §1 | — | ✅ | ✅ | ⚠️ Partial |
+| Requirement versioning (immutable text history) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §2 | — | ✅ | ✅ | ⚠️ Partial |
+| Batch analysis (per-requirement, atomic claims) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | ⚠️ Partial |
+| Async analysis dispatch (202 Accepted + polling) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | 🔴 API only |
+| Analysis job retry / recovery | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §3 | — | ✅ | ✅ | 🔴 API only |
+| Immutable analysis snapshots | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §4 | — | ✅ | ✅ | ⚠️ Partial |
+| Snapshot diff (semantic comparison) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §4 | — | ✅ | ✅ | ⚠️ Partial |
+| Solution catalog (CRUD + lifecycle) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §5 | — | ✅ | ✅ | ⚠️ Partial |
+| Solution-to-requirement mapping + review | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §5 | — | ✅ | ✅ | ⚠️ Partial |
+| Product catalog (CRUD) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §6 | — | ✅ | ✅ | ⚠️ Partial |
+| Conflict registry + review | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §7 | — | ✅ | ✅ | ⚠️ Partial |
+| Portfolio matrices (requirement–taxonomy, requirement–solution, solution–product) | ✅ | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §8 | — | ✅ | ✅ | ⚠️ Partial |
+| Portfolio Git projection (DSL commit, merge, materialize) | — | ✅ | ✅ PROJECT_PORTFOLIO_GIT_COLLABORATION | — | ✅ | ✅ | 🔴 API only |
+| Portfolio workspace isolation (fail-closed) | — | ✅ | ✅ PROJECT_REQUIREMENT_PORTFOLIO §9 | — | ✅ | ✅ | 🔴 API only |
+| Schema migration (Flyway V2, PostgreSQL) | — | — | ✅ PROJECT_PORTFOLIO_OPERATIONS | — | — | ✅ | ⚠️ Docs only |
 
 ## Admin/Automation Features (API-first — no GUI required)
 

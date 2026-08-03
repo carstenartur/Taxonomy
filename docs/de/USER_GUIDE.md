@@ -1823,12 +1823,12 @@ Anforderungen haben einen stabilen Schlüssel (z. B. `REQ-001`) und eine unverä
 
 ### 19.3 Anforderungen analysieren
 
-1. Klicken Sie auf **Alle analysieren** oder wählen Sie einzelne Anforderungen aus und klicken Sie auf **Ausgewählte analysieren**.
-2. Der Server akzeptiert die Anfrage sofort mit `202 Accepted` und erstellt einen Analyse-Job.
-3. Die Registerkarte **Analyse-Jobs** zeigt den Live-Status (PENDING → RUNNING → SUCCESS/PARTIAL/FAILED).
-4. Bei `SUCCESS` oder `PARTIAL` wird ein **unveränderlicher Snapshot** erstellt.
+1. Klicken Sie im Projektkopf auf **Alle analysieren**, um alle erfassten Anforderungen zu analysieren.
+2. Verwenden Sie in der Registerkarte **Anforderungen** die Zeilenaktion **Analysieren**, um genau eine Anforderung erneut zu analysieren.
+3. Der Server akzeptiert die Anfrage sofort mit `202 Accepted` und erstellt einen oder mehrere Hintergrund-Analysejobs.
+4. Bei `SUCCESS` oder `PARTIAL` wird ein **unveränderlicher Snapshot** erstellt und in der Snapshot-Historie der Anforderung sichtbar.
 
-**Fehlgeschlagene Items wiederholen:** Klicken Sie in der Registerkarte **Analyse-Jobs** auf **Fehler wiederholen**. Nur fehlgeschlagene Items werden erneut eingereiht; erfolgreiche Snapshots bleiben erhalten.
+Die aktuelle `/projects`-GUI besitzt **keine** eigenständige Analyse-Job-Registerkarte und keinen Retry-Button. Verwenden Sie für Job-Polling oder `retry-failed` die in der API-Referenz dokumentierten REST-Endpunkte.
 
 ### 19.4 Analyse-Snapshots prüfen
 
@@ -1856,20 +1856,17 @@ Anforderungen haben einen stabilen Schlüssel (z. B. `REQ-001`) und eine unverä
 
 ### 19.8 Portfolio-Matrizen
 
-Die Registerkarte **Matrizen** bietet drei konsolidierte Ansichten:
+Die aktuelle `/projects`-GUI zeigt die drei Portfolio-Matrizen innerhalb der vorhandenen Registerkarten:
 
 | Matrix | Beschreibung |
 |---|---|
-| **Abdeckung** | Welche Anforderungen haben bestätigte, teilweise oder fehlende Lösungszuordnungen |
-| **Konflikte** | Offene Konflikte nach Anforderungspaar und Schweregrad |
-| **Entscheidungen** | Vollständige Entscheidungspipeline: Anforderung → Analyse → Lösung → Produkt |
+| **Anforderung–Taxonomie** | Anforderungsabdeckung aus den aktuellen unveränderlichen Snapshots |
+| **Anforderung–Lösung** | Geprüfte Lösungsabdeckung pro Anforderung |
+| **Lösung–Produkt** | Kandidaten und ausgewählte Produkte pro Lösung |
 
 ### 19.9 Portfolio-Git-Projektion
 
-1. Klicken Sie in der Registerkarte **Git** auf **Exportieren**, um die DSL-Ausgabe in der Vorschau anzuzeigen.
-2. Klicken Sie auf **Commit**, um den aktuellen Zustand in einem benannten Branch zu persistieren.
-3. Verwenden Sie **Merge** für semantisches Zusammenführen zweier Branches.
-4. Verwenden Sie **Materialisieren**, um den Branch-HEAD in die Datenbank zurückzuladen.
+Die aktuelle `/projects`-GUI besitzt **keine** eigenständige Git-Registerkarte für Export, Commit, Merge oder Materialisierung. Verwenden Sie für diese Vorgänge die in der API-Referenz dokumentierten REST-Endpunkte.
 
 Die Workspace-Isolation ist **fail-closed**: Kann der Workspace nicht aufgelöst werden, wird die Git-Operation abgelehnt.
 
