@@ -42,6 +42,7 @@ public class TaxonomySchemaMigrationConfig {
             "taxonomy_node",
             "taxonomy_relation");
 
+    /** Every table introduced by the portfolio migration and mapped by JPA. */
     private static final Set<String> REQUIRED_PORTFOLIO_TABLES = Set.of(
             "arch_project",
             "project_requirement",
@@ -52,10 +53,13 @@ public class TaxonomySchemaMigrationConfig {
             "req_element_mapping",
             "req_relation_mapping",
             "solution_definition",
+            "solution_taxonomy",
             "project_solution",
             "req_solution_link",
             "product_catalog",
-            "solution_product");
+            "product_taxonomy",
+            "solution_product",
+            "project_conflict");
 
     /**
      * The primary Boot strategy composes the released JGit migration stream with
