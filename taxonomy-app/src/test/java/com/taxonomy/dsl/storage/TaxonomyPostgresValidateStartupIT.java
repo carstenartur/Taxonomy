@@ -4,8 +4,10 @@ import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -22,17 +24,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Proves that the application migration stream creates a PostgreSQL schema which
- * Hibernate can validate. A JPA slice is intentional: it exercises Flyway, all
- * mapped entities and Hibernate validation without booting the web, search,
+ * Hibernate can validate. The minimal test application enables only Boot's
+ * database/JPA auto-configuration and entity scanning, avoiding the web, search,
  * document-import and LLM subsystems in the constrained compatibility runner.
  */
-@DataJpaTest(properties = {
-        "spring.jpa.hibernate.ddl-auto=validate",
-        "spring.jpa.properties.hibernate.search.enabled=false",
-        "spring.flyway.enabled=true"
-})
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(TaxonomySchemaMigrationConfig.class)
+@SpringBootTest(
+        classes = TaxonomyPostgresValidateStartupIT.MinimalJpaValidationApplication.class,
+        webEnvironment = SpringBootTest.WebEnvironment.NONE,
+        properties = {
+                "spring.jpa.hibernate.ddl-auto=validate",
+                "spring.jpa.properties.hibernate.search.enabled=false",
+                "spring.flyway.enabled=true"
+        })
 @ActiveProfiles({"postgres", "kubernetes"})
 @Testcontainers
 @Tag("db-postgres")
@@ -69,5 +72,15 @@ class TaxonomyPostgresValidateStartupIT {
                      new String[] {"TABLE"})) {
             assertThat(table.next()).isTrue();
         }
+    }
+
+    @SpringBootConfiguration
+    @EnableAutoConfiguration
+    @EntityScan(basePackages = {
+            "com.taxonomy",
+            "io.github.carstenartur.jgit.storage.hibernate.entity"
+    })
+    @Import(TaxonomySchemaMigrationConfig.class)
+    static class MinimalJpaValidationApplication {
     }
 }
