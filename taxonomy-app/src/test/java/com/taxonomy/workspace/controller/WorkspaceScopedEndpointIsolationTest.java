@@ -2,7 +2,6 @@ package com.taxonomy.workspace.controller;
 
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
-import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,7 +13,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -22,6 +20,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -53,8 +53,8 @@ class WorkspaceScopedEndpointIsolationTest {
 
     @Test
     @WithMockUser(username = "architect", roles = "USER")
-    void analysisStopsBeforeControllerCanFallBackToShared() {
-        assertThatThrownBy(() -> mockMvc.perform(post("/api/analyze")
+    void analysisStopsBeforeControllerCanFallBackToShared() throws Exception {
+        mockMvc.perform(post("/api/analyze")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -62,22 +62,20 @@ class WorkspaceScopedEndpointIsolationTest {
                                   "businessText": "A workspace-scoped requirement",
                                   "includeArchitectureView": true
                                 }
-                                """)))
-                .isInstanceOf(ServletException.class)
-                .hasRootCauseInstanceOf(IllegalStateException.class)
-                .hasRootCauseMessage("workspace database unavailable");
+                                """))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.message").value("An unexpected error occurred"));
 
         verify(workspaceResolver, never()).resolveCurrentContext();
     }
 
     @Test
     @WithMockUser(username = "architect", roles = "USER")
-    void graphSearchStopsBeforeControllerCanReadSharedRelations() {
-        assertThatThrownBy(() -> mockMvc.perform(get("/api/search/graph")
-                        .queryParam("q", "secure communication")))
-                .isInstanceOf(ServletException.class)
-                .hasRootCauseInstanceOf(IllegalStateException.class)
-                .hasRootCauseMessage("workspace database unavailable");
+    void graphSearchStopsBeforeControllerCanReadSharedRelations() throws Exception {
+        mockMvc.perform(get("/api/search/graph")
+                        .queryParam("q", "secure communication"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.message").value("An unexpected error occurred"));
 
         verify(workspaceResolver, never()).resolveCurrentContext();
     }
