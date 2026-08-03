@@ -16,7 +16,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -24,17 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * REST API for architecture context navigation.
- *
- * <p>Provides browser-like navigation through architecture versions:
- * open read-only snapshots, switch branches, compare contexts, and
- * selectively transfer elements between versions.
- *
- * <p>All navigation state is isolated per authenticated user via the
- * workspace manager. Each user has their own context, history, and
- * navigation trail.
- */
+/** REST API for workspace-isolated architecture context navigation. */
 @RestController
 @RequestMapping("/api/context")
 @Tag(name = "Context Navigation")
@@ -57,32 +52,19 @@ public class ContextNavigationController {
         this.workspaceResolver = workspaceResolver;
     }
 
-    /**
-     * Resolve the current workspace context from the authenticated user.
-     * Falls back to {@link WorkspaceContext#SHARED} if resolution fails.
-     */
     private WorkspaceContext resolveContext() {
-        try {
-            return workspaceResolver.resolveCurrentContext();
-        } catch (Exception e) {
-            return WorkspaceContext.SHARED;
-        }
+        return workspaceResolver.resolveCurrentContext();
     }
 
-    // ── Phase 1: Context Navigation ─────────────────────────────────
-
     @GetMapping("/current")
-    @Operation(summary = "Get the current architecture context",
-            description = "Returns the active context including branch, commit, mode, and origin info.")
+    @Operation(summary = "Get the current architecture context")
     public ResponseEntity<ContextRef> getCurrentContext() {
-        String user = workspaceResolver.resolveCurrentUsername();
-        return ResponseEntity.ok(navigationService.getCurrentContext(user));
+        return ResponseEntity.ok(navigationService.getCurrentContext(
+                workspaceResolver.resolveCurrentUsername()));
     }
 
     @PostMapping("/open")
-    @Operation(summary = "Open a context (read-only or editable)",
-            description = "Opens a specific branch/commit as a new context. " +
-                    "If readOnly is true, write operations will be blocked.")
+    @Operation(summary = "Open a context (read-only or editable)")
     public ResponseEntity<ContextRef> openContext(
             @RequestParam(defaultValue = "draft") String branch,
             @RequestParam(required = false) String commitId,
@@ -90,66 +72,56 @@ public class ContextNavigationController {
             @RequestParam(required = false) String searchQuery,
             @RequestParam(required = false) String elementId) {
         String user = workspaceResolver.resolveCurrentUsername();
-        WorkspaceContext ctx = resolveContext();
+        WorkspaceContext context = resolveContext();
         if (readOnly) {
-            return ResponseEntity.ok(
-                    navigationService.openReadOnly(user, branch, commitId, ctx, searchQuery, elementId));
-        } else {
-            return ResponseEntity.ok(
-                    navigationService.switchContext(user, branch, commitId, ctx));
+            return ResponseEntity.ok(navigationService.openReadOnly(
+                    user, branch, commitId, context, searchQuery, elementId));
         }
+        return ResponseEntity.ok(navigationService.switchContext(
+                user, branch, commitId, context));
     }
 
     @PostMapping("/return-to-origin")
-    @Operation(summary = "Return to the origin context",
-            description = "Navigates back to the context from which the current context was opened.")
+    @Operation(summary = "Return to the origin context")
     public ResponseEntity<ContextRef> returnToOrigin() {
-        String user = workspaceResolver.resolveCurrentUsername();
-        return ResponseEntity.ok(navigationService.returnToOrigin(user));
+        return ResponseEntity.ok(navigationService.returnToOrigin(
+                workspaceResolver.resolveCurrentUsername()));
     }
 
     @PostMapping("/back")
-    @Operation(summary = "Go one step back in navigation history",
-            description = "Like the browser back button — returns to the previous context.")
+    @Operation(summary = "Go one step back in navigation history")
     public ResponseEntity<ContextRef> back() {
-        String user = workspaceResolver.resolveCurrentUsername();
-        return ResponseEntity.ok(navigationService.back(user));
+        return ResponseEntity.ok(navigationService.back(
+                workspaceResolver.resolveCurrentUsername()));
     }
 
     @GetMapping("/history")
-    @Operation(summary = "Get the navigation history",
-            description = "Returns the list of context navigations (newest last).")
+    @Operation(summary = "Get the navigation history")
     public ResponseEntity<List<ContextHistoryEntry>> getHistory() {
-        String user = workspaceResolver.resolveCurrentUsername();
-        return ResponseEntity.ok(navigationService.getHistory(user));
+        return ResponseEntity.ok(navigationService.getHistory(
+                workspaceResolver.resolveCurrentUsername()));
     }
 
     @PostMapping("/variant")
-    @Operation(summary = "Create a new branch variant from the current context",
-            description = "Creates a new Git branch from the current context and switches to it.")
-    public ResponseEntity<Map<String, Object>> createVariant(
-            @RequestParam String name) {
+    @Operation(summary = "Create a new branch variant from the current context")
+    public ResponseEntity<Map<String, Object>> createVariant(@RequestParam String name) {
         try {
             String user = workspaceResolver.resolveCurrentUsername();
-            ContextRef variant = navigationService.createVariantFromCurrent(user, name, resolveContext());
+            ContextRef variant = navigationService.createVariantFromCurrent(
+                    user, name, resolveContext());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("context", variant);
             result.put("branch", variant.branch());
             return ResponseEntity.ok(result);
-        } catch (IOException e) {
-            log.error("Failed to create variant '{}'", name, e);
+        } catch (IOException error) {
+            log.error("Failed to create variant '{}'", name, error);
             return ResponseEntity.internalServerError().body(
-                    Map.of("error", "Failed to create variant: " + e.getMessage()));
+                    Map.of("error", "Failed to create variant"));
         }
     }
 
-    // ── Phase 3: Compare ────────────────────────────────────────────
-
     @GetMapping("/compare")
-    @Operation(summary = "Compare two architecture contexts",
-            description = "Returns a semantic diff between two contexts identified by " +
-                    "branch/commit pairs. Includes summary counts, individual changes, " +
-                    "and optional raw DSL diff.")
+    @Operation(summary = "Compare two architecture contexts")
     public ResponseEntity<ContextComparison> compare(
             @RequestParam String leftBranch,
             @RequestParam(required = false) String leftCommit,
@@ -163,74 +135,71 @@ public class ContextNavigationController {
             ContextRef right = new ContextRef(
                     null, rightBranch, rightCommit, null, null,
                     null, null, null, null, null, false);
-
-            ContextComparison comparison;
-            if (leftCommit != null || rightCommit != null) {
-                comparison = compareService.compareContexts(left, right, resolveContext());
-            } else {
-                comparison = compareService.compareBranches(left, right, resolveContext());
-            }
+            ContextComparison comparison = leftCommit != null || rightCommit != null
+                    ? compareService.compareContexts(left, right, resolveContext())
+                    : compareService.compareBranches(left, right, resolveContext());
             return ResponseEntity.ok(applyFilter(comparison, filter));
-        } catch (IOException e) {
-            log.error("Compare failed", e);
+        } catch (IOException error) {
+            log.error("Compare failed", error);
             return ResponseEntity.internalServerError().build();
         }
     }
 
-    // ── Phase 4: Selective Transfer ─────────────────────────────────
-
     @PostMapping("/copy-back/preview")
-    @Operation(summary = "Preview a selective transfer",
-            description = "Shows what would happen if the selected elements and relations " +
-                    "were transferred from source to target context, including conflicts.")
+    @Operation(summary = "Preview a selective transfer")
     public ResponseEntity<Map<String, Object>> previewTransfer(
             @RequestBody TransferSelection selection) {
         try {
-            List<TransferConflict> conflicts = transferService.previewTransfer(selection, resolveContext());
+            List<TransferConflict> conflicts = transferService.previewTransfer(
+                    selection, resolveContext());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("conflicts", conflicts);
             result.put("hasConflicts", !conflicts.isEmpty());
             result.put("selectedElements", selection.selectedElementIds().size());
             result.put("selectedRelations", selection.selectedRelationIds().size());
+            result.put("expectedTargetHead", selection.targetContextId());
+            result.put("mode", selection.mode());
             return ResponseEntity.ok(result);
-        } catch (IOException e) {
-            log.error("Transfer preview failed", e);
+        } catch (IllegalArgumentException error) {
+            return ResponseEntity.badRequest().body(Map.of("error", error.getMessage()));
+        } catch (IOException error) {
+            log.error("Transfer preview failed", error);
             return ResponseEntity.internalServerError().body(
-                    Map.of("error", "Transfer preview failed: " + e.getMessage()));
+                    Map.of("error", "Transfer preview failed"));
         }
     }
 
     @PostMapping("/copy-back/apply")
-    @Operation(summary = "Apply a selective transfer",
-            description = "Transfers the selected elements and relations from the source " +
-                    "context into the target context, creating a new commit.")
+    @Operation(summary = "Apply a selective transfer")
     public ResponseEntity<Map<String, Object>> applyTransfer(
             @RequestBody TransferSelection selection) {
         try {
+            String previousHead = selection.targetContextId();
             String commitId = transferService.applyTransfer(selection);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("commitId", commitId);
+            result.put("previousHead", previousHead);
+            result.put("mode", selection.mode());
             result.put("success", true);
             return ResponseEntity.ok(result);
-        } catch (IOException e) {
-            log.error("Transfer failed", e);
+        } catch (java.util.ConcurrentModificationException error) {
+            return ResponseEntity.status(409).body(Map.of("error", error.getMessage()));
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            return ResponseEntity.badRequest().body(Map.of("error", error.getMessage()));
+        } catch (IOException error) {
+            log.error("Transfer failed", error);
             return ResponseEntity.internalServerError().body(
-                    Map.of("error", "Transfer failed: " + e.getMessage()));
+                    Map.of("error", "Transfer failed"));
         }
     }
-
-    // ── Internal helpers ────────────────────────────────────────────
 
     private ContextComparison applyFilter(ContextComparison comparison, Set<String> filter) {
         if (filter == null || filter.isEmpty()) {
             return comparison;
         }
         List<SemanticChange> filtered = comparison.changes().stream()
-                .filter(c -> {
-                    if (filter.contains("elements") && "ELEMENT".equals(c.category())) return true;
-                    if (filter.contains("relations") && "RELATION".equals(c.category())) return true;
-                    return false;
-                })
+                .filter(change -> (filter.contains("elements") && "ELEMENT".equals(change.category()))
+                        || (filter.contains("relations") && "RELATION".equals(change.category())))
                 .toList();
         return new ContextComparison(comparison.left(), comparison.right(),
                 comparison.summary(), filtered, comparison.rawDslDiff());
