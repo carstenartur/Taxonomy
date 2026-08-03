@@ -66,6 +66,12 @@ jobs:
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
         run: python3 .github/scripts/resolve-release-parameters.py
 
+      - name: Reject open release blockers before mutation
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check-release-blockers.py
+
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
@@ -109,6 +115,7 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/test-resolve-release-parameters.py
           python3 .github/scripts/test-check-version-state.py
+          python3 .github/scripts/test-check-release-blockers.py
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
@@ -331,6 +338,12 @@ jobs:
             exit 1
           fi
           gh run watch "$run_id" --exit-status
+
+      - name: Re-check release blockers before publication
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check-release-blockers.py
 
       - name: Publish complete release and trigger deployment
         if: steps.release_parameters.outputs.dry_run != 'true'
