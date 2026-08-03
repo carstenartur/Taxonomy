@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.service;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.model.RequirementAnalysisJob;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
@@ -10,9 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /** Recovers failed items and expired worker claims without duplicating active work. */
 @Service
@@ -32,10 +31,11 @@ public class PortfolioAnalysisRecoveryService {
 
     /**
      * Resets failed items and RUNNING items whose claim is older than the supplied
-     * cutoff. Active claims remain untouched. Every reset increments the attempt
-     * and binds the retry to the requirement's current immutable text version.
+     * cutoff. Active claims remain untouched. Every successful compare-and-set
+     * increments the attempt and binds the retry to the requirement's current
+     * immutable text version.
      *
-     * @return number of items prepared for another attempt
+     * @return number of items atomically prepared for another attempt
      */
     @Transactional
     public int prepareRetryableItems(String jobId,
@@ -58,18 +58,32 @@ public class PortfolioAnalysisRecoveryService {
                 .findByJobIdAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
                         jobId, AnalysisStatus.RUNNING, staleBefore);
 
-        Map<Long, RequirementAnalysisJobItem> retryable = new LinkedHashMap<>();
-        failed.forEach(item -> retryable.put(item.getId(), item));
-        stale.forEach(item -> retryable.put(item.getId(), item));
-        if (retryable.isEmpty()) {
+        int prepared = 0;
+        for (RequirementAnalysisJobItem item : failed) {
+            ProjectRequirementVersion version =
+                    projectService.currentVersion(item.getRequirement());
+            prepared += itemRepository.resetFailed(
+                    item.getId(),
+                    AnalysisStatus.FAILED,
+                    AnalysisStatus.PENDING,
+                    version);
+        }
+        for (RequirementAnalysisJobItem item : stale) {
+            ProjectRequirementVersion version =
+                    projectService.currentVersion(item.getRequirement());
+            prepared += itemRepository.resetExpiredRunning(
+                    item.getId(),
+                    AnalysisStatus.RUNNING,
+                    AnalysisStatus.PENDING,
+                    staleBefore,
+                    version);
+        }
+
+        if (prepared == 0) {
             throw PortfolioException.conflict(
                     "Analysis job has no failed or expired running items to retry: " + jobId);
         }
-
-        for (RequirementAnalysisJobItem item : retryable.values()) {
-            item.prepareRetry(projectService.currentVersion(item.getRequirement()));
-        }
         job.markRunning(Instant.now());
-        return retryable.size();
+        return prepared;
     }
 }
