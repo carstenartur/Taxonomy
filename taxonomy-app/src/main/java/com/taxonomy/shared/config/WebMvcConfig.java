@@ -11,25 +11,14 @@ import org.springframework.web.servlet.i18n.LocaleChangeInterceptor;
 
 import java.util.Locale;
 
-/**
- * Web MVC configuration for internationalization and request-bound workspace
- * isolation.
- *
- * <p>Locale resolution priority:
- * <ol>
- *   <li>{@code ?lang=de} query parameter (persisted to cookie)</li>
- *   <li>{@code lang} cookie</li>
- *   <li>{@code Accept-Language} header</li>
- *   <li>Fallback: English</li>
- * </ol>
- */
+/** Web MVC configuration for internationalization and workspace isolation. */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    private final DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor;
+    private final DslWorkspacePreResolutionInterceptor workspaceInterceptor;
 
-    public WebMvcConfig(DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor) {
-        this.dslWorkspaceInterceptor = dslWorkspaceInterceptor;
+    public WebMvcConfig(DslWorkspacePreResolutionInterceptor workspaceInterceptor) {
+        this.workspaceInterceptor = workspaceInterceptor;
     }
 
     @Bean
@@ -49,13 +38,21 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(localeChangeInterceptor());
-        registry.addInterceptor(dslWorkspaceInterceptor)
+        registry.addInterceptor(workspaceInterceptor)
                 .addPathPatterns(
-                        "/api/dsl/current",
-                        "/api/dsl/history",
-                        "/api/dsl/git/head",
-                        "/api/dsl/hypotheses/**",
+                        "/api/dsl/**",
                         "/api/analyze",
-                        "/api/search/graph");
+                        "/api/search/graph",
+                        "/api/relations/**",
+                        "/api/node/*/relations",
+                        "/api/proposals/**",
+                        "/api/node/*/proposals",
+                        "/api/import/**",
+                        "/api/context/**",
+                        "/api/report/**",
+                        "/api/projects/**",
+                        "/api/solutions/**",
+                        "/api/products/**",
+                        "/api/coverage/**");
     }
 }
