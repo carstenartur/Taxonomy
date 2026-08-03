@@ -96,10 +96,6 @@ podDisruptionBudget:
   enabled: false
   minAvailable: 1
 
-# The default policy permits application access only from the same namespace.
-# When ingress is enabled, add the ingress-controller namespace/pod selectors to
-# ingressFrom. Egress remains open because PostgreSQL, LLM and optional model
-# endpoints are deployment-specific; replace it with explicit rules as required.
 networkPolicy:
   enabled: true
   allowSameNamespace: true
@@ -123,6 +119,9 @@ secretEnv:
   ADMIN_PASSWORD:
     key: ADMIN_PASSWORD
     optional: false
+  TAXONOMY_METRICS_TOKEN:
+    key: TAXONOMY_METRICS_TOKEN
+    optional: true
   GEMINI_API_KEY:
     key: GEMINI_API_KEY
     optional: true
@@ -156,10 +155,11 @@ config:
   TAXONOMY_FORWARD_HEADERS_STRATEGY: framework
   TAXONOMY_EMBEDDING_ENABLED: "false"
   TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
+  TAXONOMY_METRICS_ALLOW_UNAUTHENTICATED: "false"
   JAVA_OPTS: -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=20.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp
 
-# Prometheus Operator integration. The application accepts the ADMIN_PASSWORD as
-# a Bearer token for /actuator/prometheus; the ServiceMonitor reads it from a Secret.
+# Prometheus Operator integration. The application uses a dedicated metrics-only
+# token; the ServiceMonitor reads it from a Secret and never receives ADMIN_PASSWORD.
 serviceMonitor:
   enabled: false
   additionalLabels: {}
@@ -168,7 +168,7 @@ serviceMonitor:
   authorization:
     enabled: true
     secretName: ""
-    secretKey: ADMIN_PASSWORD
+    secretKey: TAXONOMY_METRICS_TOKEN
   relabelings: []
   metricRelabelings: []
 
