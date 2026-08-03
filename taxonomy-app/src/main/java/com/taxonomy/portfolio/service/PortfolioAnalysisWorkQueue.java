@@ -5,6 +5,7 @@ import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -12,9 +13,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Claims pending analysis items in a short persistence transaction and returns
- * self-contained work payloads. External LLM execution happens only after this
- * method has committed and therefore outside the claim transaction.
+ * Claims pending analysis items in a dedicated short persistence transaction
+ * and returns self-contained work payloads. External LLM execution starts only
+ * after this method's independent transaction has committed.
  */
 @Service
 public class PortfolioAnalysisWorkQueue {
@@ -40,10 +41,11 @@ public class PortfolioAnalysisWorkQueue {
 
     /**
      * Claims pending items with compare-and-set semantics and materializes their
-     * work payloads before the transaction ends. Competing requests can observe
-     * the same candidates, but only one can update a row from PENDING to RUNNING.
+     * work payloads before the dedicated transaction ends. Competing requests
+     * can observe the same candidates, but only one can update a row from
+     * PENDING to RUNNING.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public List<WorkItem> pending(String jobId, Long projectId) {
         jobRepository.findByIdAndProjectId(jobId, projectId)
                 .orElseThrow(() -> PortfolioException.notFound("Analysis job not found: " + jobId));
