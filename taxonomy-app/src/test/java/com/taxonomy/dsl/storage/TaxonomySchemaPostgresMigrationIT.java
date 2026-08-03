@@ -43,6 +43,9 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "taxonomy_node")).isTrue();
         assertThat(tableExists(dataSource, "arch_project")).isTrue();
         assertThat(tableExists(dataSource, "req_analysis_snapshot")).isTrue();
+        assertThat(tableExists(dataSource, "solution_taxonomy")).isTrue();
+        assertThat(tableExists(dataSource, "product_taxonomy")).isTrue();
+        assertThat(tableExists(dataSource, "project_conflict")).isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly("0", "1", "2");
@@ -122,6 +125,9 @@ class TaxonomySchemaPostgresMigrationIT {
 
     private static DataSource isolatedDataSource(String schema) throws SQLException {
         DataSource admin = baseDataSource();
+        // Surefire may rerun a failed test in the same container. Recreate the
+        // fixed schema names so no prior DDL or Flyway history can leak in.
+        execute(admin, "drop schema if exists " + schema + " cascade");
         execute(admin, "create schema " + schema);
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName("org.postgresql.Driver");
