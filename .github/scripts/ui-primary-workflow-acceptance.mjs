@@ -8,6 +8,7 @@ import { runProposalWorkflows } from './ui-primary-proposal-workflows.mjs';
 import { runRelationWorkflows } from './ui-primary-relation-workflows.mjs';
 import { runImportWorkflows } from './ui-primary-import-workflows.mjs';
 import { runPortfolioWorkflows } from './ui-primary-portfolio-workflows.mjs';
+import { runPortfolioDetailWorkflows } from './ui-primary-portfolio-detail-workflows.mjs';
 import { runPasswordWorkflows, runWorkspaceSyncWorkflows,
   verifyUserMutationDenied } from './ui-primary-account-workflows.mjs';
 
@@ -46,6 +47,7 @@ try {
   if (role === 'ADMIN') {
     await runWorkspaceSyncWorkflows(workflow);
     await runPortfolioWorkflows(workflow);
+    await runPortfolioDetailWorkflows(workflow);
   }
   if (role === 'USER') await runPasswordWorkflows(workflow);
 } catch (error) {
