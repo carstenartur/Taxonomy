@@ -24,6 +24,40 @@ async function submitModal(page, modalId, fill, responsePattern) {
   await waitUntilIdle(page);
 }
 
+async function verifyAnalysisCompletion(page, response, baseUrl, evidence) {
+  const submitted = await response.json();
+  evidence.assert(submitted.totalItems === 1,
+    `Expected one independently analysed requirement, got ${submitted.totalItems}`);
+
+  const asyncUiEnabled = await page.locator(
+    'script[src*="taxonomy-portfolio-async.js"]').count() > 0;
+  if (asyncUiEnabled) {
+    evidence.assert(response.status() === 202,
+      `Asynchronous portfolio UI must receive HTTP 202, got ${response.status()}`);
+    const location = await response.headerValue('location');
+    evidence.assert(location,
+      'Asynchronous analysis response lacks a canonical Location header');
+    await waitUntilIdle(page);
+    const terminal = await page.evaluate(async jobUrl => {
+      const result = await fetch(jobUrl, { headers: { Accept: 'application/json' } });
+      return { status: result.status, body: await result.json() };
+    }, new URL(location, baseUrl).toString());
+    evidence.assert(terminal.status === 200,
+      `Terminal analysis job could not be read: HTTP ${terminal.status}`);
+    evidence.assert(terminal.body.status === 'SUCCESS' || terminal.body.status === 'PARTIAL',
+      `Analysis job did not finish successfully: ${terminal.body.status}`);
+    evidence.assert(terminal.body.successfulItems + terminal.body.partialItems === 1,
+      'Asynchronous analysis did not create a successful or partial snapshot');
+    return;
+  }
+
+  evidence.assert(response.status() === 200,
+    `Synchronous compatibility path must receive HTTP 200, got ${response.status()}`);
+  evidence.assert(submitted.successfulItems + submitted.partialItems === 1,
+    'Portfolio analysis did not create a successful or partial snapshot');
+  await waitUntilIdle(page);
+}
+
 /** End-to-end portfolio workflow for the authoritative ADMIN browser profile. */
 export async function runPortfolioWorkflows({ page, baseUrl, evidence }) {
   const suffix = uniqueSuffix();
@@ -106,12 +140,7 @@ export async function runPortfolioWorkflows({ page, baseUrl, evidence }) {
   const analysisResponse = await responsePromise;
   evidence.assert(analysisResponse.ok(),
     `Portfolio analysis failed with HTTP ${analysisResponse.status()}`);
-  const job = await analysisResponse.json();
-  evidence.assert(job.totalItems === 1,
-    `Expected one independently analysed requirement, got ${job.totalItems}`);
-  evidence.assert(job.successfulItems + job.partialItems === 1,
-    'Portfolio analysis did not create a successful or partial snapshot');
-  await waitUntilIdle(page);
+  await verifyAnalysisCompletion(page, analysisResponse, baseUrl, evidence);
   evidence.passed('portfolio independent mock analysis');
 
   await page.locator('#taxonomy-tab').click();
