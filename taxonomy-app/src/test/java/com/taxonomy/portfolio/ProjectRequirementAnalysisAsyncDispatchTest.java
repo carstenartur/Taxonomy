@@ -35,6 +35,8 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -74,9 +76,9 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
                 100,
                 100,
                 900);
-        when(persistenceService.createOrReuseJob(
+        lenient().when(persistenceService.createOrReuseJob(
                 anyLong(), anyList(), anyString(), anyInt(), anyString(), anyString(), any()))
-                .thenReturn(pendingJob());
+                .thenReturn(job(AnalysisStatus.PENDING));
     }
 
     @Test
@@ -110,11 +112,36 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
         verifyNoInteractions(analyzeRequirementUseCase);
     }
 
-    private AnalysisJobView pendingJob() {
+    @Test
+    void rejectedRecoveredJobCanBeSubmittedAgainWithoutAnotherRecovery() {
+        when(persistenceService.getJob(
+                "job-1", 41L, context.username(), context))
+                .thenReturn(job(AnalysisStatus.FAILED), job(AnalysisStatus.PENDING),
+                        job(AnalysisStatus.PENDING));
+        doThrow(new TaskRejectedException("worker queue full"))
+                .doNothing()
+                .when(analysisExecutor).execute(any(Runnable.class));
+
+        assertThatThrownBy(() -> service.enqueueRetryFailed(
+                "job-1", 41L, context.username(), context))
+                .isInstanceOf(PortfolioException.class)
+                .hasMessageContaining("persisted job job-1");
+
+        AnalysisJobView redispatched = service.enqueueRetryFailed(
+                "job-1", 41L, context.username(), context);
+
+        assertThat(redispatched.status()).isEqualTo(AnalysisStatus.PENDING);
+        verify(recoveryService, times(1)).prepareRetryableItems(
+                anyString(), anyLong(), anyString(), any(), any());
+        verify(analysisExecutor, times(2)).execute(any(Runnable.class));
+        verifyNoInteractions(analyzeRequirementUseCase);
+    }
+
+    private AnalysisJobView job(AnalysisStatus status) {
         return new AnalysisJobView(
                 "job-1",
                 41L,
-                AnalysisStatus.PENDING,
+                status,
                 "client-key",
                 "MOCK",
                 25,
@@ -124,9 +151,9 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
                 null,
                 null,
                 1,
+                status == AnalysisStatus.SUCCESS ? 1 : 0,
                 0,
-                0,
-                0,
+                status == AnalysisStatus.FAILED ? 1 : 0,
                 null,
                 List.of());
     }
