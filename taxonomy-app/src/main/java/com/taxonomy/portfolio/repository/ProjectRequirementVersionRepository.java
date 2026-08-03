@@ -17,5 +17,15 @@ public interface ProjectRequirementVersionRepository extends JpaRepository<Proje
 
     Optional<ProjectRequirementVersion> findByRequirementIdAndContentHash(Long requirementId, String contentHash);
 
-    Optional<ProjectRequirementVersion> findByIdAndRequirementId(Long id, Long requirementId);
+    /**
+     * Uses the first-level persistence cache when the version was fetched with
+     * its requirement list, while retaining the requirement ownership check.
+     */
+    default Optional<ProjectRequirementVersion> findByIdAndRequirementId(Long id, Long requirementId) {
+        if (id == null || requirementId == null) {
+            return Optional.empty();
+        }
+        return findById(id)
+                .filter(version -> requirementId.equals(version.getRequirement().getId()));
+    }
 }

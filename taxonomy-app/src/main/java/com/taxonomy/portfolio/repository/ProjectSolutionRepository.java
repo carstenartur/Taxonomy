@@ -10,6 +10,8 @@ public interface ProjectSolutionRepository extends JpaRepository<ProjectSolution
 
     List<ProjectSolution> findByProjectIdOrderByPriorityDescSolutionTitleAsc(Long projectId);
 
+    long countByProjectId(Long projectId);
+
     Optional<ProjectSolution> findByIdAndProjectId(Long id, Long projectId);
 
     Optional<ProjectSolution> findByProjectIdAndSolutionId(Long projectId, Long solutionId);
