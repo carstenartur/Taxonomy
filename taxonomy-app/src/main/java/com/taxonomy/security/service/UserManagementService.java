@@ -100,7 +100,8 @@ public class UserManagementService {
         if (body.containsKey("enabled")) {
             boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
             if (!enabled) {
-                assertAdministrativeAccessRemains(user);
+                assertAdministrativeAccessRemains(
+                        user, "Cannot disable the last admin user.");
             }
             user.setEnabled(enabled);
         }
@@ -109,7 +110,8 @@ public class UserManagementService {
             boolean removingAdmin = hasRole(user, "ROLE_ADMIN")
                     && newRoles.stream().noneMatch(role -> "ROLE_ADMIN".equals(role.getName()));
             if (removingAdmin) {
-                assertAdministrativeAccessRemains(user);
+                assertAdministrativeAccessRemains(
+                        user, "Cannot remove ADMIN role from the last admin user.");
             }
             user.setRoles(newRoles);
         }
@@ -131,14 +133,15 @@ public class UserManagementService {
 
     public String disableUser(Long id, String actor) {
         AppUser user = requireUser(id);
-        assertAdministrativeAccessRemains(user);
+        assertAdministrativeAccessRemains(
+                user, "Cannot disable the last admin user.");
         user.setEnabled(false);
         userRepository.save(user);
         log.info("USER_DISABLED user={} by={}", user.getUsername(), actor);
         return user.getUsername();
     }
 
-    private void assertAdministrativeAccessRemains(AppUser user) {
+    private void assertAdministrativeAccessRemains(AppUser user, String violationMessage) {
         if (!user.isEnabled() || !hasRole(user, "ROLE_ADMIN")) {
             return;
         }
@@ -146,7 +149,7 @@ public class UserManagementService {
         boolean targetIsLockedAdmin = lockedAdministrators.stream()
                 .anyMatch(candidate -> candidate.getId().equals(user.getId()));
         if (targetIsLockedAdmin && lockedAdministrators.size() <= 1) {
-            throw new ValidationException("Cannot disable or demote the last admin user.");
+            throw new ValidationException(violationMessage);
         }
     }
 
