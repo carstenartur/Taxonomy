@@ -12,26 +12,22 @@ import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import com.taxonomy.workspace.service.WorkspaceResolver;
 
-/**
- * Performs selective element/relation transfers between architecture contexts.
- *
- * <p>Unlike a full Git merge or cherry-pick, this service allows the user to
- * pick individual elements and relations from one version and apply them to
- * another. Conflict detection and preview are provided before any changes
- * are committed.
- */
+/** Performs safe selective element/relation transfers between architecture commits. */
 @Service
 public class SelectiveTransferService {
 
@@ -40,6 +36,7 @@ public class SelectiveTransferService {
     private final DslGitRepositoryFactory repositoryFactory;
     private final ContextNavigationService contextNavigationService;
     private final WorkspaceResolver workspaceResolver;
+    private final ConditionalDslCommitter conditionalCommitter = new ConditionalDslCommitter();
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
     private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
@@ -53,205 +50,203 @@ public class SelectiveTransferService {
         this.workspaceResolver = workspaceResolver;
     }
 
-    /**
-     * Resolve the Git repository for the given workspace context.
-     *
-     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
-     *            for the system repository)
-     * @return the resolved DslGitRepository
-     */
-    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
-        return repositoryFactory.resolveRepository(ctx);
+    private DslGitRepository resolveRepository(WorkspaceContext context) {
+        return repositoryFactory.resolveRepository(Objects.requireNonNull(context, "context"));
+    }
+
+    /** Preview in the explicitly supplied workspace without modifying data. */
+    public List<TransferConflict> previewTransfer(TransferSelection selection,
+                                                  WorkspaceContext context) throws IOException {
+        validateSelection(selection);
+        DslGitRepository repository = resolveRepository(context);
+        CanonicalArchitectureModel source = loadModel(repository, selection.sourceContextId());
+        CanonicalArchitectureModel target = loadModel(repository, selection.targetContextId());
+        return detectConflicts(source, target, selection);
     }
 
     /**
-     * Resolve the current workspace context from the authenticated user.
-     * Falls back to {@link WorkspaceContext#SHARED} if resolution fails.
-     */
-    private WorkspaceContext resolveContext() {
-        try {
-            return workspaceResolver.resolveCurrentContext();
-        } catch (Exception e) {
-            return WorkspaceContext.SHARED;
-        }
-    }
-
-    /**
-     * Preview a selective transfer without modifying any data.
-     *
-     * <p>Uses the system repository (SHARED context). Use
-     * {@link #previewTransfer(TransferSelection, WorkspaceContext)} for workspace-aware resolution.
-     *
-     * @param selection the transfer selection
-     * @return list of conflicts (empty if no conflicts)
-     * @throws IOException if Git operations fail
+     * Backward-compatible preview for explicit non-request callers. Request code
+     * must use the overload with a validated context.
      */
     public List<TransferConflict> previewTransfer(TransferSelection selection) throws IOException {
-        return previewTransfer(selection, WorkspaceContext.SHARED);
+        return previewTransfer(selection, workspaceResolver.resolveCurrentContext());
     }
 
     /**
-     * Preview a selective transfer without modifying any data.
-     *
-     * @param selection the transfer selection
-     * @param ctx       the workspace context for repository resolution
-     * @return list of conflicts (empty if no conflicts)
-     * @throws IOException if Git operations fail
-     */
-    public List<TransferConflict> previewTransfer(TransferSelection selection,
-                                                  WorkspaceContext ctx) throws IOException {
-        DslGitRepository repo = resolveRepository(ctx);
-        CanonicalArchitectureModel sourceModel = loadModel(repo, selection.sourceContextId());
-        CanonicalArchitectureModel targetModel = loadModel(repo, selection.targetContextId());
-
-        return detectConflicts(sourceModel, targetModel, selection);
-    }
-
-    /**
-     * Apply a selective transfer, merging selected elements and relations
-     * from the source context into the target context.
-     *
-     * <p>This is a request-bound operation — it resolves the current workspace
-     * context from the authenticated user via {@code WorkspaceResolver}.
-     *
-     * @param selection the transfer selection
-     * @return the commit ID of the resulting commit
-     * @throws IOException if Git operations fail
+     * Apply the selected subset to the current branch only when its HEAD still
+     * equals {@code targetContextId}. This makes preview/apply fail closed under
+     * concurrent changes.
      */
     public String applyTransfer(TransferSelection selection) throws IOException {
-        WorkspaceContext ctx = resolveContext();
-        DslGitRepository repo = resolveRepository(ctx);
-        CanonicalArchitectureModel sourceModel = loadModel(repo, selection.sourceContextId());
-        CanonicalArchitectureModel targetModel = loadModel(repo, selection.targetContextId());
-
-        // Merge selected elements
-        Map<String, ArchitectureElement> targetElements = targetModel.getElements().stream()
-                .collect(Collectors.toMap(ArchitectureElement::getId, Function.identity()));
-
-        for (ArchitectureElement sourceEl : sourceModel.getElements()) {
-            if (selection.selectedElementIds().contains(sourceEl.getId())) {
-                targetElements.put(sourceEl.getId(), sourceEl);
-            }
+        validateSelection(selection);
+        WorkspaceContext context = workspaceResolver.resolveCurrentContext();
+        DslGitRepository repository = resolveRepository(context);
+        String username = workspaceResolver.resolveCurrentUsername();
+        String targetBranch = contextNavigationService.getCurrentContext(username).branch();
+        if (targetBranch == null || targetBranch.isBlank()) {
+            throw new IllegalStateException("No explicit target branch is active");
         }
 
-        // Merge selected relations
-        Map<String, ArchitectureRelation> targetRelations = targetModel.getRelations().stream()
-                .collect(Collectors.toMap(this::relationKey, Function.identity()));
-
-        for (ArchitectureRelation sourceRel : sourceModel.getRelations()) {
-            String key = relationKey(sourceRel);
-            if (selection.selectedRelationIds().contains(key)) {
-                targetRelations.put(key, sourceRel);
-            }
+        String actualHead = repository.getHeadCommit(targetBranch);
+        if (!selection.targetContextId().equals(actualHead)) {
+            throw new ConcurrentModificationException(
+                    "Target branch '" + targetBranch + "' moved from "
+                            + selection.targetContextId() + " to " + actualHead);
         }
 
-        // Build merged model
-        targetModel.getElements().clear();
-        targetModel.getElements().addAll(targetElements.values());
-        targetModel.getRelations().clear();
-        targetModel.getRelations().addAll(targetRelations.values());
+        CanonicalArchitectureModel source = loadModel(repository, selection.sourceContextId());
+        CanonicalArchitectureModel target = loadModel(repository, selection.targetContextId());
+        List<TransferConflict> conflicts = detectConflicts(source, target, selection);
+        if (selection.mode() == TransferSelection.TransferMode.MERGE_SELECTED
+                && !conflicts.isEmpty()) {
+            throw new IllegalStateException(
+                    "MERGE_SELECTED requires conflict resolution before apply");
+        }
 
-        // Serialize merged model back to DSL and commit
-        String targetDsl = repo.getDslAtCommit(selection.targetContextId());
-        var originalDoc = parser.parse(targetDsl);
-        String namespace = originalDoc.getMeta() != null
-                ? originalDoc.getMeta().namespace() : "default";
-        var mergedDoc = modelToAstMapper.toDocument(targetModel, namespace);
-        String mergedDsl = serializer.serialize(mergedDoc);
+        mergeSelected(source, target, selection);
+        String targetDsl = repository.getDslAtCommit(selection.targetContextId());
+        var originalDocument = parser.parse(targetDsl);
+        String namespace = originalDocument.getMeta() != null
+                ? originalDocument.getMeta().namespace() : "default";
+        String mergedDsl = serializer.serialize(modelToAstMapper.toDocument(target, namespace));
 
-        String targetBranch = contextNavigationService.getCurrentContext(
-                workspaceResolver.resolveCurrentUsername()).branch();
-        String commitId = repo.commitDsl(
-                targetBranch, mergedDsl, "system",
-                "Selective transfer: " + selection.selectedElementIds().size() + " elements, "
+        String commitId = conditionalCommitter.commit(
+                repository,
+                targetBranch,
+                selection.targetContextId(),
+                mergedDsl,
+                context.username(),
+                "Selective " + selection.mode() + ": "
+                        + selection.selectedElementIds().size() + " elements, "
                         + selection.selectedRelationIds().size() + " relations");
 
-        log.info("Selective transfer applied: {} elements, {} relations → commit '{}'",
-                selection.selectedElementIds().size(),
-                selection.selectedRelationIds().size(),
+        log.info("Selective transfer applied by '{}' in workspace '{}': mode={}, branch={}, commit={}",
+                context.username(), context.workspaceId(), selection.mode(), targetBranch,
                 commitId.substring(0, Math.min(7, commitId.length())));
-
         return commitId;
     }
 
-    // ── Internal helpers ────────────────────────────────────────────
+    private void mergeSelected(CanonicalArchitectureModel source,
+                               CanonicalArchitectureModel target,
+                               TransferSelection selection) {
+        Map<String, ArchitectureElement> targetElements = target.getElements().stream()
+                .collect(Collectors.toMap(ArchitectureElement::getId, Function.identity()));
+        for (ArchitectureElement element : source.getElements()) {
+            if (selection.selectedElementIds().contains(element.getId())) {
+                targetElements.put(element.getId(), element);
+            }
+        }
 
-    private CanonicalArchitectureModel loadModel(DslGitRepository repo, String commitId) throws IOException {
-        String dsl = repo.getDslAtCommit(commitId);
+        Map<String, ArchitectureRelation> targetRelations = target.getRelations().stream()
+                .collect(Collectors.toMap(this::relationKey, Function.identity()));
+        for (ArchitectureRelation relation : source.getRelations()) {
+            String key = relationKey(relation);
+            if (selection.selectedRelationIds().contains(key)) {
+                targetRelations.put(key, relation);
+            }
+        }
+
+        target.getElements().clear();
+        target.getElements().addAll(targetElements.values());
+        target.getRelations().clear();
+        target.getRelations().addAll(targetRelations.values());
+    }
+
+    private void validateSelection(TransferSelection selection) {
+        if (selection == null) {
+            throw new IllegalArgumentException("Transfer selection is required");
+        }
+        if (selection.sourceContextId() == null || selection.sourceContextId().isBlank()
+                || selection.targetContextId() == null || selection.targetContextId().isBlank()) {
+            throw new IllegalArgumentException("Source and target commit IDs are required");
+        }
+        if (selection.sourceContextId().equals(selection.targetContextId())) {
+            throw new IllegalArgumentException("Source and target commits must differ");
+        }
+        if (selection.mode() == null) {
+            throw new IllegalArgumentException("Transfer mode is required");
+        }
+        Set<String> elementIds = selection.selectedElementIds();
+        Set<String> relationIds = selection.selectedRelationIds();
+        if (elementIds == null || relationIds == null) {
+            throw new IllegalArgumentException("Selected ID sets are required");
+        }
+        if (elementIds.isEmpty() && relationIds.isEmpty()) {
+            throw new IllegalArgumentException("At least one element or relation must be selected");
+        }
+    }
+
+    private CanonicalArchitectureModel loadModel(DslGitRepository repository, String commitId)
+            throws IOException {
+        String dsl = repository.getDslAtCommit(commitId);
         if (dsl == null) {
             throw new IOException("No DSL content at commit: " + commitId);
         }
-        var doc = parser.parse(dsl);
-        return astMapper.map(doc);
+        return astMapper.map(parser.parse(dsl));
     }
 
     List<TransferConflict> detectConflicts(
             CanonicalArchitectureModel sourceModel,
             CanonicalArchitectureModel targetModel,
             TransferSelection selection) {
-
         List<TransferConflict> conflicts = new ArrayList<>();
 
         Map<String, ArchitectureElement> targetElements = targetModel.getElements().stream()
                 .collect(Collectors.toMap(ArchitectureElement::getId, Function.identity()));
-
-        for (ArchitectureElement sourceEl : sourceModel.getElements()) {
-            if (!selection.selectedElementIds().contains(sourceEl.getId())) {
+        for (ArchitectureElement sourceElement : sourceModel.getElements()) {
+            if (!selection.selectedElementIds().contains(sourceElement.getId())) {
                 continue;
             }
-            ArchitectureElement existing = targetElements.get(sourceEl.getId());
-            if (existing != null && !elementsEqual(existing, sourceEl)) {
+            ArchitectureElement existing = targetElements.get(sourceElement.getId());
+            if (existing != null && !elementsEqual(existing, sourceElement)) {
                 conflicts.add(new TransferConflict(
-                        sourceEl.getId(),
+                        sourceElement.getId(),
                         existing.getTitle(),
-                        sourceEl.getTitle(),
-                        findViewsReferencing(targetModel, sourceEl.getId())));
+                        sourceElement.getTitle(),
+                        findViewsReferencing(targetModel, sourceElement.getId())));
             }
         }
 
         Map<String, ArchitectureRelation> targetRelations = targetModel.getRelations().stream()
                 .collect(Collectors.toMap(this::relationKey, Function.identity()));
-
-        for (ArchitectureRelation sourceRel : sourceModel.getRelations()) {
-            String key = relationKey(sourceRel);
+        for (ArchitectureRelation sourceRelation : sourceModel.getRelations()) {
+            String key = relationKey(sourceRelation);
             if (!selection.selectedRelationIds().contains(key)) {
                 continue;
             }
             ArchitectureRelation existing = targetRelations.get(key);
-            if (existing != null && !relationsEqual(existing, sourceRel)) {
+            if (existing != null && !relationsEqual(existing, sourceRelation)) {
                 conflicts.add(new TransferConflict(
                         key,
                         existing.getStatus(),
-                        sourceRel.getStatus(),
+                        sourceRelation.getStatus(),
                         List.of()));
             }
         }
-
         return conflicts;
     }
 
-    private boolean elementsEqual(ArchitectureElement a, ArchitectureElement b) {
-        return java.util.Objects.equals(a.getTitle(), b.getTitle())
-            && java.util.Objects.equals(a.getDescription(), b.getDescription())
-            && java.util.Objects.equals(a.getType(), b.getType());
+    private boolean elementsEqual(ArchitectureElement left, ArchitectureElement right) {
+        return Objects.equals(left.getTitle(), right.getTitle())
+                && Objects.equals(left.getDescription(), right.getDescription())
+                && Objects.equals(left.getType(), right.getType());
     }
 
-    private boolean relationsEqual(ArchitectureRelation a, ArchitectureRelation b) {
-        return java.util.Objects.equals(a.getStatus(), b.getStatus())
-            && java.util.Objects.equals(a.getConfidence(), b.getConfidence());
+    private boolean relationsEqual(ArchitectureRelation left, ArchitectureRelation right) {
+        return Objects.equals(left.getStatus(), right.getStatus())
+                && Objects.equals(left.getConfidence(), right.getConfidence());
     }
 
-    private String relationKey(ArchitectureRelation rel) {
-        return rel.getSourceId() + " " + rel.getRelationType() + " " + rel.getTargetId();
+    private String relationKey(ArchitectureRelation relation) {
+        return relation.getSourceId() + " " + relation.getRelationType() + " "
+                + relation.getTargetId();
     }
 
     private List<String> findViewsReferencing(CanonicalArchitectureModel model, String elementId) {
         return model.getViews().stream()
-                .filter(v -> {
-                    List<String> includes = v.getIncludes();
-                    return includes != null && includes.contains(elementId);
-                })
-                .map(v -> v.getTitle())
+                .filter(view -> view.getIncludes() != null
+                        && view.getIncludes().contains(elementId))
+                .map(view -> view.getTitle())
                 .limit(5)
                 .toList();
     }
