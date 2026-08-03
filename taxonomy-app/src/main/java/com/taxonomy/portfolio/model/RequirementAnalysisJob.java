@@ -105,6 +105,13 @@ public class RequirementAnalysisJob {
         this.createdAt = createdAt;
     }
 
+    public void markPending() {
+        this.status = AnalysisStatus.PENDING;
+        this.startedAt = null;
+        this.completedAt = null;
+        this.errorSummary = null;
+    }
+
     public void markRunning(Instant now) {
         this.status = AnalysisStatus.RUNNING;
         this.startedAt = now;
