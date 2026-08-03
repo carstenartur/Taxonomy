@@ -25,7 +25,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
      * concurrency boundary: exactly one competing worker can change the row
      * from PENDING to RUNNING and therefore start the external LLM call.
      */
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Modifying
     @Query("""
             update RequirementAnalysisJobItem item
                set item.status = :runningStatus,
