@@ -1,5 +1,6 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.versioning.controller.DslWorkspacePreResolutionInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.LocaleResolver;
@@ -11,7 +12,8 @@ import org.springframework.web.servlet.i18n.LocaleChangeInterceptor;
 import java.util.Locale;
 
 /**
- * Web MVC configuration for internationalization (i18n).
+ * Web MVC configuration for internationalization and request-bound workspace
+ * isolation.
  *
  * <p>Locale resolution priority:
  * <ol>
@@ -23,6 +25,12 @@ import java.util.Locale;
  */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
+
+    private final DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor;
+
+    public WebMvcConfig(DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor) {
+        this.dslWorkspaceInterceptor = dslWorkspaceInterceptor;
+    }
 
     @Bean
     public LocaleResolver localeResolver() {
@@ -41,5 +49,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(localeChangeInterceptor());
+        registry.addInterceptor(dslWorkspaceInterceptor)
+                .addPathPatterns(
+                        "/api/dsl/current",
+                        "/api/dsl/history",
+                        "/api/dsl/git/head",
+                        "/api/dsl/hypotheses/**");
     }
 }
