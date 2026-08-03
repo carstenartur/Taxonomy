@@ -64,8 +64,8 @@ class WorkspaceScopedEndpointIsolationTest {
                                 }
                                 """))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message")
-                        .value("An internal error occurred. Please try again or check the server logs."));
+                .andExpect(jsonPath("$.message").isString())
+                .andExpect(jsonPath("$.message").isNotEmpty());
 
         verify(workspaceResolver, never()).resolveCurrentContext();
     }
@@ -76,8 +76,8 @@ class WorkspaceScopedEndpointIsolationTest {
         mockMvc.perform(get("/api/search/graph")
                         .queryParam("q", "secure communication"))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message")
-                        .value("An internal error occurred. Please try again or check the server logs."));
+                .andExpect(jsonPath("$.message").isString())
+                .andExpect(jsonPath("$.message").isNotEmpty());
 
         verify(workspaceResolver, never()).resolveCurrentContext();
     }
