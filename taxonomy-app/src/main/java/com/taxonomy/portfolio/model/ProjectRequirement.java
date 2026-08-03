@@ -67,9 +67,17 @@ public class ProjectRequirement {
     @Column(name = "owner_username", nullable = false, length = 160)
     private String ownerUsername;
 
-    /** Points at the immutable current text version without creating a circular FK. */
+    /** Points at the immutable current text version without creating a circular writable FK. */
     @Column(name = "current_version_id")
     private Long currentVersionId;
+
+    /**
+     * Read-only association used by portfolio list queries to fetch the current
+     * immutable version in the same SQL statement as the requirement identity.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "current_version_id", insertable = false, updatable = false)
+    private ProjectRequirementVersion currentVersion;
 
     /** Points at the immutable current analysis snapshot. */
     @Column(name = "current_snapshot_id", length = 36)
@@ -131,6 +139,7 @@ public class ProjectRequirement {
 
     public void pointToVersion(Long versionId, Instant now) {
         this.currentVersionId = versionId;
+        this.currentVersion = null;
         this.updatedAt = now;
     }
 
@@ -150,6 +159,7 @@ public class ProjectRequirement {
     public ReviewStatus getReviewStatus() { return reviewStatus; }
     public String getOwnerUsername() { return ownerUsername; }
     public Long getCurrentVersionId() { return currentVersionId; }
+    public ProjectRequirementVersion getCurrentVersion() { return currentVersion; }
     public String getCurrentAnalysisSnapshotId() { return currentAnalysisSnapshotId; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
