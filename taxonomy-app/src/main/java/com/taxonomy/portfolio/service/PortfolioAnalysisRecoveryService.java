@@ -30,13 +30,13 @@ public class PortfolioAnalysisRecoveryService {
     }
 
     /**
-     * Keeps already pending items dispatchable and resets failed items plus RUNNING
-     * items whose claim is older than the supplied cutoff. Active claims remain
-     * untouched. Every successful reset increments the attempt and binds the retry
-     * to the requirement's current immutable text version; merely redispatching an
-     * existing PENDING item does not increment it.
+     * Resets failed items and RUNNING items whose claim is older than the supplied
+     * cutoff. Active claims remain untouched. Every successful compare-and-set
+     * increments the attempt and binds the retry to the requirement's current
+     * immutable text version. The job remains PENDING until a worker actually
+     * claims its prepared items, so a lost or rejected dispatch can be retried.
      *
-     * @return number of pending or atomically reset items available for another dispatch
+     * @return number of items atomically prepared for another attempt
      */
     @Transactional
     public int prepareRetryableItems(String jobId,
@@ -52,9 +52,6 @@ public class PortfolioAnalysisRecoveryService {
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Analysis job not found: " + jobId));
 
-        List<RequirementAnalysisJobItem> pending =
-                itemRepository.findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
-                        jobId, AnalysisStatus.PENDING);
         List<RequirementAnalysisJobItem> failed =
                 itemRepository.findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
                         jobId, AnalysisStatus.FAILED);
@@ -62,7 +59,7 @@ public class PortfolioAnalysisRecoveryService {
                 .findByJobIdAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
                         jobId, AnalysisStatus.RUNNING, staleBefore);
 
-        int prepared = pending.size();
+        int prepared = 0;
         for (RequirementAnalysisJobItem item : failed) {
             ProjectRequirementVersion version =
                     projectService.currentVersion(item.getRequirement());
@@ -85,9 +82,9 @@ public class PortfolioAnalysisRecoveryService {
 
         if (prepared == 0) {
             throw PortfolioException.conflict(
-                    "Analysis job has no pending, failed or expired running items to retry: " + jobId);
+                    "Analysis job has no failed or expired running items to retry: " + jobId);
         }
-        job.markRunning(Instant.now());
+        job.markPending();
         return prepared;
     }
 }
