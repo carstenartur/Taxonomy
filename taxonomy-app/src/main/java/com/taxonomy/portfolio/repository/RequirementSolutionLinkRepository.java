@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,6 +14,10 @@ public interface RequirementSolutionLinkRepository
 
     List<RequirementSolutionLink> findByProjectSolutionIdOrderByRequirementRequirementKeyAsc(
             Long projectSolutionId);
+
+    List<RequirementSolutionLink>
+            findByProjectSolutionIdInOrderByProjectSolutionIdAscRequirementRequirementKeyAsc(
+                    Collection<Long> projectSolutionIds);
 
     List<RequirementSolutionLink> findByRequirementIdOrderByProjectSolutionSolutionTitleAsc(
             Long requirementId);
