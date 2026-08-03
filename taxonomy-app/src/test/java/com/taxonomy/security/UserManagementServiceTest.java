@@ -106,7 +106,7 @@ class UserManagementServiceTest {
     void lastAdminCannotBeDisabledOrLoseAdminRole() {
         AppUser admin = user(1L, "admin", true, Set.of(adminRole, userRole));
         when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
-        when(userRepository.findAll()).thenReturn(List.of(admin));
+        when(userRepository.lockEnabledAdministrators()).thenReturn(List.of(admin));
 
         assertThatThrownBy(() -> service.disableUser(1L, "admin"))
                 .isInstanceOf(UserManagementService.ValidationException.class)
@@ -116,6 +116,8 @@ class UserManagementServiceTest {
                 java.util.Map.of("roles", List.of("USER")), "admin"))
                 .isInstanceOf(UserManagementService.ValidationException.class)
                 .hasMessageContaining("last admin");
+
+        verify(userRepository, org.mockito.Mockito.times(2)).lockEnabledAdministrators();
     }
 
     @Test
@@ -123,11 +125,25 @@ class UserManagementServiceTest {
         AppUser first = user(1L, "admin-one", true, Set.of(adminRole));
         AppUser second = user(2L, "admin-two", true, Set.of(adminRole));
         when(userRepository.findById(1L)).thenReturn(Optional.of(first));
-        when(userRepository.findAll()).thenReturn(List.of(first, second));
+        when(userRepository.lockEnabledAdministrators()).thenReturn(List.of(first, second));
         when(userRepository.save(first)).thenReturn(first);
 
         assertThat(service.disableUser(1L, "admin-two")).isEqualTo("admin-one");
         assertThat(first.isEnabled()).isFalse();
+    }
+
+    @Test
+    void fieldAndRoleBoundsAreEnforced() {
+        assertThatThrownBy(() -> service.createUser(java.util.Map.of(
+                "username", "x".repeat(161),
+                "password", "StrongPassword!2026"), "admin"))
+                .isInstanceOf(UserManagementService.ValidationException.class);
+
+        assertThatThrownBy(() -> service.createUser(java.util.Map.of(
+                "username", "alice",
+                "password", "StrongPassword!2026",
+                "roles", java.util.Collections.nCopies(21, "USER")), "admin"))
+                .isInstanceOf(UserManagementService.ValidationException.class);
     }
 
     @Test
