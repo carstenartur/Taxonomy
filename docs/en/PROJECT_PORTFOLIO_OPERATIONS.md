@@ -83,7 +83,7 @@ All `CREATE TABLE` and `CREATE INDEX` statements use `IF NOT EXISTS` guards so t
 Flyway does not automatically reverse an applied migration. To roll back:
 
 1. Stop the application.
-2. Run the reverse DDL statements from `V2__project_portfolio.sql` (drop the portfolio tables in reverse dependency order: `req_analysis_snapshot`, `req_analysis_item`, `req_analysis_job`, `req_mapping_*`, `project_solution_*`, `product_definition`, `solution_definition`, `project_conflict`, `project_req_version`, `project_requirement`, `arch_project`).
+2. Run the reverse DDL statements from `V2__project_portfolio.sql` (drop the portfolio tables in reverse dependency order: `project_conflict`, `solution_product`, `product_taxonomy`, `solution_taxonomy`, `req_solution_link`, `project_solution`, `req_relation_mapping`, `req_element_mapping`, `req_analysis_snapshot`, `req_analysis_item`, `req_analysis_job`, `project_req_version`, `project_requirement`, `product_catalog`, `solution_definition`, `arch_project`).
 3. Remove the `flyway_schema_history` row for V2.
 4. Deploy the previous image. It starts without portfolio tables and without the `V2` migration record.
 

@@ -1840,8 +1840,8 @@ Anforderungen haben einen stabilen Schlüssel (z. B. `REQ-001`) und eine unverä
 ### 19.5 Lösungskatalog
 
 1. Navigieren Sie zu **Lösungen** und klicken Sie auf **Neue Lösung**.
-2. Ordnen Sie die Lösung einer Anforderung über die Registerkarte **Lösungszuordnungen** zu.
-3. Wählen Sie einen Entscheidungstyp: `ADOPT`, `TRIAL`, `ASSESS` oder `HOLD`.
+2. Fügen Sie die wiederverwendbare Lösung dem Projekt hinzu und setzen Sie den projektspezifischen `ProjectSolutionStatus` (`PROPOSED`, `EVALUATED`, `SELECTED`, `IMPLEMENTED`, `REJECTED`) sowie einen `ActionStatus`.
+3. Verknüpfen Sie die Projektlösung mit einem Requirement-Snapshot, damit die Begründung an der analysierten Anforderungsversion verankert bleibt.
 
 ### 19.6 Produktkatalog
 
@@ -1851,8 +1851,8 @@ Anforderungen haben einen stabilen Schlüssel (z. B. `REQ-001`) und eine unverä
 ### 19.7 Konfliktregister
 
 1. Öffnen Sie ein Projekt und klicken Sie auf die Registerkarte **Konflikte**.
-2. Klicken Sie auf **Konflikt registrieren**, um einen neuen Konflikt mit Schweregrad zu erfassen.
-3. Setzen Sie den Status auf `MITIGATED` oder `ACCEPTED` mit einer Lösungsnotiz.
+2. Nutzen Sie Konflikterkennung/-prüfung mit `ConflictType`-Klassifikationen und prüfen Sie jede Hypothese.
+3. Setzen Sie den Status auf `PROPOSED`, `CONFIRMED`, `REJECTED` oder `RESOLVED` und hinterlegen Sie optional eine Lösungsnotiz.
 
 ### 19.8 Portfolio-Matrizen
 
@@ -1878,5 +1878,5 @@ Die Workspace-Isolation ist **fail-closed**: Kann der Workspace nicht aufgelöst
 | Limit | Standard | Konfigurierbar über |
 |---|---|---|
 | Anforderungen pro Analyse-Job | 100 | `taxonomy.portfolio.max-analysis-batch` |
-| Dokumentimport-Kandidaten | 500 | `taxonomy.portfolio.max-import-candidates` |
-| Anforderungstextlänge | 100.000 Zeichen | `taxonomy.limits.max-text-length` |
+| Anforderungen pro Import-Anfrage | 100 | `taxonomy.portfolio.max-import-requirements` |
+| Kombinierte Import-Textlast | 500.000 Zeichen | `taxonomy.portfolio.max-import-characters` |

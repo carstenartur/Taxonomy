@@ -785,6 +785,14 @@ curl -u alice:password -X POST http://localhost:8080/api/projects \
   -d '{"projectKey":"P-001","title":"Migrationsplattform","status":"ACTIVE"}'
 ```
 
+### Requirement anlegen
+
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/requirements \
+  -H "Content-Type: application/json" \
+  -d '{"requirementKey":"REQ-001","title":"Single Sign-on","text":"Die Plattform muss OIDC-basiertes Single Sign-on unterstützen."}'
+```
+
 ### Analyse-Job starten (202 Accepted, asynchron)
 
 ```bash
@@ -811,6 +819,55 @@ curl -u alice:password -X POST \
   http://localhost:8080/api/projects/1/analysis-jobs/550e8400-e29b-41d4-a716-446655440000/retry-failed
 ```
 
+### Snapshot-Liste einer Anforderung
+
+```bash
+curl -u alice:password \
+  http://localhost:8080/api/projects/1/requirements/1/snapshots
+```
+
+### Zwei Snapshots vergleichen
+
+```bash
+curl -u alice:password \
+  "http://localhost:8080/api/projects/1/snapshots/diff?older=SNAP-A&newer=SNAP-B"
+```
+
+### Lösungskatalog
+
+```bash
+# Lösung anlegen
+curl -u alice:password -X POST http://localhost:8080/api/solutions \
+  -H "Content-Type: application/json" \
+  -d '{"solutionKey":"SOL-001","title":"Keycloak OIDC","solutionType":"SERVICE","operatingModel":"SAAS","lifecycleStatus":"ACTIVE","maturityLevel":3}'
+
+# Lösung zum Projekt hinzufügen
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/solutions \
+  -H "Content-Type: application/json" \
+  -d '{"solutionId":1,"status":"PROPOSED","actionStatus":"REUSE","priority":50,"rationale":"Deckt die SSO-Anforderung ab"}'
+
+# Projektlösung mit einem Requirement-Snapshot verknüpfen
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/solutions/1/requirements \
+  -H "Content-Type: application/json" \
+  -d '{"requirementId":1,"snapshotId":"550e8400-e29b-41d4-a716-446655440000","coveragePercent":85,"role":"USES","reviewStatus":"CONFIRMED","evidence":"Snapshot bestätigt wiederverwendbare SSO-Funktionen"}'
+```
+
+### Produktkatalog
+
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/products \
+  -H "Content-Type: application/json" \
+  -d '{"productKey":"PROD-001","manufacturer":"Red Hat","productFamily":"Keycloak","productName":"Keycloak","editionVersion":"24.0","productStatus":"ACTIVE","operatingModel":"SAAS","sourceReference":"https://www.keycloak.org/","verifiedAt":"2026-08-01T12:00:00Z"}'
+```
+
+### Konsolidierte Portfolio-Ansicht / Matrizen
+
+```bash
+curl -u alice:password http://localhost:8080/api/projects/1/portfolio
+```
+
+Die konsolidierte Portfolio-Antwort enthält die Matrizen für Abdeckung, Konflikte und Entscheidungspipeline.
+
 ### Portfolio-Git-Projektion
 
 ```bash
@@ -829,7 +886,8 @@ curl -u alice:password -X POST http://localhost:8080/api/projects/git/commit?bra
 |---|---|---|
 | `taxonomy.portfolio.max-analysis-batch` | `100` | Maximale Anforderungen pro Analyse-Job |
 | `taxonomy.portfolio.analysis-claim-timeout-seconds` | `900` | Sekunden, bis ein RUNNING-Item als veraltet gilt |
-| `taxonomy.portfolio.max-import-candidates` | `500` | Maximale Kandidaten pro Dokumentimport |
+| `taxonomy.portfolio.max-import-requirements` | `100` | Maximale Anforderungen pro Import-Anfrage |
+| `taxonomy.portfolio.max-import-characters` | `500000` | Maximale kombinierte Textlast pro Import-Anfrage |
 
 ---
 

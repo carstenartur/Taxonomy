@@ -1853,7 +1853,7 @@ If you later change the text, a new immutable version is created. The old versio
 1. Open a requirement and switch to the **Snapshots** tab.
 2. Click a snapshot to view the full analysis: scores, architecture view, relation hypotheses, gap analysis and recommendations.
 3. Use **Compare** to select two snapshots and see a semantic diff.
-4. Click **Review Mapping** on any element or relation mapping to classify the action (ADOPT, REUSE, ADAPT, PROCURE, NEW, ORGANISATIONAL, EXCLUDE).
+4. Click **Review Mapping** on any element or relation mapping to classify the action (`SATISFIED_AS_IS`, `REUSE`, `CHANGE`, `CREATE`, `PROCURE`, `ORGANIZATIONAL`, `RETIRE_OR_REPLACE`, `UNDECIDED`).
 
 ### 19.5 Solution catalog
 
@@ -1861,15 +1861,15 @@ Solutions are reusable entries (software, platforms, services) that you can map 
 
 1. Navigate to **Solutions** and click **New Solution**.
 2. Enter a solution key, title, type, operating model, lifecycle status and maturity level.
-3. Map the solution to a requirement via the requirement's **Solution Mappings** tab.
-4. Choose a decision type: `ADOPT`, `TRIAL`, `ASSESS` or `HOLD`.
+3. Add the reusable solution to the project and set its project-specific `ProjectSolutionStatus` (`PROPOSED`, `EVALUATED`, `SELECTED`, `IMPLEMENTED`, `REJECTED`) plus `ActionStatus`.
+4. Link the project solution to a requirement snapshot so the rationale stays anchored to the analyzed requirement version.
 
 ### 19.6 Product catalog
 
 Products are specific procurable items linked to solutions.
 
 1. Navigate to **Products** and click **New Product**.
-2. Enter a product key, title, vendor, version, lifecycle status and optional cost information.
+2. Enter the catalog fields required by the API: product key, manufacturer, product family/name, edition version, product status, operating model, source reference and verification timestamp (plus optional cost/support metadata).
 3. Link the product to a solution via the solution's **Products** tab.
 
 Product selection requires the requirement mapping to have a confirmed review status and prohibits entries with a hard exclusion.
@@ -1879,8 +1879,8 @@ Product selection requires the requirement mapping to have a confirmed review st
 Conflicts between requirements, solutions or product choices are tracked in the **Conflicts** tab.
 
 1. Open a project and click the **Conflicts** tab.
-2. Click **Register Conflict** to log a new conflict with severity (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
-3. Set the status to `MITIGATED` or `ACCEPTED` with a resolution note to close out a tracked conflict.
+2. Use conflict detection/review to work with `ConflictType` classifications and review each hypothesis.
+3. Set the status to `PROPOSED`, `CONFIRMED`, `REJECTED` or `RESOLVED`, optionally recording a resolution note.
 
 ### 19.8 Portfolio matrices
 
@@ -1910,7 +1910,7 @@ To prevent resource exhaustion, the following limits apply:
 | Limit | Default | Override |
 |---|---|---|
 | Requirements per analysis job | 100 | `taxonomy.portfolio.max-analysis-batch` |
-| Document import candidates | 500 | `taxonomy.portfolio.max-import-candidates` |
-| Requirement text length | 100,000 chars | `taxonomy.limits.max-text-length` |
+| Requirements per import request | 100 | `taxonomy.portfolio.max-import-requirements` |
+| Combined import text payload | 500,000 chars | `taxonomy.portfolio.max-import-characters` |
 
-Jobs that exceed the batch limit are split automatically. Import requests that exceed the candidate limit are rejected with `400 Bad Request`.
+Jobs that exceed the batch limit are split automatically. Import requests that exceed the requirement-count or combined-text limits are rejected with `400 Bad Request`.

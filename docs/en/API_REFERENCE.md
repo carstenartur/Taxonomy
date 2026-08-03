@@ -904,10 +904,15 @@ curl -u alice:password -X POST http://localhost:8080/api/solutions \
   -H "Content-Type: application/json" \
   -d '{"solutionKey":"SOL-001","title":"Keycloak OIDC","solutionType":"SOFTWARE","operatingModel":"SAAS","lifecycleStatus":"ACTIVE","maturityLevel":3}'
 
-# Map solution to requirement
-curl -u alice:password -X POST http://localhost:8080/api/projects/1/solution-mappings \
+# Add solution to project
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/solutions \
   -H "Content-Type: application/json" \
-  -d '{"requirementId":1,"solutionId":1,"decisionType":"ADOPT"}'
+  -d '{"solutionId":1,"status":"PROPOSED","actionStatus":"REUSE","priority":50,"rationale":"Covers SSO requirement"}'
+
+# Link project solution to one requirement snapshot
+curl -u alice:password -X POST http://localhost:8080/api/projects/1/solutions/1/requirements \
+  -H "Content-Type: application/json" \
+  -d '{"requirementId":1,"snapshotId":"550e8400-e29b-41d4-a716-446655440000","coveragePercent":85,"role":"USES","reviewStatus":"CONFIRMED","evidence":"Snapshot confirms reusable SSO capabilities"}'
 ```
 
 ### Product catalog
@@ -915,7 +920,7 @@ curl -u alice:password -X POST http://localhost:8080/api/projects/1/solution-map
 ```bash
 curl -u alice:password -X POST http://localhost:8080/api/products \
   -H "Content-Type: application/json" \
-  -d '{"productKey":"PROD-001","title":"Keycloak 24","vendor":"Red Hat","version":"24.0","lifecycleStatus":"ACTIVE"}'
+  -d '{"productKey":"PROD-001","manufacturer":"Red Hat","productFamily":"Keycloak","productName":"Keycloak","editionVersion":"24.0","productStatus":"ACTIVE","operatingModel":"SAAS","sourceReference":"https://www.keycloak.org/","verifiedAt":"2026-08-01T12:00:00Z"}'
 ```
 
 ### Portfolio Git projection
@@ -935,18 +940,13 @@ curl -u alice:password -X POST http://localhost:8080/api/projects/git/merge \
   -d '{"fromBranch":"feature/sso","intoBranch":"draft"}'
 ```
 
-### Portfolio matrices
+### Consolidated portfolio view
 
 ```bash
-# Requirement-coverage matrix
-curl -u alice:password http://localhost:8080/api/projects/1/matrices/coverage
-
-# Conflict matrix
-curl -u alice:password http://localhost:8080/api/projects/1/matrices/conflicts
-
-# Decision pipeline (project → requirements → solutions → products)
-curl -u alice:password http://localhost:8080/api/projects/1/matrices/decisions
+curl -u alice:password http://localhost:8080/api/projects/1/portfolio
 ```
+
+The consolidated portfolio view includes the requirement coverage, conflicts, and decision pipeline matrices in one response.
 
 ### Limits and configuration
 
@@ -954,8 +954,8 @@ curl -u alice:password http://localhost:8080/api/projects/1/matrices/decisions
 |---|---|---|
 | `taxonomy.portfolio.max-analysis-batch` | `100` | Maximum requirements per analysis job |
 | `taxonomy.portfolio.analysis-claim-timeout-seconds` | `900` | Seconds before a RUNNING item is considered stale and eligible for recovery |
-| `taxonomy.portfolio.max-import-candidates` | `500` | Maximum candidates per document import |
-| `taxonomy.limits.max-text-length` | `100000` | Maximum character length per requirement text |
+| `taxonomy.portfolio.max-import-requirements` | `100` | Maximum requirements per import request |
+| `taxonomy.portfolio.max-import-characters` | `500000` | Maximum combined text payload per import request |
 
 ---
 

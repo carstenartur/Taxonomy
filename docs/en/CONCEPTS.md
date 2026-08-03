@@ -436,7 +436,7 @@ An **immutable** record of one completed requirement analysis. Contains: exact r
 
 ## Solution Catalog
 
-A workspace-scoped library of named **solutions** (software products, platforms, services or processes). Solutions have a lifecycle status (`ACTIVE`, `DEPRECATED`, …) and a maturity level. A solution can be mapped to one or more requirements with a **decision type** (`ADOPT`, `TRIAL`, `ASSESS`, `HOLD`).
+A workspace-scoped library of named **solutions** (software products, platforms, services or processes). Solutions have a lifecycle status (`ACTIVE`, `DEPRECATED`, …) and a maturity level. Within a project, a reusable solution is classified with `ProjectSolutionStatus` plus `ActionStatus`, then linked to one or more requirement snapshots.
 
 ## Product Catalog
 
@@ -444,7 +444,7 @@ A workspace-scoped registry of procurable **products** and versions. Products ar
 
 ## Conflict Registry
 
-A project-level log of identified **architecture conflicts** between requirements, solutions or product choices. Each conflict has a severity, a status (`OPEN`, `MITIGATED`, `ACCEPTED`, `CLOSED`) and an optional resolution note.
+A project-level log of identified **architecture conflicts** between requirements, solutions or product choices. Each conflict has a `ConflictType`, a status (`PROPOSED`, `CONFIRMED`, `REJECTED`, `RESOLVED`), confidence, and an optional resolution note.
 
 ## Portfolio Workspace Isolation
 
