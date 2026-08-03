@@ -28,7 +28,6 @@ public class PortfolioAnalysisExecutorConfiguration {
         executor.setAllowCoreThreadTimeOut(true);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(Math.max(0, configuredShutdownSeconds));
-        executor.initialize();
         return executor;
     }
 }
