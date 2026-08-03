@@ -54,6 +54,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/dsl/current",
                         "/api/dsl/history",
                         "/api/dsl/git/head",
-                        "/api/dsl/hypotheses/**");
+                        "/api/dsl/hypotheses/**",
+                        "/api/analyze",
+                        "/api/search/graph");
     }
 }
