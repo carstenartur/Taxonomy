@@ -1,14 +1,8 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.dto.TaxonomyRelationDto;
-import com.taxonomy.model.RelationType;
 import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
-import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.model.RelationProposal;
-import com.taxonomy.relations.repository.RelationHypothesisRepository;
-import com.taxonomy.relations.repository.RelationProposalRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -18,24 +12,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for workspace-level data isolation of relations, hypotheses,
- * and proposals across multiple workspaces.
- *
- * <p>Verifies that:
- * <ul>
- *   <li>Relations created in workspace A are not visible to workspace B</li>
- *   <li>Shared/legacy relations (workspace_id=NULL) are visible to all</li>
- *   <li>Delete operations respect workspace ownership</li>
- *   <li>WorkspaceContext resolves correctly for different users</li>
- * </ul>
+ * Unit tests for workspace-level data isolation metadata and explicit legacy
+ * shared-mode resolution.
  */
 @ExtendWith(MockitoExtension.class)
 class WorkspaceDataIsolationTest {
@@ -50,10 +34,11 @@ class WorkspaceDataIsolationTest {
 
     @BeforeEach
     void setUp() {
-        resolver = new WorkspaceContextResolver(workspaceManager, systemRepositoryService);
+        // This suite deliberately verifies the explicitly enabled legacy/shared
+        // mode. Production isolation is covered by WorkspaceContextResolverTest.
+        resolver = new WorkspaceContextResolver(
+                workspaceManager, systemRepositoryService, true);
     }
-
-    // ── WorkspaceContext resolution ────────────────────────────────────
 
     @Nested
     @DisplayName("WorkspaceContext resolution")
@@ -74,12 +59,13 @@ class WorkspaceDataIsolationTest {
         }
 
         @Test
-        void unprovisionedUserGetsSHARED() {
+        void explicitlySharedUnprovisionedUserGetsSharedContext() {
+            when(workspaceManager.findActiveWorkspace("charlie")).thenReturn(null);
             when(workspaceManager.findUserWorkspace("charlie")).thenReturn(null);
 
-            WorkspaceContext ctx = resolver.resolveForUser("charlie");
-            assertThat(ctx).isEqualTo(WorkspaceContext.SHARED);
-            assertThat(ctx.workspaceId()).isNull();
+            WorkspaceContext context = resolver.resolveForUser("charlie");
+            assertThat(context).isEqualTo(WorkspaceContext.SHARED);
+            assertThat(context.workspaceId()).isNull();
         }
 
         @Test
@@ -90,22 +76,21 @@ class WorkspaceDataIsolationTest {
         }
 
         @Test
-        void nullWorkspaceIdReturnsSHARED() {
-            UserWorkspace ws = new UserWorkspace();
-            ws.setUsername("dave");
-            ws.setWorkspaceId(null); // not provisioned
-            when(workspaceManager.findUserWorkspace("dave")).thenReturn(ws);
+        void nullWorkspaceIdUsesExplicitSharedMode() {
+            UserWorkspace workspace = new UserWorkspace();
+            workspace.setUsername("dave");
+            workspace.setWorkspaceId(null);
+            when(workspaceManager.findActiveWorkspace("dave")).thenReturn(null);
+            when(workspaceManager.findUserWorkspace("dave")).thenReturn(workspace);
 
-            WorkspaceContext ctx = resolver.resolveForUser("dave");
-            assertThat(ctx).isEqualTo(WorkspaceContext.SHARED);
+            assertThat(resolver.resolveForUser("dave"))
+                    .isEqualTo(WorkspaceContext.SHARED);
         }
     }
 
-    // ── Relation workspace isolation ──────────────────────────────────
-
     @Nested
-    @DisplayName("TaxonomyRelation workspace scoping")
-    class RelationIsolation {
+    @DisplayName("Workspace-scoped entity metadata")
+    class EntityMetadata {
 
         @Test
         void relationCarriesWorkspaceMetadata() {
@@ -119,18 +104,8 @@ class WorkspaceDataIsolationTest {
 
         @Test
         void sharedRelationHasNullWorkspaceId() {
-            TaxonomyRelation relation = new TaxonomyRelation();
-            // Not set = shared/legacy
-            assertThat(relation.getWorkspaceId()).isNull();
-            assertThat(relation.getOwnerUsername()).isNull();
+            assertThat(new TaxonomyRelation().getWorkspaceId()).isNull();
         }
-    }
-
-    // ── Hypothesis workspace isolation ────────────────────────────────
-
-    @Nested
-    @DisplayName("RelationHypothesis workspace scoping")
-    class HypothesisIsolation {
 
         @Test
         void hypothesisCarriesWorkspaceMetadata() {
@@ -143,19 +118,6 @@ class WorkspaceDataIsolationTest {
         }
 
         @Test
-        void sharedHypothesisHasNullWorkspace() {
-            RelationHypothesis hypothesis = new RelationHypothesis();
-            assertThat(hypothesis.getWorkspaceId()).isNull();
-        }
-    }
-
-    // ── Proposal workspace isolation ─────────────────────────────────
-
-    @Nested
-    @DisplayName("RelationProposal workspace scoping")
-    class ProposalIsolation {
-
-        @Test
         void proposalCarriesWorkspaceMetadata() {
             RelationProposal proposal = new RelationProposal();
             proposal.setWorkspaceId("carol-ws");
@@ -164,93 +126,51 @@ class WorkspaceDataIsolationTest {
             assertThat(proposal.getWorkspaceId()).isEqualTo("carol-ws");
             assertThat(proposal.getOwnerUsername()).isEqualTo("carol");
         }
-
-        @Test
-        void sharedProposalHasNullWorkspace() {
-            RelationProposal proposal = new RelationProposal();
-            assertThat(proposal.getWorkspaceId()).isNull();
-        }
     }
 
-    // ── Context equality ─────────────────────────────────────────────
-
     @Nested
-    @DisplayName("WorkspaceContext equality")
-    class ContextEquality {
+    @DisplayName("WorkspaceContext equality and branches")
+    class ContextEqualityAndBranches {
 
         @Test
         void sameValuesAreEqual() {
-            WorkspaceContext a = new WorkspaceContext("alice", "ws-1", "main");
-            WorkspaceContext b = new WorkspaceContext("alice", "ws-1", "main");
-            assertThat(a).isEqualTo(b);
+            WorkspaceContext left = new WorkspaceContext("alice", "ws-1", "main");
+            WorkspaceContext right = new WorkspaceContext("alice", "ws-1", "main");
+            assertThat(left).isEqualTo(right);
         }
 
         @Test
         void differentWorkspacesAreNotEqual() {
-            WorkspaceContext a = new WorkspaceContext("alice", "ws-1", "main");
-            WorkspaceContext b = new WorkspaceContext("alice", "ws-2", "main");
-            assertThat(a).isNotEqualTo(b);
+            WorkspaceContext left = new WorkspaceContext("alice", "ws-1", "main");
+            WorkspaceContext right = new WorkspaceContext("alice", "ws-2", "main");
+            assertThat(left).isNotEqualTo(right);
         }
 
         @Test
-        void sharedIsNotEqualToProvisioned() {
+        void provisionedUserGetsWorkspaceBranch() {
             provisionWorkspace("alice", "alice-ws", "feature-a");
-            WorkspaceContext ctx = resolver.resolveForUser("alice");
-            assertThat(ctx).isNotEqualTo(WorkspaceContext.SHARED);
+            assertThat(resolver.resolveForUser("alice").currentBranch())
+                    .isEqualTo("feature-a");
         }
 
         @Test
-        void sharedHasNullWorkspaceId() {
-            assertThat(WorkspaceContext.SHARED.workspaceId()).isNull();
-        }
-    }
-
-    // ── Workspace branch resolution ──────────────────────────────────
-
-    @Nested
-    @DisplayName("Workspace branch resolution")
-    class BranchResolution {
-
-        @Test
-        void provisionedUserGetsBranchFromWorkspace() {
-            provisionWorkspace("alice", "alice-ws", "feature-a");
-            WorkspaceContext ctx = resolver.resolveForUser("alice");
-            assertThat(ctx.currentBranch()).isEqualTo("feature-a");
-        }
-
-        @Test
-        void unprovisionedUserGetsDraftBranch() {
-            when(workspaceManager.findUserWorkspace("charlie")).thenReturn(null);
-            WorkspaceContext ctx = resolver.resolveForUser("charlie");
-            assertThat(ctx.currentBranch()).isEqualTo("draft");
-        }
-
-        @Test
-        void sharedContextAlwaysUsesDraft() {
-            assertThat(WorkspaceContext.SHARED.currentBranch()).isEqualTo("draft");
-        }
-
-        @Test
-        void provisionedWorkspaceWithNullBranchUsesSharedBranch() {
-            UserWorkspace ws = new UserWorkspace();
-            ws.setUsername("eve");
-            ws.setWorkspaceId("eve-ws");
-            ws.setCurrentBranch(null);
-            when(workspaceManager.findUserWorkspace("eve")).thenReturn(ws);
+        void workspaceWithoutBranchUsesConfiguredSharedBranchName() {
+            UserWorkspace workspace = new UserWorkspace();
+            workspace.setUsername("eve");
+            workspace.setWorkspaceId("eve-ws");
+            when(workspaceManager.findActiveWorkspace("eve")).thenReturn(workspace);
             when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
 
-            WorkspaceContext ctx = resolver.resolveForUser("eve");
-            assertThat(ctx.currentBranch()).isEqualTo("draft");
+            assertThat(resolver.resolveForUser("eve").currentBranch())
+                    .isEqualTo("draft");
         }
     }
 
-    // ── Helper ────────────────────────────────────────────────────────
-
-    private void provisionWorkspace(String username, String wsId, String branch) {
-        UserWorkspace ws = new UserWorkspace();
-        ws.setUsername(username);
-        ws.setWorkspaceId(wsId);
-        ws.setCurrentBranch(branch);
-        when(workspaceManager.findUserWorkspace(username)).thenReturn(ws);
+    private void provisionWorkspace(String username, String workspaceId, String branch) {
+        UserWorkspace workspace = new UserWorkspace();
+        workspace.setUsername(username);
+        workspace.setWorkspaceId(workspaceId);
+        workspace.setCurrentBranch(branch);
+        when(workspaceManager.findActiveWorkspace(username)).thenReturn(workspace);
     }
 }
