@@ -21,6 +21,7 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -36,6 +37,7 @@ public class ProjectRequirementAnalysisService {
     private final ProjectPortfolioService projectService;
     private final PortfolioAnalysisPersistenceService persistenceService;
     private final PortfolioAnalysisWorkQueue workQueue;
+    private final PortfolioAnalysisRecoveryService recoveryService;
     private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
     private final ArchitectureGapService gapService;
     private final ArchitecturePatternService patternService;
@@ -43,10 +45,13 @@ public class ProjectRequirementAnalysisService {
     private final PortfolioFingerprintService fingerprintService;
     private final LlmService llmService;
     private final int maximumArchitectureNodes;
+    private final int maximumBatchRequirements;
+    private final long claimTimeoutSeconds;
 
     public ProjectRequirementAnalysisService(ProjectPortfolioService projectService,
                                              PortfolioAnalysisPersistenceService persistenceService,
                                              PortfolioAnalysisWorkQueue workQueue,
+                                             PortfolioAnalysisRecoveryService recoveryService,
                                              AnalyzeRequirementUseCase analyzeRequirementUseCase,
                                              ArchitectureGapService gapService,
                                              ArchitecturePatternService patternService,
@@ -54,10 +59,15 @@ public class ProjectRequirementAnalysisService {
                                              PortfolioFingerprintService fingerprintService,
                                              LlmService llmService,
                                              @Value("${taxonomy.limits.max-architecture-nodes:100}")
-                                             int maximumArchitectureNodes) {
+                                             int maximumArchitectureNodes,
+                                             @Value("${taxonomy.portfolio.max-analysis-batch:100}")
+                                             int maximumBatchRequirements,
+                                             @Value("${taxonomy.portfolio.analysis-claim-timeout-seconds:900}")
+                                             long claimTimeoutSeconds) {
         this.projectService = projectService;
         this.persistenceService = persistenceService;
         this.workQueue = workQueue;
+        this.recoveryService = recoveryService;
         this.analyzeRequirementUseCase = analyzeRequirementUseCase;
         this.gapService = gapService;
         this.patternService = patternService;
@@ -65,6 +75,8 @@ public class ProjectRequirementAnalysisService {
         this.fingerprintService = fingerprintService;
         this.llmService = llmService;
         this.maximumArchitectureNodes = Math.max(1, maximumArchitectureNodes);
+        this.maximumBatchRequirements = Math.max(1, maximumBatchRequirements);
+        this.claimTimeoutSeconds = Math.max(60L, claimTimeoutSeconds);
     }
 
     public AnalysisJobView analyzeProject(Long projectId,
@@ -108,7 +120,12 @@ public class ProjectRequirementAnalysisService {
                                        Long projectId,
                                        String username,
                                        WorkspaceContext context) {
-        persistenceService.prepareFailedItemsForRetry(jobId, projectId, username, context);
+        recoveryService.prepareRetryableItems(
+                jobId,
+                projectId,
+                username,
+                context,
+                Instant.now().minusSeconds(claimTimeoutSeconds));
         return executePendingItems(jobId, projectId, username, context);
     }
 
@@ -161,7 +178,6 @@ public class ProjectRequirementAnalysisService {
                 ? job.provider() : llmService.getActiveProviderName();
 
         for (PortfolioAnalysisWorkQueue.WorkItem workItem : workQueue.pending(jobId, projectId)) {
-            persistenceService.markItemRunning(workItem.itemId());
             String snapshotId = UUID.randomUUID().toString();
             String analysisSessionId = "portfolio:" + snapshotId;
             long startedAt = System.nanoTime();
@@ -258,12 +274,28 @@ public class ProjectRequirementAnalysisService {
                     .map(requirement -> requirement.id())
                     .toList();
             if (ids.isEmpty()) throw PortfolioException.validation("Project has no requirements to analyze");
-            return ids;
+            return requireAllowedBatch(ids);
         }
         if (request.requirementIds() == null || request.requirementIds().isEmpty()) {
             throw PortfolioException.validation("requirementIds must be supplied unless all=true");
         }
-        return request.requirementIds().stream().filter(java.util.Objects::nonNull).distinct().toList();
+        List<Long> ids = request.requirementIds().stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            throw PortfolioException.validation("At least one valid requirementId is required");
+        }
+        return requireAllowedBatch(ids);
+    }
+
+    private List<Long> requireAllowedBatch(List<Long> requirementIds) {
+        if (requirementIds.size() > maximumBatchRequirements) {
+            throw PortfolioException.validation(
+                    "Analysis batch contains " + requirementIds.size()
+                            + " requirements; maximum is " + maximumBatchRequirements);
+        }
+        return requirementIds;
     }
 
     private int normalizeMaxNodes(Integer requested) {
