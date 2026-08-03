@@ -22,7 +22,7 @@ function assert(condition, message) {
 
 async function waitUntilIdle(page) {
   const busy = page.locator('#portfolioBusy');
-  await busy.waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
+  await busy.waitFor({ state: 'hidden', timeout: 120_000 });
 }
 
 async function submitModal(page, modalId, fill, responsePattern) {
@@ -161,11 +161,11 @@ try {
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze();
   axeViolations = axeResult.violations;
-  const severe = axeViolations.filter(item =>
-    item.impact === 'critical' || item.impact === 'serious');
-  assert(severe.length === 0,
-    `Portfolio accessibility has severe violations: ${severe.map(item => item.id).join(', ')}`);
-  checks.push('portfolio axe audit without serious violations');
+  const blocking = axeViolations.filter(item =>
+    item.impact === 'critical' || item.impact === 'serious' || item.impact === 'moderate');
+  assert(blocking.length === 0,
+    `Portfolio accessibility has blocking violations: ${blocking.map(item => item.id).join(', ')}`);
+  checks.push('portfolio axe audit without moderate, serious or critical violations');
 
   const overflow = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
