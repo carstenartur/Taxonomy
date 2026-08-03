@@ -8,10 +8,11 @@ The project portfolio applies explicit server-side limits before persisting or s
 | `taxonomy.portfolio.max-import-requirements` | `TAXONOMY_PORTFOLIO_MAX_IMPORT_REQUIREMENTS` | `100` | Maximum requirement candidates accepted by one import request |
 | `taxonomy.portfolio.max-import-characters` | `TAXONOMY_PORTFOLIO_MAX_IMPORT_CHARACTERS` | `500000` | Maximum combined requirement and original-source characters in one import |
 | `taxonomy.portfolio.analysis-claim-timeout-seconds` | `TAXONOMY_PORTFOLIO_ANALYSIS_CLAIM_TIMEOUT_SECONDS` | `900` | Age after which a `RUNNING` item can be recovered |
-| `taxonomy.portfolio.analysis-worker-core-pool-size` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CORE_POOL_SIZE` | `1` | Always available background analysis workers |
-| `taxonomy.portfolio.analysis-worker-max-pool-size` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_MAX_POOL_SIZE` | `4` | Maximum concurrent background analysis workers |
+| `taxonomy.portfolio.analysis-worker-concurrency` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `1` | Fixed number of concurrently dispatched analysis jobs |
 | `taxonomy.portfolio.analysis-worker-queue-capacity` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `100` | Persisted jobs that may wait in the in-process dispatch queue |
 | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `30` | Graceful shutdown period for active workers |
+
+The default concurrency of one is deliberately conservative because one requirement analysis can issue several provider calls while traversing the taxonomy. Increase it only together with provider rate limits, database capacity and an observed latency/error budget. Unlike a core/max pool with a large queue, this fixed value is the actual steady-state concurrency.
 
 ## HTTP job contract
 
