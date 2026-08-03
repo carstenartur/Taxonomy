@@ -80,6 +80,11 @@ public class ProjectPortfolioService {
             throw PortfolioException.conflict("Project key already exists in this workspace: " + projectKey);
         }
 
+        var budgetAmount = PortfolioValueValidator.money(request.budgetAmount(), "budgetAmount");
+        String budgetCurrency = normalizeCurrency(request.budgetCurrency());
+        PortfolioValueValidator.requireMoneyPair(
+                budgetAmount, budgetCurrency, "budgetAmount", "budgetCurrency");
+
         Instant now = Instant.now();
         ArchitectureProject project = new ArchitectureProject(
                 scopeKey,
@@ -96,8 +101,8 @@ public class ProjectPortfolioService {
                 null,
                 limited(request.targetArchitecture(), 4000, "targetArchitecture"),
                 request.targetDate(),
-                request.budgetAmount(),
-                normalizeCurrency(request.budgetCurrency()),
+                budgetAmount,
+                budgetCurrency,
                 now);
         return toProjectView(projectRepository.save(project));
     }
@@ -120,14 +125,25 @@ public class ProjectPortfolioService {
                                      WorkspaceContext context) {
         requireNonNull(request, "project update");
         ArchitectureProject project = requireProject(projectId, username, context);
+        var requestedAmount = request.budgetAmount() != null
+                ? PortfolioValueValidator.money(request.budgetAmount(), "budgetAmount") : null;
+        String requestedCurrency = request.budgetCurrency() != null
+                ? normalizeCurrency(request.budgetCurrency()) : null;
+        var effectiveAmount = request.budgetAmount() != null
+                ? requestedAmount : project.getBudgetAmount();
+        String effectiveCurrency = request.budgetCurrency() != null
+                ? requestedCurrency : project.getBudgetCurrency();
+        PortfolioValueValidator.requireMoneyPair(
+                effectiveAmount, effectiveCurrency, "budgetAmount", "budgetCurrency");
+
         project.update(
                 request.title() != null ? requireText(request.title(), "title", 240) : null,
                 limited(request.description(), 4000, "description"),
                 request.status(),
                 limited(request.targetArchitecture(), 4000, "targetArchitecture"),
                 request.targetDate(),
-                request.budgetAmount(),
-                normalizeCurrency(request.budgetCurrency()),
+                requestedAmount,
+                requestedCurrency,
                 Instant.now());
         return toProjectView(project);
     }
@@ -157,7 +173,8 @@ public class ProjectPortfolioService {
                 request.requirementType() != null ? request.requirementType() : RequirementType.FUNCTIONAL,
                 request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,
                 request.ownerUsername() != null && !request.ownerUsername().isBlank()
-                        ? request.ownerUsername().strip() : PortfolioScope.username(username, context),
+                        ? requireText(request.ownerUsername(), "ownerUsername", 160)
+                        : PortfolioScope.username(username, context),
                 now);
         requirementRepository.save(requirement);
         ProjectRequirementVersion version = createVersionEntity(
@@ -238,7 +255,7 @@ public class ProjectPortfolioService {
                 request.requirementType(),
                 request.reviewStatus(),
                 request.ownerUsername() != null && !request.ownerUsername().isBlank()
-                        ? request.ownerUsername().strip() : null,
+                        ? requireText(request.ownerUsername(), "ownerUsername", 160) : null,
                 Instant.now());
         return toRequirementView(requirement, currentVersion(requirement));
     }
@@ -250,7 +267,8 @@ public class ProjectPortfolioService {
                                                         String username,
                                                         WorkspaceContext context) {
         requireNonNull(request, "requirement version request");
-        ProjectRequirement requirement = requireRequirement(projectId, requirementId, username, context);
+        ProjectRequirement requirement = requireRequirementForUpdate(
+                projectId, requirementId, username, context);
         String text = requireText(request.text(), "text", 100_000);
         String contentHash = fingerprintService.contentFingerprint(text);
         ProjectRequirementVersion existing = versionRepository
@@ -305,6 +323,17 @@ public class ProjectPortfolioService {
         requireProject(projectId, username, context);
         if (requirementId == null) throw PortfolioException.validation("requirementId is required");
         return requirementRepository.findByIdAndProjectId(requirementId, projectId)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Requirement " + requirementId + " was not found in project " + projectId));
+    }
+
+    private ProjectRequirement requireRequirementForUpdate(Long projectId,
+                                                           Long requirementId,
+                                                           String username,
+                                                           WorkspaceContext context) {
+        requireProject(projectId, username, context);
+        if (requirementId == null) throw PortfolioException.validation("requirementId is required");
+        return requirementRepository.findByIdAndProjectIdForUpdate(requirementId, projectId)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Requirement " + requirementId + " was not found in project " + projectId));
     }
@@ -393,9 +422,12 @@ public class ProjectPortfolioService {
                                                            String createdBy,
                                                            int versionNumber,
                                                            Instant now) {
-        List<Long> fragmentIds = source != null && source.sourceFragmentIds() != null
-                ? source.sourceFragmentIds().stream().filter(Objects::nonNull).distinct().toList()
-                : List.of();
+        List<Long> fragmentIds = sourceFragmentIds(source);
+        Long sourceArtifactId = source != null
+                ? positiveIdentifier(source.sourceArtifactId(), "sourceArtifactId") : null;
+        Long sourceVersionId = source != null
+                ? positiveIdentifier(source.sourceVersionId(), "sourceVersionId") : null;
+        Integer pageNumber = source != null ? positivePageNumber(source.pageNumber()) : null;
         return new ProjectRequirementVersion(
                 requirement,
                 versionNumber,
@@ -404,12 +436,47 @@ public class ProjectPortfolioService {
                 limited(changeReason, 1000, "changeReason"),
                 createdBy,
                 now,
-                source != null ? source.sourceArtifactId() : null,
-                source != null ? source.sourceVersionId() : null,
+                sourceArtifactId,
+                sourceVersionId,
                 jsonCodec.write(fragmentIds),
                 source != null ? limited(source.sectionReference(), 500, "sectionReference") : null,
-                source != null ? source.pageNumber() : null,
-                source != null ? source.originalText() : null);
+                pageNumber,
+                source != null
+                        ? limited(source.originalText(),
+                                PortfolioValueValidator.MAX_ORIGINAL_TEXT_CHARACTERS,
+                                "originalText")
+                        : null);
+    }
+
+    private static List<Long> sourceFragmentIds(SourceReference source) {
+        if (source == null || source.sourceFragmentIds() == null) return List.of();
+        if (source.sourceFragmentIds().size() > PortfolioValueValidator.MAX_SOURCE_FRAGMENT_IDS) {
+            throw PortfolioException.validation(
+                    "sourceFragmentIds contains more than "
+                            + PortfolioValueValidator.MAX_SOURCE_FRAGMENT_IDS + " entries");
+        }
+        List<Long> fragmentIds = source.sourceFragmentIds().stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (fragmentIds.stream().anyMatch(id -> id <= 0)) {
+            throw PortfolioException.validation("sourceFragmentIds must contain only positive identifiers");
+        }
+        return fragmentIds;
+    }
+
+    private static Long positiveIdentifier(Long value, String field) {
+        if (value != null && value <= 0) {
+            throw PortfolioException.validation(field + " must be a positive identifier");
+        }
+        return value;
+    }
+
+    private static Integer positivePageNumber(Integer value) {
+        if (value != null && value < 1) {
+            throw PortfolioException.validation("pageNumber must be positive");
+        }
+        return value;
     }
 
     private static int normalizePriority(Integer priority) {
@@ -430,12 +497,7 @@ public class ProjectPortfolioService {
     }
 
     private static String normalizeCurrency(String currency) {
-        if (currency == null || currency.isBlank()) return null;
-        String normalized = currency.strip().toUpperCase(Locale.ROOT);
-        if (!normalized.matches("[A-Z]{3}")) {
-            throw PortfolioException.validation("budgetCurrency must be a three-letter ISO currency code");
-        }
-        return normalized;
+        return PortfolioValueValidator.currency(currency, "budgetCurrency");
     }
 
     static String requireText(String value, String field, int maximumLength) {

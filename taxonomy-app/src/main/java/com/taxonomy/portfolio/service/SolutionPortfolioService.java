@@ -98,6 +98,17 @@ public class SolutionPortfolioService {
             throw PortfolioException.conflict("Solution key already exists in this workspace: " + solutionKey);
         }
         int maturity = normalizeMaturity(request.maturityLevel());
+        var costAmount = PortfolioValueValidator.money(request.costAmount(), "costAmount");
+        String costCurrency = normalizeCurrency(request.costCurrency());
+        PortfolioValueValidator.requireMoneyPair(
+                costAmount, costCurrency, "costAmount", "costCurrency");
+        Integer leadTimeDays = PortfolioValueValidator.nonNegativeDays(
+                request.leadTimeDays(), "leadTimeDays");
+        Map<String, String> extensionAttributes = PortfolioValueValidator.extensionAttributes(
+                request.extensionAttributes() != null ? request.extensionAttributes() : Map.of());
+        String extensionAttributesJson = ProjectPortfolioService.limited(
+                jsonCodec.write(extensionAttributes), 4000, "extensionAttributes");
+
         Instant now = Instant.now();
         SolutionDefinition solution = new SolutionDefinition(
                 scopeKey,
@@ -122,12 +133,11 @@ public class SolutionPortfolioService {
                 null,
                 null,
                 null,
-                request.costAmount(),
-                normalizeCurrency(request.costCurrency()),
+                costAmount,
+                costCurrency,
                 ProjectPortfolioService.limited(request.riskNotes(), 2000, "riskNotes"),
-                request.leadTimeDays(),
-                jsonCodec.write(request.extensionAttributes() != null
-                        ? request.extensionAttributes() : Map.of()),
+                leadTimeDays,
+                extensionAttributesJson,
                 now);
         return toSolutionView(solutionRepository.save(solution));
     }
@@ -150,6 +160,26 @@ public class SolutionPortfolioService {
                                        WorkspaceContext context) {
         if (request == null) throw PortfolioException.validation("solution update is required");
         SolutionDefinition solution = requireSolution(solutionId, username, context);
+        var requestedAmount = request.costAmount() != null
+                ? PortfolioValueValidator.money(request.costAmount(), "costAmount") : null;
+        String requestedCurrency = request.costCurrency() != null
+                ? normalizeCurrency(request.costCurrency()) : null;
+        var effectiveAmount = request.costAmount() != null
+                ? requestedAmount : solution.getCostAmount();
+        String effectiveCurrency = request.costCurrency() != null
+                ? requestedCurrency : solution.getCostCurrency();
+        PortfolioValueValidator.requireMoneyPair(
+                effectiveAmount, effectiveCurrency, "costAmount", "costCurrency");
+        Integer leadTimeDays = request.leadTimeDays() != null
+                ? PortfolioValueValidator.nonNegativeDays(request.leadTimeDays(), "leadTimeDays") : null;
+        String extensionAttributesJson = null;
+        if (request.extensionAttributes() != null) {
+            extensionAttributesJson = ProjectPortfolioService.limited(
+                    jsonCodec.write(PortfolioValueValidator.extensionAttributes(request.extensionAttributes())),
+                    4000,
+                    "extensionAttributes");
+        }
+
         solution.update(
                 request.title() != null
                         ? ProjectPortfolioService.requireText(request.title(), "title", 240) : null,
@@ -159,14 +189,14 @@ public class SolutionPortfolioService {
                 request.lifecycleStatus(),
                 request.maturityLevel() != null ? normalizeMaturity(request.maturityLevel()) : null,
                 request.ownerUsername() != null && !request.ownerUsername().isBlank()
-                        ? request.ownerUsername().strip() : null,
+                        ? ProjectPortfolioService.requireText(request.ownerUsername(), "ownerUsername", 160) : null,
                 ProjectPortfolioService.limited(
                         request.responsibleOrganization(), 240, "responsibleOrganization"),
-                request.costAmount(),
-                normalizeCurrency(request.costCurrency()),
+                requestedAmount,
+                requestedCurrency,
                 ProjectPortfolioService.limited(request.riskNotes(), 2000, "riskNotes"),
-                request.leadTimeDays(),
-                request.extensionAttributes() != null ? jsonCodec.write(request.extensionAttributes()) : null,
+                leadTimeDays,
+                extensionAttributesJson,
                 Instant.now());
         return toSolutionView(solution);
     }
@@ -517,11 +547,6 @@ public class SolutionPortfolioService {
     }
 
     private static String normalizeCurrency(String value) {
-        if (value == null || value.isBlank()) return null;
-        String normalized = value.strip().toUpperCase(Locale.ROOT);
-        if (!normalized.matches("[A-Z]{3}")) {
-            throw PortfolioException.validation("costCurrency must be a three-letter ISO currency code");
-        }
-        return normalized;
+        return PortfolioValueValidator.currency(value, "costCurrency");
     }
 }
