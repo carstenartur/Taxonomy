@@ -46,4 +46,15 @@ class PortfolioPageRoutesTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "/js/portfolio/portfolio-matrices.js")));
     }
+
+    @Test
+    void guidedImportHasStableProjectRoute() throws Exception {
+        mockMvc.perform(get("/projects/12/import"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("portfolio-import"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "id=\"importMain\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "/js/portfolio/portfolio-import.js")));
+    }
 }
