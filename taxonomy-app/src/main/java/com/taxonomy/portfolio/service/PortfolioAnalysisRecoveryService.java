@@ -33,7 +33,8 @@ public class PortfolioAnalysisRecoveryService {
      * Resets failed items and RUNNING items whose claim is older than the supplied
      * cutoff. Active claims remain untouched. Every successful compare-and-set
      * increments the attempt and binds the retry to the requirement's current
-     * immutable text version.
+     * immutable text version. The job remains PENDING until a worker actually
+     * claims its prepared items, so a lost or rejected dispatch can be retried.
      *
      * @return number of items atomically prepared for another attempt
      */
@@ -83,7 +84,7 @@ public class PortfolioAnalysisRecoveryService {
             throw PortfolioException.conflict(
                     "Analysis job has no failed or expired running items to retry: " + jobId);
         }
-        job.markRunning(Instant.now());
+        job.markPending();
         return prepared;
     }
 }

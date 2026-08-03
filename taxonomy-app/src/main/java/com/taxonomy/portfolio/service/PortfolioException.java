@@ -7,7 +7,8 @@ public class PortfolioException extends RuntimeException {
         NOT_FOUND,
         CONFLICT,
         VALIDATION,
-        ANALYSIS_FAILED
+        ANALYSIS_FAILED,
+        UNAVAILABLE
     }
 
     private final Kind kind;
@@ -40,5 +41,9 @@ public class PortfolioException extends RuntimeException {
 
     public static PortfolioException analysisFailed(String message, Throwable cause) {
         return new PortfolioException(Kind.ANALYSIS_FAILED, message, cause);
+    }
+
+    public static PortfolioException unavailable(String message, Throwable cause) {
+        return new PortfolioException(Kind.UNAVAILABLE, message, cause);
     }
 }

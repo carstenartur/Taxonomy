@@ -102,7 +102,7 @@ public class ProjectPortfolioController {
     }
 
     @PostMapping("/{projectId}/requirements/import")
-    @Operation(summary = "Import candidates as separate requirements, optionally analyze them")
+    @Operation(summary = "Import candidates as separate requirements, optionally queue their analysis")
     public ResponseEntity<ImportRequirementsResult> importRequirements(
             @PathVariable Long projectId,
             @RequestBody ImportRequirementsRequest request) {
@@ -111,7 +111,7 @@ public class ProjectPortfolioController {
         List<RequirementView> requirements = projectService.importRequirements(
                 projectId, request.requirements(), scope.username(), scope.context());
         var job = request.analyzeAfterImport()
-                ? analysisService.analyzeProject(
+                ? analysisService.enqueueProject(
                         projectId,
                         new AnalyzeProjectRequest(
                                 requirements.stream().map(RequirementView::id).toList(),

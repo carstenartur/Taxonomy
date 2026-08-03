@@ -105,6 +105,13 @@ public class RequirementAnalysisJob {
         this.createdAt = createdAt;
     }
 
+    public void markPending() {
+        this.status = AnalysisStatus.PENDING;
+        this.startedAt = null;
+        this.completedAt = null;
+        this.errorSummary = null;
+    }
+
     public void markRunning(Instant now) {
         this.status = AnalysisStatus.RUNNING;
         this.startedAt = now;
@@ -126,8 +133,12 @@ public class RequirementAnalysisJob {
         if (completedItems < totalItems) {
             // Another worker may still own RUNNING items. Never expose a
             // premature SUCCESS state merely because this request claimed no
-            // additional work.
+            // additional work. Preserve an existing start time, but enforce
+            // the invariant that every externally visible RUNNING job has one.
             this.status = AnalysisStatus.RUNNING;
+            if (this.startedAt == null) {
+                this.startedAt = now;
+            }
             this.completedAt = null;
             return;
         }
