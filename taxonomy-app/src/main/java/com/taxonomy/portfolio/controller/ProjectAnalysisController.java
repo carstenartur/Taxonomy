@@ -15,6 +15,7 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
 import java.util.List;
 
 /** Requirement-separated analysis jobs and immutable snapshot history. */
@@ -45,23 +47,25 @@ public class ProjectAnalysisController {
     }
 
     @PostMapping("/analyses")
-    @Operation(summary = "Analyze selected or all requirements independently")
-    public AnalysisJobView analyzeProject(@PathVariable Long projectId,
-                                          @RequestBody AnalyzeProjectRequest request) {
+    @Operation(summary = "Queue independent analyses for selected or all requirements")
+    public ResponseEntity<AnalysisJobView> analyzeProject(@PathVariable Long projectId,
+                                                          @RequestBody AnalyzeProjectRequest request) {
         RequestScope scope = scope();
-        return analysisService.analyzeProject(projectId, request, scope.username(), scope.context());
+        AnalysisJobView job = analysisService.enqueueProject(
+                projectId, request, scope.username(), scope.context());
+        return accepted(projectId, job);
     }
 
     @PostMapping("/requirements/{requirementId}/analyses")
-    @Operation(summary = "Analyze one requirement and create an immutable snapshot")
-    public AnalysisJobView analyzeRequirement(
+    @Operation(summary = "Queue one requirement analysis and immutable snapshot")
+    public ResponseEntity<AnalysisJobView> analyzeRequirement(
             @PathVariable Long projectId,
             @PathVariable Long requirementId,
             @RequestBody(required = false) AnalyzeProjectRequest request) {
         RequestScope scope = scope();
         AnalyzeProjectRequest effective = request != null
                 ? request : new AnalyzeProjectRequest(List.of(requirementId), false, null, null, null);
-        return analysisService.analyzeRequirement(
+        AnalysisJobView job = analysisService.enqueueRequirement(
                 projectId,
                 requirementId,
                 effective.provider(),
@@ -69,6 +73,7 @@ public class ProjectAnalysisController {
                 effective.idempotencyKey(),
                 scope.username(),
                 scope.context());
+        return accepted(projectId, job);
     }
 
     @GetMapping("/analysis-jobs")
@@ -87,11 +92,13 @@ public class ProjectAnalysisController {
     }
 
     @PostMapping("/analysis-jobs/{jobId}/retry-failed")
-    @Operation(summary = "Retry only failed requirement analyses using their current versions")
-    public AnalysisJobView retryFailed(@PathVariable Long projectId,
-                                       @PathVariable String jobId) {
+    @Operation(summary = "Queue failed or expired requirement analyses for retry")
+    public ResponseEntity<AnalysisJobView> retryFailed(@PathVariable Long projectId,
+                                                       @PathVariable String jobId) {
         RequestScope scope = scope();
-        return analysisService.retryFailed(jobId, projectId, scope.username(), scope.context());
+        AnalysisJobView job = analysisService.enqueueRetryFailed(
+                jobId, projectId, scope.username(), scope.context());
+        return accepted(projectId, job);
     }
 
     @GetMapping("/requirements/{requirementId}/snapshots")
@@ -141,6 +148,12 @@ public class ProjectAnalysisController {
         RequestScope scope = scope();
         return persistenceService.reviewRelationMapping(
                 projectId, mappingId, request, scope.username(), scope.context());
+    }
+
+    private static ResponseEntity<AnalysisJobView> accepted(Long projectId, AnalysisJobView job) {
+        URI location = URI.create(
+                "/api/projects/" + projectId + "/analysis-jobs/" + job.id());
+        return ResponseEntity.accepted().location(location).body(job);
     }
 
     private RequestScope scope() {
