@@ -21,6 +21,7 @@ public class PortfolioExceptionHandler {
             case CONFLICT -> HttpStatus.CONFLICT;
             case VALIDATION -> HttpStatus.BAD_REQUEST;
             case ANALYSIS_FAILED -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
         };
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, exception.getMessage());
         problem.setTitle(switch (exception.getKind()) {
@@ -28,6 +29,7 @@ public class PortfolioExceptionHandler {
             case CONFLICT -> "Portfolio state conflict";
             case VALIDATION -> "Invalid portfolio request";
             case ANALYSIS_FAILED -> "Portfolio analysis payload failure";
+            case UNAVAILABLE -> "Portfolio analysis capacity unavailable";
         });
         problem.setType(URI.create("urn:taxonomy:portfolio:" + exception.getKind().name().toLowerCase()));
         return ResponseEntity.status(status).body(problem);
