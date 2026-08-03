@@ -13,7 +13,8 @@
 
     window.fetch = async function portfolioAwareFetch(input, init) {
         const response = await originalFetch(input, init);
-        const method = String((init && init.method) || 'GET').toUpperCase();
+        const method = String((init && init.method)
+            || (input instanceof Request ? input.method : 'GET')).toUpperCase();
         const requestUrl = resolveUrl(input);
         if (method !== 'POST' || response.status !== 202 || !isAnalysisSubmission(requestUrl)) {
             return response;
@@ -74,13 +75,21 @@
                 reject(new DOMException('The operation was aborted.', 'AbortError'));
                 return;
             }
-            const timeout = window.setTimeout(resolve, milliseconds);
-            if (signal) {
-                signal.addEventListener('abort', function onAbort() {
-                    window.clearTimeout(timeout);
-                    reject(new DOMException('The operation was aborted.', 'AbortError'));
-                }, { once: true });
-            }
+
+            let settled = false;
+            const onAbort = function () {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeout);
+                reject(new DOMException('The operation was aborted.', 'AbortError'));
+            };
+            const timeout = window.setTimeout(function () {
+                if (settled) return;
+                settled = true;
+                if (signal) signal.removeEventListener('abort', onAbort);
+                resolve();
+            }, milliseconds);
+            if (signal) signal.addEventListener('abort', onAbort, { once: true });
         });
     }
 })();
