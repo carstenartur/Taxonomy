@@ -4,8 +4,7 @@ function uniqueSuffix() {
 
 async function waitUntilIdle(page) {
   await page.locator('#portfolioBusy')
-    .waitFor({ state: 'hidden', timeout: 120_000 })
-    .catch(() => undefined);
+    .waitFor({ state: 'hidden', timeout: 120_000 });
 }
 
 async function submitModal(page, modalId, fill, responsePattern) {
