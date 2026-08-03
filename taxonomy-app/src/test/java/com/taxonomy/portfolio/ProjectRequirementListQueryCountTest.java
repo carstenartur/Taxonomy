@@ -81,8 +81,8 @@ class ProjectRequirementListQueryCountTest {
         assertThat(requirements).hasSize(100);
         assertThat(requirements)
                 .allSatisfy(requirement -> assertThat(requirement.currentVersion()).isNotNull());
-        assertThat(statistics.getQueryExecutionCount())
-                .as("project lookup plus one joined requirement/current-version query")
+        assertThat(statistics.getPrepareStatementCount())
+                .as("all SQL statements for project lookup and joined requirement/current-version loading")
                 .isLessThanOrEqualTo(3L);
     }
 
