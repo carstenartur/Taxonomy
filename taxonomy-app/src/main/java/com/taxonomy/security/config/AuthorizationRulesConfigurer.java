@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * Shared authorization rules used by both the form-login and Keycloak
  * security configurations. Rules are ordered from most specific to least
  * specific so that state-changing endpoints are never accidentally covered by
- * the generic authenticated-user fallback.
+ * a generic authenticated-user fallback.
  */
 @Component
 public class AuthorizationRulesConfigurer {
@@ -32,75 +32,63 @@ public class AuthorizationRulesConfigurer {
             auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated();
         }
 
-        // The UI uses these endpoints to decide whether to show the admin lock.
-        // They must be reachable by authenticated non-admin users, but never grant
-        // additional privileges; the controller derives the result from ROLE_ADMIN.
         auth.requestMatchers("/api/admin/status", "/api/admin/verify").authenticated();
-
-        // Administrative surfaces. These checks are also repeated inside the
-        // controller as defense in depth for diagnostics and prompt mutation.
         auth.requestMatchers("/admin/**", "/api/admin/**", "/api/preferences/**",
                         "/api/diagnostics", "/api/prompts/**")
                 .hasRole("ADMIN");
 
-        // Architecture mutation — ARCHITECT or ADMIN.
-        auth.requestMatchers(HttpMethod.POST,   "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
-        auth.requestMatchers(HttpMethod.PUT,    "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        // Proposal generation and review mutate proposal state and can create or
-        // delete real relations. Keep these endpoints out of the generic
-        // authenticated-user fallback.
-        auth.requestMatchers(HttpMethod.POST,   "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
-        auth.requestMatchers(HttpMethod.PUT,    "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        // Parse, validate and format transform request content only and are used by
-        // the editor for every authenticated role. More general DSL writes below
-        // remain restricted to ARCHITECT and ADMIN.
         auth.requestMatchers(HttpMethod.POST, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format")
                 .authenticated();
-        auth.requestMatchers(HttpMethod.POST,   "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
-        auth.requestMatchers(HttpMethod.PUT,    "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        auth.requestMatchers(HttpMethod.POST,   "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
-        auth.requestMatchers(HttpMethod.PUT,    "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        auth.requestMatchers(HttpMethod.GET,  "/api/context/**").authenticated();
+        auth.requestMatchers(HttpMethod.GET, "/api/context/**").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        auth.requestMatchers(HttpMethod.GET,  "/api/workspace/**").authenticated();
-        // Pull, publish and semantic divergence resolution are ordinary
-        // architecture collaboration operations. They are scoped to the current
-        // user's workspace and therefore require ARCHITECT, not global ADMIN.
-        // These specific rules must precede the administrative workspace fallback.
+        auth.requestMatchers(HttpMethod.GET, "/api/workspace/**").authenticated();
         auth.requestMatchers(HttpMethod.POST,
                         "/api/workspace/sync-from-shared",
                         "/api/workspace/publish",
                         "/api/workspace/resolve-diverged")
                 .hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/workspace/**").hasRole("ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/workspace/**").hasRole("ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/workspace/**").hasRole("ADMIN");
 
-        // Import preview is read-only, while materialization and provenance
-        // registration mutate workspace state.
-        auth.requestMatchers(HttpMethod.POST, "/api/import/preview/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/import/preview/**")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/import/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/documents/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        // Project analysis is an end-user operation. More general project writes
-        // remain restricted below. The specific matchers must precede /api/projects/**.
+        auth.requestMatchers(HttpMethod.POST, "/api/coverage/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/coverage/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/architecture/metadata/recompute")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+
         auth.requestMatchers(HttpMethod.POST,
                         "/api/projects/*/analyses",
                         "/api/projects/*/requirements/*/analyses",
                         "/api/projects/*/analysis-jobs/*/retry-failed")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
 
-        // Project, solution and sourced product portfolio mutation.
         auth.requestMatchers(HttpMethod.POST, "/api/projects/**")
                 .hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PATCH, "/api/projects/**")
@@ -119,18 +107,30 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.DELETE, "/api/solutions/**", "/api/products/**")
                 .hasAnyRole("ARCHITECT", "ADMIN");
 
-        // End-user analysis and export operations.
-        auth.requestMatchers(HttpMethod.POST, "/api/export/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
-        auth.requestMatchers(HttpMethod.POST, "/api/report/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        // End-user calculations and file transformations use POST bodies but do
+        // not persist architecture decisions. They are explicitly enumerated so
+        // a newly introduced POST endpoint cannot inherit the same permission.
+        auth.requestMatchers(HttpMethod.POST,
+                        "/api/recommend",
+                        "/api/gap/**",
+                        "/api/patterns/**",
+                        "/api/explain/**",
+                        "/api/graph/**",
+                        "/api/diagram/**",
+                        "/api/scores/**",
+                        "/api/export/**",
+                        "/api/report/**")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+
+        auth.requestMatchers(HttpMethod.POST, "/api/account/change-password").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/analyze").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/justify-leaf").authenticated();
 
-        // Reading API — any authenticated user.
         auth.requestMatchers(HttpMethod.GET, "/api/**").authenticated();
+        auth.requestMatchers(HttpMethod.HEAD, "/api/**").authenticated();
+        auth.requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll();
 
-        // Remaining API requests must still be authenticated. Specific write
-        // capabilities should be added above rather than relying on this rule.
-        auth.requestMatchers("/api/**").authenticated();
+        auth.requestMatchers("/api/**").denyAll();
         auth.requestMatchers("/**").authenticated();
     }
 }

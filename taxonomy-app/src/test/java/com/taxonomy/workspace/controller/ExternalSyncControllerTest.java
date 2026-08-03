@@ -130,6 +130,6 @@ class ExternalSyncControllerTest {
     void configureIsDeniedForNonAdminUser() throws Exception {
         mockMvc.perform(put(BASE + "/configure")
                         .param("topologyMode", "EXTERNAL_CANONICAL"))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isForbidden());
     }
 }
