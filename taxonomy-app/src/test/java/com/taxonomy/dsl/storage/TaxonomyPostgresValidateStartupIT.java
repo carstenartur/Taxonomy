@@ -80,7 +80,10 @@ class TaxonomyPostgresValidateStartupIT {
             "com.taxonomy",
             "io.github.carstenartur.jgit.storage.hibernate.entity"
     })
-    @Import(TaxonomySchemaMigrationConfig.class)
+    @Import({
+            JgitStorageSchemaMigrationConfig.class,
+            TaxonomySchemaMigrationConfig.class
+    })
     static class MinimalJpaValidationApplication {
     }
 }
