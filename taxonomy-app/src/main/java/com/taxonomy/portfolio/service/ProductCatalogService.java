@@ -25,9 +25,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /** Manually curated, sourced product catalogue and human-reviewed solution candidates. */
 @Service
@@ -98,14 +103,15 @@ public class ProductCatalogService {
                 verifiedAt,
                 PortfolioScope.username(username, context),
                 now);
-        return toProductView(productRepository.save(product));
+        return toProductView(productRepository.save(product), List.of());
     }
 
     @Transactional(readOnly = true)
     public List<ProductView> listProducts(String username, WorkspaceContext context) {
-        return productRepository
-                .findByScopeKeyOrderByManufacturerAscProductNameAsc(PortfolioScope.key(username, context))
-                .stream().map(this::toProductView).toList();
+        List<ProductCatalogEntry> products = productRepository
+                .findByScopeKeyOrderByManufacturerAscProductNameAsc(PortfolioScope.key(username, context));
+        Map<Long, ProductView> views = toProductViews(products);
+        return products.stream().map(product -> views.get(product.getId())).toList();
     }
 
     @Transactional(readOnly = true)
@@ -265,8 +271,11 @@ public class ProductCatalogService {
         projectSolutionRepository.findByIdAndProjectId(projectSolutionId, projectId)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Project solution not found: " + projectSolutionId));
-        return candidateRepository.findByProjectSolutionIdOrderByCoveragePercentDesc(projectSolutionId)
-                .stream().map(this::toCandidateView).toList();
+        List<SolutionProductCandidate> candidates = candidateRepository
+                .findByProjectSolutionIdOrderByCoveragePercentDesc(projectSolutionId);
+        Map<Long, ProductView> products = toProductViews(candidates.stream()
+                .map(SolutionProductCandidate::getProduct).toList());
+        return candidates.stream().map(candidate -> toCandidateView(candidate, products)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -279,57 +288,67 @@ public class ProductCatalogService {
     }
 
     public ProductView toProductView(ProductCatalogEntry product) {
-        List<TaxonomyCoverageView> coverage = coverageRepository
-                .findByProductIdOrderByNodeCodeAsc(product.getId()).stream()
+        return toProductView(product,
+                coverageRepository.findByProductIdOrderByNodeCodeAsc(product.getId()));
+    }
+
+    public Map<Long, ProductView> toProductViews(Collection<ProductCatalogEntry> products) {
+        Map<Long, ProductCatalogEntry> unique = products.stream()
+                .collect(Collectors.toMap(
+                        ProductCatalogEntry::getId,
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        if (unique.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<ProductTaxonomyCoverage>> coverageByProduct = coverageRepository
+                .findByProductIdInOrderByProductIdAscNodeCodeAsc(unique.keySet())
+                .stream()
+                .collect(Collectors.groupingBy(
+                        mapping -> mapping.getProduct().getId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+        Map<Long, ProductView> views = new LinkedHashMap<>();
+        unique.forEach((id, product) -> views.put(
+                id, toProductView(product, coverageByProduct.getOrDefault(id, List.of()))));
+        return views;
+    }
+
+    private ProductView toProductView(ProductCatalogEntry product,
+                                      List<ProductTaxonomyCoverage> mappings) {
+        List<TaxonomyCoverageView> coverage = mappings.stream()
                 .map(mapping -> new TaxonomyCoverageView(
-                        mapping.getId(),
-                        mapping.getNodeCode(),
-                        mapping.getCoveragePercent(),
-                        mapping.getEvidence(),
-                        mapping.getReviewStatus(),
-                        mapping.getUpdatedBy(),
+                        mapping.getId(), mapping.getNodeCode(), mapping.getCoveragePercent(),
+                        mapping.getEvidence(), mapping.getReviewStatus(), mapping.getUpdatedBy(),
                         mapping.getUpdatedAt()))
                 .toList();
         return new ProductView(
-                product.getId(),
-                product.getProductKey(),
-                product.getManufacturer(),
-                product.getProductFamily(),
-                product.getProductName(),
-                product.getEditionVersion(),
-                product.getProductStatus(),
-                product.getEndOfSupport(),
-                product.getLicenseModel(),
-                product.getOperatingModel(),
-                product.getSupportedPlatforms(),
-                product.getSecurityFeatures(),
-                product.getComplianceFeatures(),
-                product.getCostAmount(),
-                product.getCostCurrency(),
-                product.getCostBasis(),
-                product.getSourceReference(),
-                product.getVerifiedAt(),
-                product.getCreatedBy(),
-                product.getCreatedAt(),
-                product.getUpdatedAt(),
-                coverage);
+                product.getId(), product.getProductKey(), product.getManufacturer(),
+                product.getProductFamily(), product.getProductName(), product.getEditionVersion(),
+                product.getProductStatus(), product.getEndOfSupport(), product.getLicenseModel(),
+                product.getOperatingModel(), product.getSupportedPlatforms(),
+                product.getSecurityFeatures(), product.getComplianceFeatures(),
+                product.getCostAmount(), product.getCostCurrency(), product.getCostBasis(),
+                product.getSourceReference(), product.getVerifiedAt(), product.getCreatedBy(),
+                product.getCreatedAt(), product.getUpdatedAt(), coverage);
     }
 
     public SolutionProductCandidateView toCandidateView(SolutionProductCandidate candidate) {
+        return toCandidateView(candidate, Map.of(
+                candidate.getProduct().getId(), toProductView(candidate.getProduct())));
+    }
+
+    public SolutionProductCandidateView toCandidateView(
+            SolutionProductCandidate candidate,
+            Map<Long, ProductView> productViews) {
         return new SolutionProductCandidateView(
-                candidate.getId(),
-                candidate.getProjectSolution().getId(),
-                toProductView(candidate.getProduct()),
-                candidate.getCoveragePercent(),
-                candidate.getHardExclusions(),
-                candidate.getStrengths(),
-                candidate.getWeaknesses(),
-                candidate.getOpenEvidence(),
-                candidate.getConfidence(),
-                candidate.getReviewStatus(),
-                candidate.getSelectionStatus(),
-                candidate.getUpdatedBy(),
-                candidate.getUpdatedAt());
+                candidate.getId(), candidate.getProjectSolution().getId(),
+                productViews.get(candidate.getProduct().getId()),
+                candidate.getCoveragePercent(), candidate.getHardExclusions(),
+                candidate.getStrengths(), candidate.getWeaknesses(), candidate.getOpenEvidence(),
+                candidate.getConfidence(), candidate.getReviewStatus(), candidate.getSelectionStatus(),
+                candidate.getUpdatedBy(), candidate.getUpdatedAt());
     }
 
     private String requireNodeCode(String nodeCode) {
@@ -345,8 +364,7 @@ public class ProductCatalogService {
         String normalized = ProjectPortfolioService.requireText(value, field, 64)
                 .toUpperCase(Locale.ROOT);
         if (!BUSINESS_KEY.matcher(normalized).matches()) {
-            throw PortfolioException.validation(
-                    field + " contains unsupported characters");
+            throw PortfolioException.validation(field + " contains unsupported characters");
         }
         return normalized;
     }
