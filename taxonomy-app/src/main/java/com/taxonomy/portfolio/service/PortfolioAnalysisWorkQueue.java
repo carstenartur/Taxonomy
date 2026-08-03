@@ -11,7 +11,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Materializes and atomically claims all data needed for one analysis outside the persistence transaction. */
+/**
+ * Claims pending analysis items in a short persistence transaction and returns
+ * self-contained work payloads. External LLM execution happens only after this
+ * method has committed and therefore outside the claim transaction.
+ */
 @Service
 public class PortfolioAnalysisWorkQueue {
 
@@ -35,33 +39,27 @@ public class PortfolioAnalysisWorkQueue {
     }
 
     /**
-     * Claims pending items with compare-and-set semantics before returning their
-     * detached work payloads. Competing requests can observe the same candidate
-     * IDs, but only one request can update a given row from PENDING to RUNNING.
+     * Claims pending items with compare-and-set semantics and materializes their
+     * work payloads before the transaction ends. Competing requests can observe
+     * the same candidates, but only one can update a row from PENDING to RUNNING.
      */
     @Transactional
     public List<WorkItem> pending(String jobId, Long projectId) {
         jobRepository.findByIdAndProjectId(jobId, projectId)
                 .orElseThrow(() -> PortfolioException.notFound("Analysis job not found: " + jobId));
 
-        List<Long> candidateIds = itemRepository
-                .findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(jobId, AnalysisStatus.PENDING)
-                .stream()
-                .map(RequirementAnalysisJobItem::getId)
-                .toList();
-        if (candidateIds.isEmpty()) {
+        List<RequirementAnalysisJobItem> candidates = itemRepository
+                .findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(jobId, AnalysisStatus.PENDING);
+        if (candidates.isEmpty()) {
             return List.of();
         }
 
         Instant claimedAt = Instant.now();
-        List<WorkItem> claimed = new ArrayList<>(candidateIds.size());
-        for (Long itemId : candidateIds) {
+        List<WorkItem> claimed = new ArrayList<>(candidates.size());
+        for (RequirementAnalysisJobItem item : candidates) {
             int updated = itemRepository.claimPending(
-                    itemId, AnalysisStatus.PENDING, AnalysisStatus.RUNNING, claimedAt);
+                    item.getId(), AnalysisStatus.PENDING, AnalysisStatus.RUNNING, claimedAt);
             if (updated == 1) {
-                RequirementAnalysisJobItem item = itemRepository.findById(itemId)
-                        .orElseThrow(() -> PortfolioException.notFound(
-                                "Claimed analysis job item not found: " + itemId));
                 claimed.add(toWorkItem(item));
             }
         }
