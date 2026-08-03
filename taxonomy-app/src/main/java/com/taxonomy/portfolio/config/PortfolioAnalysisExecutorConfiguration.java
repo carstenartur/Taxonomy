@@ -12,20 +12,16 @@ public class PortfolioAnalysisExecutorConfiguration {
 
     @Bean(name = "portfolioAnalysisExecutor")
     public AsyncTaskExecutor portfolioAnalysisExecutor(
-            @Value("${taxonomy.portfolio.analysis-worker-core-pool-size:1}") int configuredCorePoolSize,
-            @Value("${taxonomy.portfolio.analysis-worker-max-pool-size:4}") int configuredMaxPoolSize,
+            @Value("${taxonomy.portfolio.analysis-worker-concurrency:1}") int configuredConcurrency,
             @Value("${taxonomy.portfolio.analysis-worker-queue-capacity:100}") int configuredQueueCapacity,
             @Value("${taxonomy.portfolio.analysis-worker-shutdown-seconds:30}") int configuredShutdownSeconds) {
-        int corePoolSize = Math.max(1, configuredCorePoolSize);
-        int maxPoolSize = Math.max(corePoolSize, configuredMaxPoolSize);
+        int concurrency = Math.max(1, configuredConcurrency);
 
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setThreadNamePrefix("portfolio-analysis-");
-        executor.setCorePoolSize(corePoolSize);
-        executor.setMaxPoolSize(maxPoolSize);
+        executor.setCorePoolSize(concurrency);
+        executor.setMaxPoolSize(concurrency);
         executor.setQueueCapacity(Math.max(0, configuredQueueCapacity));
-        executor.setKeepAliveSeconds(60);
-        executor.setAllowCoreThreadTimeOut(true);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(Math.max(0, configuredShutdownSeconds));
         return executor;
