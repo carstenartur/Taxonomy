@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * Shared authorization rules used by both the form-login and Keycloak
  * security configurations. Rules are ordered from most specific to least
  * specific so that state-changing endpoints are never accidentally covered by
- * the generic authenticated-user fallback.
+ * a generic authenticated-user fallback.
  */
 @Component
 public class AuthorizationRulesConfigurer {
@@ -49,8 +49,8 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.DELETE, "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         // Proposal generation and review mutate proposal state and can create or
-        // delete real relations. Keep these endpoints out of the generic
-        // authenticated-user fallback.
+        // delete real relations. Keep these endpoints out of the read-only
+        // authenticated-user allowlist.
         auth.requestMatchers(HttpMethod.POST,   "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT,    "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
@@ -82,6 +82,8 @@ public class AuthorizationRulesConfigurer {
                         "/api/workspace/resolve-diverged")
                 .hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/workspace/**").hasRole("ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/workspace/**").hasRole("ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/workspace/**").hasRole("ADMIN");
 
         // Import preview is read-only, while materialization and provenance
         // registration mutate workspace state.
@@ -91,6 +93,18 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
+
+        // Legacy requirement coverage is persisted state, not a read-only
+        // calculation. Recording and deleting mappings therefore require an
+        // architecture role even though reads remain available below.
+        auth.requestMatchers(HttpMethod.POST, "/api/coverage/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/coverage/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+
+        // Recomputing derived metadata writes the catalogue projection.
+        auth.requestMatchers(HttpMethod.POST, "/api/architecture/metadata/recompute")
+                .hasAnyRole("ARCHITECT", "ADMIN");
 
         // Project analysis is an end-user operation. More general project writes
         // remain restricted below. The specific matchers must precede /api/projects/**.
@@ -119,18 +133,36 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.DELETE, "/api/solutions/**", "/api/products/**")
                 .hasAnyRole("ARCHITECT", "ADMIN");
 
+        // End-user calculations use POST bodies but do not persist architecture
+        // decisions. They need an explicit allowlist so an unknown POST endpoint
+        // cannot inherit the same permission accidentally.
+        auth.requestMatchers(HttpMethod.POST,
+                        "/api/recommend",
+                        "/api/gap/**",
+                        "/api/patterns/**",
+                        "/api/explain/**",
+                        "/api/graph/**")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+
+        // Local-account self-service is available to every authenticated user.
+        auth.requestMatchers(HttpMethod.POST, "/api/account/change-password").authenticated();
+
         // End-user analysis and export operations.
         auth.requestMatchers(HttpMethod.POST, "/api/export/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/report/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/analyze").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/justify-leaf").authenticated();
 
-        // Reading API — any authenticated user.
+        // Reading API — any authenticated user. HEAD follows the same visibility
+        // contract. OPTIONS remains public so standards-compliant CORS preflight
+        // can complete before authentication is evaluated.
         auth.requestMatchers(HttpMethod.GET, "/api/**").authenticated();
+        auth.requestMatchers(HttpMethod.HEAD, "/api/**").authenticated();
+        auth.requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll();
 
-        // Remaining API requests must still be authenticated. Specific write
-        // capabilities should be added above rather than relying on this rule.
-        auth.requestMatchers("/api/**").authenticated();
+        // Fail closed for every API method and path not explicitly classified
+        // above. New write endpoints must declare their intended role here.
+        auth.requestMatchers("/api/**").denyAll();
         auth.requestMatchers("/**").authenticated();
     }
 }
