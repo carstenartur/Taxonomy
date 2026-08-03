@@ -58,10 +58,10 @@ public class UserManagementService {
     }
 
     public Map<String, Object> createUser(Map<String, Object> body, String actor) {
-        String username = stringValue(body.get("username"));
+        String username = bounded(stringValue(body.get("username")), 160, "Username");
         String password = stringValue(body.get("password"));
-        String displayName = stringValue(body.get("displayName"));
-        String email = stringValue(body.get("email"));
+        String displayName = bounded(stringValue(body.get("displayName")), 240, "Display name");
+        String email = bounded(stringValue(body.get("email")), 320, "Email");
         List<String> roles = stringList(body.get("roles"));
 
         if (username == null || username.isBlank()) {
@@ -91,15 +91,16 @@ public class UserManagementService {
         AppUser user = requireUser(id);
 
         if (body.containsKey("displayName")) {
-            user.setDisplayName(stringValue(body.get("displayName")));
+            user.setDisplayName(bounded(
+                    stringValue(body.get("displayName")), 240, "Display name"));
         }
         if (body.containsKey("email")) {
-            user.setEmail(stringValue(body.get("email")));
+            user.setEmail(bounded(stringValue(body.get("email")), 320, "Email"));
         }
         if (body.containsKey("enabled")) {
             boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
-            if (!enabled && isLastAdmin(user)) {
-                throw new ValidationException("Cannot disable the last admin user.");
+            if (!enabled) {
+                assertAdministrativeAccessRemains(user);
             }
             user.setEnabled(enabled);
         }
@@ -107,8 +108,8 @@ public class UserManagementService {
             Set<AppRole> newRoles = resolveRoles(stringList(body.get("roles")));
             boolean removingAdmin = hasRole(user, "ROLE_ADMIN")
                     && newRoles.stream().noneMatch(role -> "ROLE_ADMIN".equals(role.getName()));
-            if (removingAdmin && isLastAdmin(user)) {
-                throw new ValidationException("Cannot remove ADMIN role from the last admin user.");
+            if (removingAdmin) {
+                assertAdministrativeAccessRemains(user);
             }
             user.setRoles(newRoles);
         }
@@ -130,13 +131,23 @@ public class UserManagementService {
 
     public String disableUser(Long id, String actor) {
         AppUser user = requireUser(id);
-        if (isLastAdmin(user)) {
-            throw new ValidationException("Cannot disable the last admin user.");
-        }
+        assertAdministrativeAccessRemains(user);
         user.setEnabled(false);
         userRepository.save(user);
         log.info("USER_DISABLED user={} by={}", user.getUsername(), actor);
         return user.getUsername();
+    }
+
+    private void assertAdministrativeAccessRemains(AppUser user) {
+        if (!user.isEnabled() || !hasRole(user, "ROLE_ADMIN")) {
+            return;
+        }
+        List<AppUser> lockedAdministrators = userRepository.lockEnabledAdministrators();
+        boolean targetIsLockedAdmin = lockedAdministrators.stream()
+                .anyMatch(candidate -> candidate.getId().equals(user.getId()));
+        if (targetIsLockedAdmin && lockedAdministrators.size() <= 1) {
+            throw new ValidationException("Cannot disable or demote the last admin user.");
+        }
     }
 
     private AppUser requireUser(Long id) {
@@ -149,17 +160,9 @@ public class UserManagementService {
             throw new ValidationException(
                     "Password must be at least " + MIN_PASSWORD_LENGTH + " characters.");
         }
-    }
-
-    private boolean isLastAdmin(AppUser user) {
-        if (!hasRole(user, "ROLE_ADMIN")) {
-            return false;
+        if (password.length() > 1024) {
+            throw new ValidationException("Password is too long.");
         }
-        long enabledAdmins = userRepository.findAll().stream()
-                .filter(AppUser::isEnabled)
-                .filter(candidate -> hasRole(candidate, "ROLE_ADMIN"))
-                .count();
-        return enabledAdmins <= 1;
     }
 
     private boolean hasRole(AppUser user, String roleName) {
@@ -169,6 +172,9 @@ public class UserManagementService {
     private Set<AppRole> resolveRoles(List<String> roleNames) {
         if (roleNames == null || roleNames.isEmpty()) {
             return roleRepository.findByName("ROLE_USER").map(Set::of).orElse(Set.of());
+        }
+        if (roleNames.size() > 20) {
+            throw new ValidationException("Too many roles were supplied.");
         }
         Set<AppRole> roles = new HashSet<>();
         for (String roleName : roleNames) {
@@ -194,6 +200,13 @@ public class UserManagementService {
         map.put("mustChangePassword", user.isMustChangePassword());
         map.put("roles", user.getRoles().stream().map(AppRole::getName).sorted().toList());
         return map;
+    }
+
+    private String bounded(String value, int maximum, String field) {
+        if (value != null && value.length() > maximum) {
+            throw new ValidationException(field + " exceeds " + maximum + " characters.");
+        }
+        return value;
     }
 
     private String stringValue(Object value) {
