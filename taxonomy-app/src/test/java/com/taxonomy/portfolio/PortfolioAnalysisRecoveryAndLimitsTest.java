@@ -65,7 +65,7 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
     }
 
     @Test
-    void recoversOnlyExpiredRunningClaimsAndIncrementsAttempt() {
+    void recoversExpiredClaimExactlyOnceAndIncrementsAttemptOnce() {
         WorkspaceContext context = context("claim-recovery");
         var project = createProject(context);
         var requirement = createRequirement(project.id(), context, "REQ-001");
@@ -96,6 +96,14 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                 Instant.now().plusSeconds(1));
 
         assertThat(recovered).isEqualTo(1);
+        assertThatThrownBy(() -> recoveryService.prepareRetryableItems(
+                job.id(),
+                project.id(),
+                context.username(),
+                context,
+                Instant.now().plusSeconds(1)))
+                .isInstanceOf(PortfolioException.class)
+                .hasMessageContaining("no failed or expired running items");
         assertThat(persistenceService.getJob(
                 job.id(), project.id(), context.username(), context).items())
                 .singleElement()
