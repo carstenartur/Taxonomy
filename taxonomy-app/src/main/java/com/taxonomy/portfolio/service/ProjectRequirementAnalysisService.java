@@ -18,7 +18,12 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDiff;
 import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -31,6 +36,7 @@ import java.util.UUID;
 @Service
 public class ProjectRequirementAnalysisService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProjectRequirementAnalysisService.class);
     private static final int DEFAULT_ARCHITECTURE_NODES = 25;
     private static final int INTELLIGENCE_MIN_SCORE = 50;
 
@@ -44,6 +50,7 @@ public class ProjectRequirementAnalysisService {
     private final ArchitectureRecommendationService recommendationService;
     private final PortfolioFingerprintService fingerprintService;
     private final LlmService llmService;
+    private final AsyncTaskExecutor analysisExecutor;
     private final int maximumArchitectureNodes;
     private final int maximumBatchRequirements;
     private final long claimTimeoutSeconds;
@@ -58,6 +65,8 @@ public class ProjectRequirementAnalysisService {
                                              ArchitectureRecommendationService recommendationService,
                                              PortfolioFingerprintService fingerprintService,
                                              LlmService llmService,
+                                             @Qualifier("portfolioAnalysisExecutor")
+                                             AsyncTaskExecutor analysisExecutor,
                                              @Value("${taxonomy.limits.max-architecture-nodes:100}")
                                              int maximumArchitectureNodes,
                                              @Value("${taxonomy.portfolio.max-analysis-batch:100}")
@@ -74,32 +83,34 @@ public class ProjectRequirementAnalysisService {
         this.recommendationService = recommendationService;
         this.fingerprintService = fingerprintService;
         this.llmService = llmService;
+        this.analysisExecutor = analysisExecutor;
         this.maximumArchitectureNodes = Math.max(1, maximumArchitectureNodes);
         this.maximumBatchRequirements = Math.max(1, maximumBatchRequirements);
         this.claimTimeoutSeconds = Math.max(60L, claimTimeoutSeconds);
     }
 
+    /** Executes a persisted job in the caller thread. Kept for internal batch use and deterministic tests. */
     public AnalysisJobView analyzeProject(Long projectId,
                                           AnalyzeProjectRequest request,
                                           String username,
                                           WorkspaceContext context) {
-        if (request == null) throw PortfolioException.validation("analysis request is required");
-        projectService.requireProject(projectId, username, context);
-
-        List<Long> requirementIds = selectRequirementIds(projectId, request, username, context);
-        int maxNodes = normalizeMaxNodes(request.maxArchitectureNodes());
-        AnalysisJobView job = persistenceService.createOrReuseJob(
-                projectId,
-                requirementIds,
-                normalizeProvider(request.provider()),
-                maxNodes,
-                request.idempotencyKey(),
-                username,
-                context);
+        AnalysisJobView job = prepareJob(projectId, request, username, context);
         if (job.status() != AnalysisStatus.PENDING) {
             return job;
         }
         return executePendingItems(job.id(), projectId, username, context);
+    }
+
+    /** Persists and dispatches a job, returning before any LLM request is made. */
+    public AnalysisJobView enqueueProject(Long projectId,
+                                          AnalyzeProjectRequest request,
+                                          String username,
+                                          WorkspaceContext context) {
+        AnalysisJobView job = prepareJob(projectId, request, username, context);
+        if (job.status() == AnalysisStatus.PENDING) {
+            dispatch(job.id(), projectId, username, context);
+        }
+        return job;
     }
 
     public AnalysisJobView analyzeRequirement(Long projectId,
@@ -110,8 +121,20 @@ public class ProjectRequirementAnalysisService {
                                               String username,
                                               WorkspaceContext context) {
         return analyzeProject(projectId,
-                new AnalyzeProjectRequest(
-                        List.of(requirementId), false, provider, maxArchitectureNodes, idempotencyKey),
+                requestForRequirement(requirementId, provider, maxArchitectureNodes, idempotencyKey),
+                username,
+                context);
+    }
+
+    public AnalysisJobView enqueueRequirement(Long projectId,
+                                              Long requirementId,
+                                              String provider,
+                                              Integer maxArchitectureNodes,
+                                              String idempotencyKey,
+                                              String username,
+                                              WorkspaceContext context) {
+        return enqueueProject(projectId,
+                requestForRequirement(requirementId, provider, maxArchitectureNodes, idempotencyKey),
                 username,
                 context);
     }
@@ -127,6 +150,25 @@ public class ProjectRequirementAnalysisService {
                 context,
                 Instant.now().minusSeconds(claimTimeoutSeconds));
         return executePendingItems(jobId, projectId, username, context);
+    }
+
+    /** Re-dispatches pending jobs or recovers failed/expired claims without holding the HTTP request. */
+    public AnalysisJobView enqueueRetryFailed(String jobId,
+                                              Long projectId,
+                                              String username,
+                                              WorkspaceContext context) {
+        AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
+        if (job.status() != AnalysisStatus.PENDING) {
+            recoveryService.prepareRetryableItems(
+                    jobId,
+                    projectId,
+                    username,
+                    context,
+                    Instant.now().minusSeconds(claimTimeoutSeconds));
+            job = persistenceService.getJob(jobId, projectId, username, context);
+        }
+        dispatch(jobId, projectId, username, context);
+        return job;
     }
 
     public AnalysisJobView getJob(String jobId,
@@ -166,18 +208,71 @@ public class ProjectRequirementAnalysisService {
                 projectId, olderSnapshotId, newerSnapshotId, username, context);
     }
 
+    private AnalysisJobView prepareJob(Long projectId,
+                                       AnalyzeProjectRequest request,
+                                       String username,
+                                       WorkspaceContext context) {
+        if (request == null) throw PortfolioException.validation("analysis request is required");
+        projectService.requireProject(projectId, username, context);
+
+        List<Long> requirementIds = selectRequirementIds(projectId, request, username, context);
+        int maxNodes = normalizeMaxNodes(request.maxArchitectureNodes());
+        return persistenceService.createOrReuseJob(
+                projectId,
+                requirementIds,
+                normalizeProvider(request.provider()),
+                maxNodes,
+                request.idempotencyKey(),
+                username,
+                context);
+    }
+
+    private static AnalyzeProjectRequest requestForRequirement(Long requirementId,
+                                                               String provider,
+                                                               Integer maxArchitectureNodes,
+                                                               String idempotencyKey) {
+        return new AnalyzeProjectRequest(
+                List.of(requirementId), false, provider, maxArchitectureNodes, idempotencyKey);
+    }
+
+    private void dispatch(String jobId,
+                          Long projectId,
+                          String username,
+                          WorkspaceContext context) {
+        try {
+            analysisExecutor.execute(() -> {
+                try {
+                    executePendingItems(jobId, projectId, username, context);
+                } catch (RuntimeException failure) {
+                    LOGGER.error("Asynchronous portfolio analysis job {} for project {} stopped unexpectedly",
+                            jobId, projectId, failure);
+                }
+            });
+        } catch (TaskRejectedException rejected) {
+            throw PortfolioException.unavailable(
+                    "Portfolio analysis capacity is currently exhausted; persisted job "
+                            + jobId + " can be submitted again",
+                    rejected);
+        }
+    }
+
     private AnalysisJobView executePendingItems(String jobId,
                                                 Long projectId,
                                                 String username,
                                                 WorkspaceContext context) {
-        persistenceService.markJobRunning(jobId, projectId);
         AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
         String taxonomyFingerprint = fingerprintService.taxonomyFingerprint();
         String promptFingerprint = fingerprintService.promptFingerprint();
         String effectiveProvider = job.provider() != null
                 ? job.provider() : llmService.getActiveProviderName();
 
-        for (PortfolioAnalysisWorkQueue.WorkItem workItem : workQueue.pending(jobId, projectId)) {
+        List<PortfolioAnalysisWorkQueue.WorkItem> workItems = workQueue.pending(jobId, projectId);
+        if (workItems.isEmpty()) {
+            return persistenceService.completeJob(jobId, projectId);
+        }
+        persistenceService.markJobRunning(jobId, projectId);
+
+        for (PortfolioAnalysisWorkQueue.WorkItem workItem : workItems) {
             String snapshotId = UUID.randomUUID().toString();
             String analysisSessionId = "portfolio:" + snapshotId;
             long startedAt = System.nanoTime();
