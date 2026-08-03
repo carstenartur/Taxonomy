@@ -8,10 +8,11 @@ Das Projektportfolio prüft serverseitige Grenzen, bevor Daten gespeichert oder 
 | `taxonomy.portfolio.max-import-requirements` | `TAXONOMY_PORTFOLIO_MAX_IMPORT_REQUIREMENTS` | `100` | Höchstzahl importierter Anforderungskandidaten pro Anfrage |
 | `taxonomy.portfolio.max-import-characters` | `TAXONOMY_PORTFOLIO_MAX_IMPORT_CHARACTERS` | `500000` | Maximale Gesamtzahl der Zeichen aus Anforderungs- und Originalquelltexten |
 | `taxonomy.portfolio.analysis-claim-timeout-seconds` | `TAXONOMY_PORTFOLIO_ANALYSIS_CLAIM_TIMEOUT_SECONDS` | `900` | Alter, ab dem ein `RUNNING`-Eintrag wiederaufgenommen werden darf |
-| `taxonomy.portfolio.analysis-worker-core-pool-size` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CORE_POOL_SIZE` | `1` | Ständig verfügbare Hintergrund-Worker |
-| `taxonomy.portfolio.analysis-worker-max-pool-size` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_MAX_POOL_SIZE` | `4` | Maximale Zahl gleichzeitig arbeitender Hintergrund-Worker |
+| `taxonomy.portfolio.analysis-worker-concurrency` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `1` | Feste Zahl gleichzeitig ausgeführter Analysejobs |
 | `taxonomy.portfolio.analysis-worker-queue-capacity` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `100` | Persistierte Jobs, die in der prozessinternen Dispatch-Warteschlange warten dürfen |
 | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `30` | Graceful-Shutdown-Frist für aktive Worker |
+
+Die Standardparallelität von eins ist bewusst konservativ: Bereits die Analyse einer einzigen Anforderung kann beim Durchlaufen der Taxonomie mehrere Provideraufrufe auslösen. Sie sollte nur zusammen mit Provider-Rate-Limits, Datenbankkapazität und einem beobachteten Latenz-/Fehlerbudget erhöht werden. Anders als bei einem Core-/Max-Pool mit großer Warteschlange entspricht dieser feste Wert der tatsächlichen dauerhaften Parallelität.
 
 ## HTTP-Jobvertrag
 
