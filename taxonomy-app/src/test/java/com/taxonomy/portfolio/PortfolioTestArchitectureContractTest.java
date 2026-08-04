@@ -52,6 +52,8 @@ class PortfolioTestArchitectureContractTest {
                 "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js"));
         String analysisNormalizer = Files.readString(root.resolve(
                 "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-response-normalizer.js"));
+        String bundleController = Files.readString(root.resolve(
+                "taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/PortfolioScriptBundleController.java"));
         assertThat(projectTemplate)
                 .doesNotContain("id=\"projectList\" class=\"list-group list-group-flush\" role=\"listbox\"");
         assertThat(projectScript)
@@ -59,10 +61,14 @@ class PortfolioTestArchitectureContractTest {
                 .doesNotContain("button.setAttribute('aria-selected'")
                 .contains("button.setAttribute('aria-current', 'page')");
         assertThat(analysisNormalizer)
-                .contains("response.status === 202 && existingLocation")
+                .contains("registerWithJobCenter(absoluteLocation, job)")
+                .contains("status: registered ? 200 : 202")
                 .contains("headers.set('Location', location)")
-                .contains("status: 202")
                 .contains("/analysis-jobs/");
+        assertThat(bundleController)
+                .contains("window.taxonomyPortfolioRegisterJob")
+                .contains("registerJob(resolved.toString(), job)")
+                .contains("exposeJobRegistrationBridge");
     }
 
     private static Path findRepositoryRoot() {
