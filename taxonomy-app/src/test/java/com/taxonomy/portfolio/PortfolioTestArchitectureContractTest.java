@@ -52,6 +52,8 @@ class PortfolioTestArchitectureContractTest {
                 "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js"));
         String analysisNormalizer = Files.readString(root.resolve(
                 "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-response-normalizer.js"));
+        String analysisSynchronizer = Files.readString(root.resolve(
+                "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js"));
         String bundleController = Files.readString(root.resolve(
                 "taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/PortfolioScriptBundleController.java"));
         assertThat(projectTemplate)
@@ -65,10 +67,16 @@ class PortfolioTestArchitectureContractTest {
                 .contains("status: registered ? 200 : 202")
                 .contains("headers.set('Location', location)")
                 .contains("/analysis-jobs/");
+        assertThat(analysisSynchronizer)
+                .contains("synchronizeCurrentProjectJobs")
+                .contains("window.taxonomyPortfolioRegisterJob(location, job)")
+                .contains("retryDelaysMs")
+                .contains("maximumJobs");
         assertThat(bundleController)
                 .contains("window.taxonomyPortfolioRegisterJob")
                 .contains("registerJob(resolved.toString(), job)")
-                .contains("exposeJobRegistrationBridge");
+                .contains("exposeJobRegistrationBridge")
+                .contains("ANALYSIS_JOB_SYNCHRONIZER");
     }
 
     private static Path findRepositoryRoot() {
