@@ -233,8 +233,8 @@ public class PortfolioGitApplicationService {
     }
 
     private static String activeBranch(WorkspaceContext context) {
-        return context.branch() == null || context.branch().isBlank()
-                ? "draft" : requireBranch(context.branch());
+        return context.currentBranch() == null || context.currentBranch().isBlank()
+                ? "draft" : requireBranch(context.currentBranch());
     }
 
     private static String requireHead(DslGitRepository repository,
