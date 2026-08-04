@@ -1,19 +1,24 @@
 package com.taxonomy;
 
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.repository.RelationProposalRepository;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.relations.service.RelationCandidateService;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import com.taxonomy.relations.service.RelationProposalService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.relations.service.RelationReviewService;
+import com.taxonomy.relations.service.RelationValidationService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -21,13 +26,10 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
-import com.taxonomy.relations.service.RelationCandidateService;
-import com.taxonomy.relations.service.RelationCompatibilityMatrix;
-import com.taxonomy.relations.service.RelationReviewService;
-import com.taxonomy.relations.service.RelationValidationService;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Tests for the relation proposal pipeline and REST API. */
 @SpringBootTest
@@ -43,6 +45,7 @@ class RelationProposalTests {
     @Autowired private RelationCompatibilityMatrix compatibilityMatrix;
     @Autowired private RelationProposalRepository proposalRepository;
     @Autowired private TaxonomyRelationRepository relationRepository;
+    @Autowired private WorkspaceResolver workspaceResolver;
 
     @BeforeEach
     void clean() {
@@ -142,7 +145,7 @@ class RelationProposalTests {
         if (!proposals.isEmpty()) {
             Long proposalId = proposals.get(0).getId();
             TaxonomyRelationDto relation = reviewService.acceptProposal(
-                    proposalId, WorkspaceContext.SHARED);
+                    proposalId, workspaceResolver.resolveCurrentContext());
             assertThat(relation).isNotNull();
             assertThat(relation.getSourceCode()).isEqualTo("BP");
             assertThat(relation.getRelationType()).isEqualTo("RELATED_TO");
@@ -160,7 +163,7 @@ class RelationProposalTests {
         if (!proposals.isEmpty()) {
             Long proposalId = proposals.get(0).getId();
             RelationProposalDto rejected = reviewService.rejectProposal(
-                    proposalId, WorkspaceContext.SHARED);
+                    proposalId, workspaceResolver.resolveCurrentContext());
             assertThat(rejected.getStatus()).isEqualTo("REJECTED");
             var updated = proposalRepository.findById(proposalId).orElseThrow();
             assertThat(updated.getStatus()).isEqualTo(ProposalStatus.REJECTED);
@@ -171,14 +174,14 @@ class RelationProposalTests {
     @Test
     void acceptNonExistentProposalThrows() {
         assertThatThrownBy(() -> reviewService.acceptProposal(
-                999L, WorkspaceContext.SHARED))
+                999L, workspaceResolver.resolveCurrentContext()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectNonExistentProposalThrows() {
         assertThatThrownBy(() -> reviewService.rejectProposal(
-                999L, WorkspaceContext.SHARED))
+                999L, workspaceResolver.resolveCurrentContext()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
