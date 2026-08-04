@@ -19,7 +19,7 @@ class PortfolioScriptBundleControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void adaptersAreDeliveredInRequestResponseDecisionAndCompatibilityOrder() throws Exception {
+    void adaptersAreDeliveredInRequestResponseDecisionCompatibilityAndRecoveryOrder() throws Exception {
         var result = mockMvc.perform(get("/js/portfolio/taxonomy-portfolio-async.js"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/javascript"))
@@ -27,6 +27,8 @@ class PortfolioScriptBundleControllerTest {
                 .andExpect(content().string(containsString("Portfolio analysis response normalization")))
                 .andExpect(content().string(containsString("Guided portfolio decisions")))
                 .andExpect(content().string(containsString("Non-blocking portfolio analysis jobs")))
+                .andExpect(content().string(containsString(
+                        "Server-backed portfolio analysis job synchronization")))
                 .andReturn();
         String script = result.getResponse().getContentAsString();
         org.assertj.core.api.Assertions.assertThat(
@@ -38,6 +40,10 @@ class PortfolioScriptBundleControllerTest {
         org.assertj.core.api.Assertions.assertThat(
                 script.indexOf("Guided portfolio decisions"))
                 .isLessThan(script.indexOf("Non-blocking portfolio analysis jobs"));
+        org.assertj.core.api.Assertions.assertThat(
+                script.indexOf("Non-blocking portfolio analysis jobs"))
+                .isLessThan(script.indexOf(
+                        "Server-backed portfolio analysis job synchronization"));
         org.assertj.core.api.Assertions.assertThat(script)
                 .contains("payload.verifiedAt = parsed.toISOString()")
                 .contains("/^\\/api\\/products\\/?$/")
@@ -46,7 +52,8 @@ class PortfolioScriptBundleControllerTest {
                 .contains("headers.set('Location', location)")
                 .contains("window.taxonomyPortfolioRegisterJob")
                 .contains("registerJob(resolved.toString(), job)")
-                .contains("/analysis-jobs/")
+                .contains("synchronizeCurrentProjectJobs")
+                .contains("/analysis-jobs")
                 .contains("input.setAttribute('aria-describedby'")
                 .contains("node.parentCode")
                 .contains("node.level")
