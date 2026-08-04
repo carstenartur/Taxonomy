@@ -30,5 +30,12 @@ class PortfolioScriptBundleControllerTest {
         org.assertj.core.api.Assertions.assertThat(
                 script.indexOf("Guided portfolio decisions"))
                 .isLessThan(script.indexOf("Non-blocking portfolio analysis jobs"));
+        org.assertj.core.api.Assertions.assertThat(script)
+                .contains("input.setAttribute('aria-describedby'")
+                .contains("node.parentCode")
+                .contains("node.level")
+                .doesNotContain("node.hierarchyPath")
+                .contains("if (!projectId)")
+                .contains("projectRequired");
     }
 }
