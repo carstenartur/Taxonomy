@@ -47,7 +47,11 @@ public class PortfolioScriptBundleController {
                 || !/^\\/api\\/projects\\/\\d+\\/analysis-jobs\\/[^/]+$/.test(resolved.pathname)) {
             return false;
         }
-        registerJob(resolved.toString(), job);
+        const alreadyRendered = Array.from(document.querySelectorAll(
+            '#portfolioJobList .portfolio-job')).some(function (element) {
+                return element.dataset.jobUrl === resolved.toString();
+            });
+        if (!alreadyRendered) registerJob(resolved.toString(), job);
         return true;
     };
 """;
