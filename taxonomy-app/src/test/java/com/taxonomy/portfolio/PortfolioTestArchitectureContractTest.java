@@ -50,12 +50,19 @@ class PortfolioTestArchitectureContractTest {
                 "taxonomy-app/src/main/resources/templates/projects.html"));
         String projectScript = Files.readString(root.resolve(
                 "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js"));
+        String analysisNormalizer = Files.readString(root.resolve(
+                "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-response-normalizer.js"));
         assertThat(projectTemplate)
                 .doesNotContain("id=\"projectList\" class=\"list-group list-group-flush\" role=\"listbox\"");
         assertThat(projectScript)
                 .doesNotContain("button.setAttribute('role', 'option')")
                 .doesNotContain("button.setAttribute('aria-selected'")
                 .contains("button.setAttribute('aria-current', 'page')");
+        assertThat(analysisNormalizer)
+                .contains("response.status === 202 && existingLocation")
+                .contains("headers.set('Location', location)")
+                .contains("status: 202")
+                .contains("/analysis-jobs/");
     }
 
     private static Path findRepositoryRoot() {
