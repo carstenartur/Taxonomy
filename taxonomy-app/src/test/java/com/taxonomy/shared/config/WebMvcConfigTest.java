@@ -1,5 +1,6 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,15 +10,19 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import jakarta.servlet.http.Cookie;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * Integration tests for {@link WebMvcConfig} locale resolution.
+ * Integration tests for {@link WebMvcConfig} locale resolution and request-bound
+ * workspace pre-resolution.
  *
  * <p>Verifies that the {@code ?lang=} query parameter switches locale
- * (via {@code LocaleChangeInterceptor}) and that a {@code lang} cookie
- * persists the preference (via {@code CookieLocaleResolver}).
+ * (via {@code LocaleChangeInterceptor}), that a {@code lang} cookie persists
+ * the preference (via {@code CookieLocaleResolver}), and that portfolio APIs
+ * cannot begin in the shared workspace before later Git operations provision
+ * an isolated workspace.</p>
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -26,6 +31,9 @@ class WebMvcConfigTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserWorkspaceRepository workspaceRepository;
 
     @Test
     void langParameterSetsLocaleCookie() throws Exception {
@@ -56,5 +64,14 @@ class WebMvcConfigTest {
         mockMvc.perform(get("/help").accept("application/json"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("User Guide"));
+    }
+
+    @Test
+    void firstPortfolioApiRequestPreResolvesAnIsolatedWorkspace() throws Exception {
+        mockMvc.perform(get("/api/projects").accept("application/json"))
+                .andExpect(status().isOk());
+
+        assertThat(workspaceRepository.findByUsernameAndSharedFalse("user"))
+                .isPresent();
     }
 }
