@@ -39,7 +39,9 @@ public final class PortfolioGitDtos {
             Instant committedAt) {
     }
 
-    public record MaterializePortfolioRequest(String branch) {
+    public record MaterializePortfolioRequest(
+            String branch,
+            String expectedHead) {
     }
 
     public record MaterializationPreview(
@@ -71,7 +73,10 @@ public final class PortfolioGitDtos {
             Instant materializedAt) {
     }
 
-    public record MergePortfolioRequest(String message) {
+    public record MergePortfolioRequest(
+            String sourceBranch,
+            String targetBranch,
+            String message) {
     }
 
     public record MergePortfolioResult(
