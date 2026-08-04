@@ -19,18 +19,24 @@ class PortfolioScriptBundleControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void guidedHandlersAreDeliveredBeforeCompatibilityHandlers() throws Exception {
+    void adaptersAreDeliveredInRequestDecisionAndCompatibilityOrder() throws Exception {
         var result = mockMvc.perform(get("/js/portfolio/taxonomy-portfolio-async.js"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/javascript"))
+                .andExpect(content().string(containsString("Portfolio product request normalization")))
                 .andExpect(content().string(containsString("Guided portfolio decisions")))
                 .andExpect(content().string(containsString("Non-blocking portfolio analysis jobs")))
                 .andReturn();
         String script = result.getResponse().getContentAsString();
         org.assertj.core.api.Assertions.assertThat(
+                script.indexOf("Portfolio product request normalization"))
+                .isLessThan(script.indexOf("Guided portfolio decisions"));
+        org.assertj.core.api.Assertions.assertThat(
                 script.indexOf("Guided portfolio decisions"))
                 .isLessThan(script.indexOf("Non-blocking portfolio analysis jobs"));
         org.assertj.core.api.Assertions.assertThat(script)
+                .contains("payload.verifiedAt = parsed.toISOString()")
+                .contains("/^\\/api\\/products\\/?$/")
                 .contains("input.setAttribute('aria-describedby'")
                 .contains("node.parentCode")
                 .contains("node.level")
