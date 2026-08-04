@@ -1,85 +1,129 @@
 package com.taxonomy.portfolio.service;
 
-import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.SemanticMergeResult;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
 import com.taxonomy.portfolio.dto.PortfolioGitDtos.ExportedPortfolioDsl;
 import com.taxonomy.portfolio.dto.PortfolioGitDtos.MaterializationPreview;
 import com.taxonomy.portfolio.dto.PortfolioGitDtos.MaterializePortfolioResult;
 import com.taxonomy.portfolio.dto.PortfolioGitDtos.MergePortfolioResult;
-import com.taxonomy.versioning.service.SemanticDslOperationsFacade;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.PortfolioCommitResult;
+import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.MergeResult;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.lib.RefUpdate;
-import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.revwalk.RevWalk;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
-/** Git-backed collaboration facade for the project portfolio. */
+/**
+ * GUI-oriented application facade over the established portfolio Git services.
+ *
+ * <p>This class intentionally does not duplicate JGit or TaxDSL merge logic.
+ * Projection and materialization are delegated to {@link PortfolioGitService};
+ * branch merging is delegated to {@link SemanticGitMergeService}.</p>
+ */
 @Service
 public class PortfolioGitApplicationService {
 
     private static final int PREVIEW_LIMIT = 20;
 
-    private final PortfolioGitProjectionService projectionService;
-    private final PortfolioDslMaterializationService materializationService;
+    private final PortfolioGitService portfolioGitService;
+    private final ProjectPortfolioService projectService;
+    private final SolutionPortfolioService solutionService;
+    private final ProductCatalogService productService;
+    private final ProjectConflictService conflictService;
     private final DslGitRepositoryFactory repositoryFactory;
-    private final SemanticDslOperationsFacade dslOperations;
+    private final SemanticGitMergeService semanticMergeService;
 
-    public PortfolioGitApplicationService(
-            PortfolioGitProjectionService projectionService,
-            PortfolioDslMaterializationService materializationService,
-            DslGitRepositoryFactory repositoryFactory,
-            SemanticDslOperationsFacade dslOperations) {
-        this.projectionService = projectionService;
-        this.materializationService = materializationService;
+    public PortfolioGitApplicationService(PortfolioGitService portfolioGitService,
+                                          ProjectPortfolioService projectService,
+                                          SolutionPortfolioService solutionService,
+                                          ProductCatalogService productService,
+                                          ProjectConflictService conflictService,
+                                          DslGitRepositoryFactory repositoryFactory,
+                                          SemanticGitMergeService semanticMergeService) {
+        this.portfolioGitService = portfolioGitService;
+        this.projectService = projectService;
+        this.solutionService = solutionService;
+        this.productService = productService;
+        this.conflictService = conflictService;
         this.repositoryFactory = repositoryFactory;
-        this.dslOperations = dslOperations;
+        this.semanticMergeService = semanticMergeService;
     }
 
-    public ExportedPortfolioDsl export(WorkspaceContext context) {
-        return projectionService.exportDsl(context);
-    }
-
-    public com.taxonomy.portfolio.dto.PortfolioGitDtos.PortfolioCommitResult commit(
-            String branch,
-            String message,
-            WorkspaceContext context) {
-        return projectionService.commit(branch, message, context);
-    }
-
-    public MaterializationPreview previewMaterialize(String branch,
-                                                      WorkspaceContext context) {
-        String normalizedBranch = requireBranch(branch);
-        ExportedPortfolioDsl current = projectionService.exportDsl(context);
-        String targetDsl = dslOperations.getHead(normalizedBranch, context);
+    public ExportedPortfolioDsl export(WorkspaceContext context) throws IOException {
+        String username = username(context);
+        String branch = activeBranch(context);
         DslGitRepository repository = repositoryFactory.resolveRepository(context);
-        String targetHead = repository.getHeadCommit(normalizedBranch);
-        List<String> currentLines = Arrays.asList(current.dsl().split("\\R", -1));
-        List<String> targetLines = Arrays.asList(targetDsl.split("\\R", -1));
+        Counts counts = counts(username, context);
+        return new ExportedPortfolioDsl(
+                context.workspaceId(),
+                username,
+                branch,
+                repository.getHeadCommit(branch),
+                portfolioGitService.exportPortfolio(username, context),
+                counts.projects(),
+                counts.requirements(),
+                counts.solutions(),
+                counts.products(),
+                Instant.now());
+    }
+
+    public PortfolioCommitResult commit(String branch,
+                                        String message,
+                                        WorkspaceContext context) throws IOException {
+        String normalizedBranch = requireBranch(branch);
+        String username = username(context);
+        DslGitRepository repository = repositoryFactory.resolveRepository(context);
+        String parent = repository.getHeadCommit(normalizedBranch);
+        PortfolioGitService.CommitResult committed = portfolioGitService.commit(
+                normalizedBranch, message, username, context);
+        Counts counts = counts(username, context);
+        return new PortfolioCommitResult(
+                normalizedBranch,
+                committed.commitId(),
+                parent,
+                counts.projects(),
+                counts.requirements(),
+                counts.solutions(),
+                counts.products(),
+                counts.conflicts(),
+                Instant.now());
+    }
+
+    /**
+     * Compares the reviewed database projection with one immutable branch HEAD.
+     * Non-portfolio DSL blocks are preserved on both sides of the comparison.
+     */
+    public MaterializationPreview previewMaterialize(String branch,
+                                                      WorkspaceContext context) throws IOException {
+        String normalizedBranch = requireBranch(branch);
+        String username = username(context);
+        DslGitRepository repository = repositoryFactory.resolveRepository(context);
+        String targetHead = requireHead(repository, normalizedBranch);
+        String targetDsl = repository.getDslAtHead(normalizedBranch);
+        String currentProjection = portfolioGitService.contributeTo(
+                targetDsl, username, context);
+
+        List<String> currentLines = lines(currentProjection);
+        List<String> targetLines = lines(targetDsl);
         Set<String> currentSet = new LinkedHashSet<>(currentLines);
         Set<String> targetSet = new LinkedHashSet<>(targetLines);
-        List<String> added = targetSet.stream().filter(line -> !currentSet.contains(line)).toList();
-        List<String> removed = currentSet.stream().filter(line -> !targetSet.contains(line)).toList();
+        List<String> added = targetSet.stream()
+                .filter(line -> !currentSet.contains(line)).toList();
+        List<String> removed = currentSet.stream()
+                .filter(line -> !targetSet.contains(line)).toList();
         return new MaterializationPreview(
                 normalizedBranch,
                 targetHead,
-                sha256(current.dsl()),
+                sha256(currentProjection),
                 sha256(targetDsl),
                 currentLines.size(),
                 targetLines.size(),
@@ -91,196 +135,110 @@ public class PortfolioGitApplicationService {
                 removed.stream().limit(PREVIEW_LIMIT).toList());
     }
 
+    /** Apply only when the branch still points at the reviewed HEAD. */
     public MaterializePortfolioResult materialize(String branch,
-                                                  WorkspaceContext context) {
+                                                   String expectedHead,
+                                                   WorkspaceContext context) throws IOException {
         String normalizedBranch = requireBranch(branch);
-        String dsl = dslOperations.getHead(normalizedBranch, context);
         DslGitRepository repository = repositoryFactory.resolveRepository(context);
-        String commitId = repository.getHeadCommit(normalizedBranch);
-        return materializationService.materialize(
+        String actualHead = requireHead(repository, normalizedBranch);
+        if (expectedHead != null && !expectedHead.isBlank()
+                && !Objects.equals(expectedHead.strip(), actualHead)) {
+            throw PortfolioException.conflict(
+                    "Branch changed after materialization preview; expected "
+                            + expectedHead.strip() + " but found " + actualHead);
+        }
+        PortfolioGitService.MaterializeResult materialized =
+                portfolioGitService.materializeHead(
+                        normalizedBranch, username(context), context);
+        return new MaterializePortfolioResult(
                 normalizedBranch,
-                commitId,
-                dsl,
-                context);
+                actualHead,
+                materialized.projectsCreated(),
+                materialized.requirementsCreated(),
+                materialized.versionsCreated(),
+                0,
+                0,
+                0,
+                0,
+                materialized.warnings().size(),
+                Instant.now());
     }
 
-    /**
-     * Merges {@code sourceBranch} into {@code targetBranch}. Ordinary Git merge
-     * runs first. If it conflicts, TaxDSL is parsed, semantically merged and
-     * committed as a true two-parent merge commit.
-     */
     public MergePortfolioResult merge(String sourceBranch,
                                       String targetBranch,
                                       String message,
-                                      WorkspaceContext context) {
+                                      WorkspaceContext context) throws IOException {
         String source = requireBranch(sourceBranch);
         String target = requireBranch(targetBranch);
         if (source.equals(target)) {
             throw PortfolioException.validation("Source and target branch must differ");
         }
+        if (message != null) {
+            ProjectPortfolioService.limited(message, 1000, "message");
+        }
+
         DslGitRepository repository = repositoryFactory.resolveRepository(context);
         String sourceHead = requireHead(repository, source);
         String targetHead = requireHead(repository, target);
-        PersonIdent actor = actor(context);
-        String commitMessage = ProjectPortfolioService.limited(
-                message != null ? message : "Merge portfolio " + source + " into " + target,
-                1000,
-                "message");
-
-        try {
-            MergeResult mergeResult = repository.mergeBranches(
-                    source, target, actor, commitMessage);
-            if (mergeResult.getMergeStatus().isSuccessful()) {
-                String mergeCommit = requireHead(repository, target);
-                CanonicalArchitectureModel model = projectionService.parseModel(
-                        repository.getDslAtCommit(mergeCommit));
-                return result(
-                        source,
-                        target,
-                        sourceHead,
-                        targetHead,
-                        mergeCommit,
-                        mergeResult.getMergeStatus().name(),
-                        0,
-                        model);
-            }
-            repository.abortMerge();
-        } catch (Exception ordinaryFailure) {
-            repository.abortMerge();
-        }
-
-        String baseCommit = mergeBase(repository.getGitRepository(), targetHead, sourceHead);
-        String baseDsl = baseCommit != null
-                ? repository.getDslAtCommit(baseCommit)
-                : minimalEmptyDsl();
-        String targetDsl = repository.getDslAtCommit(targetHead);
-        String sourceDsl = repository.getDslAtCommit(sourceHead);
-        SemanticMergeResult semantic = repository.semanticMerge(
-                baseDsl,
-                targetDsl,
-                sourceDsl);
-        if (semantic.hasConflicts()) {
+        SemanticGitMergeService.MergeOutcome outcome = semanticMergeService.mergeBranches(
+                repository, source, target, username(context));
+        if (!outcome.success()) {
             throw PortfolioException.conflict(
-                    "Portfolio merge has " + semantic.conflicts().size()
-                            + " semantic conflict(s): " + summarizeConflicts(semantic));
+                    "Portfolio merge conflict: " + String.join(", ", outcome.conflicts()));
         }
-        String mergeCommit = createTwoParentMergeCommit(
-                repository,
-                target,
-                targetHead,
-                sourceHead,
-                semantic.mergedDsl(),
-                actor,
-                commitMessage);
-        CanonicalArchitectureModel model = projectionService.parseModel(semantic.mergedDsl());
-        return result(
-                source,
-                target,
-                sourceHead,
-                targetHead,
-                mergeCommit,
-                "SEMANTIC_FALLBACK",
-                semantic.mergedAncestors(),
-                model);
-    }
 
-    private MergePortfolioResult result(String source,
-                                        String target,
-                                        String sourceHead,
-                                        String targetHead,
-                                        String mergeCommit,
-                                        String strategy,
-                                        int ancestorCount,
-                                        CanonicalArchitectureModel model) {
-        var counts = projectionService.counts(model);
+        portfolioGitService.materializeHead(target, username(context), context);
+        Counts counts = counts(username(context), context);
         return new MergePortfolioResult(
                 source,
                 target,
                 sourceHead,
                 targetHead,
-                mergeCommit,
-                strategy,
-                ancestorCount,
-                counts.projectCount(),
-                counts.requirementCount(),
-                counts.solutionCount(),
-                counts.productCount(),
-                counts.conflictCount(),
+                outcome.commitId(),
+                outcome.semanticFallback() ? "SEMANTIC_FALLBACK" : "GIT",
+                0,
+                counts.projects(),
+                counts.requirements(),
+                counts.solutions(),
+                counts.products(),
+                counts.conflicts(),
                 Instant.now());
     }
 
-    private String createTwoParentMergeCommit(
-            DslGitRepository repository,
-            String targetBranch,
-            String targetHead,
-            String sourceHead,
-            String mergedDsl,
-            PersonIdent actor,
-            String message) {
-        try (Git git = new Git(repository.getGitRepository())) {
-            git.checkout().setName(targetBranch).call();
-            ObjectId blob = repository.getGitRepository().newObjectInserter().insert(
-                    org.eclipse.jgit.lib.Constants.OBJ_BLOB,
-                    mergedDsl.getBytes(StandardCharsets.UTF_8));
-            try (var inserter = repository.getGitRepository().newObjectInserter()) {
-                var formatter = new org.eclipse.jgit.lib.TreeFormatter();
-                formatter.append(
-                        "architecture.taxdsl",
-                        org.eclipse.jgit.lib.FileMode.REGULAR_FILE,
-                        blob);
-                ObjectId treeId = inserter.insert(formatter);
-                var builder = new org.eclipse.jgit.lib.CommitBuilder();
-                builder.setTreeId(treeId);
-                builder.setParentIds(
-                        ObjectId.fromString(targetHead),
-                        ObjectId.fromString(sourceHead));
-                builder.setAuthor(actor);
-                builder.setCommitter(actor);
-                builder.setMessage(message);
-                ObjectId commitId = inserter.insert(builder);
-                inserter.flush();
-                RefUpdate update = repository.getGitRepository()
-                        .updateRef("refs/heads/" + targetBranch);
-                update.setExpectedOldObjectId(ObjectId.fromString(targetHead));
-                update.setNewObjectId(commitId);
-                update.setRefLogIdent(actor);
-                update.setRefLogMessage("merge: " + message, true);
-                RefUpdate.Result updated = update.update();
-                if (updated != RefUpdate.Result.FAST_FORWARD
-                        && updated != RefUpdate.Result.NEW) {
-                    throw PortfolioException.conflict(
-                            "Target branch changed while creating semantic merge commit: "
-                                    + updated);
-                }
-                return commitId.name();
-            }
-        } catch (PortfolioException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            throw PortfolioException.conflict(
-                    "Unable to create semantic portfolio merge commit: "
-                            + exception.getMessage());
-        }
+    private Counts counts(String username, WorkspaceContext context) {
+        List<ProjectView> projects = projectService.listProjects(username, context);
+        int requirements = projects.stream()
+                .mapToInt(project -> projectService
+                        .listRequirements(project.id(), username, context).size())
+                .sum();
+        int conflicts = projects.stream()
+                .mapToInt(project -> conflictService
+                        .list(project.id(), username, context).size())
+                .sum();
+        return new Counts(
+                projects.size(),
+                requirements,
+                solutionService.listSolutions(username, context).size(),
+                productService.listProducts(username, context).size(),
+                conflicts);
     }
 
-    private static String mergeBase(Repository repository,
-                                    String leftCommit,
-                                    String rightCommit) {
-        try (RevWalk walk = new RevWalk(repository)) {
-            RevCommit left = walk.parseCommit(ObjectId.fromString(leftCommit));
-            RevCommit right = walk.parseCommit(ObjectId.fromString(rightCommit));
-            walk.setRevFilter(org.eclipse.jgit.revwalk.filter.RevFilter.MERGE_BASE);
-            walk.markStart(left);
-            walk.markStart(right);
-            RevCommit base = walk.next();
-            return base != null ? base.getId().name() : null;
-        } catch (IOException exception) {
-            throw PortfolioException.conflict(
-                    "Unable to determine portfolio merge base: " + exception.getMessage());
-        }
+    private static List<String> lines(String value) {
+        return Arrays.asList((value == null ? "" : value).split("\\R", -1));
     }
 
-    private static String requireHead(DslGitRepository repository, String branch) {
+    private static String username(WorkspaceContext context) {
+        return PortfolioScope.username(context.username(), context);
+    }
+
+    private static String activeBranch(WorkspaceContext context) {
+        return context.branch() == null || context.branch().isBlank()
+                ? "draft" : requireBranch(context.branch());
+    }
+
+    private static String requireHead(DslGitRepository repository,
+                                      String branch) throws IOException {
         String head = repository.getHeadCommit(branch);
         if (head == null || head.isBlank()) {
             throw PortfolioException.notFound("Branch has no commits: " + branch);
@@ -303,35 +261,21 @@ public class PortfolioGitApplicationService {
         return normalized;
     }
 
-    private static PersonIdent actor(WorkspaceContext context) {
-        String username = PortfolioScope.username(context.username(), context);
-        return new PersonIdent(username, username + "@taxonomy.local");
-    }
-
-    private static String summarizeConflicts(SemanticMergeResult result) {
-        List<String> summaries = new ArrayList<>();
-        result.conflicts().stream().limit(8).forEach(conflict -> summaries.add(
-                conflict.path() + " (" + conflict.type() + ")"));
-        return String.join(", ", summaries);
-    }
-
-    private static String minimalEmptyDsl() {
-        return """
-                meta {
-                  language: "taxdsl";
-                  version: "2.0";
-                  namespace: "portfolio-empty-base";
-                }
-                """;
-    }
-
     private static String sha256(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
+                    .digest((value == null ? "" : value)
+                            .getBytes(StandardCharsets.UTF_8));
             return java.util.HexFormat.of().formatHex(digest);
         } catch (Exception error) {
             throw new IllegalStateException("Unable to fingerprint portfolio DSL", error);
         }
+    }
+
+    private record Counts(int projects,
+                          int requirements,
+                          int solutions,
+                          int products,
+                          int conflicts) {
     }
 }
