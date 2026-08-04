@@ -218,6 +218,7 @@ class PortfolioUiAcceptanceIT {
                                                               long requirementId) {
         open("/projects/" + projectId + "/requirements/" + requirementId + "?lang=en",
                 By.id("requirementMain"));
+        wait.until(textPresent(By.id("currentText"), "secure communication"));
         assertThat(driver.findElement(By.id("currentText")).getText())
                 .contains("secure communication");
         assertThat(driver.findElements(By.cssSelector("#versionList [data-version-id]")))
