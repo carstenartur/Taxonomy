@@ -19,17 +19,21 @@ class PortfolioScriptBundleControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void adaptersAreDeliveredInRequestDecisionAndCompatibilityOrder() throws Exception {
+    void adaptersAreDeliveredInRequestResponseDecisionAndCompatibilityOrder() throws Exception {
         var result = mockMvc.perform(get("/js/portfolio/taxonomy-portfolio-async.js"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/javascript"))
                 .andExpect(content().string(containsString("Portfolio product request normalization")))
+                .andExpect(content().string(containsString("Portfolio analysis response normalization")))
                 .andExpect(content().string(containsString("Guided portfolio decisions")))
                 .andExpect(content().string(containsString("Non-blocking portfolio analysis jobs")))
                 .andReturn();
         String script = result.getResponse().getContentAsString();
         org.assertj.core.api.Assertions.assertThat(
                 script.indexOf("Portfolio product request normalization"))
+                .isLessThan(script.indexOf("Portfolio analysis response normalization"));
+        org.assertj.core.api.Assertions.assertThat(
+                script.indexOf("Portfolio analysis response normalization"))
                 .isLessThan(script.indexOf("Guided portfolio decisions"));
         org.assertj.core.api.Assertions.assertThat(
                 script.indexOf("Guided portfolio decisions"))
@@ -37,6 +41,9 @@ class PortfolioScriptBundleControllerTest {
         org.assertj.core.api.Assertions.assertThat(script)
                 .contains("payload.verifiedAt = parsed.toISOString()")
                 .contains("/^\\/api\\/products\\/?$/")
+                .contains("status: 202")
+                .contains("headers.set('Location', location)")
+                .contains("/analysis-jobs/")
                 .contains("input.setAttribute('aria-describedby'")
                 .contains("node.parentCode")
                 .contains("node.level")
