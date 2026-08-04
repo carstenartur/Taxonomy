@@ -28,8 +28,8 @@ class PortfolioDocumentationContractTest {
             assertThat(english).contains(route);
             assertThat(german).contains(route);
         }
-        assertThat(english.toLowerCase()).doesNotContain("curl -");
-        assertThat(german.toLowerCase()).doesNotContain("curl -");
+        assertThat(english).doesNotContainPattern("(?i)\\bcurl\\b");
+        assertThat(german).doesNotContainPattern("(?i)\\bcurl\\b");
         assertThat(english).contains("PROJECT_PORTFOLIO_API.md");
         assertThat(german).contains("PROJECT_PORTFOLIO_API.md");
     }
