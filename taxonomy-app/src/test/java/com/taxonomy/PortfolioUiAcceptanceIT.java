@@ -210,6 +210,8 @@ class PortfolioUiAcceptanceIT {
 
         driver.navigate().refresh();
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("portfolioJobCenter")));
+        wait.until(browser -> !browser.findElements(
+                By.cssSelector("#portfolioJobList .portfolio-job")).isEmpty());
         assertThat(driver.findElements(
                 By.cssSelector("#portfolioJobList .portfolio-job"))).isNotEmpty();
     }
@@ -230,6 +232,8 @@ class PortfolioUiAcceptanceIT {
         click(By.cssSelector("#snapshotList [data-snapshot-id]"));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotDetail")));
         click(By.id("architecture-tab"));
+        wait.until(browser -> !browser.findElements(
+                By.cssSelector("#mappingTable tbody tr")).isEmpty());
         assertThat(driver.findElements(By.cssSelector("#mappingTable tbody tr")))
                 .isNotEmpty();
 
@@ -306,7 +310,7 @@ class PortfolioUiAcceptanceIT {
 
     private static void verifyVersioningAndReports(long projectId) {
         open("/projects/" + projectId + "/versioning?lang=en", By.id("versioningMain"));
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("dslPreview")));
+        wait.until(textPresent(By.id("dslPreview"), "portfolio"));
         assertThat(driver.findElement(By.id("dslPreview")).getText()).contains("portfolio");
         assertThat(driver.findElements(By.cssSelector("#portfolioCounts .card"))).hasSize(4);
 
