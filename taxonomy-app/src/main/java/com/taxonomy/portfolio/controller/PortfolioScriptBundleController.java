@@ -17,8 +17,8 @@ import java.time.Duration;
  * Serves the portfolio enhancement layers in their required deterministic order.
  *
  * <p>The page already references {@code taxonomy-portfolio-async.js}. Keeping
- * that stable URL avoids a template fork while ensuring product request
- * normalization runs before the contextual decision and job-center fetch
+ * that stable URL avoids a template fork while ensuring request and response
+ * normalization run before the contextual decision and job-center fetch
  * adapters.</p>
  */
 @Controller
@@ -26,6 +26,8 @@ public class PortfolioScriptBundleController {
 
     private static final String PRODUCT_REQUEST_NORMALIZER =
             "static/js/portfolio/portfolio-product-request-normalizer.js";
+    private static final String ANALYSIS_RESPONSE_NORMALIZER =
+            "static/js/portfolio/portfolio-analysis-response-normalizer.js";
     private static final String GUIDED =
             "static/js/portfolio/portfolio-guided-decisions.js";
     private static final String ASYNC =
@@ -36,12 +38,15 @@ public class PortfolioScriptBundleController {
     @ResponseBody
     public ResponseEntity<String> portfolioEnhancementBundle() throws IOException {
         String productRequestNormalizer = read(PRODUCT_REQUEST_NORMALIZER);
+        String analysisResponseNormalizer = read(ANALYSIS_RESPONSE_NORMALIZER);
         String guided = read(GUIDED);
         String async = read(ASYNC);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/javascript"))
                 .cacheControl(CacheControl.maxAge(Duration.ofMinutes(10)).cachePublic())
-                .body(productRequestNormalizer + "\n;\n" + guided + "\n;\n" + async);
+                .body(productRequestNormalizer + "\n;\n"
+                        + analysisResponseNormalizer + "\n;\n"
+                        + guided + "\n;\n" + async);
     }
 
     private static String read(String path) throws IOException {
