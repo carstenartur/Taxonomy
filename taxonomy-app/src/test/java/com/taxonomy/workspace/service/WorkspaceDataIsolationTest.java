@@ -34,8 +34,6 @@ class WorkspaceDataIsolationTest {
 
     @BeforeEach
     void setUp() {
-        // This suite deliberately verifies the explicitly enabled legacy/shared
-        // mode. Production isolation is covered by WorkspaceContextResolverTest.
         resolver = new WorkspaceContextResolver(
                 workspaceManager, systemRepositoryService, true);
     }
@@ -158,6 +156,7 @@ class WorkspaceDataIsolationTest {
             UserWorkspace workspace = new UserWorkspace();
             workspace.setUsername("eve");
             workspace.setWorkspaceId("eve-ws");
+            workspace.setCurrentBranch("");
             when(workspaceManager.findActiveWorkspace("eve")).thenReturn(workspace);
             when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
 
