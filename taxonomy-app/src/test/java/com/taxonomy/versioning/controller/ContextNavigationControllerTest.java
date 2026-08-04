@@ -14,11 +14,10 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Integration tests for {@link ContextNavigationController}.
- */
+/** Integration tests for {@link ContextNavigationController}. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
@@ -41,29 +40,16 @@ class ContextNavigationControllerTest {
             }
             """;
 
-    /**
-     * Ensure at least one commit exists on the {@code draft} branch so
-     * that the current context's {@code commitId} is non-null.
-     *
-     * <p>In production there is always at least one taxonomy-import commit.
-     * Without this setup, the current context's {@code commitId} would be
-     * {@code null}, causing compare and transfer tests to fail.
-     *
-     * <p>The commit is made through the API to ensure it lands in whatever
-     * repository the current user's workspace context resolves to.
-     */
     @BeforeEach
     void ensureInitialCommit() throws Exception {
-        // Check if there's already a commit (from a previous test in this class)
-        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
+        MvcResult context = mockMvc.perform(get("/api/context/current"))
                 .andExpect(status().isOk())
                 .andReturn();
-        JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
+        JsonNode json = objectMapper.readTree(context.getResponse().getContentAsString());
         if (!json.get("commitId").isNull()) {
-            return; // Already have a commit
+            return;
         }
 
-        // Commit through the API so it lands in the correct repo for the user
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(SAMPLE_DSL)
@@ -72,7 +58,6 @@ class ContextNavigationControllerTest {
                         .param("message", "initial test import"))
                 .andExpect(status().isOk());
 
-        // Refresh the user's navigation context so commitId is non-null
         mockMvc.perform(post("/api/context/open")
                         .param("branch", "draft")
                         .param("readOnly", "false"))
@@ -131,8 +116,6 @@ class ContextNavigationControllerTest {
 
     @Test
     void contextEndpointsRequireAuthentication() throws Exception {
-        // This test verifies the security config works — @WithMockUser is used
-        // at class level so all other tests are authenticated
         mockMvc.perform(get("/api/context/current"))
                 .andExpect(status().isOk());
     }
@@ -166,10 +149,10 @@ class ContextNavigationControllerTest {
 
     @Test
     void compareWithCommitIds_returnsOk() throws Exception {
-        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
+        MvcResult context = mockMvc.perform(get("/api/context/current"))
                 .andExpect(status().isOk())
                 .andReturn();
-        JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
+        JsonNode json = objectMapper.readTree(context.getResponse().getContentAsString());
         String commitId = json.get("commitId").asText();
 
         mockMvc.perform(get("/api/context/compare")
@@ -192,13 +175,8 @@ class ContextNavigationControllerTest {
     }
 
     @Test
-    void previewTransfer_returnsOk() throws Exception {
-        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
-                .andExpect(status().isOk())
-                .andReturn();
-        JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
-        String commitId = json.get("commitId").asText();
-
+    void previewTransferRejectsEmptyNoOpSelection() throws Exception {
+        String commitId = currentCommitId();
         String body = """
                 {
                     "sourceContextId": "%s",
@@ -208,23 +186,17 @@ class ContextNavigationControllerTest {
                     "mode": "COPY"
                 }
                 """.formatted(commitId, commitId);
+
         mockMvc.perform(post("/api/context/copy-back/preview")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.hasConflicts").value(false))
-                .andExpect(jsonPath("$.selectedElements").value(0))
-                .andExpect(jsonPath("$.selectedRelations").value(0));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
     }
 
     @Test
-    void applyTransfer_returnsOk() throws Exception {
-        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
-                .andExpect(status().isOk())
-                .andReturn();
-        JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
-        String commitId = json.get("commitId").asText();
-
+    void applyTransferRejectsEmptyNoOpSelection() throws Exception {
+        String commitId = currentCommitId();
         String body = """
                 {
                     "sourceContextId": "%s",
@@ -234,10 +206,19 @@ class ContextNavigationControllerTest {
                     "mode": "COPY"
                 }
                 """.formatted(commitId, commitId);
+
         mockMvc.perform(post("/api/context/copy-back/apply")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
+    private String currentCommitId() throws Exception {
+        MvcResult context = mockMvc.perform(get("/api/context/current"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
+                .andReturn();
+        return objectMapper.readTree(context.getResponse().getContentAsString())
+                .get("commitId").asText();
     }
 }
