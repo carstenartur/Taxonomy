@@ -16,6 +16,7 @@ import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.LocalFileDetector;
 import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.support.ui.ExpectedCondition;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -191,7 +192,7 @@ class PortfolioUiAcceptanceIT {
         click(By.id("analyzeAllBtn"));
 
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("portfolioJobCenter")));
-        wait.until(driver -> !driver.findElements(
+        wait.until(browser -> !browser.findElements(
                 By.cssSelector("#portfolioJobList .portfolio-job")).isEmpty());
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
 
@@ -230,11 +231,11 @@ class PortfolioUiAcceptanceIT {
                 .isNotEmpty();
 
         open("/projects/" + projectId + "/matrices?lang=en", By.id("matrixMain"));
-        wait.until(driver -> !driver.findElements(
+        wait.until(browser -> !browser.findElements(
                 By.cssSelector("#taxonomyMatrix .matrix-drilldown")).isEmpty());
         int before = driver.findElements(
                 By.cssSelector("#taxonomyMatrix .matrix-drilldown")).size();
-        fill(driver, "matrixSearch", "REQ-001");
+        fill("matrixSearch", "REQ-001");
         int after = driver.findElements(
                 By.cssSelector("#taxonomyMatrix .matrix-drilldown")).size();
         assertThat(after).isBetween(1, before);
@@ -251,7 +252,7 @@ class PortfolioUiAcceptanceIT {
         try {
             open("/projects/" + projectId + "/import?lang=en", By.id("importMain"));
             driver.findElement(By.id("documentFile")).sendKeys(pdf.toAbsolutePath().toString());
-            fill(driver, "documentTitle", "JUnit portfolio import source");
+            fill("documentTitle", "JUnit portfolio import source");
             click(By.cssSelector("#uploadForm button[type='submit']"));
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("reviewStep")));
 
@@ -290,7 +291,6 @@ class PortfolioUiAcceptanceIT {
                     .isGreaterThanOrEqualTo(3);
             click(By.id("confirmImport"));
             wait.until(textPresent(By.id("importInfo"), "imported successfully"));
-            wait.until(ExpectedConditions.urlContains("/projects"));
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("portfolioMain")));
             wait.until(textPresent(By.cssSelector("#requirementsTable tbody"),
                     "REQ-IMP-A-" + suffix));
@@ -308,7 +308,7 @@ class PortfolioUiAcceptanceIT {
         assertThat(driver.findElements(By.cssSelector("#portfolioCounts .card"))).hasSize(4);
 
         String headBefore = driver.findElement(By.id("headCommit")).getText();
-        fill(driver, "commitMessage", "JUnit reviewed portfolio " + System.nanoTime());
+        fill("commitMessage", "JUnit reviewed portfolio " + System.nanoTime());
         click(By.cssSelector("#commitForm button[type='submit']"));
         wait.until(browser -> {
             String current = browser.findElement(By.id("headCommit")).getText();
@@ -405,11 +405,11 @@ class PortfolioUiAcceptanceIT {
         javascript().executeScript("document.documentElement.style.fontSize=''");
     }
 
-    private static void submitModal(String modalId, Consumer<WebElement> fill) {
+    private static void submitModal(String modalId, Consumer<WebElement> formValues) {
         click(By.cssSelector("[data-bs-target='#" + modalId + "']"));
         WebElement modal = wait.until(
                 ExpectedConditions.visibilityOfElementLocated(By.id(modalId)));
-        fill.accept(modal);
+        formValues.accept(modal);
         modal.findElement(By.cssSelector("button[type='submit']")).click();
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
         waitUntilPortfolioIdle();
@@ -423,16 +423,8 @@ class PortfolioUiAcceptanceIT {
         wait.until(ExpectedConditions.elementToBeClickable(locator)).click();
     }
 
-    private static void fill(WebElement root, String id, String value) {
-        WebElement element = root.findElement(By.id(id));
-        element.clear();
-        element.sendKeys(value);
-    }
-
-    private static void fill(WebElement root, String selector, String value,
-                             boolean cssSelector) {
-        WebElement element = root.findElement(cssSelector
-                ? By.cssSelector(selector) : By.id(selector));
+    private static void fill(String id, String value) {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id(id)));
         element.clear();
         element.sendKeys(value);
     }
@@ -488,8 +480,7 @@ class PortfolioUiAcceptanceIT {
         return file;
     }
 
-    private static org.openqa.selenium.support.ui.ExpectedCondition<Boolean> textPresent(
-            By locator, String expectedText) {
+    private static ExpectedCondition<Boolean> textPresent(By locator, String expectedText) {
         return browser -> {
             List<WebElement> elements = browser.findElements(locator);
             return !elements.isEmpty()
