@@ -1,10 +1,8 @@
 package com.taxonomy.portfolio;
 
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.portfolio.controller.PortfolioGitController;
-import com.taxonomy.portfolio.service.PortfolioGitService;
+import com.taxonomy.portfolio.service.PortfolioGitApplicationService;
 import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
 
@@ -18,17 +16,12 @@ class PortfolioGitControllerWorkspaceIsolationTest {
 
     @Test
     void doesNotFallBackToSharedRepositoryWhenWorkspaceProvisioningFails() {
-        PortfolioGitService portfolioGitService = mock(PortfolioGitService.class);
-        SemanticGitMergeService semanticGitMergeService = mock(SemanticGitMergeService.class);
-        DslGitRepositoryFactory repositoryFactory = mock(DslGitRepositoryFactory.class);
+        PortfolioGitApplicationService gitService =
+                mock(PortfolioGitApplicationService.class);
         WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
         RepositoryStateService repositoryStateService = mock(RepositoryStateService.class);
         PortfolioGitController controller = new PortfolioGitController(
-                portfolioGitService,
-                semanticGitMergeService,
-                repositoryFactory,
-                workspaceResolver,
-                repositoryStateService);
+                gitService, workspaceResolver, repositoryStateService);
 
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("architect");
         doThrow(new IllegalStateException("workspace database unavailable"))
@@ -37,6 +30,6 @@ class PortfolioGitControllerWorkspaceIsolationTest {
         assertThatThrownBy(controller::exportPortfolio)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("workspace database unavailable");
-        verifyNoInteractions(portfolioGitService, semanticGitMergeService, repositoryFactory);
+        verifyNoInteractions(gitService);
     }
 }
