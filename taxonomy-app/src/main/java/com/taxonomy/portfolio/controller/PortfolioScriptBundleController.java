@@ -32,6 +32,8 @@ public class PortfolioScriptBundleController {
             "static/js/portfolio/portfolio-guided-decisions.js";
     private static final String ASYNC =
             "static/js/portfolio/taxonomy-portfolio-async.js";
+    private static final String ANALYSIS_JOB_SYNCHRONIZER =
+            "static/js/portfolio/portfolio-analysis-job-synchronizer.js";
     private static final String ASYNC_CLOSING_MARKER = "\n})();";
     private static final String JOB_REGISTRATION_BRIDGE = """
 
@@ -58,12 +60,14 @@ public class PortfolioScriptBundleController {
         String analysisResponseNormalizer = read(ANALYSIS_RESPONSE_NORMALIZER);
         String guided = read(GUIDED);
         String async = exposeJobRegistrationBridge(read(ASYNC));
+        String analysisJobSynchronizer = read(ANALYSIS_JOB_SYNCHRONIZER);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/javascript"))
                 .cacheControl(CacheControl.maxAge(Duration.ofMinutes(10)).cachePublic())
                 .body(productRequestNormalizer + "\n;\n"
                         + analysisResponseNormalizer + "\n;\n"
-                        + guided + "\n;\n" + async);
+                        + guided + "\n;\n" + async + "\n;\n"
+                        + analysisJobSynchronizer);
     }
 
     static String exposeJobRegistrationBridge(String asyncScript) {
