@@ -11,8 +11,10 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
+import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.LocalFileDetector;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -148,7 +150,7 @@ class PortfolioUiAcceptanceIT {
         new Select(modal.findElement(By.id("requirementType"))).selectByValue("SECURITY");
         fill(modal, "requirementText", text);
         modal.findElement(By.cssSelector("button[type='submit']")).click();
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("requirementModal")));
+        waitForModalClosed("requirementModal");
         waitUntilPortfolioIdle();
         wait.until(textPresent(By.cssSelector("#requirementsTable tbody"), key));
     }
@@ -164,7 +166,7 @@ class PortfolioUiAcceptanceIT {
         new Select(modal.findElement(By.id("solutionOperatingModel")))
                 .selectByValue("PRIVATE_CLOUD");
         modal.findElement(By.cssSelector("button[type='submit']")).click();
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("solutionModal")));
+        waitForModalClosed("solutionModal");
         waitUntilPortfolioIdle();
         wait.until(textPresent(By.id("solutionsList"), "Secure communication service"));
     }
@@ -182,7 +184,7 @@ class PortfolioUiAcceptanceIT {
                 .selectByValue("PRIVATE_CLOUD");
         fill(modal, "productSource", "JUnit browser acceptance catalogue source");
         modal.findElement(By.cssSelector("button[type='submit']")).click();
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("productModal")));
+        waitForModalClosed("productModal");
         waitUntilPortfolioIdle();
         wait.until(textPresent(By.id("productsList"), "JUnit Product"));
     }
@@ -365,8 +367,7 @@ class PortfolioUiAcceptanceIT {
         fill(dialog, "guidedConflictResolution",
                 "Use a private on-premises cloud; public-cloud wording is superseded.");
         dialog.findElement(By.cssSelector("button[type='submit']")).click();
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(
-                By.id("guidedConflictDialog")));
+        waitForModalClosed("guidedConflictDialog");
     }
 
     private static void verifyTaxonomyPickerAndProductComparison() {
@@ -411,16 +412,46 @@ class PortfolioUiAcceptanceIT {
                 ExpectedConditions.visibilityOfElementLocated(By.id(modalId)));
         formValues.accept(modal);
         modal.findElement(By.cssSelector("button[type='submit']")).click();
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
+        waitForModalClosed(modalId);
         waitUntilPortfolioIdle();
+    }
+
+    private static void waitForModalClosed(String modalId) {
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                By.cssSelector(".modal-backdrop.show")));
+        wait.until(browser -> {
+            String classes = browser.findElement(By.tagName("body")).getAttribute("class");
+            return classes == null || !classes.contains("modal-open");
+        });
     }
 
     private static void waitUntilPortfolioIdle() {
         wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
     }
 
+    /**
+     * Performs a real native browser click after scrolling to a stable viewport
+     * position. Bootstrap may report a trigger as clickable while the fading
+     * backdrop still intercepts the pointer; retry only that transient browser
+     * condition instead of bypassing it with JavaScript.
+     */
     private static void click(By locator) {
-        wait.until(ExpectedConditions.elementToBeClickable(locator)).click();
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                By.cssSelector(".modal-backdrop.show")));
+        wait.until(browser -> {
+            try {
+                WebElement element = browser.findElement(locator);
+                if (!element.isDisplayed() || !element.isEnabled()) return false;
+                javascript().executeScript(
+                        "arguments[0].scrollIntoView({block:'center',inline:'nearest'});",
+                        element);
+                element.click();
+                return true;
+            } catch (ElementClickInterceptedException | StaleElementReferenceException error) {
+                return false;
+            }
+        });
     }
 
     private static void fill(String id, String value) {
