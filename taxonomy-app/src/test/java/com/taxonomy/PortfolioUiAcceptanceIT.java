@@ -310,8 +310,13 @@ class PortfolioUiAcceptanceIT {
 
     private static void verifyVersioningAndReports(long projectId) {
         open("/projects/" + projectId + "/versioning?lang=en", By.id("versioningMain"));
-        wait.until(textPresent(By.id("dslPreview"), "portfolio"));
-        assertThat(driver.findElement(By.id("dslPreview")).getText()).contains("portfolio");
+        wait.until(browser -> {
+            String dsl = browser.findElement(By.id("dslPreview"))
+                    .getDomProperty("textContent");
+            return dsl != null && dsl.toLowerCase(Locale.ROOT).contains("portfolio");
+        });
+        assertThat(driver.findElement(By.id("dslPreview")).getDomProperty("textContent"))
+                .contains("portfolio");
         assertThat(driver.findElements(By.cssSelector("#portfolioCounts .card"))).hasSize(4);
 
         String headBefore = driver.findElement(By.id("headCommit")).getText();
