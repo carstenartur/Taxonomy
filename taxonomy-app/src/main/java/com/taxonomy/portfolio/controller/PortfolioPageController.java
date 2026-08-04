@@ -28,4 +28,14 @@ public class PortfolioPageController {
     public String documentImport(@PathVariable Long projectId) {
         return "portfolio-import";
     }
+
+    @GetMapping("/projects/{projectId}/versioning")
+    public String versioning(@PathVariable Long projectId) {
+        return "portfolio-versioning";
+    }
+
+    @GetMapping("/projects/{projectId}/reports")
+    public String reports(@PathVariable Long projectId) {
+        return "portfolio-reports";
+    }
 }
