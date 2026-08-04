@@ -173,6 +173,7 @@ class PortfolioApiContractTest {
                 .andExpect(jsonPath("$.type").value("urn:taxonomy:portfolio:not_found"));
     }
 
+
     @Test
     @WithMockUser(username = "reader", roles = "USER")
     void readerCannotConfirmGeneratedMappings() throws Exception {
@@ -187,5 +188,36 @@ class PortfolioApiContractTest {
                                 }
                                 """))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "reader", roles = "USER")
+    void analyzeProjectAcceptsRequestWithoutAllField() throws Exception {
+        mockMvc.perform(post("/api/projects/999999999/analyses")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requirementIds": [1],
+                                  "provider": "MOCK"
+                                }
+                                """))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @WithMockUser(username = "reader", roles = "USER")
+    void analyzeProjectAcceptsRequestWithNullAllField() throws Exception {
+        mockMvc.perform(post("/api/projects/999999999/analyses")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requirementIds": [1],
+                                  "all": null,
+                                  "provider": "MOCK"
+                                }
+                                """))
+                .andExpect(status().isNotFound());
     }
 }

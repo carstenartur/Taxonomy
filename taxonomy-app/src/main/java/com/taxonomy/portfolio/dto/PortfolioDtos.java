@@ -171,7 +171,7 @@ public final class PortfolioDtos {
 
     public record AnalyzeProjectRequest(
             List<Long> requirementIds,
-            boolean all,
+            Boolean all,
             String provider,
             Integer maxArchitectureNodes,
             String idempotencyKey) {
