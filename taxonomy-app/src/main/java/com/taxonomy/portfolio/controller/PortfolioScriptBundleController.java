@@ -32,6 +32,23 @@ public class PortfolioScriptBundleController {
             "static/js/portfolio/portfolio-guided-decisions.js";
     private static final String ASYNC =
             "static/js/portfolio/taxonomy-portfolio-async.js";
+    private static final String ASYNC_CLOSING_MARKER = "\n})();";
+    private static final String JOB_REGISTRATION_BRIDGE = """
+
+    // Stable bridge for the preceding response adapter. Job storage, polling
+    // and rendering remain private to this module; callers can only submit a
+    // canonical same-origin job resource and its server representation.
+    window.taxonomyPortfolioRegisterJob = function (jobUrl, job) {
+        if (!jobUrl || !job || !job.id) return false;
+        const resolved = new URL(jobUrl, window.location.href);
+        if (resolved.origin !== window.location.origin
+                || !/^\\/api\\/projects\\/\\d+\\/analysis-jobs\\/[^/]+$/.test(resolved.pathname)) {
+            return false;
+        }
+        registerJob(resolved.toString(), job);
+        return true;
+    };
+""";
 
     @GetMapping(value = "/js/portfolio/taxonomy-portfolio-async.js",
             produces = "application/javascript")
@@ -40,13 +57,23 @@ public class PortfolioScriptBundleController {
         String productRequestNormalizer = read(PRODUCT_REQUEST_NORMALIZER);
         String analysisResponseNormalizer = read(ANALYSIS_RESPONSE_NORMALIZER);
         String guided = read(GUIDED);
-        String async = read(ASYNC);
+        String async = exposeJobRegistrationBridge(read(ASYNC));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/javascript"))
                 .cacheControl(CacheControl.maxAge(Duration.ofMinutes(10)).cachePublic())
                 .body(productRequestNormalizer + "\n;\n"
                         + analysisResponseNormalizer + "\n;\n"
                         + guided + "\n;\n" + async);
+    }
+
+    static String exposeJobRegistrationBridge(String asyncScript) {
+        int closing = asyncScript.lastIndexOf(ASYNC_CLOSING_MARKER);
+        if (closing < 0) {
+            throw new IllegalStateException("Portfolio job-center script has no closing IIFE marker");
+        }
+        return asyncScript.substring(0, closing)
+                + JOB_REGISTRATION_BRIDGE
+                + asyncScript.substring(closing);
     }
 
     private static String read(String path) throws IOException {
