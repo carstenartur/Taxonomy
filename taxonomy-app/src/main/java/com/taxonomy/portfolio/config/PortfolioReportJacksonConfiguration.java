@@ -1,9 +1,17 @@
 package com.taxonomy.portfolio.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 
 /**
  * Supplies the Jackson 2 mapper used by the report renderer.
@@ -21,6 +29,12 @@ public class PortfolioReportJacksonConfiguration {
     @Bean
     @ConditionalOnMissingBean(ObjectMapper.class)
     ObjectMapper portfolioReportObjectMapper() {
-        return new ObjectMapper().findAndRegisterModules();
+        SimpleModule timeValues = new SimpleModule("portfolio-report-time-values");
+        timeValues.addSerializer(Instant.class, ToStringSerializer.instance);
+        timeValues.addSerializer(LocalDate.class, ToStringSerializer.instance);
+        timeValues.addSerializer(LocalDateTime.class, ToStringSerializer.instance);
+        timeValues.addSerializer(OffsetDateTime.class, ToStringSerializer.instance);
+        timeValues.addSerializer(ZonedDateTime.class, ToStringSerializer.instance);
+        return new ObjectMapper().findAndRegisterModules().registerModule(timeValues);
     }
 }
