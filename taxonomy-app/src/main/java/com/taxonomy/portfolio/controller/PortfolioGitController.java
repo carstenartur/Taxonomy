@@ -65,7 +65,7 @@ public class PortfolioGitController {
         String effectiveBranch = firstNonBlank(
                 request != null ? request.branch() : null,
                 branch,
-                current.workspaceContext().branch(),
+                current.workspaceContext().currentBranch(),
                 "draft");
         return gitService.commit(
                 effectiveBranch,
@@ -89,7 +89,7 @@ public class PortfolioGitController {
         String effectiveBranch = firstNonBlank(
                 request != null ? request.branch() : null,
                 branch,
-                current.workspaceContext().branch(),
+                current.workspaceContext().currentBranch(),
                 "draft");
         return gitService.materialize(
                 effectiveBranch,
@@ -110,7 +110,7 @@ public class PortfolioGitController {
         String effectiveTarget = firstNonBlank(
                 request != null ? request.targetBranch() : null,
                 target,
-                current.workspaceContext().branch(),
+                current.workspaceContext().currentBranch(),
                 "draft");
         return gitService.merge(
                 effectiveSource,
