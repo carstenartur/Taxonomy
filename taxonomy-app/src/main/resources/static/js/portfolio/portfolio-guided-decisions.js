@@ -7,11 +7,12 @@
     const nodeCache = new Map();
     let currentConflictButton = null;
     let searchTimer = null;
+    let taxonomyHelpSequence = 0;
 
     const labels = {
         en: {
             taxonomySearch: 'Search taxonomy by code or title',
-            taxonomyHelp: 'Enter at least two characters. Suggestions show code, title and taxonomy area.',
+            taxonomyHelp: 'Enter at least two characters. Suggestions show code, title and taxonomy hierarchy context.',
             compareProducts: 'Compare product candidates',
             product: 'Product', coverage: 'Coverage', review: 'Review', selection: 'Selection',
             source: 'Source', exclusions: 'Hard exclusions', strengths: 'Strengths', weaknesses: 'Weaknesses',
@@ -22,11 +23,12 @@
             resolve: 'Resolve conflict', resolution: 'Resolution and rationale',
             resolutionHelp: 'Explain how the project resolves or accepts this conflict. The text becomes part of the audit trail.',
             cancel: 'Cancel', save: 'Save reviewed decision', required: 'A resolution is required when resolving a conflict.',
+            projectRequired: 'Select a project before reviewing a conflict.',
             saved: 'Conflict decision saved.', failed: 'The conflict decision could not be saved.'
         },
         de: {
             taxonomySearch: 'Taxonomie nach Code oder Titel durchsuchen',
-            taxonomyHelp: 'Mindestens zwei Zeichen eingeben. Vorschläge zeigen Code, Titel und Taxonomiebereich.',
+            taxonomyHelp: 'Mindestens zwei Zeichen eingeben. Vorschläge zeigen Code, Titel und Hierarchiekontext.',
             compareProducts: 'Produktkandidaten vergleichen',
             product: 'Produkt', coverage: 'Abdeckung', review: 'Prüfung', selection: 'Auswahl',
             source: 'Quelle', exclusions: 'Harte Ausschlusskriterien', strengths: 'Stärken', weaknesses: 'Schwächen',
@@ -37,6 +39,7 @@
             resolve: 'Konflikt lösen', resolution: 'Lösung und Begründung',
             resolutionHelp: 'Beschreiben Sie, wie das Projekt diesen Konflikt löst oder akzeptiert. Der Text wird Teil des Audit-Trails.',
             cancel: 'Abbrechen', save: 'Geprüfte Entscheidung speichern', required: 'Beim Lösen eines Konflikts ist eine Begründung erforderlich.',
+            projectRequired: 'Wählen Sie vor der Konfliktprüfung ein Projekt aus.',
             saved: 'Konfliktentscheidung wurde gespeichert.', failed: 'Die Konfliktentscheidung konnte nicht gespeichert werden.'
         }
     };
@@ -91,8 +94,15 @@
         input.setAttribute('aria-label', t('taxonomySearch'));
         input.placeholder = locale === 'de' ? 'z. B. CP-… oder Titel' : 'e.g. CP-… or title';
         const help = document.createElement('div');
+        const helpId = input.id
+            ? input.id + '-taxonomy-help'
+            : 'taxonomyPickerHelp-' + (++taxonomyHelpSequence);
+        help.id = helpId;
         help.className = 'form-text small';
         help.textContent = t('taxonomyHelp');
+        const describedBy = [input.getAttribute('aria-describedby'), helpId]
+            .filter(Boolean).join(' ');
+        input.setAttribute('aria-describedby', describedBy);
         input.insertAdjacentElement('afterend', help);
         input.addEventListener('input', function () {
             window.clearTimeout(searchTimer);
@@ -118,11 +128,18 @@
             nodes.forEach(function (node) {
                 const code = String(node.code || '').toUpperCase();
                 if (!code) return;
-                nodeCache.set(code, { code: code, name: node.nameEn || node.nameDe || code });
+                const name = node.nameEn || node.nameDe || code;
+                nodeCache.set(code, { code: code, name: name });
                 const option = document.createElement('option');
+                const context = [name, node.taxonomyRoot];
+                if (node.parentCode) {
+                    context.push((locale === 'de' ? 'Übergeordnet: ' : 'Parent: ') + node.parentCode);
+                }
+                if (Number.isInteger(node.level)) {
+                    context.push((locale === 'de' ? 'Ebene ' : 'Level ') + node.level);
+                }
                 option.value = code;
-                option.label = [node.nameEn || node.nameDe || code, node.taxonomyRoot, node.hierarchyPath]
-                    .filter(Boolean).join(' · ');
+                option.label = context.filter(Boolean).join(' · ');
                 datalist.appendChild(option);
             });
         } catch (error) {
@@ -250,6 +267,10 @@
             return;
         }
         const projectId = Number(localStorage.getItem('taxonomy.portfolio.projectId')) || null;
+        if (!projectId) {
+            showConflictError(t('projectRequired'));
+            return;
+        }
         const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
         const token = document.querySelector('meta[name="_csrf"]')?.content;
         const headerName = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
@@ -270,9 +291,20 @@
             document.getElementById('portfolioStatus').textContent = t('saved');
             document.getElementById('refreshPortfolioBtn')?.click();
         } catch (error) {
-            const target = document.getElementById('portfolioError');
-            if (target) { target.textContent = error.message || t('failed'); target.classList.remove('d-none'); target.tabIndex = -1; target.focus(); }
+            showConflictError(error.message || t('failed'));
         }
+    }
+
+    function showConflictError(message) {
+        const target = document.getElementById('portfolioError');
+        if (target) {
+            target.textContent = message;
+            target.classList.remove('d-none');
+            target.tabIndex = -1;
+            target.focus();
+        }
+        const alert = document.getElementById('portfolioAlert');
+        if (alert) alert.textContent = message;
     }
 
     function humanize(value) {
