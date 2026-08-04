@@ -70,6 +70,7 @@ class PortfolioAnalysisUiDiagnosticIT {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> setup = (Map<String, Object>) driver.executeAsyncScript("""
+                const suffix = arguments[0];
                 const done = arguments[arguments.length - 1];
                 (async function () {
                     const token = document.querySelector('meta[name="_csrf"]')?.content;
@@ -86,7 +87,6 @@ class PortfolioAnalysisUiDiagnosticIT {
                         if (!response.ok) throw new Error(url + ' -> HTTP ' + response.status + ': ' + text);
                         return JSON.parse(text);
                     }
-                    const suffix = arguments[0];
                     const project = await post('/api/projects', {
                         projectKey: 'P-DIAG-' + suffix,
                         title: 'Analysis browser diagnostic'
@@ -145,14 +145,21 @@ class PortfolioAnalysisUiDiagnosticIT {
                     });
                 }()).catch(error => done({ error: String(error && error.stack || error) }));
                 """, projectId);
-        List<String> browserLogs = driver.manage().logs().get(LogType.BROWSER).getAll().stream()
-                .map(Object::toString)
-                .toList();
 
         assertThat(discovered)
                 .as("Analysis job was not rendered. diagnostics=%s browserLogs=%s",
-                        diagnostics, browserLogs)
+                        diagnostics, browserLogs())
                 .isTrue();
+    }
+
+    private static List<String> browserLogs() {
+        try {
+            return driver.manage().logs().get(LogType.BROWSER).getAll().stream()
+                    .map(Object::toString)
+                    .toList();
+        } catch (RuntimeException unsupported) {
+            return List.of("Browser logs unavailable: " + unsupported.getMessage());
+        }
     }
 
     private static void login() {
