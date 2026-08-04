@@ -3,8 +3,8 @@
  *
  * The persistent job centre consumes the asynchronous HTTP contract: a JSON
  * job representation, status 202 and a canonical Location header. Preserve
- * failures unchanged, but normalize successful compatibility responses so the
- * job is registered and can be polled after navigation or reload.
+ * failures unchanged, normalize successful compatibility responses and hand
+ * accepted jobs directly to the existing job-centre implementation.
  */
 (function () {
     'use strict';
@@ -25,20 +25,30 @@
         if (!job || !job.id) return response;
 
         const existingLocation = response.headers.get('Location');
-        if (response.status === 202 && existingLocation) return response;
-
         const location = existingLocation || canonicalLocation(requestUrl, job);
         if (!location) return response;
+
+        const absoluteLocation = new URL(location, window.location.href).toString();
+        const registered = registerWithJobCenter(absoluteLocation, job);
+        if (!registered && response.status === 202 && existingLocation) return response;
 
         const headers = new Headers(response.headers);
         headers.set('Content-Type', 'application/json');
         headers.set('Location', location);
         return new Response(JSON.stringify(job), {
-            status: 202,
-            statusText: 'Accepted',
+            // When the bridge accepted the job, prevent the outer compatibility
+            // adapter from registering it a second time. The browser network
+            // response remains the server's original HTTP 202.
+            status: registered ? 200 : 202,
+            statusText: registered ? 'Accepted for background processing' : 'Accepted',
             headers: headers
         });
     };
+
+    function registerWithJobCenter(location, job) {
+        if (typeof window.taxonomyPortfolioRegisterJob !== 'function') return false;
+        return window.taxonomyPortfolioRegisterJob(location, job) === true;
+    }
 
     function resolveUrl(input) {
         const value = input instanceof Request ? input.url : String(input);
