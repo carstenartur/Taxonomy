@@ -39,6 +39,13 @@ class PortfolioTestArchitectureContractTest {
                 .contains("maven-failsafe-plugin")
                 .contains("**/*IT.java");
 
+        String moduleReadme = Files.readString(root.resolve(
+                "taxonomy-app/src/main/resources/static/js/portfolio/README.md"));
+        assertThat(moduleReadme)
+                .contains("PortfolioUiAcceptanceIT")
+                .contains("Maven Failsafe")
+                .contains("Node/Playwright workflow scripts are intentionally not permitted");
+
         String projectTemplate = Files.readString(root.resolve(
                 "taxonomy-app/src/main/resources/templates/projects.html"));
         String projectScript = Files.readString(root.resolve(
