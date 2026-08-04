@@ -114,13 +114,18 @@ jobs:
 
       - name: Run the canonical Maven verification suite
         env:
-          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         shell: bash
         run: |
           mkdir -p target
           set -o pipefail
-          ./mvnw -B verify -Pci -DrunOnnxTests=true 2>&1 | tee target/maven-verification.log
+          # The pinned local model has its own Maven-owned `onnx` profile. The
+          # mandatory reactor must remain reproducible when the external model
+          # registry is unavailable or rate-limited.
+          ./mvnw -B verify -Pci \
+            -Dtaxonomy.model.download.skip=true \
+            -DexcludedGroups=real-llm,onnx,db-mssql,db-oracle \
+            2>&1 | tee target/maven-verification.log
 
       - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
