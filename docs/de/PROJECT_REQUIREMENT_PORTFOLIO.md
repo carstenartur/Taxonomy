@@ -1,353 +1,312 @@
 # Projekt-, Anforderungs-, Lösungs- und Produktportfolio
 
-## Zweck
+## Zweck und primäre Benutzeroberfläche
 
-Das Projektportfolio erweitert die bisherige Analyse einer einzelnen Anforderung zu einem nachvollziehbaren Mehranforderungsprozess. Es trennt vier Fragen, die fachlich nicht miteinander vermischt werden dürfen:
+Das Portfolio erweitert einzelne Anforderungsanalysen zu einem nachvollziehbaren Projektprozess:
 
-1. **Anforderungsrelevanz:** Welche Taxonomieelemente sind für jede einzelne Anforderung relevant?
-2. **Architekturauswirkung:** Welche verbundenen Elemente und Beziehungen bilden die anforderungsspezifische Zielarchitektur?
-3. **Realisierungsentscheidung:** Ist ein Element bereits erfüllt, wiederverwendbar, zu ändern, neu zu schaffen, zu beschaffen oder organisatorisch umzusetzen?
-4. **Produktentscheidung:** Welches konkrete, quellengebundene Produkt und welche Version sind geprüfte Kandidaten für eine Lösung?
+```text
+Projekt
+→ getrennt identifizierte Anforderungen und unveränderliche Versionen
+→ unabhängige Analyse-Snapshots
+→ Taxonomie- und Architekturwirkung
+→ geprüfte Maßnahmen und Entscheidungen
+→ wiederverwendbare Lösungen
+→ quellengebundene Produktkandidaten
+→ Konflikte, Matrizen, Git-Historie und Berichte
+```
 
-Der eigene Arbeitsbereich ist erreichbar unter:
+Die primäre Benutzeroberfläche ist der Webarbeitsbereich:
 
 ```text
 /projects
 ```
 
-Der bestehende Analysearbeitsbereich `/` und `POST /api/analyze` bleiben für Ad-hoc-Analysen verfügbar.
+Für die auf dieser Seite beschriebenen Arbeitsabläufe sind weder REST noch JSON oder cURL erforderlich. Integrations- und Automatisierungsverträge stehen getrennt in der [Projektportfolio-API](PROJECT_PORTFOLIO_API.md).
 
-## Grundregel: Anforderungen werden getrennt analysiert
+## Navigation
 
-Ein Projekt kann beliebig viele stabile Anforderungen enthalten:
+Nach der Anmeldung **Projekte** öffnen oder `/projects` aufrufen.
+
+Der Arbeitsbereich enthält:
+
+- eine durchsuchbare Projektliste,
+- Projektkennzahlen und offene Entscheidungen,
+- Anforderungen, Taxonomie, Lösungen, Produkte, Konflikte und Snapshots,
+- ein dauerhaftes Analyse-Job-Center,
+- Verweise auf Dokumentimport, Matrizen, Versionierung und Berichte.
+
+Die sichtbaren Aktionen hängen von der angemeldeten Rolle ab. `USER` darf lesen und freigegebene Analysen starten. `ARCHITECT` und `ADMIN` dürfen Projektentscheidungen verändern. Der Server erzwingt die Berechtigungen unabhängig davon, ob eine Schaltfläche im Browser deaktiviert ist.
+
+## 1. Projekt anlegen und auswählen
+
+1. `/projects` öffnen.
+2. **Neues Projekt** wählen.
+3. Eindeutigen Projektschlüssel, Titel und optional eine Beschreibung eingeben.
+4. **Anlegen** wählen.
+
+Das ausgewählte Projekt wird bei der Rückkehr in das Portfolio wiederhergestellt. Die Daten bleiben im aktiven Workspace isoliert.
+
+## 2. Anforderungen aus PDF oder DOCX importieren
+
+Folgende Seite öffnen:
 
 ```text
-P-001
-├── REQ-001
-├── REQ-002
-└── REQ-003
+/projects/{projectId}/import
 ```
 
-**Alle analysieren** erzeugt je Anforderung ein eigenes Job-Item und einen eigenen unveränderlichen Ergebnissnapshot. Die Texte werden nicht zusammengefügt. Ein Fehler bei `REQ-002` verwirft daher nicht die erfolgreichen Ergebnisse von `REQ-001` und `REQ-003`.
+Der Assistent besitzt drei ausdrückliche Schritte.
 
-## Begriffe
+### 2.1 Quelle hochladen
 
-### Projekt
+1. PDF- oder DOCX-Datei auswählen.
+2. Quelltitel und Quellentyp angeben.
+3. **Dokument auslesen** wählen.
+4. Optional nach der deterministischen Extraktion **KI-Kandidaten ergänzen** wählen.
 
-Ein Projekt ist der fachliche, workspacegebundene Container für Anforderungen, aktuelle Lösungsentscheidungen, Produktkandidaten, Konfliktprüfungen und konsolidierte Matrizen.
+Quellartefakt und Quellversion werden vor der Kandidatenprüfung gespeichert. Seiten, Abschnitte und Originaltexte bleiben mit den entstehenden Anforderungsversionen verbunden.
 
-Ein Workspace kann mehrere Projekte enthalten. Wiederverwendbare Lösungen und Produkte können von mehreren Projekten desselben Workspace genutzt werden.
+### 2.2 Jeden Kandidaten prüfen
 
-### Anforderung und Anforderungsversion
+Jeder Kandidat erscheint als eigenständige bearbeitbare Karte. Zu prüfen sind:
 
-Eine Anforderung besitzt einen stabilen Schlüssel wie `REQ-001`. Ihr Text wird niemals überschrieben. Eine Änderung erzeugt eine unveränderliche nummerierte Version mit:
+- Anforderungsschlüssel,
+- Titel und Text,
+- Typ, Priorität und Kritikalität,
+- Quellabschnitt und Seite,
+- Extraktionsherkunft und gegebenenfalls Konfidenz.
 
-- SHA-256-Fingerprint des Inhalts,
-- Autor und Zeitpunkt,
-- Änderungsbegründung,
-- optionalen Referenzen auf Quellenartefakt, Quellenversion und Quellenfragmente,
-- Abschnitt, Seite und Originaltext.
+Für jeden Kandidaten genau eine Entscheidung wählen:
 
-Wird ein identischer Text erneut übergeben, wird die vorhandene Version ausgewählt statt eine Dublette anzulegen.
+- **Neue Anforderung** – neue stabile Anforderungsidentität anlegen;
+- **Neue Version** – geprüften Text einer vorhandenen Anforderung zuordnen;
+- **Zusammenführen** – ausdrücklich mit einem anderen beibehaltenen Kandidaten verbinden;
+- **Verwerfen** – nicht persistieren.
 
-### Analysejob und Job-Item
+Identische und ähnliche vorhandene Anforderungen werden hervorgehoben. Mehrere Kandidaten werden niemals stillschweigend zu einem gemeinsamen Analysetext verkettet.
 
-Ein Job beschreibt eine angeforderte Mehrfachanalyse. Jede Anforderung besitzt ein eigenes Item mit einem der Zustände:
+Der Prüfentwurf kann im Browser gespeichert und wiederhergestellt werden. Beim Schließen eines ungespeicherten Entwurfs erscheint eine Warnung.
 
-- `PENDING`
-- `RUNNING`
-- `SUCCESS`
-- `PARTIAL`
-- `FAILED`
-- `CANCELLED`
+### 2.3 Atomaren Import bestätigen
 
-Fehlgeschlagene Items können erneut ausgeführt werden, ohne erfolgreiche Anforderungen noch einmal zu analysieren.
+Die Abschlussseite nennt vor dem Speichern neue Anforderungen, neue Versionen, Zusammenführungen und verworfene Kandidaten.
 
-### Analyse-Snapshot
+Festlegen, ob jede betroffene Anforderung anschließend getrennt analysiert werden soll. Der Server übernimmt alle geprüften Anforderungs- und Versionsentscheidungen in einer Transaktion. Ein später fehlerhafter Kandidat kann keinen halb importierten Projektstand hinterlassen.
 
-Ein erfolgreiches oder teilweise erfolgreiches Item erzeugt einen unveränderlichen Snapshot mit:
+## 3. Anforderungen manuell erfassen und analysieren
 
-- exakter Anforderungsversion,
-- vollständigem Score-Set,
-- Architekturansicht,
-- Beziehungshypothesen,
-- Gap-Analyse,
-- Mustererkennung,
-- Architekturempfehlung,
-- Provider und optionalem Modell,
-- Prompt- und Taxonomie-Fingerprints,
-- Workspace, Branch und Git-Commit,
-- Warnungen, Laufzeit und Autor.
+Im Reiter **Anforderungen**:
 
-Eine spätere Neuanalyse erzeugt einen weiteren Snapshot. Ältere Ergebnisse bleiben darstellbar und vergleichbar.
+1. **Neue Anforderung** wählen.
+2. Stabilen Schlüssel, Titel, Typ und Text eingeben.
+3. Anforderung speichern.
+4. **Analysieren** für eine Anforderung oder **Alle analysieren** für das Projekt wählen.
 
-### Taxonomiezuordnung
+Die Analyse läuft asynchron. Der Server antwortet nach dem Persistieren des Jobs; die Seite bleibt bedienbar.
 
-Ein Snapshot ordnet die Anforderung konkreten Taxonomieknoten zu. Jede Zuordnung speichert:
+## 4. Analyse-Job-Center verwenden
 
-- direkten Score,
-- abgeleitete Relevanz,
-- Konfidenz,
-- Herkunft der Zuordnung,
-- Hierarchiepfad,
-- verständliche Aufnahmebegründung,
-- Kennzeichen für die Wirkungsauswahl,
-- Prüf- und Maßnahmenentscheidung.
+Das Job-Center bleibt im Projekt sichtbar und übersteht ein Neuladen des Browsers.
 
-Die Prüfung verändert den unveränderlichen Snapshot nicht, sondern ergänzt die abfragbare Zuordnung um eine menschliche Entscheidung.
+Es zeigt:
 
-### Maßnahmenstatus
+- wartende, laufende, erfolgreiche, teilweise erfolgreiche, fehlgeschlagene und abgebrochene Einträge,
+- Fortschritt je Anforderung,
+- Versuche, erzeugte Snapshots und Fehlerdetails,
+- **Fehlgeschlagene Einträge wiederholen**, ohne erfolgreiche Einträge erneut auszuführen.
 
-Taxonomierelevanz beweist nicht, was gebaut oder gekauft werden muss. Der Ausgangszustand ist deshalb `UNDECIDED`.
+Ein UI-Polling-Timeout markiert den serverseitigen Job nicht als fehlgeschlagen. Der persistierte Job bleibt auffindbar und wird vom Browser wieder aufgenommen.
 
-Ein Reviewer kann folgende Maßnahmen festlegen:
+## 5. Anforderungsdetail öffnen
 
-| Maßnahme | Bedeutung |
-|---|---|
-| `SATISFIED_AS_IS` | Eine vorhandene Lösung erfüllt die Anforderung bereits |
-| `REUSE` | Eine vorhandene Lösung kann wiederverwendet werden |
-| `CHANGE` | Eine vorhandene Lösung muss angepasst werden |
-| `CREATE` | Eine neue Lösung muss entwickelt werden |
-| `PROCURE` | Eine Lösung oder ein Produkt muss beschafft werden |
-| `ORGANIZATIONAL` | Organisatorische statt technische Umsetzung |
-| `RETIRE_OR_REPLACE` | Vorhandene Lösung muss stillgelegt oder ersetzt werden |
-| `UNDECIDED` | Noch keine geprüfte Entscheidung |
-
-### Lösungsdefinition und Projektlösung
-
-Eine `SolutionDefinition` beschreibt eine wiederverwendbare Realisierung eines oder mehrerer Taxonomieelemente. Sie kann einen Service, eine Anwendung, eine Plattform, einen Prozess, eine Datenlösung, Infrastruktur oder eine organisatorische Maßnahme beschreiben.
-
-Sie enthält Betriebsmodell, Lebenszyklus, Reifegrad, Verantwortlichkeit, Kosten, Risiken und Vorlaufzeit.
-
-Eine `ProjectSolution` ist die projektspezifische Entscheidung, diese Definition zu prüfen, auszuwählen oder umzusetzen. Die Abdeckung wird für jede Anforderung und jeden Snapshot getrennt gespeichert.
-
-### Produktkatalogeintrag
-
-Ein Produkteintrag beschreibt ein konkretes Herstellerprodukt und eine konkrete Version. Er ist nicht mit dem Taxonomiebereich `IP` (Information Products) gleichzusetzen.
-
-Jeder Produkteintrag benötigt:
-
-- Hersteller und Produktname,
-- Quellenreferenz,
-- Verifikationszeitpunkt.
-
-Zusätzlich können Version, Produktfamilie, Lebenszyklus beziehungsweise Supportende, Lizenzmodell, Betriebsmodell, unterstützte Plattformen, Sicherheits- und Compliance-Merkmale sowie Kostenbasis gespeichert werden.
-
-Ein Produktkandidat kann nur `SELECTED` werden, wenn seine Prüfung `CONFIRMED` ist und kein hartes Ausschlusskriterium vorliegt.
-
-### Konflikthypothese
-
-Die Konflikterkennung erzeugt nachvollziehbare Kandidaten zur Prüfung. Die ersten Regeln behandeln Hosting, Datenspeicherort, Lebenszyklus, Verfügbarkeit und Plattformvorgaben.
-
-Jedes Ergebnis beginnt als `PROPOSED`. Ein Mensch muss es bestätigen, verwerfen oder lösen. Die Konflikterkennung unterstützt das Requirements Engineering, ersetzt es aber nicht.
-
-## Bedienablauf
-
-### 1. Projekt anlegen
-
-`/projects` öffnen, **Neues Projekt** wählen und Projektschlüssel, Titel sowie optional eine Beschreibung angeben.
-
-Der Projektschlüssel ist innerhalb des aktuellen Workspace eindeutig.
-
-### 2. Anforderungen erfassen
-
-Über **Neue Anforderung** wird eine Anforderung mit stabiler Identität und erster unveränderlicher Textversion angelegt.
-
-Aus Dokumenten extrahierte Kandidaten können über die Projekt-API als getrennte Anforderungen importiert werden. Eine Zusammenführung muss ausdrücklich vom Aufrufer entschieden werden; das Portfolio verbindet Texte nie automatisch.
-
-### 3. Anforderungen analysieren
-
-**Analysieren** startet eine einzelne Anforderung, **Alle analysieren** das gesamte Projekt.
-
-Die Zusammenfassung nennt erfolgreiche, teilweise erfolgreiche und fehlgeschlagene Items. Über **Snapshots** in der Anforderungszeile werden Historie, Scores, Zuordnungen, Fingerprints und Warnungen sichtbar.
-
-### 4. Taxonomiezuordnungen prüfen
-
-Im Snapshot wird für jede Zuordnung ein Maßnahmenstatus gewählt und bestätigt. Die menschliche Entscheidung bleibt getrennt vom generierten Score und dessen Begründung gespeichert.
-
-### 5. Lösungen erfassen oder vorschlagen
-
-Eine Lösung kann manuell angelegt und einem Projekt zugeordnet werden.
-
-Nachdem eine bestätigte Lösung–Taxonomie-Abdeckung vorliegt, gleicht **Lösungen vorschlagen** wiederverwendbare Lösungen mit den aktuellen Anforderungszuordnungen ab. Die erzeugten Links bleiben `PROPOSED` und sind keine automatische Architekturfreigabe.
-
-Jede Anforderung–Lösung-Verknüpfung muss nach Prüfung von Evidenz und Abdeckung bestätigt werden.
-
-### 6. Produkte pflegen
-
-Im Reiter **Produkte** wird ein quellengebundener Produkteintrag erstellt. Bei Bedarf wird eine evidenzgestützte Produkt–Taxonomie-Abdeckung ergänzt.
-
-Danach kann das Produkt als Kandidat einer Projektlösung zugeordnet werden. Vorauswahl und endgültige Auswahl sind ausdrückliche Reviewentscheidungen.
-
-### 7. Konflikte erkennen und prüfen
-
-**Konflikte erkennen** ausführen. Jede Hypothese im Reiter Konflikte bestätigen, verwerfen oder lösen. Eine gelöste Hypothese kann eine Lösungsnotiz enthalten.
-
-### 8. Konsolidierte Matrizen lesen
-
-Das Portfolio zeigt:
-
-- Anforderung–Taxonomie-Matrix,
-- Lösung–Anforderung-Matrix,
-- Lösung–Produkt-Matrix.
-
-Die Werte sind Prozentangaben. Eine leere Zelle bedeutet „keine gespeicherte Beziehung“ und nicht automatisch einen Null-Score.
-
-## REST-API
-
-### Projekte und Anforderungen
+Jede Anforderung besitzt eine teilbare URL:
 
 ```text
-POST   /api/projects
-GET    /api/projects
-GET    /api/projects/{projectId}
-PATCH  /api/projects/{projectId}
-
-POST   /api/projects/{projectId}/requirements
-POST   /api/projects/{projectId}/requirements/import
-GET    /api/projects/{projectId}/requirements
-GET    /api/projects/{projectId}/requirements/{requirementId}
-PATCH  /api/projects/{projectId}/requirements/{requirementId}
-POST   /api/projects/{projectId}/requirements/{requirementId}/versions
-GET    /api/projects/{projectId}/requirements/{requirementId}/versions
+/projects/{projectId}/requirements/{requirementId}
 ```
 
-### Analyse und Snapshots
+Der Detailarbeitsplatz verbindet die gesamte Nachweiskette.
 
-```text
-POST   /api/projects/{projectId}/analyses
-POST   /api/projects/{projectId}/requirements/{requirementId}/analyses
-GET    /api/projects/{projectId}/analysis-jobs
-GET    /api/projects/{projectId}/analysis-jobs/{jobId}
-POST   /api/projects/{projectId}/analysis-jobs/{jobId}/retry-failed
+### Text und Quelle
 
-GET    /api/projects/{projectId}/requirements/{requirementId}/snapshots
-GET    /api/projects/{projectId}/snapshots/{snapshotId}
-GET    /api/projects/{projectId}/snapshots/diff?older=...&newer=...
+Aktueller Anforderungstext und ursprüngliches Quellfragment werden mit Quellartefakt, Abschnitt und Seite nebeneinander dargestellt.
 
-PATCH  /api/projects/{projectId}/analysis-mappings/elements/{mappingId}
-PATCH  /api/projects/{projectId}/analysis-mappings/relations/{mappingId}
-```
+### Versionen
+
+- Jede Textänderung erzeugt eine unveränderliche Version.
+- Autor, Zeitpunkt und Änderungsgrund bleiben sichtbar.
+- Ein verständlicher Vergleich zeigt hinzugekommene und entfallene Zeilen.
+
+### Analysen
+
+- Die Snapshot-Historie bleibt auswählbar.
+- Provider, Modell, Laufzeit, Taxonomie- und Prompt-Fingerprint, Branch und Commit bestimmen die exakte Baseline.
+- Warnungen, Lücken und Empfehlungen werden beim Snapshot angezeigt.
+
+### Taxonomie und Architektur
+
+Zuordnungen zeigen Code, Titel, Hierarchiepfad, Score, Relevanz, Konfidenz, Herkunft und Prüfstatus. Beziehungen werden getrennt von Elementzuordnungen dargestellt.
+
+### Entscheidungen
+
+Menschliche Entscheidungen zeigen Maßnahme, tatsächliche Evidenz, Reviewer und Zeitpunkt. Die Anwendung erfindet keine menschliche Prüfbegründung.
+
+### Lösungen und Produkte
+
+Verknüpfte wiederverwendbare Lösungen, Anforderungsabdeckung und quellengebundene Produktkandidaten erscheinen im selben Anforderungskontext.
+
+## 6. Taxonomiezuordnungen und Maßnahmen prüfen
+
+Einen Snapshot öffnen und eine Maßnahme wählen, beispielsweise:
+
+- bereits erfüllt,
+- wiederverwenden,
+- ändern,
+- neu schaffen,
+- beschaffen,
+- organisatorisch umsetzen,
+- stilllegen oder ersetzen.
+
+Beim Bestätigen öffnet sich ein geführter Entscheidungsdialog. Nur tatsächlich geprüfte Evidenz oder Begründung eingeben. Automatische Systemmetadaten und menschliche Aussagen bleiben getrennt.
+
+## 7. Lösungen und Produkte pflegen
 
 ### Lösungen
 
-```text
-POST   /api/solutions
-GET    /api/solutions
-GET    /api/solutions/{solutionId}
-PATCH  /api/solutions/{solutionId}
-POST   /api/solutions/{solutionId}/taxonomy-coverage
+Der Reiter **Lösungen** verwaltet wiederverwendbare Lösungsdefinitionen und projektspezifische Entscheidungen.
 
-POST   /api/projects/{projectId}/solutions
-GET    /api/projects/{projectId}/solutions
-PATCH  /api/projects/{projectId}/solutions/{projectSolutionId}
-POST   /api/projects/{projectId}/solutions/{projectSolutionId}/requirements
-POST   /api/projects/{projectId}/solutions/propose-from-taxonomy
-```
+Beim Ergänzen einer Taxonomieabdeckung den Taxonomie-Picker verwenden. Mindestens zwei Zeichen eines Codes oder Titels eingeben. Vorschläge enthalten Taxonomiebereich und Hierarchiekontext; Codes müssen nicht auswendig bekannt sein.
+
+Aus bestätigter Lösungsabdeckung kann **Lösungen vorschlagen** Kandidaten erzeugen. Die Verknüpfungen bleiben vorgeschlagen, bis ein Mensch sie bestätigt.
 
 ### Produkte
 
+Jedes Produkt benötigt Hersteller, Produktname, Quellenreferenz und Verifikationszeitpunkt. Produktkandidaten werden in einer Vergleichstabelle gegenübergestellt:
+
+- Abdeckung,
+- Prüf- und Auswahlstatus,
+- harte Ausschlusskriterien,
+- Quelle und Version.
+
+Ein Kandidat kann nur `SELECTED` werden, wenn die Prüfung bestätigt ist und kein hartes Ausschlusskriterium vorliegt.
+
+## 8. Konflikte erkennen und lösen
+
+Im Projektkopf **Konflikte erkennen** wählen.
+
+Der geführte Dialog zeigt:
+
+- beide Anforderungen,
+- Konflikttyp,
+- Evidenz und Konfidenz,
+- ausgewählte Prüfentscheidung,
+- Feld für Lösung und Begründung.
+
+Ein Konflikt kann vorgeschlagen bleiben, bestätigt, verworfen oder gelöst werden. Beim Lösen ist eine ausdrückliche Erläuterung erforderlich, die Teil des Audit-Trails wird.
+
+## 9. Interaktive Matrizen untersuchen
+
+Folgende Seite öffnen:
+
 ```text
-POST   /api/products
-GET    /api/products
-GET    /api/products/{productId}
-PATCH  /api/products/{productId}
-POST   /api/products/{productId}/taxonomy-coverage
-
-POST   /api/projects/{projectId}/solutions/{projectSolutionId}/products
-GET    /api/projects/{projectId}/solutions/{projectSolutionId}/products
+/projects/{projectId}/matrices
 ```
 
-### Konsolidierung und Konflikte
+Verfügbar sind:
+
+- Anforderungen × Taxonomie,
+- Anforderungen × Lösungen,
+- Lösungen × Produkte.
+
+Nach Zeilen-/Spaltentext, Mindestabdeckung und Beziehungszustand filtern. Jede Zelle ist eine per Tastatur bedienbare Schaltfläche. Das Detailpanel erläutert Beziehung, Prüfstatus, Evidenz, Produktquelle und verlinkt gegebenenfalls zur Anforderung.
+
+Eine leere Zelle bedeutet „keine gespeicherte Beziehung“ und nicht „expliziter Null-Score“. Für schmale, mobile oder stark vergrößerte Ansichten steht eine alternative Liste zur Verfügung. Die gefilterte Sicht kann als CSV oder JSON exportiert werden.
+
+## 10. Portfolio committen, wiederherstellen und mergen
+
+Folgende Seite öffnen:
 
 ```text
-GET    /api/projects/{projectId}/portfolio
-POST   /api/projects/{projectId}/conflicts/detect
-GET    /api/projects/{projectId}/conflicts
-PATCH  /api/projects/{projectId}/conflicts/{conflictId}
+/projects/{projectId}/versioning
 ```
 
-Alle Fehler werden als RFC-9457-`ProblemDetail` ausgegeben.
+Die Seite zeigt Workspace, aktiven Branch, HEAD, Portfoliozahlen und erzeugtes TaxDSL.
 
-## Beispiele
+### Commit
 
-### Alle Anforderungen getrennt analysieren
+1. Erzeugte Portfolioprojektion prüfen.
+2. Zielbranch auswählen.
+3. Aussagekräftige Commitnachricht eingeben.
+4. **Geprüften Stand committen** wählen.
 
-```bash
-curl -X POST http://localhost:8080/api/projects/1/analyses \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "all": true,
-    "provider": "GEMINI",
-    "maxArchitectureNodes": 25,
-    "idempotencyKey": "P-001-baseline-2026-08-02"
-  }'
+Der angemeldete Benutzer wird Git-Autor. Das Ergebnis zeigt die exakte Commit-ID.
+
+### Branch materialisieren
+
+1. Branch auswählen.
+2. **Materialisierung prüfen** wählen.
+3. Ziel-HEAD, Fingerprints und hinzugekommene/entfallene Zeilen prüfen.
+4. Erst nach Prüfung einer möglichen destruktiven Änderung bestätigen.
+
+Unmittelbar vor dem Anwenden wiederholt der Browser die Vorschau. Ein inzwischen veränderter Ziel-HEAD stoppt die Operation statt einen veralteten Stand anzuwenden.
+
+### Merge
+
+Verschiedene Quell- und Zielbranches sowie eine Mergenachricht wählen. Zunächst wird ein normaler Git-Merge versucht. Wenn das TaxDSL textuell nicht sicher zusammengeführt werden kann, greift der semantische TaxDSL-Merge. Nicht aufgelöste semantische Konflikte stoppen ohne Mutation.
+
+## 11. Projekt- und Anforderungsberichte erzeugen
+
+Folgende Seite öffnen:
+
+```text
+/projects/{projectId}/reports
 ```
 
-Wird derselbe Idempotenzschlüssel erneut verwendet, liefert die API den vorhandenen Job statt doppelte Snapshots zu erzeugen.
+Gesamtes Projekt oder einzelne Anforderung wählen. Vor dem Export die HTML-Vorschau prüfen.
 
-### Drei Kandidaten als drei Anforderungen importieren
+Formate:
 
-```bash
-curl -X POST http://localhost:8080/api/projects/1/requirements/import \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "analyzeAfterImport": true,
-    "requirements": [
-      {"requirementKey":"REQ-001","title":"Sichere Sprache","text":"..."},
-      {"requirementKey":"REQ-002","title":"EU-Datenhaltung","text":"..."},
-      {"requirementKey":"REQ-003","title":"Offline-Betrieb","text":"..."}
-    ]
-  }'
-```
+- HTML,
+- DOCX,
+- Markdown,
+- JSON mit stabilen IDs und vollständiger Provenienz,
+- CSV für jede Portfoliomatrix.
 
-### Maßnahmenentscheidung für eine Zuordnung speichern
+Berichte enthalten Anforderungen und Quellen, Taxonomieabdeckung, Lösungen, Produkte, Konflikte und die exakte Reproduzierbarkeitsbaseline: Anforderungsversion, Snapshot, Provider/Modell, Taxonomie- und Prompt-Fingerprint, Branch und Commit.
 
-```bash
-curl -X PATCH http://localhost:8080/api/projects/1/analysis-mappings/elements/42 \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "reviewStatus":"CONFIRMED",
-    "actionStatus":"REUSE",
-    "actionEvidence":"Vorhandener Servicekatalogeintrag SOL-004",
-    "comment":"Durch den Projektarchitekten geprüft"
-  }'
-```
+## 12. Barrierefreiheit und robuste Bedienung
 
-## Berechtigungen
+Das Portfolio verwendet native Schaltflächen und Navigation statt eines unvollständigen ARIA-Listbox-Musters. Die wichtigsten Abläufe werden browserseitig geprüft mit:
 
-- Lesen erfordert eine Anmeldung.
-- Projektanalysen dürfen `USER`, `ARCHITECT` und `ADMIN` ausführen.
-- Änderungen an Projekt, Anforderungen, Lösungen, Produkten und Reviews erfordern `ARCHITECT` oder `ADMIN`.
-- Jeder Application Service erhält einen expliziten requestgebundenen `WorkspaceContext`.
-- Ressourcen eines anderen Workspace erscheinen als nicht gefunden; ihre Existenz wird nicht offengelegt.
+- Tastaturbedienung,
+- zugänglichen Namen und Live-Status,
+- mobiler Darstellung,
+- Textvergrößerung,
+- Forced-Colors-/Kontrastprüfung,
+- HTML-, ARIA- und Screenshot-Evidenz.
 
-## Reproduzierbarkeit und Veralterung
+Informationen sollen nicht ausschließlich durch Farbe vermittelt werden.
 
-Ein Snapshot wird in den Projektkennzahlen als veraltet gekennzeichnet, wenn:
+## Fehlerbehebung
 
-- er älter ist als `taxonomy.portfolio.snapshot-stale-after-days` (Standard: 30 Tage), oder
-- er eine nicht mehr aktuelle Anforderungsversion analysiert.
+### Eine Analyse läuft nach dem Verlassen der Seite weiter
 
-„Veraltet“ bedeutet nicht automatisch „ungültig“. Es bedeutet, dass das Projekt eine Neuanalyse mit aktueller Anforderung, Taxonomie und Prompt-Baseline prüfen sollte.
+Das ist beabsichtigt. Der Job ist serverseitig persistiert. Zu `/projects` zurückkehren; das Job-Center stellt den aktuellen Zustand wieder her.
 
-Der Snapshot-Vergleich unterscheidet:
+### Eine Schreibaktion ist deaktiviert
 
-- geänderte Scores,
-- hinzugekommene oder entfallene Elemente,
-- hinzugekommene oder entfallene Beziehungen,
-- Änderung des Taxonomie-Fingerprints,
-- Änderung des Prompt-Fingerprints,
-- Providerwechsel.
+Die angemeldete Rolle besitzt möglicherweise Lese- oder Analyse-, aber keine Architekturänderungsrechte. Der Grund wird am Bedienelement erklärt. Bei falscher Rollenvergabe Administrator kontaktieren.
 
-## Aktuelle Grenzen
+### Ein Import wird abgelehnt
 
-- Die Jobausführung ist aus Sicht des HTTP-Aufrufers synchron. Dauerhafte Item-Zustände und isolierter Retry sind bereits vorhanden; ein späterer Queue-/SSE-Executor kann auf demselben Modell aufsetzen.
-- Produktdaten werden manuell kuratiert; ein Herstellerkatalog-Feed ist nicht enthalten.
-- Konfliktregeln sind bewusst begrenzt und können Fehlalarme erzeugen oder semantische Konflikte übersehen.
-- Das Produktportfolio dokumentiert geprüfte Kandidaten und Auswahlentscheidungen, führt aber keine Beschaffung aus.
-- Ein Lösungsvorschlag setzt bestätigte Lösung–Taxonomie-Abdeckung voraus. Aus einem Taxonomiescore wird keine reale Lösung erfunden.
+Doppelte Schlüssel, fehlende Zielanforderungen für neue Versionen, leere beibehaltene Texte und konfigurierte Importgrenzen prüfen. Da der Import atomar ist, bleibt kein früherer Kandidat derselben Bestätigung teilweise erhalten.
 
-## Architekturentscheidung
+### Eine Materialisierungsvorschau hat sich geändert
 
-Siehe [ADR 0001](../adr/0001-project-requirement-solution-portfolio.md) zu Modellgrenzen, verworfenen Alternativen und Konsequenzen.
+Ein anderer Commit hat den Branch weitergeschaltet. Vorschau aktualisieren und den neuen Ziel-HEAD vor dem Anwenden erneut prüfen.
+
+## Weiterführende Dokumentation
+
+- [Projektportfolio-API](PROJECT_PORTFOLIO_API.md) – REST, JSON und Automatisierungsbeispiele
+- [Portfolio-Betrieb](PROJECT_PORTFOLIO_OPERATIONS.md) – Migration, Backup, Limits und Recovery
+- [Architektur der Git-Zusammenarbeit](PROJECT_PORTFOLIO_GIT_COLLABORATION.md)
+- [ADR 0001](../adr/0001-project-requirement-solution-portfolio.md)
