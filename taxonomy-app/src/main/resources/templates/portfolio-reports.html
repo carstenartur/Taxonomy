@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title>Portfolio reports — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#reportsMain">Skip to reports</a><div id="reportsLive" class="visually-hidden" role="status" aria-live="polite"></div>
+<nav class="navbar navbar-dark bg-dark sticky-top"><div class="container-fluid gap-2"><a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a><span class="navbar-text text-white fw-semibold me-auto" id="reportsPageTitle">Portfolio reports</span><a class="btn btn-sm btn-outline-light" id="portfolioBack" href="/projects">Portfolio</a><a class="btn btn-sm btn-outline-light" id="versioningLink" href="#">Versioning</a></div></nav>
+<main id="reportsMain" class="container-fluid py-3 px-lg-4">
+    <div id="reportsError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
+    <section class="card shadow-sm mb-3"><div class="card-body"><h1 class="h2 mb-1" id="reportsHeading">Project and requirement reports</h1><p id="reportsProject" class="text-body-secondary mb-0"></p></div></section>
+    <section class="card shadow-sm mb-3" aria-labelledby="reportOptionsHeading"><div class="card-header"><h2 id="reportOptionsHeading" class="h5 mb-0">Report scope</h2></div><div class="card-body"><div class="row g-3"><div class="col-md-5"><label for="reportScope" class="form-label">Scope</label><select id="reportScope" class="form-select"><option value="project">Entire project</option><option value="requirement">Single requirement</option></select></div><div class="col-md-7"><label for="reportRequirement" class="form-label">Requirement</label><select id="reportRequirement" class="form-select" disabled></select></div></div><div class="row g-3 mt-1"><div class="col-md-4"><label for="matrixType" class="form-label">CSV matrix</label><select id="matrixType" class="form-select"><option value="taxonomy">Requirements × taxonomy</option><option value="solutions">Requirements × solutions</option><option value="products">Solutions × products</option></select></div><div class="col-md-8 d-flex flex-wrap align-items-end gap-2"><button id="previewReport" type="button" class="btn btn-primary">Preview HTML report</button><button class="btn btn-outline-primary report-download" data-format="html" type="button">HTML</button><button class="btn btn-outline-primary report-download" data-format="docx" type="button">DOCX</button><button class="btn btn-outline-primary report-download" data-format="markdown" type="button">Markdown</button><button class="btn btn-outline-primary report-download" data-format="json" type="button">JSON</button><button class="btn btn-outline-primary report-download" data-format="csv" type="button">CSV</button></div></div></div></section>
+    <section class="card shadow-sm"><div class="card-header d-flex justify-content-between align-items-center gap-2"><h2 class="h5 mb-0">Report preview</h2><span id="previewBaseline" class="small text-body-secondary"></span></div><div class="card-body p-0"><iframe id="reportPreviewFrame" title="Portfolio report preview" class="w-100 border-0" style="min-height:70vh"></iframe><div id="emptyPreview" class="p-5 text-center text-body-secondary">Generate a preview to inspect the exact report baseline before export.</div></div></section>
+</main>
+<div id="reportsBusy" class="portfolio-busy d-none" role="status" aria-live="polite"><div class="spinner-border" aria-hidden="true"></div><span>Rendering report…</span></div>
+<script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script><script th:src="@{/js/portfolio/portfolio-reports.js}"></script>
+</body></html>
