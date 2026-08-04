@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,7 +21,7 @@ class PortfolioTestArchitectureContractTest {
         try (var entries = Files.list(scripts)) {
             portfolioScripts = entries
                     .map(path -> path.getFileName().toString())
-                    .filter(name -> name.startsWith("ui-primary-portfolio"))
+                    .filter(name -> name.toLowerCase(Locale.ROOT).contains("portfolio"))
                     .filter(name -> name.endsWith(".mjs"))
                     .sorted()
                     .toList();
