@@ -38,6 +38,17 @@ class PortfolioTestArchitectureContractTest {
         assertThat(applicationPom)
                 .contains("maven-failsafe-plugin")
                 .contains("**/*IT.java");
+
+        String projectTemplate = Files.readString(root.resolve(
+                "taxonomy-app/src/main/resources/templates/projects.html"));
+        String projectScript = Files.readString(root.resolve(
+                "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js"));
+        assertThat(projectTemplate)
+                .doesNotContain("id=\"projectList\" class=\"list-group list-group-flush\" role=\"listbox\"");
+        assertThat(projectScript)
+                .doesNotContain("button.setAttribute('role', 'option')")
+                .doesNotContain("button.setAttribute('aria-selected'")
+                .contains("button.setAttribute('aria-current', 'page')");
     }
 
     private static Path findRepositoryRoot() {
