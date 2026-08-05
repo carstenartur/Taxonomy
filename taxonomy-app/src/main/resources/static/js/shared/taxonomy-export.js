@@ -233,7 +233,8 @@
     function unavailable(key, detail) {
         var message;
         try {
-            message = detail ? t(key, detail) : t(key);
+            var translated = detail ? t(key, detail) : t(key);
+            message = translated === key && detail ? detail : translated;
         } catch (ignored) {
             message = detail || 'The requested export is unavailable.';
         }
