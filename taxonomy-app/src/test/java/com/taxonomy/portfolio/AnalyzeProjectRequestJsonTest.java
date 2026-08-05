@@ -17,7 +17,7 @@ class AnalyzeProjectRequestJsonTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
-    void explicitNullAllIsDeserializedAsNoFullProjectAnalysis() {
+    void explicitNullAllIsDeserializedAsNoFullProjectAnalysis() throws Exception {
         AnalyzeProjectRequest request = mapper.readValue(
                 "{\"requirementIds\":[7],\"all\":null,\"provider\":\"MOCK\"}",
                 AnalyzeProjectRequest.class);
@@ -28,7 +28,7 @@ class AnalyzeProjectRequestJsonTest {
     }
 
     @Test
-    void missingAllIsDeserializedAsNoFullProjectAnalysis() {
+    void missingAllIsDeserializedAsNoFullProjectAnalysis() throws Exception {
         AnalyzeProjectRequest request = mapper.readValue(
                 "{\"requirementIds\":[7]}", AnalyzeProjectRequest.class);
 
@@ -36,7 +36,7 @@ class AnalyzeProjectRequestJsonTest {
     }
 
     @Test
-    void explicitTrueAllRequestsFullProjectAnalysis() {
+    void explicitTrueAllRequestsFullProjectAnalysis() throws Exception {
         AnalyzeProjectRequest request = mapper.readValue(
                 "{\"requirementIds\":[],\"all\":true}", AnalyzeProjectRequest.class);
 
