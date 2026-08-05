@@ -28,20 +28,15 @@
 
     async function synchronizeCurrentProjectJobs() {
         if (typeof window.taxonomyPortfolioRegisterJob !== 'function') return;
+        const api = window.TaxonomyPortfolioApi;
+        if (!api || typeof api.listAnalysisJobs !== 'function') return;
+
         const projectId = Number(
             window.localStorage.getItem('taxonomy.portfolio.projectId')) || null;
         if (!projectId) return;
 
         try {
-            const response = await window.fetch(
-                '/api/projects/' + encodeURIComponent(projectId) + '/analysis-jobs', {
-                    method: 'GET',
-                    headers: { Accept: 'application/json' },
-                    credentials: 'same-origin',
-                    cache: 'no-store'
-                });
-            if (!response.ok) return;
-            const jobs = await response.json();
+            const jobs = await api.listAnalysisJobs(projectId);
             if (!Array.isArray(jobs)) return;
             jobs.slice(0, maximumJobs).forEach(function (job) {
                 if (!job || !job.id) return;

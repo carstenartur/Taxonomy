@@ -11,6 +11,60 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SemanticGitMergeServiceTest {
 
     @Test
+    void usesRequestedMessageForOrdinaryMergeCommit() throws Exception {
+        try (DslGitRepository repository = new DslGitRepository()) {
+            repository.commitDsl("draft", document("""
+                    project P-001 {
+                      title: "Architecture";
+                      description: "Initial";
+                    }
+
+                    project P-002 {
+                      title: "Operations";
+                      description: "Initial";
+                    }
+                    """), "system", "base");
+            repository.createBranch("alice", "draft");
+            repository.createBranch("bob", "draft");
+
+            repository.commitDsl("alice", document("""
+                    project P-001 {
+                      title: "Reviewed architecture";
+                      description: "Initial";
+                    }
+
+                    project P-002 {
+                      title: "Operations";
+                      description: "Initial";
+                    }
+                    """), "alice", "Alice project");
+            repository.commitDsl("bob", document("""
+                    project P-001 {
+                      title: "Architecture";
+                      description: "Initial";
+                    }
+
+                    project P-002 {
+                      title: "Reviewed operations";
+                      description: "Initial";
+                    }
+                    """), "bob", "Bob project");
+
+            SemanticGitMergeService.MergeOutcome outcome = new SemanticGitMergeService()
+                    .mergeBranches(
+                            repository,
+                            "alice",
+                            "bob",
+                            "architect",
+                            "Portfolio review completed");
+
+            assertThat(outcome.success()).isTrue();
+            assertThat(outcome.semanticFallback()).isFalse();
+            assertMergeCommit(repository, outcome.commitId(), "Portfolio review completed");
+        }
+    }
+
+    @Test
     void mergesIndependentRequirementContributionsIntoARealMergeCommit() throws Exception {
         try (DslGitRepository repository = new DslGitRepository()) {
             repository.commitDsl("draft", document("""
@@ -45,19 +99,20 @@ class SemanticGitMergeServiceTest {
 
             SemanticGitMergeService service = new SemanticGitMergeService();
             SemanticGitMergeService.MergeOutcome outcome = service.mergeBranches(
-                    repository, "alice", "bob", "architect");
+                    repository,
+                    "alice",
+                    "bob",
+                    "architect",
+                    "Merge reviewed requirements");
 
             assertThat(outcome.success()).isTrue();
+            assertThat(outcome.semanticFallback()).isTrue();
             assertThat(repository.getDslAtHead("bob"))
                     .contains("REQ-A-001")
                     .contains("REQ-B-001")
                     .contains("Reviewed architecture")
                     .contains("Shared target");
-
-            try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
-                RevCommit mergeCommit = walk.parseCommit(ObjectId.fromString(outcome.commitId()));
-                assertThat(mergeCommit.getParentCount()).isEqualTo(2);
-            }
+            assertMergeCommit(repository, outcome.commitId(), "Merge reviewed requirements");
         }
     }
 
@@ -76,6 +131,16 @@ class SemanticGitMergeServiceTest {
             assertThat(outcome.success()).isFalse();
             assertThat(outcome.conflicts())
                     .contains("projectRequirement P-001 REQ-001:text");
+        }
+    }
+
+    private static void assertMergeCommit(DslGitRepository repository,
+                                          String commitId,
+                                          String expectedMessage) throws Exception {
+        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
+            RevCommit mergeCommit = walk.parseCommit(ObjectId.fromString(commitId));
+            assertThat(mergeCommit.getParentCount()).isEqualTo(2);
+            assertThat(mergeCommit.getFullMessage()).isEqualTo(expectedMessage);
         }
     }
 

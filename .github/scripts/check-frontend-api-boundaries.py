@@ -47,8 +47,11 @@ LEGACY_ALLOWLIST = {
 
 
 def matches(path: Path) -> list[int]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return [number for number, line in enumerate(lines, start=1) if DIRECT_API_FETCH.search(line)]
+    text = path.read_text(encoding="utf-8")
+    return [
+        text.count("\n", 0, match.start()) + 1
+        for match in DIRECT_API_FETCH.finditer(text)
+    ]
 
 
 def main() -> int:
