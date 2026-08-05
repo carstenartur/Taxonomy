@@ -34,7 +34,7 @@ class ArchitectureWorkbenchAssetContractTest {
     }
 
     @Test
-    void legacyExportControlRoutesAnArchitectureResultToItsGraph() throws Exception {
+    void legacyExportControlRoutesOnlyTheActiveArchitectureResultToItsGraph() throws Exception {
         String exporter = resource("static/js/shared/taxonomy-export.js");
 
         assertThat(exporter)
@@ -42,6 +42,8 @@ class ArchitectureWorkbenchAssetContractTest {
                 .doesNotContain("Fallback to browser print")
                 .contains("Vector SVG renderer is unavailable")
                 .contains("state.currentArchView")
+                .contains("architectureViewPanel")
+                .contains("architecturePanel.style.display !== 'none'")
                 .contains("#impactGraphView svg")
                 .contains("requirement-architecture.pdf")
                 .contains("stopImmediatePropagation")
