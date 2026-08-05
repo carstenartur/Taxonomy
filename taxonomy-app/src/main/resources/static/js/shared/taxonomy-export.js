@@ -79,8 +79,44 @@
         image.src = url;
     }
 
-    function exportPdf(containerId) {
-        var svg = standaloneSvg(containerId);
+    /**
+     * Resolve the semantic export target. Once an architecture result exists,
+     * PDF means the architecture diagram and must never silently degrade to the
+     * taxonomy tree or to a screenshot of the surrounding page.
+     */
+    function resolvePdfTarget(containerId, filename) {
+        if (containerId) {
+            return {
+                containerId: containerId,
+                filename: filename || 'taxonomy-view.pdf'
+            };
+        }
+
+        var state = window.TaxonomyState;
+        if (state && state.currentArchView) {
+            if (document.querySelector('#impactGraphView svg')) {
+                return {
+                    containerId: 'impactGraphView',
+                    filename: 'requirement-architecture.pdf'
+                };
+            }
+            return {
+                error: 'The architecture result has no vector graph to export. '
+                    + 'Open the Architecture view and select Network Graph first.'
+            };
+        }
+
+        return {
+            containerId: 'taxonomyTree',
+            filename: filename || 'taxonomy-view.pdf'
+        };
+    }
+
+    function exportPdf(containerId, filename) {
+        var target = resolvePdfTarget(containerId, filename);
+        if (target.error) return unavailable('export.pdf.failed', target.error);
+
+        var svg = standaloneSvg(target.containerId);
         if (!svg) return unavailable('export.no.svg');
         if (typeof window.jspdf === 'undefined') {
             return unavailable('export.pdf.failed', 'PDF renderer is unavailable');
@@ -97,7 +133,7 @@
             return unavailable('export.pdf.failed', 'Vector SVG renderer is unavailable');
         }
         documentPdf.svg(svg, { x: 0, y: 0, width: width, height: height })
-            .then(function () { documentPdf.save('taxonomy-view.pdf'); })
+            .then(function () { documentPdf.save(target.filename); })
             .catch(function (error) {
                 unavailable('export.pdf.failed', error.message);
             });
@@ -243,7 +279,15 @@
     }
 
     function dimension(svg, attribute, fallback) {
-        return parseFloat(svg.getAttribute(attribute)) || svg[attribute === 'width' ? 'clientWidth' : 'clientHeight'] || fallback;
+        var explicit = parseFloat(svg.getAttribute(attribute));
+        if (explicit) return explicit;
+        if (svg.viewBox && svg.viewBox.baseVal) {
+            var viewBoxValue = attribute === 'width'
+                ? svg.viewBox.baseVal.width
+                : svg.viewBox.baseVal.height;
+            if (viewBoxValue) return viewBoxValue;
+        }
+        return svg[attribute === 'width' ? 'clientWidth' : 'clientHeight'] || fallback;
     }
 
     function csvField(value) {
@@ -263,6 +307,23 @@
         window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     }
 
+    /**
+     * Capture PDF clicks before the legacy target listener can execute its old
+     * browser-print fallback. The deterministic router above is the sole owner
+     * of PDF export semantics.
+     */
+    function installPdfRouteGuard() {
+        document.addEventListener('click', function (event) {
+            var target = event.target instanceof Element
+                ? event.target.closest('#exportPdf')
+                : null;
+            if (!target) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            exportPdf();
+        }, true);
+    }
+
     window.TaxonomyExport = Object.freeze({
         exportSvg: exportSvg,
         exportPng: exportPng,
@@ -276,4 +337,6 @@
         exportDot: exportDot,
         exportMermaidTree: exportMermaidTree
     });
+
+    installPdfRouteGuard();
 }());
