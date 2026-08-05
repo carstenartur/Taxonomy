@@ -45,11 +45,14 @@ public class SemanticGitMergeService {
                                       String author,
                                       String message) throws IOException {
         String requestedMessage = normalizeMessage(message);
+        Repository git = repository.getGitRepository();
+        ObjectId targetHeadBefore = branchHead(git, intoBranch);
         String ordinaryCommit = repository.merge(fromBranch, intoBranch);
         if (ordinaryCommit != null) {
             String effectiveCommit = applyRequestedMergeMessage(
-                    repository.getGitRepository(),
+                    git,
                     intoBranch,
+                    targetHeadBefore,
                     ordinaryCommit,
                     author,
                     requestedMessage);
@@ -68,7 +71,7 @@ public class SemanticGitMergeService {
         }
 
         String commitId = createMergeCommit(
-                repository.getGitRepository(),
+                git,
                 inputs.oursCommit(),
                 inputs.theirsCommit(),
                 intoBranch,
@@ -135,11 +138,13 @@ public class SemanticGitMergeService {
 
     /**
      * The generic repository merge supplies a conventional default message.
-     * When a caller explicitly requested a message, replace only a newly created
-     * two-parent merge commit and keep fast-forward/already-merged results intact.
+     * When a caller explicitly requested a message, replace only a two-parent
+     * merge commit created by this invocation. Fast-forward and already-merged
+     * results keep their existing commit identity and message.
      */
     private static String applyRequestedMergeMessage(Repository repository,
                                                      String intoBranch,
+                                                     ObjectId targetHeadBefore,
                                                      String commitId,
                                                      String authorName,
                                                      String requestedMessage) throws IOException {
@@ -148,6 +153,9 @@ public class SemanticGitMergeService {
         }
 
         ObjectId originalId = ObjectId.fromString(commitId);
+        if (originalId.equals(targetHeadBefore)) {
+            return commitId;
+        }
         Ref branch = repository.getRefDatabase().exactRef(Constants.R_HEADS + intoBranch);
         if (branch == null || !originalId.equals(branch.getObjectId())) {
             return commitId;
@@ -218,6 +226,12 @@ public class SemanticGitMergeService {
             requireUpdated(update.update(), intoBranch);
             return commitId.name();
         }
+    }
+
+    private static ObjectId branchHead(Repository repository,
+                                       String branch) throws IOException {
+        Ref ref = repository.getRefDatabase().exactRef(Constants.R_HEADS + branch);
+        return ref != null ? ref.getObjectId() : null;
     }
 
     private static PersonIdent actor(String authorName) {

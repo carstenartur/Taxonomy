@@ -12,44 +12,7 @@ class SemanticGitMergeServiceTest {
 
     @Test
     void usesRequestedMessageForOrdinaryMergeCommit() throws Exception {
-        try (DslGitRepository repository = new DslGitRepository()) {
-            repository.commitDsl("draft", document("""
-                    project P-001 {
-                      title: "Architecture";
-                      description: "Initial";
-                    }
-
-                    project P-002 {
-                      title: "Operations";
-                      description: "Initial";
-                    }
-                    """), "system", "base");
-            repository.createBranch("alice", "draft");
-            repository.createBranch("bob", "draft");
-
-            repository.commitDsl("alice", document("""
-                    project P-001 {
-                      title: "Reviewed architecture";
-                      description: "Initial";
-                    }
-
-                    project P-002 {
-                      title: "Operations";
-                      description: "Initial";
-                    }
-                    """), "alice", "Alice project");
-            repository.commitDsl("bob", document("""
-                    project P-001 {
-                      title: "Architecture";
-                      description: "Initial";
-                    }
-
-                    project P-002 {
-                      title: "Reviewed operations";
-                      description: "Initial";
-                    }
-                    """), "bob", "Bob project");
-
+        try (DslGitRepository repository = ordinaryMergeRepository()) {
             SemanticGitMergeService.MergeOutcome outcome = new SemanticGitMergeService()
                     .mergeBranches(
                             repository,
@@ -61,6 +24,29 @@ class SemanticGitMergeServiceTest {
             assertThat(outcome.success()).isTrue();
             assertThat(outcome.semanticFallback()).isFalse();
             assertMergeCommit(repository, outcome.commitId(), "Portfolio review completed");
+        }
+    }
+
+    @Test
+    void doesNotRewriteAnAlreadyMergedHead() throws Exception {
+        try (DslGitRepository repository = ordinaryMergeRepository()) {
+            SemanticGitMergeService service = new SemanticGitMergeService();
+            SemanticGitMergeService.MergeOutcome first = service.mergeBranches(
+                    repository,
+                    "alice",
+                    "bob",
+                    "architect",
+                    "Portfolio review completed");
+            SemanticGitMergeService.MergeOutcome repeated = service.mergeBranches(
+                    repository,
+                    "alice",
+                    "bob",
+                    "architect",
+                    "This must not rewrite history");
+
+            assertThat(repeated.success()).isTrue();
+            assertThat(repeated.commitId()).isEqualTo(first.commitId());
+            assertMergeCommit(repository, repeated.commitId(), "Portfolio review completed");
         }
     }
 
@@ -97,13 +83,13 @@ class SemanticGitMergeServiceTest {
                     }
                     """), "bob", "Bob requirements");
 
-            SemanticGitMergeService service = new SemanticGitMergeService();
-            SemanticGitMergeService.MergeOutcome outcome = service.mergeBranches(
-                    repository,
-                    "alice",
-                    "bob",
-                    "architect",
-                    "Merge reviewed requirements");
+            SemanticGitMergeService.MergeOutcome outcome = new SemanticGitMergeService()
+                    .mergeBranches(
+                            repository,
+                            "alice",
+                            "bob",
+                            "architect",
+                            "Merge reviewed requirements");
 
             assertThat(outcome.success()).isTrue();
             assertThat(outcome.semanticFallback()).isTrue();
@@ -132,6 +118,47 @@ class SemanticGitMergeServiceTest {
             assertThat(outcome.conflicts())
                     .contains("projectRequirement P-001 REQ-001:text");
         }
+    }
+
+    private static DslGitRepository ordinaryMergeRepository() throws Exception {
+        DslGitRepository repository = new DslGitRepository();
+        repository.commitDsl("draft", document("""
+                project P-001 {
+                  title: "Architecture";
+                  description: "Initial";
+                }
+
+                project P-002 {
+                  title: "Operations";
+                  description: "Initial";
+                }
+                """), "system", "base");
+        repository.createBranch("alice", "draft");
+        repository.createBranch("bob", "draft");
+
+        repository.commitDsl("alice", document("""
+                project P-001 {
+                  title: "Reviewed architecture";
+                  description: "Initial";
+                }
+
+                project P-002 {
+                  title: "Operations";
+                  description: "Initial";
+                }
+                """), "alice", "Alice project");
+        repository.commitDsl("bob", document("""
+                project P-001 {
+                  title: "Architecture";
+                  description: "Initial";
+                }
+
+                project P-002 {
+                  title: "Reviewed operations";
+                  description: "Initial";
+                }
+                """), "bob", "Bob project");
+        return repository;
     }
 
     private static void assertMergeCommit(DslGitRepository repository,
