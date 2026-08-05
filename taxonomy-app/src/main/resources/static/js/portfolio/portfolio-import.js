@@ -82,9 +82,9 @@
         wireEvents();
         try {
             [state.project, state.existingRequirements, state.account] = await Promise.all([
-                api(`/api/projects/${projectId}`),
-                api(`/api/projects/${projectId}/requirements`),
-                api('/api/account/me')
+                api().getProject(projectId),
+                api().listRequirements(projectId),
+                api().getAccount()
             ]);
             document.getElementById('importProject').textContent = `${state.project.projectKey} — ${state.project.title}`;
             document.getElementById('portfolioBack').href = `/projects?lang=${locale}`;
@@ -162,7 +162,7 @@
             form.append('file', file);
             form.append('title', document.getElementById('documentTitle').value || file.name);
             form.append('sourceType', document.getElementById('sourceType').value);
-            const parsed = await multipart('/api/documents/upload', form);
+            const parsed = await api().uploadDocument(form);
             state.sourceArtifactId = parsed.sourceArtifactId;
             state.sourceVersionId = parsed.sourceVersionId;
             state.fileName = parsed.fileName || file.name;
@@ -200,7 +200,7 @@
             const form = new FormData();
             form.append('file', state.currentFile);
             form.append('sourceType', document.getElementById('sourceType').value);
-            const result = await multipart('/api/documents/extract-ai', form);
+            const result = await api().extractDocumentWithAi(form);
             (result.aiCandidates || []).forEach(candidate => {
                 if (state.candidates.some(existing => normalize(existing.text) === normalize(candidate.text))) return;
                 addCandidate({
@@ -401,7 +401,7 @@
                 provider: null, maxArchitectureNodes: 25,
                 idempotencyKey: `import-review:${projectId}:${state.sourceVersionId || 'draft'}:${Date.now()}`
             };
-            const response = await apiResponse(`/api/projects/${projectId}/requirements/import-review`, { method: 'POST', body: request });
+            const response = await api().importReviewedRequirements(projectId, request);
             const result = await response.json();
             if (result.analysisJob) registerAnalysisJob(response.headers.get('Location'), result.analysisJob);
             clearDraft();
@@ -449,14 +449,16 @@
     function jaccard(left, right) { const a = new Set(normalize(left).split(' ').filter(Boolean)); const b = new Set(normalize(right).split(' ').filter(Boolean)); if (!a.size || !b.size) return 0; const intersection = [...a].filter(token => b.has(token)).length; return intersection / new Set([...a, ...b]).size; }
     function humanize(value) { return String(value || '').toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase()); }
 
-    async function multipart(path, form) { const headers = {}; addCsrf(headers); const response = await fetch(path, { method: 'POST', headers, credentials: 'same-origin', body: form }); if (!response.ok) throw await responseError(response); return response.json(); }
-    async function api(path) { const response = await fetch(path, { headers: { Accept: 'application/json' }, credentials: 'same-origin' }); if (!response.ok) throw await responseError(response); return response.json(); }
-    async function apiResponse(path, options) { const headers = { Accept: 'application/json', 'Content-Type': 'application/json' }; addCsrf(headers); const response = await fetch(path, { method: options.method, headers, credentials: 'same-origin', body: JSON.stringify(options.body) }); if (!response.ok) throw await responseError(response); return response; }
-    async function responseError(response) { const payload = await response.json().catch(() => null); return new Error(payload?.detail || payload?.message || payload?.error || `${l('failed')} HTTP ${response.status}`); }
-    function addCsrf(headers) { const token = document.querySelector('meta[name="_csrf"]')?.content; const name = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN'; if (token) headers[name] = token; }
+    function api() {
+        if (!window.TaxonomyPortfolioApi) {
+            throw new Error('Portfolio API boundary is not available');
+        }
+        return window.TaxonomyPortfolioApi;
+    }
+
     function setBusy(active, message) { document.getElementById('importBusy').classList.toggle('d-none', !active); if (message) document.getElementById('importBusyText').textContent = message; }
     function showError(error) { const target = document.getElementById('importError'); target.textContent = error?.message || l('failed'); target.classList.remove('d-none'); target.focus(); }
     function showInfo(message) { const target = document.getElementById('importInfo'); target.textContent = message; target.classList.remove('d-none'); document.getElementById('importLive').textContent = message; }
-    function escapeHtml(value) { return String(value == null ? '' : value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
+    function escapeHtml(value) { return window.TaxonomyUtils.escapeHtml(value); }
     function escapeAttribute(value) { return escapeHtml(value).replaceAll('`', '&#96;'); }
 })();

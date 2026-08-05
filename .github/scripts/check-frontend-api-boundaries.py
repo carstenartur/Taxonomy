@@ -15,7 +15,7 @@ import sys
 ROOT = Path.cwd()
 STATIC_JS = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "js"
 TEMPLATE = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "templates" / "index.html"
-DIRECT_API_FETCH = re.compile(r"\bfetch\s*\(\s*['\"]\/api\/")
+DIRECT_API_FETCH = re.compile(r"\bfetch\s*\(\s*['\"`]\/api\/")
 
 # Temporary migration inventory. Every removed entry is an architecture improvement.
 LEGACY_ALLOWLIST = {

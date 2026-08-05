@@ -50,33 +50,38 @@ class PortfolioTestArchitectureContractTest {
                 "taxonomy-app/src/main/resources/templates/projects.html"));
         String projectScript = Files.readString(root.resolve(
                 "taxonomy-app/src/main/resources/static/js/portfolio/taxonomy-portfolio.js"));
-        String analysisNormalizer = Files.readString(root.resolve(
-                "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-response-normalizer.js"));
         String analysisSynchronizer = Files.readString(root.resolve(
                 "taxonomy-app/src/main/resources/static/js/portfolio/portfolio-analysis-job-synchronizer.js"));
-        String bundleController = Files.readString(root.resolve(
-                "taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/PortfolioScriptBundleController.java"));
-        assertThat(projectTemplate)
-                .doesNotContain("id=\"projectList\" class=\"list-group list-group-flush\" role=\"listbox\"");
         assertThat(projectScript)
                 .doesNotContain("button.setAttribute('role', 'option')")
                 .doesNotContain("button.setAttribute('aria-selected'")
                 .contains("button.setAttribute('aria-current', 'page')");
-        assertThat(analysisNormalizer)
-                .contains("registerWithJobCenter(absoluteLocation, job)")
-                .contains("status: registered ? 200 : 202")
-                .contains("headers.set('Location', location)")
-                .contains("/analysis-jobs/");
         assertThat(analysisSynchronizer)
                 .contains("synchronizeCurrentProjectJobs")
                 .contains("window.taxonomyPortfolioRegisterJob(location, job)")
                 .contains("retryDelaysMs")
                 .contains("maximumJobs");
-        assertThat(bundleController)
-                .contains("window.taxonomyPortfolioRegisterJob")
-                .contains("registerJob(resolved.toString(), job)")
-                .contains("exposeJobRegistrationBridge")
-                .contains("ANALYSIS_JOB_SYNCHRONIZER");
+
+        assertThat(scriptOrder(projectTemplate))
+                .as("projects.html must load portfolio scripts as plain, ordered static assets")
+                .containsSubsequence(
+                        "/js/shared/taxonomy-utils.js",
+                        "/js/api/taxonomy-api-client.js",
+                        "/js/api/portfolio-api.js",
+                        "/js/portfolio/taxonomy-portfolio-async.js",
+                        "/js/portfolio/portfolio-analysis-job-synchronizer.js",
+                        "/js/portfolio/taxonomy-portfolio.js");
+        assertThat(projectTemplate)
+                .as("Portfolio scripts must not be assembled by a server-side bundling endpoint")
+                .doesNotContain("script-bundle");
+    }
+
+    private static List<String> scriptOrder(String template) {
+        return java.util.regex.Pattern.compile("th:src=\"@\\{([^}]+)\\}\"")
+                .matcher(template)
+                .results()
+                .map(result -> result.group(1))
+                .toList();
     }
 
     private static Path findRepositoryRoot() {

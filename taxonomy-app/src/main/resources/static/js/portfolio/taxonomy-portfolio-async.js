@@ -109,7 +109,26 @@
     restoreJobs();
     installFetchAdapter();
     installGuidedReviewHandlers();
+    exposeJobRegistration();
     document.addEventListener('DOMContentLoaded', initializeEnhancements);
+
+    /**
+     * Stable entry point for the server-backed job synchronizer. Job storage,
+     * polling and rendering stay private to this module; callers may only hand
+     * over a canonical same-origin job resource and its server representation.
+     */
+    function exposeJobRegistration() {
+        window.taxonomyPortfolioRegisterJob = function (jobUrl, job) {
+            if (!jobUrl || !job || !job.id) return false;
+            const resolved = new URL(jobUrl, window.location.href);
+            if (resolved.origin !== window.location.origin
+                    || !/^\/api\/projects\/\d+\/analysis-jobs\/[^/]+$/.test(resolved.pathname)) {
+                return false;
+            }
+            registerJob(resolved.toString(), job);
+            return true;
+        };
+    }
 
     function m(key) {
         return (messages[locale] && messages[locale][key]) || messages.en[key] || key;

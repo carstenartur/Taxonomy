@@ -1,7 +1,5 @@
 package com.taxonomy.portfolio.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.MatrixView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectPortfolioView;
@@ -17,6 +15,8 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -149,7 +149,7 @@ public class PortfolioReportService {
     private String json(ReportModel model) {
         try {
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(model);
-        } catch (JsonProcessingException error) {
+        } catch (JacksonException error) {
             throw new IllegalStateException("Unable to render portfolio report JSON", error);
         }
     }

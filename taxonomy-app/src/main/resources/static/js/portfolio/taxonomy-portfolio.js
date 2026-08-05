@@ -741,6 +741,7 @@
         await withBusy(async function () {
             const payload = formDataObject(form);
             payload.productStatus = 'CANDIDATE';
+            payload.verifiedAt = localDateTimeToInstant(payload.verifiedAt);
             const product = await api('/api/products', { method: 'POST', body: payload });
             bootstrap.Modal.getOrCreateInstance(document.getElementById('productModal')).hide();
             form.reset();
@@ -1187,6 +1188,17 @@
 
     function requireProject() {
         if (!state.selectedProjectId) throw new Error(t('error.select.project'));
+    }
+
+    /**
+     * datetime-local controls return a local date and time without an offset,
+     * while the product REST contract uses java.time.Instant. Convert here, in
+     * the form layer that owns the control, rather than in a network wrapper.
+     */
+    function localDateTimeToInstant(value) {
+        if (!value || /(?:z|[+-]\d{2}:\d{2})$/i.test(String(value))) return value;
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
     }
 
     function setDefaultVerifiedAt() {

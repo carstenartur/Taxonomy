@@ -154,10 +154,6 @@ public class PortfolioGitApplicationService {
                 materialized.projectsCreated(),
                 materialized.requirementsCreated(),
                 materialized.versionsCreated(),
-                0,
-                0,
-                0,
-                0,
                 materialized.warnings().size(),
                 Instant.now());
     }
@@ -194,7 +190,6 @@ public class PortfolioGitApplicationService {
                 targetHead,
                 outcome.commitId(),
                 outcome.semanticFallback() ? "SEMANTIC_FALLBACK" : "GIT",
-                0,
                 counts.projects(),
                 counts.requirements(),
                 counts.solutions(),

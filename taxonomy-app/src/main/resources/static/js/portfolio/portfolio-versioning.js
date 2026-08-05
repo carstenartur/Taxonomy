@@ -110,10 +110,10 @@
         clearMessages();
         try {
             [state.project, state.repository, state.exported, state.account] = await Promise.all([
-                api(`/api/projects/${projectId}`),
-                api('/api/git/state'),
-                api('/api/projects/git/export'),
-                api('/api/account/me')
+                api().getProject(projectId),
+                api().getGitState(),
+                api().exportPortfolio(),
+                api().getAccount()
             ]);
             render();
         } catch (problem) {
@@ -188,7 +188,7 @@
         try {
             const branch = document.getElementById('commitBranch').value;
             const message = document.getElementById('commitMessage').value.trim();
-            const result = await mutate('/api/projects/git/commit', { branch, message });
+            const result = await api().commitPortfolio({ branch, message });
             showInfo(`${text('committed')} ${branch} @ ${short(result.commitId)}`);
             await load();
         } catch (problem) {
@@ -203,8 +203,7 @@
         clearMessages();
         try {
             const branch = document.getElementById('materializeBranch').value;
-            state.preview = await api(
-                `/api/projects/git/materialize-preview?branch=${encodeURIComponent(branch)}`);
+            state.preview = await api().previewMaterialization(branch);
             const target = document.getElementById('materializePreview');
             target.innerHTML = `<dl class="portfolio-card-meta">`
                 + `<dt>${escapeHtml(text('expected'))}</dt>`
@@ -242,7 +241,7 @@
         clearMessages();
         try {
             const branch = document.getElementById('materializeBranch').value;
-            const result = await mutate('/api/projects/git/materialize', {
+            const result = await api().materializePortfolio({
                 branch,
                 expectedHead: state.preview.targetHead
             });
@@ -268,7 +267,7 @@
         busy(true);
         clearMessages();
         try {
-            const result = await mutate('/api/projects/git/merge', {
+            const result = await api().mergePortfolio({
                 sourceBranch,
                 targetBranch,
                 message: document.getElementById('mergeMessage').value.trim()
@@ -301,40 +300,11 @@
             });
     }
 
-    async function api(path) {
-        const response = await fetch(path, {
-            headers: { Accept: 'application/json' },
-            credentials: 'same-origin',
-            cache: 'no-store'
-        });
-        if (!response.ok) throw await responseError(response);
-        return response.json();
-    }
-
-    async function mutate(path, body) {
-        const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-        csrf(headers);
-        const response = await fetch(path, {
-            method: 'POST',
-            headers,
-            credentials: 'same-origin',
-            body: JSON.stringify(body)
-        });
-        if (!response.ok) throw await responseError(response);
-        return response.json();
-    }
-
-    async function responseError(response) {
-        const problem = await response.json().catch(() => null);
-        return new Error(problem?.detail || problem?.message || problem?.error
-            || `${text('failed')} HTTP ${response.status}`);
-    }
-
-    function csrf(headers) {
-        const token = document.querySelector('meta[name="_csrf"]')?.content;
-        const name = document.querySelector('meta[name="_csrf_header"]')?.content
-            || 'X-CSRF-TOKEN';
-        if (token) headers[name] = token;
+    function api() {
+        if (!window.TaxonomyPortfolioApi) {
+            throw new Error('Portfolio API boundary is not available');
+        }
+        return window.TaxonomyPortfolioApi;
     }
 
     function busy(active) {
@@ -368,12 +338,5 @@
         return value ? String(value).slice(0, 12) : '—';
     }
 
-    function escapeHtml(value) {
-        return String(value == null ? '' : value)
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#39;');
-    }
+    function escapeHtml(value) { return window.TaxonomyUtils.escapeHtml(value); }
 }());
