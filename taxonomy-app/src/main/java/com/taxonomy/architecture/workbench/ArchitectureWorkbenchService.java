@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -96,8 +97,12 @@ public class ArchitectureWorkbenchService {
                         "Requirement version for snapshot was not found: "
                                 + snapshot.summary().requirementVersionId()));
 
-        String title = project.projectKey() + " / " + requirement.requirementKey()
+        String fallbackTitle = project.projectKey() + " / " + requirement.requirementKey()
                 + " — " + requirement.title();
+        String persistedTitle = architectureView.getViewTitle();
+        String title = persistedTitle == null || persistedTitle.isBlank()
+                ? fallbackTitle
+                : persistedTitle.strip();
         DiagramModel diagram = PersistedDiagramProjection.project(
                 diagramProjectionService, architectureView, title);
         if (diagram.nodes() == null || diagram.nodes().isEmpty()) {
@@ -107,7 +112,7 @@ public class ArchitectureWorkbenchService {
         DiagramScene scene = layoutService.layout(diagram);
 
         Map<String, ElementMetadata> elements = new LinkedHashMap<>();
-        for (ElementMappingView mapping : snapshot.elementMappings()) {
+        for (ElementMappingView mapping : safe(snapshot.elementMappings())) {
             elements.put(mapping.nodeCode(), new ElementMetadata(
                     mapping.nodeCode(),
                     mapping.nodeTitle(),
@@ -128,7 +133,7 @@ public class ArchitectureWorkbenchService {
         }
 
         Map<String, RelationMetadata> relations = new LinkedHashMap<>();
-        for (RelationMappingView mapping : snapshot.relationMappings()) {
+        for (RelationMappingView mapping : safe(snapshot.relationMappings())) {
             RelationMetadata metadata = new RelationMetadata(
                     mapping.sourceCode(),
                     mapping.targetCode(),
@@ -187,5 +192,9 @@ public class ArchitectureWorkbenchService {
                             String username,
                             WorkspaceContext context) {
         return pdfRenderer.render(load(projectId, snapshotId, username, context));
+    }
+
+    private static <T> List<T> safe(List<T> values) {
+        return values == null ? List.of() : values;
     }
 }
