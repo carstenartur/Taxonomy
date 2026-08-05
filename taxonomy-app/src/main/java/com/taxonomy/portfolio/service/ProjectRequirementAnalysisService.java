@@ -364,7 +364,7 @@ public class ProjectRequirementAnalysisService {
                                             AnalyzeProjectRequest request,
                                             String username,
                                             WorkspaceContext context) {
-        if (request.all()) {
+        if (request.analyzeAll()) {
             List<Long> ids = projectService.listRequirements(projectId, username, context).stream()
                     .map(requirement -> requirement.id())
                     .toList();
