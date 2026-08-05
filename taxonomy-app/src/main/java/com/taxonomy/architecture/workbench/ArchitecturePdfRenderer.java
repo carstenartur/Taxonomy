@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -239,12 +240,26 @@ public class ArchitecturePdfRenderer {
         return value == null || value.isBlank() ? "n/a" : value.strip();
     }
 
+    /**
+     * Standard PDF fonts cannot encode arbitrary Unicode. Keep labels readable
+     * and deterministic by transliterating common German characters before the
+     * general accent-removal fallback instead of replacing them with question marks.
+     */
     private static String ascii(String value) {
-        return safe(value)
+        String german = safe(value)
+                .replace("Ä", "Ae")
+                .replace("Ö", "Oe")
+                .replace("Ü", "Ue")
+                .replace("ä", "ae")
+                .replace("ö", "oe")
+                .replace("ü", "ue")
+                .replace("ß", "ss")
                 .replace('–', '-')
                 .replace('—', '-')
                 .replace('…', '.')
-                .replace('·', '|')
+                .replace('·', '|');
+        return Normalizer.normalize(german, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
                 .replaceAll("[^\\x20-\\x7E]", "?");
     }
 }
