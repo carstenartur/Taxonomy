@@ -93,7 +93,9 @@
         }
 
         var state = window.TaxonomyState;
-        if (state && state.currentArchView) {
+        var architecturePanel = document.getElementById('architectureViewPanel');
+        var architectureActive = architecturePanel && architecturePanel.style.display !== 'none';
+        if (state && state.currentArchView && architectureActive) {
             if (document.querySelector('#impactGraphView svg')) {
                 return {
                     containerId: 'impactGraphView',
