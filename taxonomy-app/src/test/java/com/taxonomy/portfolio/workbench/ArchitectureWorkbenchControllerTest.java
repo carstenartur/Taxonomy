@@ -1,6 +1,5 @@
-package com.taxonomy.architecture.workbench;
+package com.taxonomy.portfolio.workbench;
 
-import com.taxonomy.architecture.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
 import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
@@ -8,6 +7,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
@@ -108,20 +108,9 @@ class ArchitectureWorkbenchControllerTest {
     private static RequirementView requirement(String snapshotId) {
         Instant now = Instant.parse("2026-08-05T12:00:00Z");
         return new RequirementView(
-                7L,
-                42L,
-                "REQ-001",
-                "Secure command information",
-                RequirementStatus.APPROVED,
-                90,
-                Criticality.MISSION_CRITICAL,
-                RequirementType.SECURITY,
-                ReviewStatus.CONFIRMED,
-                "alice",
-                99L,
-                snapshotId,
-                now,
-                now,
-                null);
+                7L, 42L, "REQ-001", "Secure command information",
+                RequirementStatus.APPROVED, 90, Criticality.MISSION_CRITICAL,
+                RequirementType.SECURITY, ReviewStatus.CONFIRMED, "alice",
+                99L, snapshotId, now, now, null);
     }
 }

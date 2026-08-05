@@ -1,9 +1,9 @@
-package com.taxonomy.architecture.workbench;
+package com.taxonomy.portfolio.workbench;
 
-import com.taxonomy.architecture.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;

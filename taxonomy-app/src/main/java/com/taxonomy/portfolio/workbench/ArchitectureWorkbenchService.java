@@ -1,8 +1,5 @@
-package com.taxonomy.architecture.workbench;
+package com.taxonomy.portfolio.workbench;
 
-import com.taxonomy.architecture.workbench.ArchitectureWorkbenchDtos.ElementMetadata;
-import com.taxonomy.architecture.workbench.ArchitectureWorkbenchDtos.Projection;
-import com.taxonomy.architecture.workbench.ArchitectureWorkbenchDtos.RelationMetadata;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.dto.AnalysisResult;
@@ -20,6 +17,9 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.ElementMetadata;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.RelationMetadata;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,11 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Produces the single server-authoritative projection consumed by browser, SVG and PDF.
- *
- * <p>No LLM call is made here. The workbench replays an immutable analysis snapshot.</p>
- */
+/** Replays an immutable portfolio analysis snapshot for browser, SVG and PDF adapters. */
 @Service
 public class ArchitectureWorkbenchService {
 
@@ -114,39 +110,21 @@ public class ArchitectureWorkbenchService {
         Map<String, ElementMetadata> elements = new LinkedHashMap<>();
         for (ElementMappingView mapping : safe(snapshot.elementMappings())) {
             elements.put(mapping.nodeCode(), new ElementMetadata(
-                    mapping.nodeCode(),
-                    mapping.nodeTitle(),
-                    mapping.taxonomyRoot(),
-                    mapping.directScore(),
-                    mapping.relevance(),
-                    mapping.confidence(),
+                    mapping.nodeCode(), mapping.nodeTitle(), mapping.taxonomyRoot(),
+                    mapping.directScore(), mapping.relevance(), mapping.confidence(),
                     mapping.mappingOrigin() != null ? mapping.mappingOrigin().name() : null,
-                    mapping.hierarchyPath(),
-                    mapping.presenceReason(),
-                    mapping.selectedForImpact(),
-                    mapping.reviewStatus(),
-                    mapping.actionStatus(),
-                    mapping.actionEvidence(),
-                    mapping.decisionBy(),
-                    mapping.decisionAt(),
-                    mapping.decisionComment()));
+                    mapping.hierarchyPath(), mapping.presenceReason(), mapping.selectedForImpact(),
+                    mapping.reviewStatus(), mapping.actionStatus(), mapping.actionEvidence(),
+                    mapping.decisionBy(), mapping.decisionAt(), mapping.decisionComment()));
         }
 
         Map<String, RelationMetadata> relations = new LinkedHashMap<>();
         for (RelationMappingView mapping : safe(snapshot.relationMappings())) {
             RelationMetadata metadata = new RelationMetadata(
-                    mapping.sourceCode(),
-                    mapping.targetCode(),
-                    mapping.relationType(),
-                    mapping.relationOrigin(),
-                    mapping.relationCategory(),
-                    mapping.relevance(),
-                    mapping.confidence(),
-                    mapping.presenceReason(),
-                    mapping.reviewStatus(),
-                    mapping.decisionBy(),
-                    mapping.decisionAt(),
-                    mapping.decisionComment());
+                    mapping.sourceCode(), mapping.targetCode(), mapping.relationType(),
+                    mapping.relationOrigin(), mapping.relationCategory(), mapping.relevance(),
+                    mapping.confidence(), mapping.presenceReason(), mapping.reviewStatus(),
+                    mapping.decisionBy(), mapping.decisionAt(), mapping.decisionComment());
             relations.put(metadata.signature(), metadata);
         }
 
@@ -156,25 +134,12 @@ public class ArchitectureWorkbenchService {
         warnings.removeIf(value -> value == null || value.isBlank());
 
         return new Projection(
-                projectId,
-                project.projectKey(),
-                project.title(),
-                requirementId,
-                requirement.requirementKey(),
-                requirement.title(),
-                version.text(),
-                snapshot.summary().id(),
-                snapshot.summary().status(),
-                snapshot.summary().createdAt(),
-                snapshot.summary().provider(),
-                snapshot.summary().modelName(),
-                snapshot.summary().workspaceId(),
-                snapshot.summary().branchName(),
-                snapshot.summary().commitSha(),
-                diagram,
-                scene,
-                elements,
-                relations,
+                projectId, project.projectKey(), project.title(), requirementId,
+                requirement.requirementKey(), requirement.title(), version.text(),
+                snapshot.summary().id(), snapshot.summary().status(), snapshot.summary().createdAt(),
+                snapshot.summary().provider(), snapshot.summary().modelName(),
+                snapshot.summary().workspaceId(), snapshot.summary().branchName(),
+                snapshot.summary().commitSha(), diagram, scene, elements, relations,
                 new ArrayList<>(warnings));
     }
 

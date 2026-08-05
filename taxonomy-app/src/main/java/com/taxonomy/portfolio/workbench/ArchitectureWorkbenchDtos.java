@@ -1,4 +1,4 @@
-package com.taxonomy.architecture.workbench;
+package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramScene;

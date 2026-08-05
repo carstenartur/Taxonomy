@@ -1,9 +1,9 @@
-package com.taxonomy.architecture.workbench;
+package com.taxonomy.portfolio.workbench;
 
-import com.taxonomy.architecture.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.diagram.DiagramSceneEdge;
 import com.taxonomy.diagram.DiagramSceneNode;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -159,8 +159,8 @@ public class ArchitecturePdfRenderer {
 
     private static void drawFooter(PDPageContentStream stream,
                                    Projection projection) throws IOException {
-        String footer = "Generated from persisted architecture snapshot; no page screenshot and no LLM re-analysis.";
-        text(stream, REGULAR, 7, PAGE_MARGIN, 17, footer);
+        text(stream, REGULAR, 7, PAGE_MARGIN, 17,
+                "Generated from persisted architecture snapshot; no page screenshot and no LLM re-analysis.");
         if (!projection.warnings().isEmpty()) {
             text(stream, REGULAR, 7, PAGE_MARGIN, 8,
                     "Warnings: " + String.join(" | ", projection.warnings()));
@@ -240,11 +240,7 @@ public class ArchitecturePdfRenderer {
         return value == null || value.isBlank() ? "n/a" : value.strip();
     }
 
-    /**
-     * Standard PDF fonts cannot encode arbitrary Unicode. Keep labels readable
-     * and deterministic by transliterating common German characters before the
-     * general accent-removal fallback instead of replacing them with question marks.
-     */
+    /** Keep labels readable with the Standard 14 PDF fonts. */
     private static String ascii(String value) {
         String german = safe(value)
                 .replace("Ä", "Ae")

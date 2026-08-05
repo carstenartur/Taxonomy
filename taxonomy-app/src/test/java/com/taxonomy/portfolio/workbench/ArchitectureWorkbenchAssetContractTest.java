@@ -1,4 +1,4 @@
-package com.taxonomy.architecture.workbench;
+package com.taxonomy.portfolio.workbench;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
