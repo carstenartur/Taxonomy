@@ -84,6 +84,7 @@ class ArchitectureWorkbenchServiceTest {
         try (var document = Loader.loadPDF(pdf)) {
             String text = new PDFTextStripper().getText(document);
             assertThat(text)
+                    .contains("Sichere Fuehrungsarchitektur")
                     .contains("P-001")
                     .contains("REQ-001")
                     .contains("snapshot-1")
@@ -126,7 +127,7 @@ class ArchitectureWorkbenchServiceTest {
         relation.setRelationCategory(RequirementRelationshipView.CATEGORY_IMPACT);
 
         RequirementArchitectureView view = new RequirementArchitectureView();
-        view.setViewTitle("Secure command architecture");
+        view.setViewTitle("Sichere Führungsarchitektur");
         view.setIncludedElements(List.of(capability, service));
         view.setIncludedRelationships(List.of(relation));
         view.setNotes(List.of("One provisional relation is shown."));
