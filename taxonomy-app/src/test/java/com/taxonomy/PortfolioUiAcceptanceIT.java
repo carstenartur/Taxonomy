@@ -362,8 +362,8 @@ class PortfolioUiAcceptanceIT {
                 .filter(element -> element.getText().contains(cloudKey)
                         && element.getText().contains(hostingKey))
                 .findFirst().orElse(null));
-        card.findElement(By.cssSelector(
-                ".conflict-review[data-status='CONFIRMED']")).click();
+        click(card.findElement(By.cssSelector(
+                ".conflict-review[data-status='CONFIRMED']")));
         WebElement dialog = wait.until(ExpectedConditions.visibilityOfElementLocated(
                 By.id("guidedConflictDialog")));
         assertThat(dialog.findElement(By.id("guidedConflictRequirementA")).getText())
@@ -459,6 +459,23 @@ class PortfolioUiAcceptanceIT {
                 element.click();
                 return true;
             } catch (ElementClickInterceptedException | StaleElementReferenceException error) {
+                return false;
+            }
+        });
+    }
+
+    private static void click(WebElement element) {
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                By.cssSelector(".modal-backdrop.show")));
+        wait.until(browser -> {
+            try {
+                if (!element.isDisplayed() || !element.isEnabled()) return false;
+                javascript().executeScript(
+                        "arguments[0].scrollIntoView({block:'center',inline:'nearest'});",
+                        element);
+                element.click();
+                return true;
+            } catch (ElementClickInterceptedException error) {
                 return false;
             }
         });
