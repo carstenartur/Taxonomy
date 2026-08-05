@@ -71,7 +71,7 @@ class ProjectAnalysisSingleRequirementMvcContractTest {
                 41L,
                 AnalysisStatus.PENDING,
                 "single-key",
-                "MOCK",
+                "GEMINI",
                 25,
                 CONTEXT.username(),
                 CONTEXT.workspaceId(),
@@ -87,7 +87,7 @@ class ProjectAnalysisSingleRequirementMvcContractTest {
         when(analysisService.enqueueRequirement(
                 eq(41L),
                 eq(7L),
-                eq("MOCK"),
+                eq("GEMINI"),
                 eq(25),
                 eq("single-key"),
                 eq(CONTEXT.username()),
@@ -99,7 +99,7 @@ class ProjectAnalysisSingleRequirementMvcContractTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "provider": "MOCK",
+                                  "provider": "GEMINI",
                                   "maxArchitectureNodes": 25,
                                   "idempotencyKey": "single-key"
                                 }
