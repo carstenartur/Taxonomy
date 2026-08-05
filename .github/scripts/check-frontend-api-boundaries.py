@@ -15,7 +15,7 @@ import sys
 ROOT = Path.cwd()
 STATIC_JS = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "js"
 TEMPLATE = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "templates" / "index.html"
-DIRECT_API_FETCH = re.compile(r"\bfetch\s*\(\s*['\"]\/api\/")
+DIRECT_API_FETCH = re.compile(r"\bfetch\s*\(\s*['\"`]\/api\/")
 
 # Temporary migration inventory. Every removed entry is an architecture improvement.
 LEGACY_ALLOWLIST = {
@@ -47,8 +47,11 @@ LEGACY_ALLOWLIST = {
 
 
 def matches(path: Path) -> list[int]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return [number for number, line in enumerate(lines, start=1) if DIRECT_API_FETCH.search(line)]
+    text = path.read_text(encoding="utf-8")
+    return [
+        text.count("\n", 0, match.start()) + 1
+        for match in DIRECT_API_FETCH.finditer(text)
+    ]
 
 
 def main() -> int:

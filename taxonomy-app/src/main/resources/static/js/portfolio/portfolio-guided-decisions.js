@@ -136,6 +136,7 @@ option.label = context.filter(Boolean).join(' · ');
 datalist.appendChild(option);
 });
 } catch (error) {
+reportBackgroundFailure('taxonomy search', error);
 }
 }
 async function refreshProductComparisons() {
@@ -157,7 +158,17 @@ card.querySelector('.card-body').appendChild(comparison);
 comparison.innerHTML = productComparison(projectSolution.productCandidates || []);
 });
 } catch (error) {
+reportBackgroundFailure('product comparison refresh', error);
 }
+}
+
+/**
+ * Background enhancements must never replace the page content with an error,
+ * but they must not fail silently either: a swallowed rejection here is a
+ * frequent cause of unexplained acceptance-test timeouts.
+ */
+function reportBackgroundFailure(activity, error) {
+console.warn('Guided portfolio decisions: ' + activity + ' failed', error);
 }
 function productComparison(candidates) {
 const summary = '<summary class="fw-semibold">' + escapeHtml(t('compareProducts')) + '</summary>';
@@ -283,8 +294,6 @@ return String(value || '—').toLowerCase().replaceAll('_', ' ')
 .replace(/\b\w/g, function (character) { return character.toUpperCase(); });
 }
 function escapeHtml(value) {
-return String(value == null ? '' : value)
-.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-.replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+return window.TaxonomyUtils.escapeHtml(value);
 }
 }());

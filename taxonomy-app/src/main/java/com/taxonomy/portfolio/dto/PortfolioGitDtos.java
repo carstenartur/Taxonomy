@@ -65,11 +65,7 @@ public final class PortfolioGitDtos {
             int projectsUpserted,
             int requirementsUpserted,
             int requirementVersionsCreated,
-            int solutionsUpserted,
-            int projectSolutionsUpserted,
-            int productsUpserted,
-            int conflictsUpserted,
-            int unresolvedReferences,
+            int warnings,
             Instant materializedAt) {
     }
 
@@ -86,7 +82,6 @@ public final class PortfolioGitDtos {
             String targetHeadBefore,
             String mergeCommitId,
             String strategy,
-            int ancestorCount,
             int projectCount,
             int requirementCount,
             int solutionCount,

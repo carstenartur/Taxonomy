@@ -27,7 +27,7 @@
         setBusy(true);
         try {
             [state.project, state.portfolio] = await Promise.all([
-                api(`/api/projects/${projectId}`), api(`/api/projects/${projectId}/portfolio`)
+                api().getProject(projectId), api().getProjectPortfolio(projectId)
             ]);
             document.getElementById('matrixProject').textContent = `${state.project.projectKey} — ${state.project.title}`;
             renderAll();
@@ -224,10 +224,10 @@
 
     function csvCell(value) { const text = String(value == null ? '' : value); return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text; }
     function download(filename, contentType, content) { const blob = new Blob([content], { type: contentType }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url); }
-    async function api(path) { const response = await fetch(path, { headers: { Accept: 'application/json' }, credentials: 'same-origin' }); if (!response.ok) { const payload = await response.json().catch(() => null); throw new Error(payload?.detail || payload?.message || `${l('failed')} HTTP ${response.status}`); } return response.json(); }
+    function api() { if (!window.TaxonomyPortfolioApi) throw new Error('Portfolio API boundary is not available'); return window.TaxonomyPortfolioApi; }
     function addDefinition(target, term, value) { const dt = document.createElement('dt'); dt.textContent = term; const dd = document.createElement('dd'); dd.textContent = value == null ? '—' : value; target.append(dt, dd); }
     function setBusy(active) { document.getElementById('matrixBusy').classList.toggle('d-none', !active); }
     function showError(error) { const target = document.getElementById('matrixError'); target.textContent = error?.message || l('failed'); target.classList.remove('d-none'); target.focus(); }
     function humanize(value) { return String(value || '—').toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase()); }
-    function escapeHtml(value) { return String(value == null ? '' : value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
+    function escapeHtml(value) { return window.TaxonomyUtils.escapeHtml(value); }
 })();

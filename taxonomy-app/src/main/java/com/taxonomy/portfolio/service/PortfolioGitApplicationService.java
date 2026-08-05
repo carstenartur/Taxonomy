@@ -154,10 +154,6 @@ public class PortfolioGitApplicationService {
                 materialized.projectsCreated(),
                 materialized.requirementsCreated(),
                 materialized.versionsCreated(),
-                0,
-                0,
-                0,
-                0,
                 materialized.warnings().size(),
                 Instant.now());
     }
@@ -171,15 +167,13 @@ public class PortfolioGitApplicationService {
         if (source.equals(target)) {
             throw PortfolioException.validation("Source and target branch must differ");
         }
-        if (message != null) {
-            ProjectPortfolioService.limited(message, 1000, "message");
-        }
+        String mergeMessage = ProjectPortfolioService.limited(message, 1000, "message");
 
         DslGitRepository repository = repositoryFactory.resolveRepository(context);
         String sourceHead = requireHead(repository, source);
         String targetHead = requireHead(repository, target);
         SemanticGitMergeService.MergeOutcome outcome = semanticMergeService.mergeBranches(
-                repository, source, target, username(context));
+                repository, source, target, username(context), mergeMessage);
         if (!outcome.success()) {
             throw PortfolioException.conflict(
                     "Portfolio merge conflict: " + String.join(", ", outcome.conflicts()));
@@ -194,7 +188,6 @@ public class PortfolioGitApplicationService {
                 targetHead,
                 outcome.commitId(),
                 outcome.semanticFallback() ? "SEMANTIC_FALLBACK" : "GIT",
-                0,
                 counts.projects(),
                 counts.requirements(),
                 counts.solutions(),

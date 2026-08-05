@@ -128,12 +128,12 @@
         setBusy(true);
         try {
             const [project, requirement, versions, snapshots, portfolio, account] = await Promise.all([
-                api(`/api/projects/${projectId}`),
-                api(`/api/projects/${projectId}/requirements/${requirementId}`),
-                api(`/api/projects/${projectId}/requirements/${requirementId}/versions`),
-                api(`/api/projects/${projectId}/requirements/${requirementId}/snapshots`),
-                api(`/api/projects/${projectId}/portfolio`),
-                api('/api/account/me')
+                api().getProject(projectId),
+                api().getRequirement(projectId, requirementId),
+                api().listRequirementVersions(projectId, requirementId),
+                api().listRequirementSnapshots(projectId, requirementId),
+                api().getProjectPortfolio(projectId),
+                api().getAccount()
             ]);
             Object.assign(state, { project, requirement, versions, snapshots, portfolio, account });
             state.selectedVersion = requirement.currentVersion || versions[0] || null;
@@ -259,7 +259,7 @@
         setBusy(true);
         try {
             state.selectedSnapshot = state.snapshots.find(snapshot => snapshot.id === id) || null;
-            state.snapshotDetail = await api(`/api/projects/${projectId}/snapshots/${encodeURIComponent(id)}`);
+            state.snapshotDetail = await api().getSnapshot(projectId, id);
             const url = new URL(window.location.href);
             url.searchParams.set('snapshot', id);
             url.searchParams.set('lang', locale);
@@ -403,19 +403,16 @@
         setBusy(true);
         try {
             const sourcePage = document.getElementById('sourcePage').value;
-            await api(`/api/projects/${projectId}/requirements/${requirementId}/versions`, {
-                method: 'POST',
-                body: {
-                    text: document.getElementById('versionText').value,
-                    changeReason: document.getElementById('changeReason').value,
-                    source: {
-                        sourceArtifactId: state.requirement.currentVersion?.source?.sourceArtifactId || null,
-                        sourceVersionId: state.requirement.currentVersion?.source?.sourceVersionId || null,
-                        sourceFragmentIds: state.requirement.currentVersion?.source?.sourceFragmentIds || [],
-                        sectionReference: document.getElementById('sourceSection').value || null,
-                        pageNumber: sourcePage ? Number(sourcePage) : null,
-                        originalText: document.getElementById('sourceOriginal').value || null
-                    }
+            await api().createRequirementVersion(projectId, requirementId, {
+                text: document.getElementById('versionText').value,
+                changeReason: document.getElementById('changeReason').value,
+                source: {
+                    sourceArtifactId: state.requirement.currentVersion?.source?.sourceArtifactId || null,
+                    sourceVersionId: state.requirement.currentVersion?.source?.sourceVersionId || null,
+                    sourceFragmentIds: state.requirement.currentVersion?.source?.sourceFragmentIds || [],
+                    sectionReference: document.getElementById('sourceSection').value || null,
+                    pageNumber: sourcePage ? Number(sourcePage) : null,
+                    originalText: document.getElementById('sourceOriginal').value || null
                 }
             });
             bootstrap.Modal.getOrCreateInstance(document.getElementById('newVersionModal')).hide();
@@ -431,15 +428,14 @@
     async function analyzeRequirement() {
         setBusy(true);
         try {
-            const response = await api(`/api/projects/${projectId}/requirements/${requirementId}/analyses`, {
-                method: 'POST',
-                returnResponse: true,
-                body: { provider: null, maxArchitectureNodes: 25,
-                    idempotencyKey: `detail:${requirementId}:${Date.now()}` }
+            const response = await api().analyzeRequirement(projectId, requirementId, {
+                provider: null,
+                maxArchitectureNodes: 25,
+                idempotencyKey: `detail:${requirementId}:${Date.now()}`
             });
             showInfo(t('analysisQueued'));
             const location = response.headers.get('Location');
-            if (location) pollAnalysis(new URL(location, window.location.href).toString());
+            if (location) pollAnalysis(analysisJobId(location));
         } catch (error) {
             showError(error);
         } finally {
@@ -447,11 +443,18 @@
         }
     }
 
-    async function pollAnalysis(url) {
+    function analysisJobId(location) {
+        const match = new URL(location, window.location.href).pathname
+            .match(/\/analysis-jobs\/([^/]+)$/);
+        return match ? decodeURIComponent(match[1]) : null;
+    }
+
+    async function pollAnalysis(jobId) {
+        if (!jobId) return;
         for (;;) {
             await new Promise(resolve => setTimeout(resolve, 1500));
             try {
-                const job = await api(url);
+                const job = await api().getAnalysisJob(projectId, jobId);
                 document.getElementById('requirementLive').textContent = humanize(job.status);
                 if (['SUCCESS', 'PARTIAL', 'FAILED', 'CANCELLED'].includes(job.status)) {
                     await loadAll();
@@ -474,28 +477,11 @@
         versionButton.title = t('permission');
     }
 
-    async function api(path, options) {
-        const config = Object.assign({ method: 'GET', headers: {} }, options || {});
-        const returnResponse = config.returnResponse;
-        delete config.returnResponse;
-        config.headers.Accept = 'application/json';
-        if (config.body !== undefined && typeof config.body !== 'string') {
-            config.headers['Content-Type'] = 'application/json';
-            config.body = JSON.stringify(config.body);
+    function api() {
+        if (!window.TaxonomyPortfolioApi) {
+            throw new Error('Portfolio API boundary is not available');
         }
-        if (!['GET', 'HEAD', 'OPTIONS'].includes(String(config.method).toUpperCase())) {
-            const token = document.querySelector('meta[name="_csrf"]')?.content;
-            const header = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
-            if (token) config.headers[header] = token;
-        }
-        const response = await fetch(path, config);
-        if (!response.ok) {
-            const payload = await response.json().catch(() => null);
-            throw new Error(payload?.detail || payload?.message || payload?.error || `${t('failed')} HTTP ${response.status}`);
-        }
-        if (returnResponse) return response;
-        if (response.status === 204) return null;
-        return response.json();
+        return window.TaxonomyPortfolioApi;
     }
 
     function addDefinition(target, term, value) {
@@ -550,9 +536,5 @@
         return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString(locale);
     }
 
-    function escapeHtml(value) {
-        return String(value == null ? '' : value)
-            .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-    }
+    function escapeHtml(value) { return window.TaxonomyUtils.escapeHtml(value); }
 })();

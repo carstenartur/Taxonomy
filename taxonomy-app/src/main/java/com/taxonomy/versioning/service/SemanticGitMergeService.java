@@ -36,9 +36,27 @@ public class SemanticGitMergeService {
                                       String fromBranch,
                                       String intoBranch,
                                       String author) throws IOException {
+        return mergeBranches(repository, fromBranch, intoBranch, author, null);
+    }
+
+    public MergeOutcome mergeBranches(DslGitRepository repository,
+                                      String fromBranch,
+                                      String intoBranch,
+                                      String author,
+                                      String message) throws IOException {
+        String requestedMessage = normalizeMessage(message);
+        Repository git = repository.getGitRepository();
+        ObjectId targetHeadBefore = branchHead(git, intoBranch);
         String ordinaryCommit = repository.merge(fromBranch, intoBranch);
         if (ordinaryCommit != null) {
-            return new MergeOutcome(true, ordinaryCommit, false, List.of(), null);
+            String effectiveCommit = applyRequestedMergeMessage(
+                    git,
+                    intoBranch,
+                    targetHeadBefore,
+                    ordinaryCommit,
+                    author,
+                    requestedMessage);
+            return new MergeOutcome(true, effectiveCommit, false, List.of(), null);
         }
 
         SemanticInputs inputs = semanticInputs(repository, fromBranch, intoBranch);
@@ -53,13 +71,14 @@ public class SemanticGitMergeService {
         }
 
         String commitId = createMergeCommit(
-                repository.getGitRepository(),
+                git,
                 inputs.oursCommit(),
                 inputs.theirsCommit(),
                 intoBranch,
                 fromBranch,
                 merge.mergedText(),
-                author);
+                author,
+                requestedMessage);
         return new MergeOutcome(true, commitId, true, List.of(), merge);
     }
 
@@ -117,16 +136,69 @@ public class SemanticGitMergeService {
         }
     }
 
+    /**
+     * The generic repository merge supplies a conventional default message.
+     * When a caller explicitly requested a message, replace only a two-parent
+     * merge commit created by this invocation. Fast-forward and already-merged
+     * results keep their existing commit identity and message.
+     */
+    private static String applyRequestedMergeMessage(Repository repository,
+                                                     String intoBranch,
+                                                     ObjectId targetHeadBefore,
+                                                     String commitId,
+                                                     String authorName,
+                                                     String requestedMessage) throws IOException {
+        if (requestedMessage == null) {
+            return commitId;
+        }
+
+        ObjectId originalId = ObjectId.fromString(commitId);
+        if (originalId.equals(targetHeadBefore)) {
+            return commitId;
+        }
+        Ref branch = repository.getRefDatabase().exactRef(Constants.R_HEADS + intoBranch);
+        if (branch == null || !originalId.equals(branch.getObjectId())) {
+            return commitId;
+        }
+
+        try (RevWalk walk = new RevWalk(repository)) {
+            RevCommit original = walk.parseCommit(originalId);
+            if (original.getParentCount() < 2) {
+                return commitId;
+            }
+
+            PersonIdent actor = actor(authorName);
+            try (ObjectInserter inserter = repository.newObjectInserter()) {
+                CommitBuilder replacement = new CommitBuilder();
+                replacement.setTreeId(original.getTree());
+                replacement.setParentIds(original.getParents());
+                replacement.setAuthor(actor);
+                replacement.setCommitter(actor);
+                replacement.setMessage(requestedMessage);
+                ObjectId replacementId = inserter.insert(replacement);
+                inserter.flush();
+
+                RefUpdate update = repository.updateRef(Constants.R_HEADS + intoBranch);
+                update.setExpectedOldObjectId(originalId);
+                update.setNewObjectId(replacementId);
+                update.setForceUpdate(true);
+                update.setRefLogIdent(actor);
+                update.setRefLogMessage("merge: " + requestedMessage, false);
+                requireUpdated(update.update(), intoBranch);
+                return replacementId.name();
+            }
+        }
+    }
+
     private static String createMergeCommit(Repository repository,
                                             RevCommit ours,
                                             RevCommit theirs,
                                             String intoBranch,
                                             String fromBranch,
                                             String mergedDsl,
-                                            String authorName) throws IOException {
-        String effectiveAuthor = authorName == null || authorName.isBlank()
-                ? "semantic-merge" : authorName.strip();
-        PersonIdent actor = new PersonIdent(effectiveAuthor, "noreply@taxonomy.local");
+                                            String authorName,
+                                            String requestedMessage) throws IOException {
+        PersonIdent actor = actor(authorName);
 
         try (ObjectInserter inserter = repository.newObjectInserter()) {
             ObjectId blob = inserter.insert(Constants.OBJ_BLOB,
@@ -140,7 +212,9 @@ public class SemanticGitMergeService {
             commit.setParentIds(ours, theirs);
             commit.setAuthor(actor);
             commit.setCommitter(actor);
-            commit.setMessage("Semantic merge branch '" + fromBranch + "' into " + intoBranch);
+            commit.setMessage(requestedMessage != null
+                    ? requestedMessage
+                    : "Semantic merge branch '" + fromBranch + "' into " + intoBranch);
             ObjectId commitId = inserter.insert(commit);
             inserter.flush();
 
@@ -149,14 +223,38 @@ public class SemanticGitMergeService {
             update.setNewObjectId(commitId);
             update.setRefLogIdent(actor);
             update.setRefLogMessage("semantic merge: " + fromBranch + " into " + intoBranch, false);
-            RefUpdate.Result result = update.update();
-            if (result != RefUpdate.Result.NEW
-                    && result != RefUpdate.Result.FAST_FORWARD
-                    && result != RefUpdate.Result.FORCED) {
-                throw new IOException("Could not update branch '" + intoBranch
-                        + "' after semantic merge: " + result);
-            }
+            requireUpdated(update.update(), intoBranch);
             return commitId.name();
+        }
+    }
+
+    private static ObjectId branchHead(Repository repository,
+                                       String branch) throws IOException {
+        Ref ref = repository.getRefDatabase().exactRef(Constants.R_HEADS + branch);
+        return ref != null ? ref.getObjectId() : null;
+    }
+
+    private static PersonIdent actor(String authorName) {
+        String effectiveAuthor = authorName == null || authorName.isBlank()
+                ? "semantic-merge" : authorName.strip();
+        return new PersonIdent(effectiveAuthor, "noreply@taxonomy.local");
+    }
+
+    private static String normalizeMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return null;
+        }
+        return message.strip();
+    }
+
+    private static void requireUpdated(RefUpdate.Result result,
+                                       String branch) throws IOException {
+        if (result != RefUpdate.Result.NEW
+                && result != RefUpdate.Result.FAST_FORWARD
+                && result != RefUpdate.Result.FORCED
+                && result != RefUpdate.Result.NO_CHANGE) {
+            throw new IOException("Could not update branch '" + branch
+                    + "' after merge: " + result);
         }
     }
 
