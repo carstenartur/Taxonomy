@@ -386,7 +386,7 @@ class PortfolioUiAcceptanceIT {
                 By.cssSelector(".portfolio-solution-card")));
         WebElement details = solution.findElement(By.cssSelector("details"));
         if (details.getAttribute("open") == null) {
-            details.findElement(By.cssSelector("summary")).click();
+            click(details.findElement(By.cssSelector("summary")));
         }
         WebElement input = solution.findElement(By.cssSelector(".solution-node-code"));
         assertThat(input.getAttribute("list")).isEqualTo("taxonomyNodeOptions");
