@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title>Architecture Workbench</title>
+    <link rel="stylesheet"
+          th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"
+          href="/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" th:href="@{/css/architecture-workbench.css}"
+          href="/css/architecture-workbench.css"/>
+</head>
+<body th:attr="data-project-id=${projectId},data-snapshot-id=${snapshotId}">
+<a class="visually-hidden-focusable" href="#architectureCanvas">Skip to architecture diagram</a>
+
+<header class="workbench-toolbar navbar navbar-dark bg-dark px-3">
+    <a class="navbar-brand" th:href="@{/projects}" href="/projects">Taxonomy Architecture Workbench</a>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <button id="fitArchitecture" class="btn btn-sm btn-outline-light" type="button">Fit view</button>
+        <button id="downloadArchitectureSvg" class="btn btn-sm btn-outline-light" type="button">
+            Download SVG
+        </button>
+        <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button">
+            Download PDF
+        </button>
+    </div>
+</header>
+
+<div id="architectureStatus" class="workbench-status" role="status" aria-live="polite">
+    Loading persisted architecture snapshot…
+</div>
+<div id="architectureAlert" class="alert alert-danger m-3 d-none" role="alert"></div>
+
+<main class="workbench-grid">
+    <section class="workbench-canvas-panel" aria-labelledby="architectureTitle">
+        <div class="workbench-heading">
+            <div>
+                <h1 id="architectureTitle" class="h4 mb-1">Architecture</h1>
+                <p id="architectureProvenance" class="text-muted small mb-0"></p>
+            </div>
+            <div id="architectureLegend" class="architecture-legend" aria-label="Architecture layers"></div>
+        </div>
+        <div class="architecture-canvas-shell">
+            <svg id="architectureCanvas"
+                 role="img"
+                 aria-labelledby="architectureTitle architectureDescription"
+                 tabindex="0">
+                <desc id="architectureDescription">
+                    Requirement-derived architecture graph loaded from an immutable analysis snapshot.
+                </desc>
+            </svg>
+        </div>
+    </section>
+
+    <aside class="workbench-detail-panel" aria-labelledby="detailTitle">
+        <h2 id="detailTitle" class="h5">Selection details</h2>
+        <p id="detailHint" class="text-muted">
+            Select an architecture element or relationship to inspect its evidence and review state.
+        </p>
+        <dl id="architectureDetails" class="detail-list"></dl>
+
+        <section class="mt-4" aria-labelledby="requirementTitle">
+            <h2 id="requirementTitle" class="h6">Requirement</h2>
+            <p id="requirementText" class="requirement-text"></p>
+        </section>
+
+        <section id="architectureWarningsSection" class="mt-4 d-none" aria-labelledby="warningsTitle">
+            <h2 id="warningsTitle" class="h6">Snapshot warnings</h2>
+            <ul id="architectureWarnings" class="small"></ul>
+        </section>
+    </aside>
+</main>
+
+<script th:src="@{/webjars/d3/7.9.0/dist/d3.min.js}"
+        src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
+<script th:src="@{/js/api/architecture-workbench-api.js}"
+        src="/js/api/architecture-workbench-api.js"></script>
+<script th:src="@{/js/architecture-workbench.js}"
+        src="/js/architecture-workbench.js"></script>
+</body>
+</html>

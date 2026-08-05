@@ -1,0 +1,189 @@
+:root {
+    color-scheme: light;
+    --workbench-border: #d7dde7;
+    --workbench-panel: #ffffff;
+    --workbench-muted: #64748b;
+    --workbench-focus: #0d6efd;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+body {
+    background: #eef2f7;
+    color: #0f172a;
+}
+
+.workbench-toolbar {
+    min-height: 56px;
+}
+
+.workbench-status {
+    min-height: 28px;
+    padding: 0.35rem 1rem;
+    background: #e0f2fe;
+    border-bottom: 1px solid #bae6fd;
+    color: #0c4a6e;
+    font-size: 0.875rem;
+}
+
+.workbench-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    height: calc(100vh - 84px);
+    gap: 1px;
+    background: var(--workbench-border);
+}
+
+.workbench-canvas-panel,
+.workbench-detail-panel {
+    background: var(--workbench-panel);
+    min-width: 0;
+}
+
+.workbench-canvas-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.workbench-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--workbench-border);
+}
+
+.architecture-canvas-shell {
+    min-height: 0;
+    overflow: hidden;
+    background:
+        linear-gradient(#f8fafc 1px, transparent 1px),
+        linear-gradient(90deg, #f8fafc 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+#architectureCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    outline: none;
+}
+
+#architectureCanvas:focus-visible {
+    box-shadow: inset 0 0 0 3px var(--workbench-focus);
+}
+
+.architecture-node {
+    cursor: pointer;
+}
+
+.architecture-node rect {
+    transition: stroke-width 120ms ease, filter 120ms ease;
+}
+
+.architecture-node:hover rect,
+.architecture-node:focus rect,
+.architecture-node.is-selected rect {
+    stroke: var(--workbench-focus);
+    stroke-width: 4px;
+    filter: drop-shadow(0 3px 4px rgb(15 23 42 / 0.22));
+}
+
+.architecture-edge {
+    cursor: pointer;
+}
+
+.architecture-edge:hover line,
+.architecture-edge:focus line,
+.architecture-edge.is-selected line {
+    stroke: var(--workbench-focus);
+    stroke-width: 4px;
+}
+
+.workbench-detail-panel {
+    padding: 1rem;
+    overflow: auto;
+}
+
+.detail-list {
+    display: grid;
+    grid-template-columns: minmax(90px, auto) 1fr;
+    gap: 0.4rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.detail-list dt {
+    color: var(--workbench-muted);
+    font-weight: 600;
+}
+
+.detail-list dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.requirement-text {
+    white-space: pre-wrap;
+    max-height: 16rem;
+    overflow: auto;
+    border: 1px solid var(--workbench-border);
+    border-radius: 0.4rem;
+    padding: 0.75rem;
+    background: #f8fafc;
+    font-size: 0.84rem;
+}
+
+.architecture-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem 0.65rem;
+    font-size: 0.72rem;
+}
+
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.legend-swatch {
+    width: 0.9rem;
+    height: 0.9rem;
+    border: 1px solid #64748b;
+    border-radius: 0.2rem;
+}
+
+@media (max-width: 900px) {
+    html,
+    body {
+        overflow: auto;
+    }
+
+    .workbench-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(65vh, 1fr) auto;
+        height: auto;
+    }
+
+    .workbench-detail-panel {
+        max-height: none;
+    }
+
+    .architecture-canvas-shell {
+        min-height: 65vh;
+    }
+}
+
+@media (forced-colors: active) {
+    .architecture-node rect,
+    .architecture-edge line {
+        forced-color-adjust: auto;
+    }
+}
