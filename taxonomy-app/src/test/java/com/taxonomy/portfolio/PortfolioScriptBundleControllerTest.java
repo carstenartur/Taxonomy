@@ -19,12 +19,13 @@ class PortfolioScriptBundleControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void adaptersAreDeliveredInRequestResponseDecisionCompatibilityAndRecoveryOrder() throws Exception {
+    void adaptersAreDeliveredInRequestResponseApiDecisionCompatibilityAndRecoveryOrder() throws Exception {
         var result = mockMvc.perform(get("/js/portfolio/taxonomy-portfolio-async.js"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/javascript"))
                 .andExpect(content().string(containsString("Portfolio product request normalization")))
                 .andExpect(content().string(containsString("Portfolio analysis response normalization")))
+                .andExpect(content().string(containsString("Portfolio API boundary")))
                 .andExpect(content().string(containsString("Guided portfolio decisions")))
                 .andExpect(content().string(containsString("Non-blocking portfolio analysis jobs")))
                 .andExpect(content().string(containsString(
@@ -36,6 +37,9 @@ class PortfolioScriptBundleControllerTest {
                 .isLessThan(script.indexOf("Portfolio analysis response normalization"));
         org.assertj.core.api.Assertions.assertThat(
                 script.indexOf("Portfolio analysis response normalization"))
+                .isLessThan(script.indexOf("Portfolio API boundary"));
+        org.assertj.core.api.Assertions.assertThat(
+                script.indexOf("Portfolio API boundary"))
                 .isLessThan(script.indexOf("Guided portfolio decisions"));
         org.assertj.core.api.Assertions.assertThat(
                 script.indexOf("Guided portfolio decisions"))
@@ -54,6 +58,10 @@ class PortfolioScriptBundleControllerTest {
                 .contains("registerJob(resolved.toString(), job)")
                 .contains("synchronizeCurrentProjectJobs")
                 .contains("/analysis-jobs")
+                .contains("window.TaxonomyPortfolioApi")
+                .contains("searchTaxonomy: function")
+                .contains("getProjectPortfolio: function")
+                .contains("updateConflict: function")
                 .contains("input.setAttribute('aria-describedby'")
                 .contains("node.parentCode")
                 .contains("node.level")

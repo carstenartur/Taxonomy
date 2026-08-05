@@ -28,6 +28,8 @@ public class PortfolioScriptBundleController {
             "static/js/portfolio/portfolio-product-request-normalizer.js";
     private static final String ANALYSIS_RESPONSE_NORMALIZER =
             "static/js/portfolio/portfolio-analysis-response-normalizer.js";
+    private static final String PORTFOLIO_API =
+            "static/js/api/portfolio-api.js";
     private static final String GUIDED =
             "static/js/portfolio/portfolio-guided-decisions.js";
     private static final String ASYNC =
@@ -62,6 +64,7 @@ public class PortfolioScriptBundleController {
     public ResponseEntity<String> portfolioEnhancementBundle() throws IOException {
         String productRequestNormalizer = read(PRODUCT_REQUEST_NORMALIZER);
         String analysisResponseNormalizer = read(ANALYSIS_RESPONSE_NORMALIZER);
+        String portfolioApi = read(PORTFOLIO_API);
         String guided = read(GUIDED);
         String async = exposeJobRegistrationBridge(read(ASYNC));
         String analysisJobSynchronizer = read(ANALYSIS_JOB_SYNCHRONIZER);
@@ -70,6 +73,7 @@ public class PortfolioScriptBundleController {
                 .cacheControl(CacheControl.maxAge(Duration.ofMinutes(10)).cachePublic())
                 .body(productRequestNormalizer + "\n;\n"
                         + analysisResponseNormalizer + "\n;\n"
+                        + portfolioApi + "\n;\n"
                         + guided + "\n;\n" + async + "\n;\n"
                         + analysisJobSynchronizer);
     }
