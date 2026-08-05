@@ -169,12 +169,21 @@ public final class PortfolioDtos {
 
     // ── Analysis jobs and immutable snapshots ──────────────────────────────
 
+    /**
+     * Analysis request. {@code all} is boxed so that clients may omit the field or send
+     * {@code null} without triggering a Jackson primitive-coercion failure (HTTP 400).
+     */
     public record AnalyzeProjectRequest(
             List<Long> requirementIds,
-            boolean all,
+            Boolean all,
             String provider,
             Integer maxArchitectureNodes,
             String idempotencyKey) {
+
+        /** @return {@code true} only when the client explicitly requested a full-project analysis. */
+        public boolean analyzeAll() {
+            return Boolean.TRUE.equals(all);
+        }
     }
 
     public record AnalysisJobItemView(

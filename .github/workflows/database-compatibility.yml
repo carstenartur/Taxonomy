@@ -60,6 +60,10 @@ jobs:
       - name: Run Maven-owned database suite
         env:
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          # Container image pulls on hosted runners occasionally exceed the two-minute
+          # default and fail the whole matrix leg with a ContainerFetchException.
+          TESTCONTAINERS_PULL_PAUSE_TIMEOUT: '600'
+          TESTCONTAINERS_PULL_TIMEOUT: '600'
         shell: bash
         run: |
           mkdir -p target
