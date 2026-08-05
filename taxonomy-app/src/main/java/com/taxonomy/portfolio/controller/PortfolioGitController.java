@@ -44,7 +44,8 @@ public class PortfolioGitController {
     }
 
     @Operation(summary = "Export the current Git-backed portfolio projection and repository baseline")
-    @GetMapping(value = "/export", produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping(value = "/export", headers = "Accept=application/json",
+            produces = MediaType.APPLICATION_JSON_VALUE)
     public ExportedPortfolioDsl exportPortfolio() throws IOException {
         return gitService.export(context().workspaceContext());
     }

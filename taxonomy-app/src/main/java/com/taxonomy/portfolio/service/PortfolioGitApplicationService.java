@@ -16,11 +16,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * GUI-oriented application facade over the established portfolio Git services.
@@ -114,12 +115,8 @@ public class PortfolioGitApplicationService {
 
         List<String> currentLines = lines(currentProjection);
         List<String> targetLines = lines(targetDsl);
-        Set<String> currentSet = new LinkedHashSet<>(currentLines);
-        Set<String> targetSet = new LinkedHashSet<>(targetLines);
-        List<String> added = targetSet.stream()
-                .filter(line -> !currentSet.contains(line)).toList();
-        List<String> removed = currentSet.stream()
-                .filter(line -> !targetSet.contains(line)).toList();
+        List<String> added = multisetDifference(targetLines, currentLines);
+        List<String> removed = multisetDifference(currentLines, targetLines);
         return new MaterializationPreview(
                 normalizedBranch,
                 targetHead,
@@ -226,6 +223,28 @@ public class PortfolioGitApplicationService {
 
     private static List<String> lines(String value) {
         return Arrays.asList((value == null ? "" : value).split("\\R", -1));
+    }
+
+    /**
+     * Returns the ordered multiset difference. Each matching line consumes only
+     * one occurrence in the baseline, so repeated TaxDSL lines remain visible.
+     */
+    private static List<String> multisetDifference(List<String> candidates,
+                                                   List<String> baseline) {
+        Map<String, Integer> remaining = new LinkedHashMap<>();
+        baseline.forEach(line -> remaining.merge(line, 1, Integer::sum));
+        List<String> difference = new ArrayList<>();
+        for (String line : candidates) {
+            Integer count = remaining.get(line);
+            if (count == null) {
+                difference.add(line);
+            } else if (count == 1) {
+                remaining.remove(line);
+            } else {
+                remaining.put(line, count - 1);
+            }
+        }
+        return difference;
     }
 
     private static String username(WorkspaceContext context) {

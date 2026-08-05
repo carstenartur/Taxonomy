@@ -47,6 +47,25 @@ class PortfolioGitMaterializationPreviewTest {
     }
 
     @Test
+    void previewCountsRepeatedLinesWithTheirMultiplicity() throws Exception {
+        Fixture fixture = fixture();
+        String targetDsl = "block {\n repeated;\n}\n";
+        String currentProjection = "block {\n repeated;\n repeated;\n}\n";
+        when(fixture.repository().getHeadCommit("target")).thenReturn("target-head");
+        when(fixture.repository().getDslAtHead("target")).thenReturn(targetDsl);
+        when(fixture.gitCore().contributeTo(targetDsl, "architect", fixture.context()))
+                .thenReturn(currentProjection);
+
+        var preview = fixture.service().previewMaterialize("target", fixture.context());
+
+        assertThat(preview.addedLines()).isZero();
+        assertThat(preview.removedLines()).isEqualTo(1);
+        assertThat(preview.removedPreview()).containsExactly(" repeated;");
+        assertThat(preview.changed()).isTrue();
+        assertThat(preview.destructiveChangePossible()).isTrue();
+    }
+
+    @Test
     void materializationRejectsAHeadThatChangedAfterReview() throws Exception {
         Fixture fixture = fixture();
         when(fixture.repository().getHeadCommit("target")).thenReturn("new-head");
