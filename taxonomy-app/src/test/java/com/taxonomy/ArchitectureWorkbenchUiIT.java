@@ -95,14 +95,19 @@ class ArchitectureWorkbenchUiIT {
                 201);
         long requirementId = number(requirement.get("id"));
 
-        Map<String, Object> job = requestJson(
+        // The precise 202 + Location HTTP contract is owned by the MVC contract
+        // tests. This browser acceptance only needs a successfully queued job so
+        // it can verify the persisted Workbench, SVG and PDF path end to end.
+        Map<String, Object> job = requestSuccessfulJson(
                 "POST",
                 "/api/projects/" + projectId + "/requirements/" + requirementId + "/analyses",
                 mapOf(
+                        "provider", "MOCK",
                         "maxArchitectureNodes", 20,
-                        "idempotencyKey", "architecture-workbench-" + suffix),
-                202);
+                        "idempotencyKey", "architecture-workbench-" + suffix));
+        assertThat(job.get("status")).isEqualTo("PENDING");
         String jobId = String.valueOf(job.get("id"));
+        assertThat(jobId).isNotBlank().isNotEqualTo("null");
 
         Map<String, Object> completed = new WebDriverWait(driver, Duration.ofMinutes(4))
                 .until(browser -> {
@@ -184,13 +189,35 @@ class ArchitectureWorkbenchUiIT {
         wait.until(ExpectedConditions.visibilityOfElementLocated(readyElement));
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> requestJson(
             String method,
             String path,
             Map<String, Object> body,
             int expectedStatus) {
-        Map<String, Object> response = (Map<String, Object>) javascript().executeAsyncScript("""
+        Map<String, Object> response = request(method, path, body);
+        assertThat(number(response.get("status")))
+                .as("HTTP %s %s response: %s", method, path, response)
+                .isEqualTo(expectedStatus);
+        return jsonBody(response, method, path);
+    }
+
+    private static Map<String, Object> requestSuccessfulJson(
+            String method,
+            String path,
+            Map<String, Object> body) {
+        Map<String, Object> response = request(method, path, body);
+        assertThat(number(response.get("status")))
+                .as("Successful HTTP %s %s response: %s", method, path, response)
+                .isBetween(200L, 299L);
+        return jsonBody(response, method, path);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> request(
+            String method,
+            String path,
+            Map<String, Object> body) {
+        return (Map<String, Object>) javascript().executeAsyncScript("""
                 const method = arguments[0];
                 const path = arguments[1];
                 const body = arguments[2];
@@ -212,15 +239,20 @@ class ArchitectureWorkbenchUiIT {
                     try { parsed = text ? JSON.parse(text) : null; } catch (ignored) { }
                     done({
                         status: response.status,
+                        location: response.headers.get('location') || '',
                         contentType: response.headers.get('content-type') || '',
                         body: parsed,
                         text: text
                     });
                 }).catch(error => done({status: 0, error: String(error)}));
                 """, method, path, body);
-        assertThat(number(response.get("status")))
-                .as("HTTP %s %s response: %s", method, path, response)
-                .isEqualTo(expectedStatus);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> jsonBody(
+            Map<String, Object> response,
+            String method,
+            String path) {
         Object responseBody = response.get("body");
         assertThat(responseBody)
                 .as("JSON body for %s %s", method, path)
