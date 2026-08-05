@@ -36,7 +36,7 @@ class PortfolioGitControllerWorkspaceIsolationTest {
         doThrow(new IllegalStateException("workspace database unavailable"))
                 .when(repositoryStateService).ensureWorkspaceState("architect");
 
-        assertThatThrownBy(controller::exportPortfolio)
+        assertThatThrownBy(() -> controller.exportPortfolio(MediaType.APPLICATION_JSON_VALUE))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("workspace database unavailable");
         verifyNoInteractions(gitService);

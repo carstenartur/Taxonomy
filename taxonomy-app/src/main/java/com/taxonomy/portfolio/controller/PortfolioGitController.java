@@ -14,11 +14,13 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -43,18 +45,21 @@ public class PortfolioGitController {
         this.repositoryStateService = repositoryStateService;
     }
 
-    @Operation(summary = "Export the current Git-backed portfolio projection and repository baseline")
-    @GetMapping(value = "/export", headers = "Accept=application/json",
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    public ExportedPortfolioDsl exportPortfolio() throws IOException {
-        return gitService.export(context().workspaceContext());
-    }
-
-    /** Backward-compatible plain TaxDSL representation for automation clients. */
-    @Operation(summary = "Export the current project portfolio as plain TaxDSL")
-    @GetMapping(value = "/export", produces = MediaType.TEXT_PLAIN_VALUE)
-    public ResponseEntity<String> exportPortfolioDsl() throws IOException {
-        return ResponseEntity.ok(gitService.export(context().workspaceContext()).dsl());
+    @Operation(summary = "Export the current Git-backed portfolio projection")
+    @GetMapping(value = "/export",
+            produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_PLAIN_VALUE})
+    public ResponseEntity<?> exportPortfolio(
+            @RequestHeader(name = HttpHeaders.ACCEPT, required = false) String accept)
+            throws IOException {
+        ExportedPortfolioDsl exported = gitService.export(context().workspaceContext());
+        if (explicitlyRequestsJson(accept)) {
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(exported);
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(exported.dsl());
     }
 
     @Operation(summary = "Commit the reviewed current portfolio projection")
@@ -125,6 +130,18 @@ public class PortfolioGitController {
         String username = workspaceResolver.resolveCurrentUsername();
         repositoryStateService.ensureWorkspaceState(username);
         return new RequestContext(username, workspaceResolver.resolveCurrentContext());
+    }
+
+    private static boolean explicitlyRequestsJson(String accept) {
+        if (accept == null || accept.isBlank()) return false;
+        try {
+            return MediaType.parseMediaTypes(accept).stream()
+                    .filter(type -> type.getQualityValue() > 0.0d)
+                    .filter(type -> !type.isWildcardType() && !type.isWildcardSubtype())
+                    .anyMatch(MediaType.APPLICATION_JSON::isCompatibleWith);
+        } catch (IllegalArgumentException invalidAcceptHeader) {
+            return false;
+        }
     }
 
     private static String firstNonBlank(String... values) {
