@@ -34,13 +34,17 @@ class ArchitectureWorkbenchAssetContractTest {
     }
 
     @Test
-    void legacyExportControlCannotFallBackToPrintingThePage() throws Exception {
+    void legacyExportControlRoutesAnArchitectureResultToItsGraph() throws Exception {
         String exporter = resource("static/js/shared/taxonomy-export.js");
 
         assertThat(exporter)
                 .doesNotContain("window.print")
                 .doesNotContain("Fallback to browser print")
                 .contains("Vector SVG renderer is unavailable")
+                .contains("state.currentArchView")
+                .contains("#impactGraphView svg")
+                .contains("requirement-architecture.pdf")
+                .contains("stopImmediatePropagation")
                 .contains("Object.freeze");
     }
 
