@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title>Requirement detail — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#requirementMain">Skip to requirement detail</a>
+<div id="requirementLive" class="visually-hidden" role="status" aria-live="polite"></div>
+<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Requirement navigation">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
+        <span class="navbar-text text-white fw-semibold me-auto" id="pageTitle">Requirement detail</span>
+        <a class="btn btn-sm btn-outline-light" id="portfolioBack" href="/projects">Portfolio</a>
+        <a class="btn btn-sm btn-outline-light" id="matrixLink" href="#">Matrices</a>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Language">
+            <a class="btn btn-outline-light" href="?lang=en" hreflang="en">EN</a>
+            <a class="btn btn-outline-light" href="?lang=de" hreflang="de">DE</a>
+        </div>
+    </div>
+</nav>
+
+<main id="requirementMain" class="container-fluid py-3 px-lg-4">
+    <div id="detailError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
+    <div id="detailInfo" class="alert alert-info d-none" role="status"></div>
+
+    <section class="card shadow-sm mb-3" aria-labelledby="requirementHeading">
+        <div class="card-body">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                <div>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <span id="requirementKey" class="badge text-bg-primary"></span>
+                        <span id="requirementStatus" class="badge text-bg-secondary"></span>
+                        <span id="requirementReview" class="badge text-bg-secondary"></span>
+                    </div>
+                    <h1 id="requirementHeading" class="h2 mt-2 mb-1">Loading requirement…</h1>
+                    <p id="requirementMeta" class="text-body-secondary mb-0"></p>
+                </div>
+                <div class="d-flex flex-wrap gap-2 align-items-start">
+                    <button id="reanalyzeRequirement" type="button" class="btn btn-primary">Analyze current version</button>
+                    <button id="newVersionButton" type="button" class="btn btn-outline-primary"
+                            data-bs-toggle="modal" data-bs-target="#newVersionModal">New version</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="openTasks" class="card shadow-sm mb-3" aria-labelledby="tasksHeading">
+        <div class="card-header"><h2 id="tasksHeading" class="h5 mb-0">Open decisions</h2></div>
+        <div id="taskList" class="list-group list-group-flush"></div>
+    </section>
+
+    <section class="card shadow-sm">
+        <div class="card-header p-0 border-bottom-0">
+            <ul class="nav nav-tabs px-2 pt-2 flex-nowrap overflow-x-auto" id="detailTabs" role="tablist">
+                <li class="nav-item"><button class="nav-link active" id="text-tab" data-bs-toggle="tab"
+                    data-bs-target="#textPane" type="button" role="tab" aria-controls="textPane" aria-selected="true">Text & source</button></li>
+                <li class="nav-item"><button class="nav-link" id="versions-tab" data-bs-toggle="tab"
+                    data-bs-target="#versionsPane" type="button" role="tab" aria-controls="versionsPane" aria-selected="false">Versions</button></li>
+                <li class="nav-item"><button class="nav-link" id="analyses-tab" data-bs-toggle="tab"
+                    data-bs-target="#analysesPane" type="button" role="tab" aria-controls="analysesPane" aria-selected="false">Analyses</button></li>
+                <li class="nav-item"><button class="nav-link" id="architecture-tab" data-bs-toggle="tab"
+                    data-bs-target="#architecturePane" type="button" role="tab" aria-controls="architecturePane" aria-selected="false">Taxonomy & architecture</button></li>
+                <li class="nav-item"><button class="nav-link" id="decisions-tab" data-bs-toggle="tab"
+                    data-bs-target="#decisionsPane" type="button" role="tab" aria-controls="decisionsPane" aria-selected="false">Decisions</button></li>
+                <li class="nav-item"><button class="nav-link" id="solutions-tab" data-bs-toggle="tab"
+                    data-bs-target="#solutionsPane" type="button" role="tab" aria-controls="solutionsPane" aria-selected="false">Solutions & products</button></li>
+            </ul>
+        </div>
+        <div class="card-body tab-content">
+            <div class="tab-pane fade show active" id="textPane" role="tabpanel" aria-labelledby="text-tab" tabindex="0">
+                <div class="row g-3">
+                    <div class="col-12 col-xl-6">
+                        <h2 class="h5">Current requirement text</h2>
+                        <pre id="currentText" class="border rounded p-3 bg-body-tertiary text-wrap"></pre>
+                    </div>
+                    <div class="col-12 col-xl-6">
+                        <h2 class="h5">Original source fragment</h2>
+                        <dl id="sourceMetadata" class="portfolio-card-meta mb-3"></dl>
+                        <pre id="sourceText" class="border rounded p-3 bg-body-tertiary text-wrap"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="versionsPane" role="tabpanel" aria-labelledby="versions-tab" tabindex="0">
+                <div class="row g-3">
+                    <div class="col-12 col-lg-4"><div id="versionList" class="list-group"></div></div>
+                    <div class="col-12 col-lg-8"><div id="versionDetail" class="border rounded p-3 bg-body"></div></div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="analysesPane" role="tabpanel" aria-labelledby="analyses-tab" tabindex="0">
+                <div class="row g-3">
+                    <div class="col-12 col-lg-4"><div id="snapshotList" class="list-group"></div></div>
+                    <div class="col-12 col-lg-8"><div id="snapshotDetail" class="border rounded p-3 bg-body"></div></div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="architecturePane" role="tabpanel" aria-labelledby="architecture-tab" tabindex="0">
+                <div id="architectureSummary"></div>
+                <div id="mappingTable" class="table-responsive mt-3"></div>
+                <div id="relationTable" class="table-responsive mt-3"></div>
+            </div>
+
+            <div class="tab-pane fade" id="decisionsPane" role="tabpanel" aria-labelledby="decisions-tab" tabindex="0">
+                <div id="decisionList" class="vstack gap-2"></div>
+            </div>
+
+            <div class="tab-pane fade" id="solutionsPane" role="tabpanel" aria-labelledby="solutions-tab" tabindex="0">
+                <div id="solutionList" class="row g-3"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<div class="modal fade" id="newVersionModal" tabindex="-1" aria-labelledby="newVersionTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <form id="newVersionForm" class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="newVersionTitle">Create immutable requirement version</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="versionText" class="form-label">Requirement text</label>
+                    <textarea id="versionText" class="form-control" rows="12" required></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="changeReason" class="form-label">Change reason</label>
+                    <input id="changeReason" class="form-control" maxlength="1000" required/>
+                </div>
+                <details>
+                    <summary class="fw-semibold">Source reference</summary>
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-6"><label for="sourceSection" class="form-label">Section</label><input id="sourceSection" class="form-control"/></div>
+                        <div class="col-md-3"><label for="sourcePage" class="form-label">Page</label><input id="sourcePage" type="number" min="1" class="form-control"/></div>
+                        <div class="col-12"><label for="sourceOriginal" class="form-label">Original text</label><textarea id="sourceOriginal" rows="5" class="form-control"></textarea></div>
+                    </div>
+                </details>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create version</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="detailBusy" class="portfolio-busy d-none" role="status" aria-live="polite">
+    <div class="spinner-border" aria-hidden="true"></div><span>Loading…</span>
+</div>
+<script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/portfolio/requirement-detail.js}"></script>
+</body>
+</html>

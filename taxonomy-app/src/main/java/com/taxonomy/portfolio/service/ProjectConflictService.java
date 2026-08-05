@@ -36,7 +36,7 @@ public class ProjectConflictService {
             rule(ConflictType.HOSTING,
                     "Cloud-/Hosting-Vorgaben widersprechen sich",
                     "\\b(public cloud|cloud[- ]pflicht|cloud required|must use cloud|saas required|externes hosting erforderlich)\\b",
-                    "\\b(no cloud|keine cloud|cloud verboten|on[- ]premises only|nur on[- ]prem|external hosting prohibited|externes hosting verboten)\\b",
+                    "\\b(no cloud|keine cloud|cloud verboten|on[- ]premises only|only on[- ]premises|nur on[- ]prem|external hosting prohibited|external hosting (?:is )?not allowed|must not use external hosting|must remain on[- ]premises|externes hosting verboten|externes hosting (?:ist )?nicht erlaubt|darf kein externes hosting|muss on[- ]premises bleiben)\\b",
                     0.88),
             rule(ConflictType.DATA_LOCATION,
                     "Vorgaben zum Speicherort widersprechen sich",
