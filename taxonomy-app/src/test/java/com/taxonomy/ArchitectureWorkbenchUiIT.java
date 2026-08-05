@@ -98,11 +98,13 @@ class ArchitectureWorkbenchUiIT {
         // The precise 202 + Location HTTP contract is owned by the MVC contract
         // tests. This browser acceptance only needs a successfully queued job so
         // it can verify the persisted Workbench, SVG and PDF path end to end.
+        // GEMINI is a registered provider; LLM_MOCK=true intercepts its calls and
+        // returns deterministic classpath scores without any external request.
         Map<String, Object> job = requestSuccessfulJson(
                 "POST",
                 "/api/projects/" + projectId + "/requirements/" + requirementId + "/analyses",
                 mapOf(
-                        "provider", "MOCK",
+                        "provider", "GEMINI",
                         "maxArchitectureNodes", 20,
                         "idempotencyKey", "architecture-workbench-" + suffix));
         assertThat(job.get("status")).isEqualTo("PENDING");
