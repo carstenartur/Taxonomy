@@ -90,6 +90,38 @@ def default_next_version(release_version: str, increment: str) -> str:
     return f"{major}.{minor}.{patch}-SNAPSHOT"
 
 
+def require_newer_next_version(
+    release_version: str,
+    next_version: str,
+    *,
+    current_version: str | None = None,
+) -> None:
+    """Reject a non-advancing next version with trigger-appropriate guidance."""
+    if not next_version or version_tuple(next_version) > version_tuple(release_version):
+        return
+
+    if current_version is not None:
+        context = (
+            f"current project version {current_version} means this run releases "
+            f"{release_version}"
+        )
+        guidance = (
+            "Leave next_development_version empty to use the selected patch, minor "
+            "or major increment, or enter a higher X.Y.Z-SNAPSHOT version."
+        )
+    else:
+        context = f"release request publishes {release_version}"
+        guidance = (
+            "Set next_development_version to a higher X.Y.Z-SNAPSHOT version, "
+            "or leave it empty when no post-release version advance is required."
+        )
+
+    raise ValueError(
+        f"{context}; next development version {next_version} must be newer. "
+        f"{guidance}"
+    )
+
+
 def derive_release_versions(
     current_version: str,
     increment: str,
@@ -110,14 +142,11 @@ def derive_release_versions(
     if not next_version:
         next_version = default_next_version(release_version, increment)
 
-    if version_tuple(next_version) <= version_tuple(release_version):
-        raise ValueError(
-            f"current project version {current_version} means this run releases "
-            f"{release_version}; next development version {next_version} must be "
-            "newer. Leave next_development_version empty to use the selected "
-            "patch, minor or major increment, or enter a higher X.Y.Z-SNAPSHOT "
-            "version."
-        )
+    require_newer_next_version(
+        release_version,
+        next_version,
+        current_version=current_version,
+    )
     return release_version, next_version
 
 
@@ -167,11 +196,7 @@ def resolve_parameters(
         ),
     }
 
-    if next_version and version_tuple(next_version) <= version_tuple(release_version):
-        raise ValueError(
-            f"next development version {next_version} must be newer than "
-            f"release {release_version}"
-        )
+    require_newer_next_version(release_version, next_version)
 
     if parameters["resume_staged_release"] == "true":
         if parameters["dry_run"] == "true":

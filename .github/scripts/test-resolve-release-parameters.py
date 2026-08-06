@@ -197,7 +197,7 @@ class ReleaseParameterTest(unittest.TestCase):
     def test_dispatch_rejects_next_version_not_newer_than_release(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
-            "current project version 1.3.0-SNAPSHOT means this run releases 1.3.0",
+            r"current project version 1\.3\.0-SNAPSHOT means this run releases 1\.3\.0",
         ) as raised:
             MODULE.resolve_parameters(
                 "workflow_dispatch",
@@ -208,7 +208,11 @@ class ReleaseParameterTest(unittest.TestCase):
         self.assertIn("patch, minor or major", str(raised.exception))
 
     def test_push_rejects_next_version_not_newer_than_release(self) -> None:
-        with self.assertRaisesRegex(ValueError, "must be newer"):
+        with self.assertRaisesRegex(
+            ValueError,
+            r"release request publishes 1\.2\.9; next development version "
+            r"1\.2\.9-SNAPSHOT must be newer",
+        ) as raised:
             MODULE.resolve_parameters(
                 "push",
                 {},
@@ -217,6 +221,10 @@ class ReleaseParameterTest(unittest.TestCase):
                     "next_development_version": "1.2.9-SNAPSHOT",
                 },
             )
+        self.assertIn(
+            "Set next_development_version to a higher X.Y.Z-SNAPSHOT version",
+            str(raised.exception),
+        )
 
     def test_unsupported_event_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "unsupported release event"):
