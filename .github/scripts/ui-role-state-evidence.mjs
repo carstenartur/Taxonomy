@@ -17,6 +17,13 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
       width: Math.min(dimensions.width, 1440),
       height: Math.min(dimensions.height, 1000)
     };
+    const documentHeightViewportRatio = Number(
+      (dimensions.height / Math.max(1, viewport.height)).toFixed(4));
+    if (state === 'analysis-success' && documentHeightViewportRatio > 25) {
+      throw new Error(
+        `Analysis page height is pathological: ${dimensions.height}px / ${viewport.height}px `
+        + `= ${documentHeightViewportRatio} viewports`);
+    }
     const captured = policy.shouldCapture(state);
     const strategy = screenshotStrategy({
       mode: policy.mode,
@@ -74,6 +81,7 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
       captured,
       dimensions,
       viewport,
+      documentHeightViewportRatio,
       screenshotFiles,
       segments
     };
