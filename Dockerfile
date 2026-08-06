@@ -4,6 +4,8 @@
 # Tag retained for readability and automated update discovery; digest is authoritative.
 FROM maven:3.9.9-eclipse-temurin-21@sha256:3a4ab3276a087bf276f79cae96b1af04f53731bec53fb2e651aca79e4b10211e AS build
 WORKDIR /workspace
+ARG BUILD_DATE=unknown
+ARG VCS_REF=unknown
 
 # The Maven Wrapper validates the ZIP distribution. The minimal Maven builder
 # image does not provide unzip, and mvnw would otherwise silently switch to the
@@ -37,6 +39,13 @@ COPY taxonomy-extension-api/src taxonomy-extension-api/src
 COPY taxonomy-app/src taxonomy-app/src
 COPY docs docs
 COPY LICENSE NOTICE THIRD-PARTY-NOTICES.md ./
+
+# The Docker context intentionally excludes .git. Materialize the immutable
+# source revision supplied by the delivery workflow so Spring Boot's GitInfoContributor
+# and /api/about still report the exact code running in the container.
+RUN printf 'git.branch=container\ngit.commit.id=%s\ngit.commit.id.abbrev=%s\ngit.build.time=%s\n' \
+      "$VCS_REF" "$VCS_REF" "$BUILD_DATE" \
+      > taxonomy-app/src/main/resources/git.properties
 
 # Do not run dependency:go-offline against this multi-module reactor before its
 # internal SNAPSHOT artifacts exist. A single reactor package resolves and builds
