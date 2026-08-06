@@ -74,4 +74,16 @@ class PortfolioValueValidatorTest {
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("exceeds 1000 characters");
     }
+
+    @Test
+    void rejectsExtensionKeysThatCollideAfterNormalization() {
+        Map<String, String> attributes = new LinkedHashMap<>();
+        attributes.put("owner", "first");
+        attributes.put(" owner ", "second");
+
+        assertThatThrownBy(() -> PortfolioValueValidator.extensionAttributes(attributes))
+                .isInstanceOf(PortfolioException.class)
+                .hasMessageContaining("duplicate key after normalization")
+                .hasMessageContaining("owner");
+    }
 }
