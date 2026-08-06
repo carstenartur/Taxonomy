@@ -2,8 +2,11 @@ name: CI / CD
 
 on:
   push:
-    branches-ignore: [ gh-pages ]
-    tags: [ 'v*' ]
+    branches:
+      - main
+      - 'release/**'
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
