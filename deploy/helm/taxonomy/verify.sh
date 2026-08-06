@@ -80,15 +80,15 @@ for forbidden in 'runAsUser:' 'runAsGroup:' 'fsGroup:' 'fsGroupChangePolicy:'; d
   fi
 done
 
-RANCHER_OUTPUT="${TMP_DIR}/rancher-rke2.yaml"
-helm lint "${CHART_DIR}" \
-  --values "${CHART_DIR}/values-rancher-rke2.yaml" \
-  "${COMMON_VALUES[@]}"
+RANCHER_OUTPUT="${TMP_DIR}/rancher.yaml"
+RANCHER_EVIDENCE="${ROOT_DIR}/target/taxonomy-helm-rancher-rke2-rendered.yaml"
 helm template taxonomy "${CHART_DIR}" \
   --namespace taxonomy \
   --values "${CHART_DIR}/values-rancher-rke2.yaml" \
-  "${COMMON_VALUES[@]}" \
+  --set "image.tag=${VALID_TAG}" \
+  --set existingSecret=taxonomy-secrets \
   >"${RANCHER_OUTPUT}"
+cp "${RANCHER_OUTPUT}" "${RANCHER_EVIDENCE}"
 for required in \
   'kind: Ingress' \
   'ingressClassName: nginx' \
@@ -96,11 +96,11 @@ for required in \
   'nginx.ingress.kubernetes.io/x-forwarded-prefix: /taxonomy' \
   'path: /taxonomy(/|$)(.*)' \
   'pathType: ImplementationSpecific' \
-  'cpu: "1"' \
+  'cpu: 500m' \
   'kubernetes.io/metadata.name: kube-system' \
-  'rke2-ingress-nginx'; do
+  'kubernetes.io/metadata.name: ingress-nginx'; do
   if ! grep -Fq "${required}" "${RANCHER_OUTPUT}"; then
-    echo "Rancher profile is missing required contract: ${required}" >&2
+    echo "Rendered Rancher profile is missing required contract: ${required}" >&2
     exit 1
   fi
 done

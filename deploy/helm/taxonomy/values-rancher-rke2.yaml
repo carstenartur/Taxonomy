@@ -1,24 +1,23 @@
-# Production-oriented overrides for a Rancher-managed RKE2 cluster using the
-# bundled ingress-nginx controller. Replace the example host before deployment.
+# Production-oriented overrides for Rancher-managed RKE2 or ingress-nginx.
+# Replace the example host before deployment.
 
 resources:
   requests:
-    cpu: 200m
-    memory: 768Mi
+    cpu: 100m
+    memory: 512Mi
   limits:
-    # The default chart requests a 2-CPU limit. This profile stays deployable in
-    # namespaces whose aggregate CPU quota is already close to its ceiling.
-    cpu: "1"
-    memory: 2Gi
+    # Lower than the chart default (2 CPU) for quota-constrained namespaces.
+    cpu: "500m"
+    memory: 1536Mi
 
 ingress:
   enabled: true
   className: nginx
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    # Preserve the public prefix for redirects and generated absolute links.
-    nginx.ingress.kubernetes.io/x-forwarded-prefix: /taxonomy
+    nginx.ingress.kubernetes.io/rewrite-target: "/$2"
+    nginx.ingress.kubernetes.io/x-forwarded-prefix: "/taxonomy"
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
   hosts:
     - host: taxonomy.example.invalid
       paths:
@@ -26,8 +25,9 @@ ingress:
           pathType: ImplementationSpecific
   tls: []
 
-# RKE2 normally runs its ingress controller in kube-system. The combined
-# namespace/pod selector keeps the application closed to unrelated namespaces.
+# RKE2 normally runs ingress-nginx in kube-system. A separately installed
+# controller commonly runs in ingress-nginx. Retain only the selector that
+# matches the target cluster.
 networkPolicy:
   enabled: true
   allowSameNamespace: true
@@ -39,21 +39,12 @@ networkPolicy:
         matchExpressions:
           - key: app.kubernetes.io/name
             operator: In
-            values:
-              - rke2-ingress-nginx
-              - ingress-nginx
+            values: [rke2-ingress-nginx, ingress-nginx]
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
   egress:
     - {}
-
-config:
-  SPRING_PROFILES_ACTIVE: postgres,kubernetes
-  TAXONOMY_INIT_ASYNC: "true"
-  TAXONOMY_INIT_RELOAD_EXISTING: "false"
-  TAXONOMY_DDL_AUTO: validate
-  TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap
-  TAXONOMY_SEARCH_SYNC_STRATEGY: write-sync
-  TAXONOMY_SPRINGDOC_ENABLED: "false"
-  TAXONOMY_FORWARD_HEADERS_STRATEGY: framework
-  TAXONOMY_EMBEDDING_ENABLED: "false"
-  TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
-  JAVA_OPTS: -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=20.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp

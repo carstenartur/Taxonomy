@@ -1,169 +1,192 @@
 #!/usr/bin/env python3
-"""Build an immutable, commit-bound quality-report site from verified CI output."""
+"""Generate commit-bound quality badges and a compact test report from CI evidence."""
 
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import html
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
 
-def _int_attr(element: ET.Element, name: str) -> int:
-    value = element.attrib.get(name, "0")
+def _integer(element: ET.Element, name: str) -> int:
+    value = element.get(name, "0")
     try:
         return int(float(value))
-    except ValueError as exc:
-        raise ValueError(f"Invalid {name}={value!r} in {element.tag}") from exc
+    except ValueError as error:
+        raise ValueError(f"invalid {name}={value!r} in {element.tag}") from error
 
 
-def read_test_totals(report_root: Path) -> dict[str, int]:
+def collect_tests(root: Path) -> dict[str, int]:
     totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
-    reports = sorted((report_root / "tests").rglob("TEST-*.xml"))
-    if not reports:
-        raise FileNotFoundError("No JUnit TEST-*.xml reports found in quality-reports/tests")
+    files = sorted(root.rglob("TEST-*.xml"))
+    if not files:
+        raise FileNotFoundError(f"no JUnit XML reports found below {root}")
 
-    for report in reports:
-        root = ET.parse(report).getroot()
-        suites: list[ET.Element]
-        if root.tag.endswith("testsuite"):
-            suites = [root]
-        elif root.tag.endswith("testsuites") and "tests" in root.attrib:
-            suites = [root]
+    for report in files:
+        document = ET.parse(report).getroot()
+        if document.tag.endswith("testsuite"):
+            suites = [document]
         else:
-            suites = [child for child in root if child.tag.endswith("testsuite")]
+            suites = [child for child in document if child.tag.endswith("testsuite")]
+        if not suites:
+            raise ValueError(f"no testsuite element in {report}")
         for suite in suites:
             for key in totals:
-                totals[key] += _int_attr(suite, key)
+                totals[key] += _integer(suite, key)
+
+    totals["passed"] = (
+        totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"]
+    )
+    if totals["passed"] < 0:
+        raise ValueError(f"inconsistent test totals: {totals}")
     if totals["tests"] <= 0:
         raise ValueError("JUnit reports contained zero tests")
+    totals["reportFiles"] = len(files)
     return totals
 
 
-def read_line_coverage(report_root: Path) -> dict[str, int | float]:
-    report = report_root / "coverage" / "jacoco.xml"
+def collect_coverage(report: Path) -> dict[str, float | int]:
     if not report.is_file():
-        raise FileNotFoundError(f"Missing aggregate JaCoCo XML report: {report}")
+        raise FileNotFoundError(f"aggregate JaCoCo report missing: {report}")
     root = ET.parse(report).getroot()
-    counter = next((item for item in root.findall("counter")
-                    if item.attrib.get("type") == "LINE"), None)
-    if counter is None:
-        raise ValueError("Aggregate JaCoCo report contains no LINE counter")
-    missed = _int_attr(counter, "missed")
-    covered = _int_attr(counter, "covered")
-    total = missed + covered
-    if total <= 0:
-        raise ValueError("Aggregate JaCoCo LINE counter contains zero lines")
-    return {
-        "covered": covered,
-        "missed": missed,
-        "total": total,
-        "percent": round(covered * 100.0 / total, 2),
-    }
+    result: dict[str, float | int] = {}
+    for counter in root.findall("counter"):
+        metric = counter.get("type", "").lower()
+        if not metric:
+            continue
+        missed = _integer(counter, "missed")
+        covered = _integer(counter, "covered")
+        total = missed + covered
+        result[f"{metric}Missed"] = missed
+        result[f"{metric}Covered"] = covered
+        result[f"{metric}Percent"] = round(100.0 * covered / total, 2) if total else 100.0
+    if "instructionPercent" not in result:
+        raise ValueError(f"aggregate instruction counter missing in {report}")
+    return result
 
 
-def badge(label: str, message: str, colour: str) -> str:
-    label_width = max(44, 7 * len(label) + 14)
-    message_width = max(44, 7 * len(message) + 14)
-    width = label_width + message_width
-    label_escaped = html.escape(label)
-    message_escaped = html.escape(message)
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="20" role="img" aria-label="{label_escaped}: {message_escaped}">
-  <title>{label_escaped}: {message_escaped}</title>
-  <linearGradient id="s" x2="0" y2="100%">
-    <stop offset="0" stop-color="#fff" stop-opacity=".7"/>
-    <stop offset=".1" stop-color="#aaa" stop-opacity=".1"/>
-    <stop offset=".9" stop-color="#000" stop-opacity=".3"/>
-    <stop offset="1" stop-color="#000" stop-opacity=".5"/>
-  </linearGradient>
-  <clipPath id="r"><rect width="{width}" height="20" rx="3" fill="#fff"/></clipPath>
-  <g clip-path="url(#r)">
-    <rect width="{label_width}" height="20" fill="#555"/>
-    <rect x="{label_width}" width="{message_width}" height="20" fill="{colour}"/>
-    <rect width="{width}" height="20" fill="url(#s)"/>
-  </g>
-  <g fill="#fff" text-anchor="middle" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11">
-    <text x="{label_width / 2:g}" y="15" fill="#010101" fill-opacity=".3">{label_escaped}</text>
-    <text x="{label_width / 2:g}" y="14">{label_escaped}</text>
-    <text x="{label_width + message_width / 2:g}" y="15" fill="#010101" fill-opacity=".3">{message_escaped}</text>
-    <text x="{label_width + message_width / 2:g}" y="14">{message_escaped}</text>
-  </g>
-</svg>
-'''
+def coverage_color(percent: float) -> str:
+    if percent >= 90:
+        return "brightgreen"
+    if percent >= 80:
+        return "green"
+    if percent >= 70:
+        return "yellowgreen"
+    if percent >= 60:
+        return "yellow"
+    return "red"
 
 
-def build_site(report_root: Path, commit: str) -> dict[str, object]:
-    if not commit.strip():
-        raise ValueError("Verified commit SHA must not be empty")
-    tests = read_test_totals(report_root)
-    coverage = read_line_coverage(report_root)
-    failed = tests["failures"] + tests["errors"]
-    passed = tests["tests"] - failed - tests["skipped"]
-    tests.update({"passed": passed, "failed": failed})
+def write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-    generated_at = datetime.now(timezone.utc).isoformat()
-    metadata: dict[str, object] = {
+
+def write_outputs(root: Path, commit: str, generated_at: str) -> dict[str, object]:
+    tests = collect_tests(root / "tests")
+    coverage = collect_coverage(root / "coverage" / "jacoco.xml")
+    instruction_percent = float(coverage["instructionPercent"])
+    clean = tests["failures"] == 0 and tests["errors"] == 0
+
+    summary: dict[str, object] = {
         "schemaVersion": 1,
+        "commit": commit,
         "verifiedCommit": commit,
         "generatedAt": generated_at,
         "tests": tests,
         "coverage": coverage,
     }
+    write_json(root / "quality-summary.json", summary)
+    write_json(
+        root / "tests" / "badge.json",
+        {
+            "schemaVersion": 1,
+            "label": "tests",
+            "message": f"{tests['passed']} passed",
+            "color": "brightgreen" if clean else "red",
+        },
+    )
+    write_json(
+        root / "coverage" / "badge.json",
+        {
+            "schemaVersion": 1,
+            "label": "reactor coverage",
+            "message": f"{instruction_percent:.2f}%",
+            "color": coverage_color(instruction_percent),
+        },
+    )
+    root.joinpath(".nojekyll").touch()
 
-    badges = report_root / "badges"
-    badges.mkdir(parents=True, exist_ok=True)
-    test_message = f'{passed} passed' if failed == 0 else f'{failed} failed'
-    (badges / "tests.svg").write_text(
-        badge("tests", test_message, "#4c1" if failed == 0 else "#e05d44"),
-        encoding="utf-8",
-    )
-    percent = float(coverage["percent"])
-    colour = "#4c1" if percent >= 80 else "#dfb317" if percent >= 60 else "#e05d44"
-    (badges / "coverage.svg").write_text(
-        badge("coverage", f"{percent:.2f}%", colour), encoding="utf-8"
-    )
-    (report_root / "metadata.json").write_text(
-        json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    index = f"""<!doctype html>
+    branch_percent = float(coverage.get("branchPercent", 0.0))
+    report = f"""<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Taxonomy verified quality reports</title>
-  <style>
-    body {{ max-width: 64rem; margin: 2rem auto; padding: 0 1rem; font: 16px/1.5 system-ui, sans-serif; }}
-    code {{ overflow-wrap: anywhere; }}
-    .badges img {{ margin-right: .5rem; }}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taxonomy test report</title>
+<style>
+body {{ font: 16px/1.5 system-ui, sans-serif; max-width: 70rem; margin: 2rem auto; padding: 0 1rem; }}
+table {{ border-collapse: collapse; }}
+th, td {{ border: 1px solid #bbb; padding: .45rem .7rem; text-align: right; }}
+th:first-child, td:first-child {{ text-align: left; }}
+code {{ overflow-wrap: anywhere; }}
+</style>
 </head>
 <body>
-  <h1>Taxonomy verified quality reports</h1>
-  <p class="badges"><img src="badges/tests.svg" alt="Test result"> <img src="badges/coverage.svg" alt="Line coverage"></p>
-  <p>Verified commit: <code>{html.escape(commit)}</code></p>
-  <p>Generated: <time datetime="{html.escape(generated_at)}">{html.escape(generated_at)}</time></p>
-  <ul>
-    <li><a href="coverage/index.html">JaCoCo coverage report</a></li>
-    <li><a href="metadata.json">Machine-readable provenance and metrics</a></li>
-    <li><a href="README.txt">Verification provenance</a></li>
-  </ul>
+<h1>Taxonomy test report</h1>
+<p>Verified commit: <code>{html.escape(commit)}</code></p>
+<p>Generated: {html.escape(generated_at)}</p>
+<table>
+<thead><tr><th>Metric</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Registered tests</td><td>{tests['tests']}</td></tr>
+<tr><td>Passed</td><td>{tests['passed']}</td></tr>
+<tr><td>Skipped</td><td>{tests['skipped']}</td></tr>
+<tr><td>Failures</td><td>{tests['failures']}</td></tr>
+<tr><td>Errors</td><td>{tests['errors']}</td></tr>
+<tr><td>Instruction coverage</td><td>{instruction_percent:.2f}%</td></tr>
+<tr><td>Branch coverage</td><td>{branch_percent:.2f}%</td></tr>
+</tbody>
+</table>
+<p><a href="../quality-summary.json">Machine-readable quality summary</a></p>
 </body>
 </html>
 """
-    (report_root / "index.html").write_text(index, encoding="utf-8")
-    return metadata
+    (root / "tests" / "surefire-report.html").write_text(report, encoding="utf-8")
+    index = f"""<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taxonomy verified quality reports</title></head>
+<body>
+<h1>Taxonomy verified quality reports</h1>
+<p>Verified commit: <code>{html.escape(commit)}</code></p>
+<ul>
+<li><a href="tests/surefire-report.html">Test report</a></li>
+<li><a href="coverage/index.html">JaCoCo coverage report</a></li>
+<li><a href="quality-summary.json">Machine-readable provenance and metrics</a></li>
+</ul>
+</body></html>
+"""
+    (root / "index.html").write_text(index, encoding="utf-8")
+    return summary
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--root", type=Path, default=Path("target/quality-reports"))
     parser.add_argument("--commit", required=True)
+    parser.add_argument(
+        "--generated-at",
+        default=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
     args = parser.parse_args()
-    metadata = build_site(args.root, args.commit)
-    print(json.dumps(metadata, sort_keys=True))
+    summary = write_outputs(args.root, args.commit.strip(), args.generated_at)
+    print(json.dumps(summary, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

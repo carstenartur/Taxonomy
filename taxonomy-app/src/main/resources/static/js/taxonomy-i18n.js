@@ -15,6 +15,52 @@
     var currentLocale = 'en';
     var loaded = false;
     var loadPromise = null;
+    var bootstrapScriptUrl = document.currentScript ? document.currentScript.src : '';
+    var applicationBasePath = detectApplicationBasePath();
+
+    /**
+     * Derive the externally visible application prefix from this bootstrap
+     * script. With X-Forwarded-Prefix=/taxonomy, Thymeleaf emits
+     * /taxonomy/js/taxonomy-i18n.js, yielding /taxonomy here.
+     */
+    function detectApplicationBasePath() {
+        if (!bootstrapScriptUrl) return '';
+        try {
+            var pathname = new URL(bootstrapScriptUrl, window.location.href).pathname;
+            var suffix = '/js/taxonomy-i18n.js';
+            if (!pathname.endsWith(suffix)) return '';
+            return pathname.substring(0, pathname.length - suffix.length);
+        } catch (error) {
+            console.warn('[bootstrap] Cannot determine application base path:', error);
+            return '';
+        }
+    }
+
+    function resolveApplicationUrl(value) {
+        if (!applicationBasePath || typeof value !== 'string'
+                || !value.startsWith('/') || value.startsWith('//')
+                || value === applicationBasePath
+                || value.startsWith(applicationBasePath + '/')) {
+            return value;
+        }
+        return applicationBasePath + value;
+    }
+
+    /**
+     * Legacy feature modules use root-relative fetch paths. Prefix only those
+     * same-application paths so the complete UI remains usable behind a Rancher
+     * ingress mounted below /taxonomy without altering external URLs.
+     */
+    function installBasePathAwareFetch() {
+        if (!applicationBasePath || window.fetch.__taxonomyBasePathAware) return;
+        var nativeFetch = window.fetch.bind(window);
+        var wrappedFetch = function (input, init) {
+            var resolved = typeof input === 'string' ? resolveApplicationUrl(input) : input;
+            return nativeFetch(resolved, init);
+        };
+        wrappedFetch.__taxonomyBasePathAware = true;
+        window.fetch = wrappedFetch;
+    }
 
     /** Detect initial locale from <html lang="…">, cookie, or localStorage. */
     function detectLocale() {
@@ -136,7 +182,7 @@
         return translated === key ? name : translated;
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
+    // ── Public API ────────────────────────────────────────────────────────
 
     window.TaxonomyI18n = {
         t: t,
@@ -145,10 +191,13 @@
         getLocale: getLocale,
         isLoaded: isLoaded,
         ready: ready,
-        formatBranch: formatBranch
+        formatBranch: formatBranch,
+        getBasePath: function () { return applicationBasePath; },
+        resolveUrl: resolveApplicationUrl
     };
 
     // Auto-load on script parse
+    installBasePathAwareFetch();
     currentLocale = detectLocale();
     load(currentLocale);
 }());

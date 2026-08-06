@@ -48,7 +48,7 @@ jobs:
             python3 .github/scripts/check-version-state.py --mode development
           fi
 
-      - name: Verify release and performance-scope contracts
+      - name: Verify release and delivery contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -56,10 +56,12 @@ jobs:
           python3 .github/scripts/test-check-release-plan.py
           python3 .github/scripts/test-generate-quality-site.py
           python3 .github/scripts/test-verify-deployment.py
+          node .github/scripts/test-taxonomy-base-path.mjs
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
           python3 .github/scripts/check-release-delivery-contract.py
+          python3 .github/scripts/check-delivery-hardening.py
           python3 .github/scripts/check-observability-performance-scope.py
 
           current_version=$(./mvnw -q -DforceStdout help:evaluate \
@@ -82,7 +84,7 @@ jobs:
       - name: Verify Docker availability
         run: docker info
 
-      - name: Validate production Helm chart
+      - name: Validate production and Rancher Helm profiles
         shell: bash
         run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
 
@@ -135,7 +137,7 @@ jobs:
           fail-on-error: false
           max-annotations: '50'
 
-      - name: Stage verified reports
+      - name: Stage commit-bound verified reports
         if: always()
         shell: bash
         run: |
@@ -151,9 +153,11 @@ jobs:
             \( -path '*/target/surefire-reports/*' -o -path '*/target/failsafe-reports/*' \) \
             \( -name 'TEST-*.xml' -o -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) \
             -print0)
-          if [ -d taxonomy-coverage/target/site/jacoco-aggregate ]; then
-            cp -a taxonomy-coverage/target/site/jacoco-aggregate/. target/quality-reports/coverage/
+          if [ ! -f taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml ]; then
+            echo "::error::Aggregate JaCoCo XML is missing; refusing to publish a stale coverage badge."
+            exit 1
           fi
+          cp -a taxonomy-coverage/target/site/jacoco-aggregate/. target/quality-reports/coverage/
           for evidence in \
             target/maven-verification.log \
             target/coverage-gate.txt \
@@ -163,7 +167,8 @@ jobs:
             target/taxonomy-sbom.json \
             target/taxonomy-sbom.xml \
             target/taxonomy-vex.json \
-            target/taxonomy-helm-rendered.yaml; do
+            target/taxonomy-helm-rendered.yaml \
+            target/taxonomy-helm-rancher-rke2-rendered.yaml; do
             if [ -f "$evidence" ]; then cp "$evidence" target/quality-reports/evidence/; fi
           done
           if [ -d target/observability-performance ]; then
@@ -171,10 +176,10 @@ jobs:
             cp -a target/observability-performance/. \
               target/quality-reports/evidence/observability-performance/
           fi
-          printf 'Verified commit: %s\n' "$GITHUB_SHA" > target/quality-reports/README.txt
           python3 .github/scripts/generate-quality-site.py \
             --root target/quality-reports \
             --commit "$GITHUB_SHA"
+          printf 'Verified commit: %s\n' "$GITHUB_SHA" > target/quality-reports/README.txt
 
       - name: Upload verified reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -183,6 +188,7 @@ jobs:
           name: quality-reports
           path: target/quality-reports/**
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 14
 
       - name: Upload UI verification evidence
