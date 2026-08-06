@@ -31,9 +31,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * the {@code BAAI/bge-small-en-v1.5} ONNX model loaded via DJL.
  *
  * <h2>Architecture</h2>
- * <p>The DJL model is <em>lazily initialised</em> on first use. Application startup is not
- * slowed down, and no model is loaded or downloaded unless semantic embeddings were explicitly
- * enabled and the service is actually used.
+ * <p>The DJL model is <em>lazily initialised</em> on first use — application startup is not
+ * slowed down and no model is downloaded unless actually needed.
  *
  * <p>Vector storage and KNN retrieval are handled by Hibernate Search (Lucene backend).
  * The {@code @VectorField(name = "embedding")} on {@link TaxonomyNode} (via
@@ -42,14 +41,15 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * <h2>Configuration</h2>
  * <ul>
- *   <li>{@code TAXONOMY_EMBEDDING_ENABLED} (default {@code false}) — must be set to
- *       {@code true} to enable embedding and semantic search.</li>
+ *   <li>{@code TAXONOMY_EMBEDDING_ENABLED} (default {@code true}) — set to {@code false} to
+ *       disable all embedding and semantic search globally.</li>
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
- *       preferred for production and container deployments.</li>
+ *       empty = auto-download from HuggingFace into {@code ~/.djl.ai/cache/taxonomy/}.</li>
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_NAME} — HuggingFace model URL or local path;
  *       default {@code https://huggingface.co/BAAI/bge-small-en-v1.5}.</li>
- *   <li>{@code TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD} (default {@code false}) — must be set to
- *       {@code true} before a remote model may be downloaded at runtime.</li>
+ *   <li>{@code TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD} (default {@code true}) — set to
+ *       {@code false} to prevent runtime model downloads. When disabled, a local
+ *       model must be provided via {@code TAXONOMY_EMBEDDING_MODEL_DIR}.</li>
  * </ul>
  *
  * <h2>Lifecycle</h2>
@@ -66,8 +66,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * <p>Hibernate Search's KNN query returns cosine similarity scores in [0, 1].
  * Raw cosine similarity is recovered as {@code 2 * luceneScore - 1} and mapped to 0–100.
  *
- * <p>Enable as the LLM provider with {@code LLM_PROVIDER=LOCAL_ONNX}. No API key required,
- * but semantic embeddings still require the explicit embedding opt-in.
+ * <p>Enable as the LLM provider with {@code LLM_PROVIDER=LOCAL_ONNX}. No API key required.
  */
 @Service
 public class LocalEmbeddingService {
@@ -89,7 +88,7 @@ public class LocalEmbeddingService {
 
     static final double THRESHOLD = 0.25;
 
-    @Value("${embedding.enabled:false}")
+    @Value("${embedding.enabled:true}")
     private boolean embeddingEnabled;
 
     @Value("${embedding.model.dir:}")
@@ -101,7 +100,7 @@ public class LocalEmbeddingService {
     @Value("${embedding.query.prefix:Represent this sentence for searching relevant passages: }")
     private String queryPrefix;
 
-    @Value("${embedding.allow-download:false}")
+    @Value("${embedding.allow-download:true}")
     private boolean allowDownload;
 
     private volatile ZooModel<String, float[]> model;
@@ -119,21 +118,6 @@ public class LocalEmbeddingService {
 
     public boolean isAvailable() {
         return embeddingEnabled && !modelLoadFailed && !closed;
-    }
-
-    /** Returns whether an operator explicitly permitted remote runtime model downloads. */
-    public boolean isDownloadAllowed() {
-        return allowDownload;
-    }
-
-    /** Returns whether the native embedding model has already been initialised. */
-    public boolean isModelLoaded() {
-        return model != null && !closed;
-    }
-
-    /** Returns whether a mounted/local model directory was explicitly configured. */
-    public boolean hasLocalModelConfigured() {
-        return modelDir != null && !modelDir.isBlank();
     }
 
     public String effectiveModelUrl() {
@@ -254,201 +238,283 @@ public class LocalEmbeddingService {
             java.nio.file.Path localFile = cacheDir.resolve(localName);
 
             if (java.nio.file.Files.exists(localFile)
-                    && java.nio.file.Files.size(localFile) > 1024) {
+                    && java.nio.file.Files.size(localFile) > 0) {
                 log.debug("Model file already cached: {}", localFile);
                 continue;
             }
-            if (!allowDownload) {
-                throw new IllegalStateException(
-                        "Model file missing and runtime download disabled: " + localName);
-            }
 
-            log.info("Downloading model file: {}", fileUrl);
-            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+            log.info("Downloading {} → {}", fileUrl, localFile);
+            java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(30))
                     .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
                     .build();
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                     .uri(java.net.URI.create(fileUrl))
+                    .timeout(java.time.Duration.ofMinutes(5))
                     .GET()
                     .build();
-            java.net.http.HttpResponse<java.nio.file.Path> response = client.send(
-                    request, java.net.http.HttpResponse.BodyHandlers.ofFile(localFile));
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                java.nio.file.Files.deleteIfExists(localFile);
-                throw new IllegalStateException(
-                        "Failed to download model file " + localName
-                                + " (HTTP " + response.statusCode() + ")");
+            java.net.http.HttpResponse<java.io.InputStream> response;
+            try {
+                response = httpClient.send(
+                        request,
+                        java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException("Download interrupted for " + fileUrl, exception);
             }
-        }
-        return cacheDir.toString();
-    }
-
-    private void ensureServingProperties(String localPath) throws Exception {
-        java.nio.file.Path servingProperties = java.nio.file.Path.of(localPath)
-                .resolve("serving.properties");
-        if (java.nio.file.Files.exists(servingProperties)) return;
-
-        String properties = "engine=OnnxRuntime\n"
-                + "option.modelName=model\n"
-                + "option.mapLocation=true\n";
-        java.nio.file.Files.writeString(servingProperties, properties);
-    }
-
-    /** Embed a document text. */
-    public float[] embed(String text) throws Exception {
-        return predict(text == null ? "" : text);
-    }
-
-    /** Embed a search query using the configured asymmetric-retrieval prefix. */
-    public float[] embedQuery(String query) throws Exception {
-        return predict((queryPrefix == null ? DEFAULT_QUERY_PREFIX : queryPrefix)
-                + (query == null ? "" : query));
-    }
-
-    private float[] predict(String text) throws Exception {
-        modelLifecycleLock.readLock().lock();
-        try {
-            ZooModel<String, float[]> currentModel = getModel();
-            try (Predictor<String, float[]> predictor = currentModel.newPredictor()) {
-                return predictor.predict(text);
+            if (response.statusCode() != 200) {
+                modelLoadFailed = true;
+                throw new Exception("Failed to download " + fileUrl
+                        + ": HTTP " + response.statusCode());
             }
-        } finally {
-            modelLifecycleLock.readLock().unlock();
+            try (java.io.InputStream input = response.body()) {
+                java.nio.file.Files.copy(
+                        input,
+                        localFile,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            log.info("Downloaded {} ({} bytes)", localName,
+                    java.nio.file.Files.size(localFile));
         }
+
+        return cacheDir.toAbsolutePath().toString();
     }
 
-    @Transactional(readOnly = true)
-    public List<TaxonomyNodeDto> semanticSearch(String query, int limit) {
-        if (!isAvailable() || query == null || query.isBlank() || limit <= 0) {
-            return Collections.emptyList();
-        }
-        try {
-            float[] queryVector = embedQuery(query);
-            SearchSession searchSession = Search.session(entityManager);
-            return searchSession.search(TaxonomyNode.class)
-                    .where(f -> f.knn(limit)
-                            .field("embedding")
-                            .matching(queryVector))
-                    .fetchHits(limit)
-                    .stream()
-                    .map(TaxonomyNodeDto::fromEntity)
-                    .toList();
-        } catch (Exception exception) {
-            log.warn("Semantic search unavailable: {}", exception.getMessage());
-            return Collections.emptyList();
-        }
-    }
+    private static final String SERVING_PROPERTIES_CONTENT =
+            "engine=OnnxRuntime\n"
+                    + "option.modelName=model\n"
+                    + "translatorFactory=ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory\n"
+                    + "option.mapLocation=true\n"
+                    + "option.includeTokenTypes=true\n";
 
-    @Transactional(readOnly = true)
-    public List<TaxonomyNodeDto> findSimilarNodes(String code, int limit) {
-        if (!isAvailable() || code == null || code.isBlank() || limit <= 0) {
-            return Collections.emptyList();
-        }
+    private void ensureServingProperties(String url) {
         try {
-            TaxonomyNode node = entityManager.find(TaxonomyNode.class, code);
-            if (node == null) return Collections.emptyList();
-            float[] vector = embed(NodeEmbeddingBinder.Bridge.buildEnrichedText(node));
-            SearchSession searchSession = Search.session(entityManager);
-            return searchSession.search(TaxonomyNode.class)
-                    .where(f -> f.knn(limit + 1)
-                            .field("embedding")
-                            .matching(vector))
-                    .fetchHits(limit + 1)
-                    .stream()
-                    .filter(candidate -> !code.equals(candidate.getCode()))
-                    .limit(limit)
-                    .map(TaxonomyNodeDto::fromEntity)
-                    .toList();
+            String path = url.startsWith("file://")
+                    ? url.substring("file://".length())
+                    : url;
+            java.nio.file.Path directory = java.nio.file.Path.of(path);
+            if (!java.nio.file.Files.isDirectory(directory)) {
+                return;
+            }
+            java.nio.file.Path servingProperties = directory.resolve("serving.properties");
+
+            if (java.nio.file.Files.exists(servingProperties)) {
+                String existing = java.nio.file.Files.readString(servingProperties);
+                if (existing.contains("engine=OnnxRuntime")
+                        && existing.contains("TextEmbeddingTranslatorFactory")
+                        && existing.contains("includeTokenTypes=true")) {
+                    return;
+                }
+                log.warn("serving.properties exists but is missing required ONNX settings; "
+                        + "regenerating");
+            }
+
+            boolean hasOnnx;
+            try (var files = java.nio.file.Files.list(directory)) {
+                hasOnnx = files.anyMatch(file -> file.getFileName().toString().endsWith(".onnx"));
+            }
+            if (!hasOnnx) {
+                return;
+            }
+            java.nio.file.Files.writeString(servingProperties, SERVING_PROPERTIES_CONTENT);
+            log.info("Auto-generated serving.properties in {}", directory);
         } catch (Exception exception) {
-            log.warn("Similar-node search unavailable: {}", exception.getMessage());
-            return Collections.emptyList();
+            log.warn("Could not auto-generate serving.properties: {}", exception.getMessage());
         }
     }
 
     @Transactional(readOnly = true)
     public int indexedNodeCount() {
-        if (!embeddingEnabled) return 0;
         try {
-            SearchSession searchSession = Search.session(entityManager);
-            return Math.toIntExact(searchSession.search(TaxonomyNode.class)
-                    .where(f -> f.exists().field("embedding"))
-                    .fetchTotalHitCount());
+            SearchSession session = Search.session(entityManager);
+            return (int) session.search(TaxonomyNode.class)
+                    .where(factory -> factory.matchAll())
+                    .fetchTotalHitCount();
         } catch (Exception exception) {
-            log.debug("Cannot count indexed embedding nodes: {}", exception.getMessage());
             return 0;
         }
     }
 
-    /** Scores taxonomy nodes against a business requirement using cosine similarity. */
-    @Transactional(readOnly = true)
-    public Map<String, LlmService.NodeRelevance> scoreNodes(
-            String businessText, List<TaxonomyNode> nodes) {
-        if (!isAvailable() || businessText == null || businessText.isBlank()
-                || nodes == null || nodes.isEmpty()) {
-            return Collections.emptyMap();
+    public float[] embed(String text) throws Exception {
+        var readLock = modelLifecycleLock.readLock();
+        readLock.lock();
+        try {
+            if (closed) {
+                throw new IllegalStateException("Embedding model service is shutting down");
+            }
+            try (Predictor<String, float[]> predictor = getModel().newPredictor()) {
+                return predictor.predict(text);
+            }
+        } finally {
+            readLock.unlock();
         }
+    }
+
+    public float[] embedQuery(String text) throws Exception {
+        String prefixed = queryPrefix != null && !queryPrefix.isEmpty()
+                ? queryPrefix + text
+                : text;
+        return embed(prefixed);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Integer> scoreNodes(String businessText, List<TaxonomyNode> nodes) {
+        Map<String, Integer> scores = new HashMap<>();
+        for (TaxonomyNode node : nodes) {
+            scores.put(node.getCode(), 0);
+        }
+
+        if (!isAvailable()) {
+            return scores;
+        }
+
         try {
             float[] queryVector = embedQuery(businessText);
-            SearchSession searchSession = Search.session(entityManager);
-            int requestedHits = Math.max(nodes.size(), 1);
-            Map<String, TaxonomyNode> requestedByCode = nodes.stream()
-                    .filter(java.util.Objects::nonNull)
-                    .filter(node -> node.getCode() != null)
-                    .collect(Collectors.toMap(TaxonomyNode::getCode, node -> node,
-                            (left, right) -> left));
-            if (requestedByCode.isEmpty()) return Collections.emptyMap();
+            List<String> nodeCodes = nodes.stream()
+                    .map(TaxonomyNode::getCode)
+                    .collect(Collectors.toList());
 
-            Map<String, Double> scoresByCode = searchSession.search(TaxonomyNode.class)
-                    .select(f -> f.composite(
-                            f.id(String.class),
-                            f.score()))
-                    .where(f -> f.bool(b -> {
-                        b.must(f.knn(requestedHits)
-                                .field("embedding")
-                                .matching(queryVector));
-                        b.filter(f.id().matchingAny(requestedByCode.keySet()));
-                    }))
-                    .fetchHits(requestedHits)
-                    .stream()
-                    .collect(Collectors.toMap(
-                            hit -> hit.get(0),
-                            hit -> ((Number) hit.get(1)).doubleValue(),
-                            Math::max));
+            SearchSession session = Search.session(entityManager);
+            List<List<?>> hits = session.search(TaxonomyNode.class)
+                    .select(factory -> factory.composite(
+                            factory.entity(TaxonomyNode.class),
+                            factory.score()))
+                    .where(factory -> factory.knn(nodes.size())
+                            .field("embedding")
+                            .matching(queryVector)
+                            .filter(factory.terms().field("code").matchingAny(nodeCodes)))
+                    .fetchHits(nodes.size());
 
-            Map<String, LlmService.NodeRelevance> result = new HashMap<>();
-            for (TaxonomyNode node : nodes) {
-                if (node == null || node.getCode() == null) continue;
-                double luceneScore = scoresByCode.getOrDefault(node.getCode(), 0.0);
-                double cosineSimilarity = Math.max(-1.0, Math.min(1.0,
-                        (2.0 * luceneScore) - 1.0));
-                int relevance = cosineSimilarity >= THRESHOLD
-                        ? (int) Math.round(cosineSimilarity * 100.0)
-                        : 0;
-                result.put(node.getCode(), new LlmService.NodeRelevance(
-                        relevance,
-                        relevance > 0
-                                ? "Local semantic similarity " + relevance + "%"
-                                : "Below local semantic threshold"));
+            for (List<?> hit : hits) {
+                TaxonomyNode node = (TaxonomyNode) hit.get(0);
+                float luceneScore = (Float) hit.get(1);
+                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);
+                percentage = Math.max(0, Math.min(100, percentage));
+                scores.put(node.getCode(), percentage);
             }
-            return result;
+
+            log.info("LOCAL_ONNX scores: {}", scores);
         } catch (Exception exception) {
-            log.warn("Local embedding scoring unavailable: {}", exception.getMessage());
-            return Collections.emptyMap();
+            log.error("Error in KNN vector scoring; returning zero scores", exception);
+        }
+
+        return scores;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaxonomyNodeDto> semanticSearch(String queryText, int topK) {
+        if (!isAvailable()) {
+            return Collections.emptyList();
+        }
+        try {
+            float[] queryVector = embedQuery(queryText);
+            SearchSession session = Search.session(entityManager);
+            List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
+                    .where(factory -> factory.knn(topK)
+                            .field("embedding")
+                            .matching(queryVector))
+                    .fetchHits(topK);
+            return hits.stream()
+                    .map(this::toFlatDto)
+                    .collect(Collectors.toList());
+        } catch (Exception exception) {
+            log.error("Semantic search failed for query '{}': {}",
+                    queryText, exception.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaxonomyNodeDto> findSimilarNodes(String nodeCode, int topK) {
+        if (!isAvailable()) {
+            return Collections.emptyList();
+        }
+        try {
+            TaxonomyNode node = entityManager.createQuery(
+                            "SELECT n FROM TaxonomyNode n WHERE n.code = :code",
+                            TaxonomyNode.class)
+                    .setParameter("code", nodeCode)
+                    .getResultStream()
+                    .findFirst()
+                    .orElse(null);
+            if (node == null) {
+                log.warn("Node '{}' not found in database", nodeCode);
+                return Collections.emptyList();
+            }
+
+            float[] queryVector = embed(buildNodeText(node));
+            SearchSession session = Search.session(entityManager);
+            List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
+                    .where(factory -> factory.knn(topK + 1)
+                            .field("embedding")
+                            .matching(queryVector))
+                    .fetchHits(topK + 1);
+
+            return hits.stream()
+                    .filter(candidate -> !nodeCode.equals(candidate.getCode()))
+                    .limit(topK)
+                    .map(this::toFlatDto)
+                    .collect(Collectors.toList());
+        } catch (Exception exception) {
+            log.error("findSimilarNodes failed for node '{}': {}",
+                    nodeCode, exception.getMessage());
+            return Collections.emptyList();
         }
     }
 
     @PreDestroy
-    public void close() {
-        modelLifecycleLock.writeLock().lock();
+    void closeModel() {
+        var writeLock = modelLifecycleLock.writeLock();
+        writeLock.lock();
         try {
-            closed = true;
-            ZooModel<String, float[]> currentModel = model;
-            model = null;
-            if (currentModel != null) {
-                currentModel.close();
+            synchronized (modelLock) {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                ZooModel<String, float[]> currentModel = model;
+                model = null;
+                if (currentModel != null) {
+                    try {
+                        currentModel.close();
+                        log.info("Closed DJL embedding model.");
+                    } catch (RuntimeException exception) {
+                        log.warn("Failed to close DJL embedding model cleanly", exception);
+                    }
+                }
             }
         } finally {
-            modelLifecycleLock.writeLock().unlock();
+            writeLock.unlock();
         }
+    }
+
+    private String buildNodeText(TaxonomyNode node) {
+        StringBuilder text = new StringBuilder(
+                node.getNameEn() != null ? node.getNameEn() : "");
+        if (node.getDescriptionEn() != null && !node.getDescriptionEn().isBlank()) {
+            text.append(". ").append(node.getDescriptionEn());
+        }
+        return text.toString();
+    }
+
+    private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
+        TaxonomyNodeDto dto = new TaxonomyNodeDto();
+        dto.setId(node.getId());
+        dto.setCode(node.getCode());
+        dto.setUuid(node.getUuid());
+        dto.setNameEn(node.getNameEn());
+        dto.setNameDe(node.getNameDe());
+        dto.setDescriptionEn(node.getDescriptionEn());
+        dto.setDescriptionDe(node.getDescriptionDe());
+        dto.setParentCode(node.getParentCode());
+        dto.setTaxonomyRoot(node.getTaxonomyRoot());
+        dto.setLevel(node.getLevel());
+        dto.setDataset(node.getDataset());
+        dto.setExternalId(node.getExternalId());
+        dto.setSource(node.getSource());
+        dto.setReference(node.getReference());
+        dto.setSortOrder(node.getSortOrder());
+        dto.setState(node.getState());
+        return dto;
     }
 }
