@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.workbench;
 import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.diagram.DiagramSceneEdge;
 import com.taxonomy.diagram.DiagramSceneNode;
+import com.taxonomy.export.DiagramTextWrapper;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
@@ -17,7 +18,6 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.text.Normalizer;
-import java.util.ArrayList;
 import java.util.List;
 
 /** Draws a vector PDF directly from the same deterministic scene returned to the browser. */
@@ -147,7 +147,7 @@ public class ArchitecturePdfRenderer {
                     x + width - 62 * scale,
                     top - 14 * scale,
                     node.type() + " " + Math.round(node.relevance() * 100.0) + "%");
-            List<String> labelLines = wrap(node.label(), 34, 2);
+            List<String> labelLines = DiagramTextWrapper.wrap(node.label(), 34, 2, "n/a");
             for (int index = 0; index < labelLines.size(); index++) {
                 text(stream, REGULAR, 8.3f * fontScale,
                         x + 8 * scale,
@@ -199,23 +199,6 @@ public class ArchitecturePdfRenderer {
         stream.newLineAtOffset(x, y);
         stream.showText(safe);
         stream.endText();
-    }
-
-    private static List<String> wrap(String value, int maximum, int maximumLines) {
-        String normalized = safe(value);
-        List<String> lines = new ArrayList<>();
-        StringBuilder line = new StringBuilder();
-        for (String word : normalized.split("\\s+")) {
-            if (!line.isEmpty() && line.length() + word.length() + 1 > maximum) {
-                lines.add(line.toString());
-                line.setLength(0);
-                if (lines.size() == maximumLines - 1) break;
-            }
-            if (!line.isEmpty()) line.append(' ');
-            line.append(word);
-        }
-        if (!line.isEmpty() && lines.size() < maximumLines) lines.add(line.toString());
-        return lines;
     }
 
     private static Color fill(String type) {

@@ -295,7 +295,10 @@
         return;
     }
 
-    ArchitectureWorkbenchApi.load(projectId, snapshotId)
+    Promise.resolve()
+        .then(function () {
+            return ArchitectureWorkbenchApi.load(projectId, snapshotId);
+        })
         .then(render)
         .catch(showError);
 }());

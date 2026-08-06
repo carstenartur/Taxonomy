@@ -29,7 +29,9 @@ class ArchitectureWorkbenchAssetContractTest {
         assertThat(adapter)
                 .doesNotContain("window.print")
                 .doesNotContain("fetch(")
-                .contains("ArchitectureWorkbenchApi.load")
+                .contains("Promise.resolve()")
+                .contains("return ArchitectureWorkbenchApi.load(projectId, snapshotId)")
+                .contains(".catch(showError)")
                 .contains("ArchitectureWorkbenchApi.pdfUrl");
     }
 

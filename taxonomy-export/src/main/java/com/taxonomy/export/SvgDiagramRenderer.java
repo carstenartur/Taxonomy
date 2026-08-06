@@ -4,7 +4,6 @@ import com.taxonomy.diagram.DiagramScene;
 import com.taxonomy.diagram.DiagramSceneEdge;
 import com.taxonomy.diagram.DiagramSceneNode;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -67,7 +66,8 @@ public class SvgDiagramRenderer {
                     .append("font-size=\"11\" font-weight=\"bold\" fill=\"#334155\">")
                     .append(xml(node.id())).append("</text>\n");
 
-            List<String> lines = wrap(node.label(), 32, 2);
+            List<String> lines = DiagramTextWrapper.wrap(
+                    node.label(), 32, 2, "Unnamed architecture element");
             for (int index = 0; index < lines.size(); index++) {
                 svg.append("    <text x=\"14\" y=\"")
                         .append(44 + index * 17)
@@ -85,31 +85,6 @@ public class SvgDiagramRenderer {
 
         svg.append("</svg>\n");
         return svg.toString();
-    }
-
-    private static List<String> wrap(String value, int maximum, int maximumLines) {
-        String normalized = value == null || value.isBlank() ? "Unnamed architecture element" : value.strip();
-        List<String> lines = new ArrayList<>();
-        StringBuilder line = new StringBuilder();
-        for (String word : normalized.split("\\s+")) {
-            if (!line.isEmpty() && line.length() + word.length() + 1 > maximum) {
-                lines.add(line.toString());
-                line.setLength(0);
-                if (lines.size() == maximumLines - 1) {
-                    break;
-                }
-            }
-            if (!line.isEmpty()) line.append(' ');
-            line.append(word);
-        }
-        if (!line.isEmpty() && lines.size() < maximumLines) {
-            String tail = line.toString();
-            if (lines.size() == maximumLines - 1 && tail.length() > maximum) {
-                tail = tail.substring(0, Math.max(1, maximum - 1)) + "…";
-            }
-            lines.add(tail);
-        }
-        return lines;
     }
 
     private static String fill(String type) {
