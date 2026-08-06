@@ -19,6 +19,10 @@ permissions:
   contents: read
   security-events: write
 
+concurrency:
+  group: taxonomy-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   trivy:
     name: Trivy dependencies, secrets, configuration, and supply chain
