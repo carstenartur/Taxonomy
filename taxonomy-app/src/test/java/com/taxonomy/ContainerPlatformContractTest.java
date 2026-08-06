@@ -59,6 +59,16 @@ class ContainerPlatformContractTest {
                 .contains("readOnlyRootFilesystem: true");
     }
 
+    @Test
+    void kubernetesDefaultsNeverDownloadOrInitializeAnEmbeddingModelImplicitly()
+            throws IOException {
+        String values = readRepositoryFile("deploy/helm/taxonomy/values.yaml");
+
+        assertThat(values)
+                .contains("TAXONOMY_EMBEDDING_ENABLED: \"false\"")
+                .contains("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: \"false\"");
+    }
+
     private static String readRepositoryFile(String relativePath) throws IOException {
         return Files.readString(repositoryRoot().resolve(relativePath));
     }

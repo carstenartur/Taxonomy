@@ -10,7 +10,7 @@ export CUSTOM_LLM_URL=http://llm-server:8080/v1/chat/completions
 export CUSTOM_LLM_MODEL=name-des-bereitgestellten-modells
 ```
 
-`CUSTOM_LLM_URL` muss der vollständige HTTP- oder HTTPS-Endpunkt für Chat Completions sein und mit `/chat/completions` enden, nicht nur ein Hostname oder eine API-Basis-URL. `CUSTOM_LLM_MODEL` wird unverändert in den Request übernommen.
+`CUSTOM_LLM_URL` muss der vollständige HTTP- oder HTTPS-Endpunkt für Chat Completions sein und mit `/chat/completions` enden. `CUSTOM_LLM_MODEL` wird unverändert in den Request übernommen.
 
 Die Authentifizierung ist optional:
 
@@ -18,7 +18,7 @@ Die Authentifizierung ist optional:
 export CUSTOM_LLM_API_KEY=token-des-modellservers
 ```
 
-Ist `CUSTOM_LLM_API_KEY` leer, sendet Taxonomy bewusst keinen `Authorization`-Header. Ist die Variable gesetzt, wird `Authorization: Bearer <token>` gesendet.
+Ist `CUSTOM_LLM_API_KEY` leer, sendet Taxonomy bewusst keinen `Authorization`-Header. Ist die Variable gesetzt, wird `Authorization: Bearer <token>` gesendet. Eine Variable `CUSTOM_OPENAI_API_KEY` existiert nicht.
 
 ## Schnittstellenvertrag
 
@@ -50,7 +50,35 @@ Der Server muss den generierten Text unter `choices[0].message.content` zurückg
 }
 ```
 
-Streaming-Antworten und anbieterspezifische native APIs werden von dieser Integration nicht verwendet. Zu konfigurieren ist der OpenAI-kompatible Chat-Completions-Endpunkt des Servers.
+Streaming-Antworten und anbieterspezifische native APIs werden von dieser Integration nicht verwendet.
+
+## Semantische Embeddings sind eine getrennte Opt-in-Funktion
+
+Die Auswahl des Chat-Providers aktiviert nicht das lokale ONNX-Embedding-Modell. Taxonomy verwendet sichere Standardwerte:
+
+```bash
+TAXONOMY_EMBEDDING_ENABLED=false
+TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
+```
+
+Mit diesen Werten initialisieren oder laden Start, Taxonomieimport und Hibernate-Search-Indexierung das Modell `BAAI/bge-small-en-v1.5` nicht. Dokumente werden ohne Vektorfeldwerte indexiert.
+
+Für ein eingehängtes lokales Modell ohne ausgehenden Download:
+
+```bash
+export TAXONOMY_EMBEDDING_ENABLED=true
+export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false
+export TAXONOMY_EMBEDDING_MODEL_DIR=/models/bge-small-en-v1.5
+```
+
+Ein Laufzeitdownload erfordert zwei ausdrückliche Entscheidungen:
+
+```bash
+export TAXONOMY_EMBEDDING_ENABLED=true
+export TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=true
+```
+
+In produktiven Containern und Kubernetes sollte ein eingehängtes, geprüftes Modellverzeichnis verwendet werden.
 
 ## Beispiel mit Docker Compose
 
@@ -66,6 +94,8 @@ services:
       LLM_PROVIDER: CUSTOM_OPENAI
       CUSTOM_LLM_URL: http://llm-server:8000/v1/chat/completions
       CUSTOM_LLM_MODEL: architecture-model
+      TAXONOMY_EMBEDDING_ENABLED: "false"
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
     depends_on:
       - llm-server
 
@@ -75,9 +105,9 @@ services:
       - "8000"
 ```
 
-Läuft der Modellserver direkt auf dem Docker-Host, muss eine aus dem Container erreichbare Hostadresse verwendet werden. Der konkrete Hostname hängt vom Betriebssystem und der Docker-Konfiguration ab.
+Läuft der Modellserver direkt auf dem Docker-Host, muss eine aus dem Container erreichbare Hostadresse verwendet werden.
 
-## Auswahl und Verfügbarkeit
+## Auswahl, Verfügbarkeit und Diagnose
 
 Der Provider erscheint im Frontend erst, wenn sowohl `CUSTOM_LLM_URL` als auch `CUSTOM_LLM_MODEL` gültig und nicht leer sind. Ein API-Key ist nicht erforderlich.
 
@@ -90,6 +120,10 @@ curl http://localhost:8080/api/ai-status
 ```
 
 Als Providername wird `Custom OpenAI-compatible` zurückgegeben; in `availableProviders` muss `CUSTOM_OPENAI` enthalten sein.
+
+Der nur für Administratoren verfügbare Endpunkt `/api/diagnostics` unterscheidet Providerkonfiguration und Authentifizierung. Ein korrekt konfigurierter, nicht authentifizierter Endpunkt wird mit `providerConfigured=true`, `apiKeyConfigured=false` und `authenticationMode=NONE` ausgewiesen.
+
+Konfigurations- und Aufruffehler nennen ihre tatsächliche Ursache, darunter fehlende `CUSTOM_LLM_URL`, fehlendes `CUSTOM_LLM_MODEL`, ungültige URI oder Pfad, nicht erreichbarer Endpunkt und HTTP 401/403. Authentifizierungsfehler nennen ausschließlich die optionale Variable `CUSTOM_LLM_API_KEY`.
 
 ## Rate Limit und Timeout
 
@@ -113,16 +147,20 @@ llm.retry.max
 - Ein nicht authentifizierter Modellserver sollte ausschließlich in einem isolierten internen Netz erreichbar sein.
 - Geheimnisse gehören nicht in `CUSTOM_LLM_URL`, sondern in `CUSTOM_LLM_API_KEY`.
 - URLs mit eingebetteten Benutzerinformationen werden abgelehnt.
+- Laufzeitdownloads für Embeddings bleiben in Produktion deaktiviert, solange keine ausdrückliche Egress-Entscheidung vorliegt.
 - Der Modellserver muss die maximale Promptgröße des verwendeten Analyseablaufs akzeptieren.
 
 ## Fehlerbehebung
 
-| Symptom | Wahrscheinliche Ursache |
+| Symptom | Konkrete Ursache bzw. Maßnahme |
 |---|---|
-| `CUSTOM_OPENAI` fehlt in der Providerauswahl | URL oder Modell ist leer, oder die URL ist keine vollständige `http://`- beziehungsweise `https://`-Chat-Completions-URI |
-| Verbindung aus Docker wird abgelehnt | Die URL verwendet `localhost` statt des Dienstnamens oder einer erreichbaren Hostadresse |
-| HTTP 401/403 | Der Server verlangt einen Bearer-Token; `CUSTOM_LLM_API_KEY` setzen |
+| `CUSTOM_OPENAI` fehlt in der Providerauswahl | `CUSTOM_LLM_URL` und `CUSTOM_LLM_MODEL` setzen; die HTTP(S)-URI muss mit `/chat/completions` enden |
+| `MISSING_URL` oder `MISSING_MODEL` | Die ausdrücklich genannte Pflichtvariable setzen; ein API-Key ersetzt weder URL noch Modell |
+| `INVALID_PATH` | `CUSTOM_LLM_URL` auf den Chat-Completions-Endpunkt richten, nicht auf `/v1`, `/models` oder die Serverwurzel |
+| Verbindung abgelehnt bzw. Endpunkt nicht erreichbar | Dienstname, DNS, NetworkPolicy und Erreichbarkeit aus dem Taxonomy-Container prüfen |
+| HTTP 401/403 | Der Endpunkt verlangt oder verwirft Bearer-Authentifizierung; optionale `CUSTOM_LLM_API_KEY` setzen oder korrigieren |
 | Antwort kommt an, aber Bewertungen bleiben leer | Der Server liefert den Text nicht unter `choices[0].message.content`, oder das Modell hält das verlangte JSON-Format nicht ein |
 | Aufrufe laufen in ein Timeout | `llm.timeout.seconds` erhöhen und sicherstellen, dass das Modell vor Beginn der Analyse geladen ist |
+| ONNX-Modell wird nicht verwendet | Embeddings ausdrücklich aktivieren und ein lokales Modell bereitstellen oder den Download ausdrücklich erlauben |
 
 Siehe auch [KI-Anbieter](../de/AI_PROVIDERS.md) und die [Konfigurationsreferenz](../de/CONFIGURATION_REFERENCE.md).
