@@ -6,6 +6,7 @@ import org.hibernate.search.engine.backend.document.DocumentElement;
 import org.hibernate.search.engine.backend.document.IndexFieldReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.support.GenericApplicationContext;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.InputStream;
 import java.util.Properties;
@@ -65,6 +66,7 @@ class EmbeddingLifecycleSafetyTest {
             verifyNoInteractions(target);
         } finally {
             context.close();
+            ReflectionTestUtils.setField(SpringContextHolder.class, "context", null);
         }
     }
 }
