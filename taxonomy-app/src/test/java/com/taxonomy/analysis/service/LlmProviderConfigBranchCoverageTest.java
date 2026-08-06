@@ -149,7 +149,8 @@ class LlmProviderConfigBranchCoverageTest {
         set("customLlmModel", "model");
         assertThat(config.isCustomOpenAiConfigured()).isFalse();
         assertThat(config.getAvailabilityLevel()).isEqualTo(AiAvailabilityLevel.UNAVAILABLE);
-        assertThat(config.getApiKey(LlmProvider.CUSTOM_OPENAI)).isEmpty();
+        assertThat(config.getApiKey(LlmProvider.CUSTOM_OPENAI))
+                .isEqualTo(LlmProviderConfig.CUSTOM_NO_AUTH_API_KEY);
 
         set("customLlmUrl", "http://localhost:11434");
         assertThat(config.isCustomOpenAiConfigured()).isFalse();
