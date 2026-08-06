@@ -40,7 +40,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: quality-reports
-          keep_files: true
+          keep_files: false
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
           commit_message: 'Publish verified quality reports ${{ github.event.workflow_run.head_sha }}'
@@ -111,6 +111,12 @@ jobs:
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout deployed source contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
       - name: Trigger Render deploy hook
         env:
           HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
@@ -118,3 +124,16 @@ jobs:
         run: |
           curl -fsSL --retry 3 "$HOOK_URL"
           echo "Render deployment triggered."
+
+      - name: Verify deployed readiness and commit
+        env:
+          HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          BASE_URL: ${{ vars.RENDER_BASE_URL || 'https://taxonomy-analyzer.onrender.com' }}
+          EXPECTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        if: ${{ env.HOOK_URL != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/verify-deployment.py \
+            --base-url "$BASE_URL" \
+            --expected-commit "$EXPECTED_COMMIT"
