@@ -102,7 +102,11 @@ final class PortfolioValueValidator {
                 throw PortfolioException.validation(
                         "extensionAttributes[" + normalizedKey + "] must not be null");
             }
-            normalized.put(normalizedKey, normalizedValue);
+            if (normalized.putIfAbsent(normalizedKey, normalizedValue) != null) {
+                throw PortfolioException.validation(
+                        "extensionAttributes contains duplicate key after normalization: "
+                                + normalizedKey);
+            }
         });
         return Map.copyOf(normalized);
     }
