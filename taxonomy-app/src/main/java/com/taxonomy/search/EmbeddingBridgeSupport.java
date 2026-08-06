@@ -38,8 +38,9 @@ public final class EmbeddingBridgeSupport {
     }
 
     /**
-     * Writes an embedding vector to the Lucene document, or silently does nothing when the
-     * local embedding model is unavailable (graceful degradation).
+     * Writes an embedding vector to the Lucene document only when semantic embeddings were
+     * explicitly enabled and the local service is available. Otherwise the document is indexed
+     * without a vector and no model initialisation or runtime download is attempted.
      *
      * @param target         the Lucene document being written
      * @param embeddingField reference to the {@code "embedding"} index field
@@ -54,7 +55,7 @@ public final class EmbeddingBridgeSupport {
                                            Function<T, String> textBuilder) {
         try {
             LocalEmbeddingService svc = SpringContextHolder.getBean(LocalEmbeddingService.class);
-            if (svc == null || !svc.isAvailable()) return;
+            if (svc == null || !svc.isEnabled() || !svc.isAvailable()) return;
             String text = textBuilder.apply(entity);
             float[] vector = svc.embed(text);
             target.addValue(embeddingField, vector);

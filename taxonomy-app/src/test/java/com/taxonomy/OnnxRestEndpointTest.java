@@ -21,7 +21,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * deliberately with an explicitly provisioned model directory.
  */
 @Tag("onnx")
-@SpringBootTest
+@SpringBootTest(properties = {
+        "embedding.enabled=true",
+        "embedding.allow-download=false"
+})
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
 class OnnxRestEndpointTest {

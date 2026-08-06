@@ -23,7 +23,7 @@ import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** End-to-end REST verification for the local ONNX pipeline. */
+/** End-to-end REST verification for the explicitly enabled local ONNX pipeline. */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
@@ -49,6 +49,10 @@ class LocalOnnxPipelineIT {
             .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false")
             .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
             .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
+            // This dedicated ONNX integration test starts from the same minimal image as
+            // production. It therefore opts into the model download explicitly; ordinary
+            // containers and the Helm chart retain the safe download-denied default.
+            .withEnv("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD", "true")
             .withStartupTimeout(Duration.ofSeconds(180))
             .waitingFor(Wait.forHttp("/actuator/health")
                     .forStatusCode(200)
