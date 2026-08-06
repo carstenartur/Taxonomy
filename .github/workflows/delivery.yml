@@ -4,6 +4,9 @@ on:
   workflow_run:
     workflows: [ "CI / CD" ]
     types: [ completed ]
+    branches:
+      - main
+      - 'v*'
 
 permissions:
   contents: read
