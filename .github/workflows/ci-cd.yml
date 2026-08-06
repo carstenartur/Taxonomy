@@ -54,6 +54,8 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/test-resolve-release-parameters.py
           python3 .github/scripts/test-check-release-plan.py
+          python3 .github/scripts/test-generate-quality-site.py
+          python3 .github/scripts/test-verify-deployment.py
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
@@ -170,6 +172,9 @@ jobs:
               target/quality-reports/evidence/observability-performance/
           fi
           printf 'Verified commit: %s\n' "$GITHUB_SHA" > target/quality-reports/README.txt
+          python3 .github/scripts/generate-quality-site.py \
+            --root target/quality-reports \
+            --commit "$GITHUB_SHA"
 
       - name: Upload verified reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
