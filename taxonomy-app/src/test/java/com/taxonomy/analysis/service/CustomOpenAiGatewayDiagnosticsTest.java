@@ -3,6 +3,7 @@ package com.taxonomy.analysis.service;
 import com.taxonomy.preferences.PreferencesService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -59,7 +60,8 @@ class CustomOpenAiGatewayDiagnosticsTest {
     void authenticationRejectionMentionsOnlyTheOptionalActualVariable() {
         OpenAiCompatibleGateway gateway = gateway(
                 "http://llm-service:8000/v1/chat/completions", "model");
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(), eq(String.class)))
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST),
+                any(HttpEntity.class), eq(String.class)))
                 .thenThrow(HttpClientErrorException.create(
                         HttpStatus.UNAUTHORIZED, "Unauthorized", HttpHeaders.EMPTY,
                         new byte[0], null));
@@ -76,7 +78,8 @@ class CustomOpenAiGatewayDiagnosticsTest {
     void unreachableEndpointProducesAnActionableNetworkDiagnostic() {
         OpenAiCompatibleGateway gateway = gateway(
                 "http://llm-service:8000/v1/chat/completions", "model");
-        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(), eq(String.class)))
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST),
+                any(HttpEntity.class), eq(String.class)))
                 .thenThrow(new ResourceAccessException("connection refused"));
 
         assertThatThrownBy(() -> gateway.sendHttpRequest(
