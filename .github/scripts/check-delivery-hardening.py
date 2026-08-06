@@ -13,6 +13,7 @@ CSS = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "css" / 
 I18N = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "js" / "taxonomy-i18n.js"
 UI_EVIDENCE = ROOT / ".github" / "scripts" / "ui-role-state-evidence.mjs"
 RANCHER = ROOT / "deploy" / "helm" / "taxonomy" / "values-rancher-rke2.yaml"
+MODEL_DOWNLOAD = ROOT / ".github" / "scripts" / "download-embedding-model.sh"
 DOCKERFILE = ROOT / "Dockerfile"
 
 
@@ -28,6 +29,7 @@ def main() -> int:
     i18n = I18N.read_text(encoding="utf-8")
     ui_evidence = UI_EVIDENCE.read_text(encoding="utf-8")
     rancher = RANCHER.read_text(encoding="utf-8")
+    model_download = MODEL_DOWNLOAD.read_text(encoding="utf-8")
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     failures: list[str] = []
 
@@ -39,6 +41,8 @@ def main() -> int:
         "python3 .github/scripts/generate-quality-site.py",
         '--commit "$GITHUB_SHA"',
         "taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml",
+        "Restore pinned embedding model",
+        "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
     ):
         require(ci, needle, CI, failures)
 
@@ -83,6 +87,15 @@ def main() -> int:
         'cpu: "500m"',
     ):
         require(rancher, needle, RANCHER, failures)
+
+    for needle in (
+        "model_is_valid",
+        "--retry 12",
+        "--retry-max-time 600",
+        "mktemp -d",
+        "MODEL_PROVENANCE.txt",
+    ):
+        require(model_download, needle, MODEL_DOWNLOAD, failures)
 
     for needle in (
         "ARG VCS_REF=unknown",

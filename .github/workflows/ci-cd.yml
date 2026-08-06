@@ -59,6 +59,7 @@ jobs:
           node .github/scripts/test-taxonomy-base-path.mjs
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
+          bash -n .github/scripts/download-embedding-model.sh
           bash -n deploy/helm/taxonomy/verify.sh
           python3 .github/scripts/check-release-delivery-contract.py
           python3 .github/scripts/check-delivery-hardening.py
@@ -116,8 +117,15 @@ jobs:
         shell: bash
         run: bash .github/scripts/run-observability-performance.sh
 
+      - name: Restore pinned embedding model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+
       - name: Run the canonical Maven verification suite
         env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         shell: bash
