@@ -17,7 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * profiles provide the pinned model and deliberately execute it.</p>
  */
 @Tag("onnx")
-@SpringBootTest
+@SpringBootTest(properties = {
+        "embedding.enabled=true",
+        "embedding.allow-download=false"
+})
 class OnnxEmbeddingServiceTest {
 
     @Autowired
