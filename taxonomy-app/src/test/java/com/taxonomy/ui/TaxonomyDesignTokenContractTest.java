@@ -56,14 +56,20 @@ class TaxonomyDesignTokenContractTest {
                 .contains("background: var(--taxonomy-layer-info-surface)")
                 .contains("background: var(--taxonomy-layer-comm-surface)")
                 .contains("--taxonomy-font-size-essential: 0.8125rem")
+                .contains("[data-bs-theme=\"dark\"]")
+                .contains("--taxonomy-layer-cap-accent: #8ec5f5")
                 .contains("@media (forced-colors: active)")
                 .contains("@media print");
 
         assertThat(graph)
                 .contains("GRAPH_NODE_COLOR_TOKENS")
-                .contains("getPropertyValue(name)")
+                .contains("function resolveGraphNodeColorPalette()")
+                .contains("var styles = getComputedStyle(document.documentElement)")
+                .contains("Missing or invalid required taxonomy color token")
+                .contains("getNodeColor(d.sheet, nodeColorPalette)")
                 .doesNotContain("var GRAPH_NODE_COLORS =")
-                .doesNotContain("'Capabilities': '#4A90D9'");
+                .doesNotContain("'Capabilities': '#4A90D9'")
+                .doesNotContain("rgb(75, 85, 99)");
 
         assertThat(scoring)
                 .doesNotContain("icon: '🔵'")

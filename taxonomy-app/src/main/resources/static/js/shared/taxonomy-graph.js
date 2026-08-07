@@ -143,17 +143,29 @@
         'Task':         '#D6EAF8'
     };
 
-    function cssColorToken(name, fallbackToken) {
-        var root = getComputedStyle(document.documentElement);
-        return root.getPropertyValue(name).trim()
-            || root.getPropertyValue(fallbackToken).trim()
-            || 'rgb(75, 85, 99)';
+    function resolveGraphNodeColorPalette() {
+        var styles = getComputedStyle(document.documentElement);
+        var tokenNames = new Set(Object.values(GRAPH_NODE_COLOR_TOKENS));
+        tokenNames.add('--taxonomy-layer-default-surface');
+        var palette = {};
+        tokenNames.forEach(function (token) {
+            var value = styles.getPropertyValue(token).trim();
+            if (!/^#[0-9a-fA-F]{6}$/.test(value)) {
+                throw new Error('Missing or invalid required taxonomy color token: ' + token);
+            }
+            palette[token] = value;
+        });
+        return palette;
     }
 
-    function getNodeColor(taxonomySheet) {
+    function getNodeColor(taxonomySheet, palette) {
         var token = GRAPH_NODE_COLOR_TOKENS[taxonomySheet]
             || '--taxonomy-layer-default-surface';
-        return cssColorToken(token, '--taxonomy-layer-default-surface');
+        var value = palette[token];
+        if (!value) {
+            throw new Error('Unresolved required taxonomy color token: ' + token);
+        }
+        return value;
     }
 
     var GRAPH_MAX_HEIGHT = 400;
@@ -170,6 +182,7 @@
     function renderForceGraph(container, nodes, edges, originCode) {
         if (typeof d3 === 'undefined' || !nodes || nodes.length === 0) return;
 
+        var nodeColorPalette = resolveGraphNodeColorPalette();
         var width = container.clientWidth || 500;
         var height = Math.min(GRAPH_MAX_HEIGHT, Math.max(GRAPH_MIN_HEIGHT, nodes.length * GRAPH_HEIGHT_PER_NODE));
 
@@ -269,7 +282,7 @@
 
         node.append('circle')
             .attr('r', function (d) { return d.isOrigin ? 12 : 8 + (d.relevance * 4); })
-            .attr('fill', function (d) { return getNodeColor(d.sheet); })
+            .attr('fill', function (d) { return getNodeColor(d.sheet, nodeColorPalette); })
             .attr('stroke', function (d) { return d.isOrigin ? '#000' : '#fff'; })
             .attr('stroke-width', function (d) { return d.isOrigin ? 3 : 1.5; })
             .style('cursor', 'pointer');
@@ -322,7 +335,7 @@
             if (sheet) {
                 legendDiv.append('span').attr('class', 'force-graph-legend-item')
                     .html('<span class="force-graph-legend-dot" style="background:' +
-                        getNodeColor(sheet) + '"></span> ' + sheet);
+                        getNodeColor(sheet, nodeColorPalette) + '"></span> ' + sheet);
             }
         });
         legendDiv.append('span').attr('class', 'force-graph-legend-item')
@@ -361,6 +374,7 @@
     function renderImpactForceGraph(container, nodes, edges, options) {
         if (typeof d3 === 'undefined' || !nodes || nodes.length === 0) return;
 
+        var nodeColorPalette = resolveGraphNodeColorPalette();
         var anchorCodes = options.anchorCodes || new Set();
         var hotspotCodes = options.hotspotCodes || new Set();
         var hotspotReasons = options.hotspotReasons || {};
@@ -509,7 +523,7 @@
                 return Math.max(6, 6 + d.relevance * 8);
             })
             .attr('fill', function (d) {
-                var color = getNodeColor(d.sheet);
+                var color = getNodeColor(d.sheet, nodeColorPalette);
                 var opacity = 0.6 + d.relevance * 0.4;
                 // Convert hex to rgba
                 var r = parseInt(color.slice(1, 3), 16);
@@ -618,7 +632,7 @@
                 var label = (layerConfig[sheet] && layerConfig[sheet].label) ? layerConfig[sheet].label : sheet;
                 legendDiv.append('span').attr('class', 'force-graph-legend-item')
                     .html('<span class="force-graph-legend-dot" style="background:' +
-                        getNodeColor(sheet) + '"></span> ' + label);
+                        getNodeColor(sheet, nodeColorPalette) + '"></span> ' + label);
             }
         });
         legendDiv.append('span').attr('class', 'force-graph-legend-item')
