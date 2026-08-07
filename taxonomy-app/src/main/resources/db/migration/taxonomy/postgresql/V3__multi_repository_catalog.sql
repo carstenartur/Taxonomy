@@ -23,22 +23,14 @@ set storage_repository_name = case
     end,
     slug = case
         when primary_repo then 'shared-architecture'
-        else lower(regexp_replace(coalesce(display_name, repository_id), '[^a-zA-Z0-9]+', '-', 'g'))
+        else 'repository-' || lower(repository_id)
     end,
     visibility = case when primary_repo then 'ORGANIZATION' else 'PRIVATE' end,
     lifecycle_state = 'ACTIVE',
     owner_type = case when primary_repo then 'SYSTEM' else 'USER' end,
-    owner_id = case when primary_repo then 'system' else coalesce(created_by, 'system') end,
-    created_by = coalesce(created_by, case when primary_repo then 'system' else owner_id end),
-    updated_at = coalesce(updated_at, created_at)
-where storage_repository_name is null
-   or slug is null
-   or visibility is null
-   or lifecycle_state is null
-   or owner_type is null
-   or owner_id is null
-   or created_by is null
-   or updated_at is null;
+    owner_id = coalesce(owner_id, 'system'),
+    created_by = coalesce(created_by, 'system'),
+    updated_at = coalesce(updated_at, created_at);
 
 alter table system_repository
     add constraint uq_system_repository_storage unique (storage_repository_name),
