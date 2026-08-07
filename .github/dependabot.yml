@@ -5,14 +5,20 @@
 
 version: 2
 updates:
-  - package-ecosystem: "maven" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: maven
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /.github
+    schedule:
+      interval: weekly
+
   - package-ecosystem: github-actions
-    directory: "/"
+    directory: /
     schedule:
-      interval: daily
+      interval: weekly
     groups:
       codeql-action-family:
         patterns:
