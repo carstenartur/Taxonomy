@@ -1,0 +1,70 @@
+name: One-shot stable OpenTelemetry memory patch
+
+on:
+  push:
+    branches:
+      - qa/issue-636-stable-otel-memory
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Apply robust steady-state memory transformation
+        run: python3 .github/scripts/apply-stable-otel-memory.py
+
+      - name: Verify source hygiene and unit contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ./mvnw -B -pl taxonomy-app -am \
+            "-Dtest=ObservabilityPerformanceMemoryTest" \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+      - name: Run real OpenTelemetry performance evidence
+        env:
+          TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: "true"
+        run: .github/scripts/run-observability-performance.sh
+
+      - name: Commit stable measurement implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- \
+            taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java; then
+            echo "OpenTelemetry memory measurement already matches the requested contract."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java
+          git commit -m "Stabilize OpenTelemetry memory budget evidence"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload focused performance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: stable-otel-memory-evidence
+          path: target/observability-performance/**
+          if-no-files-found: warn
+          retention-days: 30
