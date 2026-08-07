@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 ROOT_POM = ROOT / "pom.xml"
 RELEASE_PLAN_CHECK = ROOT / ".github" / "scripts" / "check-release-plan.py"
 RELEASE_SCRIPT = ROOT / ".github" / "scripts" / "release.sh"
+RELEASE_IMAGE_GATE = ROOT / ".github" / "scripts" / "check-release-image-gate.py"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-cd.yml"
 
@@ -26,6 +28,22 @@ def main() -> int:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     failures: list[str] = []
+
+    image_gate = subprocess.run(
+        [sys.executable, str(RELEASE_IMAGE_GATE)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if image_gate.stdout:
+        print(image_gate.stdout, end="")
+    if image_gate.returncode != 0:
+        if image_gate.stderr:
+            print(image_gate.stderr, end="", file=sys.stderr)
+        failures.append(
+            "Immutable OCI image verification contract failed; see check-release-image-gate.py output"
+        )
 
     for needle in (
         "<id>release-check</id>",
@@ -112,6 +130,9 @@ def main() -> int:
         "- name: Checkout immutable release source",
         "- name: Package and stage immutable Helm artifacts",
         "- name: Build and publish immutable release image",
+        "- name: Scan immutable release image digest",
+        "- name: Bind release evidence and Helm deployment to immutable image digest",
+        "- name: Archive immutable release image evidence",
         "- name: Verify exact final main snapshot with canonical CI",
         "- name: Publish complete release and trigger deployment",
         "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
@@ -165,18 +186,23 @@ def main() -> int:
         checkout_tag = workflow.index("- name: Checkout immutable release source")
         package = workflow.index("- name: Package and stage immutable Helm artifacts")
         image = workflow.index("- name: Build and publish immutable release image")
+        scan = workflow.index("- name: Scan immutable release image digest")
+        bind = workflow.index(
+            "- name: Bind release evidence and Helm deployment to immutable image digest"
+        )
+        archive = workflow.index("- name: Archive immutable release image evidence")
         final_ci = workflow.index(
             "- name: Verify exact final main snapshot with canonical CI"
         )
         publish = workflow.index(
             "- name: Publish complete release and trigger deployment"
         )
-        if not checkout < resolve < stage < resume < record_main < checkout_tag < package < image < final_ci < publish:
+        if not checkout < resolve < stage < resume < record_main < checkout_tag < package < image < scan < bind < archive < final_ci < publish:
             failures.append(
                 "deploy-release.yml must bind checkout to the triggering source, "
                 "then either stage or validate a resumable draft, record the exact "
-                "main commit, fetch and build the immutable tag, verify that exact "
-                "main commit, and publish last"
+                "main commit, fetch and build the immutable tag, scan and bind the "
+                "pushed image digest, verify that exact main commit, and publish last"
             )
 
         checkout_block = workflow[checkout:resolve]
@@ -247,11 +273,10 @@ def main() -> int:
         return 1
 
     print(
-        "Release delivery contract is Maven-verifiable, atomic, freely versionable "
-        "and resumable: the local profile validates the release plan without SCM "
-        "mutation, the triggering source is preserved, immutable sources are fetched "
-        "explicitly, the exact main snapshot is verified, and publication remains "
-        "the final gate."
+        "Release delivery contract is Maven-verifiable, atomic, freely versionable, "
+        "resumable and digest-bound: the local profile validates the release plan "
+        "without SCM mutation, immutable sources and images are verified explicitly, "
+        "the exact main snapshot is checked, and publication remains the final gate."
     )
     return 0
 

@@ -52,6 +52,8 @@ jobs:
           fi
 
       - name: Verify release and delivery contracts
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -60,6 +62,7 @@ jobs:
           python3 .github/scripts/test-generate-quality-site.py
           python3 .github/scripts/test-verify-quality-publication.py
           python3 .github/scripts/test-verify-deployment.py
+          python3 .github/scripts/test-check-frontend-api-boundary.py
           node .github/scripts/test-taxonomy-base-path.mjs
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
@@ -68,6 +71,9 @@ jobs:
           python3 .github/scripts/check-release-delivery-contract.py
           python3 .github/scripts/check-delivery-hardening.py
           python3 .github/scripts/check-observability-performance-scope.py
+
+          frontend_base="${PR_BASE_SHA:-HEAD^}"
+          python3 .github/scripts/check-frontend-api-boundary.py --base-ref "$frontend_base"
 
           current_version=$(./mvnw -q -DforceStdout help:evaluate \
             -Dexpression=project.version)
@@ -93,7 +99,7 @@ jobs:
         shell: bash
         run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
 
-      - name: Detect observability performance changes
+      - name: Detect performance-sensitive changes
         id: observability-performance-scope
         if: github.event_name == 'pull_request'
         env:
@@ -103,10 +109,14 @@ jobs:
         run: |
           set -euo pipefail
           if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
-            observability \
+            pom.xml \
+            Dockerfile \
+            taxonomy-app/pom.xml \
+            taxonomy-app/src/main \
             taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java \
             taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java \
             taxonomy-app/src/test/resources/observability \
+            observability \
             .github/scripts/run-observability-performance.sh \
             docs/dev/OBSERVABILITY_PERFORMANCE.md; then
             echo 'run=false' >> "$GITHUB_OUTPUT"
@@ -115,7 +125,7 @@ jobs:
           fi
 
       - name: Measure OpenTelemetry performance budget
-        if: steps.observability-performance-scope.outputs.run == 'true'
+        if: github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true'
         env:
           TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true'
         shell: bash
@@ -216,7 +226,7 @@ jobs:
           path: target/quality-reports/**
           if-no-files-found: warn
           include-hidden-files: true
-          retention-days: 14
+          retention-days: 90
 
       - name: Upload UI verification evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -225,4 +235,4 @@ jobs:
           name: ui-verification
           path: target/ui-verification/**
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90

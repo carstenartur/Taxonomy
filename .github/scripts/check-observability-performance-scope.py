@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep the expensive observability performance gate scoped to actual PR changes."""
+"""Keep the performance gate broad enough for releases and relevant PR changes."""
 
 from pathlib import Path
 import sys
@@ -13,10 +13,16 @@ def main() -> int:
     failures: list[str] = []
 
     required = (
+        "- name: Detect performance-sensitive changes",
         "PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
         "PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
         'git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" --',
+        "pom.xml",
+        "Dockerfile",
+        "taxonomy-app/pom.xml",
+        "taxonomy-app/src/main",
         ".github/scripts/run-observability-performance.sh",
+        "github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true'",
         "TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true'",
         "run: bash .github/scripts/run-observability-performance.sh",
     )
@@ -25,12 +31,15 @@ def main() -> int:
             failures.append(f"ci-cd.yml is missing {needle!r}")
 
     try:
-        start = workflow.index("- name: Detect observability performance changes")
+        start = workflow.index("- name: Detect performance-sensitive changes")
         end = workflow.index("- name: Measure OpenTelemetry performance budget")
         scope_block = workflow[start:end]
+        performance_end = workflow.index("- name: Restore pinned embedding model")
+        performance_block = workflow[end:performance_end]
     except ValueError as error:
-        failures.append(f"Could not locate observability scope steps: {error}")
+        failures.append(f"Could not locate performance scope steps: {error}")
         scope_block = ""
+        performance_block = ""
 
     if "...HEAD" in scope_block:
         failures.append(
@@ -38,16 +47,26 @@ def main() -> int:
         )
     if ".github/workflows/ci-cd.yml" in scope_block:
         failures.append(
-            "Editing unrelated CI steps must not force the expensive observability benchmark"
+            "Editing unrelated CI steps must not by itself force the expensive benchmark"
+        )
+    if "taxonomy-app/src/main" not in scope_block:
+        failures.append(
+            "Application runtime changes must trigger the performance budget on pull requests"
+        )
+    if "github.event_name != 'pull_request'" not in performance_block:
+        failures.append(
+            "Main, tag, release and manual CI runs must not be allowed to skip the performance budget"
         )
 
     if failures:
-        print("Observability performance scope contract failed:", file=sys.stderr)
+        print("Performance scope contract failed:", file=sys.stderr)
         for failure in failures:
             print(f"- {failure}", file=sys.stderr)
         return 1
 
-    print("Observability performance scope is limited to actual PR observability changes.")
+    print(
+        "Performance scope covers runtime-sensitive PR changes and always runs on non-PR CI."
+    )
     return 0
 
 
