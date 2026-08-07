@@ -71,6 +71,13 @@ def main() -> int:
         "render-verification.json",
         "RENDER_API_KEY",
         "RENDER_SERVICE_ID",
+        "RENDER_DEPLOY_ENABLED",
+        "name: Render deployment disabled",
+        "vars.RENDER_DEPLOY_ENABLED != 'true'",
+        "vars.RENDER_DEPLOY_ENABLED == 'true'",
+        '"deploymentState": "disabled"',
+        '"deploymentState": "triggered"',
+        "RENDER_DEPLOY_ENABLED is true but RENDER_DEPLOY_HOOK_URL is missing",
         "BASE_URL: ${{ vars.RENDER_BASE_URL || 'https://taxonomy-analyzer.onrender.com' }}",
         "python3 .github/scripts/verify-deployment.py",
         "render-deployment-evidence-${{ github.event.workflow_run.head_sha }}",
@@ -78,6 +85,10 @@ def main() -> int:
         require(delivery, needle, DELIVERY, failures)
     if "keep_files: true" in delivery:
         failures.append("delivery.yml must replace the report tree atomically, not retain stale files")
+    if "RENDER_DEPLOY_HOOK_URL is not configured; Render deployment is disabled." in delivery:
+        failures.append("enabled Render delivery must fail closed when its hook secret is missing")
+    if 'if-no-files-found: warn' in delivery.split("  deploy-render:", 1)[-1]:
+        failures.append("Render delivery evidence must never be optional")
 
     for needle in (
         '"sourceTree"',
@@ -95,8 +106,11 @@ def main() -> int:
         "fetch_render_deploy",
         "renderDeployId",
         "renderDeployStatus",
+        '"deploymentState": "verifying"',
+        '"deploymentState": "succeeded"',
+        '"deploymentState": "failed"',
         "root smoke test",
-        "write_evidence",
+        "write_evidence(args.evidence_file, evidence)",
     ):
         require(deploy_verify, needle, DEPLOY_VERIFY, failures)
 
@@ -154,7 +168,7 @@ def main() -> int:
     print(
         "Delivery hardening contract passed: reports are commit-bound, internally consistent, "
         "atomically published and remotely re-verified; Render is pinned to the verified commit, "
-        "records deployment evidence and can poll platform status; responsive tree height remains "
+        "records explicit disabled/triggered/verifying/succeeded/failed evidence and can poll platform status; responsive tree height remains "
         "bounded, the container exposes its build commit, and the Rancher prefix profile is explicit."
     )
     return 0
