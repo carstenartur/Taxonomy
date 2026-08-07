@@ -34,13 +34,12 @@ def collect_tests(root: Path) -> dict[str, int]:
         if not suites:
             raise ValueError(f"no testsuite element in {report}")
         for suite in suites:
-            for key in totals:
+            for key in ("tests", "failures", "errors", "skipped"):
                 totals[key] += _integer(suite, key)
 
-    totals["passed"] = (
-        totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"]
-    )
-    if totals["passed"] < 0:
+    totals["executed"] = totals["tests"] - totals["skipped"]
+    totals["passed"] = totals["executed"] - totals["failures"] - totals["errors"]
+    if totals["executed"] < 0 or totals["passed"] < 0:
         raise ValueError(f"inconsistent test totals: {totals}")
     if totals["tests"] <= 0:
         raise ValueError("JUnit reports contained zero tests")
@@ -85,17 +84,42 @@ def write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def write_outputs(root: Path, commit: str, generated_at: str) -> dict[str, object]:
+def parse_tools(entries: list[str]) -> dict[str, str]:
+    tools: dict[str, str] = {}
+    for entry in entries:
+        name, separator, value = entry.partition("=")
+        name = name.strip()
+        value = value.strip()
+        if not separator or not name or not value:
+            raise ValueError(f"tool metadata must use NAME=VALUE, got {entry!r}")
+        tools[name] = value
+    return tools
+
+
+def write_outputs(
+    root: Path,
+    commit: str,
+    generated_at: str,
+    *,
+    source_tree: str = "unknown",
+    build_id: str = "local",
+    tools: dict[str, str] | None = None,
+) -> dict[str, object]:
     tests = collect_tests(root / "tests")
     coverage = collect_coverage(root / "coverage" / "jacoco.xml")
     instruction_percent = float(coverage["instructionPercent"])
     clean = tests["failures"] == 0 and tests["errors"] == 0
+    tool_metadata = dict(tools or {})
 
     summary: dict[str, object] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "commit": commit,
         "verifiedCommit": commit,
+        "sourceCommit": commit,
+        "sourceTree": source_tree,
+        "buildId": build_id,
         "generatedAt": generated_at,
+        "tools": tool_metadata,
         "tests": tests,
         "coverage": coverage,
     }
@@ -121,6 +145,13 @@ def write_outputs(root: Path, commit: str, generated_at: str) -> dict[str, objec
     root.joinpath(".nojekyll").touch()
 
     branch_percent = float(coverage.get("branchPercent", 0.0))
+    method_percent = float(coverage.get("methodPercent", 0.0))
+    class_percent = float(coverage.get("classPercent", 0.0))
+    line_percent = float(coverage.get("linePercent", 0.0))
+    tool_rows = "".join(
+        "<tr><td>" + html.escape(name) + "</td><td><code>" + html.escape(value) + "</code></td></tr>"
+        for name, value in sorted(tool_metadata.items())
+    ) or '<tr><td colspan="2">No tool metadata recorded</td></tr>'
     report = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -129,7 +160,7 @@ def write_outputs(root: Path, commit: str, generated_at: str) -> dict[str, objec
 <title>Taxonomy test report</title>
 <style>
 body {{ font: 16px/1.5 system-ui, sans-serif; max-width: 70rem; margin: 2rem auto; padding: 0 1rem; }}
-table {{ border-collapse: collapse; }}
+table {{ border-collapse: collapse; margin-bottom: 1.25rem; }}
 th, td {{ border: 1px solid #bbb; padding: .45rem .7rem; text-align: right; }}
 th:first-child, td:first-child {{ text-align: left; }}
 code {{ overflow-wrap: anywhere; }}
@@ -138,19 +169,27 @@ code {{ overflow-wrap: anywhere; }}
 <body>
 <h1>Taxonomy test report</h1>
 <p>Verified commit: <code>{html.escape(commit)}</code></p>
+<p>Source tree: <code>{html.escape(source_tree)}</code></p>
+<p>Build ID: <code>{html.escape(build_id)}</code></p>
 <p>Generated: {html.escape(generated_at)}</p>
 <table>
 <thead><tr><th>Metric</th><th>Value</th></tr></thead>
 <tbody>
 <tr><td>Registered tests</td><td>{tests['tests']}</td></tr>
+<tr><td>Executed</td><td>{tests['executed']}</td></tr>
 <tr><td>Passed</td><td>{tests['passed']}</td></tr>
 <tr><td>Skipped</td><td>{tests['skipped']}</td></tr>
 <tr><td>Failures</td><td>{tests['failures']}</td></tr>
 <tr><td>Errors</td><td>{tests['errors']}</td></tr>
 <tr><td>Instruction coverage</td><td>{instruction_percent:.2f}%</td></tr>
+<tr><td>Line coverage</td><td>{line_percent:.2f}%</td></tr>
 <tr><td>Branch coverage</td><td>{branch_percent:.2f}%</td></tr>
+<tr><td>Method coverage</td><td>{method_percent:.2f}%</td></tr>
+<tr><td>Class coverage</td><td>{class_percent:.2f}%</td></tr>
 </tbody>
 </table>
+<h2>Toolchain</h2>
+<table><thead><tr><th>Tool</th><th>Version/configuration</th></tr></thead><tbody>{tool_rows}</tbody></table>
 <p><a href="../quality-summary.json">Machine-readable quality summary</a></p>
 </body>
 </html>
@@ -163,6 +202,8 @@ code {{ overflow-wrap: anywhere; }}
 <body>
 <h1>Taxonomy verified quality reports</h1>
 <p>Verified commit: <code>{html.escape(commit)}</code></p>
+<p>Source tree: <code>{html.escape(source_tree)}</code></p>
+<p>Build ID: <code>{html.escape(build_id)}</code></p>
 <ul>
 <li><a href="tests/surefire-report.html">Test report</a></li>
 <li><a href="coverage/index.html">JaCoCo coverage report</a></li>
@@ -178,12 +219,22 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path("target/quality-reports"))
     parser.add_argument("--commit", required=True)
+    parser.add_argument("--source-tree", default="unknown")
+    parser.add_argument("--build-id", default="local")
+    parser.add_argument("--tool", action="append", default=[], metavar="NAME=VALUE")
     parser.add_argument(
         "--generated-at",
         default=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
     args = parser.parse_args()
-    summary = write_outputs(args.root, args.commit.strip(), args.generated_at)
+    summary = write_outputs(
+        args.root,
+        args.commit.strip(),
+        args.generated_at,
+        source_tree=args.source_tree.strip(),
+        build_id=args.build_id.strip(),
+        tools=parse_tools(args.tool),
+    )
     print(json.dumps(summary, sort_keys=True))
     return 0
 

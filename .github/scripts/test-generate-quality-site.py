@@ -29,23 +29,41 @@ class GenerateQualitySummaryTest(unittest.TestCase):
             coverage.mkdir()
             coverage.joinpath("jacoco.xml").write_text(
                 '<report><counter type="INSTRUCTION" missed="20" covered="80"/>'
-                '<counter type="BRANCH" missed="3" covered="7"/></report>',
+                '<counter type="LINE" missed="10" covered="90"/>'
+                '<counter type="BRANCH" missed="3" covered="7"/>'
+                '<counter type="METHOD" missed="2" covered="8"/>'
+                '<counter type="CLASS" missed="1" covered="9"/></report>',
                 encoding="utf-8",
             )
 
-            summary = MODULE.write_outputs(root, "abc123", "2026-08-06T13:00:00+00:00")
+            summary = MODULE.write_outputs(
+                root,
+                "abc123",
+                "2026-08-06T13:00:00+00:00",
+                source_tree="tree456",
+                build_id="run-7.1",
+                tools={"java": "21", "maven": "3.9.11"},
+            )
 
+            self.assertEqual(5, summary["tests"]["tests"])
+            self.assertEqual(4, summary["tests"]["executed"])
             self.assertEqual(4, summary["tests"]["passed"])
             self.assertEqual(80.0, summary["coverage"]["instructionPercent"])
+            self.assertEqual("tree456", summary["sourceTree"])
+            self.assertEqual("run-7.1", summary["buildId"])
+            self.assertEqual("21", summary["tools"]["java"])
             test_badge = json.loads((root / "tests" / "badge.json").read_text())
             coverage_badge = json.loads((root / "coverage" / "badge.json").read_text())
             self.assertEqual("4 passed", test_badge["message"])
             self.assertEqual("80.00%", coverage_badge["message"])
-            self.assertEqual(
-                "abc123",
-                json.loads((root / "quality-summary.json").read_text())["commit"],
-            )
-            self.assertTrue((root / "tests" / "surefire-report.html").is_file())
+            persisted = json.loads((root / "quality-summary.json").read_text())
+            self.assertEqual("abc123", persisted["commit"])
+            self.assertEqual("tree456", persisted["sourceTree"])
+            report_html = (root / "tests" / "surefire-report.html").read_text()
+            self.assertIn("Executed", report_html)
+            self.assertIn("Method coverage", report_html)
+            self.assertIn("Class coverage", report_html)
+            self.assertIn("run-7.1", report_html)
             self.assertTrue((root / ".nojekyll").is_file())
             self.assertTrue((root / "index.html").is_file())
 
@@ -69,9 +87,19 @@ class GenerateQualitySummaryTest(unittest.TestCase):
                 '<report><counter type="INSTRUCTION" missed="0" covered="1"/></report>',
                 encoding="utf-8",
             )
-            MODULE.write_outputs(root, "deadbeef", "now")
+            summary = MODULE.write_outputs(root, "deadbeef", "now")
+            self.assertEqual(2, summary["tests"]["executed"])
+            self.assertEqual(1, summary["tests"]["passed"])
             badge = json.loads((reports / "badge.json").read_text())
             self.assertEqual("red", badge["color"])
+
+    def test_tool_metadata_requires_name_and_value(self) -> None:
+        self.assertEqual(
+            {"java": "21", "maven": "3.9.11"},
+            MODULE.parse_tools(["java=21", "maven=3.9.11"]),
+        )
+        with self.assertRaises(ValueError):
+            MODULE.parse_tools(["broken"])
 
 
 if __name__ == "__main__":
