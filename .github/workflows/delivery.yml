@@ -259,9 +259,33 @@ jobs:
           print(urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)))
           PY
           )
-          curl --fail --silent --show-error --retry 3 \
+          if ! curl --fail --silent --show-error --retry 3 \
+            --connect-timeout 15 --max-time 90 \
             --output target/delivery-evidence/render-deploy-hook.json \
-            "$deploy_url"
+            "$deploy_url"; then
+            python3 - <<'PY'
+          from datetime import datetime, timezone
+          import json
+          import os
+          from pathlib import Path
+
+          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+          evidence = {
+              "schemaVersion": 2,
+              "deploymentState": "failed",
+              "result": "failure",
+              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
+              "expectedCommit": os.environ["EXPECTED_SHA"],
+              "startedAt": now,
+              "endedAt": now,
+              "detail": "Render deploy hook request failed after bounded retries.",
+          }
+          Path("target/delivery-evidence/render-hook-failure.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+            echo "::error::Render deploy hook request failed; archived failure evidence identifies the expected commit and target."
+            exit 1
+          fi
 
           python3 - <<'PY'
           from datetime import datetime, timezone
