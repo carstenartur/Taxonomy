@@ -489,3 +489,107 @@
         display: none !important;
     }
 }
+
+/* Accessible modal onboarding and collision-safe transient overlays. */
+dialog.onboarding-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    color: var(--bs-body-color, #212529);
+    background: transparent;
+    animation: none;
+}
+dialog.onboarding-overlay:not([open]) {
+    display: none;
+}
+dialog.onboarding-overlay[open] {
+    display: grid;
+    place-items: center;
+}
+dialog.onboarding-overlay::backdrop {
+    background: rgba(0, 0, 0, 0.62);
+}
+dialog.onboarding-overlay .onboarding-card {
+    width: min(32.5rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    margin: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+        max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    overflow: auto;
+    overscroll-behavior: contain;
+    text-align: left;
+}
+.onboarding-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+#onboardingDismiss {
+    min-width: 44px;
+    min-height: 44px;
+}
+
+.taxonomy-overlay-lane {
+    position: fixed;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.75rem;
+    width: min(26rem, calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    pointer-events: none;
+    inset-block-end: max(1rem, env(safe-area-inset-bottom));
+    inset-inline-end: max(1rem, env(safe-area-inset-right));
+}
+.taxonomy-overlay-lane[data-position="bottom-start"] {
+    align-items: flex-start;
+    inset-inline-start: max(1rem, env(safe-area-inset-left));
+    inset-inline-end: auto;
+}
+.taxonomy-overlay-lane[data-position="top-end"] {
+    inset-block-start: max(1rem, env(safe-area-inset-top));
+    inset-block-end: auto;
+}
+.taxonomy-overlay-lane[data-position="top-start"] {
+    align-items: flex-start;
+    inset-block-start: max(1rem, env(safe-area-inset-top));
+    inset-block-end: auto;
+    inset-inline-start: max(1rem, env(safe-area-inset-left));
+    inset-inline-end: auto;
+}
+.taxonomy-overlay-lane > .undo-toast {
+    position: static !important;
+    inset: auto !important;
+    max-width: 100%;
+    margin: 0;
+    pointer-events: auto;
+}
+.undo-toast .undo-btn,
+.help-back-to-top {
+    min-width: 44px !important;
+    min-height: 44px !important;
+}
+.help-back-to-top {
+    width: 44px !important;
+    height: 44px !important;
+}
+
+@media (max-height: 32rem), (max-width: 30rem) {
+    dialog.onboarding-overlay .onboarding-card {
+        width: calc(100vw - 1rem);
+        max-height: calc(100dvh - 1rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        margin: 0.5rem;
+        padding: 1rem;
+    }
+    .taxonomy-overlay-lane {
+        width: calc(100vw - 1rem - env(safe-area-inset-left) - env(safe-area-inset-right));
+        inset-block-end: max(0.5rem, env(safe-area-inset-bottom));
+        inset-inline-end: max(0.5rem, env(safe-area-inset-right));
+    }
+}

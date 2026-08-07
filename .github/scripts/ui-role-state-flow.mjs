@@ -478,6 +478,85 @@ export async function runRoleStateFlow({
     'Dialog did not restore focus to its invoker');
   passed('dialog focus entry and restoration');
 
+  await page.evaluate(() => {
+    localStorage.removeItem('taxonomy_onboarded');
+    window.TaxonomyOnboarding.init();
+  });
+  const onboarding = page.locator('#onboardingOverlay');
+  await onboarding.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.waitForFunction(() => document.activeElement?.id === 'onboardingDismiss');
+  const onboardingState = await onboarding.evaluate(element => ({
+    tagName: element.tagName,
+    open: element.open,
+    role: element.getAttribute('role'),
+    ariaModal: element.getAttribute('aria-modal'),
+    labelledBy: element.getAttribute('aria-labelledby'),
+    describedBy: element.getAttribute('aria-describedby')
+  }));
+  assert(onboardingState.tagName === 'DIALOG' && onboardingState.open
+    && onboardingState.role === 'dialog' && onboardingState.ariaModal === 'true'
+    && onboardingState.labelledBy === 'onboardingTitle'
+    && onboardingState.describedBy === 'onboardingIntro',
+  `Incomplete onboarding dialog semantics: ${JSON.stringify(onboardingState)}`);
+  await runAxe('onboarding-open');
+  await saveState('onboarding-open');
+  await page.keyboard.press('Escape');
+  await onboarding.waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.activeElement?.id === 'businessText');
+  passed('onboarding modal semantics, Escape close and focus restoration');
+
+  await page.evaluate(() => {
+    for (const index of [1, 2]) {
+      const toast = document.createElement('div');
+      toast.className = 'undo-toast';
+      toast.dataset.qaOverlayToast = String(index);
+      const message = document.createElement('span');
+      message.textContent = `QA notification ${index}`;
+      const undo = document.createElement('button');
+      undo.type = 'button';
+      undo.className = 'undo-btn';
+      undo.textContent = 'Undo';
+      toast.append(message, undo);
+      document.body.appendChild(toast);
+    }
+  });
+  await page.waitForFunction(() =>
+    document.querySelectorAll('#taxonomyOverlayLane > [data-qa-overlay-toast]').length === 2);
+  await businessText.scrollIntoViewIfNeeded();
+  await businessText.focus();
+  await page.evaluate(() => window.TaxonomyOnboarding.refreshOverlayLane());
+  await page.waitForFunction(() =>
+    document.getElementById('taxonomyOverlayLane')?.dataset.position);
+  const overlayGeometry = await page.evaluate(() => {
+    const lane = document.getElementById('taxonomyOverlayLane');
+    const toasts = [...lane.querySelectorAll('[data-qa-overlay-toast]')];
+    const rects = toasts.map(toast => toast.getBoundingClientRect());
+    const overlaps = rects.length === 2
+      && rects[0].left < rects[1].right && rects[0].right > rects[1].left
+      && rects[0].top < rects[1].bottom && rects[0].bottom > rects[1].top;
+    const undoRect = toasts[0].querySelector('.undo-btn').getBoundingClientRect();
+    return {
+      position: lane.dataset.position,
+      toastCount: toasts.length,
+      overlaps,
+      undoWidth: undoRect.width,
+      undoHeight: undoRect.height,
+      activeUnobscured: window.TaxonomyOnboarding.isElementUnobscured(document.activeElement)
+    };
+  });
+  assert(overlayGeometry.toastCount === 2 && !overlayGeometry.overlaps,
+    `Overlay lane collision: ${JSON.stringify(overlayGeometry)}`);
+  assert(overlayGeometry.undoWidth >= 44 && overlayGeometry.undoHeight >= 44,
+    `Undo touch target is too small: ${JSON.stringify(overlayGeometry)}`);
+  assert(overlayGeometry.activeUnobscured,
+    `Focused control is obscured by overlay lane at ${overlayGeometry.position}`);
+  await runAxe('overlay-lane');
+  await saveState('overlay-lane');
+  await page.evaluate(() => {
+    document.querySelectorAll('[data-qa-overlay-toast]').forEach(toast => toast.remove());
+  });
+  passed('collision-safe overlay lane and touch targets');
+
   const operationalWasOpen = await page.locator('#operationalContextDetails').evaluate(el => el.open);
   await page.keyboard.press('Alt+Shift+O');
   await page.waitForFunction(previous =>
