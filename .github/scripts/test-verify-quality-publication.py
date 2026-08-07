@@ -26,7 +26,14 @@ class VerifyQualityPublicationTest(unittest.TestCase):
             "sourceTree": "tree123",
             "buildId": "run-1",
             "tools": {"java": "21", "maven": "3.9.11"},
-            "tests": {"passed": 4, "tests": 5, "skipped": 1, "failures": 0, "errors": 0},
+            "tests": {
+                "tests": 5,
+                "executed": 4,
+                "passed": 4,
+                "skipped": 1,
+                "failures": 0,
+                "errors": 0,
+            },
             "coverage": {"instructionPercent": 82.74},
         }
         return (
@@ -56,10 +63,24 @@ class VerifyQualityPublicationTest(unittest.TestCase):
             self._write_local(root)
             MODULE.verify_local(root, self.COMMIT)
 
+    def test_missing_badge_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_local(root)
+            (root / "tests" / "badge.json").unlink()
+            with self.assertRaisesRegex(FileNotFoundError, "tests/badge.json"):
+                MODULE.verify_local(root, self.COMMIT)
+
     def test_badge_mismatch_fails_closed(self) -> None:
         summary, tests, coverage = self._payloads()
         tests["message"] = "2153 passed"
         with self.assertRaisesRegex(ValueError, "does not match summary"):
+            MODULE.verify_payloads(summary, tests, coverage, self.COMMIT)
+
+    def test_inconsistent_executed_total_fails_closed(self) -> None:
+        summary, tests, coverage = self._payloads()
+        summary["tests"]["executed"] = 5
+        with self.assertRaisesRegex(ValueError, "executed-test total is inconsistent"):
             MODULE.verify_payloads(summary, tests, coverage, self.COMMIT)
 
     def test_wrong_commit_fails_closed(self) -> None:
