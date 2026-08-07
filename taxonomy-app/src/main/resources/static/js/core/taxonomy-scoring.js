@@ -433,6 +433,7 @@
 
     /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
     function applyScoreToNode(code, pct, reason) {
+        B().ensureNodeRendered(code, S.currentScores);
         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
         if (!el) return;
         const header = el.querySelector(':scope > .tax-node-header');
@@ -488,10 +489,12 @@
 
     /** Expand a node in the DOM and all of its ancestors. */
     function expandNodeByCode(code) {
+        B().ensureNodeRendered(code, S.currentScores);
         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
         if (!el) return;
         const children = el.querySelector(':scope > .tax-children');
         if (children) {
+            B().materializeChildren(el, S.currentScores);
             children.style.display = '';
             const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
             if (toggle) toggle.textContent = '▼';
@@ -515,6 +518,7 @@
 
     /** Add a pulsing CSS class to indicate a node is currently being evaluated. */
     function markNodeAsEvaluating(code) {
+        B().ensureNodeRendered(code, S.currentScores);
         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
         if (el) el.classList.add('tax-evaluating');
     }
@@ -523,14 +527,17 @@
     function expandMatched(scores) {
         Object.entries(scores).forEach(([code, pct]) => {
             if (pct > 0) {
-                const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+                const el = B().ensureNodeRendered(code, scores)
+                    || document.querySelector('[data-code="' + CSS.escape(code) + '"]');
                 if (!el) return;
-                // expand this node
+                // expand this node only after its immediate child level exists
                 const children = el.querySelector(':scope > .tax-children');
                 if (children) {
+                    B().materializeChildren(el, scores);
                     children.style.display = '';
                     const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
                     if (toggle) toggle.textContent = '▼';
+                    el.setAttribute('aria-expanded', 'true');
                 }
                 // expand ancestors
                 let parent = el.parentElement;
@@ -541,6 +548,7 @@
                         if (parentNode) {
                             const t = parentNode.querySelector(':scope > .tax-node-header > .tax-toggle');
                             if (t) t.textContent = '▼';
+                            parentNode.setAttribute('aria-expanded', 'true');
                         }
                     }
                     parent = parent.parentElement;
