@@ -1,0 +1,9 @@
+# Default ownership
+* @carstenartur
+
+# Release, CI and deployment contracts
+/.github/workflows/ @carstenartur
+/.github/scripts/ @carstenartur
+/deploy/ @carstenartur
+/pom.xml @carstenartur
+/**/pom.xml @carstenartur

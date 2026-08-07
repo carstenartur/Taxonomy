@@ -4,6 +4,9 @@ on:
   workflow_run:
     workflows: [ "CI / CD" ]
     types: [ completed ]
+    branches:
+      - main
+      - 'v*'
 
 permissions:
   contents: read
@@ -35,12 +38,46 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish reports to GitHub Pages
+      - name: Verify report provenance and completeness
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("quality-reports")
+          summary_path = root / "quality-summary.json"
+          if not summary_path.is_file():
+              raise SystemExit("quality-summary.json is missing from the verified artifact")
+          summary = json.loads(summary_path.read_text(encoding="utf-8"))
+          expected = os.environ["EXPECTED_SHA"]
+          if summary.get("commit") != expected:
+              raise SystemExit(
+                  f"quality report commit {summary.get('commit')!r} does not match {expected}"
+              )
+          for relative in (
+              "tests/badge.json",
+              "tests/surefire-report.html",
+              "coverage/badge.json",
+              "coverage/index.html",
+              ".nojekyll",
+          ):
+              if not root.joinpath(relative).is_file():
+                  raise SystemExit(f"verified quality artifact is missing {relative}")
+          print(f"Quality report provenance verified for {expected}")
+          PY
+
+      - name: Publish reports to GitHub Pages atomically
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: quality-reports
-          keep_files: true
+          keep_files: false
+          force_orphan: true
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
           commit_message: 'Publish verified quality reports ${{ github.event.workflow_run.head_sha }}'
@@ -110,11 +147,29 @@ jobs:
       github.event.workflow_run.head_branch == github.event.repository.default_branch &&
       github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Trigger Render deploy hook
+      - name: Checkout verified delivery source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Trigger and verify Render deployment
         env:
           HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        if: ${{ env.HOOK_URL != '' }}
+          BASE_URL: ${{ vars.RENDER_BASE_URL || 'https://taxonomy-analyzer.onrender.com' }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
         run: |
+          set -euo pipefail
+          if [[ -z "$HOOK_URL" ]]; then
+            echo "RENDER_DEPLOY_HOOK_URL is not configured; Render deployment is disabled."
+            exit 0
+          fi
           curl -fsSL --retry 3 "$HOOK_URL"
-          echo "Render deployment triggered."
+          echo "Render deployment triggered; waiting for the verified commit."
+          python3 .github/scripts/verify-deployment.py \
+            --base-url "$BASE_URL" \
+            --expected-commit "$EXPECTED_SHA"

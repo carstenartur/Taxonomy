@@ -13,3 +13,7 @@ updates:
     directory: "/"
     schedule:
       interval: daily
+    groups:
+      codeql-action-family:
+        patterns:
+          - "github/codeql-action/*"

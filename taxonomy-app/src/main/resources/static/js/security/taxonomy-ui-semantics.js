@@ -106,6 +106,7 @@ window.TaxonomyUiSemantics = (function () {
         var containsTreeItems = Boolean(tree.querySelector('[role="treeitem"]'));
         var expectedRole = containsTreeItems ? 'tree' : 'region';
         if (tree.getAttribute('role') !== expectedRole) tree.setAttribute('role', expectedRole);
+        if (tree.getAttribute('tabindex') !== '0') tree.setAttribute('tabindex', '0');
         if (containsTreeItems) tree.removeAttribute('aria-busy');
         else tree.setAttribute('aria-busy', 'true');
     }
@@ -122,7 +123,7 @@ window.TaxonomyUiSemantics = (function () {
             childList: true,
             subtree: true,
             attributes: true,
-            attributeFilter: ['role']
+            attributeFilter: ['role', 'tabindex']
         });
         observers.push(observer);
     }

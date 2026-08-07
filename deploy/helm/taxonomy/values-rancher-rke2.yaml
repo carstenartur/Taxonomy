@@ -1,0 +1,50 @@
+# Production-oriented overrides for Rancher-managed RKE2 or ingress-nginx.
+# Replace the example host before deployment.
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    # Lower than the chart default (2 CPU) for quota-constrained namespaces.
+    cpu: "500m"
+    memory: 1536Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: "/$2"
+    nginx.ingress.kubernetes.io/x-forwarded-prefix: "/taxonomy"
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+  hosts:
+    - host: taxonomy.example.invalid
+      paths:
+        - path: /taxonomy(/|$)(.*)
+          pathType: ImplementationSpecific
+  tls: []
+
+# RKE2 normally runs ingress-nginx in kube-system. A separately installed
+# controller commonly runs in ingress-nginx. Retain only the selector that
+# matches the target cluster.
+networkPolicy:
+  enabled: true
+  allowSameNamespace: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values: [rke2-ingress-nginx, ingress-nginx]
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+  egress:
+    - {}

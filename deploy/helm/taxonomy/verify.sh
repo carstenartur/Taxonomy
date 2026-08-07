@@ -80,6 +80,31 @@ for forbidden in 'runAsUser:' 'runAsGroup:' 'fsGroup:' 'fsGroupChangePolicy:'; d
   fi
 done
 
+RANCHER_OUTPUT="${TMP_DIR}/rancher.yaml"
+RANCHER_EVIDENCE="${ROOT_DIR}/target/taxonomy-helm-rancher-rke2-rendered.yaml"
+helm template taxonomy "${CHART_DIR}" \
+  --namespace taxonomy \
+  --values "${CHART_DIR}/values-rancher-rke2.yaml" \
+  --set "image.tag=${VALID_TAG}" \
+  --set existingSecret=taxonomy-secrets \
+  >"${RANCHER_OUTPUT}"
+cp "${RANCHER_OUTPUT}" "${RANCHER_EVIDENCE}"
+for required in \
+  'kind: Ingress' \
+  'ingressClassName: nginx' \
+  'nginx.ingress.kubernetes.io/rewrite-target: /$2' \
+  'nginx.ingress.kubernetes.io/x-forwarded-prefix: /taxonomy' \
+  'path: /taxonomy(/|$)(.*)' \
+  'pathType: ImplementationSpecific' \
+  'cpu: 500m' \
+  'kubernetes.io/metadata.name: kube-system' \
+  'kubernetes.io/metadata.name: ingress-nginx'; do
+  if ! grep -Fq "${required}" "${RANCHER_OUTPUT}"; then
+    echo "Rendered Rancher profile is missing required contract: ${required}" >&2
+    exit 1
+  fi
+done
+
 PERSISTENCE_OUTPUT="${TMP_DIR}/persistence.yaml"
 helm template taxonomy "${CHART_DIR}" \
   "${COMMON_VALUES[@]}" \

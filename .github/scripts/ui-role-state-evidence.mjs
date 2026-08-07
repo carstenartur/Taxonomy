@@ -7,6 +7,30 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
   const policy = createEvidencePolicy();
   const states = [];
 
+  async function measureTaxonomyTreeViewport() {
+    return page.evaluate(() => {
+      const tree = document.getElementById('taxonomyTree');
+      const scroller = tree?.closest('.card-body');
+      if (!scroller || scroller.offsetParent === null) return null;
+      const style = window.getComputedStyle(scroller);
+      const viewportHeight = window.innerHeight;
+      const clientHeight = scroller.clientHeight;
+      const scrollHeight = scroller.scrollHeight;
+      const overflowY = style.overflowY;
+      const maxAllowedHeight = Math.ceil(viewportHeight * 0.9);
+      return {
+        clientHeight,
+        scrollHeight,
+        viewportHeight,
+        maxAllowedHeight,
+        computedMaxHeight: style.maxHeight,
+        overflowY,
+        bounded: clientHeight <= maxAllowedHeight,
+        scrollable: scrollHeight <= clientHeight + 1 || ['auto', 'scroll'].includes(overflowY)
+      };
+    });
+  }
+
   async function saveState(state) {
     const prefix = path.join(outputDir, state);
     const dimensions = await page.evaluate(() => ({
@@ -17,6 +41,9 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
       width: Math.min(dimensions.width, 1440),
       height: Math.min(dimensions.height, 1000)
     };
+    const taxonomyTreeViewport = await measureTaxonomyTreeViewport();
+    const documentHeightViewportRatio = Number(
+      (dimensions.height / Math.max(1, viewport.height)).toFixed(4));
     const captured = policy.shouldCapture(state);
     const strategy = screenshotStrategy({
       mode: policy.mode,
@@ -26,6 +53,41 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
     });
     const screenshotFiles = [];
     const segments = [];
+
+    if (taxonomyTreeViewport
+        && (!taxonomyTreeViewport.bounded || !taxonomyTreeViewport.scrollable)) {
+      const stateSummary = {
+        state,
+        evidenceMode: policy.mode,
+        captureStrategy: 'layout-gate',
+        captured: false,
+        dimensions,
+        viewport,
+        taxonomyTreeViewport,
+        documentHeightViewportRatio,
+        screenshotFiles,
+        segments
+      };
+      states.push(stateSummary);
+      await writeFile(
+        `${prefix}.screenshots.json`,
+        `${JSON.stringify(stateSummary, null, 2)}\n`,
+        'utf8'
+      );
+      throw new Error(
+        `Taxonomy tree viewport is unbounded in ${state}: `
+        + `${taxonomyTreeViewport.clientHeight}px for a `
+        + `${taxonomyTreeViewport.viewportHeight}px viewport, `
+        + `max-height=${taxonomyTreeViewport.computedMaxHeight}, `
+        + `overflow-y=${taxonomyTreeViewport.overflowY}`
+      );
+    }
+
+    if (state === 'analysis-success' && documentHeightViewportRatio > 25) {
+      throw new Error(
+        `Analysis page height is pathological: ${dimensions.height}px / ${viewport.height}px `
+        + `= ${documentHeightViewportRatio} viewports`);
+    }
 
     if (strategy === 'viewport') {
       const mainContent = page.locator('#mainContent');
@@ -74,6 +136,8 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
       captured,
       dimensions,
       viewport,
+      taxonomyTreeViewport,
+      documentHeightViewportRatio,
       screenshotFiles,
       segments
     };

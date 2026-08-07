@@ -354,8 +354,15 @@
     #leftPanel {
         order: 2;
     }
-    .card-body[style*="max-height"] {
+    /* Ordinary task cards may grow with reflow, but the 2,500+ node reference
+       tree must remain a bounded, independently scrollable region. Older
+       browsers that do not understand :has() retain the inline 82vh limit. */
+    .card-body[style*="max-height"]:not(:has(> #taxonomyTree)) {
         max-height: none !important;
+    }
+    .card-body:has(> #taxonomyTree) {
+        max-height: min(65vh, 42rem) !important;
+        overscroll-behavior: contain;
     }
     /* Keep every destination directly available without spending several rows
        of the initial viewport on wrapped navigation tabs. */
