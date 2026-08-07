@@ -76,6 +76,25 @@ class VerifyRenderDeploymentTest(unittest.TestCase):
         self.assertEqual("build_in_progress", MODULE.deploy_status(payload))
         self.assertIn("update_failed", MODULE.RENDER_FAILURE_STATES)
 
+    def test_render_status_requires_live_before_application_verification(self) -> None:
+        decision, detail = MODULE.render_status_decision(
+            "dep-xyz789", "build_in_progress"
+        )
+        self.assertEqual("pending", decision)
+        self.assertIn("waiting for live", detail)
+
+        decision, detail = MODULE.render_status_decision("dep-xyz789", None)
+        self.assertEqual("pending", decision)
+        self.assertIn("unknown", detail)
+
+        decision, detail = MODULE.render_status_decision("dep-xyz789", "live")
+        self.assertEqual("live", decision)
+        self.assertIn("is live", detail)
+
+        decision, detail = MODULE.render_status_decision("dep-xyz789", "update_failed")
+        self.assertEqual("failure", decision)
+        self.assertIn("ended with update_failed", detail)
+
     def test_load_deploy_id_is_tolerant_of_queued_or_invalid_response(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "hook.json"
