@@ -55,9 +55,22 @@ def verify_payloads(
     if not isinstance(tests, dict) or not isinstance(coverage, dict):
         raise ValueError("quality summary tests/coverage fields must be objects")
 
-    passed = int(tests.get("passed", -1))
-    if passed < 0:
-        raise ValueError("quality summary contains an invalid passed-test count")
+    try:
+        registered = int(tests["tests"])
+        executed = int(tests["executed"])
+        passed = int(tests["passed"])
+        skipped = int(tests["skipped"])
+        failures = int(tests["failures"])
+        errors = int(tests["errors"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("quality summary has incomplete or invalid test totals") from error
+    if min(registered, executed, passed, skipped, failures, errors) < 0:
+        raise ValueError("quality summary contains negative test totals")
+    if executed != registered - skipped:
+        raise ValueError("quality summary executed-test total is inconsistent")
+    if passed != executed - failures - errors:
+        raise ValueError("quality summary passed-test total is inconsistent")
+
     expected_test_message = f"{passed} passed"
     if test_badge.get("message") != expected_test_message:
         raise ValueError(
