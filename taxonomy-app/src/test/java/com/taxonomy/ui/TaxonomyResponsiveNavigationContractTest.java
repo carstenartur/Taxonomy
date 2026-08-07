@@ -1,0 +1,72 @@
+package com.taxonomy.ui;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/** Locks the discoverable responsive navigation and pre-scroll task budget contract. */
+class TaxonomyResponsiveNavigationContractTest {
+
+    @Test
+    void narrowViewportsUseAnExplicitSectionSelectorAndTaskJump() throws Exception {
+        String utils = resource("/static/js/shared/taxonomy-utils.js");
+        String css = resource("/static/css/taxonomy-ergonomics.css");
+
+        assertThat(utils)
+                .contains("function installResponsiveMainNavigation()")
+                .contains("mobileMainNavigationSelect")
+                .contains("mobileCurrentTaskBtn")
+                .contains("function authorizedMainNavigationLinks()")
+                .contains("window.navigateToPage(page)")
+                .contains("function focusCurrentTask()")
+                .contains("target.scrollIntoView({ block: 'center', inline: 'nearest' })")
+                .contains("new MutationObserver(syncResponsiveMainNavigation)");
+
+        assertThat(css)
+                .contains("/* Discoverable responsive primary navigation. */")
+                .contains("#mainNavTabs {\n        display: none !important;")
+                .contains(".mobile-main-navigation {\n        display: grid;")
+                .contains("min-height: 44px")
+                .contains("grid-template-columns: 1fr");
+    }
+
+    @Test
+    void browserVerificationMeasuresBeforeScrollAndUsesTheResponsiveControl() throws Exception {
+        String fixtures = repositoryFile(".github/scripts/ui-role-fixtures.mjs");
+        String roleFlow = repositoryFile(".github/scripts/ui-role-state-flow.mjs");
+
+        assertThat(fixtures)
+                .contains("const responsive = page.locator('#mobileMainNavigationSelect')")
+                .contains("await responsive.selectOption(pageId)")
+                .doesNotContain("await control.scrollIntoViewIfNeeded();");
+
+        assertThat(roleFlow)
+                .contains("await navigateToPage(page, 'analyze')")
+                .contains("responsiveNavigationInsideViewport")
+                .contains("taskJumpInsideViewport")
+                .contains("taskSurface.progressTop <= taskSurface.viewportHeight")
+                .contains("Neither the primary action nor its explicit task jump is initially visible")
+                .contains("discoverable responsive main navigation and current-task jump")
+                .doesNotContain("single-row scrollable main navigation");
+    }
+
+    private static String resource(String path) throws IOException {
+        try (InputStream input = TaxonomyResponsiveNavigationContractTest.class.getResourceAsStream(path)) {
+            assertThat(input).as("classpath resource %s", path).isNotNull();
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static String repositoryFile(String relative) throws IOException {
+        Path root = Path.of(System.getProperty("maven.multiModuleProjectDirectory", "."));
+        Path file = root.resolve(relative).normalize();
+        assertThat(file).exists();
+        return Files.readString(file, StandardCharsets.UTF_8);
+    }
+}
