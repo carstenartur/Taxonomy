@@ -84,7 +84,7 @@
         <jackson-bom.version>3.1.5</jackson-bom.version>
         <selenium.version>4.46.0</selenium.version>
         <selenium.container.image>selenium/standalone-chrome:4.46.0-20260707</selenium.container.image>
-        <archunit.version>1.4.2</archunit.version>
+        <archunit.version>1.5.0</archunit.version>
         <flexmark.version>0.64.8</flexmark.version>
         <xstream.version>1.4.21</xstream.version>
         <testcontainers.version>2.0.5</testcontainers.version>
