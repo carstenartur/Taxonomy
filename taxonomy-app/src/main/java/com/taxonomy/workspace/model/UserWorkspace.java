@@ -1,6 +1,15 @@
 package com.taxonomy.workspace.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
 
@@ -8,18 +17,15 @@ import java.time.Instant;
  * Persistent workspace metadata for a user.
  *
  * <p>Each user has at least one workspace that provides an isolated context
- * for architecture editing. The workspace tracks which branch the user is on,
- * their base branch, and timestamps for auditing. The actual navigation state
- * (context stack, projection tracking) is held in-memory by the
- * {@code WorkspaceManager}.
- *
- * <p>The shared integration workspace ({@code shared = true}) represents
- * the canonical team-wide repository state and is not owned by any single user.
+ * for architecture editing. Every provisioned workspace records an explicit
+ * source repository and source branch so synchronization never has to infer a
+ * global central repository.</p>
  */
 @Entity
 @Table(name = "user_workspace", indexes = {
     @Index(name = "idx_workspace_username", columnList = "username"),
-    @Index(name = "idx_workspace_shared", columnList = "shared")
+    @Index(name = "idx_workspace_shared", columnList = "shared"),
+    @Index(name = "idx_workspace_source_repository", columnList = "source_repository_id")
 }, uniqueConstraints = {
     @UniqueConstraint(name = "uq_workspace_user_name", columnNames = {"username", "display_name"})
 })
@@ -64,11 +70,24 @@ public class UserWorkspace {
     @Column(name = "source_repository_id")
     private String sourceRepositoryId;
 
+    @Column(name = "source_branch")
+    private String sourceBranch;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "relationship_type")
+    private WorkspaceRelationshipType relationshipType = WorkspaceRelationshipType.WORKING_COPY;
+
     @Column(name = "base_commit")
     private String baseCommit;
 
     @Column(name = "current_commit")
     private String currentCommit;
+
+    @Column(name = "last_fetched_commit")
+    private String lastFetchedCommit;
+
+    @Column(name = "last_integrated_commit")
+    private String lastIntegratedCommit;
 
     @Column(name = "sync_target_branch")
     private String syncTargetBranch;
@@ -187,6 +206,22 @@ public class UserWorkspace {
         this.sourceRepositoryId = sourceRepositoryId;
     }
 
+    public String getSourceBranch() {
+        return sourceBranch;
+    }
+
+    public void setSourceBranch(String sourceBranch) {
+        this.sourceBranch = sourceBranch;
+    }
+
+    public WorkspaceRelationshipType getRelationshipType() {
+        return relationshipType;
+    }
+
+    public void setRelationshipType(WorkspaceRelationshipType relationshipType) {
+        this.relationshipType = relationshipType;
+    }
+
     public String getBaseCommit() {
         return baseCommit;
     }
@@ -201,6 +236,22 @@ public class UserWorkspace {
 
     public void setCurrentCommit(String currentCommit) {
         this.currentCommit = currentCommit;
+    }
+
+    public String getLastFetchedCommit() {
+        return lastFetchedCommit;
+    }
+
+    public void setLastFetchedCommit(String lastFetchedCommit) {
+        this.lastFetchedCommit = lastFetchedCommit;
+    }
+
+    public String getLastIntegratedCommit() {
+        return lastIntegratedCommit;
+    }
+
+    public void setLastIntegratedCommit(String lastIntegratedCommit) {
+        this.lastIntegratedCommit = lastIntegratedCommit;
     }
 
     public String getSyncTargetBranch() {
