@@ -524,9 +524,17 @@ export async function runRoleStateFlow({
     document.querySelectorAll('#taxonomyOverlayLane > [data-qa-overlay-toast]').length === 2);
   await businessText.scrollIntoViewIfNeeded();
   await businessText.focus();
-  await page.evaluate(() => window.TaxonomyOnboarding.refreshOverlayLane());
-  await page.waitForFunction(() =>
-    document.getElementById('taxonomyOverlayLane')?.dataset.position);
+  const overlayRefreshVersion = await page.evaluate(() => {
+    const lane = document.getElementById('taxonomyOverlayLane');
+    const previous = Number.parseInt(lane?.dataset.refreshVersion || '0', 10);
+    window.TaxonomyOnboarding.refreshOverlayLane();
+    return previous;
+  });
+  await page.waitForFunction(previous => {
+    const current = Number.parseInt(
+      document.getElementById('taxonomyOverlayLane')?.dataset.refreshVersion || '0', 10);
+    return current > previous;
+  }, overlayRefreshVersion);
   const overlayGeometry = await page.evaluate(() => {
     const lane = document.getElementById('taxonomyOverlayLane');
     const toasts = [...lane.querySelectorAll('[data-qa-overlay-toast]')];

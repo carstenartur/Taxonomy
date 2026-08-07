@@ -204,6 +204,8 @@
                 }
             }
             lane.dataset.position = selected;
+            lane.dataset.refreshVersion = String(
+                Number.parseInt(lane.dataset.refreshVersion || '0', 10) + 1);
         });
     }
 
@@ -236,7 +238,9 @@
             });
             refreshOverlayLane();
         });
-        overlayLaneObserver.observe(document.body, { childList: true, subtree: true });
+        // Undo toasts are mounted as direct body children. Observe only that boundary;
+        // routeOverlayNode still handles a newly added wrapper containing a toast.
+        overlayLaneObserver.observe(document.body, { childList: true });
         window.addEventListener('resize', refreshOverlayLane);
         document.addEventListener('focusin', refreshOverlayLane);
         document.addEventListener('shown.bs.tab', refreshOverlayLane);

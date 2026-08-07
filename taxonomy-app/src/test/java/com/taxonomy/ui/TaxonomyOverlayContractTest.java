@@ -38,7 +38,9 @@ class TaxonomyOverlayContractTest {
                 .contains("document.elementFromPoint(x, y)")
                 .contains("['bottom-end', 'bottom-start', 'top-end', 'top-start']")
                 .contains("toast.setAttribute('aria-live', 'polite')")
-                .contains("overlayLaneObserver.observe(document.body");
+                .contains("overlayLaneObserver.observe(document.body, { childList: true })")
+                .contains("lane.dataset.refreshVersion = String(")
+                .doesNotContain("overlayLaneObserver.observe(document.body, { childList: true, subtree: true })");
 
         assertThat(css)
                 .contains("dialog.onboarding-overlay::backdrop")
