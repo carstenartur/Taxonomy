@@ -398,6 +398,41 @@ export async function runRoleStateFlow({
     });
   }
   passed('analysis loading, success and contextual next action');
+  const architectureContrast = await page.evaluate(() => {
+    function channel(value) {
+      const normalized = value / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : Math.pow((normalized + 0.055) / 1.055, 2.4);
+    }
+    function luminance(value) {
+      const match = value.match(/rgba?\((\d+)[, ]+(\d+)[, ]+(\d+)/i);
+      if (!match) return null;
+      return 0.2126 * channel(Number(match[1]))
+        + 0.7152 * channel(Number(match[2]))
+        + 0.0722 * channel(Number(match[3]));
+    }
+    function ratio(foreground, background) {
+      const left = luminance(foreground);
+      const right = luminance(background);
+      if (left === null || right === null) return null;
+      return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
+    }
+    const elements = [...document.querySelectorAll('.summary-layer-element, .impact-node')]
+      .filter(element => element.getClientRects().length > 0);
+    const ratios = elements.map(element => {
+      const style = getComputedStyle(element);
+      return ratio(style.color, style.backgroundColor);
+    }).filter(value => value !== null);
+    return {
+      sampleCount: ratios.length,
+      minimumRatio: ratios.length ? Math.min(...ratios) : null
+    };
+  });
+  assert(architectureContrast.sampleCount > 0
+    && architectureContrast.minimumRatio >= 4.5,
+  `Architecture layer contrast failed: ${JSON.stringify(architectureContrast)}`);
+  passed('contrast-safe architecture layer tokens');
   await runAxe('analysis-success');
   await saveState('analysis-success');
 

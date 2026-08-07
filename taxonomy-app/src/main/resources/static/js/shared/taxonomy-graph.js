@@ -112,19 +112,27 @@
 
     // ── Force-Directed Graph ─────────────────────────────────────────────────
 
-    var GRAPH_NODE_COLORS = {
-        'Capabilities': '#4A90D9',
-        'Business Processes': '#27AE60',
-        'Business Roles': '#27AE60',
-        'Services': '#F39C12',
-        'COI Services': '#F39C12',
-        'Core Services': '#F39C12',
-        'Applications': '#8E44AD',
-        'User Applications': '#8E44AD',
-        'Information Products': '#3498DB',
-        'Communications Services': '#E74C3C',
-        'Systems': '#6A5ACD',
-        'Components': '#9B59B6'
+    var GRAPH_NODE_COLOR_TOKENS = {
+        'Capabilities': '--taxonomy-layer-cap-surface',
+        'CP': '--taxonomy-layer-cap-surface',
+        'Business Processes': '--taxonomy-layer-proc-surface',
+        'Business Roles': '--taxonomy-layer-proc-surface',
+        'BP': '--taxonomy-layer-proc-surface',
+        'BR': '--taxonomy-layer-proc-surface',
+        'Services': '--taxonomy-layer-svc-surface',
+        'COI Services': '--taxonomy-layer-svc-surface',
+        'Core Services': '--taxonomy-layer-svc-surface',
+        'CI': '--taxonomy-layer-svc-surface',
+        'CR': '--taxonomy-layer-svc-surface',
+        'Applications': '--taxonomy-layer-app-surface',
+        'User Applications': '--taxonomy-layer-app-surface',
+        'UA': '--taxonomy-layer-app-surface',
+        'Information Products': '--taxonomy-layer-info-surface',
+        'IP': '--taxonomy-layer-info-surface',
+        'Communications Services': '--taxonomy-layer-comm-surface',
+        'CO': '--taxonomy-layer-comm-surface',
+        'Systems': '--taxonomy-layer-system-surface',
+        'Components': '--taxonomy-layer-component-surface'
     };
 
     var APQC_LEVEL_COLORS = {
@@ -135,8 +143,17 @@
         'Task':         '#D6EAF8'
     };
 
+    function cssColorToken(name, fallbackToken) {
+        var root = getComputedStyle(document.documentElement);
+        return root.getPropertyValue(name).trim()
+            || root.getPropertyValue(fallbackToken).trim()
+            || 'rgb(75, 85, 99)';
+    }
+
     function getNodeColor(taxonomySheet) {
-        return GRAPH_NODE_COLORS[taxonomySheet] || '#6c757d';
+        var token = GRAPH_NODE_COLOR_TOKENS[taxonomySheet]
+            || '--taxonomy-layer-default-surface';
+        return cssColorToken(token, '--taxonomy-layer-default-surface');
     }
 
     var GRAPH_MAX_HEIGHT = 400;
