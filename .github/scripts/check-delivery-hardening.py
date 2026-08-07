@@ -68,6 +68,10 @@ def main() -> int:
         "force_orphan: true",
         'query["ref"] = expected',
         "render-deploy-hook.json",
+        "render-hook-failure.json",
+        "if ! curl --fail --silent --show-error --retry 3",
+        "--connect-timeout 15 --max-time 90",
+        "Render deploy hook request failed after bounded retries.",
         "render-verification.json",
         "RENDER_API_KEY",
         "RENDER_SERVICE_ID",
@@ -168,8 +172,9 @@ def main() -> int:
     print(
         "Delivery hardening contract passed: reports are commit-bound, internally consistent, "
         "atomically published and remotely re-verified; Render is pinned to the verified commit, "
-        "records explicit disabled/triggered/verifying/succeeded/failed evidence and can poll platform status; responsive tree height remains "
-        "bounded, the container exposes its build commit, and the Rancher prefix profile is explicit."
+        "records explicit disabled/triggered/verifying/succeeded/failed evidence, archives hook "
+        "transport failures and can poll platform status; responsive tree height remains bounded, "
+        "the container exposes its build commit, and the Rancher prefix profile is explicit."
     )
     return 0
 
