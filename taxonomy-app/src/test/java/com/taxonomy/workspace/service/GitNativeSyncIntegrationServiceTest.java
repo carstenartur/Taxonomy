@@ -235,7 +235,8 @@ class GitNativeSyncIntegrationServiceTest {
     }
 
     @Test
-    void workspaceWithoutSourceRepositoryFailsClosedInsteadOfUsingPrimaryRepository() {
+    void workspaceWithoutSourceRepositoryFailsClosedInsteadOfUsingPrimaryRepository()
+            throws Exception {
         workspace.setSourceRepositoryId(null);
 
         assertThatThrownBy(() -> service.syncFromShared("alice", "feature/alice"))
