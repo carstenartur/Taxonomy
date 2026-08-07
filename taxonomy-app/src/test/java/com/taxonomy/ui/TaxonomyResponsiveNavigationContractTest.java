@@ -40,11 +40,15 @@ class TaxonomyResponsiveNavigationContractTest {
     void browserVerificationMeasuresBeforeScrollAndUsesTheResponsiveControl() throws Exception {
         String fixtures = repositoryFile(".github/scripts/ui-role-fixtures.mjs");
         String roleFlow = repositoryFile(".github/scripts/ui-role-state-flow.mjs");
+        String mainNavigationHelper = between(
+                fixtures,
+                "export async function navigateToPage(page, pageId) {",
+                "export async function navigateArchitectureSubtab(page, subtab) {");
 
-        assertThat(fixtures)
+        assertThat(mainNavigationHelper)
                 .contains("const responsive = page.locator('#mobileMainNavigationSelect')")
                 .contains("await responsive.selectOption(pageId)")
-                .doesNotContain("await control.scrollIntoViewIfNeeded();");
+                .doesNotContain("scrollIntoViewIfNeeded");
 
         assertThat(roleFlow)
                 .contains("await navigateToPage(page, 'analyze')")
@@ -54,6 +58,14 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("Neither the primary action nor its explicit task jump is initially visible")
                 .contains("discoverable responsive main navigation and current-task jump")
                 .doesNotContain("single-row scrollable main navigation");
+    }
+
+    private static String between(String source, String startMarker, String endMarker) {
+        int start = source.indexOf(startMarker);
+        int end = source.indexOf(endMarker, start + startMarker.length());
+        assertThat(start).as("start marker %s", startMarker).isGreaterThanOrEqualTo(0);
+        assertThat(end).as("end marker %s", endMarker).isGreaterThan(start);
+        return source.substring(start, end);
     }
 
     private static String resource(String path) throws IOException {
