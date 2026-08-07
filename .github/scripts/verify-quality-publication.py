@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from typing import Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 JsonFetcher = Callable[[str], object]
@@ -122,9 +122,13 @@ def fetch_text(url: str) -> str:
 
 
 def _remote_url(base_url: str, relative: str, expected_commit: str) -> str:
-    base = base_url.rstrip("/")
-    separator = "&" if "?" in relative else "?"
-    return f"{base}/{relative}{separator}verified={quote(expected_commit)}"
+    target = urljoin(base_url.rstrip("/") + "/", relative)
+    parts = urlsplit(target)
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    query.append(("verified", expected_commit))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
 
 
 def verify_remote_once(
