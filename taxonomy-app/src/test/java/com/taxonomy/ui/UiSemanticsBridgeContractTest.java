@@ -41,7 +41,7 @@ class UiSemanticsBridgeContractTest {
 
         assertThat(source)
                 .contains("var expectedRole = containsTreeItems ? 'tree' : 'region'")
-                .contains("attributeFilter: ['role']")
+                .contains("attributeFilter: ['role', 'tabindex']")
                 .doesNotContain("tree.removeAttribute('role')");
     }
 
