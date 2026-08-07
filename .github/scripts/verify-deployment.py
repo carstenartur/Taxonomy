@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 JsonFetcher = Callable[[str], object]
 StatusFetcher = Callable[[str], int]
 
+RENDER_SUCCESS_STATE = "live"
 RENDER_FAILURE_STATES = {
     "build_failed",
     "update_failed",
@@ -123,6 +124,17 @@ def deploy_status(payload: object) -> str | None:
     return None
 
 
+def render_status_decision(deploy_id: str, status: str | None) -> tuple[str, str]:
+    normalized = (status or "").strip().lower()
+    if normalized in RENDER_FAILURE_STATES:
+        return "failure", f"Render deploy {deploy_id} ended with {normalized}"
+    if normalized != RENDER_SUCCESS_STATE:
+        return "pending", (
+            f"Render deploy {deploy_id} is {normalized or 'unknown'}; waiting for live"
+        )
+    return "live", f"Render deploy {deploy_id} is live"
+
+
 def verify_once(
     service_url: str,
     expected: str,
@@ -199,8 +211,11 @@ def main() -> int:
                 )
                 last_render_status = deploy_status(render_payload)
                 evidence["renderDeployStatus"] = last_render_status
-                if last_render_status in RENDER_FAILURE_STATES:
-                    last_error = f"Render deploy {deploy_id} ended with {last_render_status}"
+                decision, render_detail = render_status_decision(
+                    deploy_id, last_render_status
+                )
+                if decision == "failure":
+                    last_error = render_detail
                     evidence.update(
                         {
                             "attempts": attempt,
@@ -212,6 +227,15 @@ def main() -> int:
                     write_evidence(args.evidence_file, evidence)
                     print(f"::error::{last_error}")
                     return 1
+                if decision != "live":
+                    last_error = render_detail
+                    print(
+                        f"Render verification attempt {attempt}/{attempts} not ready: "
+                        f"{last_error}"
+                    )
+                    if attempt < attempts:
+                        time.sleep(interval)
+                    continue
 
             ok, detail = verify_once(
                 args.base_url,
