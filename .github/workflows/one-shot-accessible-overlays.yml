@@ -1,0 +1,63 @@
+name: One-shot accessible overlays patch
+
+on:
+  push:
+    branches:
+      - qa/issue-622-accessible-overlays
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Apply fail-closed overlay transformation
+        run: python3 .github/scripts/apply-accessible-overlays.py
+
+      - name: Validate sources and focused contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check taxonomy-app/src/main/resources/static/js/shared/taxonomy-onboarding.js
+          node --check .github/scripts/ui-role-state-flow.mjs
+          git diff --check
+          ./mvnw -B -pl taxonomy-app -am \
+            "-Dtest=com.taxonomy.ui.TaxonomyOverlayContractTest" \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+      - name: Commit transformed sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- \
+            taxonomy-app/src/main/resources/static/js/shared/taxonomy-onboarding.js \
+            taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css \
+            .github/scripts/ui-role-state-flow.mjs; then
+            echo "Overlay sources already match the requested contract."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            taxonomy-app/src/main/resources/static/js/shared/taxonomy-onboarding.js \
+            taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css \
+            .github/scripts/ui-role-state-flow.mjs
+          git commit -m "Make onboarding and transient overlays accessible"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
