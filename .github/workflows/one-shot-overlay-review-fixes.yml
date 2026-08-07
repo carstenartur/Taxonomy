@@ -1,0 +1,63 @@
+name: One-shot overlay review fixes
+
+on:
+  push:
+    branches:
+      - qa/issue-622-accessible-overlays
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Apply review fixes
+        run: python3 .github/scripts/apply-overlay-review-fixes.py
+
+      - name: Verify JavaScript and overlay contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check taxonomy-app/src/main/resources/static/js/shared/taxonomy-onboarding.js
+          node --check .github/scripts/ui-role-state-flow.mjs
+          git diff --check
+          ./mvnw -B -pl taxonomy-app -am \
+            "-Dtest=com.taxonomy.ui.TaxonomyOverlayContractTest" \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+      - name: Commit permanent review fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- \
+            taxonomy-app/src/main/resources/static/js/shared/taxonomy-onboarding.js \
+            .github/scripts/ui-role-state-flow.mjs \
+            taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyOverlayContractTest.java; then
+            echo "Overlay sources already match the review contract."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            taxonomy-app/src/main/resources/static/js/shared/taxonomy-onboarding.js \
+            .github/scripts/ui-role-state-flow.mjs \
+            taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyOverlayContractTest.java
+          git commit -m "Bound overlay observation and await completed layout"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
