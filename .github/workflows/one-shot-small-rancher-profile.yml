@@ -1,0 +1,61 @@
+name: One-shot small Rancher profile patch
+
+on:
+  push:
+    branches:
+      - qa/issue-625-rancher-small-prefix
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install verified Helm 3.21.0
+        env:
+          HELM_VERSION: v3.21.0
+        run: bash .github/scripts/install-helm.sh
+
+      - name: Apply small/Rancher profile contract
+        run: python3 .github/scripts/apply-small-rancher-profile.py
+
+      - name: Verify Helm and browser base-path contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/helm/taxonomy/verify.sh
+          python3 -m py_compile .github/scripts/check-delivery-hardening.py
+          bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
+          node .github/scripts/test-taxonomy-base-path.mjs
+          python3 .github/scripts/check-delivery-hardening.py
+          git diff --check
+
+      - name: Commit permanent profile changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- \
+            deploy/helm/taxonomy/verify.sh \
+            deploy/helm/taxonomy/RANCHER.md \
+            .github/scripts/check-delivery-hardening.py; then
+            echo "Small/Rancher sources already match the requested contract."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            deploy/helm/taxonomy/verify.sh \
+            deploy/helm/taxonomy/RANCHER.md \
+            .github/scripts/check-delivery-hardening.py
+          git commit -m "Verify quota-compatible small and Rancher profiles"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
