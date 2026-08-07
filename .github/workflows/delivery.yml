@@ -161,6 +161,8 @@ jobs:
       - name: Trigger and verify Render deployment
         env:
           HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          CONFIGURED_RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
           BASE_URL: ${{ vars.RENDER_BASE_URL || 'https://taxonomy-analyzer.onrender.com' }}
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
@@ -186,11 +188,38 @@ jobs:
           curl --fail --silent --show-error --retry 3 \
             --output target/delivery-evidence/render-deploy-hook.json \
             "$deploy_url"
-          echo "Render deployment triggered for the verified commit; waiting for readiness."
-          python3 .github/scripts/verify-deployment.py \
-            --base-url "$BASE_URL" \
-            --expected-commit "$EXPECTED_SHA" \
+
+          render_service_id="$CONFIGURED_RENDER_SERVICE_ID"
+          if [[ -z "$render_service_id" ]]; then
+            render_service_id=$(python3 - <<'PY'
+          import os
+          import re
+          from urllib.parse import urlsplit
+
+          match = re.search(r"(?:^|/)(srv-[A-Za-z0-9]+)(?:/|$)", urlsplit(os.environ["HOOK_URL"]).path)
+          print(match.group(1) if match else "")
+          PY
+          )
+          fi
+
+          verify_args=(
+            --base-url "$BASE_URL"
+            --expected-commit "$EXPECTED_SHA"
+            --deploy-response-file target/delivery-evidence/render-deploy-hook.json
             --evidence-file target/delivery-evidence/render-verification.json
+          )
+          if [[ -n "$RENDER_API_KEY" && -n "$render_service_id" ]]; then
+            verify_args+=(
+              --render-api-key "$RENDER_API_KEY"
+              --render-service-id "$render_service_id"
+            )
+            echo "Render API deploy-status verification enabled."
+          else
+            echo "Render API credentials/service ID not configured; live readiness and commit verification remain authoritative."
+          fi
+
+          echo "Render deployment triggered for the verified commit; waiting for readiness."
+          python3 .github/scripts/verify-deployment.py "${verify_args[@]}"
 
       - name: Archive Render deployment evidence
         if: always()
