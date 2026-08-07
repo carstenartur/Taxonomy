@@ -70,6 +70,10 @@ class ObservabilityPerformanceIT {
             "taxonomy.observability.performance.hard-startup-absolute-millis", 30_000L);
     private static final long HARD_MEMORY_DELTA_MIB = Long.getLong(
             "taxonomy.observability.performance.hard-memory-delta-mib", 256L);
+    private static final int MEMORY_STEADY_STATE_SAMPLES = Integer.getInteger(
+            "taxonomy.observability.performance.memory-samples", 7);
+    private static final long MEMORY_SAMPLE_INTERVAL_MILLIS = Long.getLong(
+            "taxonomy.observability.performance.memory-sample-interval-millis", 200L);
     private static final Pattern EXPORTED_SPAN = Pattern.compile("Trace ID\\s*:");
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -132,6 +136,9 @@ class ObservabilityPerformanceIT {
         double startupOverhead = overheadPercent(
                 baseline.startupMillis(), alwaysOn.startupMillis());
         long memoryDeltaMiB = Math.round(
+                (alwaysOn.memorySteadyStateBytes() - baseline.memorySteadyStateBytes())
+                        / (1024.0 * 1024.0));
+        long peakMemoryDeltaMiB = Math.round(
                 (alwaysOn.memoryPeakBytes() - baseline.memoryPeakBytes())
                         / (1024.0 * 1024.0));
 
@@ -142,20 +149,23 @@ class ObservabilityPerformanceIT {
                 && alwaysOn.startupMillis() - baseline.startupMillis()
                 > HARD_STARTUP_ABSOLUTE_MILLIS;
         boolean memoryHardLimit = memoryDeltaMiB > HARD_MEMORY_DELTA_MIB;
+        boolean peakMemoryInvestigation = peakMemoryDeltaMiB > HARD_MEMORY_DELTA_MIB;
         BudgetEvaluation budget = new BudgetEvaluation(
                 INVESTIGATION_THRESHOLD_PERCENT,
                 p95Overhead,
                 sampledP95Overhead,
                 startupOverhead,
                 memoryDeltaMiB,
-                p95Overhead > INVESTIGATION_THRESHOLD_PERCENT,
+                peakMemoryDeltaMiB,
+                p95Overhead > INVESTIGATION_THRESHOLD_PERCENT || peakMemoryInvestigation,
+                peakMemoryInvestigation,
                 p95HardLimit,
                 startupHardLimit,
                 memoryHardLimit,
                 p95HardLimit || startupHardLimit || memoryHardLimit);
 
         PerformanceReport report = new PerformanceReport(
-                1,
+                2,
                 Instant.now().toString(),
                 System.getProperty("java.version"),
                 Runtime.getRuntime().availableProcessors(),
@@ -216,7 +226,7 @@ class ObservabilityPerformanceIT {
             String newCollectorLogs = collectorLogs.length() >= collectorOffset
                     ? collectorLogs.substring(collectorOffset)
                     : collectorLogs;
-            long memoryPeakBytes = readMemoryPeakBytes(application);
+            MemoryMeasurement memory = readMemoryMeasurement(application);
             latencyNanos.sort(Comparator.naturalOrder());
 
             long p50Millis = percentileMillis(latencyNanos, 50);
@@ -229,7 +239,10 @@ class ObservabilityPerformanceIT {
                     mode.sampler(),
                     mode.samplerArgument(),
                     startupMillis,
-                    memoryPeakBytes,
+                    memory.steadyStateBytes(),
+                    memory.peakBytes(),
+                    memory.steadyStateSamplesBytes(),
+                    memory.source(),
                     cpuMicros,
                     cpuMicros / (double) MEASURED_REQUESTS,
                     p50Millis,
@@ -346,6 +359,98 @@ class ObservabilityPerformanceIT {
         return parseLong(application.execInContainer("sh", "-c", command), "CPU usage");
     }
 
+    private static MemoryMeasurement readMemoryMeasurement(
+            GenericContainer<?> application) throws Exception {
+        List<Long> samples = new ArrayList<>(MEMORY_STEADY_STATE_SAMPLES);
+        String source = null;
+        for (int index = 0; index < MEMORY_STEADY_STATE_SAMPLES; index++) {
+            MemorySample sample = readSteadyStateMemorySample(application);
+            if (source == null) {
+                source = sample.source();
+            } else {
+                assertThat(sample.source())
+                        .as("steady-state memory source must remain stable")
+                        .isEqualTo(source);
+            }
+            samples.add(sample.bytes());
+            if (index + 1 < MEMORY_STEADY_STATE_SAMPLES) {
+                Thread.sleep(MEMORY_SAMPLE_INTERVAL_MILLIS);
+            }
+        }
+        return new MemoryMeasurement(
+                source,
+                medianBytes(samples),
+                readMemoryPeakBytes(application),
+                List.copyOf(samples));
+    }
+
+    private static MemorySample readSteadyStateMemorySample(
+            GenericContainer<?> application) throws Exception {
+        String command = """
+                if [ -r /sys/fs/cgroup/memory.stat ]; then
+                  value=$(awk '$1 == "anon" { print $2; exit }' /sys/fs/cgroup/memory.stat)
+                  if [ -n "$value" ]; then
+                    printf 'cgroup-v2-anon %s\n' "$value"
+                    exit 0
+                  fi
+                fi
+                if [ -r /sys/fs/cgroup/memory/memory.stat ]; then
+                  value=$(awk '$1 == "total_rss" { print $2; exit }' /sys/fs/cgroup/memory/memory.stat)
+                  if [ -z "$value" ]; then
+                    value=$(awk '$1 == "rss" { print $2; exit }' /sys/fs/cgroup/memory/memory.stat)
+                  fi
+                  if [ -n "$value" ]; then
+                    printf 'cgroup-v1-rss %s\n' "$value"
+                    exit 0
+                  fi
+                fi
+                if [ -r /proc/1/status ]; then
+                  value=$(awk '$1 == "VmRSS:" { print $2 * 1024; exit }' /proc/1/status)
+                  if [ -n "$value" ]; then
+                    printf 'proc-vmrss %s\n' "$value"
+                    exit 0
+                  fi
+                fi
+                if [ -r /sys/fs/cgroup/memory.current ]; then
+                  printf 'cgroup-v2-current %s\n' "$(cat /sys/fs/cgroup/memory.current)"
+                  exit 0
+                fi
+                echo 'unavailable 0'
+                """;
+        Container.ExecResult result = application.execInContainer("sh", "-c", command);
+        assertThat(result.getExitCode())
+                .withFailMessage("Failed to read steady-state memory: %s", result.getStderr())
+                .isZero();
+        MemorySample sample = parseMemorySample(result.getStdout());
+        assertThat(sample.source()).as("steady-state memory source").isNotEqualTo("unavailable");
+        assertThat(sample.bytes()).as("steady-state memory bytes").isPositive();
+        return sample;
+    }
+
+    static MemorySample parseMemorySample(String output) {
+        String[] parts = output.trim().split("\\s+");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Invalid memory sample: " + output);
+        }
+        try {
+            return new MemorySample(parts[0], Long.parseLong(parts[1]));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("Invalid memory sample: " + output, exception);
+        }
+    }
+
+    static long medianBytes(List<Long> values) {
+        if (values.isEmpty()) {
+            throw new IllegalArgumentException("At least one memory sample is required");
+        }
+        List<Long> sorted = values.stream().sorted().toList();
+        int middle = sorted.size() / 2;
+        if (sorted.size() % 2 == 1) {
+            return sorted.get(middle);
+        }
+        return Math.round((sorted.get(middle - 1) + sorted.get(middle)) / 2.0);
+    }
+
     private static long readMemoryPeakBytes(GenericContainer<?> application) throws Exception {
         String command = """
                 if [ -r /sys/fs/cgroup/memory.peak ]; then
@@ -412,15 +517,27 @@ class ObservabilityPerformanceIT {
                 .append("Workload: ").append(report.measuredRequests())
                 .append(" requests to `").append(report.endpoint()).append("` after ")
                 .append(report.warmupRequests()).append(" warm-up requests.\n\n")
-                .append("| Mode | Startup ms | Memory peak MiB | CPU µs/request | p50 ms | p95 ms | Spans/request |\n")
-                .append("|---|---:|---:|---:|---:|---:|---:|\n");
+                .append("| Mode | Startup ms | Steady-state median MiB | Lifetime peak MiB | Memory source | CPU µs/request | p50 ms | p95 ms | Spans/request |\n")
+                .append("|---|---:|---:|---:|---|---:|---:|---:|---:|\n");
         for (ModeResult mode : report.modes()) {
             markdown.append(String.format(Locale.ROOT,
-                    "| %s | %d | %.1f | %.1f | %d | %d | %.2f |%n",
+                    "| %s | %d | %.1f | %.1f | `%s` | %.1f | %d | %d | %.2f |%n",
                     mode.name(), mode.startupMillis(),
+                    mode.memorySteadyStateBytes() / (1024.0 * 1024.0),
                     mode.memoryPeakBytes() / (1024.0 * 1024.0),
+                    mode.memoryMeasurementSource(),
                     mode.cpuMicrosPerRequest(), mode.p50Millis(), mode.p95Millis(),
                     mode.spansPerRequest()));
+        }
+        markdown.append("\n### Raw steady-state memory samples\n\n");
+        for (ModeResult mode : report.modes()) {
+            markdown.append("- `").append(mode.name()).append("` (`")
+                    .append(mode.memoryMeasurementSource()).append("`): ")
+                    .append(mode.memorySteadyStateSamplesBytes().stream()
+                            .map(value -> String.format(Locale.ROOT, "%.1f MiB",
+                                    value / (1024.0 * 1024.0)))
+                            .toList())
+                    .append("\n");
         }
         BudgetEvaluation budget = report.budget();
         markdown.append("\n## Budget evaluation\n\n")
@@ -430,8 +547,12 @@ class ObservabilityPerformanceIT {
                         "- Sampled p95 overhead: **%.1f%%**.%n", budget.sampledP95OverheadPercent()))
                 .append(String.format(Locale.ROOT,
                         "- Always-on startup overhead: **%.1f%%**.%n", budget.startupOverheadPercent()))
-                .append("- Always-on memory delta: **").append(budget.memoryDeltaMiB())
-                .append(" MiB**.\n")
+                .append("- Always-on steady-state median memory delta (hard gate): **")
+                .append(budget.memoryDeltaMiB()).append(" MiB**.\n")
+                .append("- Always-on lifetime peak memory delta (diagnostic): **")
+                .append(budget.peakMemoryDeltaMiB()).append(" MiB**.\n")
+                .append("- Lifetime peak requires investigation: **")
+                .append(budget.peakMemoryInvestigationRequired()).append("**.\n")
                 .append("- More than ").append(budget.investigationThresholdPercent())
                 .append("% p95 overhead requires investigation: **")
                 .append(budget.investigationRequired()).append("**.\n")
@@ -461,13 +582,26 @@ class ObservabilityPerformanceIT {
             String samplerArgument) {
     }
 
+    record MemorySample(String source, long bytes) {
+    }
+
+    private record MemoryMeasurement(
+            String source,
+            long steadyStateBytes,
+            long peakBytes,
+            List<Long> steadyStateSamplesBytes) {
+    }
+
     private record ModeResult(
             String name,
             boolean agentAttached,
             String sampler,
             String samplerArgument,
             long startupMillis,
+            long memorySteadyStateBytes,
             long memoryPeakBytes,
+            List<Long> memorySteadyStateSamplesBytes,
+            String memoryMeasurementSource,
             long cpuMicros,
             double cpuMicrosPerRequest,
             long p50Millis,
@@ -482,7 +616,9 @@ class ObservabilityPerformanceIT {
             double sampledP95OverheadPercent,
             double startupOverheadPercent,
             long memoryDeltaMiB,
+            long peakMemoryDeltaMiB,
             boolean investigationRequired,
+            boolean peakMemoryInvestigationRequired,
             boolean p95HardLimitExceeded,
             boolean startupHardLimitExceeded,
             boolean memoryHardLimitExceeded,
