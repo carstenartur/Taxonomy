@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).with_name("verify-deployment.py").resolve()
 SPEC = importlib.util.spec_from_file_location("verify_deployment", SCRIPT)
@@ -55,20 +56,33 @@ class VerifyRenderDeploymentTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("expected commit", detail)
 
-    def test_verify_once_rejects_failed_smoke(self) -> None:
+    def test_verify_once_rejects_4xx_and_5xx_smoke_responses(self) -> None:
         def fetcher(url: str):
             if url.endswith("/readiness"):
                 return {"status": "UP"}
             return {"git": {"commit": {"id": "0123456789abcdef"}}}
 
-        ok, detail = MODULE.verify_once(
-            "https://example.invalid",
-            "0123456789abcdef",
-            fetcher,
-            lambda _url: 503,
+        for status in (401, 404, 503):
+            with self.subTest(status=status):
+                ok, detail = MODULE.verify_once(
+                    "https://example.invalid",
+                    "0123456789abcdef",
+                    fetcher,
+                    lambda _url, value=status: value,
+                )
+                self.assertFalse(ok)
+                self.assertIn(f"HTTP {status}", detail)
+
+    def test_fetch_status_preserves_http_error_status_code(self) -> None:
+        error = MODULE.HTTPError(
+            "https://example.invalid/",
+            404,
+            "Not Found",
+            hdrs=None,
+            fp=None,
         )
-        self.assertFalse(ok)
-        self.assertIn("HTTP 503", detail)
+        with patch.object(MODULE, "urlopen", side_effect=error):
+            self.assertEqual(404, MODULE.fetch_status("https://example.invalid/"))
 
     def test_extracts_render_deploy_id_and_status(self) -> None:
         payload = {"deploy": {"id": "dep-xyz789", "status": "build_in_progress"}}
