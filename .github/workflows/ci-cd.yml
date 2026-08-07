@@ -191,8 +191,8 @@ jobs:
 
           source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
           build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
-          java_version=$(java -version 2>&1 | head -n 1)
-          maven_version=$(./mvnw -version 2>&1 | head -n 1)
+          java_version=$(java -version 2>&1 | sed -n '1p')
+          maven_version=$(./mvnw -version 2>&1 | sed -n '1p')
           python3 .github/scripts/generate-quality-site.py \
             --root target/quality-reports \
             --commit "$GITHUB_SHA" \
