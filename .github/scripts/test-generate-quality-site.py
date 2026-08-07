@@ -45,6 +45,8 @@ class GenerateQualitySummaryTest(unittest.TestCase):
                 tools={"java": "21", "maven": "3.9.11"},
             )
 
+            self.assertEqual(5, summary["tests"]["tests"])
+            self.assertEqual(4, summary["tests"]["executed"])
             self.assertEqual(4, summary["tests"]["passed"])
             self.assertEqual(80.0, summary["coverage"]["instructionPercent"])
             self.assertEqual("tree456", summary["sourceTree"])
@@ -58,6 +60,7 @@ class GenerateQualitySummaryTest(unittest.TestCase):
             self.assertEqual("abc123", persisted["commit"])
             self.assertEqual("tree456", persisted["sourceTree"])
             report_html = (root / "tests" / "surefire-report.html").read_text()
+            self.assertIn("Executed", report_html)
             self.assertIn("Method coverage", report_html)
             self.assertIn("Class coverage", report_html)
             self.assertIn("run-7.1", report_html)
@@ -84,7 +87,9 @@ class GenerateQualitySummaryTest(unittest.TestCase):
                 '<report><counter type="INSTRUCTION" missed="0" covered="1"/></report>',
                 encoding="utf-8",
             )
-            MODULE.write_outputs(root, "deadbeef", "now")
+            summary = MODULE.write_outputs(root, "deadbeef", "now")
+            self.assertEqual(2, summary["tests"]["executed"])
+            self.assertEqual(1, summary["tests"]["passed"])
             badge = json.loads((reports / "badge.json").read_text())
             self.assertEqual("red", badge["color"])
 
