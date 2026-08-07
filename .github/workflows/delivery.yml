@@ -30,6 +30,12 @@ jobs:
       group: taxonomy-quality-report-publication
       cancel-in-progress: false
     steps:
+      - name: Checkout verified quality tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
       - name: Download verified report artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -38,38 +44,15 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify report provenance and completeness
+      - name: Verify report provenance and badge consistency
         env:
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          root = Path("quality-reports")
-          summary_path = root / "quality-summary.json"
-          if not summary_path.is_file():
-              raise SystemExit("quality-summary.json is missing from the verified artifact")
-          summary = json.loads(summary_path.read_text(encoding="utf-8"))
-          expected = os.environ["EXPECTED_SHA"]
-          if summary.get("commit") != expected:
-              raise SystemExit(
-                  f"quality report commit {summary.get('commit')!r} does not match {expected}"
-              )
-          for relative in (
-              "tests/badge.json",
-              "tests/surefire-report.html",
-              "coverage/badge.json",
-              "coverage/index.html",
-              ".nojekyll",
-          ):
-              if not root.joinpath(relative).is_file():
-                  raise SystemExit(f"verified quality artifact is missing {relative}")
-          print(f"Quality report provenance verified for {expected}")
-          PY
+          python3 .github/scripts/verify-quality-publication.py \
+            --root quality-reports \
+            --expected-commit "$EXPECTED_SHA"
 
       - name: Publish reports to GitHub Pages atomically
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
@@ -81,6 +64,25 @@ jobs:
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
           commit_message: 'Publish verified quality reports ${{ github.event.workflow_run.head_sha }}'
+
+      - name: Verify published GitHub Pages evidence
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONFIGURED_BASE_URL: ${{ vars.QUALITY_REPORT_BASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$CONFIGURED_BASE_URL" ]]; then
+            base_url="$CONFIGURED_BASE_URL"
+          else
+            repo_name="${GITHUB_REPOSITORY#*/}"
+            base_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${repo_name}"
+          fi
+          python3 .github/scripts/verify-quality-publication.py \
+            --base-url "$base_url" \
+            --expected-commit "$EXPECTED_SHA" \
+            --attempts 60 \
+            --interval-seconds 10
 
   publish-image:
     name: Publish Docker Image
@@ -168,8 +170,33 @@ jobs:
             echo "RENDER_DEPLOY_HOOK_URL is not configured; Render deployment is disabled."
             exit 0
           fi
-          curl -fsSL --retry 3 "$HOOK_URL"
-          echo "Render deployment triggered; waiting for the verified commit."
+          mkdir -p target/delivery-evidence
+          deploy_url=$(python3 - <<'PY'
+          import os
+          from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+          url = os.environ["HOOK_URL"]
+          expected = os.environ["EXPECTED_SHA"]
+          parts = urlsplit(url)
+          query = dict(parse_qsl(parts.query, keep_blank_values=True))
+          query["ref"] = expected
+          print(urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)))
+          PY
+          )
+          curl --fail --silent --show-error --retry 3 \
+            --output target/delivery-evidence/render-deploy-hook.json \
+            "$deploy_url"
+          echo "Render deployment triggered for the verified commit; waiting for readiness."
           python3 .github/scripts/verify-deployment.py \
             --base-url "$BASE_URL" \
-            --expected-commit "$EXPECTED_SHA"
+            --expected-commit "$EXPECTED_SHA" \
+            --evidence-file target/delivery-evidence/render-verification.json
+
+      - name: Archive Render deployment evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: render-deployment-evidence-${{ github.event.workflow_run.head_sha }}
+          path: target/delivery-evidence/**
+          if-no-files-found: warn
+          retention-days: 90
