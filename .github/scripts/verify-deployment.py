@@ -53,8 +53,11 @@ def fetch_status(url: str) -> int:
             "User-Agent": "taxonomy-delivery-check",
         },
     )
-    with urlopen(request, timeout=15) as response:
-        return int(response.status)
+    try:
+        with urlopen(request, timeout=15) as response:
+            return int(response.status)
+    except HTTPError as error:
+        return int(error.code)
 
 
 def fetch_render_deploy(service_id: str, deploy_id: str, api_key: str) -> object:
@@ -150,7 +153,7 @@ def verify_once(
         return False, f"actuator info does not identify expected commit {expected}"
     if smoke_fetcher is not None:
         status = smoke_fetcher(f"{base}/")
-        if status < 200 or status >= 500:
+        if status < 200 or status >= 400:
             return False, f"root smoke test returned HTTP {status}"
     return True, "readiness is UP, expected commit is live, and root smoke test passed"
 
