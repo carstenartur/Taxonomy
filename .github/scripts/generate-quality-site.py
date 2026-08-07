@@ -34,13 +34,12 @@ def collect_tests(root: Path) -> dict[str, int]:
         if not suites:
             raise ValueError(f"no testsuite element in {report}")
         for suite in suites:
-            for key in totals:
+            for key in ("tests", "failures", "errors", "skipped"):
                 totals[key] += _integer(suite, key)
 
-    totals["passed"] = (
-        totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"]
-    )
-    if totals["passed"] < 0:
+    totals["executed"] = totals["tests"] - totals["skipped"]
+    totals["passed"] = totals["executed"] - totals["failures"] - totals["errors"]
+    if totals["executed"] < 0 or totals["passed"] < 0:
         raise ValueError(f"inconsistent test totals: {totals}")
     if totals["tests"] <= 0:
         raise ValueError("JUnit reports contained zero tests")
@@ -177,6 +176,7 @@ code {{ overflow-wrap: anywhere; }}
 <thead><tr><th>Metric</th><th>Value</th></tr></thead>
 <tbody>
 <tr><td>Registered tests</td><td>{tests['tests']}</td></tr>
+<tr><td>Executed</td><td>{tests['executed']}</td></tr>
 <tr><td>Passed</td><td>{tests['passed']}</td></tr>
 <tr><td>Skipped</td><td>{tests['skipped']}</td></tr>
 <tr><td>Failures</td><td>{tests['failures']}</td></tr>
