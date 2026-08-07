@@ -64,9 +64,22 @@ class TaxonomyResponsiveNavigationContractTest {
     }
 
     private static String repositoryFile(String relative) throws IOException {
-        Path root = Path.of(System.getProperty("maven.multiModuleProjectDirectory", "."));
+        Path root = findRepositoryRoot();
         Path file = root.resolve(relative).normalize();
         assertThat(file).exists();
         return Files.readString(file, StandardCharsets.UTF_8);
+    }
+
+    private static Path findRepositoryRoot() {
+        Path current = Path.of("").toAbsolutePath().normalize();
+        while (current != null) {
+            if (Files.isDirectory(current.resolve(".github"))
+                    && Files.isRegularFile(current.resolve("pom.xml"))) {
+                return current;
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException("Could not locate repository root from "
+                + Path.of("").toAbsolutePath());
     }
 }
