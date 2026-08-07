@@ -29,7 +29,15 @@ jobs:
           cache: maven
 
       - name: Apply fail-closed overlay transformation
-        run: python3 .github/scripts/apply-accessible-overlays.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/apply-accessible-overlays.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css')
+          path.write_text(path.read_text(encoding='utf-8').rstrip() + '\n', encoding='utf-8')
+          PY
 
       - name: Validate sources and focused contract
         shell: bash
