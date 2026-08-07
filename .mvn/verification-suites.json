@@ -30,6 +30,7 @@
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
     "codeql.yml": "external source analysis",
     "security-scan.yml": "external Trivy analysis",
+    "dependency-submission.yml": "Maven dependency graph publication",
     "documentation-screenshots.yml": "Maven-owned screenshot evidence publication",
     "delivery.yml": "report, container and deployment delivery",
     "deploy-release.yml": "release state machine",

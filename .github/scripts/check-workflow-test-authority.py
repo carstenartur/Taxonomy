@@ -16,6 +16,7 @@ ALLOWED = {
     "database-compatibility.yml",
     "codeql.yml",
     "security-scan.yml",
+    "dependency-submission.yml",
     "documentation-screenshots.yml",
     "delivery.yml",
     "deploy-release.yml",
