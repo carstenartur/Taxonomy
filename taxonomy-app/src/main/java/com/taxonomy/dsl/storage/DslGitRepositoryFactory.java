@@ -68,9 +68,7 @@ public class DslGitRepositoryFactory implements AutoCloseable {
         return cache.computeIfAbsent(storageNameFor(repositoryId), this::createRepository);
     }
 
-    /**
-     * Initialize/open a central repository under an already-reserved catalog storage name.
-     */
+    /** Initialize/open a central repository under an already-reserved catalog storage name. */
     public DslGitRepository createCentralRepository(String repositoryId, String storageName) {
         requireText(repositoryId, "repositoryId");
         requireText(storageName, "storageName");
@@ -101,8 +99,16 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     }
 
     /**
-     * Create/open an isolated workspace and seed it from the selected central source.
+     * Open an existing workspace repository without inferring or seeding any source.
+     * Explicit repository contexts use this path so a missing workspace can never
+     * be accidentally initialized from the primary repository.
      */
+    public DslGitRepository openWorkspaceRepository(String workspaceId) {
+        return cache.computeIfAbsent(
+                workspaceRepositoryName(workspaceId), this::createRepository);
+    }
+
+    /** Create/open an isolated workspace and seed it from the selected central source. */
     public DslGitRepository createWorkspaceRepository(
             String workspaceId,
             String sourceRepositoryId,
@@ -124,7 +130,7 @@ public class DslGitRepositoryFactory implements AutoCloseable {
             throw new IllegalArgumentException("RepositoryContext must not be null");
         }
         if (context.workspaceId() != null) {
-            return getWorkspaceRepository(context.workspaceId());
+            return openWorkspaceRepository(context.workspaceId());
         }
         return getCentralRepository(context.repositoryId());
     }
