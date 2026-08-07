@@ -58,6 +58,7 @@ jobs:
           python3 .github/scripts/test-resolve-release-parameters.py
           python3 .github/scripts/test-check-release-plan.py
           python3 .github/scripts/test-generate-quality-site.py
+          python3 .github/scripts/test-verify-quality-publication.py
           python3 .github/scripts/test-verify-deployment.py
           node .github/scripts/test-taxonomy-base-path.mjs
           bash -n .github/scripts/release.sh
@@ -187,10 +188,25 @@ jobs:
             cp -a target/observability-performance/. \
               target/quality-reports/evidence/observability-performance/
           fi
+
+          source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          java_version=$(java -version 2>&1 | head -n 1)
+          maven_version=$(./mvnw -version 2>&1 | head -n 1)
           python3 .github/scripts/generate-quality-site.py \
             --root target/quality-reports \
-            --commit "$GITHUB_SHA"
-          printf 'Verified commit: %s\n' "$GITHUB_SHA" > target/quality-reports/README.txt
+            --commit "$GITHUB_SHA" \
+            --source-tree "$source_tree" \
+            --build-id "$build_id" \
+            --tool "java=$java_version" \
+            --tool "maven=$maven_version" \
+            --tool "codeql-action=v4.37.6" \
+            --tool "trivy-action=v0.36.0"
+          python3 .github/scripts/verify-quality-publication.py \
+            --root target/quality-reports \
+            --expected-commit "$GITHUB_SHA"
+          printf 'Verified commit: %s\nSource tree: %s\nBuild ID: %s\n' \
+            "$GITHUB_SHA" "$source_tree" "$build_id" > target/quality-reports/README.txt
 
       - name: Upload verified reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
