@@ -30,15 +30,23 @@ text = text.replace(
                 () -> ''',
     '''catchThrowableOfType(
                 () -> ''')
-text = text.replace(
-    '''controller.importReviewed(41L, request));''',
-    '''controller.importReviewed(41L, request), PortfolioException.class);''')
-text = text.replace(
-    '''controller.importReviewed(41L, tooMany));''',
-    '''controller.importReviewed(41L, tooMany), PortfolioException.class);''')
-text = text.replace(
-    '''controller.importReviewed(41L, tooLong));''',
-    '''controller.importReviewed(41L, tooLong), PortfolioException.class);''')
+for old, new in (
+    (
+        '''controller.importReviewed(41L, request));''',
+        '''controller.importReviewed(41L, request), PortfolioException.class);''',
+    ),
+    (
+        '''itemLimited.importReviewed(41L, tooMany));''',
+        '''itemLimited.importReviewed(41L, tooMany), PortfolioException.class);''',
+    ),
+    (
+        '''characterLimited.importReviewed(41L, tooLong));''',
+        '''characterLimited.importReviewed(41L, tooLong), PortfolioException.class);''',
+    ),
+):
+    if old not in text:
+        raise SystemExit(f"Expected assertion call not found: {old.strip()}")
+    text = text.replace(old, new, 1)
 
 for signature in (
     "    void nullItemsTextAndSourceAreCountedSafely() {\n",
