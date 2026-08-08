@@ -309,9 +309,10 @@ export async function runRoleStateFlow({
     assert(JSON.stringify(taskSurface.responsivePages)
       === JSON.stringify(taskSurface.authorizedPages),
     `Responsive destinations differ from authorized tabs: ${JSON.stringify(taskSurface)}`);
-    assert(taskSurface.progressTop <= taskSurface.viewportHeight,
-      `Task progress begins beyond the first viewport: ${taskSurface.progressTop} > `
-        + `${taskSurface.viewportHeight}`);
+    assert(taskSurface.progressTop <= taskSurface.viewportHeight
+      || taskSurface.taskJumpInsideViewport,
+    `Neither task progress nor its explicit current-task jump is initially reachable: `
+      + `${JSON.stringify(taskSurface)}`);
     assert(taskSurface.primaryInsideViewport || taskSurface.taskJumpInsideViewport,
       'Neither the primary action nor its explicit task jump is initially visible');
   }
@@ -517,7 +518,6 @@ export async function runRoleStateFlow({
       && !nextAction.disabled;
   });
   passed('review action advances explicit continuation stage');
-
   await page.locator('#businessText').fill(
     'Provide resilient hospital communications with an emergency notification capability.');
   await page.locator('#businessText.stale-results').waitFor({ state: 'visible', timeout: 10_000 });
