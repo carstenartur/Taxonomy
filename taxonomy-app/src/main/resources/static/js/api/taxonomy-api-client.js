@@ -1,21 +1,20 @@
-/* taxonomy-api-client.js – Base HTTP client for the Taxonomy UI.
+/* taxonomy-api-client.js – Canonical HTTP transport for the Taxonomy UI.
  *
- * Provides named helpers for JSON GET/POST/PUT/DELETE and FormData uploads.
- * All helpers read CSRF metadata from <meta name="_csrf"> and
- * <meta name="_csrf_header"> when present and inject the header automatically.
- *
- * The global interceptor keeps legacy direct fetch() calls CSRF-safe while they
- * are incrementally migrated to named api/*.js functions.
- *
- * Convention: new UI code must call named functions from an api/*.js module
- * instead of constructing fetch('/api/…') calls directly. See
- * docs/dev/03-ui-task-map.md for details.
+ * Named api/*.js feature clients use this transport for JSON and FormData.
+ * Streaming and large-download adapters remain deliberately separate.
+ * The legacy global interceptor keeps direct fetch() debt CSRF-safe until those
+ * callers are migrated, while named helpers use request() directly.
  */
 window.TaxonomyApiClient = (function () {
     'use strict';
 
-    var nativeFetch = window.fetch.bind(window);
+    // taxonomy-i18n.js installs the external base-path wrapper before this file.
+    // Capture that wrapper once, then apply the remaining transport policy here.
+    var transportFetch = window.fetch.bind(window);
     var accountContextPromise = null;
+    var responseContexts = new WeakMap();
+    var DEFAULT_TIMEOUT_MILLIS = 30000;
+    var REQUEST_ID_HEADER = 'X-Request-ID';
 
     function csrfMetadata() {
         var token = document.querySelector('meta[name="_csrf"]');
@@ -56,49 +55,244 @@ window.TaxonomyApiClient = (function () {
         }
     }
 
-    function ApiError(message, status, url, responseBody) {
+    function createRequestId() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        return 'taxonomy-' + Date.now().toString(36) + '-' +
+            Math.random().toString(36).slice(2);
+    }
+
+    function responseRequestId(response, fallback) {
+        if (!response || !response.headers) return fallback;
+        return response.headers.get(REQUEST_ID_HEADER)
+            || response.headers.get('X-Correlation-ID')
+            || fallback;
+    }
+
+    function ApiError(message, status, url, responseBody, metadata) {
+        var details = metadata || {};
         this.name = 'ApiError';
         this.message = message;
-        this.status = status;
-        this.url = url;
+        this.status = status || 0;
+        this.url = url || '';
         this.responseBody = responseBody;
+        this.type = details.type || null;
+        this.title = details.title || null;
+        this.detail = details.detail || null;
+        this.instance = details.instance || null;
+        this.requestId = details.requestId || null;
+        this.code = details.code || 'HTTP_ERROR';
+        this.retryable = Boolean(details.retryable);
+        this.cause = details.cause || null;
         if (Error.captureStackTrace) Error.captureStackTrace(this, ApiError);
     }
     ApiError.prototype = Object.create(Error.prototype);
     ApiError.prototype.constructor = ApiError;
 
-    function checkStatus(response) {
-        if (response.ok) return response;
-        return response.clone().json()
-            .catch(function () {
-                return response.clone().text().catch(function () { return ''; });
-            })
-            .then(function (body) {
-                var serverMessage = body && typeof body === 'object'
-                    ? (body.detail || body.message || body.error) : body;
-                var message = serverMessage
-                    ? 'HTTP ' + response.status + ': ' + serverMessage
-                    : 'HTTP ' + response.status;
-                throw new ApiError(message, response.status, response.url, body);
-            });
+    function parseResponseBody(response) {
+        return response.clone().text().then(function (text) {
+            if (!text) return null;
+            try {
+                return JSON.parse(text);
+            } catch (ignored) {
+                return text;
+            }
+        }).catch(function () { return null; });
+    }
+
+    function dispatchAuthFailure(error) {
+        if (error.status !== 401 && error.status !== 403) return;
+        document.dispatchEvent(new CustomEvent('taxonomy-api-auth-failure', {
+            detail: {
+                status: error.status,
+                url: error.url,
+                requestId: error.requestId,
+                code: error.code
+            }
+        }));
+    }
+
+    function checkStatus(response, context) {
+        if (response.ok) {
+            responseContexts.set(response, context);
+            return Promise.resolve(response);
+        }
+        return parseResponseBody(response).then(function (body) {
+            var problem = body && typeof body === 'object' ? body : {};
+            var detail = problem.detail || problem.message || problem.error
+                || (typeof body === 'string' ? body : null);
+            var title = problem.title || null;
+            var message = detail || title
+                ? 'HTTP ' + response.status + ': ' + (detail || title)
+                : 'HTTP ' + response.status;
+            var error = new ApiError(message, response.status,
+                response.url || context.url, body, {
+                    type: problem.type,
+                    title: title,
+                    detail: detail,
+                    instance: problem.instance,
+                    requestId: responseRequestId(response, context.requestId),
+                    code: 'HTTP_ERROR',
+                    retryable: [429, 502, 503, 504].indexOf(response.status) >= 0
+                });
+            dispatchAuthFailure(error);
+            throw error;
+        });
     }
 
     function parseJson(response) {
         if (response.status === 204) return null;
-        return response.json().catch(function () {
-            throw new ApiError('Invalid JSON response from server', response.status, response.url, null);
+        var context = responseContexts.get(response) || {};
+        return response.json().catch(function (error) {
+            throw new ApiError('Invalid JSON response from server', response.status,
+                response.url || context.url, null, {
+                    requestId: responseRequestId(response, context.requestId || null),
+                    code: 'INVALID_JSON',
+                    cause: error
+                });
         });
+    }
+
+    function validateOptions(options) {
+        var retries = options.retries === undefined ? 0 : Number(options.retries);
+        if (!Number.isInteger(retries) || retries < 0) {
+            throw new TypeError('API retry count must be a non-negative integer');
+        }
+        if (retries > 0 && options.idempotent !== true) {
+            throw new TypeError('Automatic API retry requires idempotent: true');
+        }
+        var timeoutMillis = options.timeoutMillis === undefined
+            ? DEFAULT_TIMEOUT_MILLIS : Number(options.timeoutMillis);
+        if (!Number.isFinite(timeoutMillis) || timeoutMillis < 0) {
+            throw new TypeError('API timeoutMillis must be a non-negative number');
+        }
+        return { retries: retries, timeoutMillis: timeoutMillis };
+    }
+
+    function createRequestScope(options, validated) {
+        var controller = new AbortController();
+        var timedOut = false;
+        var callerAborted = false;
+        var timer = null;
+        var callerSignal = options.signal || null;
+        var onCallerAbort = function () {
+            callerAborted = true;
+            controller.abort(callerSignal.reason);
+        };
+
+        if (callerSignal) {
+            if (callerSignal.aborted) onCallerAbort();
+            else callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+        }
+        if (validated.timeoutMillis > 0) {
+            timer = setTimeout(function () {
+                timedOut = true;
+                controller.abort();
+            }, validated.timeoutMillis);
+        }
+        return {
+            signal: controller.signal,
+            timedOut: function () { return timedOut; },
+            callerAborted: function () { return callerAborted; },
+            cleanup: function () {
+                if (timer !== null) clearTimeout(timer);
+                if (callerSignal) callerSignal.removeEventListener('abort', onCallerAbort);
+            }
+        };
+    }
+
+    function prepareRequest(input, init, options, requestId, signal) {
+        var prepared = Object.assign({}, init || {});
+        var method = (prepared.method || (input instanceof Request ? input.method : 'GET'))
+            .toUpperCase();
+        var inheritedHeaders = input instanceof Request ? input.headers : undefined;
+        var headers = new Headers(prepared.headers || inheritedHeaders || {});
+        var sameOrigin = isSameOrigin(input);
+        var metadata = csrfMetadata();
+
+        if (sameOrigin && prepared.credentials === undefined) {
+            prepared.credentials = 'same-origin';
+        }
+        if (sameOrigin && !headers.has(REQUEST_ID_HEADER)) {
+            headers.set(REQUEST_ID_HEADER, requestId);
+        }
+        if (metadata && sameOrigin && method !== 'GET' && method !== 'HEAD'
+                && !headers.has(metadata.name)) {
+            headers.set(metadata.name, metadata.value);
+        }
+        prepared.method = method;
+        prepared.headers = headers;
+        prepared.signal = signal;
+        return prepared;
+    }
+
+    function normalizeTransportError(error, context, scope, validated) {
+        if (error instanceof ApiError) return error;
+        if (scope.timedOut()) {
+            return new ApiError(
+                'Request timed out after ' + validated.timeoutMillis + ' ms',
+                0, context.url, null, {
+                    requestId: context.requestId,
+                    code: 'TIMEOUT',
+                    retryable: true,
+                    cause: error
+                });
+        }
+        if (scope.callerAborted()) {
+            return new ApiError('Request was cancelled', 0, context.url, null, {
+                requestId: context.requestId,
+                code: 'ABORTED',
+                retryable: false,
+                cause: error
+            });
+        }
+        return new ApiError('Network request failed', 0, context.url, null, {
+            requestId: context.requestId,
+            code: 'NETWORK_ERROR',
+            retryable: true,
+            cause: error
+        });
+    }
+
+    function request(url, init, options) {
+        var requestOptions = Object.assign({}, options || {});
+        var validated = validateOptions(requestOptions);
+        var requestId = requestOptions.requestId || createRequestId();
+        var context = { url: inputUrl(url), requestId: requestId };
+
+        function attempt(number) {
+            var scope = createRequestScope(requestOptions, validated);
+            var prepared = prepareRequest(
+                url, init, requestOptions, requestId, scope.signal);
+            return transportFetch(url, prepared)
+                .then(function (response) { return checkStatus(response, context); })
+                .catch(function (error) {
+                    throw normalizeTransportError(error, context, scope, validated);
+                })
+                .finally(scope.cleanup)
+                .catch(function (error) {
+                    var callerCancelled = requestOptions.signal
+                        && requestOptions.signal.aborted;
+                    if (!callerCancelled && number < validated.retries
+                            && error.retryable && requestOptions.idempotent === true) {
+                        return attempt(number + 1);
+                    }
+                    throw error;
+                });
+        }
+        return attempt(0);
     }
 
     function getAccountContext() {
         if (!accountContextPromise) {
-            accountContextPromise = nativeFetch('/api/account/me')
-                .then(checkStatus)
-                .then(parseJson)
-                .catch(function (error) {
-                    accountContextPromise = null;
-                    throw error;
-                });
+            accountContextPromise = getJson('/api/account/me', {
+                idempotent: true,
+                timeoutMillis: 10000
+            }).catch(function (error) {
+                accountContextPromise = null;
+                throw error;
+            });
         }
         return accountContextPromise;
     }
@@ -134,10 +328,6 @@ window.TaxonomyApiClient = (function () {
                 }
             }
 
-            // The prompt editor lives inside the hidden ADMIN tab but legacy UI
-            // initialization starts it for every role. Resolve the cached account
-            // context first: admins use the real endpoints, while non-admins receive
-            // an empty bootstrap model without issuing forbidden background requests.
             if (isAdminPromptBootstrap(input, method)) {
                 return getAccountContext().then(function (account) {
                     return account && account.administrator
@@ -153,45 +343,57 @@ window.TaxonomyApiClient = (function () {
         window.fetch = csrfAwareFetch;
     }
 
-    function getJson(url) {
-        return fetch(url).then(checkStatus).then(parseJson);
+    function getJson(url, options) {
+        var requestOptions = Object.assign({ idempotent: true }, options || {});
+        return request(url, { method: 'GET' }, requestOptions).then(parseJson);
     }
 
-    function sendJson(url, body, method) {
-        return fetch(url, {
-            method: method || 'POST',
-            headers: Object.assign({ 'Content-Type': 'application/json' }, csrfHeaders()),
+    function sendJson(url, body, method, options) {
+        var actualMethod = method;
+        var requestOptions = options;
+        if (actualMethod && typeof actualMethod === 'object') {
+            requestOptions = actualMethod;
+            actualMethod = null;
+        }
+        return request(url, {
+            method: actualMethod || 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
-        }).then(checkStatus).then(parseJson);
+        }, requestOptions).then(parseJson);
     }
 
-    function sendFormData(url, formData, method) {
-        return fetch(url, {
-            method: method || 'POST',
-            headers: csrfHeaders(),
+    function sendFormData(url, formData, method, options) {
+        var actualMethod = method;
+        var requestOptions = options;
+        if (actualMethod && typeof actualMethod === 'object') {
+            requestOptions = actualMethod;
+            actualMethod = null;
+        }
+        return request(url, {
+            method: actualMethod || 'POST',
             body: formData
-        }).then(checkStatus).then(parseJson);
+        }, requestOptions).then(parseJson);
     }
 
-    function deleteJson(url) {
-        return fetch(url, {
-            method: 'DELETE',
-            headers: csrfHeaders()
-        }).then(checkStatus).then(parseJson);
+    function deleteJson(url, options) {
+        return request(url, { method: 'DELETE' }, options).then(parseJson);
     }
 
     installGlobalCsrfInterceptor();
 
     return {
         ApiError: ApiError,
+        request: request,
         getJson: getJson,
         getAccountContext: getAccountContext,
         sendJson: sendJson,
         sendFormData: sendFormData,
         deleteJson: deleteJson,
-        csrfHeaders: csrfHeaders
+        csrfHeaders: csrfHeaders,
+        defaultTimeoutMillis: DEFAULT_TIMEOUT_MILLIS
     };
 }());
+
 
 (function loadAuthenticatedUiSurfaces() {
     'use strict';

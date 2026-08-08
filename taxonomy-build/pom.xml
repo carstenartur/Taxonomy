@@ -79,6 +79,15 @@
                         </configuration>
                     </execution>
                     <execution>
+                        <id>run-canonical-api-transport-contract</id>
+                        <phase>integration-test</phase>
+                        <goals><goal>npm</goal></goals>
+                        <configuration>
+                            <skip>${taxonomy.ui.skip}</skip>
+                            <arguments>run test:api-transport</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>run-maven-owned-browser-verification</id>
                         <phase>integration-test</phase>
                         <goals><goal>npm</goal></goals>
