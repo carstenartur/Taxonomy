@@ -94,6 +94,8 @@ window.TaxonomyUtils = (function () {
             else next = (current - 1 + tabs.length) % tabs.length;
             tabs[next].focus();
             tabs[next].click();
+            syncMainNavigation();
+            syncResponsiveMainNavigation();
         });
 
         new MutationObserver(syncMainNavigation).observe(tabList, {
