@@ -142,15 +142,68 @@ jobs:
             github_token=${{ secrets.GITHUB_TOKEN }}
             github_actor=${{ github.actor }}
 
+  render-deployment-disabled:
+    name: Render deployment disabled
+    needs: publish-image
+    if: >-
+      github.event.workflow_run.head_branch == github.event.repository.default_branch &&
+      github.event.workflow_run.event == 'push' &&
+      vars.RENDER_DEPLOY_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Record explicitly disabled Render delivery
+        env:
+          BASE_URL: ${{ vars.RENDER_BASE_URL || 'https://taxonomy-analyzer.onrender.com' }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/delivery-evidence
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import json
+          import os
+          from pathlib import Path
+
+          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+          evidence = {
+              "schemaVersion": 2,
+              "deploymentState": "disabled",
+              "result": "disabled",
+              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
+              "expectedCommit": os.environ["EXPECTED_SHA"],
+              "startedAt": now,
+              "endedAt": now,
+              "detail": "Render deployment is explicitly disabled by RENDER_DEPLOY_ENABLED.",
+          }
+          path = Path("target/delivery-evidence/render-disabled.json")
+          path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+          echo "Render deployment is explicitly disabled; no rollout-success check was emitted."
+
+      - name: Archive disabled Render delivery evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: render-deployment-disabled-${{ github.event.workflow_run.head_sha }}
+          path: target/delivery-evidence/render-disabled.json
+          if-no-files-found: error
+          retention-days: 90
+
   deploy-render:
     name: Deploy to Render
     needs: publish-image
     if: >-
       github.event.workflow_run.head_branch == github.event.repository.default_branch &&
-      github.event.workflow_run.event == 'push'
+      github.event.workflow_run.event == 'push' &&
+      vars.RENDER_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    concurrency:
+      group: taxonomy-render-deployment
+      cancel-in-progress: false
     steps:
       - name: Checkout verified delivery source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -168,11 +221,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$HOOK_URL" ]]; then
-            echo "RENDER_DEPLOY_HOOK_URL is not configured; Render deployment is disabled."
-            exit 0
-          fi
           mkdir -p target/delivery-evidence
+          if [[ -z "$HOOK_URL" ]]; then
+            python3 - <<'PY'
+          from datetime import datetime, timezone
+          import json
+          import os
+          from pathlib import Path
+
+          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+          evidence = {
+              "schemaVersion": 2,
+              "deploymentState": "failed",
+              "result": "failure",
+              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
+              "expectedCommit": os.environ["EXPECTED_SHA"],
+              "startedAt": now,
+              "endedAt": now,
+              "detail": "RENDER_DEPLOY_ENABLED is true but RENDER_DEPLOY_HOOK_URL is missing.",
+          }
+          Path("target/delivery-evidence/render-configuration-failure.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+            echo "::error::RENDER_DEPLOY_ENABLED is true but RENDER_DEPLOY_HOOK_URL is missing."
+            exit 1
+          fi
+
           deploy_url=$(python3 - <<'PY'
           import os
           from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -185,9 +259,53 @@ jobs:
           print(urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)))
           PY
           )
-          curl --fail --silent --show-error --retry 3 \
+          if ! curl --fail --silent --show-error --retry 3 \
+            --connect-timeout 15 --max-time 90 \
             --output target/delivery-evidence/render-deploy-hook.json \
-            "$deploy_url"
+            "$deploy_url"; then
+            python3 - <<'PY'
+          from datetime import datetime, timezone
+          import json
+          import os
+          from pathlib import Path
+
+          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+          evidence = {
+              "schemaVersion": 2,
+              "deploymentState": "failed",
+              "result": "failure",
+              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
+              "expectedCommit": os.environ["EXPECTED_SHA"],
+              "startedAt": now,
+              "endedAt": now,
+              "detail": "Render deploy hook request failed after bounded retries.",
+          }
+          Path("target/delivery-evidence/render-hook-failure.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+            echo "::error::Render deploy hook request failed; archived failure evidence identifies the expected commit and target."
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import json
+          import os
+          from pathlib import Path
+
+          now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+          evidence = {
+              "schemaVersion": 2,
+              "deploymentState": "triggered",
+              "result": "in_progress",
+              "targetUrl": os.environ["BASE_URL"].rstrip("/"),
+              "expectedCommit": os.environ["EXPECTED_SHA"],
+              "startedAt": now,
+              "detail": "Render deploy hook accepted the verified commit; live verification follows.",
+          }
+          Path("target/delivery-evidence/render-triggered.json").write_text(
+              json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
 
           render_service_id="$CONFIGURED_RENDER_SERVICE_ID"
           if [[ -z "$render_service_id" ]]; then
@@ -227,5 +345,5 @@ jobs:
         with:
           name: render-deployment-evidence-${{ github.event.workflow_run.head_sha }}
           path: target/delivery-evidence/**
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90

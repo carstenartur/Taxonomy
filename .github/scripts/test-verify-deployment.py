@@ -126,5 +126,32 @@ class VerifyRenderDeploymentTest(unittest.TestCase):
             self.assertEqual(2, payload["attempts"])
 
 
+    def test_verify_once_rejects_readiness_failure(self) -> None:
+        def fetcher(url: str):
+            if url.endswith("/readiness"):
+                return {"status": "DOWN"}
+            return {"git": {"commit": {"id": "0123456789abcdef"}}}
+
+        ok, detail = MODULE.verify_once(
+            "https://example.invalid",
+            "0123456789abcdef",
+            fetcher,
+            lambda _url: 200,
+        )
+        self.assertFalse(ok)
+        self.assertIn("readiness is not UP", detail)
+
+    def test_explicit_delivery_state_vocabulary_is_stable(self) -> None:
+        expected = {"disabled", "triggered", "verifying", "succeeded", "failed"}
+        workflow = (SCRIPT.parents[1] / "workflows" / "delivery.yml").read_text(
+            encoding="utf-8"
+        )
+        verifier = SCRIPT.read_text(encoding="utf-8")
+        for state in expected:
+            with self.subTest(state=state):
+                self.assertIn(f'"deploymentState": "{state}"', workflow + verifier)
+
+
+
 if __name__ == "__main__":
     unittest.main()
