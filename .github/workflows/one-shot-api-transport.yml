@@ -31,6 +31,9 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Correct VM-realm event assertion
+        run: python3 .github/scripts/fix-api-transport-test-realm.py
+
       - name: Apply canonical API transport
         run: python3 .github/scripts/apply-api-transport.py
 
@@ -38,7 +41,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile .github/scripts/apply-api-transport.py
+          python3 -m py_compile \
+            .github/scripts/apply-api-transport.py \
+            .github/scripts/fix-api-transport-test-realm.py
           node --check taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js
           node --check .github/scripts/test-taxonomy-api-client.mjs
           node .github/scripts/test-taxonomy-api-client.mjs
