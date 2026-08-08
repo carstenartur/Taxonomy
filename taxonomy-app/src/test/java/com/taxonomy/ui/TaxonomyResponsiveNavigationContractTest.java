@@ -56,7 +56,8 @@ class TaxonomyResponsiveNavigationContractTest {
                 .contains("taskJumpInsideViewport")
                 .contains("taskSurface.progressTop <= taskSurface.viewportHeight")
                 .contains("Neither the primary action nor its explicit task jump is initially visible")
-                .contains("discoverable responsive main navigation and current-task jump")
+                .contains("Responsive section navigation is not discoverable before any automatic scroll")
+                .contains("responsive navigation remains structurally available after task interactions")
                 .doesNotContain("single-row scrollable main navigation");
     }
 
