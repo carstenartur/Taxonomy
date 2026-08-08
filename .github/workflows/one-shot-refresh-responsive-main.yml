@@ -31,19 +31,46 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Merge current main
+      - name: Merge current main and retain both CSS features
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          css='taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css'
+          git show "HEAD:${css}" > /tmp/responsive-feature.css
           git fetch origin main
-          if ! git merge --no-edit origin/main; then
-            echo 'Conflicted paths:' >&2
-            git diff --name-only --diff-filter=U >&2
+          if git merge --no-edit origin/main; then
+            exit 0
+          fi
+
+          conflicts=$(git diff --name-only --diff-filter=U)
+          if [[ "$conflicts" != "$css" ]]; then
+            echo 'Unexpected conflicted paths:' >&2
+            printf '%s\n' "$conflicts" >&2
             git status --short >&2
             exit 1
           fi
+
+          # Main owns the already merged overlay/accessibility rules. Append the
+          # responsive navigation block from this feature branch afterwards.
+          git checkout --theirs "$css"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path('taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css')
+          feature = Path('/tmp/responsive-feature.css').read_text(encoding='utf-8')
+          marker = '/* Discoverable responsive primary navigation. */'
+          if marker not in feature:
+              raise SystemExit('Responsive navigation CSS marker is missing from feature side')
+          block = feature[feature.index(marker):].strip() + '\n'
+          current = target.read_text(encoding='utf-8').rstrip() + '\n'
+          if marker not in current:
+              current += '\n' + block
+          target.write_text(current, encoding='utf-8')
+          PY
+          git add "$css"
+          git commit --no-edit
 
       - name: Verify responsive contracts and real login after integration
         shell: bash
