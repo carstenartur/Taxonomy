@@ -50,7 +50,8 @@ jobs:
           ./mvnw -B -pl taxonomy-app -am \
             -Dtest=com.taxonomy.ui.TaxonomyApiClientContractTest \
             -Dsurefire.failIfNoSpecifiedTests=false test
-          python3 .github/scripts/check-frontend-api-boundary.py
+          python3 .github/scripts/check-frontend-api-boundary.py \
+            --base-ref origin/main
           git diff --check
 
       - name: Commit permanent transport changes
