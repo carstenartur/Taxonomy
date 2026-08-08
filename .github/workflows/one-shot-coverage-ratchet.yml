@@ -46,7 +46,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           counters = ''.join(
-              f'<counter type="{name}" missed="10" covered="90"/>'
+              f'<counter type="{name}" missed="5" covered="95"/>'
               for name in ('INSTRUCTION', 'LINE', 'BRANCH', 'METHOD', 'CLASS'))
           groups = ''.join(
               f'<group name="{name}">{counters}</group>'
@@ -61,8 +61,8 @@ jobs:
             --xml target/coverage-fixture.xml \
             --policy .github/coverage-policy.json \
             --report target/coverage-fixture.txt
-          grep -Fq 'BRANCH: 90.00%' target/coverage-fixture.txt
-          grep -Fq 'CLASS: 90.00%' target/coverage-fixture.txt
+          grep -Fq 'BRANCH: 95.00%' target/coverage-fixture.txt
+          grep -Fq 'CLASS: 95.00%' target/coverage-fixture.txt
           ./mvnw -B -pl taxonomy-build -am \
             -DskipTests -DskipITs=true \
             -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true validate
