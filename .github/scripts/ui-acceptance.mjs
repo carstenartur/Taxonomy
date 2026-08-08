@@ -29,6 +29,17 @@ const consoleErrors = [];
 const checks = [];
 
 function passed(name) { checks.push(name); }
+
+async function navigateTo(pageName) {
+  const responsiveSelect = page.locator('#mobileMainNavigationSelect');
+  if (await responsiveSelect.isVisible().catch(() => false)) {
+    await responsiveSelect.selectOption(pageName);
+  } else {
+    await page.locator(`#mainNavTabs [data-page="${pageName}"]`).click();
+  }
+  await page.locator(`#tab-${pageName}`).waitFor({ state: 'visible' });
+}
+
 page.on('request', request => {
   const url = request.url();
   if (url.startsWith('data:') || url.startsWith('blob:')) return;
@@ -64,13 +75,31 @@ try {
 
   assert(await page.locator('#mainNavTabs').getAttribute('role') === 'tablist',
     'Main navigation lacks tablist semantics');
-  const analyzeTab = page.locator('#mainNavTabs [data-page="analyze"]');
-  await analyzeTab.focus();
-  await page.keyboard.press('ArrowRight');
-  assert(await page.locator('#mainNavTabs [data-page="architecture"]').getAttribute('aria-selected') === 'true',
-    'Arrow-key navigation did not activate Architecture');
-  await analyzeTab.click();
-  passed('keyboard tab navigation');
+  const responsiveSelect = page.locator('#mobileMainNavigationSelect');
+  if (await responsiveSelect.isVisible().catch(() => false)) {
+    await responsiveSelect.focus();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => {
+      const select = document.querySelector('#mobileMainNavigationSelect');
+      const pane = document.querySelector('#tab-architecture');
+      return select?.value === 'architecture'
+        && pane && !pane.classList.contains('d-none');
+    });
+    assert(await responsiveSelect.inputValue() === 'architecture',
+      'Keyboard navigation did not select Architecture in the responsive control');
+    await responsiveSelect.selectOption('analyze');
+    await page.locator('#tab-analyze').waitFor({ state: 'visible' });
+    passed('responsive keyboard section navigation');
+  } else {
+    const analyzeTab = page.locator('#mainNavTabs [data-page="analyze"]');
+    await analyzeTab.focus();
+    await page.keyboard.press('ArrowRight');
+    assert(await page.locator('#mainNavTabs [data-page="architecture"]').getAttribute('aria-selected') === 'true',
+      'Arrow-key navigation did not activate Architecture');
+    await analyzeTab.click();
+    passed('keyboard tab navigation');
+  }
 
   const firstTreeItem = page.locator('#taxonomyTree [role="treeitem"]').first();
   await firstTreeItem.focus();
@@ -111,13 +140,11 @@ try {
     passed('analysis, accessible scores, and stale state');
   }
 
-  await page.locator('#mainNavTabs [data-page="versions"]').click();
-  await page.locator('#tab-versions').waitFor({ state: 'visible' });
+  await navigateTo('versions');
   passed('versions navigation');
 
   if (mode === 'full') {
-    await page.locator('#mainNavTabs [data-page="dsl-editor"]').click();
-    await page.locator('#tab-dsl-editor').waitFor({ state: 'visible' });
+    await navigateTo('dsl-editor');
     const editor = page.locator('#dslEditorContainer .cm-content');
     await editor.waitFor({ state: 'visible', timeout: 30_000 });
     assert(await editor.getAttribute('aria-label') === 'TaxDSL editor',
@@ -135,12 +162,10 @@ try {
       const tab = document.querySelector('#adminNavTab');
       return tab && getComputedStyle(tab).display !== 'none';
     }, null, { timeout: 20_000 });
-    await page.locator('#mainNavTabs [data-page="admin"]').click();
-    await page.locator('#tab-admin').waitFor({ state: 'visible' });
+    await navigateTo('admin');
     passed('admin role surface');
   } else {
-    await page.locator('#mainNavTabs [data-page="help"]').click();
-    await page.locator('#tab-help').waitFor({ state: 'visible' });
+    await navigateTo('help');
     passed('responsive read-only navigation');
   }
 

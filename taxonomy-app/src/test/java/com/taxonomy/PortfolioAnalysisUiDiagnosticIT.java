@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Dimension;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.logging.LogType;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -53,6 +54,7 @@ class PortfolioAnalysisUiDiagnosticIT {
         application.start();
         browserSession = ContainerTestUtils.startBrowser(network);
         driver = browserSession.driver();
+        driver.manage().window().setSize(new Dimension(1440, 1000));
         wait = new WebDriverWait(driver, Duration.ofSeconds(60));
         login();
     }

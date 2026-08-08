@@ -69,6 +69,7 @@ class PortfolioUiAcceptanceIT {
 
         browserSession = ContainerTestUtils.startBrowser(network);
         driver = browserSession.driver();
+        driver.manage().window().setSize(new Dimension(1440, 1000));
         driver.setFileDetector(new LocalFileDetector());
         wait = new WebDriverWait(driver, Duration.ofSeconds(120));
         login();
@@ -116,6 +117,24 @@ class PortfolioUiAcceptanceIT {
                 .sendKeys("admin");
         driver.findElement(By.name("password")).sendKeys(ADMIN_PASSWORD);
         driver.findElement(By.cssSelector("form")).submit();
+
+        wait.until(currentDriver -> {
+            String currentUrl = currentDriver.getCurrentUrl();
+            if (currentUrl.contains("/login?error")) {
+                throw new AssertionError(
+                        "Configured test administrator was rejected after readiness: "
+                                + currentUrl);
+            }
+            return !currentUrl.endsWith("/login");
+        });
+        assertThat(driver.getCurrentUrl())
+                .as("post-login URL (title: %s)", driver.getTitle())
+                .doesNotContain("/login")
+                .doesNotContain("/change-password");
+
+        // Authentication may return to a saved request. The navigation contract
+        // belongs to the application workbench, so open it explicitly.
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
         dismissOnboardingWhenShown();
     }
