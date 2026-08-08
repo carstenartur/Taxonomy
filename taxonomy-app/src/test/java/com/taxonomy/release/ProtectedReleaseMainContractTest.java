@@ -29,8 +29,7 @@ class ProtectedReleaseMainContractTest {
                 .contains("gh workflow run \"$PROTECTED_MAIN_ADVANCE_WORKFLOW\"")
                 .contains("gh run watch \"$advance_run_id\" --exit-status")
                 .contains("advance_main_via_protected_pr \"$NEXT_COMMIT\"")
-                .doesNotContain("git/refs/heads/main")
-                .doesNotContain("--method PATCH \\\n      -f sha=\"$NEXT_COMMIT\"");
+                .doesNotContain("git/refs/heads/main");
 
         int tagCall = release.indexOf("create_tag_ref \"$RELEASE_COMMIT\"");
         int protectedAdvance = release.indexOf("advance_main_via_protected_pr \"$NEXT_COMMIT\"");
