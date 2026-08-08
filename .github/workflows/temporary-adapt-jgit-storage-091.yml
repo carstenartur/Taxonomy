@@ -1,0 +1,370 @@
+name: Temporary jgit-storage 0.9.1 schema adaptation
+
+on:
+  push:
+    branches:
+      - compat/jgit-storage-0.9.1-reflog-key
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-jgit-storage-091-schema-adaptation
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: compat/jgit-storage-0.9.1-reflog-key
+          fetch-depth: 0
+
+      - name: Adapt exact reflog shapes, indexes and migration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path_name: str, old: str, new: str, count: int = 1) -> None:
+              path = Path(path_name)
+              text = path.read_text(encoding='utf-8')
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(
+                      f'{path_name}: expected {old!r} {count} time(s), found {actual}'
+                  )
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          config = 'taxonomy-app/src/main/java/com/taxonomy/dsl/storage/JgitStorageSchemaMigrationConfig.java'
+
+          replace(
+              config,
+              '''    private static final String LATEST_CORE_SCHEMA_VERSION = "0.1.18";
+    private static final String LATEST_CORE_BASELINE_DESCRIPTION =
+            "jgit-storage-hibernate-core 0.1.18";
+''',
+              '''    private static final String PRE_REFLOG_KEY_SCHEMA_VERSION = "0.1.18";
+    private static final String PRE_REFLOG_KEY_BASELINE_DESCRIPTION =
+            "jgit-storage-hibernate-core 0.1.18";
+    private static final String LATEST_CORE_SCHEMA_VERSION = "0.9.1";
+    private static final String LATEST_CORE_BASELINE_DESCRIPTION =
+            "jgit-storage-hibernate-core 0.9.1";
+''',
+          )
+
+          replace(
+              config,
+              '''    private static final Set<String> REFLOG_COLUMNS = Set.of(
+            "ID",
+            "VERSION",
+            "REPOSITORY_NAME",
+            "REF_NAME",
+            "OLD_ID",
+            "NEW_ID",
+            "WHO_NAME",
+            "WHO_EMAIL",
+            "WHO_WHEN",
+            "MESSAGE");
+''',
+              '''    /** Exact physical reflog shape released through Core 0.1.18. */
+    private static final Set<String> PRE_REFLOG_KEY_COLUMNS = Set.of(
+            "ID",
+            "VERSION",
+            "REPOSITORY_NAME",
+            "REF_NAME",
+            "OLD_ID",
+            "NEW_ID",
+            "WHO_NAME",
+            "WHO_EMAIL",
+            "WHO_WHEN",
+            "MESSAGE");
+
+    /** Exact physical reflog shape released by Core 0.9.1. */
+    private static final Set<String> CURRENT_REFLOG_COLUMNS = Set.of(
+            "ID",
+            "VERSION",
+            "REPOSITORY_NAME",
+            "REF_NAME",
+            "REF_NAME_KEY",
+            "OLD_ID",
+            "NEW_ID",
+            "WHO_NAME",
+            "WHO_EMAIL",
+            "WHO_WHEN",
+            "MESSAGE");
+''',
+          )
+
+          replace(
+              config,
+              '''        requireExactColumns("git_reflog", schema.reflogColumns(), REFLOG_COLUMNS);
+
+        if (schema.packColumns().equals(LEGACY_PACK_COLUMNS)) {
+''',
+              '''        if (schema.packColumns().equals(LEGACY_PACK_COLUMNS)) {
+            requirePreReflogKeyColumns(schema);
+''',
+          )
+          replace(
+              config,
+              '''        if (schema.packColumns().equals(PRE_WRITE_LEASE_PACK_COLUMNS)) {
+            establishUnversionedPreWriteLeaseSchema(configuration, family, dataSource, schema);
+''',
+              '''        if (schema.packColumns().equals(PRE_WRITE_LEASE_PACK_COLUMNS)) {
+            requirePreReflogKeyColumns(schema);
+            establishUnversionedPreWriteLeaseSchema(configuration, family, dataSource, schema);
+''',
+          )
+          replace(
+              config,
+              '''        if (schema.packColumns().equals(PRE_PACK_DESCRIPTION_PACK_COLUMNS)) {
+            establishUnversionedPrePackDescriptionSchema(
+''',
+              '''        if (schema.packColumns().equals(PRE_PACK_DESCRIPTION_PACK_COLUMNS)) {
+            requirePreReflogKeyColumns(schema);
+            establishUnversionedPrePackDescriptionSchema(
+''',
+          )
+
+          replace(
+              config,
+              '''        requireSafePackRows(dataSource, false);
+        requireCurrentCoreColumnLengths(schema);
+        requireCurrentCoreTables(schema);
+        requireCurrentCoreIndexes(schema);
+        log.info(
+                "Establishing Flyway history for an exact unversioned 0.1.18 schema on {}",
+                family.displayName());
+        migrateNormalWithBaseline(
+                configuration,
+                family,
+                LATEST_CORE_SCHEMA_VERSION,
+                LATEST_CORE_BASELINE_DESCRIPTION);
+        requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
+''',
+              '''        requireSafePackRows(dataSource, false);
+        requireCurrentCoreColumnLengths(schema);
+        requireCurrentCoreTables(schema);
+        requireSupportedReflogColumns(schema);
+        requireCurrentCoreIndexes(schema);
+        boolean currentReflogShape = hasReflogReferenceKey(schema);
+        String baselineVersion = currentReflogShape
+                ? LATEST_CORE_SCHEMA_VERSION
+                : PRE_REFLOG_KEY_SCHEMA_VERSION;
+        String baselineDescription = currentReflogShape
+                ? LATEST_CORE_BASELINE_DESCRIPTION
+                : PRE_REFLOG_KEY_BASELINE_DESCRIPTION;
+        log.info(
+                "Establishing Flyway history for an exact unversioned {} schema on {}",
+                baselineVersion,
+                family.displayName());
+        migrateNormalWithBaseline(
+                configuration,
+                family,
+                baselineVersion,
+                baselineDescription);
+        requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
+''',
+          )
+
+          replace(
+              config,
+              '        requireExactColumns("git_reflog", schema.reflogColumns(), REFLOG_COLUMNS);',
+              '        requireSupportedReflogColumns(schema);',
+              count=2,
+          )
+
+          replace(
+              config,
+              '''        requireIndexPrefix(
+                "git_reflog",
+                schema.reflogIndexes(),
+                List.of("REPOSITORY_NAME", "REF_NAME"));
+''',
+              '''        requireReleasedReflogLookupIndex(schema);
+''',
+          )
+
+          replace(
+              config,
+              '''    private static void requirePreWriteLeaseCoreIndexes(SchemaSnapshot schema) {
+        requireManagedCoreIndexes(schema);
+    }
+''',
+              '''    private static void requireReleasedReflogLookupIndex(SchemaSnapshot schema) {
+        if (hasReflogReferenceKey(schema)) {
+            requireIndexPrefix(
+                    "git_reflog",
+                    schema.reflogIndexes(),
+                    List.of("REPOSITORY_NAME", "REF_NAME_KEY", "ID"));
+            return;
+        }
+        requireIndexPrefix(
+                "git_reflog",
+                schema.reflogIndexes(),
+                List.of("REPOSITORY_NAME", "REF_NAME"));
+    }
+
+    private static void requirePreWriteLeaseCoreIndexes(SchemaSnapshot schema) {
+        requireManagedCoreIndexes(schema);
+    }
+''',
+          )
+
+          replace(
+              config,
+              '''    private static void requireExactColumns(
+            String table, Set<String> actual, Set<String> expected) {
+''',
+              '''    private static boolean hasReflogReferenceKey(SchemaSnapshot schema) {
+        return schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS);
+    }
+
+    private static void requirePreReflogKeyColumns(SchemaSnapshot schema) {
+        requireExactColumns(
+                "git_reflog", schema.reflogColumns(), PRE_REFLOG_KEY_COLUMNS);
+    }
+
+    private static void requireSupportedReflogColumns(SchemaSnapshot schema) {
+        if (schema.reflogColumns().equals(PRE_REFLOG_KEY_COLUMNS)
+                || schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS)) {
+            return;
+        }
+        throw unsafeSchema(
+                "git_reflog is neither the exact pre-0.9.1 shape nor the exact 0.9.1 "
+                        + "shape; actual=" + schema.reflogColumns());
+    }
+
+    private static void requireExactColumns(
+            String table, Set<String> actual, Set<String> expected) {
+''',
+          )
+
+          replace(
+              config,
+              '"The 0.1.18 Core schema requires the git_repository_lifecycle table."',
+              '"The released Core schema requires the git_repository_lifecycle table."',
+          )
+
+          test = 'taxonomy-app/src/test/java/com/taxonomy/dsl/storage/JgitStorageSchemaMigrationConfigTest.java'
+          replace(
+              test,
+              '''        assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
+        assertVersionPrefix(
+''',
+              '''        assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
+        assertReflogKeyMatchesMigrationHistory(dataSource);
+        assertVersionPrefix(
+''',
+              count=1,
+          )
+          replace(
+              test,
+              '''        assertEquals(refName, reflogRefName(dataSource));
+        try (Connection connection = dataSource.getConnection();
+''',
+              '''        assertEquals(refName, reflogRefName(dataSource));
+        assertReflogKeyMatchesMigrationHistory(dataSource);
+        try (Connection connection = dataSource.getConnection();
+''',
+              count=1,
+          )
+          replace(
+              test,
+              '''        DataSource dataSource = dataSource("unversioned-current");
+        flyway(dataSource).migrate();
+        dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+
+        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
+
+        assertVersionPrefix(
+                List.of("0.1.18"),
+''',
+              '''        DataSource dataSource = dataSource("unversioned-current");
+        flyway(dataSource).migrate();
+        boolean hasReflogKey = columns(dataSource, "git_reflog").contains("REF_NAME_KEY");
+        dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+
+        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
+
+        assertVersionPrefix(
+                List.of(hasReflogKey ? "0.9.1" : "0.1.18"),
+''',
+          )
+          replace(
+              test,
+              '''    private static void assertVersionPrefix(
+            List<String> expectedPrefix, List<String> actual) {
+''',
+              '''    private static void assertReflogKeyMatchesMigrationHistory(DataSource dataSource)
+            throws SQLException {
+        boolean migrated = successfulVersions(
+                dataSource,
+                CoreSchemaMigrations.SCHEMA_HISTORY_TABLE).contains("0.9.1");
+        boolean columnPresent = columns(dataSource, "git_reflog").contains("REF_NAME_KEY");
+        assertEquals(
+                migrated,
+                columnPresent,
+                "Core migration 0.9.1 and git_reflog.ref_name_key must appear together");
+    }
+
+    private static void assertVersionPrefix(
+            List<String> expectedPrefix, List<String> actual) {
+''',
+          )
+
+          postgres = 'taxonomy-app/src/test/java/com/taxonomy/dsl/storage/JgitStoragePostgresMigrationIT.java'
+          replace(
+              postgres,
+              '''        assertEquals(
+                List.of("0.1.5", "0.1.14", "0.1.14.1", "0.1.14.2", "0.1.17", "0.1.18"),
+                successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
+''',
+              '''        List<String> coreVersions = successfulVersions(
+                dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+        List<String> expectedCoreVersions = new ArrayList<>(List.of(
+                "0.1.5", "0.1.14", "0.1.14.1", "0.1.14.2", "0.1.17", "0.1.18"));
+        if (columnExists(dataSource, "git_reflog", "ref_name_key")) {
+            expectedCoreVersions.add("0.9.1");
+        }
+        assertEquals(expectedCoreVersions, coreVersions);
+''',
+          )
+          replace(
+              postgres,
+              '''    private static int columnSize(
+            DataSource dataSource, String tableName, String columnName) throws SQLException {
+''',
+              '''    private static boolean columnExists(
+            DataSource dataSource, String tableName, String columnName) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            try (ResultSet resultSet = metadata.getColumns(
+                    null, connection.getSchema(), tableName, "%")) {
+                while (resultSet.next()) {
+                    if (columnName.equalsIgnoreCase(resultSet.getString("COLUMN_NAME"))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static int columnSize(
+            DataSource dataSource, String tableName, String columnName) throws SQLException {
+''',
+          )
+
+          Path('.github/workflows/temporary-adapt-jgit-storage-091.yml').unlink()
+          PY
+
+          git add -A
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m 'Accept exact Core 0.9.1 reflog-key schemas'
+          git push origin HEAD:compat/jgit-storage-0.9.1-reflog-key
