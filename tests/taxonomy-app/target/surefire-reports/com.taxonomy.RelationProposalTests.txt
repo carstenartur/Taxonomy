@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.RelationProposalTests
+-------------------------------------------------------------------------------
+Tests run: 25, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.359 s -- in com.taxonomy.RelationProposalTests

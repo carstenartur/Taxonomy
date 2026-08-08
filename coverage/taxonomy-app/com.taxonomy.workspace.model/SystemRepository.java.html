@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SystemRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.model</a> &gt; <span class="el_source">SystemRepository.java</span></div><h1>SystemRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.time.Instant;
+
+/**
+ * Represents the system-owned central repository configuration.
+ *
+ * &lt;p&gt;Credentials are deliberately not part of the public entity contract. The
+ * legacy plaintext column remains mapped only so startup migration can erase
+ * values written by older releases. New credentials are supplied exclusively
+ * through deployment secret configuration.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;system_repository&quot;)
+public class SystemRepository {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false, unique = true)
+    private String repositoryId;
+
+    @Column(name = &quot;display_name&quot;)
+    private String displayName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;topology_mode&quot;, nullable = false)
+    private RepositoryTopologyMode topologyMode;
+
+<span class="fc" id="L40">    @Column(name = &quot;default_branch&quot;, nullable = false)</span>
+    private String defaultBranch = &quot;draft&quot;;
+
+    @Column(name = &quot;external_url&quot;)
+    private String externalUrl;
+
+    /** Legacy cleanup-only mapping. Never expose or use this value for authentication. */
+    @Column(name = &quot;external_auth_token&quot;)
+    private String legacyExternalAuthToken;
+
+    @Column(name = &quot;last_fetch_at&quot;)
+    private Instant lastFetchAt;
+
+    @Column(name = &quot;last_push_at&quot;)
+    private Instant lastPushAt;
+
+    @Column(name = &quot;last_fetch_commit&quot;)
+    private String lastFetchCommit;
+
+<span class="fc" id="L59">    @Column(name = &quot;primary_repo&quot;, nullable = false)</span>
+    private boolean primaryRepo = true;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+<span class="fc" id="L65">    public SystemRepository() {</span>
+<span class="fc" id="L66">    }</span>
+
+    public Long getId() {
+<span class="nc" id="L69">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="nc" id="L73">        this.id = id;</span>
+<span class="nc" id="L74">    }</span>
+
+    public String getRepositoryId() {
+<span class="fc" id="L77">        return repositoryId;</span>
+    }
+
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L81">        this.repositoryId = repositoryId;</span>
+<span class="fc" id="L82">    }</span>
+
+    public String getDisplayName() {
+<span class="fc" id="L85">        return displayName;</span>
+    }
+
+    public void setDisplayName(String displayName) {
+<span class="fc" id="L89">        this.displayName = displayName;</span>
+<span class="fc" id="L90">    }</span>
+
+    public RepositoryTopologyMode getTopologyMode() {
+<span class="fc" id="L93">        return topologyMode;</span>
+    }
+
+    public void setTopologyMode(RepositoryTopologyMode topologyMode) {
+<span class="fc" id="L97">        this.topologyMode = topologyMode;</span>
+<span class="fc" id="L98">    }</span>
+
+    public String getDefaultBranch() {
+<span class="fc" id="L101">        return defaultBranch;</span>
+    }
+
+    public void setDefaultBranch(String defaultBranch) {
+<span class="fc" id="L105">        this.defaultBranch = defaultBranch;</span>
+<span class="fc" id="L106">    }</span>
+
+    public String getExternalUrl() {
+<span class="fc" id="L109">        return externalUrl;</span>
+    }
+
+    public void setExternalUrl(String externalUrl) {
+<span class="fc" id="L113">        this.externalUrl = externalUrl;</span>
+<span class="fc" id="L114">    }</span>
+
+    /** Whether an older release left a plaintext credential that must be erased. */
+    public boolean hasLegacyPlaintextCredential() {
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        return legacyExternalAuthToken != null &amp;&amp; !legacyExternalAuthToken.isBlank();</span>
+    }
+
+    /** Clear a legacy plaintext value without ever returning it to application code. */
+    public void clearLegacyPlaintextCredential() {
+<span class="fc" id="L123">        legacyExternalAuthToken = null;</span>
+<span class="fc" id="L124">    }</span>
+
+    public Instant getLastFetchAt() {
+<span class="fc" id="L127">        return lastFetchAt;</span>
+    }
+
+    public void setLastFetchAt(Instant lastFetchAt) {
+<span class="fc" id="L131">        this.lastFetchAt = lastFetchAt;</span>
+<span class="fc" id="L132">    }</span>
+
+    public Instant getLastPushAt() {
+<span class="fc" id="L135">        return lastPushAt;</span>
+    }
+
+    public void setLastPushAt(Instant lastPushAt) {
+<span class="fc" id="L139">        this.lastPushAt = lastPushAt;</span>
+<span class="fc" id="L140">    }</span>
+
+    public String getLastFetchCommit() {
+<span class="fc" id="L143">        return lastFetchCommit;</span>
+    }
+
+    public void setLastFetchCommit(String lastFetchCommit) {
+<span class="fc" id="L147">        this.lastFetchCommit = lastFetchCommit;</span>
+<span class="fc" id="L148">    }</span>
+
+    public boolean isPrimaryRepo() {
+<span class="fc" id="L151">        return primaryRepo;</span>
+    }
+
+    public void setPrimaryRepo(boolean primaryRepo) {
+<span class="fc" id="L155">        this.primaryRepo = primaryRepo;</span>
+<span class="fc" id="L156">    }</span>
+
+    public Instant getCreatedAt() {
+<span class="fc" id="L159">        return createdAt;</span>
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+<span class="fc" id="L163">        this.createdAt = createdAt;</span>
+<span class="fc" id="L164">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

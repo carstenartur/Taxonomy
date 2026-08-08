@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementAnalysisJobItem.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">RequirementAnalysisJobItem.java</span></div><h1>RequirementAnalysisJobItem.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/** Status and retry boundary for one requirement inside a batch analysis job. */
+@Entity
+@Table(name = &quot;req_analysis_item&quot;, indexes = {
+        @Index(name = &quot;idx_item_job&quot;, columnList = &quot;job_id&quot;),
+        @Index(name = &quot;idx_item_req&quot;, columnList = &quot;requirement_id&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_item_job_req&quot;, columnNames = {&quot;job_id&quot;, &quot;requirement_id&quot;})
+})
+public class RequirementAnalysisJobItem {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;job_id&quot;, nullable = false)
+    private RequirementAnalysisJob job;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;requirement_id&quot;, nullable = false)
+    private ProjectRequirement requirement;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;requirement_version_id&quot;, nullable = false)
+    private ProjectRequirementVersion requirementVersion;
+
+<span class="fc" id="L47">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false, length = 32)
+    private AnalysisStatus status = AnalysisStatus.PENDING;
+
+    @Column(name = &quot;snapshot_id&quot;, length = 36)
+    private String snapshotId;
+
+<span class="fc" id="L54">    @Column(nullable = false)</span>
+    private int attempt = 1;
+
+    @Column(name = &quot;started_at&quot;)
+    private Instant startedAt;
+
+    @Column(name = &quot;completed_at&quot;)
+    private Instant completedAt;
+
+    @Column(name = &quot;error_message&quot;, length = 2000)
+    private String errorMessage;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L70">    protected RequirementAnalysisJobItem() {</span>
+<span class="fc" id="L71">    }</span>
+
+    public RequirementAnalysisJobItem(RequirementAnalysisJob job,
+                                      ProjectRequirement requirement,
+<span class="fc" id="L75">                                      ProjectRequirementVersion requirementVersion) {</span>
+<span class="fc" id="L76">        this.job = job;</span>
+<span class="fc" id="L77">        this.requirement = requirement;</span>
+<span class="fc" id="L78">        this.requirementVersion = requirementVersion;</span>
+<span class="fc" id="L79">    }</span>
+
+    public void markRunning(Instant now) {
+<span class="nc" id="L82">        this.status = AnalysisStatus.RUNNING;</span>
+<span class="nc" id="L83">        this.startedAt = now;</span>
+<span class="nc" id="L84">        this.completedAt = null;</span>
+<span class="nc" id="L85">        this.errorMessage = null;</span>
+<span class="nc" id="L86">    }</span>
+
+    public void complete(AnalysisStatus status, String snapshotId, Instant now) {
+<span class="pc bpc" id="L89" title="3 of 4 branches missed.">        if (status != AnalysisStatus.SUCCESS &amp;&amp; status != AnalysisStatus.PARTIAL) {</span>
+<span class="nc" id="L90">            throw new IllegalArgumentException(&quot;Completed item status must be SUCCESS or PARTIAL&quot;);</span>
+        }
+<span class="fc" id="L92">        this.status = status;</span>
+<span class="fc" id="L93">        this.snapshotId = snapshotId;</span>
+<span class="fc" id="L94">        this.completedAt = now;</span>
+<span class="fc" id="L95">        this.errorMessage = null;</span>
+<span class="fc" id="L96">    }</span>
+
+    public void fail(String errorMessage, Instant now) {
+<span class="fc" id="L99">        this.status = AnalysisStatus.FAILED;</span>
+<span class="fc" id="L100">        this.errorMessage = errorMessage;</span>
+<span class="fc" id="L101">        this.completedAt = now;</span>
+<span class="fc" id="L102">    }</span>
+
+    public void prepareRetry(ProjectRequirementVersion currentVersion) {
+<span class="nc" id="L105">        this.requirementVersion = currentVersion;</span>
+<span class="nc" id="L106">        this.status = AnalysisStatus.PENDING;</span>
+<span class="nc" id="L107">        this.snapshotId = null;</span>
+<span class="nc" id="L108">        this.errorMessage = null;</span>
+<span class="nc" id="L109">        this.startedAt = null;</span>
+<span class="nc" id="L110">        this.completedAt = null;</span>
+<span class="nc" id="L111">        this.attempt++;</span>
+<span class="nc" id="L112">    }</span>
+
+<span class="fc" id="L114">    public Long getId() { return id; }</span>
+<span class="fc" id="L115">    public RequirementAnalysisJob getJob() { return job; }</span>
+<span class="fc" id="L116">    public ProjectRequirement getRequirement() { return requirement; }</span>
+<span class="fc" id="L117">    public ProjectRequirementVersion getRequirementVersion() { return requirementVersion; }</span>
+<span class="fc" id="L118">    public AnalysisStatus getStatus() { return status; }</span>
+<span class="fc" id="L119">    public String getSnapshotId() { return snapshotId; }</span>
+<span class="fc" id="L120">    public int getAttempt() { return attempt; }</span>
+<span class="fc" id="L121">    public Instant getStartedAt() { return startedAt; }</span>
+<span class="fc" id="L122">    public Instant getCompletedAt() { return completedAt; }</span>
+<span class="fc" id="L123">    public String getErrorMessage() { return errorMessage; }</span>
+<span class="nc" id="L124">    public long getRowVersion() { return rowVersion; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

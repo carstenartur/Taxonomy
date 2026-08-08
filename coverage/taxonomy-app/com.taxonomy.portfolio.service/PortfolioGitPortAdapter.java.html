@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioGitPortAdapter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioGitPortAdapter.java</span></div><h1>PortfolioGitPortAdapter.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.versioning.service.VersioningPortfolioGitPort;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspacePortfolioGitPort;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+
+/**
+ * Adapter that exposes the portfolio Git application service through ports
+ * owned by the workspace and versioning slices.
+ */
+@Component
+public class PortfolioGitPortAdapter
+        implements WorkspacePortfolioGitPort, VersioningPortfolioGitPort {
+
+    private final PortfolioGitService portfolioGitService;
+
+<span class="fc" id="L20">    public PortfolioGitPortAdapter(PortfolioGitService portfolioGitService) {</span>
+<span class="fc" id="L21">        this.portfolioGitService = portfolioGitService;</span>
+<span class="fc" id="L22">    }</span>
+
+    @Override
+    public String commitPortfolio(String branch,
+                                  String message,
+                                  String username,
+                                  WorkspaceContext context) throws IOException {
+<span class="fc" id="L29">        return portfolioGitService.commit(branch, message, username, context).commitId();</span>
+    }
+
+    @Override
+    public void materializePortfolio(String dsl,
+                                     String username,
+                                     WorkspaceContext context) {
+<span class="fc" id="L36">        portfolioGitService.materialize(dsl, username, context);</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    public void materializePortfolioHead(String branch,
+                                         String username,
+                                         WorkspaceContext context) throws IOException {
+<span class="fc" id="L43">        portfolioGitService.materializeHead(branch, username, context);</span>
+<span class="fc" id="L44">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,607 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioDtos.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.dto</a> &gt; <span class="el_source">PortfolioDtos.java</span></div><h1>PortfolioDtos.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.dto;
+
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.ArchitectureRecommendation;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ConflictStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ConflictType;
+import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
+import com.taxonomy.portfolio.model.PortfolioTypes.LifecycleStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.MappingOrigin;
+import com.taxonomy.portfolio.model.PortfolioTypes.OperatingModel;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductSelectionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectSolutionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementSolutionRole;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.SolutionType;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+
+/** Framework-neutral REST contracts for the project requirement portfolio. */
+public final class PortfolioDtos {
+
+    private PortfolioDtos() {
+    }
+
+    // ── Projects and requirements ───────────────────────────────────────────
+
+<span class="fc" id="L39">    public record CreateProjectRequest(</span>
+            String projectKey,
+            String title,
+            String description,
+            ProjectStatus status,
+            String targetArchitecture,
+            LocalDate targetDate,
+            BigDecimal budgetAmount,
+            String budgetCurrency) {
+    }
+
+<span class="fc" id="L50">    public record UpdateProjectRequest(</span>
+            String title,
+            String description,
+            ProjectStatus status,
+            String targetArchitecture,
+            LocalDate targetDate,
+            BigDecimal budgetAmount,
+            String budgetCurrency) {
+    }
+
+<span class="fc" id="L60">    public record ProjectView(</span>
+            Long id,
+            String projectKey,
+            String title,
+            String description,
+            ProjectStatus status,
+            String ownerUsername,
+            String workspaceId,
+            String targetArchitecture,
+            LocalDate targetDate,
+            BigDecimal budgetAmount,
+            String budgetCurrency,
+            Instant createdAt,
+            Instant updatedAt,
+            int requirementCount,
+            int solutionCount,
+            int openConflictCount) {
+    }
+
+<span class="fc" id="L79">    public record SourceReference(</span>
+            Long sourceArtifactId,
+            Long sourceVersionId,
+            List&lt;Long&gt; sourceFragmentIds,
+            String sectionReference,
+            Integer pageNumber,
+            String originalText) {
+    }
+
+<span class="fc" id="L88">    public record CreateRequirementRequest(</span>
+            String requirementKey,
+            String title,
+            String text,
+            RequirementStatus status,
+            Integer priority,
+            Criticality criticality,
+            RequirementType requirementType,
+            ReviewStatus reviewStatus,
+            String ownerUsername,
+            String changeReason,
+            SourceReference source) {
+    }
+
+<span class="fc" id="L102">    public record UpdateRequirementRequest(</span>
+            String title,
+            RequirementStatus status,
+            Integer priority,
+            Criticality criticality,
+            RequirementType requirementType,
+            ReviewStatus reviewStatus,
+            String ownerUsername) {
+    }
+
+<span class="fc" id="L112">    public record CreateRequirementVersionRequest(</span>
+            String text,
+            String changeReason,
+            SourceReference source) {
+    }
+
+<span class="fc" id="L118">    public record RequirementVersionView(</span>
+            Long id,
+            int versionNumber,
+            String text,
+            String contentHash,
+            String changeReason,
+            String createdBy,
+            Instant createdAt,
+            SourceReference source) {
+    }
+
+<span class="fc" id="L129">    public record RequirementView(</span>
+            Long id,
+            Long projectId,
+            String requirementKey,
+            String title,
+            RequirementStatus status,
+            int priority,
+            Criticality criticality,
+            RequirementType requirementType,
+            ReviewStatus reviewStatus,
+            String ownerUsername,
+            Long currentVersionId,
+            String currentAnalysisSnapshotId,
+            Instant createdAt,
+            Instant updatedAt,
+            RequirementVersionView currentVersion) {
+    }
+
+<span class="fc" id="L147">    public record ImportRequirementCandidate(</span>
+            String requirementKey,
+            String title,
+            String text,
+            RequirementType requirementType,
+            Integer priority,
+            Criticality criticality,
+            SourceReference source) {
+    }
+
+<span class="fc" id="L157">    public record ImportRequirementsRequest(</span>
+            List&lt;ImportRequirementCandidate&gt; requirements,
+            boolean analyzeAfterImport,
+            String provider,
+            Integer maxArchitectureNodes,
+            String idempotencyKey) {
+    }
+
+<span class="nc" id="L165">    public record ImportRequirementsResult(</span>
+            List&lt;RequirementView&gt; requirements,
+            AnalysisJobView analysisJob) {
+    }
+
+    // ── Analysis jobs and immutable snapshots ──────────────────────────────
+
+    /**
+     * Analysis request. {@code all} is boxed so that clients may omit the field or send
+     * {@code null} without triggering a Jackson primitive-coercion failure (HTTP 400).
+     */
+<span class="fc" id="L176">    public record AnalyzeProjectRequest(</span>
+            List&lt;Long&gt; requirementIds,
+            Boolean all,
+            String provider,
+            Integer maxArchitectureNodes,
+            String idempotencyKey) {
+
+        /** @return {@code true} only when the client explicitly requested a full-project analysis. */
+        public boolean analyzeAll() {
+<span class="fc" id="L185">            return Boolean.TRUE.equals(all);</span>
+        }
+    }
+
+<span class="fc" id="L189">    public record AnalysisJobItemView(</span>
+            Long id,
+            Long requirementId,
+            String requirementKey,
+            Long requirementVersionId,
+            int requirementVersionNumber,
+            AnalysisStatus status,
+            String snapshotId,
+            int attempt,
+            Instant startedAt,
+            Instant completedAt,
+            String errorMessage) {
+    }
+
+<span class="fc" id="L203">    public record AnalysisJobView(</span>
+            String id,
+            Long projectId,
+            AnalysisStatus status,
+            String idempotencyKey,
+            String provider,
+            int maxArchitectureNodes,
+            String requestedBy,
+            String workspaceId,
+            Instant createdAt,
+            Instant startedAt,
+            Instant completedAt,
+            int totalItems,
+            int successfulItems,
+            int partialItems,
+            int failedItems,
+            String errorSummary,
+            List&lt;AnalysisJobItemView&gt; items) {
+    }
+
+<span class="fc" id="L223">    public record SnapshotSummary(</span>
+            String id,
+            Long projectId,
+            Long requirementId,
+            String requirementKey,
+            Long requirementVersionId,
+            int requirementVersionNumber,
+            String jobId,
+            AnalysisStatus status,
+            String provider,
+            String modelName,
+            String taxonomyFingerprint,
+            String promptFingerprint,
+            String workspaceId,
+            String branchName,
+            String commitSha,
+            Instant createdAt,
+            long durationMs,
+            int warningCount,
+            String errorMessage) {
+    }
+
+<span class="fc" id="L245">    public record ElementMappingView(</span>
+            Long id,
+            String snapshotId,
+            String nodeCode,
+            String nodeTitle,
+            String taxonomyRoot,
+            int directScore,
+            double relevance,
+            double confidence,
+            MappingOrigin mappingOrigin,
+            String hierarchyPath,
+            String presenceReason,
+            boolean selectedForImpact,
+            ReviewStatus reviewStatus,
+            ActionStatus actionStatus,
+            String actionEvidence,
+            String decisionBy,
+            Instant decisionAt,
+            String decisionComment) {
+    }
+
+<span class="nc" id="L266">    public record RelationMappingView(</span>
+            Long id,
+            String snapshotId,
+            String sourceCode,
+            String targetCode,
+            String relationType,
+            String relationOrigin,
+            String relationCategory,
+            double relevance,
+            double confidence,
+            String presenceReason,
+            ReviewStatus reviewStatus,
+            String decisionBy,
+            Instant decisionAt,
+            String decisionComment) {
+    }
+
+<span class="nc" id="L283">    public record ReviewElementMappingRequest(</span>
+            ReviewStatus reviewStatus,
+            ActionStatus actionStatus,
+            String actionEvidence,
+            String comment) {
+    }
+
+<span class="nc" id="L290">    public record ReviewRelationMappingRequest(</span>
+            ReviewStatus reviewStatus,
+            String comment) {
+    }
+
+<span class="fc" id="L295">    public record SnapshotDetail(</span>
+            SnapshotSummary summary,
+            AnalysisResult analysis,
+            GapAnalysisView gapAnalysis,
+            PatternDetectionView patternDetection,
+            ArchitectureRecommendation recommendation,
+            List&lt;ElementMappingView&gt; elementMappings,
+            List&lt;RelationMappingView&gt; relationMappings) {
+    }
+
+<span class="nc" id="L305">    public record SnapshotDiff(</span>
+            String olderSnapshotId,
+            String newerSnapshotId,
+            Map&lt;String, ScoreChange&gt; scoreChanges,
+            List&lt;String&gt; addedElements,
+            List&lt;String&gt; removedElements,
+            List&lt;String&gt; addedRelations,
+            List&lt;String&gt; removedRelations,
+            boolean taxonomyFingerprintChanged,
+            boolean promptFingerprintChanged,
+            boolean providerChanged) {
+    }
+
+<span class="nc" id="L318">    public record ScoreChange(Integer oldScore, Integer newScore) {</span>
+    }
+
+    // ── Solutions ───────────────────────────────────────────────────────────
+
+<span class="fc" id="L323">    public record CreateSolutionRequest(</span>
+            String solutionKey,
+            String title,
+            String description,
+            SolutionType solutionType,
+            OperatingModel operatingModel,
+            LifecycleStatus lifecycleStatus,
+            Integer maturityLevel,
+            String responsibleOrganization,
+            BigDecimal costAmount,
+            String costCurrency,
+            String riskNotes,
+            Integer leadTimeDays,
+            Map&lt;String, String&gt; extensionAttributes) {
+    }
+
+<span class="nc" id="L339">    public record UpdateSolutionRequest(</span>
+            String title,
+            String description,
+            SolutionType solutionType,
+            OperatingModel operatingModel,
+            LifecycleStatus lifecycleStatus,
+            Integer maturityLevel,
+            String ownerUsername,
+            String responsibleOrganization,
+            BigDecimal costAmount,
+            String costCurrency,
+            String riskNotes,
+            Integer leadTimeDays,
+            Map&lt;String, String&gt; extensionAttributes) {
+    }
+
+<span class="fc" id="L355">    public record UpsertTaxonomyCoverageRequest(</span>
+            String nodeCode,
+            int coveragePercent,
+            String evidence,
+            ReviewStatus reviewStatus) {
+    }
+
+<span class="fc" id="L362">    public record TaxonomyCoverageView(</span>
+            Long id,
+            String nodeCode,
+            int coveragePercent,
+            String evidence,
+            ReviewStatus reviewStatus,
+            String updatedBy,
+            Instant updatedAt) {
+    }
+
+<span class="fc" id="L372">    public record SolutionView(</span>
+            Long id,
+            String solutionKey,
+            String title,
+            String description,
+            SolutionType solutionType,
+            OperatingModel operatingModel,
+            LifecycleStatus lifecycleStatus,
+            int maturityLevel,
+            String ownerUsername,
+            String responsibleOrganization,
+            BigDecimal costAmount,
+            String costCurrency,
+            String riskNotes,
+            Integer leadTimeDays,
+            Map&lt;String, String&gt; extensionAttributes,
+            Instant createdAt,
+            Instant updatedAt,
+            List&lt;TaxonomyCoverageView&gt; taxonomyCoverage) {
+    }
+
+<span class="fc" id="L393">    public record AddProjectSolutionRequest(</span>
+            Long solutionId,
+            ProjectSolutionStatus status,
+            ActionStatus actionStatus,
+            Integer priority,
+            String rationale) {
+    }
+
+<span class="fc" id="L401">    public record UpdateProjectSolutionRequest(</span>
+            ProjectSolutionStatus status,
+            ActionStatus actionStatus,
+            Integer priority,
+            String rationale) {
+    }
+
+<span class="fc" id="L408">    public record LinkRequirementSolutionRequest(</span>
+            Long requirementId,
+            String snapshotId,
+            int coveragePercent,
+            RequirementSolutionRole role,
+            ReviewStatus reviewStatus,
+            String evidence) {
+    }
+
+<span class="fc" id="L417">    public record RequirementSolutionLinkView(</span>
+            Long id,
+            Long requirementId,
+            String requirementKey,
+            String snapshotId,
+            int coveragePercent,
+            RequirementSolutionRole role,
+            ReviewStatus reviewStatus,
+            String evidence,
+            String updatedBy,
+            Instant updatedAt) {
+    }
+
+<span class="fc" id="L430">    public record ProjectSolutionView(</span>
+            Long id,
+            Long projectId,
+            SolutionView solution,
+            ProjectSolutionStatus status,
+            ActionStatus actionStatus,
+            int priority,
+            String rationale,
+            String createdBy,
+            Instant createdAt,
+            Instant updatedAt,
+            List&lt;RequirementSolutionLinkView&gt; requirements,
+            List&lt;SolutionProductCandidateView&gt; productCandidates) {
+    }
+
+    // ── Products ────────────────────────────────────────────────────────────
+
+<span class="fc" id="L447">    public record CreateProductRequest(</span>
+            String productKey,
+            String manufacturer,
+            String productFamily,
+            String productName,
+            String editionVersion,
+            ProductStatus productStatus,
+            LocalDate endOfSupport,
+            String licenseModel,
+            OperatingModel operatingModel,
+            String supportedPlatforms,
+            String securityFeatures,
+            String complianceFeatures,
+            BigDecimal costAmount,
+            String costCurrency,
+            String costBasis,
+            String sourceReference,
+            Instant verifiedAt) {
+    }
+
+<span class="nc" id="L467">    public record UpdateProductRequest(</span>
+            String manufacturer,
+            String productFamily,
+            String productName,
+            String editionVersion,
+            ProductStatus productStatus,
+            LocalDate endOfSupport,
+            String licenseModel,
+            OperatingModel operatingModel,
+            String supportedPlatforms,
+            String securityFeatures,
+            String complianceFeatures,
+            BigDecimal costAmount,
+            String costCurrency,
+            String costBasis,
+            String sourceReference,
+            Instant verifiedAt) {
+    }
+
+<span class="fc" id="L486">    public record ProductView(</span>
+            Long id,
+            String productKey,
+            String manufacturer,
+            String productFamily,
+            String productName,
+            String editionVersion,
+            ProductStatus productStatus,
+            LocalDate endOfSupport,
+            String licenseModel,
+            OperatingModel operatingModel,
+            String supportedPlatforms,
+            String securityFeatures,
+            String complianceFeatures,
+            BigDecimal costAmount,
+            String costCurrency,
+            String costBasis,
+            String sourceReference,
+            Instant verifiedAt,
+            String createdBy,
+            Instant createdAt,
+            Instant updatedAt,
+            List&lt;TaxonomyCoverageView&gt; taxonomyCoverage) {
+    }
+
+<span class="fc" id="L511">    public record UpsertProductCandidateRequest(</span>
+            Long productId,
+            int coveragePercent,
+            String hardExclusions,
+            String strengths,
+            String weaknesses,
+            String openEvidence,
+            double confidence,
+            ReviewStatus reviewStatus,
+            ProductSelectionStatus selectionStatus) {
+    }
+
+<span class="fc" id="L523">    public record SolutionProductCandidateView(</span>
+            Long id,
+            Long projectSolutionId,
+            ProductView product,
+            int coveragePercent,
+            String hardExclusions,
+            String strengths,
+            String weaknesses,
+            String openEvidence,
+            double confidence,
+            ReviewStatus reviewStatus,
+            ProductSelectionStatus selectionStatus,
+            String updatedBy,
+            Instant updatedAt) {
+    }
+
+    // ── Aggregation, matrices and conflicts ────────────────────────────────
+
+<span class="fc" id="L541">    public record MatrixView(</span>
+            List&lt;String&gt; rows,
+            List&lt;String&gt; columns,
+            Map&lt;String, Map&lt;String, Integer&gt;&gt; values) {
+    }
+
+<span class="fc" id="L547">    public record AggregatedTaxonomyNode(</span>
+            String nodeCode,
+            String title,
+            String taxonomyRoot,
+            int requirementCount,
+            double averageRelevance,
+            int maximumDirectScore,
+            List&lt;String&gt; requirementKeys,
+            List&lt;String&gt; snapshotIds,
+            Map&lt;ActionStatus, Integer&gt; actionStatusCounts) {
+    }
+
+<span class="fc" id="L559">    public record ConflictView(</span>
+            Long id,
+            Long projectId,
+            Long requirementAId,
+            String requirementAKey,
+            Long requirementBId,
+            String requirementBKey,
+            ConflictType conflictType,
+            ConflictStatus status,
+            String title,
+            String evidence,
+            double confidence,
+            String resolutionNote,
+            Instant detectedAt,
+            String reviewedBy,
+            Instant reviewedAt) {
+    }
+
+<span class="fc" id="L577">    public record ReviewConflictRequest(</span>
+            ConflictStatus status,
+            String resolutionNote) {
+    }
+
+<span class="fc" id="L582">    public record PortfolioMetrics(</span>
+            int totalRequirements,
+            int analyzedRequirements,
+            int confirmedRequirements,
+            int requirementsWithoutConfirmedSolution,
+            int totalSolutions,
+            Map&lt;ActionStatus, Integer&gt; solutionsByAction,
+            int totalProductCandidates,
+            int selectedProducts,
+            int openConflicts,
+            int staleSnapshots) {
+    }
+
+<span class="fc" id="L595">    public record ProjectPortfolioView(</span>
+            ProjectView project,
+            PortfolioMetrics metrics,
+            List&lt;RequirementView&gt; requirements,
+            List&lt;AggregatedTaxonomyNode&gt; taxonomyNodes,
+            List&lt;ProjectSolutionView&gt; solutions,
+            List&lt;ConflictView&gt; conflicts,
+            MatrixView requirementTaxonomyMatrix,
+            MatrixView requirementSolutionMatrix,
+            MatrixView solutionProductMatrix) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

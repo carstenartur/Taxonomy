@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SystemRepositoryService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">SystemRepositoryService.java</span></div><h1>SystemRepositoryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/** Manages the system-owned central repository configuration. */
+@Service
+public class SystemRepositoryService {
+
+<span class="fc" id="L18">    private static final Logger log = LoggerFactory.getLogger(SystemRepositoryService.class);</span>
+
+    private final SystemRepositoryRepository repository;
+
+<span class="fc" id="L22">    public SystemRepositoryService(SystemRepositoryRepository repository) {</span>
+<span class="fc" id="L23">        this.repository = repository;</span>
+<span class="fc" id="L24">    }</span>
+
+    /**
+     * Ensure a primary repository exists and erase credentials persisted by
+     * releases that stored external Git tokens in plaintext.
+     *
+     * &lt;p&gt;Initialization fails closed. Continuing after a failed cleanup could
+     * leave a usable plaintext credential in the database while the operator
+     * assumes migration succeeded.&lt;/p&gt;
+     */
+    @PostConstruct
+    public void ensureSystemRepository() {
+        try {
+<span class="fc" id="L37">            var primaryRepository = repository.findByPrimaryRepoTrue();</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">            if (primaryRepository.isEmpty()) {</span>
+<span class="fc" id="L39">                SystemRepository systemRepository = new SystemRepository();</span>
+<span class="fc" id="L40">                systemRepository.setRepositoryId(UUID.randomUUID().toString());</span>
+<span class="fc" id="L41">                systemRepository.setDisplayName(&quot;Shared Architecture Repository&quot;);</span>
+<span class="fc" id="L42">                systemRepository.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);</span>
+<span class="fc" id="L43">                systemRepository.setDefaultBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L44">                systemRepository.setPrimaryRepo(true);</span>
+<span class="fc" id="L45">                systemRepository.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L46">                repository.save(systemRepository);</span>
+<span class="fc" id="L47">                log.info(&quot;Created primary system repository &quot;</span>
+                        + &quot;(topology=INTERNAL_SHARED, branch=draft)&quot;);
+<span class="fc" id="L49">                return;</span>
+            }
+
+<span class="fc" id="L52">            SystemRepository existing = primaryRepository.get();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (existing.hasLegacyPlaintextCredential()) {</span>
+<span class="fc" id="L54">                existing.clearLegacyPlaintextCredential();</span>
+<span class="fc" id="L55">                repository.save(existing);</span>
+<span class="fc" id="L56">                log.warn(&quot;Removed a legacy plaintext external Git credential from the database. &quot;</span>
+                        + &quot;Configure TAXONOMY_EXTERNAL_GIT_TOKEN through deployment secret storage.&quot;);
+            }
+<span class="fc" id="L59">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L60">            log.error(&quot;Could not initialize the system repository safely&quot;, exception);</span>
+<span class="fc" id="L61">            throw new IllegalStateException(</span>
+                    &quot;System repository initialization or credential cleanup failed&quot;,
+                    exception);
+<span class="fc" id="L64">        }</span>
+<span class="fc" id="L65">    }</span>
+
+    public SystemRepository getPrimaryRepository() {
+<span class="fc" id="L68">        return repository.findByPrimaryRepoTrue()</span>
+<span class="fc" id="L69">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;No primary system repository configured&quot;));
+    }
+
+    /** Return the configured shared branch, falling back during early startup. */
+    public String getSharedBranch() {
+        try {
+<span class="fc" id="L76">            return getPrimaryRepository().getDefaultBranch();</span>
+<span class="fc" id="L77">        } catch (Exception exception) {</span>
+<span class="fc" id="L78">            log.debug(&quot;System repository not available, falling back to 'draft': {}&quot;,</span>
+<span class="fc" id="L79">                    exception.getMessage());</span>
+<span class="fc" id="L80">            return &quot;draft&quot;;</span>
+        }
+    }
+
+    public SystemRepository save(SystemRepository systemRepository) {
+<span class="fc" id="L85">        return repository.save(systemRepository);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

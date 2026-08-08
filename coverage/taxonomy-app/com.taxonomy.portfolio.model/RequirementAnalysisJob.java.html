@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementAnalysisJob.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">RequirementAnalysisJob.java</span></div><h1>RequirementAnalysisJob.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/** Persisted batch job for independently analyzing project requirements. */
+@Entity
+@Table(name = &quot;req_analysis_job&quot;, indexes = {
+        @Index(name = &quot;idx_job_project&quot;, columnList = &quot;project_id,created_at&quot;),
+        @Index(name = &quot;idx_job_status&quot;, columnList = &quot;project_id,status&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_job_idempotency&quot;, columnNames = {&quot;project_id&quot;, &quot;idempotency_key&quot;})
+})
+public class RequirementAnalysisJob {
+
+    @Id
+    @Column(length = 36)
+    private String id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;project_id&quot;, nullable = false)
+    private ArchitectureProject project;
+
+<span class="fc" id="L37">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false, length = 32)
+    private AnalysisStatus status = AnalysisStatus.PENDING;
+
+    /** Always populated; automatically generated keys keep SQL Server uniqueness portable. */
+    @Column(name = &quot;idempotency_key&quot;, nullable = false, length = 160)
+    private String idempotencyKey;
+
+    @Column(length = 40)
+    private String provider;
+
+    @Column(name = &quot;max_architecture_nodes&quot;, nullable = false)
+    private int maxArchitectureNodes;
+
+    @Column(name = &quot;requested_by&quot;, nullable = false, length = 160)
+    private String requestedBy;
+
+    @Column(name = &quot;workspace_id&quot;, length = 120)
+    private String workspaceId;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;started_at&quot;)
+    private Instant startedAt;
+
+    @Column(name = &quot;completed_at&quot;)
+    private Instant completedAt;
+
+    @Column(name = &quot;total_items&quot;, nullable = false)
+    private int totalItems;
+
+    @Column(name = &quot;successful_items&quot;, nullable = false)
+    private int successfulItems;
+
+    @Column(name = &quot;partial_items&quot;, nullable = false)
+    private int partialItems;
+
+    @Column(name = &quot;failed_items&quot;, nullable = false)
+    private int failedItems;
+
+    @Column(name = &quot;error_summary&quot;, length = 2000)
+    private String errorSummary;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L85">    protected RequirementAnalysisJob() {</span>
+<span class="fc" id="L86">    }</span>
+
+    public RequirementAnalysisJob(String id,
+                                  ArchitectureProject project,
+                                  String idempotencyKey,
+                                  String provider,
+                                  int maxArchitectureNodes,
+                                  String requestedBy,
+                                  String workspaceId,
+                                  int totalItems,
+<span class="fc" id="L96">                                  Instant createdAt) {</span>
+<span class="fc" id="L97">        this.id = id;</span>
+<span class="fc" id="L98">        this.project = project;</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        this.idempotencyKey = idempotencyKey != null ? idempotencyKey : &quot;auto:&quot; + id;</span>
+<span class="fc" id="L100">        this.provider = provider;</span>
+<span class="fc" id="L101">        this.maxArchitectureNodes = maxArchitectureNodes;</span>
+<span class="fc" id="L102">        this.requestedBy = requestedBy;</span>
+<span class="fc" id="L103">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L104">        this.totalItems = totalItems;</span>
+<span class="fc" id="L105">        this.createdAt = createdAt;</span>
+<span class="fc" id="L106">    }</span>
+
+    public void markPending() {
+<span class="fc" id="L109">        this.status = AnalysisStatus.PENDING;</span>
+<span class="fc" id="L110">        this.startedAt = null;</span>
+<span class="fc" id="L111">        this.completedAt = null;</span>
+<span class="fc" id="L112">        this.errorSummary = null;</span>
+<span class="fc" id="L113">    }</span>
+
+    public void markRunning(Instant now) {
+<span class="fc" id="L116">        this.status = AnalysisStatus.RUNNING;</span>
+<span class="fc" id="L117">        this.startedAt = now;</span>
+<span class="fc" id="L118">        this.completedAt = null;</span>
+<span class="fc" id="L119">        this.errorSummary = null;</span>
+<span class="fc" id="L120">    }</span>
+
+    public void complete(int successfulItems,
+                         int partialItems,
+                         int failedItems,
+                         String errorSummary,
+                         Instant now) {
+<span class="fc" id="L127">        this.successfulItems = successfulItems;</span>
+<span class="fc" id="L128">        this.partialItems = partialItems;</span>
+<span class="fc" id="L129">        this.failedItems = failedItems;</span>
+<span class="fc" id="L130">        this.errorSummary = errorSummary;</span>
+
+<span class="fc" id="L132">        int completedItems = successfulItems + partialItems + failedItems;</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (completedItems &lt; totalItems) {</span>
+            // Another worker may still own RUNNING items. Never expose a
+            // premature SUCCESS state merely because this request claimed no
+            // additional work. Preserve an existing start time, but enforce
+            // the invariant that every externally visible RUNNING job has one.
+<span class="fc" id="L138">            this.status = AnalysisStatus.RUNNING;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (this.startedAt == null) {</span>
+<span class="fc" id="L140">                this.startedAt = now;</span>
+            }
+<span class="fc" id="L142">            this.completedAt = null;</span>
+<span class="fc" id="L143">            return;</span>
+        }
+
+<span class="fc" id="L146">        this.completedAt = now;</span>
+<span class="pc bpc" id="L147" title="3 of 4 branches missed.">        if (failedItems == totalItems &amp;&amp; totalItems &gt; 0) {</span>
+<span class="nc" id="L148">            this.status = AnalysisStatus.FAILED;</span>
+<span class="pc bpc" id="L149" title="1 of 4 branches missed.">        } else if (failedItems &gt; 0 || partialItems &gt; 0) {</span>
+<span class="fc" id="L150">            this.status = AnalysisStatus.PARTIAL;</span>
+        } else {
+<span class="fc" id="L152">            this.status = AnalysisStatus.SUCCESS;</span>
+        }
+<span class="fc" id="L154">    }</span>
+
+    public void cancel(Instant now) {
+<span class="nc" id="L157">        this.status = AnalysisStatus.CANCELLED;</span>
+<span class="nc" id="L158">        this.completedAt = now;</span>
+<span class="nc" id="L159">    }</span>
+
+<span class="fc" id="L161">    public String getId() { return id; }</span>
+<span class="fc" id="L162">    public ArchitectureProject getProject() { return project; }</span>
+<span class="fc" id="L163">    public AnalysisStatus getStatus() { return status; }</span>
+<span class="fc" id="L164">    public String getIdempotencyKey() { return idempotencyKey; }</span>
+<span class="fc" id="L165">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L166">    public int getMaxArchitectureNodes() { return maxArchitectureNodes; }</span>
+<span class="fc" id="L167">    public String getRequestedBy() { return requestedBy; }</span>
+<span class="fc" id="L168">    public String getWorkspaceId() { return workspaceId; }</span>
+<span class="fc" id="L169">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L170">    public Instant getStartedAt() { return startedAt; }</span>
+<span class="fc" id="L171">    public Instant getCompletedAt() { return completedAt; }</span>
+<span class="fc" id="L172">    public int getTotalItems() { return totalItems; }</span>
+<span class="fc" id="L173">    public int getSuccessfulItems() { return successfulItems; }</span>
+<span class="fc" id="L174">    public int getPartialItems() { return partialItems; }</span>
+<span class="fc" id="L175">    public int getFailedItems() { return failedItems; }</span>
+<span class="fc" id="L176">    public String getErrorSummary() { return errorSummary; }</span>
+<span class="nc" id="L177">    public long getRowVersion() { return rowVersion; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

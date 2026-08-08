@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectRequirementVersionRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.repository</a> &gt; <span class="el_source">ProjectRequirementVersionRepository.java</span></div><h1>ProjectRequirementVersionRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.repository;
+
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface ProjectRequirementVersionRepository extends JpaRepository&lt;ProjectRequirementVersion, Long&gt; {
+
+    List&lt;ProjectRequirementVersion&gt; findByRequirementIdOrderByVersionNumberDesc(Long requirementId);
+
+    Optional&lt;ProjectRequirementVersion&gt; findFirstByRequirementIdOrderByVersionNumberDesc(Long requirementId);
+
+    Optional&lt;ProjectRequirementVersion&gt; findByRequirementIdAndVersionNumber(
+            Long requirementId, int versionNumber);
+
+    Optional&lt;ProjectRequirementVersion&gt; findByRequirementIdAndContentHash(Long requirementId, String contentHash);
+
+    /**
+     * Uses the first-level persistence cache when the version was fetched with
+     * its requirement list, while retaining the requirement ownership check.
+     */
+    default Optional&lt;ProjectRequirementVersion&gt; findByIdAndRequirementId(Long id, Long requirementId) {
+<span class="pc bpc" id="L25" title="2 of 4 branches missed.">        if (id == null || requirementId == null) {</span>
+<span class="nc" id="L26">            return Optional.empty();</span>
+        }
+<span class="fc" id="L28">        return findById(id)</span>
+<span class="fc" id="L29">                .filter(version -&gt; requirementId.equals(version.getRequirement().getId()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

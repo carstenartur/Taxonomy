@@ -1,0 +1,13 @@
+Taxonomy reactor-wide JaCoCo instruction coverage
+
+Source: taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
+
+- taxonomy-app: 80.35% (70490/87734 instructions)
+- taxonomy-domain: 87.67% (3790/4323 instructions)
+- taxonomy-dsl: 93.41% (7808/8359 instructions)
+- taxonomy-export: 96.49% (6545/6783 instructions)
+- taxonomy-extension-api: 97.76% (262/268 instructions)
+
+Aggregate: 82.72% (88895/107467 instructions)
+Required:  81.00%
+Result:    PASS

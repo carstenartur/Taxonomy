@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LocalOnnxIndexInitializer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">LocalOnnxIndexInitializer.java</span></div><h1>LocalOnnxIndexInitializer.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.shared.service.AppInitializationStateService;
+import com.taxonomy.shared.service.LocalEmbeddingService;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.search.mapper.orm.Search;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Builds the Hibernate Search vector index after the Spring context and taxonomy
+ * catalogue are ready when the configured provider is {@code LOCAL_ONNX}.
+ *
+ * &lt;p&gt;Taxonomy persistence starts from an eager {@code @PostConstruct} service,
+ * while most other beans are intentionally lazy. Consequently the original
+ * listener-triggered indexing can run before the static bridge-to-Spring adapter
+ * is available and create Lucene documents without vectors. Reindexing from an
+ * application-ready listener gives Hibernate Search bridges access to the fully
+ * initialized Spring context and the local embedding model.&lt;/p&gt;
+ *
+ * &lt;p&gt;The application remains globally ready while this optional index is built:
+ * catalogue browsing, full-text search, DSL editing and other deterministic
+ * functions are already usable. Semantic readiness is exposed independently by
+ * the embedding status and semantic-search endpoints.&lt;/p&gt;
+ */
+@Service
+@Lazy(false)
+@DependsOn(&quot;springContextHolder&quot;)
+public class LocalOnnxIndexInitializer {
+
+<span class="fc" id="L41">    private static final Logger log =</span>
+<span class="fc" id="L42">            LoggerFactory.getLogger(LocalOnnxIndexInitializer.class);</span>
+<span class="fc" id="L43">    private static final Duration TAXONOMY_READY_TIMEOUT = Duration.ofMinutes(10);</span>
+<span class="fc" id="L44">    private static final Duration READY_POLL_INTERVAL = Duration.ofMillis(250);</span>
+
+    private final EntityManagerFactory entityManagerFactory;
+    private final LocalEmbeddingService embeddingService;
+    private final AppInitializationStateService initializationState;
+<span class="fc" id="L49">    private final AtomicBoolean started = new AtomicBoolean();</span>
+
+    @Value(&quot;${llm.provider:}&quot;)
+    private String provider;
+
+    public LocalOnnxIndexInitializer(EntityManagerFactory entityManagerFactory,
+                                     LocalEmbeddingService embeddingService,
+<span class="fc" id="L56">                                     AppInitializationStateService initializationState) {</span>
+<span class="fc" id="L57">        this.entityManagerFactory = entityManagerFactory;</span>
+<span class="fc" id="L58">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L59">        this.initializationState = initializationState;</span>
+<span class="fc" id="L60">    }</span>
+
+    @Async
+    @EventListener(ApplicationReadyEvent.class)
+    public void initializeLocalOnnxIndex() {
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (!embeddingService.isEnabled()</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                || !&quot;LOCAL_ONNX&quot;.equalsIgnoreCase(provider)</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">                || !started.compareAndSet(false, true)) {</span>
+<span class="fc" id="L68">            return;</span>
+        }
+
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        if (!awaitTaxonomyReady()) {</span>
+<span class="nc" id="L72">            return;</span>
+        }
+
+<span class="nc" id="L75">        log.info(&quot;Building Hibernate Search vector index for LOCAL_ONNX&quot;);</span>
+
+        try {
+<span class="nc" id="L78">            embeddingService.embed(&quot;Taxonomy embedding index warm-up&quot;);</span>
+<span class="nc" id="L79">            Search.mapping(entityManagerFactory)</span>
+<span class="nc" id="L80">                    .scope(Object.class)</span>
+<span class="nc" id="L81">                    .massIndexer()</span>
+<span class="nc" id="L82">                    .typesToIndexInParallel(1)</span>
+<span class="nc" id="L83">                    .threadsToLoadObjects(1)</span>
+<span class="nc" id="L84">                    .batchSizeToLoadObjects(16)</span>
+<span class="nc" id="L85">                    .startAndWait();</span>
+
+<span class="nc" id="L87">            log.info(&quot;LOCAL_ONNX vector index completed with {} indexed taxonomy nodes&quot;,</span>
+<span class="nc" id="L88">                    embeddingService.indexedNodeCount());</span>
+<span class="nc" id="L89">        } catch (InterruptedException exception) {</span>
+<span class="nc" id="L90">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L91">            log.warn(&quot;LOCAL_ONNX vector indexing was interrupted&quot;, exception);</span>
+<span class="nc" id="L92">        } catch (Exception | LinkageError exception) {</span>
+<span class="nc" id="L93">            log.error(&quot;LOCAL_ONNX vector indexing failed; semantic search is unavailable&quot;,</span>
+                    exception);
+<span class="nc" id="L95">        }</span>
+<span class="nc" id="L96">    }</span>
+
+    private boolean awaitTaxonomyReady() {
+<span class="nc" id="L99">        long deadline = System.nanoTime() + TAXONOMY_READY_TIMEOUT.toNanos();</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        while (System.nanoTime() &lt; deadline) {</span>
+<span class="nc" id="L101">            AppInitializationStateService.State state = initializationState.getState();</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">            if (state == AppInitializationStateService.State.READY) {</span>
+<span class="nc" id="L103">                return true;</span>
+            }
+<span class="nc bnc" id="L105" title="All 2 branches missed.">            if (state == AppInitializationStateService.State.FAILED) {</span>
+<span class="nc" id="L106">                log.warn(&quot;Skipping LOCAL_ONNX vector indexing because taxonomy initialization failed&quot;);</span>
+<span class="nc" id="L107">                return false;</span>
+            }
+            try {
+<span class="nc" id="L110">                Thread.sleep(READY_POLL_INTERVAL.toMillis());</span>
+<span class="nc" id="L111">            } catch (InterruptedException exception) {</span>
+<span class="nc" id="L112">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L113">                log.warn(&quot;Interrupted while waiting for taxonomy initialization&quot;, exception);</span>
+<span class="nc" id="L114">                return false;</span>
+<span class="nc" id="L115">            }</span>
+<span class="nc" id="L116">        }</span>
+<span class="nc" id="L117">        log.error(&quot;Skipping LOCAL_ONNX vector indexing because taxonomy was not ready within {}&quot;,</span>
+                TAXONOMY_READY_TIMEOUT);
+<span class="nc" id="L119">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

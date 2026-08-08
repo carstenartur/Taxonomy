@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioAnalysisWorkQueue.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioAnalysisWorkQueue.java</span></div><h1>PortfolioAnalysisWorkQueue.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Claims pending analysis items in a dedicated short persistence transaction
+ * and returns self-contained work payloads. External LLM execution starts only
+ * after this method's independent transaction has committed.
+ */
+@Service
+public class PortfolioAnalysisWorkQueue {
+
+<span class="fc" id="L23">    public record WorkItem(</span>
+            Long itemId,
+            Long projectId,
+            Long requirementId,
+            String requirementKey,
+            Long requirementVersionId,
+            int requirementVersionNumber,
+            String requirementText) {
+    }
+
+    private final RequirementAnalysisJobRepository jobRepository;
+    private final RequirementAnalysisJobItemRepository itemRepository;
+
+    public PortfolioAnalysisWorkQueue(RequirementAnalysisJobRepository jobRepository,
+<span class="fc" id="L37">                                      RequirementAnalysisJobItemRepository itemRepository) {</span>
+<span class="fc" id="L38">        this.jobRepository = jobRepository;</span>
+<span class="fc" id="L39">        this.itemRepository = itemRepository;</span>
+<span class="fc" id="L40">    }</span>
+
+    /**
+     * Claims pending items with compare-and-set semantics and materializes their
+     * work payloads before the dedicated transaction ends. Competing requests
+     * can observe the same candidates, but only one can update a row from
+     * PENDING to RUNNING.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List&lt;WorkItem&gt; pending(String jobId, Long projectId) {
+<span class="fc" id="L50">        jobRepository.findByIdAndProjectId(jobId, projectId)</span>
+<span class="pc" id="L51">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis job not found: &quot; + jobId));</span>
+
+<span class="fc" id="L53">        List&lt;RequirementAnalysisJobItem&gt; candidates = itemRepository</span>
+<span class="fc" id="L54">                .findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(jobId, AnalysisStatus.PENDING);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (candidates.isEmpty()) {</span>
+<span class="fc" id="L56">            return List.of();</span>
+        }
+
+<span class="fc" id="L59">        Instant claimedAt = Instant.now();</span>
+<span class="fc" id="L60">        List&lt;WorkItem&gt; claimed = new ArrayList&lt;&gt;(candidates.size());</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (RequirementAnalysisJobItem item : candidates) {</span>
+<span class="fc" id="L62">            int updated = itemRepository.claimPending(</span>
+<span class="fc" id="L63">                    item.getId(), AnalysisStatus.PENDING, AnalysisStatus.RUNNING, claimedAt);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            if (updated == 1) {</span>
+<span class="fc" id="L65">                claimed.add(toWorkItem(item));</span>
+            }
+<span class="fc" id="L67">        }</span>
+<span class="fc" id="L68">        return List.copyOf(claimed);</span>
+    }
+
+    private WorkItem toWorkItem(RequirementAnalysisJobItem item) {
+<span class="fc" id="L72">        return new WorkItem(</span>
+<span class="fc" id="L73">                item.getId(),</span>
+<span class="fc" id="L74">                item.getJob().getProject().getId(),</span>
+<span class="fc" id="L75">                item.getRequirement().getId(),</span>
+<span class="fc" id="L76">                item.getRequirement().getRequirementKey(),</span>
+<span class="fc" id="L77">                item.getRequirementVersion().getId(),</span>
+<span class="fc" id="L78">                item.getRequirementVersion().getVersionNumber(),</span>
+<span class="fc" id="L79">                item.getRequirementVersion().getText());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

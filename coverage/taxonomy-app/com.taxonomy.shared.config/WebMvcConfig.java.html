@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WebMvcConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">WebMvcConfig.java</span></div><h1>WebMvcConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import com.taxonomy.versioning.controller.DslWorkspacePreResolutionInterceptor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.LocaleResolver;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.i18n.CookieLocaleResolver;
+import org.springframework.web.servlet.i18n.LocaleChangeInterceptor;
+
+import java.util.Locale;
+
+/**
+ * Web MVC configuration for internationalization and request-bound workspace
+ * isolation.
+ *
+ * &lt;p&gt;Locale resolution priority:
+ * &lt;ol&gt;
+ *   &lt;li&gt;{@code ?lang=de} query parameter (persisted to cookie)&lt;/li&gt;
+ *   &lt;li&gt;{@code lang} cookie&lt;/li&gt;
+ *   &lt;li&gt;{@code Accept-Language} header&lt;/li&gt;
+ *   &lt;li&gt;Fallback: English&lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+@Configuration
+public class WebMvcConfig implements WebMvcConfigurer {
+
+    private final DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor;
+
+<span class="fc" id="L31">    public WebMvcConfig(DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor) {</span>
+<span class="fc" id="L32">        this.dslWorkspaceInterceptor = dslWorkspaceInterceptor;</span>
+<span class="fc" id="L33">    }</span>
+
+    @Bean
+    public LocaleResolver localeResolver() {
+<span class="fc" id="L37">        CookieLocaleResolver resolver = new CookieLocaleResolver(&quot;lang&quot;);</span>
+<span class="fc" id="L38">        resolver.setDefaultLocale(Locale.ENGLISH);</span>
+<span class="fc" id="L39">        return resolver;</span>
+    }
+
+    @Bean
+    public LocaleChangeInterceptor localeChangeInterceptor() {
+<span class="fc" id="L44">        LocaleChangeInterceptor interceptor = new LocaleChangeInterceptor();</span>
+<span class="fc" id="L45">        interceptor.setParamName(&quot;lang&quot;);</span>
+<span class="fc" id="L46">        return interceptor;</span>
+    }
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+<span class="fc" id="L51">        registry.addInterceptor(localeChangeInterceptor());</span>
+<span class="fc" id="L52">        registry.addInterceptor(dslWorkspaceInterceptor)</span>
+<span class="fc" id="L53">                .addPathPatterns(</span>
+                        &quot;/api/dsl/current&quot;,
+                        &quot;/api/dsl/history&quot;,
+                        &quot;/api/dsl/git/head&quot;,
+                        &quot;/api/dsl/hypotheses/**&quot;,
+                        &quot;/api/analyze&quot;,
+                        &quot;/api/search/graph&quot;,
+                        &quot;/api/projects/**&quot;,
+                        &quot;/api/solutions/**&quot;,
+                        &quot;/api/products/**&quot;);
+<span class="fc" id="L63">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

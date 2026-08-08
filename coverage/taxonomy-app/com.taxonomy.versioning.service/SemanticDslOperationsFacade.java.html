@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SemanticDslOperationsFacade.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">SemanticDslOperationsFacade.java</span></div><h1>SemanticDslOperationsFacade.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
+import com.taxonomy.architecture.service.CommitIndexService;
+import com.taxonomy.dsl.export.DslMaterializeService;
+import com.taxonomy.dsl.export.TaxDslExportService;
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+
+/** DslOperationsFacade variant that executes semantic DSL merges on conflicts. */
+@Component
+@Primary
+public class SemanticDslOperationsFacade extends DslOperationsFacade {
+
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+    private final SemanticGitMergeService semanticMergeService;
+    private final VersioningPortfolioGitPort portfolioGitPort;
+
+    public SemanticDslOperationsFacade(TaxDslExportService exportService,
+                                       DslMaterializeService materializeService,
+                                       ArchitectureDslDocumentRepository documentRepository,
+                                       DslGitRepositoryFactory repositoryFactory,
+                                       CommitIndexService commitIndexService,
+                                       ConflictDetectionService conflictDetectionService,
+                                       RepositoryStateGuard stateGuard,
+                                       RepositoryStateService repositoryStateService,
+                                       WorkspaceResolver workspaceResolver,
+                                       SemanticGitMergeService semanticMergeService,
+                                       VersioningPortfolioGitPort portfolioGitPort) {
+<span class="fc" id="L39">        super(exportService, materializeService, documentRepository, repositoryFactory,</span>
+                commitIndexService, conflictDetectionService, stateGuard,
+                repositoryStateService, workspaceResolver);
+<span class="fc" id="L42">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L43">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L44">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L45">        this.semanticMergeService = semanticMergeService;</span>
+<span class="fc" id="L46">        this.portfolioGitPort = portfolioGitPort;</span>
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public String merge(String fromBranch, String intoBranch) throws IOException {
+<span class="fc" id="L51">        WorkspaceContext context = resolveContext();</span>
+<span class="fc" id="L52">        DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+<span class="fc" id="L53">        SemanticGitMergeService.MergeOutcome outcome = semanticMergeService.mergeBranches(</span>
+<span class="fc" id="L54">                repository, fromBranch, intoBranch, context.username());</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (!outcome.success()) return null;</span>
+<span class="fc" id="L56">        portfolioGitPort.materializePortfolioHead(</span>
+<span class="fc" id="L57">                intoBranch, context.username(), context);</span>
+<span class="fc" id="L58">        return outcome.commitId();</span>
+    }
+
+    /**
+     * Resolves the request-bound workspace and fails closed when provisioning or
+     * context lookup fails. A silent shared fallback would make a semantic merge
+     * cross the user's repository boundary.
+     */
+    private WorkspaceContext resolveContext() {
+<span class="fc" id="L67">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L68">        repositoryStateService.ensureWorkspaceState(username);</span>
+<span class="fc" id="L69">        return workspaceResolver.resolveCurrentContext();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

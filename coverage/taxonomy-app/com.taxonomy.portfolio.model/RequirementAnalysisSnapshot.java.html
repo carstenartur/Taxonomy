@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementAnalysisSnapshot.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">RequirementAnalysisSnapshot.java</span></div><h1>RequirementAnalysisSnapshot.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+
+import java.time.Instant;
+
+/**
+ * Immutable, reproducible result of analyzing one exact requirement version.
+ *
+ * &lt;p&gt;The complete typed analysis result and its derived intelligence views are
+ * serialized as JSON so old snapshots remain displayable after the live
+ * taxonomy, prompt templates or relation graph have changed. Queryable element
+ * and relation mappings are stored in dedicated tables.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;req_analysis_snapshot&quot;, indexes = {
+        @Index(name = &quot;idx_snap_project&quot;, columnList = &quot;project_id,created_at&quot;),
+        @Index(name = &quot;idx_snap_req&quot;, columnList = &quot;requirement_id,created_at&quot;),
+        @Index(name = &quot;idx_snap_job&quot;, columnList = &quot;job_id&quot;)
+})
+public class RequirementAnalysisSnapshot {
+
+    @Id
+    @Column(length = 36)
+    private String id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;project_id&quot;, nullable = false)
+    private ArchitectureProject project;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;requirement_id&quot;, nullable = false)
+    private ProjectRequirement requirement;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;requirement_version_id&quot;, nullable = false)
+    private ProjectRequirementVersion requirementVersion;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;job_id&quot;, nullable = false)
+    private RequirementAnalysisJob job;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private AnalysisStatus status;
+
+    @Column(name = &quot;analysis_session_id&quot;, nullable = false, length = 64)
+    private String analysisSessionId;
+
+    @Column(length = 40)
+    private String provider;
+
+    @Column(name = &quot;model_name&quot;, length = 160)
+    private String modelName;
+
+    @Column(name = &quot;prompt_fingerprint&quot;, length = 64)
+    private String promptFingerprint;
+
+    @Column(name = &quot;taxonomy_fingerprint&quot;, length = 64)
+    private String taxonomyFingerprint;
+
+    @Column(name = &quot;workspace_id&quot;, length = 120)
+    private String workspaceId;
+
+    @Column(name = &quot;branch_name&quot;, length = 240)
+    private String branchName;
+
+    @Column(name = &quot;commit_sha&quot;, length = 64)
+    private String commitSha;
+
+    @Column(name = &quot;created_by&quot;, nullable = false, length = 160)
+    private String createdBy;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;duration_ms&quot;, nullable = false)
+    private long durationMs;
+
+    @Column(name = &quot;warning_count&quot;, nullable = false)
+    private int warningCount;
+
+    @Column(name = &quot;error_message&quot;, length = 2000)
+    private String errorMessage;
+
+    @Lob
+    @Column(name = &quot;analysis_payload&quot;, nullable = false)
+    private String analysisPayload;
+
+    @Lob
+    @Column(name = &quot;gap_payload&quot;)
+    private String gapAnalysisPayload;
+
+    @Lob
+    @Column(name = &quot;pattern_payload&quot;)
+    private String patternDetectionPayload;
+
+    @Lob
+    @Column(name = &quot;recommendation_payload&quot;)
+    private String recommendationPayload;
+
+<span class="fc" id="L113">    protected RequirementAnalysisSnapshot() {</span>
+<span class="fc" id="L114">    }</span>
+
+    public RequirementAnalysisSnapshot(String id,
+                                       ArchitectureProject project,
+                                       ProjectRequirement requirement,
+                                       ProjectRequirementVersion requirementVersion,
+                                       RequirementAnalysisJob job,
+                                       AnalysisStatus status,
+                                       String analysisSessionId,
+                                       String provider,
+                                       String modelName,
+                                       String promptFingerprint,
+                                       String taxonomyFingerprint,
+                                       String workspaceId,
+                                       String branchName,
+                                       String commitSha,
+                                       String createdBy,
+                                       Instant createdAt,
+                                       long durationMs,
+                                       int warningCount,
+                                       String errorMessage,
+                                       String analysisPayload,
+                                       String gapAnalysisPayload,
+                                       String patternDetectionPayload,
+<span class="fc" id="L138">                                       String recommendationPayload) {</span>
+<span class="pc bpc" id="L139" title="3 of 4 branches missed.">        if (status != AnalysisStatus.SUCCESS &amp;&amp; status != AnalysisStatus.PARTIAL) {</span>
+<span class="nc" id="L140">            throw new IllegalArgumentException(&quot;Snapshot status must be SUCCESS or PARTIAL&quot;);</span>
+        }
+<span class="fc" id="L142">        this.id = id;</span>
+<span class="fc" id="L143">        this.project = project;</span>
+<span class="fc" id="L144">        this.requirement = requirement;</span>
+<span class="fc" id="L145">        this.requirementVersion = requirementVersion;</span>
+<span class="fc" id="L146">        this.job = job;</span>
+<span class="fc" id="L147">        this.status = status;</span>
+<span class="fc" id="L148">        this.analysisSessionId = analysisSessionId;</span>
+<span class="fc" id="L149">        this.provider = provider;</span>
+<span class="fc" id="L150">        this.modelName = modelName;</span>
+<span class="fc" id="L151">        this.promptFingerprint = promptFingerprint;</span>
+<span class="fc" id="L152">        this.taxonomyFingerprint = taxonomyFingerprint;</span>
+<span class="fc" id="L153">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L154">        this.branchName = branchName;</span>
+<span class="fc" id="L155">        this.commitSha = commitSha;</span>
+<span class="fc" id="L156">        this.createdBy = createdBy;</span>
+<span class="fc" id="L157">        this.createdAt = createdAt;</span>
+<span class="fc" id="L158">        this.durationMs = durationMs;</span>
+<span class="fc" id="L159">        this.warningCount = warningCount;</span>
+<span class="fc" id="L160">        this.errorMessage = errorMessage;</span>
+<span class="fc" id="L161">        this.analysisPayload = analysisPayload;</span>
+<span class="fc" id="L162">        this.gapAnalysisPayload = gapAnalysisPayload;</span>
+<span class="fc" id="L163">        this.patternDetectionPayload = patternDetectionPayload;</span>
+<span class="fc" id="L164">        this.recommendationPayload = recommendationPayload;</span>
+<span class="fc" id="L165">    }</span>
+
+<span class="fc" id="L167">    public String getId() { return id; }</span>
+<span class="fc" id="L168">    public ArchitectureProject getProject() { return project; }</span>
+<span class="fc" id="L169">    public ProjectRequirement getRequirement() { return requirement; }</span>
+<span class="fc" id="L170">    public ProjectRequirementVersion getRequirementVersion() { return requirementVersion; }</span>
+<span class="fc" id="L171">    public RequirementAnalysisJob getJob() { return job; }</span>
+<span class="fc" id="L172">    public AnalysisStatus getStatus() { return status; }</span>
+<span class="nc" id="L173">    public String getAnalysisSessionId() { return analysisSessionId; }</span>
+<span class="fc" id="L174">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L175">    public String getModelName() { return modelName; }</span>
+<span class="fc" id="L176">    public String getPromptFingerprint() { return promptFingerprint; }</span>
+<span class="fc" id="L177">    public String getTaxonomyFingerprint() { return taxonomyFingerprint; }</span>
+<span class="fc" id="L178">    public String getWorkspaceId() { return workspaceId; }</span>
+<span class="fc" id="L179">    public String getBranchName() { return branchName; }</span>
+<span class="fc" id="L180">    public String getCommitSha() { return commitSha; }</span>
+<span class="nc" id="L181">    public String getCreatedBy() { return createdBy; }</span>
+<span class="fc" id="L182">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L183">    public long getDurationMs() { return durationMs; }</span>
+<span class="fc" id="L184">    public int getWarningCount() { return warningCount; }</span>
+<span class="fc" id="L185">    public String getErrorMessage() { return errorMessage; }</span>
+<span class="fc" id="L186">    public String getAnalysisPayload() { return analysisPayload; }</span>
+<span class="fc" id="L187">    public String getGapAnalysisPayload() { return gapAnalysisPayload; }</span>
+<span class="fc" id="L188">    public String getPatternDetectionPayload() { return patternDetectionPayload; }</span>
+<span class="fc" id="L189">    public String getRecommendationPayload() { return recommendationPayload; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

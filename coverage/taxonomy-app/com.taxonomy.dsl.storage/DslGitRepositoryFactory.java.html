@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslGitRepositoryFactory.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.storage</a> &gt; <span class="el_source">DslGitRepositoryFactory.java</span></div><h1>DslGitRepositoryFactory.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.storage;
+
+import com.taxonomy.workspace.service.WorkspaceContext;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryDeletionResult;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
+import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
+import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+/**
+ * Creates and caches Taxonomy's logical Git repositories.
+ *
+ * &lt;p&gt;The application owns repository naming, workspace routing and seeding. The
+ * reusable {@code jgit-storage-hibernate-core} library owns database-backed JGit
+ * object, ref and reflog persistence.&lt;/p&gt;
+ */
+public class DslGitRepositoryFactory implements AutoCloseable {
+
+<span class="fc" id="L25">    private static final Logger log = LoggerFactory.getLogger(DslGitRepositoryFactory.class);</span>
+
+    /** The well-known repository name for the system (shared) repository. */
+    static final String SYSTEM_REPO_NAME = &quot;taxonomy-dsl&quot;;
+
+    /** Prefix for workspace repository names. */
+    static final String WORKSPACE_REPO_PREFIX = &quot;ws-&quot;;
+
+    private final HibernateRepositoryFactory storageFactory;
+<span class="fc" id="L34">    private final ConcurrentMap&lt;String, DslGitRepository&gt; cache = new ConcurrentHashMap&lt;&gt;();</span>
+
+    /**
+     * Create a logical-repository factory.
+     *
+     * @param storageFactory reusable database storage factory, or {@code null} for in-memory tests
+     */
+<span class="fc" id="L41">    public DslGitRepositoryFactory(HibernateRepositoryFactory storageFactory) {</span>
+<span class="fc" id="L42">        this.storageFactory = storageFactory;</span>
+<span class="fc" id="L43">    }</span>
+
+    /** Return the shared system repository. */
+    public DslGitRepository getSystemRepository() {
+<span class="fc" id="L47">        return cache.computeIfAbsent(SYSTEM_REPO_NAME, this::createRepository);</span>
+    }
+
+    /**
+     * Return a repository isolated by workspace ID.
+     *
+     * &lt;p&gt;A newly created, empty repository is seeded from the shared draft. A
+     * database repository reopened after cache eviction already has refs and is
+     * therefore not seeded again.&lt;/p&gt;
+     */
+    public DslGitRepository getWorkspaceRepository(String workspaceId) {
+<span class="fc" id="L58">        String repoName = workspaceRepositoryName(workspaceId);</span>
+<span class="fc" id="L59">        return cache.computeIfAbsent(repoName, name -&gt; {</span>
+<span class="fc" id="L60">            DslGitRepository repository = createRepository(name);</span>
+<span class="fc" id="L61">            seedFromSystemRepo(repository);</span>
+<span class="fc" id="L62">            return repository;</span>
+        });
+    }
+
+    /** Resolve the repository selected by a workspace context. */
+    public DslGitRepository resolveRepository(WorkspaceContext context) {
+<span class="fc bfc" id="L68" title="All 4 branches covered.">        if (context == null || context.workspaceId() == null) {</span>
+<span class="fc" id="L69">            return getSystemRepository();</span>
+        }
+<span class="fc" id="L71">        return getWorkspaceRepository(context.workspaceId());</span>
+    }
+
+    /**
+     * Close and remove a cached workspace handle without deleting persisted data.
+     *
+     * @param workspaceId workspace identifier
+     */
+    public void evict(String workspaceId) {
+<span class="fc" id="L80">        closeQuietly(cache.remove(workspaceRepositoryName(workspaceId)));</span>
+<span class="fc" id="L81">    }</span>
+
+    /**
+     * Delete all persisted Git state belonging to one workspace repository.
+     *
+     * &lt;p&gt;The cached handle is closed before invoking the storage library because
+     * deletion is deliberately rejected while any coordinated handle remains
+     * open. Other logical repository names are unaffected.&lt;/p&gt;
+     *
+     * @param workspaceId workspace identifier
+     * @return counts of deleted storage rows; zeroes in in-memory test mode
+     */
+    public RepositoryDeletionResult deleteWorkspaceRepository(String workspaceId) {
+<span class="nc" id="L94">        String repoName = workspaceRepositoryName(workspaceId);</span>
+<span class="nc" id="L95">        closeQuietly(cache.remove(repoName));</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (storageFactory == null) {</span>
+<span class="nc" id="L97">            return new RepositoryDeletionResult(0, 0, 0);</span>
+        }
+<span class="nc" id="L99">        return storageFactory.deleteRepository(new RepositoryName(repoName));</span>
+    }
+
+    /** Create either a persistent library-backed repository or an owned in-memory repository. */
+    protected DslGitRepository createRepository(String name) {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (storageFactory != null) {</span>
+<span class="fc" id="L105">            log.info(&quot;Opening database-backed DslGitRepository '{}'&quot;, name);</span>
+<span class="fc" id="L106">            return new DslGitRepository(storageFactory, name);</span>
+        }
+<span class="fc" id="L108">        log.info(&quot;Creating in-memory DslGitRepository '{}' (test mode)&quot;, name);</span>
+<span class="fc" id="L109">        return new DslGitRepository(</span>
+                new InMemoryRepository(new DfsRepositoryDescription(name)), true);
+    }
+
+    private void seedFromSystemRepo(DslGitRepository workspace) {
+        try {
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">            if (!workspace.getBranchNames().isEmpty()) {</span>
+<span class="nc" id="L116">                log.debug(&quot;Workspace repository already contains refs; skipping seed&quot;);</span>
+<span class="nc" id="L117">                return;</span>
+            }
+
+<span class="fc" id="L120">            DslGitRepository system = getSystemRepository();</span>
+<span class="fc" id="L121">            String dsl = system.getDslAtHead(&quot;draft&quot;);</span>
+<span class="pc bpc" id="L122" title="1 of 4 branches missed.">            if (dsl != null &amp;&amp; !dsl.isBlank()) {</span>
+<span class="fc" id="L123">                workspace.commitDsl(&quot;draft&quot;, dsl, &quot;system&quot;,</span>
+                        &quot;Initial clone from system repository&quot;);
+<span class="fc" id="L125">                log.info(&quot;Seeded workspace repository from system draft branch&quot;);</span>
+            } else {
+<span class="fc" id="L127">                log.debug(&quot;System draft branch is empty; skipping workspace seed&quot;);</span>
+            }
+<span class="nc" id="L129">        } catch (IOException exception) {</span>
+<span class="nc" id="L130">            log.warn(&quot;Failed to seed workspace repository from system repository: {}&quot;,</span>
+<span class="nc" id="L131">                    exception.getMessage());</span>
+<span class="fc" id="L132">        }</span>
+<span class="fc" id="L133">    }</span>
+
+    private static String workspaceRepositoryName(String workspaceId) {
+<span class="pc bpc" id="L136" title="2 of 4 branches missed.">        if (workspaceId == null || workspaceId.isBlank()) {</span>
+<span class="nc" id="L137">            throw new IllegalArgumentException(&quot;workspaceId must not be blank&quot;);</span>
+        }
+<span class="fc" id="L139">        return WORKSPACE_REPO_PREFIX + workspaceId;</span>
+    }
+
+    private static void closeQuietly(DslGitRepository repository) {
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (repository == null) {</span>
+<span class="nc" id="L144">            return;</span>
+        }
+        try {
+<span class="fc" id="L147">            repository.close();</span>
+<span class="nc" id="L148">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L149">            log.warn(&quot;Failed to close cached Git repository: {}&quot;, exception.getMessage());</span>
+<span class="fc" id="L150">        }</span>
+<span class="fc" id="L151">    }</span>
+
+    /** Close all cached repository handles during application shutdown. */
+    @Override
+    public void close() {
+<span class="fc" id="L156">        cache.values().forEach(DslGitRepositoryFactory::closeQuietly);</span>
+<span class="fc" id="L157">        cache.clear();</span>
+<span class="fc" id="L158">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

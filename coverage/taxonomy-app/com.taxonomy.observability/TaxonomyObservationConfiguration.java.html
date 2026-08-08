@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyObservationConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.observability</a> &gt; <span class="el_source">TaxonomyObservationConfiguration.java</span></div><h1>TaxonomyObservationConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.observability;
+
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
+import org.aopalliance.intercept.MethodInterceptor;
+import org.aopalliance.intercept.MethodInvocation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.aop.framework.Advised;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.util.ClassUtils;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+
+/**
+ * Adds low-cardinality Micrometer observations to Taxonomy-owned service boundaries.
+ *
+ * &lt;p&gt;The OpenTelemetry Java agent remains responsible for automatic technical spans
+ * and selected method spans. These observations intentionally provide the existing
+ * Micrometer/Prometheus path with stable domain timings and outcomes. No invocation
+ * argument, return value, user, workspace, repository, query, prompt, response or
+ * document content is inspected or attached to an observation.&lt;/p&gt;
+ */
+@Configuration(proxyBeanMethods = false)
+<span class="nc" id="L34">public class TaxonomyObservationConfiguration {</span>
+
+    @Bean
+    static BeanPostProcessor taxonomyObservationBeanPostProcessor(
+            ObjectProvider&lt;ObservationRegistry&gt; registryProvider) {
+        // BeanPostProcessors are created before many ordinary infrastructure beans.
+        // Resolve the registry only when an observed operation is invoked so an early
+        // NOOP fallback cannot become permanent for the lifetime of the application.
+<span class="fc" id="L42">        Supplier&lt;ObservationRegistry&gt; registrySupplier = () -&gt; registryProvider.getIfAvailable(</span>
+<span class="nc" id="L43">                () -&gt; ObservationRegistry.NOOP);</span>
+<span class="fc" id="L44">        return new TaxonomyObservationBeanPostProcessor(registrySupplier);</span>
+    }
+
+    record TargetDescriptor(String observationName, String component,
+                            Set&lt;String&gt; methods) {
+<span class="fc" id="L49">        TargetDescriptor {</span>
+<span class="fc" id="L50">            methods = Set.copyOf(methods);</span>
+<span class="fc" id="L51">        }</span>
+    }
+
+    static final class TaxonomyObservationBeanPostProcessor
+            implements BeanPostProcessor, Ordered {
+
+<span class="fc" id="L57">        private static final Map&lt;String, TargetDescriptor&gt; TARGETS = Map.ofEntries(</span>
+<span class="fc" id="L58">                Map.entry(&quot;com.taxonomy.workspace.service.WorkspaceContextResolver&quot;,</span>
+                        new TargetDescriptor(&quot;taxonomy.workspace.resolve&quot;, &quot;workspace&quot;,
+<span class="fc" id="L60">                                Set.of(&quot;resolveCurrentContext&quot;, &quot;resolveForUser&quot;))),</span>
+<span class="fc" id="L61">                Map.entry(&quot;com.taxonomy.dsl.storage.DslGitRepositoryFactory&quot;,</span>
+                        new TargetDescriptor(&quot;taxonomy.repository.route&quot;, &quot;repository&quot;,
+<span class="fc" id="L63">                                Set.of(&quot;resolveRepository&quot;, &quot;getSystemRepository&quot;,</span>
+                                        &quot;getWorkspaceRepository&quot;))),
+<span class="fc" id="L65">                Map.entry(&quot;com.taxonomy.versioning.service.DslOperationsFacade&quot;,</span>
+                        new TargetDescriptor(&quot;taxonomy.repository.operation&quot;, &quot;repository&quot;,
+<span class="fc" id="L67">                                Set.of(&quot;materialize&quot;, &quot;materializeIncremental&quot;, &quot;commitDsl&quot;,</span>
+                                        &quot;getDslHistory&quot;, &quot;diffBetween&quot;, &quot;textDiff&quot;,
+                                        &quot;listBranches&quot;, &quot;createBranch&quot;, &quot;cherryPick&quot;, &quot;merge&quot;,
+                                        &quot;revert&quot;, &quot;undoLast&quot;, &quot;restore&quot;, &quot;getDslAtHead&quot;,
+                                        &quot;getDslAtCommit&quot;, &quot;getHeadCommit&quot;, &quot;indexBranch&quot;,
+                                        &quot;searchHistory&quot;))),
+<span class="fc" id="L73">                Map.entry(&quot;com.taxonomy.catalog.service.SearchService&quot;,</span>
+<span class="fc" id="L74">                        new TargetDescriptor(&quot;taxonomy.search&quot;, &quot;search&quot;, Set.of(&quot;search&quot;))),</span>
+<span class="fc" id="L75">                Map.entry(&quot;com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase&quot;,</span>
+<span class="fc" id="L76">                        new TargetDescriptor(&quot;taxonomy.analysis&quot;, &quot;analysis&quot;, Set.of(&quot;analyze&quot;))),</span>
+<span class="fc" id="L77">                Map.entry(&quot;com.taxonomy.analysis.usecase.AnalyzeNodeChildrenUseCase&quot;,</span>
+<span class="fc" id="L78">                        new TargetDescriptor(&quot;taxonomy.analysis&quot;, &quot;analysis&quot;, Set.of(&quot;analyze&quot;))),</span>
+<span class="fc" id="L79">                Map.entry(&quot;com.taxonomy.analysis.service.LlmService&quot;,</span>
+                        new TargetDescriptor(&quot;taxonomy.llm&quot;, &quot;llm&quot;,
+<span class="fc" id="L81">                                Set.of(&quot;analyzeWithBudget&quot;, &quot;analyzeSingleBatchDetailed&quot;,</span>
+                                        &quot;generateLeafJustification&quot;, &quot;callLlmRaw&quot;))),
+<span class="fc" id="L83">                Map.entry(&quot;com.taxonomy.catalog.service.importer.FrameworkImportService&quot;,</span>
+                        new TargetDescriptor(&quot;taxonomy.import&quot;, &quot;import&quot;,
+<span class="fc" id="L85">                                Set.of(&quot;preview&quot;, &quot;importFile&quot;))),</span>
+<span class="fc" id="L86">                Map.entry(&quot;com.taxonomy.export.service.ExportFacade&quot;,</span>
+                        new TargetDescriptor(&quot;taxonomy.export&quot;, &quot;export&quot;,
+<span class="fc" id="L88">                                Set.of(&quot;exportAsVisio&quot;, &quot;exportAsArchiMate&quot;, &quot;exportAsMermaid&quot;,</span>
+                                        &quot;exportAsStructurizrDsl&quot;, &quot;buildDiagram&quot;,
+                                        &quot;importFromJson&quot;)))
+        );
+
+        private final Supplier&lt;ObservationRegistry&gt; registrySupplier;
+
+        TaxonomyObservationBeanPostProcessor(
+<span class="fc" id="L96">                Supplier&lt;ObservationRegistry&gt; registrySupplier) {</span>
+<span class="fc" id="L97">            this.registrySupplier = registrySupplier;</span>
+<span class="fc" id="L98">        }</span>
+
+        @Override
+        public Object postProcessAfterInitialization(Object bean, String beanName)
+                throws BeansException {
+<span class="fc" id="L103">            Class&lt;?&gt; targetClass = ClassUtils.getUserClass(AopUtils.getTargetClass(bean));</span>
+<span class="fc" id="L104">            TargetDescriptor descriptor = TARGETS.get(targetClass.getName());</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (descriptor == null) {</span>
+<span class="fc" id="L106">                return bean;</span>
+            }
+
+<span class="fc" id="L109">            MethodInterceptor interceptor =</span>
+                    new TaxonomyObservationInterceptor(registrySupplier, descriptor);
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (bean instanceof Advised advised) {</span>
+<span class="fc" id="L112">                advised.addAdvice(interceptor);</span>
+<span class="fc" id="L113">                return bean;</span>
+            }
+
+<span class="fc" id="L116">            ProxyFactory proxyFactory = new ProxyFactory(bean);</span>
+<span class="fc" id="L117">            proxyFactory.setProxyTargetClass(true);</span>
+<span class="fc" id="L118">            proxyFactory.addAdvice(interceptor);</span>
+<span class="fc" id="L119">            return proxyFactory.getProxy(bean.getClass().getClassLoader());</span>
+        }
+
+        @Override
+        public int getOrder() {
+<span class="nc" id="L124">            return Ordered.LOWEST_PRECEDENCE;</span>
+        }
+    }
+
+    static final class TaxonomyObservationInterceptor implements MethodInterceptor {
+
+<span class="fc" id="L130">        private static final Logger log = LoggerFactory.getLogger(</span>
+                TaxonomyObservationInterceptor.class);
+
+        private final Supplier&lt;ObservationRegistry&gt; registrySupplier;
+        private final TargetDescriptor descriptor;
+
+        TaxonomyObservationInterceptor(ObservationRegistry observationRegistry,
+                                       TargetDescriptor descriptor) {
+<span class="fc" id="L138">            this(() -&gt; observationRegistry, descriptor);</span>
+<span class="fc" id="L139">        }</span>
+
+        TaxonomyObservationInterceptor(Supplier&lt;ObservationRegistry&gt; registrySupplier,
+<span class="fc" id="L142">                                       TargetDescriptor descriptor) {</span>
+<span class="fc" id="L143">            this.registrySupplier = registrySupplier;</span>
+<span class="fc" id="L144">            this.descriptor = descriptor;</span>
+<span class="fc" id="L145">        }</span>
+
+        @Override
+        public Object invoke(MethodInvocation invocation) throws Throwable {
+<span class="fc" id="L149">            String operation = invocation.getMethod().getName();</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (!descriptor.methods().contains(operation)) {</span>
+<span class="fc" id="L151">                return invocation.proceed();</span>
+            }
+
+<span class="fc" id="L154">            ObservationRegistry observationRegistry = registrySupplier.get();</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">            if (observationRegistry == null) {</span>
+<span class="nc" id="L156">                observationRegistry = ObservationRegistry.NOOP;</span>
+            }
+<span class="fc" id="L158">            Observation observation = Observation.createNotStarted(</span>
+<span class="fc" id="L159">                            descriptor.observationName(), observationRegistry)</span>
+<span class="fc" id="L160">                    .lowCardinalityKeyValue(&quot;taxonomy.component&quot;, descriptor.component())</span>
+<span class="fc" id="L161">                    .lowCardinalityKeyValue(&quot;taxonomy.operation&quot;, operation)</span>
+<span class="fc" id="L162">                    .start();</span>
+<span class="fc" id="L163">            try (Observation.Scope ignored = observation.openScope()) {</span>
+<span class="fc" id="L164">                Object result = invocation.proceed();</span>
+<span class="fc" id="L165">                observation.lowCardinalityKeyValue(&quot;outcome&quot;, &quot;success&quot;);</span>
+<span class="fc" id="L166">                log.debug(&quot;Observed taxonomy operation component={} operation={} outcome=success&quot;,</span>
+<span class="fc" id="L167">                        descriptor.component(), operation);</span>
+<span class="fc" id="L168">                return result;</span>
+<span class="fc" id="L169">            } catch (Throwable failure) {</span>
+                // The exception is deliberately not attached to the Observation or log because
+                // its message may contain imported, DSL or LLM content. Agent method spans retain
+                // exception type and error status independently.
+<span class="fc" id="L173">                observation.lowCardinalityKeyValue(&quot;outcome&quot;, &quot;error&quot;);</span>
+<span class="fc" id="L174">                log.debug(&quot;Observed taxonomy operation component={} operation={} outcome=error&quot;,</span>
+<span class="fc" id="L175">                        descriptor.component(), operation);</span>
+<span class="fc" id="L176">                throw failure;</span>
+            } finally {
+<span class="fc" id="L178">                observation.stop();</span>
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

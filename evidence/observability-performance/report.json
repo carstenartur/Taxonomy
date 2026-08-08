@@ -1,0 +1,62 @@
+{
+  "schemaVersion" : 1,
+  "generatedAt" : "2026-08-08T08:22:30.622700765Z",
+  "javaVersion" : "21.0.11",
+  "availableProcessors" : 4,
+  "warmupRequests" : 12,
+  "measuredRequests" : 80,
+  "endpoint" : "/api/relations",
+  "imageBuiltAndRuntimePrewarmed" : true,
+  "modes" : [ {
+    "name" : "baseline",
+    "agentAttached" : false,
+    "sampler" : "none",
+    "samplerArgument" : null,
+    "startupMillis" : 15979,
+    "memoryPeakBytes" : 1009860608,
+    "cpuMicros" : 8122906,
+    "cpuMicrosPerRequest" : 101536.325,
+    "p50Millis" : 73,
+    "p95Millis" : 79,
+    "exportedSpans" : 0,
+    "spansPerRequest" : 0.0
+  }, {
+    "name" : "agent-always-on",
+    "agentAttached" : true,
+    "sampler" : "always_on",
+    "samplerArgument" : null,
+    "startupMillis" : 19881,
+    "memoryPeakBytes" : 1084887040,
+    "cpuMicros" : 8726054,
+    "cpuMicrosPerRequest" : 109075.675,
+    "p50Millis" : 74,
+    "p95Millis" : 80,
+    "exportedSpans" : 1760,
+    "spansPerRequest" : 22.0
+  }, {
+    "name" : "agent-sampled-10-percent",
+    "agentAttached" : true,
+    "sampler" : "parentbased_traceidratio",
+    "samplerArgument" : "0.10",
+    "startupMillis" : 19044,
+    "memoryPeakBytes" : 1018552320,
+    "cpuMicros" : 8105764,
+    "cpuMicrosPerRequest" : 101322.05,
+    "p50Millis" : 74,
+    "p95Millis" : 80,
+    "exportedSpans" : 154,
+    "spansPerRequest" : 1.925
+  } ],
+  "budget" : {
+    "investigationThresholdPercent" : 10.0,
+    "p95OverheadPercent" : 1.2658227848101267,
+    "sampledP95OverheadPercent" : 1.2658227848101267,
+    "startupOverheadPercent" : 24.419550660241566,
+    "memoryDeltaMiB" : 72,
+    "investigationRequired" : false,
+    "p95HardLimitExceeded" : false,
+    "startupHardLimitExceeded" : false,
+    "memoryHardLimitExceeded" : false,
+    "hardBudgetExceeded" : false
+  }
+}

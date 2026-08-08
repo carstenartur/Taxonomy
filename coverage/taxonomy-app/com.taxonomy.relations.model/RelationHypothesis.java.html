@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationHypothesis.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RelationHypothesis.java</span></div><h1>RelationHypothesis.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.Nationalized;
+
+import java.time.Instant;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+
+/**
+ * A provisional/proposed relation hypothesis derived from analysis.
+ *
+ * &lt;p&gt;Unlike {@link TaxonomyRelation} which represents confirmed relations,
+ * a hypothesis is a candidate relation that can be accepted or rejected
+ * through a review workflow.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;relation_hypothesis&quot;,
+       indexes = {
+           @Index(name = &quot;idx_hyp_project&quot;, columnList = &quot;project_id&quot;),
+           @Index(name = &quot;idx_hyp_requirement&quot;, columnList = &quot;requirement_id&quot;),
+           @Index(name = &quot;idx_hyp_snapshot&quot;, columnList = &quot;analysis_snapshot_id&quot;)
+       },
+       uniqueConstraints = @UniqueConstraint(
+               name = &quot;uq_hypothesis_workspace_session_relation&quot;,
+               columnNames = {&quot;workspace_id&quot;, &quot;source_node_id&quot;, &quot;target_node_id&quot;,
+                       &quot;relation_type&quot;, &quot;analysis_session_id&quot;}))
+<span class="fc" id="L39">public class RelationHypothesis {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Nationalized
+    @Column(name = &quot;source_node_id&quot;, nullable = false)
+    private String sourceNodeId;
+
+    @Nationalized
+    @Column(name = &quot;target_node_id&quot;, nullable = false)
+    private String targetNodeId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;relation_type&quot;, nullable = false)
+    private RelationType relationType;
+
+<span class="fc" id="L57">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false)
+    private HypothesisStatus status = HypothesisStatus.PROVISIONAL;
+
+    @Column
+    private Double confidence;
+
+    @Nationalized
+    @Column(name = &quot;analysis_session_id&quot;)
+    private String analysisSessionId;
+
+    @Column(name = &quot;project_id&quot;)
+    private Long projectId;
+
+    @Column(name = &quot;requirement_id&quot;)
+    private Long requirementId;
+
+    @Column(name = &quot;analysis_snapshot_id&quot;, length = 36)
+    private String analysisSnapshotId;
+
+    @Column(name = &quot;applied_in_current_analysis&quot;)
+    private boolean appliedInCurrentAnalysis;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;workspace_id&quot;)
+    private String workspaceId;
+
+    @Column(name = &quot;owner_username&quot;)
+    private String ownerUsername;
+
+    @PrePersist
+    protected void onCreate() {
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (createdAt == null) {</span>
+<span class="fc" id="L92">            createdAt = Instant.now();</span>
+        }
+<span class="fc" id="L94">    }</span>
+
+<span class="fc" id="L96">    public Long getId() { return id; }</span>
+<span class="fc" id="L97">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L99">    public String getSourceNodeId() { return sourceNodeId; }</span>
+<span class="fc" id="L100">    public void setSourceNodeId(String sourceNodeId) { this.sourceNodeId = sourceNodeId; }</span>
+
+<span class="fc" id="L102">    public String getTargetNodeId() { return targetNodeId; }</span>
+<span class="fc" id="L103">    public void setTargetNodeId(String targetNodeId) { this.targetNodeId = targetNodeId; }</span>
+
+<span class="fc" id="L105">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L106">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+
+<span class="fc" id="L108">    public HypothesisStatus getStatus() { return status; }</span>
+<span class="fc" id="L109">    public void setStatus(HypothesisStatus status) { this.status = status; }</span>
+
+<span class="fc" id="L111">    public Double getConfidence() { return confidence; }</span>
+<span class="fc" id="L112">    public void setConfidence(Double confidence) { this.confidence = confidence; }</span>
+
+<span class="fc" id="L114">    public String getAnalysisSessionId() { return analysisSessionId; }</span>
+<span class="fc" id="L115">    public void setAnalysisSessionId(String analysisSessionId) { this.analysisSessionId = analysisSessionId; }</span>
+
+<span class="fc" id="L117">    public Long getProjectId() { return projectId; }</span>
+<span class="nc" id="L118">    public void setProjectId(Long projectId) { this.projectId = projectId; }</span>
+
+<span class="fc" id="L120">    public Long getRequirementId() { return requirementId; }</span>
+<span class="nc" id="L121">    public void setRequirementId(Long requirementId) { this.requirementId = requirementId; }</span>
+
+<span class="fc" id="L123">    public String getAnalysisSnapshotId() { return analysisSnapshotId; }</span>
+<span class="nc" id="L124">    public void setAnalysisSnapshotId(String analysisSnapshotId) { this.analysisSnapshotId = analysisSnapshotId; }</span>
+
+<span class="fc" id="L126">    public boolean isAppliedInCurrentAnalysis() { return appliedInCurrentAnalysis; }</span>
+<span class="fc" id="L127">    public void setAppliedInCurrentAnalysis(boolean appliedInCurrentAnalysis) { this.appliedInCurrentAnalysis = appliedInCurrentAnalysis; }</span>
+
+<span class="fc" id="L129">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L130">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+
+<span class="fc" id="L132">    public String getWorkspaceId() { return workspaceId; }</span>
+<span class="fc" id="L133">    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }</span>
+
+<span class="fc" id="L135">    public String getOwnerUsername() { return ownerUsername; }</span>
+<span class="fc" id="L136">    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

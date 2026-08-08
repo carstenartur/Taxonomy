@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioGitController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.controller</a> &gt; <span class="el_source">PortfolioGitController.java</span></div><h1>PortfolioGitController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.controller;
+
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.CommitPortfolioRequest;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.ExportedPortfolioDsl;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.MaterializationPreview;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.MaterializePortfolioRequest;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.MaterializePortfolioResult;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.MergePortfolioRequest;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.MergePortfolioResult;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.PortfolioCommitResult;
+import com.taxonomy.portfolio.service.PortfolioGitApplicationService;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+
+/** Git projection, reviewed materialization and semantic merge for project portfolios. */
+@RestController
+@RequestMapping(&quot;/api/projects/git&quot;)
+@Tag(name = &quot;Project Portfolio Git&quot;)
+public class PortfolioGitController {
+
+    private final PortfolioGitApplicationService gitService;
+    private final WorkspaceResolver workspaceResolver;
+    private final RepositoryStateService repositoryStateService;
+
+    public PortfolioGitController(PortfolioGitApplicationService gitService,
+                                  WorkspaceResolver workspaceResolver,
+<span class="fc" id="L42">                                  RepositoryStateService repositoryStateService) {</span>
+<span class="fc" id="L43">        this.gitService = gitService;</span>
+<span class="fc" id="L44">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L45">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L46">    }</span>
+
+    @Operation(summary = &quot;Export the current Git-backed portfolio projection&quot;)
+    @GetMapping(value = &quot;/export&quot;,
+            produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_PLAIN_VALUE})
+    public ResponseEntity&lt;?&gt; exportPortfolio(
+            @RequestHeader(name = HttpHeaders.ACCEPT, required = false) String accept)
+            throws IOException {
+<span class="fc" id="L54">        ExportedPortfolioDsl exported = gitService.export(context().workspaceContext());</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (explicitlyRequestsJson(accept)) {</span>
+<span class="fc" id="L56">            return ResponseEntity.ok()</span>
+<span class="fc" id="L57">                    .contentType(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L58">                    .body(exported);</span>
+        }
+<span class="fc" id="L60">        return ResponseEntity.ok()</span>
+<span class="fc" id="L61">                .contentType(MediaType.TEXT_PLAIN)</span>
+<span class="fc" id="L62">                .body(exported.dsl());</span>
+    }
+
+    @Operation(summary = &quot;Commit the reviewed current portfolio projection&quot;)
+    @PostMapping(&quot;/commit&quot;)
+    public PortfolioCommitResult commit(
+            @RequestParam(required = false) String branch,
+            @RequestBody(required = false) CommitPortfolioRequest request) throws IOException {
+<span class="nc" id="L70">        RequestContext current = context();</span>
+<span class="nc" id="L71">        String effectiveBranch = firstNonBlank(</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">                request != null ? request.branch() : null,</span>
+                branch,
+<span class="nc" id="L74">                current.workspaceContext().currentBranch(),</span>
+                &quot;draft&quot;);
+<span class="nc" id="L76">        return gitService.commit(</span>
+                effectiveBranch,
+<span class="nc bnc" id="L78" title="All 2 branches missed.">                request != null ? request.message() : null,</span>
+<span class="nc" id="L79">                current.workspaceContext());</span>
+    }
+
+    @Operation(summary = &quot;Preview branch materialization without changing portfolio data&quot;)
+    @GetMapping(&quot;/materialize-preview&quot;)
+    public MaterializationPreview previewMaterialize(
+            @RequestParam(defaultValue = &quot;draft&quot;) String branch) throws IOException {
+<span class="nc" id="L86">        return gitService.previewMaterialize(branch, context().workspaceContext());</span>
+    }
+
+    @Operation(summary = &quot;Materialize one reviewed branch HEAD into the portfolio&quot;)
+    @PostMapping(&quot;/materialize&quot;)
+    public MaterializePortfolioResult materialize(
+            @RequestParam(required = false) String branch,
+            @RequestBody(required = false) MaterializePortfolioRequest request) throws IOException {
+<span class="nc" id="L94">        RequestContext current = context();</span>
+<span class="nc" id="L95">        String effectiveBranch = firstNonBlank(</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">                request != null ? request.branch() : null,</span>
+                branch,
+<span class="nc" id="L98">                current.workspaceContext().currentBranch(),</span>
+                &quot;draft&quot;);
+<span class="nc" id="L100">        return gitService.materialize(</span>
+                effectiveBranch,
+<span class="nc bnc" id="L102" title="All 2 branches missed.">                request != null ? request.expectedHead() : null,</span>
+<span class="nc" id="L103">                current.workspaceContext());</span>
+    }
+
+    @Operation(summary = &quot;Semantically merge two branches and materialize the target portfolio&quot;)
+    @PostMapping(&quot;/merge&quot;)
+    public MergePortfolioResult merge(
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) String target,
+            @RequestBody(required = false) MergePortfolioRequest request) throws IOException {
+<span class="nc" id="L112">        RequestContext current = context();</span>
+<span class="nc" id="L113">        String effectiveSource = firstNonBlank(</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">                request != null ? request.sourceBranch() : null,</span>
+                source);
+<span class="nc" id="L116">        String effectiveTarget = firstNonBlank(</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">                request != null ? request.targetBranch() : null,</span>
+                target,
+<span class="nc" id="L119">                current.workspaceContext().currentBranch(),</span>
+                &quot;draft&quot;);
+<span class="nc" id="L121">        return gitService.merge(</span>
+                effectiveSource,
+                effectiveTarget,
+<span class="nc bnc" id="L124" title="All 2 branches missed.">                request != null ? request.message() : null,</span>
+<span class="nc" id="L125">                current.workspaceContext());</span>
+    }
+
+    /** Resolve the authenticated workspace once and fail closed on provisioning errors. */
+    private RequestContext context() {
+<span class="fc" id="L130">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L131">        repositoryStateService.ensureWorkspaceState(username);</span>
+<span class="fc" id="L132">        return new RequestContext(username, workspaceResolver.resolveCurrentContext());</span>
+    }
+
+    private static boolean explicitlyRequestsJson(String accept) {
+<span class="pc bpc" id="L136" title="2 of 4 branches missed.">        if (accept == null || accept.isBlank()) return false;</span>
+        try {
+<span class="fc" id="L138">            return MediaType.parseMediaTypes(accept).stream()</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                    .filter(type -&gt; type.getQualityValue() &gt; 0.0d)</span>
+<span class="pc bpc" id="L140" title="1 of 4 branches missed.">                    .filter(type -&gt; !type.isWildcardType() &amp;&amp; !type.isWildcardSubtype())</span>
+<span class="fc" id="L141">                    .anyMatch(MediaType.APPLICATION_JSON::isCompatibleWith);</span>
+<span class="nc" id="L142">        } catch (IllegalArgumentException invalidAcceptHeader) {</span>
+<span class="nc" id="L143">            return false;</span>
+        }
+    }
+
+    private static String firstNonBlank(String... values) {
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        if (values != null) {</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">            for (String value : values) {</span>
+<span class="nc bnc" id="L150" title="All 4 branches missed.">                if (value != null &amp;&amp; !value.isBlank()) return value.strip();</span>
+            }
+        }
+<span class="nc" id="L153">        return null;</span>
+    }
+
+<span class="fc" id="L156">    private record RequestContext(String username, WorkspaceContext workspaceContext) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

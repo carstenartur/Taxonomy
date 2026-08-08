@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementElementMapping.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">RequirementElementMapping.java</span></div><h1>RequirementElementMapping.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.MappingOrigin;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/** Queryable requirement-snapshot to taxonomy-element mapping. */
+@Entity
+@Table(name = &quot;req_element_mapping&quot;, indexes = {
+        @Index(name = &quot;idx_elmap_snapshot&quot;, columnList = &quot;snapshot_id&quot;),
+        @Index(name = &quot;idx_elmap_node&quot;, columnList = &quot;node_code&quot;),
+        @Index(name = &quot;idx_elmap_action&quot;, columnList = &quot;action_status&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_elmap_snap_node&quot;, columnNames = {&quot;snapshot_id&quot;, &quot;node_code&quot;})
+})
+public class RequirementElementMapping {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;snapshot_id&quot;, nullable = false)
+    private RequirementAnalysisSnapshot snapshot;
+
+    @Column(name = &quot;node_code&quot;, nullable = false, length = 80)
+    private String nodeCode;
+
+    @Column(name = &quot;node_title&quot;, length = 500)
+    private String nodeTitle;
+
+    @Column(name = &quot;taxonomy_root&quot;, nullable = false, length = 8)
+    private String taxonomyRoot;
+
+    @Column(name = &quot;direct_score&quot;, nullable = false)
+    private int directScore;
+
+    @Column(nullable = false)
+    private double relevance;
+
+    @Column(nullable = false)
+    private double confidence;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;mapping_origin&quot;, nullable = false, length = 32)
+    private MappingOrigin mappingOrigin;
+
+    @Column(name = &quot;hierarchy_path&quot;, length = 2000)
+    private String hierarchyPath;
+
+    @Column(name = &quot;presence_reason&quot;, length = 2000)
+    private String presenceReason;
+
+    @Column(name = &quot;selected_for_impact&quot;, nullable = false)
+    private boolean selectedForImpact;
+
+<span class="fc" id="L73">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;review_status&quot;, nullable = false, length = 32)
+    private ReviewStatus reviewStatus = ReviewStatus.PROPOSED;
+
+<span class="fc" id="L77">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;action_status&quot;, nullable = false, length = 32)
+    private ActionStatus actionStatus = ActionStatus.UNDECIDED;
+
+    @Column(name = &quot;action_evidence&quot;, length = 2000)
+    private String actionEvidence;
+
+    @Column(name = &quot;decision_by&quot;, length = 160)
+    private String decisionBy;
+
+    @Column(name = &quot;decision_at&quot;)
+    private Instant decisionAt;
+
+    @Column(name = &quot;decision_comment&quot;, length = 2000)
+    private String decisionComment;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L97">    protected RequirementElementMapping() {</span>
+<span class="fc" id="L98">    }</span>
+
+    public RequirementElementMapping(RequirementAnalysisSnapshot snapshot,
+                                     String nodeCode,
+                                     String nodeTitle,
+                                     String taxonomyRoot,
+                                     int directScore,
+                                     double relevance,
+                                     double confidence,
+                                     MappingOrigin mappingOrigin,
+                                     String hierarchyPath,
+                                     String presenceReason,
+<span class="fc" id="L110">                                     boolean selectedForImpact) {</span>
+<span class="fc" id="L111">        this.snapshot = snapshot;</span>
+<span class="fc" id="L112">        this.nodeCode = nodeCode;</span>
+<span class="fc" id="L113">        this.nodeTitle = nodeTitle;</span>
+<span class="fc" id="L114">        this.taxonomyRoot = taxonomyRoot;</span>
+<span class="fc" id="L115">        this.directScore = directScore;</span>
+<span class="fc" id="L116">        this.relevance = relevance;</span>
+<span class="fc" id="L117">        this.confidence = confidence;</span>
+<span class="fc" id="L118">        this.mappingOrigin = mappingOrigin;</span>
+<span class="fc" id="L119">        this.hierarchyPath = hierarchyPath;</span>
+<span class="fc" id="L120">        this.presenceReason = presenceReason;</span>
+<span class="fc" id="L121">        this.selectedForImpact = selectedForImpact;</span>
+<span class="fc" id="L122">    }</span>
+
+    public void review(ReviewStatus reviewStatus,
+                       ActionStatus actionStatus,
+                       String actionEvidence,
+                       String decisionBy,
+                       String decisionComment,
+                       Instant decisionAt) {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        if (reviewStatus != null) this.reviewStatus = reviewStatus;</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (actionStatus != null) this.actionStatus = actionStatus;</span>
+<span class="nc" id="L132">        this.actionEvidence = actionEvidence;</span>
+<span class="nc" id="L133">        this.decisionBy = decisionBy;</span>
+<span class="nc" id="L134">        this.decisionComment = decisionComment;</span>
+<span class="nc" id="L135">        this.decisionAt = decisionAt;</span>
+<span class="nc" id="L136">    }</span>
+
+<span class="fc" id="L138">    public Long getId() { return id; }</span>
+<span class="fc" id="L139">    public RequirementAnalysisSnapshot getSnapshot() { return snapshot; }</span>
+<span class="fc" id="L140">    public String getNodeCode() { return nodeCode; }</span>
+<span class="fc" id="L141">    public String getNodeTitle() { return nodeTitle; }</span>
+<span class="fc" id="L142">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
+<span class="fc" id="L143">    public int getDirectScore() { return directScore; }</span>
+<span class="fc" id="L144">    public double getRelevance() { return relevance; }</span>
+<span class="fc" id="L145">    public double getConfidence() { return confidence; }</span>
+<span class="fc" id="L146">    public MappingOrigin getMappingOrigin() { return mappingOrigin; }</span>
+<span class="fc" id="L147">    public String getHierarchyPath() { return hierarchyPath; }</span>
+<span class="fc" id="L148">    public String getPresenceReason() { return presenceReason; }</span>
+<span class="fc" id="L149">    public boolean isSelectedForImpact() { return selectedForImpact; }</span>
+<span class="fc" id="L150">    public ReviewStatus getReviewStatus() { return reviewStatus; }</span>
+<span class="fc" id="L151">    public ActionStatus getActionStatus() { return actionStatus; }</span>
+<span class="fc" id="L152">    public String getActionEvidence() { return actionEvidence; }</span>
+<span class="fc" id="L153">    public String getDecisionBy() { return decisionBy; }</span>
+<span class="fc" id="L154">    public Instant getDecisionAt() { return decisionAt; }</span>
+<span class="fc" id="L155">    public String getDecisionComment() { return decisionComment; }</span>
+<span class="nc" id="L156">    public long getRowVersion() { return rowVersion; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectConflictService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ProjectConflictService.java</span></div><h1>ProjectConflictService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewConflictRequest;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.PortfolioTypes.ConflictStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ConflictType;
+import com.taxonomy.portfolio.model.ProjectConflict;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.repository.ProjectConflictRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
+
+/** Deterministic conflict hypotheses that always require human confirmation. */
+@Service
+public class ProjectConflictService {
+
+<span class="fc" id="L27">    private record ConflictRule(</span>
+            ConflictType type,
+            String title,
+            Pattern requiresPattern,
+            Pattern forbidsPattern,
+            double confidence) {
+    }
+
+<span class="fc" id="L35">    private static final List&lt;ConflictRule&gt; RULES = List.of(</span>
+<span class="fc" id="L36">            rule(ConflictType.HOSTING,</span>
+                    &quot;Cloud-/Hosting-Vorgaben widersprechen sich&quot;,
+                    &quot;\\b(public cloud|cloud[- ]pflicht|cloud required|must use cloud|saas required|externes hosting erforderlich)\\b&quot;,
+                    &quot;\\b(no cloud|keine cloud|cloud verboten|on[- ]premises only|only on[- ]premises|nur on[- ]prem|external hosting prohibited|external hosting (?:is )?not allowed|must not use external hosting|must remain on[- ]premises|externes hosting verboten|externes hosting (?:ist )?nicht erlaubt|darf kein externes hosting|muss on[- ]premises bleiben)\\b&quot;,
+                    0.88),
+<span class="fc" id="L41">            rule(ConflictType.DATA_LOCATION,</span>
+                    &quot;Vorgaben zum Speicherort widersprechen sich&quot;,
+                    &quot;\\b(global storage|worldwide replication|außerhalb (der )?eu|outside (the )?eu|cross[- ]border storage)\\b&quot;,
+                    &quot;\\b(nur in deutschland|ausschließlich in deutschland|eu only|only in the eu|daten dürfen die eu nicht verlassen|must not leave the eu)\\b&quot;,
+                    0.86),
+<span class="fc" id="L46">            rule(ConflictType.LIFECYCLE,</span>
+                    &quot;Lebenszyklusentscheidungen widersprechen sich&quot;,
+                    &quot;\\b(expand|extend|modernize|retain|ausbauen|erweitern|modernisieren|beibehalten)\\b&quot;,
+                    &quot;\\b(retire|replace|decommission|remove|ablösen|ersetzen|stilllegen|abschaffen)\\b&quot;,
+                    0.66),
+<span class="fc" id="L51">            rule(ConflictType.AVAILABILITY,</span>
+                    &quot;Betriebs-/Verfügbarkeitsvorgaben widersprechen sich&quot;,
+                    &quot;\\b(always online|permanent connectivity|ständig online|dauerhafte verbindung|online only)\\b&quot;,
+                    &quot;\\b(offline capable|offline first|ohne netz|offline[- ]fähig|air[- ]gapped)\\b&quot;,
+                    0.72),
+<span class="fc" id="L56">            rule(ConflictType.PLATFORM,</span>
+                    &quot;Plattformvorgaben widersprechen sich&quot;,
+                    &quot;\\b(vendor[- ]specific|proprietary only|herstellerspezifisch|nur proprietär)\\b&quot;,
+                    &quot;\\b(vendor neutral|open standards only|herstellerneutral|nur offene standards)\\b&quot;,
+                    0.70)
+    );
+
+    private final ProjectConflictRepository conflictRepository;
+    private final ProjectRequirementRepository requirementRepository;
+    private final ProjectPortfolioService projectService;
+    private final PortfolioFingerprintService fingerprintService;
+
+    public ProjectConflictService(ProjectConflictRepository conflictRepository,
+                                  ProjectRequirementRepository requirementRepository,
+                                  ProjectPortfolioService projectService,
+<span class="fc" id="L71">                                  PortfolioFingerprintService fingerprintService) {</span>
+<span class="fc" id="L72">        this.conflictRepository = conflictRepository;</span>
+<span class="fc" id="L73">        this.requirementRepository = requirementRepository;</span>
+<span class="fc" id="L74">        this.projectService = projectService;</span>
+<span class="fc" id="L75">        this.fingerprintService = fingerprintService;</span>
+<span class="fc" id="L76">    }</span>
+
+    @Transactional
+    public List&lt;ConflictView&gt; detect(Long projectId,
+                                     String username,
+                                     WorkspaceContext context) {
+<span class="fc" id="L82">        ArchitectureProject project = projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L83">        List&lt;ProjectRequirement&gt; requirements =</span>
+<span class="fc" id="L84">                requirementRepository.findByProjectIdOrderByRequirementKeyAsc(projectId);</span>
+<span class="fc" id="L85">        Instant now = Instant.now();</span>
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (int leftIndex = 0; leftIndex &lt; requirements.size(); leftIndex++) {</span>
+<span class="fc" id="L88">            ProjectRequirement left = requirements.get(leftIndex);</span>
+<span class="fc" id="L89">            ProjectRequirementVersion leftVersion = projectService.currentVersion(left);</span>
+<span class="fc" id="L90">            String leftText = normalize(leftVersion.getText());</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            for (int rightIndex = leftIndex + 1; rightIndex &lt; requirements.size(); rightIndex++) {</span>
+<span class="fc" id="L92">                ProjectRequirement right = requirements.get(rightIndex);</span>
+<span class="fc" id="L93">                ProjectRequirementVersion rightVersion = projectService.currentVersion(right);</span>
+<span class="fc" id="L94">                String rightText = normalize(rightVersion.getText());</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                for (ConflictRule rule : RULES) {</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                    boolean leftRequiresRightForbids = rule.requiresPattern().matcher(leftText).find()</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                            &amp;&amp; rule.forbidsPattern().matcher(rightText).find();</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">                    boolean rightRequiresLeftForbids = rule.requiresPattern().matcher(rightText).find()</span>
+<span class="pc bnc" id="L99" title="All 2 branches missed.">                            &amp;&amp; rule.forbidsPattern().matcher(leftText).find();</span>
+<span class="pc bpc" id="L100" title="1 of 4 branches missed.">                    if (!leftRequiresRightForbids &amp;&amp; !rightRequiresLeftForbids) continue;</span>
+
+<span class="fc" id="L102">                    String evidence = &quot;Potential conflict between &quot; + left.getRequirementKey()</span>
+<span class="fc" id="L103">                            + &quot; (version &quot; + leftVersion.getVersionNumber() + &quot;) and &quot;</span>
+<span class="fc" id="L104">                            + right.getRequirementKey() + &quot; (version &quot; + rightVersion.getVersionNumber()</span>
+                            + &quot;). One text matches the positive constraint and the other the prohibiting constraint.&quot;
+                            + &quot; Human review is required.&quot;;
+<span class="fc" id="L107">                    String fingerprint = fingerprintService.contentFingerprint(</span>
+<span class="fc" id="L108">                            projectId + &quot;|&quot; + left.getId() + &quot;|&quot; + right.getId() + &quot;|&quot;</span>
+<span class="fc" id="L109">                                    + rule.type() + &quot;|&quot; + leftVersion.getContentHash() + &quot;|&quot;</span>
+<span class="fc" id="L110">                                    + rightVersion.getContentHash());</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                    if (conflictRepository.findByProjectIdAndFingerprint(projectId, fingerprint).isEmpty()) {</span>
+<span class="fc" id="L112">                        conflictRepository.save(new ProjectConflict(</span>
+                                project,
+                                left,
+                                right,
+<span class="fc" id="L116">                                rule.type(),</span>
+                                fingerprint,
+<span class="fc" id="L118">                                rule.title(),</span>
+                                evidence,
+<span class="fc" id="L120">                                rule.confidence(),</span>
+                                now));
+                    }
+<span class="fc" id="L123">                }</span>
+            }
+        }
+<span class="fc" id="L126">        return list(projectId, username, context);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;ConflictView&gt; list(Long projectId,
+                                   String username,
+                                   WorkspaceContext context) {
+<span class="fc" id="L133">        projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L134">        return conflictRepository.findByProjectIdOrderByConfidenceDescDetectedAtDesc(projectId)</span>
+<span class="fc" id="L135">                .stream().map(this::toView).toList();</span>
+    }
+
+    @Transactional
+    public ConflictView review(Long projectId,
+                               Long conflictId,
+                               ReviewConflictRequest request,
+                               String username,
+                               WorkspaceContext context) {
+<span class="fc" id="L144">        projectService.requireProject(projectId, username, context);</span>
+<span class="pc bpc" id="L145" title="2 of 4 branches missed.">        if (request == null || request.status() == null) {</span>
+<span class="nc" id="L146">            throw PortfolioException.validation(&quot;conflict review status is required&quot;);</span>
+        }
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">        if (request.status() == ConflictStatus.PROPOSED) {</span>
+<span class="nc" id="L149">            throw PortfolioException.validation(&quot;A review cannot reset a conflict to PROPOSED&quot;);</span>
+        }
+<span class="fc" id="L151">        ProjectConflict conflict = conflictRepository.findByIdAndProjectId(conflictId, projectId)</span>
+<span class="pc" id="L152">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Project conflict not found: &quot; + conflictId));</span>
+<span class="fc" id="L153">        conflict.review(</span>
+<span class="fc" id="L154">                request.status(),</span>
+<span class="fc" id="L155">                ProjectPortfolioService.limited(request.resolutionNote(), 4000, &quot;resolutionNote&quot;),</span>
+<span class="fc" id="L156">                PortfolioScope.username(username, context),</span>
+<span class="fc" id="L157">                Instant.now());</span>
+<span class="fc" id="L158">        return toView(conflict);</span>
+    }
+
+    public ConflictView toView(ProjectConflict conflict) {
+<span class="fc" id="L162">        return new ConflictView(</span>
+<span class="fc" id="L163">                conflict.getId(),</span>
+<span class="fc" id="L164">                conflict.getProject().getId(),</span>
+<span class="fc" id="L165">                conflict.getRequirementA().getId(),</span>
+<span class="fc" id="L166">                conflict.getRequirementA().getRequirementKey(),</span>
+<span class="fc" id="L167">                conflict.getRequirementB().getId(),</span>
+<span class="fc" id="L168">                conflict.getRequirementB().getRequirementKey(),</span>
+<span class="fc" id="L169">                conflict.getConflictType(),</span>
+<span class="fc" id="L170">                conflict.getStatus(),</span>
+<span class="fc" id="L171">                conflict.getTitle(),</span>
+<span class="fc" id="L172">                conflict.getEvidence(),</span>
+<span class="fc" id="L173">                conflict.getConfidence(),</span>
+<span class="fc" id="L174">                conflict.getResolutionNote(),</span>
+<span class="fc" id="L175">                conflict.getDetectedAt(),</span>
+<span class="fc" id="L176">                conflict.getReviewedBy(),</span>
+<span class="fc" id="L177">                conflict.getReviewedAt());</span>
+    }
+
+    private static ConflictRule rule(ConflictType type,
+                                     String title,
+                                     String positive,
+                                     String negative,
+                                     double confidence) {
+<span class="fc" id="L185">        int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;</span>
+<span class="fc" id="L186">        return new ConflictRule(</span>
+                type,
+                title,
+<span class="fc" id="L189">                Pattern.compile(positive, flags),</span>
+<span class="fc" id="L190">                Pattern.compile(negative, flags),</span>
+                confidence);
+    }
+
+    private static String normalize(String value) {
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : value.toLowerCase(Locale.ROOT).replaceAll(&quot;\\s+&quot;, &quot; &quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

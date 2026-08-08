@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AuthorizationRulesConfigurer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">AuthorizationRulesConfigurer.java</span></div><h1>AuthorizationRulesConfigurer.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
+import org.springframework.stereotype.Component;
+
+/**
+ * Shared authorization rules used by both the form-login and Keycloak
+ * security configurations. Rules are ordered from most specific to least
+ * specific so that state-changing endpoints are never accidentally covered by
+ * a generic authenticated-user fallback.
+ */
+@Component
+<span class="fc" id="L15">public class AuthorizationRulesConfigurer {</span>
+
+    @Value(&quot;${taxonomy.security.swagger-public:true}&quot;)
+    private boolean swaggerPublic;
+
+    public void configure(
+            AuthorizeHttpRequestsConfigurer&lt;org.springframework.security.config.annotation.web.builders.HttpSecurity&gt;
+                    .AuthorizationManagerRequestMatcherRegistry auth) {
+<span class="fc" id="L23">        auth.requestMatchers(&quot;/login&quot;, &quot;/error&quot;, &quot;/css/**&quot;, &quot;/js/**&quot;, &quot;/images/**&quot;, &quot;/webjars/**&quot;)</span>
+<span class="fc" id="L24">                .permitAll();</span>
+<span class="fc" id="L25">        auth.requestMatchers(&quot;/login/oauth2/**&quot;, &quot;/oauth2/**&quot;).permitAll();</span>
+<span class="fc" id="L26">        auth.requestMatchers(&quot;/change-password&quot;).authenticated();</span>
+<span class="fc" id="L27">        auth.requestMatchers(&quot;/actuator/health&quot;, &quot;/actuator/health/**&quot;, &quot;/actuator/info&quot;).permitAll();</span>
+
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        if (swaggerPublic) {</span>
+<span class="fc" id="L30">            auth.requestMatchers(&quot;/v3/api-docs/**&quot;, &quot;/swagger-ui/**&quot;, &quot;/swagger-ui.html&quot;).permitAll();</span>
+        } else {
+<span class="nc" id="L32">            auth.requestMatchers(&quot;/v3/api-docs/**&quot;, &quot;/swagger-ui/**&quot;, &quot;/swagger-ui.html&quot;).authenticated();</span>
+        }
+
+<span class="fc" id="L35">        auth.requestMatchers(&quot;/api/admin/status&quot;, &quot;/api/admin/verify&quot;).authenticated();</span>
+<span class="fc" id="L36">        auth.requestMatchers(&quot;/admin/**&quot;, &quot;/api/admin/**&quot;, &quot;/api/preferences/**&quot;,</span>
+                        &quot;/api/diagnostics&quot;, &quot;/api/prompts/**&quot;)
+<span class="fc" id="L38">                .hasRole(&quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L40">        auth.requestMatchers(HttpMethod.POST, &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L41">        auth.requestMatchers(HttpMethod.PUT, &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L42">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L44">        auth.requestMatchers(HttpMethod.POST, &quot;/api/proposals/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L45">        auth.requestMatchers(HttpMethod.PUT, &quot;/api/proposals/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L46">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/proposals/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L48">        auth.requestMatchers(HttpMethod.POST, &quot;/api/dsl/parse&quot;, &quot;/api/dsl/validate&quot;, &quot;/api/dsl/format&quot;)</span>
+<span class="fc" id="L49">                .authenticated();</span>
+<span class="fc" id="L50">        auth.requestMatchers(HttpMethod.POST, &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L51">        auth.requestMatchers(HttpMethod.PUT, &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L52">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L54">        auth.requestMatchers(HttpMethod.POST, &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L55">        auth.requestMatchers(HttpMethod.PUT, &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L56">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L58">        auth.requestMatchers(HttpMethod.GET, &quot;/api/context/**&quot;).authenticated();</span>
+<span class="fc" id="L59">        auth.requestMatchers(HttpMethod.POST, &quot;/api/context/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L61">        auth.requestMatchers(HttpMethod.GET, &quot;/api/workspace/**&quot;).authenticated();</span>
+<span class="fc" id="L62">        auth.requestMatchers(HttpMethod.POST,</span>
+                        &quot;/api/workspace/sync-from-shared&quot;,
+                        &quot;/api/workspace/publish&quot;,
+                        &quot;/api/workspace/resolve-diverged&quot;)
+<span class="fc" id="L66">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L67">        auth.requestMatchers(HttpMethod.POST, &quot;/api/workspace/**&quot;).hasRole(&quot;ADMIN&quot;);</span>
+<span class="fc" id="L68">        auth.requestMatchers(HttpMethod.PUT, &quot;/api/workspace/**&quot;).hasRole(&quot;ADMIN&quot;);</span>
+<span class="fc" id="L69">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/workspace/**&quot;).hasRole(&quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L71">        auth.requestMatchers(HttpMethod.POST, &quot;/api/import/preview/**&quot;)</span>
+<span class="fc" id="L72">                .hasAnyRole(&quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L73">        auth.requestMatchers(HttpMethod.POST, &quot;/api/import/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L74">        auth.requestMatchers(HttpMethod.POST, &quot;/api/documents/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L75">        auth.requestMatchers(HttpMethod.POST, &quot;/api/provenance/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L76">        auth.requestMatchers(HttpMethod.PUT, &quot;/api/provenance/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L77">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/provenance/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L79">        auth.requestMatchers(HttpMethod.POST, &quot;/api/coverage/**&quot;)</span>
+<span class="fc" id="L80">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L81">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/coverage/**&quot;)</span>
+<span class="fc" id="L82">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L83">        auth.requestMatchers(HttpMethod.POST, &quot;/api/architecture/metadata/recompute&quot;)</span>
+<span class="fc" id="L84">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L86">        auth.requestMatchers(HttpMethod.POST,</span>
+                        &quot;/api/projects/*/analyses&quot;,
+                        &quot;/api/projects/*/requirements/*/analyses&quot;,
+                        &quot;/api/projects/*/analysis-jobs/*/retry-failed&quot;)
+<span class="fc" id="L90">                .hasAnyRole(&quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L92">        auth.requestMatchers(HttpMethod.POST, &quot;/api/projects/**&quot;)</span>
+<span class="fc" id="L93">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L94">        auth.requestMatchers(HttpMethod.PATCH, &quot;/api/projects/**&quot;)</span>
+<span class="fc" id="L95">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L96">        auth.requestMatchers(HttpMethod.PUT, &quot;/api/projects/**&quot;)</span>
+<span class="fc" id="L97">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L98">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/projects/**&quot;)</span>
+<span class="fc" id="L99">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L101">        auth.requestMatchers(HttpMethod.POST, &quot;/api/solutions/**&quot;, &quot;/api/products/**&quot;)</span>
+<span class="fc" id="L102">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L103">        auth.requestMatchers(HttpMethod.PATCH, &quot;/api/solutions/**&quot;, &quot;/api/products/**&quot;)</span>
+<span class="fc" id="L104">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L105">        auth.requestMatchers(HttpMethod.PUT, &quot;/api/solutions/**&quot;, &quot;/api/products/**&quot;)</span>
+<span class="fc" id="L106">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+<span class="fc" id="L107">        auth.requestMatchers(HttpMethod.DELETE, &quot;/api/solutions/**&quot;, &quot;/api/products/**&quot;)</span>
+<span class="fc" id="L108">                .hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+        // End-user calculations and file transformations use POST bodies but do
+        // not persist architecture decisions. They are explicitly enumerated so
+        // a newly introduced POST endpoint cannot inherit the same permission.
+<span class="fc" id="L113">        auth.requestMatchers(HttpMethod.POST,</span>
+                        &quot;/api/recommend&quot;,
+                        &quot;/api/gap/**&quot;,
+                        &quot;/api/patterns/**&quot;,
+                        &quot;/api/explain/**&quot;,
+                        &quot;/api/graph/**&quot;,
+                        &quot;/api/diagram/**&quot;,
+                        &quot;/api/scores/**&quot;,
+                        &quot;/api/export/**&quot;,
+                        &quot;/api/report/**&quot;)
+<span class="fc" id="L123">                .hasAnyRole(&quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;);</span>
+
+<span class="fc" id="L125">        auth.requestMatchers(HttpMethod.POST, &quot;/api/account/change-password&quot;).authenticated();</span>
+<span class="fc" id="L126">        auth.requestMatchers(HttpMethod.POST, &quot;/api/analyze&quot;).authenticated();</span>
+<span class="fc" id="L127">        auth.requestMatchers(HttpMethod.POST, &quot;/api/justify-leaf&quot;).authenticated();</span>
+
+<span class="fc" id="L129">        auth.requestMatchers(HttpMethod.GET, &quot;/api/**&quot;).authenticated();</span>
+<span class="fc" id="L130">        auth.requestMatchers(HttpMethod.HEAD, &quot;/api/**&quot;).authenticated();</span>
+<span class="fc" id="L131">        auth.requestMatchers(HttpMethod.OPTIONS, &quot;/api/**&quot;).permitAll();</span>
+
+<span class="fc" id="L133">        auth.requestMatchers(&quot;/api/**&quot;).denyAll();</span>
+<span class="fc" id="L134">        auth.requestMatchers(&quot;/**&quot;).authenticated();</span>
+<span class="fc" id="L135">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

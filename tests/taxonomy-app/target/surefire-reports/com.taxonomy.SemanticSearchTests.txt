@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.SemanticSearchTests
+-------------------------------------------------------------------------------
+Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.086 s -- in com.taxonomy.SemanticSearchTests

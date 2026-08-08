@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureWorkbenchController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.workbench</a> &gt; <span class="el_source">ArchitectureWorkbenchController.java</span></div><h1>ArchitectureWorkbenchController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.workbench;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.nio.charset.StandardCharsets;
+
+/** Page and API adapter for the read-only architecture workbench. */
+@Controller
+@Tag(name = &quot;Architecture Workbench&quot;)
+public class ArchitectureWorkbenchController {
+
+<span class="fc" id="L30">    private static final MediaType SVG = MediaType.parseMediaType(&quot;image/svg+xml&quot;);</span>
+
+    private final ArchitectureWorkbenchService service;
+    private final ProjectPortfolioService projectService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public ArchitectureWorkbenchController(
+            ArchitectureWorkbenchService service,
+            ProjectPortfolioService projectService,
+<span class="fc" id="L39">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L40">        this.service = service;</span>
+<span class="fc" id="L41">        this.projectService = projectService;</span>
+<span class="fc" id="L42">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L43">    }</span>
+
+    @GetMapping(&quot;/architecture/workbench&quot;)
+    public String workbenchPage(
+            @RequestParam(required = false) Long projectId,
+            @RequestParam(required = false) String snapshotId,
+            Model model) {
+<span class="fc" id="L50">        model.addAttribute(&quot;projectId&quot;, projectId);</span>
+<span class="fc" id="L51">        model.addAttribute(&quot;snapshotId&quot;, snapshotId);</span>
+<span class="fc" id="L52">        return &quot;architecture-workbench&quot;;</span>
+    }
+
+    @GetMapping(&quot;/projects/{projectId}/requirements/{requirementId}/architecture&quot;)
+    public String currentRequirementArchitecture(
+            @PathVariable Long projectId,
+            @PathVariable Long requirementId) {
+<span class="fc" id="L59">        RequestScope scope = scope();</span>
+<span class="fc" id="L60">        RequirementView requirement = projectService.getRequirement(</span>
+<span class="fc" id="L61">                projectId, requirementId, scope.username(), scope.context());</span>
+<span class="fc" id="L62">        String snapshotId = requirement.currentAnalysisSnapshotId();</span>
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">        if (snapshotId == null || snapshotId.isBlank()) {</span>
+<span class="fc" id="L64">            throw PortfolioException.conflict(</span>
+<span class="fc" id="L65">                    &quot;Requirement &quot; + requirement.requirementKey()</span>
+                            + &quot; has no current architecture snapshot. Analyze the current version first.&quot;);
+        }
+<span class="fc" id="L68">        String target = UriComponentsBuilder.fromPath(&quot;/architecture/workbench&quot;)</span>
+<span class="fc" id="L69">                .queryParam(&quot;projectId&quot;, projectId)</span>
+<span class="fc" id="L70">                .queryParam(&quot;snapshotId&quot;, snapshotId)</span>
+<span class="fc" id="L71">                .build()</span>
+<span class="fc" id="L72">                .encode()</span>
+<span class="fc" id="L73">                .toUriString();</span>
+<span class="fc" id="L74">        return &quot;redirect:&quot; + target;</span>
+    }
+
+    @GetMapping(&quot;/api/projects/{projectId}/architecture-workbench/{snapshotId}&quot;)
+    @ResponseBody
+    @Operation(summary = &quot;Load one immutable architecture snapshot as a render-ready scene&quot;)
+    public Projection projection(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+<span class="fc" id="L83">        RequestScope scope = scope();</span>
+<span class="fc" id="L84">        return service.load(projectId, snapshotId, scope.username(), scope.context());</span>
+    }
+
+    @GetMapping(value = &quot;/api/projects/{projectId}/architecture-workbench/{snapshotId}.svg&quot;,
+            produces = &quot;image/svg+xml&quot;)
+    @ResponseBody
+    @Operation(summary = &quot;Export the architecture snapshot as deterministic standalone SVG&quot;)
+    public ResponseEntity&lt;String&gt; svg(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+<span class="fc" id="L94">        RequestScope scope = scope();</span>
+<span class="fc" id="L95">        String content = service.renderSvg(projectId, snapshotId, scope.username(), scope.context());</span>
+<span class="fc" id="L96">        return ResponseEntity.ok()</span>
+<span class="fc" id="L97">                .contentType(SVG)</span>
+<span class="fc" id="L98">                .header(HttpHeaders.CONTENT_DISPOSITION, disposition(&quot;architecture&quot;, &quot;svg&quot;))</span>
+<span class="fc" id="L99">                .body(content);</span>
+    }
+
+    @GetMapping(value = &quot;/api/projects/{projectId}/architecture-workbench/{snapshotId}.pdf&quot;,
+            produces = MediaType.APPLICATION_PDF_VALUE)
+    @ResponseBody
+    @Operation(summary = &quot;Export the architecture snapshot as a vector PDF&quot;)
+    public ResponseEntity&lt;byte[]&gt; pdf(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+<span class="fc" id="L109">        RequestScope scope = scope();</span>
+<span class="fc" id="L110">        byte[] content = service.renderPdf(projectId, snapshotId, scope.username(), scope.context());</span>
+<span class="fc" id="L111">        return ResponseEntity.ok()</span>
+<span class="fc" id="L112">                .contentType(MediaType.APPLICATION_PDF)</span>
+<span class="fc" id="L113">                .contentLength(content.length)</span>
+<span class="fc" id="L114">                .header(HttpHeaders.CONTENT_DISPOSITION, disposition(&quot;architecture&quot;, &quot;pdf&quot;))</span>
+<span class="fc" id="L115">                .body(content);</span>
+    }
+
+    private RequestScope scope() {
+<span class="fc" id="L119">        return new RequestScope(</span>
+<span class="fc" id="L120">                workspaceResolver.resolveCurrentUsername(),</span>
+<span class="fc" id="L121">                workspaceResolver.resolveCurrentContext());</span>
+    }
+
+    private static String disposition(String name, String extension) {
+<span class="fc" id="L125">        return ContentDisposition.attachment()</span>
+<span class="fc" id="L126">                .filename(name + &quot;.&quot; + extension, StandardCharsets.UTF_8)</span>
+<span class="fc" id="L127">                .build()</span>
+<span class="fc" id="L128">                .toString();</span>
+    }
+
+<span class="fc" id="L131">    private record RequestScope(String username, WorkspaceContext context) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

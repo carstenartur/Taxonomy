@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.dsl.storage.JgitStoragePostgresMigrationIT
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.039 s -- in com.taxonomy.dsl.storage.JgitStoragePostgresMigrationIT

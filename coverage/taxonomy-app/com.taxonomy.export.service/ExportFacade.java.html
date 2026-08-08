@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExportFacade.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.service</a> &gt; <span class="el_source">ExportFacade.java</span></div><h1>ExportFacade.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.service;
+
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.analysis.service.SavedAnalysisService;
+import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.SavedAnalysis;
+import com.taxonomy.export.ArchiMateDiagramService;
+import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.MermaidLabels;
+import com.taxonomy.export.StructurizrExportService;
+import com.taxonomy.export.VisioDiagramService;
+import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.visio.VisioDocument;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
+/** High-level application facade for analysis-driven exports and score exchange. */
+@Service
+public class ExportFacade {
+
+    private final LlmService llmService;
+    private final RequirementArchitectureViewService architectureViewService;
+    private final DiagramProjectionService diagramProjectionService;
+    private final VisioDiagramService visioDiagramService;
+    private final VisioPackageBuilder visioPackageBuilder;
+    private final ArchiMateDiagramService archiMateDiagramService;
+    private final ArchiMateXmlExporter archiMateXmlExporter;
+    private final MermaidExportService mermaidExportService;
+    private final StructurizrExportService structurizrExportService;
+    private final SavedAnalysisService savedAnalysisService;
+
+    public ExportFacade(LlmService llmService,
+                        RequirementArchitectureViewService architectureViewService,
+                        DiagramProjectionService diagramProjectionService,
+                        VisioDiagramService visioDiagramService,
+                        VisioPackageBuilder visioPackageBuilder,
+                        ArchiMateDiagramService archiMateDiagramService,
+                        ArchiMateXmlExporter archiMateXmlExporter,
+                        MermaidExportService mermaidExportService,
+                        StructurizrExportService structurizrExportService,
+<span class="fc" id="L51">                        SavedAnalysisService savedAnalysisService) {</span>
+<span class="fc" id="L52">        this.llmService = llmService;</span>
+<span class="fc" id="L53">        this.architectureViewService = architectureViewService;</span>
+<span class="fc" id="L54">        this.diagramProjectionService = diagramProjectionService;</span>
+<span class="fc" id="L55">        this.visioDiagramService = visioDiagramService;</span>
+<span class="fc" id="L56">        this.visioPackageBuilder = visioPackageBuilder;</span>
+<span class="fc" id="L57">        this.archiMateDiagramService = archiMateDiagramService;</span>
+<span class="fc" id="L58">        this.archiMateXmlExporter = archiMateXmlExporter;</span>
+<span class="fc" id="L59">        this.mermaidExportService = mermaidExportService;</span>
+<span class="fc" id="L60">        this.structurizrExportService = structurizrExportService;</span>
+<span class="fc" id="L61">        this.savedAnalysisService = savedAnalysisService;</span>
+<span class="fc" id="L62">    }</span>
+
+    public byte[] exportAsVisio(String businessText) throws IOException {
+<span class="fc" id="L65">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="fc" id="L66">        VisioDocument visioDocument = visioDiagramService.convert(diagram);</span>
+<span class="fc" id="L67">        return visioPackageBuilder.build(visioDocument);</span>
+    }
+
+    public byte[] exportAsArchiMate(String businessText) {
+<span class="fc" id="L71">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="fc" id="L72">        ArchiMateModel model = archiMateDiagramService.convert(diagram);</span>
+<span class="fc" id="L73">        return archiMateXmlExporter.export(model);</span>
+    }
+
+    public String exportAsMermaid(String businessText) {
+<span class="nc" id="L77">        return mermaidExportService.export(analyzeAndProject(businessText));</span>
+    }
+
+    public String exportAsMermaid(String businessText, MermaidLabels labels) {
+<span class="nc" id="L81">        return mermaidExportService.export(analyzeAndProject(businessText), labels);</span>
+    }
+
+    public String exportAsStructurizrDsl(String businessText) {
+<span class="nc" id="L85">        return structurizrExportService.export(analyzeAndProject(businessText));</span>
+    }
+
+    public SavedAnalysis buildExport(String requirement,
+                                     Map&lt;String, Integer&gt; scores,
+                                     Map&lt;String, String&gt; reasons,
+                                     String provider) {
+<span class="fc" id="L92">        return savedAnalysisService.buildExport(requirement, scores, reasons, provider);</span>
+    }
+
+    public SavedAnalysis importFromJson(String jsonBody) throws IOException {
+<span class="fc" id="L96">        return savedAnalysisService.importFromJson(jsonBody);</span>
+    }
+
+    public List&lt;String&gt; findUnknownCodes(SavedAnalysis saved) {
+<span class="fc" id="L100">        return savedAnalysisService.findUnknownCodes(saved);</span>
+    }
+
+    public String getActiveProviderName() {
+<span class="nc" id="L104">        return llmService.getActiveProviderName();</span>
+    }
+
+    /**
+     * Builds the format-neutral diagram consumed by an {@link ExportFormatExtension}.
+     */
+    public DiagramModel buildDiagram(String businessText) {
+<span class="nc" id="L111">        return analyzeAndProject(businessText);</span>
+    }
+
+    private DiagramModel analyzeAndProject(String businessText) {
+<span class="fc" id="L115">        AnalysisResult result = llmService.analyzeWithBudget(businessText);</span>
+<span class="fc" id="L116">        RequirementArchitectureView view = architectureViewService.build(</span>
+<span class="fc" id="L117">                result.getScores(), businessText, 20);</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        String title = businessText.length() &gt; 60</span>
+<span class="nc" id="L119">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
+<span class="fc" id="L120">                : businessText;</span>
+<span class="fc" id="L121">        return diagramProjectionService.project(view, title);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

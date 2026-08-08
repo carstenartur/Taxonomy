@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>I18nApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.controller</a> &gt; <span class="el_source">I18nApiController.java</span></div><h1>I18nApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.controller;
+
+import com.taxonomy.shared.config.I18nConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+
+/**
+ * Exposes all GUI message-bundle keys as a JSON map so that client-side
+ * JavaScript can perform translations via {@code TaxonomyI18n.t('key')}.
+ *
+ * &lt;p&gt;Response is cached by the browser using standard HTTP cache headers.
+ */
+@RestController
+@RequestMapping(&quot;/api/i18n&quot;)
+public class I18nApiController {
+
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(I18nApiController.class);</span>
+
+    private final MessageSource messageSource;
+
+<span class="fc" id="L36">    public I18nApiController(MessageSource messageSource) {</span>
+<span class="fc" id="L37">        this.messageSource = messageSource;</span>
+<span class="fc" id="L38">    }</span>
+
+    /**
+     * Returns all message keys and their resolved values for the given locale.
+     *
+     * @param locale BCP-47 language tag, e.g. {@code en} or {@code de}
+     * @return key-value map of all messages
+     */
+    @GetMapping(&quot;/{locale}&quot;)
+    public Map&lt;String, String&gt; getTranslations(@PathVariable String locale) {
+<span class="fc" id="L48">        Locale resolved = Locale.forLanguageTag(locale);</span>
+<span class="fc" id="L49">        Map&lt;String, String&gt; messages = new HashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        for (String key : defaultMessageKeys()) {</span>
+<span class="fc" id="L52">            messages.put(key, messageSource.getMessage(key, null, key, resolved));</span>
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">        return messages;</span>
+    }
+
+    private Set&lt;String&gt; defaultMessageKeys() {
+<span class="fc" id="L58">        Set&lt;String&gt; keys = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (String basename : I18nConfig.MESSAGE_BASENAMES) {</span>
+<span class="fc" id="L60">            ClassPathResource resource = new ClassPathResource(</span>
+                    &quot;i18n/&quot; + basename + &quot;.properties&quot;);
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">            if (!resource.exists()) {</span>
+<span class="nc" id="L63">                log.warn(&quot;Configured i18n bundle is missing: {}&quot;, resource.getPath());</span>
+<span class="nc" id="L64">                continue;</span>
+            }
+<span class="fc" id="L66">            try (InputStream in = resource.getInputStream()) {</span>
+<span class="fc" id="L67">                Properties properties = new Properties();</span>
+<span class="fc" id="L68">                properties.load(in);</span>
+<span class="fc" id="L69">                keys.addAll(properties.stringPropertyNames());</span>
+<span class="nc" id="L70">            } catch (IOException exception) {</span>
+<span class="nc" id="L71">                log.warn(&quot;Failed to load i18n bundle {}: {}&quot;,</span>
+<span class="nc" id="L72">                        resource.getPath(), exception.getMessage());</span>
+<span class="fc" id="L73">            }</span>
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">        return keys;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectAnalysisController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.controller</a> &gt; <span class="el_source">ProjectAnalysisController.java</span></div><h1>ProjectAnalysisController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.controller;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ElementMappingView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewElementMappingRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewRelationMappingRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDiff;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
+import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.net.URI;
+import java.util.List;
+
+/** Requirement-separated analysis jobs and immutable snapshot history. */
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}&quot;)
+@Tag(name = &quot;Project Requirement Analysis&quot;)
+public class ProjectAnalysisController {
+
+    private final ProjectRequirementAnalysisService analysisService;
+    private final PortfolioAnalysisPersistenceService persistenceService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public ProjectAnalysisController(ProjectRequirementAnalysisService analysisService,
+                                     PortfolioAnalysisPersistenceService persistenceService,
+<span class="fc" id="L43">                                     WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L44">        this.analysisService = analysisService;</span>
+<span class="fc" id="L45">        this.persistenceService = persistenceService;</span>
+<span class="fc" id="L46">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L47">    }</span>
+
+    @PostMapping(&quot;/analyses&quot;)
+    @Operation(summary = &quot;Queue independent analyses for selected or all requirements&quot;)
+    public ResponseEntity&lt;AnalysisJobView&gt; analyzeProject(@PathVariable Long projectId,
+                                                          @RequestBody AnalyzeProjectRequest request) {
+<span class="fc" id="L53">        RequestScope scope = scope();</span>
+<span class="fc" id="L54">        AnalysisJobView job = analysisService.enqueueProject(</span>
+<span class="fc" id="L55">                projectId, request, scope.username(), scope.context());</span>
+<span class="fc" id="L56">        return accepted(projectId, job);</span>
+    }
+
+    @PostMapping(&quot;/requirements/{requirementId}/analyses&quot;)
+    @Operation(summary = &quot;Queue one requirement analysis and immutable snapshot&quot;)
+    public ResponseEntity&lt;AnalysisJobView&gt; analyzeRequirement(
+            @PathVariable Long projectId,
+            @PathVariable Long requirementId,
+            @RequestBody(required = false) AnalyzeProjectRequest request) {
+<span class="fc" id="L65">        RequestScope scope = scope();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        AnalyzeProjectRequest effective = request != null</span>
+<span class="pc" id="L67">                ? request : new AnalyzeProjectRequest(List.of(requirementId), false, null, null, null);</span>
+<span class="fc" id="L68">        AnalysisJobView job = analysisService.enqueueRequirement(</span>
+                projectId,
+                requirementId,
+<span class="fc" id="L71">                effective.provider(),</span>
+<span class="fc" id="L72">                effective.maxArchitectureNodes(),</span>
+<span class="fc" id="L73">                effective.idempotencyKey(),</span>
+<span class="fc" id="L74">                scope.username(),</span>
+<span class="fc" id="L75">                scope.context());</span>
+<span class="fc" id="L76">        return accepted(projectId, job);</span>
+    }
+
+    @GetMapping(&quot;/analysis-jobs&quot;)
+    @Operation(summary = &quot;List project analysis jobs&quot;)
+    public List&lt;AnalysisJobView&gt; listJobs(@PathVariable Long projectId) {
+<span class="fc" id="L82">        RequestScope scope = scope();</span>
+<span class="fc" id="L83">        return analysisService.listJobs(projectId, scope.username(), scope.context());</span>
+    }
+
+    @GetMapping(&quot;/analysis-jobs/{jobId}&quot;)
+    @Operation(summary = &quot;Read analysis job and item status&quot;)
+    public AnalysisJobView getJob(@PathVariable Long projectId,
+                                  @PathVariable String jobId) {
+<span class="nc" id="L90">        RequestScope scope = scope();</span>
+<span class="nc" id="L91">        return analysisService.getJob(jobId, projectId, scope.username(), scope.context());</span>
+    }
+
+    @PostMapping(&quot;/analysis-jobs/{jobId}/retry-failed&quot;)
+    @Operation(summary = &quot;Queue failed or expired requirement analyses for retry&quot;)
+    public ResponseEntity&lt;AnalysisJobView&gt; retryFailed(@PathVariable Long projectId,
+                                                       @PathVariable String jobId) {
+<span class="nc" id="L98">        RequestScope scope = scope();</span>
+<span class="nc" id="L99">        AnalysisJobView job = analysisService.enqueueRetryFailed(</span>
+<span class="nc" id="L100">                jobId, projectId, scope.username(), scope.context());</span>
+<span class="nc" id="L101">        return accepted(projectId, job);</span>
+    }
+
+    @GetMapping(&quot;/requirements/{requirementId}/snapshots&quot;)
+    @Operation(summary = &quot;List immutable analysis snapshots for a requirement&quot;)
+    public List&lt;SnapshotSummary&gt; listSnapshots(@PathVariable Long projectId,
+                                               @PathVariable Long requirementId) {
+<span class="nc" id="L108">        RequestScope scope = scope();</span>
+<span class="nc" id="L109">        return analysisService.listSnapshots(</span>
+<span class="nc" id="L110">                projectId, requirementId, scope.username(), scope.context());</span>
+    }
+
+    @GetMapping(&quot;/snapshots/{snapshotId}&quot;)
+    @Operation(summary = &quot;Replay one immutable analysis snapshot&quot;)
+    public SnapshotDetail getSnapshot(@PathVariable Long projectId,
+                                      @PathVariable String snapshotId) {
+<span class="nc" id="L117">        RequestScope scope = scope();</span>
+<span class="nc" id="L118">        return analysisService.getSnapshot(projectId, snapshotId, scope.username(), scope.context());</span>
+    }
+
+    @GetMapping(&quot;/snapshots/diff&quot;)
+    @Operation(summary = &quot;Compare two analysis snapshots semantically&quot;)
+    public SnapshotDiff diffSnapshots(@PathVariable Long projectId,
+                                      @RequestParam String older,
+                                      @RequestParam String newer) {
+<span class="nc" id="L126">        RequestScope scope = scope();</span>
+<span class="nc" id="L127">        return analysisService.diffSnapshots(</span>
+<span class="nc" id="L128">                projectId, older, newer, scope.username(), scope.context());</span>
+    }
+
+    @PatchMapping(&quot;/analysis-mappings/elements/{mappingId}&quot;)
+    @Operation(summary = &quot;Review a requirement-to-taxonomy mapping and classify the action&quot;)
+    public ElementMappingView reviewElementMapping(
+            @PathVariable Long projectId,
+            @PathVariable Long mappingId,
+            @RequestBody ReviewElementMappingRequest request) {
+<span class="nc" id="L137">        RequestScope scope = scope();</span>
+<span class="nc" id="L138">        return persistenceService.reviewElementMapping(</span>
+<span class="nc" id="L139">                projectId, mappingId, request, scope.username(), scope.context());</span>
+    }
+
+    @PatchMapping(&quot;/analysis-mappings/relations/{mappingId}&quot;)
+    @Operation(summary = &quot;Review a requirement-derived architecture relation&quot;)
+    public RelationMappingView reviewRelationMapping(
+            @PathVariable Long projectId,
+            @PathVariable Long mappingId,
+            @RequestBody ReviewRelationMappingRequest request) {
+<span class="nc" id="L148">        RequestScope scope = scope();</span>
+<span class="nc" id="L149">        return persistenceService.reviewRelationMapping(</span>
+<span class="nc" id="L150">                projectId, mappingId, request, scope.username(), scope.context());</span>
+    }
+
+    private static ResponseEntity&lt;AnalysisJobView&gt; accepted(Long projectId, AnalysisJobView job) {
+<span class="fc" id="L154">        URI location = URI.create(</span>
+<span class="fc" id="L155">                &quot;/api/projects/&quot; + projectId + &quot;/analysis-jobs/&quot; + job.id());</span>
+<span class="fc" id="L156">        return ResponseEntity.accepted().location(location).body(job);</span>
+    }
+
+    private RequestScope scope() {
+<span class="fc" id="L160">        return new RequestScope(</span>
+<span class="fc" id="L161">                workspaceResolver.resolveCurrentUsername(),</span>
+<span class="fc" id="L162">                workspaceResolver.resolveCurrentContext());</span>
+    }
+
+<span class="fc" id="L165">    private record RequestScope(String username, WorkspaceContext context) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

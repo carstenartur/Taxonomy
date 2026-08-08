@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioReviewedImportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.controller</a> &gt; <span class="el_source">PortfolioReviewedImportController.java</span></div><h1>PortfolioReviewedImportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.controller;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioImportReviewDtos.ReviewedImportItem;
+import com.taxonomy.portfolio.dto.PortfolioImportReviewDtos.ReviewedImportRequest;
+import com.taxonomy.portfolio.dto.PortfolioImportReviewDtos.ReviewedImportResult;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioReviewedImportService;
+import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.net.URI;
+
+/** Atomic adapter for mixed new-requirement and new-version import decisions. */
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}/requirements&quot;)
+@Tag(name = &quot;Project Requirement Import Review&quot;)
+public class PortfolioReviewedImportController {
+
+    private final PortfolioReviewedImportService importService;
+    private final ProjectRequirementAnalysisService analysisService;
+    private final WorkspaceResolver workspaceResolver;
+    private final int maximumItems;
+    private final long maximumCharacters;
+
+    public PortfolioReviewedImportController(
+            PortfolioReviewedImportService importService,
+            ProjectRequirementAnalysisService analysisService,
+            WorkspaceResolver workspaceResolver,
+            @Value(&quot;${taxonomy.portfolio.max-import-requirements:100}&quot;) int maximumItems,
+<span class="fc" id="L41">            @Value(&quot;${taxonomy.portfolio.max-import-characters:500000}&quot;) long maximumCharacters) {</span>
+<span class="fc" id="L42">        this.importService = importService;</span>
+<span class="fc" id="L43">        this.analysisService = analysisService;</span>
+<span class="fc" id="L44">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L45">        this.maximumItems = Math.max(1, maximumItems);</span>
+<span class="fc" id="L46">        this.maximumCharacters = Math.max(1L, maximumCharacters);</span>
+<span class="fc" id="L47">    }</span>
+
+    @PostMapping(&quot;/import-review&quot;)
+    @Operation(summary = &quot;Atomically apply a reviewed mixed document import&quot;)
+    public ResponseEntity&lt;ReviewedImportResult&gt; importReviewed(
+            @PathVariable Long projectId,
+            @RequestBody ReviewedImportRequest request) {
+<span class="nc" id="L54">        validate(request);</span>
+<span class="nc" id="L55">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="nc" id="L56">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="nc" id="L57">        var persisted = importService.persist(projectId, request.items(), username, context);</span>
+<span class="nc bnc" id="L58" title="All 4 branches missed.">        var job = request.analyzeAfterImport() &amp;&amp; !persisted.affectedRequirementIds().isEmpty()</span>
+<span class="nc" id="L59">                ? analysisService.enqueueProject(</span>
+                        projectId,
+                        new AnalyzeProjectRequest(
+<span class="nc" id="L62">                                persisted.affectedRequirementIds(),</span>
+<span class="nc" id="L63">                                false,</span>
+<span class="nc" id="L64">                                request.provider(),</span>
+<span class="nc" id="L65">                                request.maxArchitectureNodes(),</span>
+<span class="nc" id="L66">                                request.idempotencyKey()),</span>
+                        username,
+                        context)
+<span class="nc" id="L69">                : null;</span>
+<span class="nc" id="L70">        ReviewedImportResult result = new ReviewedImportResult(</span>
+<span class="nc" id="L71">                persisted.newRequirements(), persisted.versionedRequirements(), job);</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        if (job != null) {</span>
+<span class="nc" id="L73">            return ResponseEntity.accepted()</span>
+<span class="nc" id="L74">                    .location(URI.create(&quot;/api/projects/&quot; + projectId + &quot;/analysis-jobs/&quot; + job.id()))</span>
+<span class="nc" id="L75">                    .body(result);</span>
+        }
+<span class="nc" id="L77">        return ResponseEntity.status(201).body(result);</span>
+    }
+
+    private void validate(ReviewedImportRequest request) {
+<span class="nc bnc" id="L81" title="All 6 branches missed.">        if (request == null || request.items() == null || request.items().isEmpty()) {</span>
+<span class="nc" id="L82">            throw PortfolioException.validation(&quot;At least one reviewed import item is required&quot;);</span>
+        }
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        if (request.items().size() &gt; maximumItems) {</span>
+<span class="nc" id="L85">            throw PortfolioException.validation(</span>
+                    &quot;Reviewed import contains more than &quot; + maximumItems + &quot; items&quot;);
+        }
+<span class="nc" id="L88">        long characters = 0L;</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        for (ReviewedImportItem item : request.items()) {</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">            if (item == null) continue;</span>
+<span class="nc" id="L91">            characters += length(item.text());</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">            if (item.source() != null) characters += length(item.source().originalText());</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (characters &gt; maximumCharacters) {</span>
+<span class="nc" id="L94">                throw PortfolioException.validation(</span>
+                        &quot;Reviewed import exceeds &quot; + maximumCharacters + &quot; text characters&quot;);
+            }
+<span class="nc" id="L97">        }</span>
+<span class="nc" id="L98">    }</span>
+
+    private static int length(String value) {
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        return value != null ? value.length() : 0;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

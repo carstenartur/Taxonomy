@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>JgitStorageHibernateSchemaFilterProvider.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.storage</a> &gt; <span class="el_source">JgitStorageHibernateSchemaFilterProvider.java</span></div><h1>JgitStorageHibernateSchemaFilterProvider.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.storage;
+
+import java.util.Locale;
+import java.util.Set;
+
+import org.hibernate.boot.model.relational.Namespace;
+import org.hibernate.boot.model.relational.Sequence;
+import org.hibernate.mapping.Table;
+import org.hibernate.tool.schema.spi.SchemaFilter;
+import org.hibernate.tool.schema.spi.SchemaFilterProvider;
+
+/**
+ * Keeps every Flyway-owned JGit Core table outside Hibernate schema mutation.
+ *
+ * &lt;p&gt;The entities remain mapped and are still included in schema validation. Only
+ * create, migrate, truncate and drop operations exclude the complete released Core
+ * schema. This is deliberately a table allow-list rather than a {@code git_*}
+ * wildcard so an unrelated application table cannot silently escape Hibernate's
+ * lifecycle.&lt;/p&gt;
+ */
+<span class="fc" id="L21">public final class JgitStorageHibernateSchemaFilterProvider implements SchemaFilterProvider {</span>
+
+<span class="fc" id="L23">    private static final Set&lt;String&gt; FLYWAY_OWNED_TABLES = Set.of(</span>
+            &quot;git_packs&quot;,
+            &quot;git_reflog&quot;,
+            &quot;git_repository_lock&quot;,
+            &quot;git_pack_chunks&quot;);
+
+<span class="fc" id="L29">    private static final SchemaFilter MUTATION_FILTER = new SchemaFilter() {</span>
+        @Override
+        public boolean includeNamespace(Namespace namespace) {
+<span class="fc" id="L32">            return true;</span>
+        }
+
+        @Override
+        public boolean includeTable(Table table) {
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            return !FLYWAY_OWNED_TABLES.contains(table.getName().toLowerCase(Locale.ROOT));</span>
+        }
+
+        @Override
+        public boolean includeSequence(Sequence sequence) {
+<span class="nc" id="L42">            return true;</span>
+        }
+    };
+
+    @Override
+    public SchemaFilter getCreateFilter() {
+<span class="fc" id="L48">        return MUTATION_FILTER;</span>
+    }
+
+    @Override
+    public SchemaFilter getDropFilter() {
+<span class="fc" id="L53">        return MUTATION_FILTER;</span>
+    }
+
+    @Override
+    public SchemaFilter getTruncatorFilter() {
+<span class="fc" id="L58">        return MUTATION_FILTER;</span>
+    }
+
+    @Override
+    public SchemaFilter getMigrateFilter() {
+<span class="fc" id="L63">        return MUTATION_FILTER;</span>
+    }
+
+    @Override
+    public SchemaFilter getValidateFilter() {
+<span class="fc" id="L68">        return SchemaFilter.ALL;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

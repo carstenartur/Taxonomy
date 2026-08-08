@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LayeredDiagramLayoutService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">LayeredDiagramLayoutService.java</span></div><h1>LayeredDiagramLayoutService.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import com.taxonomy.diagram.DiagramSceneNode;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Deterministic layered layout for architecture diagrams.
+ *
+ * &lt;p&gt;The renderer deliberately has no browser or Spring dependency. The same
+ * coordinates are returned to the browser and used by SVG/PDF exporters.&lt;/p&gt;
+ */
+<span class="fc" id="L22">public class LayeredDiagramLayoutService {</span>
+
+    static final double MARGIN = 52.0;
+    static final double NODE_WIDTH = 238.0;
+    static final double NODE_HEIGHT = 82.0;
+    static final double COLUMN_GAP = 92.0;
+    static final double ROW_GAP = 34.0;
+    static final double MIN_WIDTH = 760.0;
+    static final double MIN_HEIGHT = 420.0;
+
+    public DiagramScene layout(DiagramModel model) {
+<span class="pc bpc" id="L33" title="2 of 6 branches missed.">        if (model == null || model.nodes() == null || model.nodes().isEmpty()) {</span>
+<span class="fc" id="L34">            return new DiagramScene(</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">                    model != null ? model.title() : &quot;Architecture&quot;,</span>
+                    MIN_WIDTH,
+                    MIN_HEIGHT,
+<span class="fc" id="L38">                    direction(model),</span>
+<span class="fc" id="L39">                    List.of(),</span>
+<span class="fc" id="L40">                    List.of());</span>
+        }
+
+<span class="fc" id="L43">        List&lt;DiagramNode&gt; ordered = model.nodes().stream()</span>
+<span class="fc" id="L44">                .sorted(Comparator</span>
+<span class="fc" id="L45">                        .comparingInt(DiagramNode::layer)</span>
+<span class="pc" id="L46">                        .thenComparing(node -&gt; safe(node.type()))</span>
+<span class="pc" id="L47">                        .thenComparing(node -&gt; safe(node.id())))</span>
+<span class="fc" id="L48">                .toList();</span>
+
+<span class="fc" id="L50">        Map&lt;Integer, List&lt;DiagramNode&gt;&gt; byLayer = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        for (DiagramNode node : ordered) {</span>
+<span class="fc" id="L52">            byLayer.computeIfAbsent(node.layer(), ignored -&gt; new ArrayList&lt;&gt;()).add(node);</span>
+<span class="fc" id="L53">        }</span>
+
+<span class="fc" id="L55">        List&lt;DiagramSceneNode&gt; sceneNodes = new ArrayList&lt;&gt;(ordered.size());</span>
+<span class="fc" id="L56">        Map&lt;String, DiagramSceneNode&gt; byId = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L57">        int column = 0;</span>
+<span class="fc" id="L58">        int maximumRows = 0;</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (List&lt;DiagramNode&gt; layerNodes : byLayer.values()) {</span>
+<span class="fc" id="L60">            maximumRows = Math.max(maximumRows, layerNodes.size());</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            for (int row = 0; row &lt; layerNodes.size(); row++) {</span>
+<span class="fc" id="L62">                DiagramNode node = layerNodes.get(row);</span>
+<span class="fc" id="L63">                DiagramSceneNode sceneNode = new DiagramSceneNode(</span>
+<span class="fc" id="L64">                        node.id(),</span>
+<span class="fc" id="L65">                        node.label(),</span>
+<span class="fc" id="L66">                        node.type(),</span>
+<span class="fc" id="L67">                        node.relevance(),</span>
+<span class="fc" id="L68">                        node.anchor(),</span>
+<span class="fc" id="L69">                        node.layer(),</span>
+<span class="fc" id="L70">                        node.depth(),</span>
+<span class="fc" id="L71">                        node.selectedForImpact(),</span>
+<span class="fc" id="L72">                        node.parentId(),</span>
+<span class="fc" id="L73">                        node.container(),</span>
+                        MARGIN + column * (NODE_WIDTH + COLUMN_GAP),
+                        MARGIN + row * (NODE_HEIGHT + ROW_GAP),
+                        NODE_WIDTH,
+                        NODE_HEIGHT);
+<span class="fc" id="L78">                sceneNodes.add(sceneNode);</span>
+<span class="fc" id="L79">                byId.put(sceneNode.id(), sceneNode);</span>
+            }
+<span class="fc" id="L81">            column++;</span>
+<span class="fc" id="L82">        }</span>
+
+<span class="fc" id="L84">        List&lt;DiagramSceneEdge&gt; sceneEdges = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (model.edges() != null) {</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            for (DiagramEdge edge : model.edges().stream()</span>
+<span class="fc" id="L87">                    .sorted(Comparator.comparing(item -&gt; safe(item.id())))</span>
+<span class="fc" id="L88">                    .toList()) {</span>
+<span class="fc" id="L89">                DiagramSceneNode source = byId.get(edge.sourceId());</span>
+<span class="fc" id="L90">                DiagramSceneNode target = byId.get(edge.targetId());</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">                if (source == null || target == null) {</span>
+<span class="fc" id="L92">                    continue;</span>
+                }
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                boolean leftToRight = source.x() &lt;= target.x();</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                double sourceX = leftToRight ? source.x() + source.width() : source.x();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">                double targetX = leftToRight ? target.x() : target.x() + target.width();</span>
+<span class="fc" id="L97">                sceneEdges.add(new DiagramSceneEdge(</span>
+<span class="fc" id="L98">                        edge.id(),</span>
+<span class="fc" id="L99">                        edge.sourceId(),</span>
+<span class="fc" id="L100">                        edge.targetId(),</span>
+<span class="fc" id="L101">                        edge.relationType(),</span>
+<span class="fc" id="L102">                        edge.relevance(),</span>
+<span class="fc" id="L103">                        edge.relationCategory(),</span>
+                        sourceX,
+<span class="fc" id="L105">                        source.y() + source.height() / 2.0,</span>
+                        targetX,
+<span class="fc" id="L107">                        target.y() + target.height() / 2.0));</span>
+<span class="fc" id="L108">            }</span>
+        }
+
+<span class="fc" id="L111">        double width = Math.max(</span>
+                MIN_WIDTH,
+<span class="fc" id="L113">                2 * MARGIN + byLayer.size() * NODE_WIDTH</span>
+<span class="fc" id="L114">                        + Math.max(0, byLayer.size() - 1) * COLUMN_GAP);</span>
+<span class="fc" id="L115">        double height = Math.max(</span>
+                MIN_HEIGHT,
+                2 * MARGIN + maximumRows * NODE_HEIGHT
+<span class="fc" id="L118">                        + Math.max(0, maximumRows - 1) * ROW_GAP);</span>
+
+<span class="fc" id="L120">        return new DiagramScene(</span>
+<span class="fc" id="L121">                model.title(),</span>
+                width,
+                height,
+<span class="fc" id="L124">                direction(model),</span>
+                sceneNodes,
+                sceneEdges);
+    }
+
+    private static String direction(DiagramModel model) {
+<span class="pc bpc" id="L130" title="3 of 6 branches missed.">        return model != null &amp;&amp; model.layout() != null &amp;&amp; model.layout().direction() != null</span>
+<span class="fc" id="L131">                ? model.layout().direction()</span>
+<span class="nc" id="L132">                : &quot;LR&quot;;</span>
+    }
+
+    private static String safe(String value) {
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

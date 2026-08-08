@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisResult.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AnalysisResult.java</span></div><h1>AnalysisResult.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+public class AnalysisResult {
+
+    private Map&lt;String, Integer&gt; scores;
+    private List&lt;TaxonomyNodeDto&gt; tree;
+
+    /** &quot;SUCCESS&quot;, &quot;PARTIAL&quot;, or &quot;ERROR&quot; */
+    private String status;
+
+    /** Accumulated warning messages (e.g. which roots were skipped). */
+<span class="fc" id="L16">    private List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+
+    /** Human-readable error/partial message; set when status is PARTIAL or ERROR. */
+    private String errorMessage;
+
+    /** Optional architecture view built from relation-aware propagation. */
+    private RequirementArchitectureView architectureView;
+
+    /**
+     * Scoring discrepancies detected during analysis. Each entry indicates
+     * a case where the LLM's raw child scores exceeded the parent's budget,
+     * signalling a potential taxonomy inconsistency.
+     */
+<span class="fc" id="L29">    private List&lt;TaxonomyDiscrepancy&gt; discrepancies = new ArrayList&lt;&gt;();</span>
+
+    /** Provisional (not-yet-persisted) relation hypotheses generated from scores. */
+<span class="fc" id="L32">    private List&lt;RelationHypothesisDto&gt; provisionalRelations = new ArrayList&lt;&gt;();</span>
+
+    /** Git commit provenance and projection/index freshness metadata. */
+    private ViewContext viewContext;
+
+<span class="fc" id="L37">    public AnalysisResult() {}</span>
+
+<span class="fc" id="L39">    public AnalysisResult(Map&lt;String, Integer&gt; scores, List&lt;TaxonomyNodeDto&gt; tree) {</span>
+<span class="fc" id="L40">        this.scores = scores;</span>
+<span class="fc" id="L41">        this.tree = tree;</span>
+<span class="fc" id="L42">    }</span>
+
+<span class="fc" id="L44">    public Map&lt;String, Integer&gt; getScores() { return scores; }</span>
+<span class="fc" id="L45">    public void setScores(Map&lt;String, Integer&gt; scores) { this.scores = scores; }</span>
+
+<span class="fc" id="L47">    public List&lt;TaxonomyNodeDto&gt; getTree() { return tree; }</span>
+<span class="nc" id="L48">    public void setTree(List&lt;TaxonomyNodeDto&gt; tree) { this.tree = tree; }</span>
+
+<span class="fc" id="L50">    public String getStatus() { return status; }</span>
+<span class="fc" id="L51">    public void setStatus(String status) { this.status = status; }</span>
+
+<span class="fc" id="L53">    public List&lt;String&gt; getWarnings() { return warnings; }</span>
+<span class="fc" id="L54">    public void setWarnings(List&lt;String&gt; warnings) { this.warnings = warnings; }</span>
+
+<span class="fc" id="L56">    public String getErrorMessage() { return errorMessage; }</span>
+<span class="fc" id="L57">    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }</span>
+
+<span class="fc" id="L59">    public RequirementArchitectureView getArchitectureView() { return architectureView; }</span>
+<span class="fc" id="L60">    public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }</span>
+
+<span class="fc" id="L62">    public List&lt;TaxonomyDiscrepancy&gt; getDiscrepancies() { return discrepancies; }</span>
+<span class="fc" id="L63">    public void setDiscrepancies(List&lt;TaxonomyDiscrepancy&gt; discrepancies) { this.discrepancies = discrepancies; }</span>
+
+<span class="fc" id="L65">    public List&lt;RelationHypothesisDto&gt; getProvisionalRelations() { return provisionalRelations; }</span>
+<span class="fc" id="L66">    public void setProvisionalRelations(List&lt;RelationHypothesisDto&gt; provisionalRelations) { this.provisionalRelations = provisionalRelations; }</span>
+
+<span class="fc" id="L68">    public ViewContext getViewContext() { return viewContext; }</span>
+<span class="fc" id="L69">    public void setViewContext(ViewContext viewContext) { this.viewContext = viewContext; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectRequirementVersion.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">ProjectRequirementVersion.java</span></div><h1>ProjectRequirementVersion.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+
+import java.time.Instant;
+
+/** Immutable text/provenance version of a project requirement. */
+@Entity
+@Table(name = &quot;project_req_version&quot;, indexes = {
+        @Index(name = &quot;idx_reqver_req&quot;, columnList = &quot;requirement_id&quot;),
+        @Index(name = &quot;idx_reqver_hash&quot;, columnList = &quot;requirement_id,content_hash&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_reqver_number&quot;, columnNames = {&quot;requirement_id&quot;, &quot;version_number&quot;}),
+        @UniqueConstraint(name = &quot;uq_reqver_hash&quot;, columnNames = {&quot;requirement_id&quot;, &quot;content_hash&quot;})
+})
+public class ProjectRequirementVersion {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;requirement_id&quot;, nullable = false)
+    private ProjectRequirement requirement;
+
+    @Column(name = &quot;version_number&quot;, nullable = false)
+    private int versionNumber;
+
+    @Lob
+    @Column(name = &quot;requirement_text&quot;, nullable = false)
+    private String text;
+
+    @Column(name = &quot;content_hash&quot;, nullable = false, length = 64)
+    private String contentHash;
+
+    @Column(name = &quot;change_reason&quot;, length = 1000)
+    private String changeReason;
+
+    @Column(name = &quot;created_by&quot;, nullable = false, length = 160)
+    private String createdBy;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;source_artifact_id&quot;)
+    private Long sourceArtifactId;
+
+    @Column(name = &quot;source_version_id&quot;)
+    private Long sourceVersionId;
+
+    /** JSON array of source-fragment database IDs. */
+    @Lob
+    @Column(name = &quot;source_fragment_ids&quot;)
+    private String sourceFragmentIdsJson;
+
+    @Column(name = &quot;section_ref&quot;, length = 500)
+    private String sectionReference;
+
+    @Column(name = &quot;page_number&quot;)
+    private Integer pageNumber;
+
+    @Lob
+    @Column(name = &quot;original_text&quot;)
+    private String originalText;
+
+<span class="fc" id="L77">    protected ProjectRequirementVersion() {</span>
+<span class="fc" id="L78">    }</span>
+
+    public ProjectRequirementVersion(ProjectRequirement requirement,
+                                     int versionNumber,
+                                     String text,
+                                     String contentHash,
+                                     String changeReason,
+                                     String createdBy,
+                                     Instant createdAt,
+                                     Long sourceArtifactId,
+                                     Long sourceVersionId,
+                                     String sourceFragmentIdsJson,
+                                     String sectionReference,
+                                     Integer pageNumber,
+<span class="fc" id="L92">                                     String originalText) {</span>
+<span class="fc" id="L93">        this.requirement = requirement;</span>
+<span class="fc" id="L94">        this.versionNumber = versionNumber;</span>
+<span class="fc" id="L95">        this.text = text;</span>
+<span class="fc" id="L96">        this.contentHash = contentHash;</span>
+<span class="fc" id="L97">        this.changeReason = changeReason;</span>
+<span class="fc" id="L98">        this.createdBy = createdBy;</span>
+<span class="fc" id="L99">        this.createdAt = createdAt;</span>
+<span class="fc" id="L100">        this.sourceArtifactId = sourceArtifactId;</span>
+<span class="fc" id="L101">        this.sourceVersionId = sourceVersionId;</span>
+<span class="fc" id="L102">        this.sourceFragmentIdsJson = sourceFragmentIdsJson;</span>
+<span class="fc" id="L103">        this.sectionReference = sectionReference;</span>
+<span class="fc" id="L104">        this.pageNumber = pageNumber;</span>
+<span class="fc" id="L105">        this.originalText = originalText;</span>
+<span class="fc" id="L106">    }</span>
+
+<span class="fc" id="L108">    public Long getId() { return id; }</span>
+<span class="fc" id="L109">    public ProjectRequirement getRequirement() { return requirement; }</span>
+<span class="fc" id="L110">    public int getVersionNumber() { return versionNumber; }</span>
+<span class="fc" id="L111">    public String getText() { return text; }</span>
+<span class="fc" id="L112">    public String getContentHash() { return contentHash; }</span>
+<span class="fc" id="L113">    public String getChangeReason() { return changeReason; }</span>
+<span class="fc" id="L114">    public String getCreatedBy() { return createdBy; }</span>
+<span class="fc" id="L115">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L116">    public Long getSourceArtifactId() { return sourceArtifactId; }</span>
+<span class="fc" id="L117">    public Long getSourceVersionId() { return sourceVersionId; }</span>
+<span class="fc" id="L118">    public String getSourceFragmentIdsJson() { return sourceFragmentIdsJson; }</span>
+<span class="fc" id="L119">    public String getSectionReference() { return sectionReference; }</span>
+<span class="fc" id="L120">    public Integer getPageNumber() { return pageNumber; }</span>
+<span class="fc" id="L121">    public String getOriginalText() { return originalText; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

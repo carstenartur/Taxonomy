@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentImportExceptionHandler.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.controller</a> &gt; <span class="el_source">DocumentImportExceptionHandler.java</span></div><h1>DocumentImportExceptionHandler.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.controller;
+
+import com.taxonomy.provenance.service.DocumentLimitException;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+
+import java.util.Map;
+
+/** Stable error mapping for multipart and document-processing resource limits. */
+@RestControllerAdvice(assignableTypes = DocumentImportController.class)
+<span class="fc" id="L14">public class DocumentImportExceptionHandler {</span>
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleServletUploadLimit(
+            MaxUploadSizeExceededException error) {
+<span class="nc" id="L19">        return ResponseEntity.status(413).body(Map.of(</span>
+                &quot;error&quot;, &quot;UPLOAD_TOO_LARGE&quot;,
+                &quot;message&quot;, &quot;The uploaded file exceeds the configured request limit&quot;));
+    }
+
+    @ExceptionHandler(DocumentLimitException.class)
+    ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleDocumentLimit(DocumentLimitException error) {
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        int status = &quot;UPLOAD_TOO_LARGE&quot;.equals(error.getCode()) ? 413</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">                : &quot;EMPTY_FILE&quot;.equals(error.getCode()) ? 400 : 422;</span>
+<span class="fc" id="L28">        return ResponseEntity.status(status).body(Map.of(</span>
+<span class="fc" id="L29">                &quot;error&quot;, error.getCode(),</span>
+<span class="fc" id="L30">                &quot;message&quot;, error.getMessage()));</span>
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleMultipartFailure(MultipartException error) {
+<span class="nc" id="L35">        return ResponseEntity.badRequest().body(Map.of(</span>
+                &quot;error&quot;, &quot;INVALID_MULTIPART_REQUEST&quot;,
+                &quot;message&quot;, &quot;The multipart request could not be processed&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

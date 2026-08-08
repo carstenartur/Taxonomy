@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioAnalysisRecoveryService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioAnalysisRecoveryService.java</span></div><h1>PortfolioAnalysisRecoveryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.model.RequirementAnalysisJob;
+import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+
+/** Recovers failed items and expired worker claims without duplicating active work. */
+@Service
+public class PortfolioAnalysisRecoveryService {
+
+    private final RequirementAnalysisJobRepository jobRepository;
+    private final RequirementAnalysisJobItemRepository itemRepository;
+    private final ProjectPortfolioService projectService;
+
+    public PortfolioAnalysisRecoveryService(RequirementAnalysisJobRepository jobRepository,
+                                            RequirementAnalysisJobItemRepository itemRepository,
+<span class="fc" id="L26">                                            ProjectPortfolioService projectService) {</span>
+<span class="fc" id="L27">        this.jobRepository = jobRepository;</span>
+<span class="fc" id="L28">        this.itemRepository = itemRepository;</span>
+<span class="fc" id="L29">        this.projectService = projectService;</span>
+<span class="fc" id="L30">    }</span>
+
+    /**
+     * Resets failed items and RUNNING items whose claim is older than the supplied
+     * cutoff. Active claims remain untouched. Every successful compare-and-set
+     * increments the attempt and binds the retry to the requirement's current
+     * immutable text version. The job remains PENDING until a worker actually
+     * claims its prepared items, so a lost or rejected dispatch can be retried.
+     *
+     * @return number of items atomically prepared for another attempt
+     */
+    @Transactional
+    public int prepareRetryableItems(String jobId,
+                                     Long projectId,
+                                     String username,
+                                     WorkspaceContext context,
+                                     Instant staleBefore) {
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (staleBefore == null) {</span>
+<span class="nc" id="L48">            throw PortfolioException.validation(&quot;staleBefore is required&quot;);</span>
+        }
+<span class="fc" id="L50">        projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L51">        RequirementAnalysisJob job = jobRepository.findByIdAndProjectId(jobId, projectId)</span>
+<span class="pc" id="L52">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis job not found: &quot; + jobId));
+
+<span class="fc" id="L55">        List&lt;RequirementAnalysisJobItem&gt; failed =</span>
+<span class="fc" id="L56">                itemRepository.findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(</span>
+                        jobId, AnalysisStatus.FAILED);
+<span class="fc" id="L58">        List&lt;RequirementAnalysisJobItem&gt; stale = itemRepository</span>
+<span class="fc" id="L59">                .findByJobIdAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(</span>
+                        jobId, AnalysisStatus.RUNNING, staleBefore);
+
+<span class="fc" id="L62">        int prepared = 0;</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        for (RequirementAnalysisJobItem item : failed) {</span>
+<span class="fc" id="L64">            ProjectRequirementVersion version =</span>
+<span class="fc" id="L65">                    projectService.currentVersion(item.getRequirement());</span>
+<span class="fc" id="L66">            prepared += itemRepository.resetFailed(</span>
+<span class="fc" id="L67">                    item.getId(),</span>
+                    AnalysisStatus.FAILED,
+                    AnalysisStatus.PENDING,
+                    version);
+<span class="fc" id="L71">        }</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        for (RequirementAnalysisJobItem item : stale) {</span>
+<span class="fc" id="L73">            ProjectRequirementVersion version =</span>
+<span class="fc" id="L74">                    projectService.currentVersion(item.getRequirement());</span>
+<span class="fc" id="L75">            prepared += itemRepository.resetExpiredRunning(</span>
+<span class="fc" id="L76">                    item.getId(),</span>
+                    AnalysisStatus.RUNNING,
+                    AnalysisStatus.PENDING,
+                    staleBefore,
+                    version);
+<span class="fc" id="L81">        }</span>
+
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (prepared == 0) {</span>
+<span class="fc" id="L84">            throw PortfolioException.conflict(</span>
+                    &quot;Analysis job has no failed or expired running items to retry: &quot; + jobId);
+        }
+<span class="fc" id="L87">        job.markPending();</span>
+<span class="fc" id="L88">        return prepared;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

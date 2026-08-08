@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ElementHistoryAggregation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">ElementHistoryAggregation.java</span></div><h1>ElementHistoryAggregation.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * Aggregated history information for a single architecture element,
+ * computed from the {@code ArchitectureCommitIndex}.
+ *
+ * &lt;p&gt;Answers questions like: &quot;When was this element first introduced?&quot;,
+ * &quot;How often has it been modified?&quot;, &quot;Is it volatile or stable?&quot;
+ *
+ * @param elementId             the architecture element ID
+ * @param firstSeen             timestamp of the earliest commit affecting this element
+ * @param lastSeen              timestamp of the most recent commit affecting this element
+ * @param occurrenceCount       number of commits that reference this element
+ * @param volatility            a 0.0–1.0 measure of how frequently the element changes
+ * @param recentCommitMessages  messages from the most recent commits affecting this element
+ */
+<span class="nc" id="L20">public record ElementHistoryAggregation(</span>
+        String elementId,
+        Instant firstSeen,
+        Instant lastSeen,
+        int occurrenceCount,
+        double volatility,
+        List&lt;String&gt; recentCommitMessages
+) {
+    /**
+     * Compute volatility as a ratio: occurrenceCount / totalCommitCount.
+     * Clamped to [0.0, 1.0].
+     */
+    public static double computeVolatility(int occurrenceCount, int totalCommitCount) {
+<span class="nc bnc" id="L33" title="All 2 branches missed.">        if (totalCommitCount &lt;= 0) return 0.0;</span>
+<span class="nc" id="L34">        return Math.min(1.0, (double) occurrenceCount / totalCommitCount);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

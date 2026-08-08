@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SourceArtifactDto.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">SourceArtifactDto.java</span></div><h1>SourceArtifactDto.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import com.taxonomy.model.SourceType;
+
+import java.time.Instant;
+
+/**
+ * Represents the logical identity of a source material, independent of its
+ * concrete version or type.
+ */
+public class SourceArtifactDto {
+
+    private Long id;
+    private SourceType sourceType;
+    private String title;
+    private String canonicalIdentifier;
+    private String canonicalUrl;
+    private String originSystem;
+    private String author;
+    private String description;
+    private String language;
+    private Instant createdAt;
+    private Instant updatedAt;
+
+<span class="fc" id="L25">    public SourceArtifactDto() {}</span>
+
+<span class="fc" id="L27">    public SourceArtifactDto(SourceType sourceType, String title) {</span>
+<span class="fc" id="L28">        this.sourceType = sourceType;</span>
+<span class="fc" id="L29">        this.title = title;</span>
+<span class="fc" id="L30">    }</span>
+
+<span class="fc" id="L32">    public Long getId() { return id; }</span>
+<span class="fc" id="L33">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L35">    public SourceType getSourceType() { return sourceType; }</span>
+<span class="fc" id="L36">    public void setSourceType(SourceType sourceType) { this.sourceType = sourceType; }</span>
+
+<span class="fc" id="L38">    public String getTitle() { return title; }</span>
+<span class="fc" id="L39">    public void setTitle(String title) { this.title = title; }</span>
+
+<span class="fc" id="L41">    public String getCanonicalIdentifier() { return canonicalIdentifier; }</span>
+<span class="fc" id="L42">    public void setCanonicalIdentifier(String canonicalIdentifier) { this.canonicalIdentifier = canonicalIdentifier; }</span>
+
+<span class="fc" id="L44">    public String getCanonicalUrl() { return canonicalUrl; }</span>
+<span class="fc" id="L45">    public void setCanonicalUrl(String canonicalUrl) { this.canonicalUrl = canonicalUrl; }</span>
+
+<span class="fc" id="L47">    public String getOriginSystem() { return originSystem; }</span>
+<span class="fc" id="L48">    public void setOriginSystem(String originSystem) { this.originSystem = originSystem; }</span>
+
+<span class="fc" id="L50">    public String getAuthor() { return author; }</span>
+<span class="fc" id="L51">    public void setAuthor(String author) { this.author = author; }</span>
+
+<span class="fc" id="L53">    public String getDescription() { return description; }</span>
+<span class="fc" id="L54">    public void setDescription(String description) { this.description = description; }</span>
+
+<span class="fc" id="L56">    public String getLanguage() { return language; }</span>
+<span class="fc" id="L57">    public void setLanguage(String language) { this.language = language; }</span>
+
+<span class="fc" id="L59">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L60">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+
+<span class="fc" id="L62">    public Instant getUpdatedAt() { return updatedAt; }</span>
+<span class="fc" id="L63">    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

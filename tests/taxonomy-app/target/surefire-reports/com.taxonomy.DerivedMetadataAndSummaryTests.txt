@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.DerivedMetadataAndSummaryTests
+-------------------------------------------------------------------------------
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 60.03 s -- in com.taxonomy.DerivedMetadataAndSummaryTests

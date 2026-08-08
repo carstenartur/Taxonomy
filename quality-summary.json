@@ -1,0 +1,44 @@
+{
+  "buildId": "31248114867.1",
+  "commit": "46950a621cb52baa27c17fe56c47e22fdcffe846",
+  "coverage": {
+    "branchCovered": 5160,
+    "branchMissed": 2781,
+    "branchPercent": 64.98,
+    "classCovered": 662,
+    "classMissed": 44,
+    "classPercent": 93.77,
+    "complexityCovered": 6025,
+    "complexityMissed": 2935,
+    "complexityPercent": 67.24,
+    "instructionCovered": 88895,
+    "instructionMissed": 18572,
+    "instructionPercent": 82.72,
+    "lineCovered": 18951,
+    "lineMissed": 3787,
+    "linePercent": 83.35,
+    "methodCovered": 4261,
+    "methodMissed": 654,
+    "methodPercent": 86.69
+  },
+  "generatedAt": "2026-08-08T09:17:33+00:00",
+  "schemaVersion": 2,
+  "sourceCommit": "46950a621cb52baa27c17fe56c47e22fdcffe846",
+  "sourceTree": "676e33dc9ce4fab8106d98c26ce1bd9de23c9800",
+  "tests": {
+    "errors": 0,
+    "executed": 2454,
+    "failures": 0,
+    "passed": 2454,
+    "reportFiles": 277,
+    "skipped": 79,
+    "tests": 2533
+  },
+  "tools": {
+    "codeql-action": "v4.37.6",
+    "java": "openjdk version \"21.0.11\" 2026-04-21 LTS",
+    "maven": "Apache Maven 3.9.16 (2bdd9fddda4b155ebf8000e807eb73fd829a51d5)",
+    "trivy-action": "v0.36.0"
+  },
+  "verifiedCommit": "46950a621cb52baa27c17fe56c47e22fdcffe846"
+}

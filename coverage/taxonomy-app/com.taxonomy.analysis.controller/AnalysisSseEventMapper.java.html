@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisSseEventMapper.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.controller</a> &gt; <span class="el_source">AnalysisSseEventMapper.java</span></div><h1>AnalysisSseEventMapper.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.controller;
+
+import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
+import com.taxonomy.dto.LlmCallDetail;
+import org.springframework.stereotype.Component;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Component
+<span class="fc" id="L12">public class AnalysisSseEventMapper {</span>
+
+    public MappedEvent map(AnalysisStreamEvent event) {
+<span class="fc bfc" id="L15" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Phase phase) {</span>
+<span class="fc" id="L16">            return new MappedEvent(&quot;phase&quot;, Map.of(</span>
+<span class="fc" id="L17">                    &quot;message&quot;, phase.message(),</span>
+<span class="fc" id="L18">                    &quot;progress&quot;, phase.progressPercent()));</span>
+        }
+<span class="fc bfc" id="L20" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Scores scores) {</span>
+<span class="fc" id="L21">            return new MappedEvent(&quot;scores&quot;, mapScores(scores));</span>
+        }
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if (event instanceof AnalysisStreamEvent.Expanding expanding) {</span>
+<span class="nc" id="L24">            return new MappedEvent(&quot;expanding&quot;, Map.of(</span>
+<span class="nc" id="L25">                    &quot;parentCode&quot;, expanding.parentCode(),</span>
+<span class="nc" id="L26">                    &quot;childCodes&quot;, expanding.childCodes()));</span>
+        }
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Complete complete) {</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">            int totalMatched = (int) complete.allScores().values().stream().filter(v -&gt; v &gt; 0).count();</span>
+<span class="fc" id="L30">            Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L31">            payload.put(&quot;status&quot;, complete.status());</span>
+<span class="fc" id="L32">            payload.put(&quot;totalScores&quot;, complete.allScores());</span>
+<span class="fc" id="L33">            payload.put(&quot;totalMatched&quot;, totalMatched);</span>
+<span class="fc" id="L34">            payload.put(&quot;warnings&quot;, complete.warnings());</span>
+<span class="fc" id="L35">            payload.put(&quot;discrepancies&quot;, complete.discrepancies());</span>
+<span class="fc" id="L36">            return new MappedEvent(&quot;complete&quot;, payload);</span>
+        }
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        if (event instanceof AnalysisStreamEvent.Error error) {</span>
+<span class="fc" id="L39">            Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L40">            payload.put(&quot;status&quot;, error.status());</span>
+<span class="fc" id="L41">            payload.put(&quot;errorMessage&quot;, error.errorMessage());</span>
+<span class="fc" id="L42">            payload.put(&quot;partialScores&quot;, error.partialScores());</span>
+<span class="fc" id="L43">            payload.put(&quot;warnings&quot;, error.warnings());</span>
+<span class="fc" id="L44">            payload.put(&quot;discrepancies&quot;, error.discrepancies());</span>
+<span class="fc" id="L45">            return new MappedEvent(&quot;error&quot;, payload);</span>
+        }
+<span class="nc" id="L47">        throw new IllegalArgumentException(&quot;Unsupported analysis stream event: &quot; + event);</span>
+    }
+
+    private Map&lt;String, Object&gt; mapScores(AnalysisStreamEvent.Scores scores) {
+<span class="fc" id="L51">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L52">        payload.put(&quot;scores&quot;, scores.newScores());</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        payload.put(&quot;reasons&quot;, scores.reasons() != null ? scores.reasons() : Map.of());</span>
+<span class="fc" id="L54">        payload.put(&quot;description&quot;, scores.description());</span>
+<span class="fc" id="L55">        payload.put(&quot;message&quot;, scores.description());</span>
+<span class="fc" id="L56">        LlmCallDetail detail = scores.detail();</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (detail != null) {</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            payload.put(&quot;prompt&quot;, detail.getPrompt() != null ? detail.getPrompt() : &quot;&quot;);</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">            payload.put(&quot;rawResponse&quot;, detail.getRawResponse() != null ? detail.getRawResponse() : &quot;&quot;);</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">            payload.put(&quot;provider&quot;, detail.getProvider() != null ? detail.getProvider() : &quot;&quot;);</span>
+<span class="fc" id="L61">            payload.put(&quot;durationMs&quot;, detail.getDurationMs());</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">            if (detail.getError() != null) {</span>
+<span class="fc" id="L63">                payload.put(&quot;error&quot;, detail.getError());</span>
+            }
+        }
+<span class="fc" id="L66">        return payload;</span>
+    }
+
+<span class="fc" id="L69">    public record MappedEvent(String name, Object payload) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

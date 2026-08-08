@@ -1,0 +1,305 @@
+---
+# Source: taxonomy/templates/resources.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: taxonomy-taxonomy
+  namespace: taxonomy
+  labels:
+    app.kubernetes.io/name: taxonomy
+    app.kubernetes.io/instance: taxonomy
+    app.kubernetes.io/version: "1.3.1-SNAPSHOT"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: taxonomy-0.1.0
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: taxonomy
+      app.kubernetes.io/instance: taxonomy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - rke2-ingress-nginx
+              - ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    - {}
+---
+# Source: taxonomy/templates/resources.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: taxonomy-taxonomy
+  namespace: taxonomy
+  labels:
+    app.kubernetes.io/name: taxonomy
+    app.kubernetes.io/instance: taxonomy
+    app.kubernetes.io/version: "1.3.1-SNAPSHOT"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: taxonomy-0.1.0
+---
+# Source: taxonomy/templates/resources.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: taxonomy-taxonomy
+  namespace: taxonomy
+  labels:
+    app.kubernetes.io/name: taxonomy
+    app.kubernetes.io/instance: taxonomy
+    app.kubernetes.io/version: "1.3.1-SNAPSHOT"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: taxonomy-0.1.0
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: taxonomy
+    app.kubernetes.io/instance: taxonomy
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+# Source: taxonomy/templates/resources.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taxonomy-taxonomy
+  namespace: taxonomy
+  labels:
+    app.kubernetes.io/name: taxonomy
+    app.kubernetes.io/instance: taxonomy
+    app.kubernetes.io/version: "1.3.1-SNAPSHOT"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: taxonomy-0.1.0
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: taxonomy
+      app.kubernetes.io/instance: taxonomy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: taxonomy
+        app.kubernetes.io/instance: taxonomy
+    spec:
+      serviceAccountName: taxonomy-taxonomy
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        runAsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: taxonomy
+          image: "ghcr.io/carstenartur/taxonomy:sha-0123456789abcdef0123456789abcdef01234567"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=20.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp"
+            - name: SPRING_PROFILES_ACTIVE
+              value: "postgres,kubernetes"
+            - name: TAXONOMY_DDL_AUTO
+              value: "validate"
+            - name: TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD
+              value: "false"
+            - name: TAXONOMY_EMBEDDING_ENABLED
+              value: "false"
+            - name: TAXONOMY_FORWARD_HEADERS_STRATEGY
+              value: "framework"
+            - name: TAXONOMY_INIT_ASYNC
+              value: "true"
+            - name: TAXONOMY_INIT_RELOAD_EXISTING
+              value: "false"
+            - name: TAXONOMY_SEARCH_DIRECTORY_TYPE
+              value: "local-heap"
+            - name: TAXONOMY_SEARCH_SYNC_STRATEGY
+              value: "write-sync"
+            - name: TAXONOMY_SPRINGDOC_ENABLED
+              value: "false"
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "ADMIN_PASSWORD"
+                  optional: false
+            - name: CUSTOM_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "CUSTOM_LLM_API_KEY"
+                  optional: true
+            - name: DASHSCOPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "DASHSCOPE_API_KEY"
+                  optional: true
+            - name: DEEPSEEK_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "DEEPSEEK_API_KEY"
+                  optional: true
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "GEMINI_API_KEY"
+                  optional: true
+            - name: LLAMA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "LLAMA_API_KEY"
+                  optional: true
+            - name: MISTRAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "MISTRAL_API_KEY"
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "OPENAI_API_KEY"
+                  optional: true
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "SPRING_DATASOURCE_PASSWORD"
+                  optional: false
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "SPRING_DATASOURCE_URL"
+                  optional: false
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: "taxonomy-secrets"
+                  key: "SPRING_DATASOURCE_USERNAME"
+                  optional: false
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            failureThreshold: 60
+            periodSeconds: 5
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            failureThreshold: 6
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            failureThreshold: 3
+            periodSeconds: 20
+            timeoutSeconds: 3
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - "sleep 5"
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1536Mi
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: data
+          emptyDir: {}
+---
+# Source: taxonomy/templates/resources.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taxonomy-taxonomy
+  namespace: taxonomy
+  labels:
+    app.kubernetes.io/name: taxonomy
+    app.kubernetes.io/instance: taxonomy
+    app.kubernetes.io/version: "1.3.1-SNAPSHOT"
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: taxonomy-0.1.0
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 25m
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/x-forwarded-prefix: /taxonomy
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "taxonomy.example.invalid"
+      http:
+        paths:
+          - path: /taxonomy(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: taxonomy-taxonomy
+                port:
+                  name: http

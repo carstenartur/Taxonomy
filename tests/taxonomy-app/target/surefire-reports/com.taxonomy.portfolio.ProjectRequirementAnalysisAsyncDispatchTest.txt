@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.portfolio.ProjectRequirementAnalysisAsyncDispatchTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.422 s -- in com.taxonomy.portfolio.ProjectRequirementAnalysisAsyncDispatchTest

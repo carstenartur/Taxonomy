@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductCatalogEntry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">ProductCatalogEntry.java</span></div><h1>ProductCatalogEntry.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.OperatingModel;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Lob;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+
+/**
+ * Sourced and dated catalogue entry for a concrete product/version.
+ *
+ * &lt;p&gt;A product claim is deliberately incomplete until {@code sourceReference}
+ * and {@code verifiedAt} are populated. Consumers must expose that provenance
+ * rather than presenting stale product metadata as current fact.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;product_catalog&quot;, indexes = {
+        @Index(name = &quot;idx_prod_scope&quot;, columnList = &quot;scope_key&quot;),
+        @Index(name = &quot;idx_prod_status&quot;, columnList = &quot;scope_key,product_status&quot;),
+        @Index(name = &quot;idx_prod_eos&quot;, columnList = &quot;end_of_support&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_prod_scope_key&quot;, columnNames = {&quot;scope_key&quot;, &quot;product_key&quot;})
+})
+public class ProductCatalogEntry {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;scope_key&quot;, nullable = false, length = 160)
+    private String scopeKey;
+
+    @Column(name = &quot;workspace_id&quot;, length = 120)
+    private String workspaceId;
+
+    @Column(name = &quot;product_key&quot;, nullable = false, length = 64)
+    private String productKey;
+
+    @Column(nullable = false, length = 240)
+    private String manufacturer;
+
+    @Column(name = &quot;product_family&quot;, length = 240)
+    private String productFamily;
+
+    @Column(name = &quot;product_name&quot;, nullable = false, length = 240)
+    private String productName;
+
+    @Column(name = &quot;edition_version&quot;, length = 160)
+    private String editionVersion;
+
+<span class="fc" id="L64">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;product_status&quot;, nullable = false, length = 32)
+    private ProductStatus productStatus = ProductStatus.CANDIDATE;
+
+    @Column(name = &quot;end_of_support&quot;)
+    private LocalDate endOfSupport;
+
+    @Column(name = &quot;license_model&quot;, length = 500)
+    private String licenseModel;
+
+<span class="fc" id="L74">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;operating_model&quot;, nullable = false, length = 32)
+    private OperatingModel operatingModel = OperatingModel.UNSPECIFIED;
+
+    @Column(name = &quot;supported_platforms&quot;, length = 2000)
+    private String supportedPlatforms;
+
+    @Column(name = &quot;security_features&quot;, length = 4000)
+    private String securityFeatures;
+
+    @Column(name = &quot;compliance_features&quot;, length = 4000)
+    private String complianceFeatures;
+
+    @Column(name = &quot;cost_amount&quot;, precision = 19, scale = 2)
+    private BigDecimal costAmount;
+
+    @Column(name = &quot;cost_currency&quot;, length = 3)
+    private String costCurrency;
+
+    @Column(name = &quot;cost_basis&quot;, length = 500)
+    private String costBasis;
+
+    @Lob
+    @Column(name = &quot;source_reference&quot;, nullable = false)
+    private String sourceReference;
+
+    @Column(name = &quot;verified_at&quot;, nullable = false)
+    private Instant verifiedAt;
+
+    @Column(name = &quot;created_by&quot;, nullable = false, length = 160)
+    private String createdBy;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false)
+    private Instant updatedAt;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L116">    protected ProductCatalogEntry() {</span>
+<span class="fc" id="L117">    }</span>
+
+    public ProductCatalogEntry(String scopeKey,
+                               String workspaceId,
+                               String productKey,
+                               String manufacturer,
+                               String productFamily,
+                               String productName,
+                               String editionVersion,
+                               ProductStatus productStatus,
+                               LocalDate endOfSupport,
+                               String licenseModel,
+                               OperatingModel operatingModel,
+                               String supportedPlatforms,
+                               String securityFeatures,
+                               String complianceFeatures,
+                               BigDecimal costAmount,
+                               String costCurrency,
+                               String costBasis,
+                               String sourceReference,
+                               Instant verifiedAt,
+                               String createdBy,
+<span class="fc" id="L139">                               Instant now) {</span>
+<span class="fc" id="L140">        this.scopeKey = scopeKey;</span>
+<span class="fc" id="L141">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L142">        this.productKey = productKey;</span>
+<span class="fc" id="L143">        this.manufacturer = manufacturer;</span>
+<span class="fc" id="L144">        this.productFamily = productFamily;</span>
+<span class="fc" id="L145">        this.productName = productName;</span>
+<span class="fc" id="L146">        this.editionVersion = editionVersion;</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        this.productStatus = productStatus != null ? productStatus : ProductStatus.CANDIDATE;</span>
+<span class="fc" id="L148">        this.endOfSupport = endOfSupport;</span>
+<span class="fc" id="L149">        this.licenseModel = licenseModel;</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        this.operatingModel = operatingModel != null ? operatingModel : OperatingModel.UNSPECIFIED;</span>
+<span class="fc" id="L151">        this.supportedPlatforms = supportedPlatforms;</span>
+<span class="fc" id="L152">        this.securityFeatures = securityFeatures;</span>
+<span class="fc" id="L153">        this.complianceFeatures = complianceFeatures;</span>
+<span class="fc" id="L154">        this.costAmount = costAmount;</span>
+<span class="fc" id="L155">        this.costCurrency = costCurrency;</span>
+<span class="fc" id="L156">        this.costBasis = costBasis;</span>
+<span class="fc" id="L157">        this.sourceReference = sourceReference;</span>
+<span class="fc" id="L158">        this.verifiedAt = verifiedAt;</span>
+<span class="fc" id="L159">        this.createdBy = createdBy;</span>
+<span class="fc" id="L160">        this.createdAt = now;</span>
+<span class="fc" id="L161">        this.updatedAt = now;</span>
+<span class="fc" id="L162">    }</span>
+
+    public void update(String manufacturer,
+                       String productFamily,
+                       String productName,
+                       String editionVersion,
+                       ProductStatus productStatus,
+                       LocalDate endOfSupport,
+                       String licenseModel,
+                       OperatingModel operatingModel,
+                       String supportedPlatforms,
+                       String securityFeatures,
+                       String complianceFeatures,
+                       BigDecimal costAmount,
+                       String costCurrency,
+                       String costBasis,
+                       String sourceReference,
+                       Instant verifiedAt,
+                       Instant now) {
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        if (manufacturer != null) this.manufacturer = manufacturer;</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (productFamily != null) this.productFamily = productFamily;</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        if (productName != null) this.productName = productName;</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        if (editionVersion != null) this.editionVersion = editionVersion;</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (productStatus != null) this.productStatus = productStatus;</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (endOfSupport != null) this.endOfSupport = endOfSupport;</span>
+<span class="nc bnc" id="L187" title="All 2 branches missed.">        if (licenseModel != null) this.licenseModel = licenseModel;</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">        if (operatingModel != null) this.operatingModel = operatingModel;</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (supportedPlatforms != null) this.supportedPlatforms = supportedPlatforms;</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (securityFeatures != null) this.securityFeatures = securityFeatures;</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (complianceFeatures != null) this.complianceFeatures = complianceFeatures;</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (costAmount != null) this.costAmount = costAmount;</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        if (costCurrency != null) this.costCurrency = costCurrency;</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">        if (costBasis != null) this.costBasis = costBasis;</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (sourceReference != null) this.sourceReference = sourceReference;</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        if (verifiedAt != null) this.verifiedAt = verifiedAt;</span>
+<span class="nc" id="L197">        this.updatedAt = now;</span>
+<span class="nc" id="L198">    }</span>
+
+<span class="fc" id="L200">    public Long getId() { return id; }</span>
+<span class="nc" id="L201">    public String getScopeKey() { return scopeKey; }</span>
+<span class="nc" id="L202">    public String getWorkspaceId() { return workspaceId; }</span>
+<span class="fc" id="L203">    public String getProductKey() { return productKey; }</span>
+<span class="fc" id="L204">    public String getManufacturer() { return manufacturer; }</span>
+<span class="fc" id="L205">    public String getProductFamily() { return productFamily; }</span>
+<span class="fc" id="L206">    public String getProductName() { return productName; }</span>
+<span class="fc" id="L207">    public String getEditionVersion() { return editionVersion; }</span>
+<span class="fc" id="L208">    public ProductStatus getProductStatus() { return productStatus; }</span>
+<span class="fc" id="L209">    public LocalDate getEndOfSupport() { return endOfSupport; }</span>
+<span class="fc" id="L210">    public String getLicenseModel() { return licenseModel; }</span>
+<span class="fc" id="L211">    public OperatingModel getOperatingModel() { return operatingModel; }</span>
+<span class="fc" id="L212">    public String getSupportedPlatforms() { return supportedPlatforms; }</span>
+<span class="fc" id="L213">    public String getSecurityFeatures() { return securityFeatures; }</span>
+<span class="fc" id="L214">    public String getComplianceFeatures() { return complianceFeatures; }</span>
+<span class="fc" id="L215">    public BigDecimal getCostAmount() { return costAmount; }</span>
+<span class="fc" id="L216">    public String getCostCurrency() { return costCurrency; }</span>
+<span class="fc" id="L217">    public String getCostBasis() { return costBasis; }</span>
+<span class="fc" id="L218">    public String getSourceReference() { return sourceReference; }</span>
+<span class="fc" id="L219">    public Instant getVerifiedAt() { return verifiedAt; }</span>
+<span class="fc" id="L220">    public String getCreatedBy() { return createdBy; }</span>
+<span class="fc" id="L221">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L222">    public Instant getUpdatedAt() { return updatedAt; }</span>
+<span class="nc" id="L223">    public long getRowVersion() { return rowVersion; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

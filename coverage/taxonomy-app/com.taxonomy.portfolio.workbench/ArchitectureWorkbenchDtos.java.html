@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureWorkbenchDtos.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.workbench</a> &gt; <span class="el_source">ArchitectureWorkbenchDtos.java</span></div><h1>ArchitectureWorkbenchDtos.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.workbench;
+
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
+/** REST contracts for the read-only, server-authoritative architecture workbench. */
+public final class ArchitectureWorkbenchDtos {
+
+    private ArchitectureWorkbenchDtos() {
+    }
+
+<span class="nc" id="L19">    public record ElementMetadata(</span>
+            String nodeCode,
+            String nodeTitle,
+            String taxonomyRoot,
+            int directScore,
+            double relevance,
+            double confidence,
+            String mappingOrigin,
+            String hierarchyPath,
+            String presenceReason,
+            boolean selectedForImpact,
+            ReviewStatus reviewStatus,
+            ActionStatus actionStatus,
+            String actionEvidence,
+            String decisionBy,
+            Instant decisionAt,
+            String decisionComment) {
+    }
+
+<span class="nc" id="L38">    public record RelationMetadata(</span>
+            String sourceCode,
+            String targetCode,
+            String relationType,
+            String relationOrigin,
+            String relationCategory,
+            double relevance,
+            double confidence,
+            String presenceReason,
+            ReviewStatus reviewStatus,
+            String decisionBy,
+            Instant decisionAt,
+            String decisionComment) {
+
+        public String signature() {
+<span class="nc" id="L53">            return sourceCode + &quot;|&quot; + targetCode + &quot;|&quot; + relationType;</span>
+        }
+    }
+
+    public record Projection(
+            Long projectId,
+            String projectKey,
+            String projectTitle,
+            Long requirementId,
+            String requirementKey,
+            String requirementTitle,
+            String requirementText,
+            String snapshotId,
+            AnalysisStatus snapshotStatus,
+            Instant snapshotCreatedAt,
+            String provider,
+            String modelName,
+            String workspaceId,
+            String branchName,
+            String commitSha,
+            DiagramModel diagram,
+            DiagramScene scene,
+            Map&lt;String, ElementMetadata&gt; elements,
+            Map&lt;String, RelationMetadata&gt; relations,
+            List&lt;String&gt; warnings) {
+
+<span class="fc" id="L79">        public Projection {</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">            elements = elements == null ? Map.of() : Map.copyOf(elements);</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            relations = relations == null ? Map.of() : Map.copyOf(relations);</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            warnings = warnings == null ? List.of() : List.copyOf(warnings);</span>
+<span class="fc" id="L83">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.dsl.mapping.profiles.ArchiMateMappingProfileTest
+-------------------------------------------------------------------------------
+Tests run: 31, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.019 s -- in com.taxonomy.dsl.mapping.profiles.ArchiMateMappingProfileTest

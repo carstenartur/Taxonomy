@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentSection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">DocumentSection.java</span></div><h1>DocumentSection.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Represents a hierarchical section within a parsed document.
+ *
+ * &lt;p&gt;Builds a tree structure from headings detected during document parsing.
+ * Each section can have children (subsections) and paragraphs (text content).
+ * The {@code sectionPath} is a human-readable breadcrumb like
+ * {@code &quot;§ 3 Datenschutz &gt; Abs. 2 Verarbeitung&quot;}.
+ */
+public class DocumentSection {
+
+    private Long id;
+    private Long parentId;
+    private int level;
+    private String heading;
+    private String sectionPath;
+<span class="pc" id="L21">    private List&lt;DocumentSection&gt; children = new ArrayList&lt;&gt;();</span>
+<span class="pc" id="L22">    private List&lt;String&gt; paragraphs = new ArrayList&lt;&gt;();</span>
+    private Integer pageFrom;
+    private Integer pageTo;
+
+<span class="nc" id="L26">    public DocumentSection() {}</span>
+
+<span class="fc" id="L28">    public DocumentSection(int level, String heading) {</span>
+<span class="fc" id="L29">        this.level = level;</span>
+<span class="fc" id="L30">        this.heading = heading;</span>
+<span class="fc" id="L31">    }</span>
+
+    // ── Accessors ──────────────────────────────────────────────────────────────
+
+<span class="nc" id="L35">    public Long getId() { return id; }</span>
+<span class="nc" id="L36">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="nc" id="L38">    public Long getParentId() { return parentId; }</span>
+<span class="nc" id="L39">    public void setParentId(Long parentId) { this.parentId = parentId; }</span>
+
+<span class="fc" id="L41">    public int getLevel() { return level; }</span>
+<span class="nc" id="L42">    public void setLevel(int level) { this.level = level; }</span>
+
+<span class="fc" id="L44">    public String getHeading() { return heading; }</span>
+<span class="nc" id="L45">    public void setHeading(String heading) { this.heading = heading; }</span>
+
+<span class="fc" id="L47">    public String getSectionPath() { return sectionPath; }</span>
+<span class="fc" id="L48">    public void setSectionPath(String sectionPath) { this.sectionPath = sectionPath; }</span>
+
+<span class="fc" id="L50">    public List&lt;DocumentSection&gt; getChildren() { return children; }</span>
+<span class="nc" id="L51">    public void setChildren(List&lt;DocumentSection&gt; children) { this.children = children; }</span>
+
+<span class="fc" id="L53">    public List&lt;String&gt; getParagraphs() { return paragraphs; }</span>
+<span class="nc" id="L54">    public void setParagraphs(List&lt;String&gt; paragraphs) { this.paragraphs = paragraphs; }</span>
+
+<span class="nc" id="L56">    public Integer getPageFrom() { return pageFrom; }</span>
+<span class="nc" id="L57">    public void setPageFrom(Integer pageFrom) { this.pageFrom = pageFrom; }</span>
+
+<span class="nc" id="L59">    public Integer getPageTo() { return pageTo; }</span>
+<span class="nc" id="L60">    public void setPageTo(Integer pageTo) { this.pageTo = pageTo; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
