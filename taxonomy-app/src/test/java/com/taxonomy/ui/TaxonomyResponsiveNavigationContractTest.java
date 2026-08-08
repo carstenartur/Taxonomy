@@ -30,8 +30,8 @@ class TaxonomyResponsiveNavigationContractTest {
 
         assertThat(css)
                 .contains("/* Discoverable responsive primary navigation. */")
-                .contains("#mainNavTabs {\n        display: none !important;")
-                .contains(".mobile-main-navigation {\n        display: grid;")
+                .containsPattern("(?s)#mainNavTabs\\s*\\{[^}]*display:\\s*none\\s*!important;")
+                .containsPattern("(?s)\\.mobile-main-navigation\\s*\\{[^}]*display:\\s*grid;")
                 .contains("min-height: 44px")
                 .contains("grid-template-columns: 1fr");
     }
