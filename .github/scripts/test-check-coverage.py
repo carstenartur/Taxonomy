@@ -164,6 +164,25 @@ class CoverageGateTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "BRANCH minimum must be greater"):
             MODULE.load_policy(path)
 
+    def test_policy_cannot_drop_any_required_counter(self) -> None:
+        weakened_counters = [counter for counter in COUNTERS if counter != "CLASS"]
+        raw = {
+            "schemaVersion": 1,
+            "requiredCounters": weakened_counters,
+            "aggregateMinimums": {
+                counter: 0.64 if counter == "BRANCH" else 0.80
+                for counter in weakened_counters
+            },
+            "expectedGroups": ["taxonomy-domain"],
+        }
+        path = self.temporary_path("policy.json", json.dumps(raw))
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "requiredCounters must contain exactly .*missing CLASS",
+        ):
+            MODULE.load_policy(path)
+
     def test_policy_rejects_missing_counter_minimums(self) -> None:
         raw = {
             "schemaVersion": 1,
