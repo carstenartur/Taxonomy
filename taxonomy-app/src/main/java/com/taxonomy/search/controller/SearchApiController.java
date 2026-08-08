@@ -64,9 +64,9 @@ public class SearchApiController {
             @Parameter(description = "Maximum number of results") @RequestParam(defaultValue = "20") int maxResults) {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
+        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         guard = checkSemanticReady();
         if (guard != null) return guard;
-        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(searchFacade.semanticSearch(q, maxResults));
     }
 
