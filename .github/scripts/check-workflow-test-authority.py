@@ -11,17 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CATALOG = ROOT / ".mvn" / "verification-suites.json"
-ALLOWED = {
-    "ci-cd.yml",
-    "database-compatibility.yml",
-    "codeql.yml",
-    "security-scan.yml",
-    "dependency-submission.yml",
-    "documentation-screenshots.yml",
-    "delivery.yml",
-    "deploy-release.yml",
-    "cleanup-workflow-runs.yml",
-}
+WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 REMOVED = {
     "accessibility.yml",
     "archimate-import-evidence.yml",
@@ -50,6 +40,19 @@ DIRECT_TEST_PATTERNS = {
         r"check-dependency-hygiene)\.py"
     ),
 }
+
+
+def workflow_paths() -> set[Path]:
+    """Return every workflow file extension accepted by GitHub Actions."""
+    return {
+        path
+        for path in WORKFLOWS.iterdir()
+        if path.is_file() and path.suffix.lower() in WORKFLOW_SUFFIXES
+    }
+
+
+def is_workflow_name(value: object) -> bool:
+    return isinstance(value, str) and Path(value).suffix.lower() in WORKFLOW_SUFFIXES
 
 
 def run_blocks(text: str) -> str:
@@ -86,9 +89,31 @@ def main() -> int:
     if catalog.get("canonicalCommand") != "./mvnw -B verify -Pci":
         errors.append("verification catalogue must declare './mvnw -B verify -Pci'")
 
-    workflow_files = {path.name for path in WORKFLOWS.glob("*.yml")}
-    unexpected = workflow_files - ALLOWED
-    missing = ALLOWED - workflow_files
+    responsibilities = catalog.get("workflowResponsibilities")
+    if not isinstance(responsibilities, dict) or not responsibilities:
+        errors.append("verification catalogue must classify workflow responsibilities")
+        classified_workflows: set[str] = set()
+    else:
+        invalid_responsibilities = [
+            name
+            for name, purpose in responsibilities.items()
+            if not is_workflow_name(name)
+            or not isinstance(purpose, str)
+            or not purpose.strip()
+        ]
+        if invalid_responsibilities:
+            errors.append(
+                "verification catalogue contains invalid workflow responsibilities: "
+                + ", ".join(sorted(str(name) for name in invalid_responsibilities))
+            )
+        classified_workflows = {
+            name for name in responsibilities if is_workflow_name(name)
+        }
+
+    paths = workflow_paths()
+    workflow_files = {path.name for path in paths}
+    unexpected = workflow_files - classified_workflows
+    missing = classified_workflows - workflow_files
     if unexpected:
         errors.append(f"unclassified workflows remain: {', '.join(sorted(unexpected))}")
     if missing:
@@ -97,7 +122,7 @@ def main() -> int:
     if lingering:
         errors.append(f"redundant workflows were not removed: {', '.join(sorted(lingering))}")
 
-    for path in sorted(WORKFLOWS.glob("*.yml")):
+    for path in sorted(paths):
         commands = run_blocks(path.read_text(encoding="utf-8"))
         for description, pattern in DIRECT_TEST_PATTERNS.items():
             if pattern.search(commands):

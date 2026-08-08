@@ -16,7 +16,14 @@
     "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest"},
     "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},
     "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,CatalogFacadeTest"},
-    "ui-tests": {"runner": ".github/scripts/run-ui-suite.mjs"}
+    "ui-tests": {"runner": ".github/scripts/run-ui-suite.mjs"},
+    "jgit-storage-hibernate-contract": {
+      "purpose": "Bounded consumer-owned Core schema, Hibernate Search and PostgreSQL compatibility contract for jgit-storage-hibernate upgrades",
+      "test": "JgitStorageHibernateIntegrationTest,JgitStorageOptimizedIndexContractTest,JgitStorageSchemaIndexValidationTest,JgitStorageSchemaMigrationConfigTest,CommitIndexHibernateSearchTest",
+      "itTest": "JgitStoragePostgresMigrationIT,TaxonomyPostgresValidateStartupIT,TaxonomySchemaPostgresMigrationIT",
+      "excludedGroups": "real-llm,onnx,db-mssql,db-oracle",
+      "requires": ["Java 21", "Docker", "Python 3", "Bash 4+"]
+    }
   },
   "focusedCommands": {
     "keycloak-security": {
@@ -28,6 +35,7 @@
   "workflowResponsibilities": {
     "ci-cd.yml": "authoritative Maven verification and report publication",
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
+    "jgit-storage-hibernate-contract.yml": "consumer-owned storage compatibility contract with Maven verification catalogue selectors",
     "codeql.yml": "external source analysis",
     "security-scan.yml": "external Trivy analysis",
     "dependency-submission.yml": "Maven dependency graph publication",
