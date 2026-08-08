@@ -4,17 +4,20 @@ import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.service.SearchFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,6 +27,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SearchApiControllerSemanticReadinessTest {
+
+    private static final String DEFAULT_NOT_READY = "Semantic search is not ready yet";
 
     @Mock private SearchFacade searchFacade;
     @Mock private MessageSource messageSource;
@@ -42,9 +47,18 @@ class SearchApiControllerSemanticReadinessTest {
         when(searchFacade.isInitialized()).thenReturn(true);
     }
 
+    @AfterEach
+    void resetLocale() {
+        LocaleContextHolder.resetLocaleContext();
+    }
+
     @Test
     void semanticSearchFailsClosedWithIndexDiagnosticsUntilNodesAreReady() {
         when(searchFacade.isSemanticSearchReady()).thenReturn(false);
+        when(messageSource.getMessage(
+                "error.semantic.notReady", null, DEFAULT_NOT_READY,
+                LocaleContextHolder.getLocale()))
+                .thenReturn(DEFAULT_NOT_READY);
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("available", false);
         status.put("semanticReady", false);
@@ -62,8 +76,26 @@ class SearchApiControllerSemanticReadinessTest {
         assertThat(body)
                 .containsEntry("indexState", "INDEXING_NODES")
                 .containsEntry("semanticReady", false)
-                .containsEntry("error", "Semantic search is not ready yet");
+                .containsEntry("error", DEFAULT_NOT_READY);
         verify(searchFacade, never()).semanticSearch("communications", 20);
+    }
+
+    @Test
+    void semanticReadinessFailureUsesTheRequestLocale() {
+        LocaleContextHolder.setLocale(Locale.GERMAN);
+        when(searchFacade.isSemanticSearchReady()).thenReturn(false);
+        when(searchFacade.getEmbeddingStatus()).thenReturn(Map.of("semanticReady", false));
+        when(messageSource.getMessage(
+                "error.semantic.notReady", null, DEFAULT_NOT_READY, Locale.GERMAN))
+                .thenReturn("Semantische Suche ist noch nicht bereit");
+
+        ResponseEntity<?> response = controller.semanticSearch("kommunikation", 20);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(response.getBody()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertThat(body).containsEntry("error", "Semantische Suche ist noch nicht bereit");
     }
 
     @Test
