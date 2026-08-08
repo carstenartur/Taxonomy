@@ -37,19 +37,30 @@ jobs:
       - name: Apply canonical API transport
         run: python3 .github/scripts/apply-api-transport.py
 
+      - name: Register the contract in the Maven frontend lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -- .github/workflows/ci-cd.yml
+          python3 .github/scripts/install-api-transport-maven-hook.py
+
       - name: Verify transport behavior and source contracts
         shell: bash
         run: |
           set -euo pipefail
           python3 -m py_compile \
             .github/scripts/apply-api-transport.py \
-            .github/scripts/fix-api-transport-test-realm.py
+            .github/scripts/fix-api-transport-test-realm.py \
+            .github/scripts/install-api-transport-maven-hook.py
           node --check taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js
           node --check .github/scripts/test-taxonomy-api-client.mjs
           node .github/scripts/test-taxonomy-api-client.mjs
           ./mvnw -B -pl taxonomy-app -am \
             -Dtest=com.taxonomy.ui.TaxonomyApiClientContractTest \
             -Dsurefire.failIfNoSpecifiedTests=false test
+          ./mvnw -B -pl taxonomy-build -am \
+            -DskipTests -DskipITs=true \
+            -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true validate
           python3 .github/scripts/check-frontend-api-boundary.py \
             --base-ref origin/main
           git diff --check
@@ -61,9 +72,11 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
+            .github/package.json \
             .github/scripts/test-taxonomy-api-client.mjs \
             taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js \
-            taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyApiClientContractTest.java
+            taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyApiClientContractTest.java \
+            taxonomy-build/pom.xml
           git diff --cached --quiet && exit 0
           git commit -m 'Harden the canonical frontend API transport'
           git push origin HEAD:qa/issue-644-api-transport
