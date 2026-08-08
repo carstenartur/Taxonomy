@@ -9,6 +9,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
+import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebDriver;
@@ -323,16 +324,30 @@ class OnnxSeleniumIT {
     private void openDetails(By locator) {
         new WebDriverWait(driver, Duration.ofSeconds(10))
                 .ignoring(StaleElementReferenceException.class)
+                .ignoring(ElementClickInterceptedException.class)
                 .until(currentDriver -> {
                     WebElement details = currentDriver.findElement(locator);
                     if (details.getAttribute("open") != null) {
                         return true;
                     }
                     WebElement summary = details.findElement(By.xpath("./summary"));
-                    ((JavascriptExecutor) currentDriver).executeScript(
+                    JavascriptExecutor javascript = (JavascriptExecutor) currentDriver;
+                    javascript.executeScript(
                             "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
                             summary);
                     if (!summary.isDisplayed() || !summary.isEnabled()) {
+                        return false;
+                    }
+                    Boolean unobscured = (Boolean) javascript.executeScript(
+                            "const target=arguments[0];"
+                                    + "const rect=target.getBoundingClientRect();"
+                                    + "const x=rect.left+rect.width/2;"
+                                    + "const y=rect.top+rect.height/2;"
+                                    + "if (x<0||y<0||x>=innerWidth||y>=innerHeight) return false;"
+                                    + "const top=document.elementFromPoint(x,y);"
+                                    + "return top===target || target.contains(top);",
+                            summary);
+                    if (!Boolean.TRUE.equals(unobscured)) {
                         return false;
                     }
                     summary.click();
