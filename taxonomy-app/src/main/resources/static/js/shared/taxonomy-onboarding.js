@@ -6,6 +6,9 @@
 
     var STORAGE_KEY = 'taxonomy_onboarded';
     var reviewAcknowledged = false;
+    var overlayLaneObserver = null;
+    var overlayLaneRefreshFrame = null;
+    var expertShortcutsInstalled = false;
     var TASK_STAGES = [
         {
             id: 'taskStageDescribe',
@@ -29,50 +32,220 @@
         }
     ];
 
+    function focusableDialogElements(dialog) {
+        return Array.from(dialog.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+            'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(function (element) {
+            return element.getClientRects().length > 0 &&
+                getComputedStyle(element).visibility !== 'hidden';
+        });
+    }
+
+    function trapDialogFocus(dialog, event) {
+        if (event.key !== 'Tab') return;
+        var focusable = focusableDialogElements(dialog);
+        if (!focusable.length) {
+            event.preventDefault();
+            dialog.focus();
+            return;
+        }
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
     function initWelcomeOverlay() {
-        if (localStorage.getItem(STORAGE_KEY)) {
+        if (localStorage.getItem(STORAGE_KEY) || document.getElementById('onboardingOverlay')) {
             return;
         }
 
-        var overlay = document.createElement('div');
-        overlay.className = 'onboarding-overlay';
-        overlay.id = 'onboardingOverlay';
-        overlay.innerHTML =
+        var returnFocus = document.activeElement instanceof HTMLElement
+            ? document.activeElement : null;
+        var dialog = document.createElement('dialog');
+        dialog.className = 'onboarding-overlay';
+        dialog.id = 'onboardingOverlay';
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-labelledby', 'onboardingTitle');
+        dialog.setAttribute('aria-describedby', 'onboardingIntro');
+        dialog.innerHTML =
             '<div class="onboarding-card">' +
-            '  <h2>' + t('onboarding.title') + '</h2>' +
-            '  <p>' + t('onboarding.intro') + '</p>' +
+            '  <h2 id="onboardingTitle">' + t('onboarding.title') + '</h2>' +
+            '  <p id="onboardingIntro">' + t('onboarding.intro') + '</p>' +
             '  <div class="steps">' +
-            '    <div class="step-item"><span class="step-number">1</span><span>' + t('onboarding.step1') + '</span></div>' +
-            '    <div class="step-item"><span class="step-number">2</span><span>' + t('onboarding.step2') + '</span></div>' +
-            '    <div class="step-item"><span class="step-number">3</span><span>' + t('onboarding.step3') + '</span></div>' +
+            '    <div class="step-item"><span class="step-number" aria-hidden="true">1</span><span>' + t('onboarding.step1') + '</span></div>' +
+            '    <div class="step-item"><span class="step-number" aria-hidden="true">2</span><span>' + t('onboarding.step2') + '</span></div>' +
+            '    <div class="step-item"><span class="step-number" aria-hidden="true">3</span><span>' + t('onboarding.step3') + '</span></div>' +
             '  </div>' +
-            '  <button id="onboardingDismiss" class="btn btn-primary">' + t('onboarding.dismiss') + '</button>' +
+            '  <div class="onboarding-actions">' +
+            '    <button id="onboardingDismiss" type="button" class="btn btn-primary">' + t('onboarding.dismiss') + '</button>' +
+            '  </div>' +
             '</div>';
 
-        document.body.appendChild(overlay);
+        document.body.appendChild(dialog);
         var dismissBtn = document.getElementById('onboardingDismiss');
-        if (dismissBtn) {
-            dismissBtn.addEventListener('click', dismiss);
-        }
-        overlay.addEventListener('click', function (event) {
-            if (event.target === overlay) {
-                dismiss();
-            }
+        dismissBtn.addEventListener('click', dismiss);
+        dialog.addEventListener('cancel', function (event) {
+            event.preventDefault();
+            dismiss();
         });
+        dialog.addEventListener('click', function (event) {
+            if (event.target === dialog) dismiss();
+        });
+        dialog.addEventListener('keydown', function (event) {
+            trapDialogFocus(dialog, event);
+        });
+        dialog.addEventListener('close', function () {
+            dialog.remove();
+            if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
+                requestAnimationFrame(function () {
+                    returnFocus.focus({ preventScroll: true });
+                });
+            }
+        }, { once: true });
+
+        // Native modal dialogs make the rest of the document inert, constrain
+        // focus to the dialog and expose the correct platform accessibility tree.
+        dialog.showModal();
+        requestAnimationFrame(function () { dismissBtn.focus(); });
     }
 
     function dismiss() {
         localStorage.setItem(STORAGE_KEY, '1');
-        var overlay = document.getElementById('onboardingOverlay');
-        if (overlay) {
-            overlay.style.opacity = '0';
-            overlay.style.transition = 'opacity 0.3s ease';
-            setTimeout(function () { overlay.remove(); }, 300);
-        }
+        var dialog = document.getElementById('onboardingOverlay');
+        if (!dialog) return;
+        if (dialog.open) dialog.close('dismissed');
+        else dialog.remove();
     }
 
     function reset() {
         localStorage.removeItem(STORAGE_KEY);
+    }
+
+    function isVisibleElement(element) {
+        if (!element || element.hidden || !element.isConnected) return false;
+        var style = getComputedStyle(element);
+        return style.display !== 'none' && style.visibility !== 'hidden' &&
+            element.getClientRects().length > 0;
+    }
+
+    function rectanglesOverlap(left, right, margin) {
+        var spacing = margin || 0;
+        return left.left < right.right + spacing &&
+            left.right > right.left - spacing &&
+            left.top < right.bottom + spacing &&
+            left.bottom > right.top - spacing;
+    }
+
+    function isElementUnobscured(element) {
+        if (!isVisibleElement(element)) return false;
+        var rect = element.getBoundingClientRect();
+        var x = Math.min(window.innerWidth - 1, Math.max(0, rect.left + rect.width / 2));
+        var y = Math.min(window.innerHeight - 1, Math.max(0, rect.top + rect.height / 2));
+        var topElement = document.elementFromPoint(x, y);
+        return Boolean(topElement && (topElement === element || element.contains(topElement)));
+    }
+
+    function ensureOverlayLane() {
+        var lane = document.getElementById('taxonomyOverlayLane');
+        if (lane) return lane;
+        lane = document.createElement('div');
+        lane.id = 'taxonomyOverlayLane';
+        lane.className = 'taxonomy-overlay-lane';
+        lane.dataset.position = 'bottom-end';
+        document.body.appendChild(lane);
+        return lane;
+    }
+
+    function protectedOverlayTargets(lane) {
+        var targets = [
+            document.activeElement,
+            document.getElementById('analyzeBtn'),
+            document.getElementById('taskNextAction'),
+            document.querySelector('.help-back-to-top:not([hidden])')
+        ];
+        return Array.from(new Set(targets)).filter(function (element) {
+            return element instanceof HTMLElement && !lane.contains(element) &&
+                isVisibleElement(element);
+        });
+    }
+
+    function refreshOverlayLane() {
+        if (overlayLaneRefreshFrame !== null) {
+            cancelAnimationFrame(overlayLaneRefreshFrame);
+        }
+        overlayLaneRefreshFrame = requestAnimationFrame(function () {
+            overlayLaneRefreshFrame = null;
+            var lane = document.getElementById('taxonomyOverlayLane');
+            if (!lane) return;
+            var visibleChildren = Array.from(lane.children).filter(isVisibleElement);
+            if (!visibleChildren.length) {
+                lane.dataset.position = 'bottom-end';
+                return;
+            }
+            var targets = protectedOverlayTargets(lane);
+            var positions = ['bottom-end', 'bottom-start', 'top-end', 'top-start'];
+            var selected = positions[positions.length - 1];
+            for (var index = 0; index < positions.length; index++) {
+                lane.dataset.position = positions[index];
+                var laneRect = lane.getBoundingClientRect();
+                var collides = targets.some(function (target) {
+                    return rectanglesOverlap(laneRect, target.getBoundingClientRect(), 8);
+                });
+                if (!collides) {
+                    selected = positions[index];
+                    break;
+                }
+            }
+            lane.dataset.position = selected;
+            lane.dataset.refreshVersion = String(
+                Number.parseInt(lane.dataset.refreshVersion || '0', 10) + 1);
+        });
+    }
+
+    function routeOverlayNode(node, lane) {
+        if (!(node instanceof Element)) return;
+        var candidates = [];
+        if (node.matches('.undo-toast')) candidates.push(node);
+        node.querySelectorAll('.undo-toast').forEach(function (toast) {
+            candidates.push(toast);
+        });
+        candidates.forEach(function (toast) {
+            if (toast.parentElement === lane) return;
+            if (!toast.hasAttribute('role')) toast.setAttribute('role', 'status');
+            toast.setAttribute('aria-live', 'polite');
+            lane.appendChild(toast);
+        });
+    }
+
+    function installOverlayLane() {
+        var lane = ensureOverlayLane();
+        document.querySelectorAll('.undo-toast').forEach(function (toast) {
+            routeOverlayNode(toast, lane);
+        });
+        if (overlayLaneObserver) return;
+        overlayLaneObserver = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                mutation.addedNodes.forEach(function (node) {
+                    routeOverlayNode(node, lane);
+                });
+            });
+            refreshOverlayLane();
+        });
+        // Undo toasts are mounted as direct body children. Observe only that boundary;
+        // routeOverlayNode still handles a newly added wrapper containing a toast.
+        overlayLaneObserver.observe(document.body, { childList: true });
+        window.addEventListener('resize', refreshOverlayLane);
+        document.addEventListener('focusin', refreshOverlayLane);
+        document.addEventListener('shown.bs.tab', refreshOverlayLane);
+        refreshOverlayLane();
     }
 
     function createTaskProgress() {
@@ -379,6 +552,10 @@
         if (operationalSummary) {
             operationalSummary.title = t('analysis.task.shortcut.operational');
         }
+        if (expertShortcutsInstalled) {
+            return;
+        }
+        expertShortcutsInstalled = true;
         document.addEventListener('keydown', function (event) {
             if (!event.altKey || !event.shiftKey) {
                 return;
@@ -407,6 +584,7 @@
     }
 
     function init() {
+        installOverlayLane();
         initWelcomeOverlay();
         initTaskHierarchy();
     }
@@ -425,6 +603,8 @@
         init: scheduleInit,
         dismiss: dismiss,
         reset: reset,
-        syncTaskProgress: syncTaskProgress
+        syncTaskProgress: syncTaskProgress,
+        refreshOverlayLane: refreshOverlayLane,
+        isElementUnobscured: isElementUnobscured
     };
 })();

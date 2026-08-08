@@ -195,7 +195,8 @@ def main() -> int:
     api_status_enabled = bool(args.render_api_key and args.render_service_id and deploy_id)
 
     evidence: dict[str, object] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
+        "deploymentState": "verifying",
         "targetUrl": args.base_url.rstrip("/"),
         "expectedCommit": args.expected_commit,
         "startedAt": started_at,
@@ -203,6 +204,7 @@ def main() -> int:
         "renderApiStatusVerification": api_status_enabled,
         "result": "in_progress",
     }
+    write_evidence(args.evidence_file, evidence)
 
     for attempt in range(1, attempts + 1):
         try:
@@ -223,6 +225,7 @@ def main() -> int:
                         {
                             "attempts": attempt,
                             "endedAt": utc_now(),
+                            "deploymentState": "failed",
                             "result": "failure",
                             "detail": last_error,
                         }
@@ -251,6 +254,7 @@ def main() -> int:
                     {
                         "attempts": attempt,
                         "endedAt": utc_now(),
+                        "deploymentState": "succeeded",
                         "result": "success",
                         "detail": detail,
                         "renderDeployStatus": last_render_status,
@@ -272,6 +276,7 @@ def main() -> int:
         {
             "attempts": attempts,
             "endedAt": utc_now(),
+            "deploymentState": "failed",
             "result": "failure",
             "detail": last_error,
             "renderDeployStatus": last_render_status,

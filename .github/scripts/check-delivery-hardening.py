@@ -15,6 +15,7 @@ CSS = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "css" / 
 I18N = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "js" / "taxonomy-i18n.js"
 UI_EVIDENCE = ROOT / ".github" / "scripts" / "ui-role-state-evidence.mjs"
 RANCHER = ROOT / "deploy" / "helm" / "taxonomy" / "values-rancher-rke2.yaml"
+SMALL = ROOT / "deploy" / "helm" / "taxonomy" / "values-small.yaml"
 MODEL_DOWNLOAD = ROOT / ".github" / "scripts" / "download-embedding-model.sh"
 DOCKERFILE = ROOT / "Dockerfile"
 
@@ -33,6 +34,7 @@ def main() -> int:
     i18n = I18N.read_text(encoding="utf-8")
     ui_evidence = UI_EVIDENCE.read_text(encoding="utf-8")
     rancher = RANCHER.read_text(encoding="utf-8")
+    small = SMALL.read_text(encoding="utf-8")
     model_download = MODEL_DOWNLOAD.read_text(encoding="utf-8")
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     failures: list[str] = []
@@ -68,9 +70,20 @@ def main() -> int:
         "force_orphan: true",
         'query["ref"] = expected',
         "render-deploy-hook.json",
+        "render-hook-failure.json",
+        "if ! curl --fail --silent --show-error --retry 3",
+        "--connect-timeout 15 --max-time 90",
+        "Render deploy hook request failed after bounded retries.",
         "render-verification.json",
         "RENDER_API_KEY",
         "RENDER_SERVICE_ID",
+        "RENDER_DEPLOY_ENABLED",
+        "name: Render deployment disabled",
+        "vars.RENDER_DEPLOY_ENABLED != 'true'",
+        "vars.RENDER_DEPLOY_ENABLED == 'true'",
+        '"deploymentState": "disabled"',
+        '"deploymentState": "triggered"',
+        "RENDER_DEPLOY_ENABLED is true but RENDER_DEPLOY_HOOK_URL is missing",
         "BASE_URL: ${{ vars.RENDER_BASE_URL || 'https://taxonomy-analyzer.onrender.com' }}",
         "python3 .github/scripts/verify-deployment.py",
         "render-deployment-evidence-${{ github.event.workflow_run.head_sha }}",
@@ -78,6 +91,10 @@ def main() -> int:
         require(delivery, needle, DELIVERY, failures)
     if "keep_files: true" in delivery:
         failures.append("delivery.yml must replace the report tree atomically, not retain stale files")
+    if "RENDER_DEPLOY_HOOK_URL is not configured; Render deployment is disabled." in delivery:
+        failures.append("enabled Render delivery must fail closed when its hook secret is missing")
+    if 'if-no-files-found: warn' in delivery.split("  deploy-render:", 1)[-1]:
+        failures.append("Render delivery evidence must never be optional")
 
     for needle in (
         '"sourceTree"',
@@ -95,8 +112,11 @@ def main() -> int:
         "fetch_render_deploy",
         "renderDeployId",
         "renderDeployStatus",
+        '"deploymentState": "verifying"',
+        '"deploymentState": "succeeded"',
+        '"deploymentState": "failed"',
         "root smoke test",
-        "write_evidence",
+        "write_evidence(args.evidence_file, evidence)",
     ):
         require(deploy_verify, needle, DEPLOY_VERIFY, failures)
 
@@ -120,6 +140,20 @@ def main() -> int:
         "Taxonomy tree viewport is unbounded",
     ):
         require(ui_evidence, needle, UI_EVIDENCE, failures)
+
+    for needle in (
+        'cpu: 100m',
+        'cpu: "500m"',
+        'memory: 768Mi',
+        'memory: 1536Mi',
+        'TAXONOMY_EMBEDDING_ENABLED: "false"',
+        'TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"',
+        'TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap',
+        'MaxRAMPercentage=65.0',
+    ):
+        require(small, needle, SMALL, failures)
+    if 'cpu: "2"' in small:
+        failures.append("values-small.yaml must not use the universal two-CPU limit")
 
     for needle in (
         'nginx.ingress.kubernetes.io/rewrite-target: "/$2"',
@@ -154,8 +188,9 @@ def main() -> int:
     print(
         "Delivery hardening contract passed: reports are commit-bound, internally consistent, "
         "atomically published and remotely re-verified; Render is pinned to the verified commit, "
-        "records deployment evidence and can poll platform status; responsive tree height remains "
-        "bounded, the container exposes its build commit, and the Rancher prefix profile is explicit."
+        "records explicit disabled/triggered/verifying/succeeded/failed evidence, archives hook "
+        "transport failures and can poll platform status; responsive tree height remains bounded, "
+        "the container exposes its build commit, and the Rancher prefix profile is explicit."
     )
     return 0
 
