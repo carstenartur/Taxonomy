@@ -41,6 +41,34 @@ class JgitStorageSchemaIndexValidationTest {
     }
 
     @Test
+    void acceptsPortableReferenceKeyShapeWithMatchingIndex() throws Exception {
+        DataSource dataSource = dataSource("portable-reference-key");
+        flyway(dataSource).migrate();
+        dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+        installReferenceKeyShape(dataSource, true);
+
+        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
+
+        assertTrue(tableExists(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
+    }
+
+    @Test
+    void rejectsReferenceKeyShapeWithoutMatchingIndex() throws Exception {
+        DataSource dataSource = dataSource("missing-reference-key-index");
+        flyway(dataSource).migrate();
+        dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+        installReferenceKeyShape(dataSource, false);
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(
+                        flyway(dataSource), false));
+
+        assertTrue(error.getMessage().contains("REF_NAME_KEY"));
+        assertFalse(tableExists(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
+    }
+
+    @Test
     void rejectsLegacySchemaWithoutRequiredIndexesBeforeDdl() throws Exception {
         DataSource dataSource = dataSource("missing-legacy-indexes");
         installLegacyTablesWithoutIndexes(dataSource);
@@ -72,6 +100,18 @@ class JgitStorageSchemaIndexValidationTest {
                 .locations(CoreSchemaMigrations.HSQLDB_LOCATION)
                 .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE)
                 .load();
+    }
+
+    private static void installReferenceKeyShape(
+            DataSource dataSource, boolean createMatchingIndex) throws SQLException {
+        execute(dataSource,
+                "alter table git_reflog add column ref_name_key varchar(128) default '' not null");
+        execute(dataSource, "drop index idx_reflog_repo_ref_id");
+        if (createMatchingIndex) {
+            execute(dataSource,
+                    "create index idx_reflog_repo_ref_key_id "
+                            + "on git_reflog (repository_name, ref_name_key, id desc)");
+        }
     }
 
     private static void installLegacyTablesWithoutIndexes(DataSource dataSource)
