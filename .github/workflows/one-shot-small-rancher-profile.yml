@@ -27,7 +27,20 @@ jobs:
         run: bash .github/scripts/install-helm.sh
 
       - name: Apply small/Rancher profile contract
-        run: python3 .github/scripts/apply-small-rancher-profile.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply-small-rancher-profile.py')
+          text = path.read_text(encoding='utf-8')
+          old = "  'value: local-heap' \\\n"
+          new = "  'value: \"local-heap\"' \\\n"
+          if old not in text:
+              raise SystemExit('Could not locate the small-profile local-heap render contract')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python3 .github/scripts/apply-small-rancher-profile.py
 
       - name: Verify Helm and browser base-path contracts
         shell: bash
