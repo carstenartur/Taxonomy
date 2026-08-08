@@ -608,3 +608,50 @@ dialog.onboarding-overlay .onboarding-card {
         white-space: nowrap;
     }
 }
+
+/* Discoverable responsive primary navigation. */
+.mobile-main-navigation {
+    display: none;
+}
+
+@media (max-width: 991.98px) {
+    #mainNavTabs {
+        display: none !important;
+    }
+    .mobile-main-navigation {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
+        gap: 0.5rem;
+        padding: 0.65rem 0;
+        color: #fff;
+    }
+    .mobile-main-navigation-label {
+        grid-column: 1 / -1;
+        margin: 0;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+    .mobile-main-navigation-select,
+    .mobile-current-task-button {
+        min-height: 44px;
+    }
+    .mobile-main-navigation-select {
+        min-width: 0;
+    }
+    .mobile-current-task-button {
+        white-space: nowrap;
+    }
+}
+
+@media (max-width: 30rem), (max-height: 30rem) {
+    .mobile-main-navigation {
+        grid-template-columns: 1fr;
+    }
+    .mobile-main-navigation-label {
+        grid-column: 1;
+    }
+    .mobile-current-task-button {
+        width: 100%;
+    }
+}

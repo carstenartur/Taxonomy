@@ -125,9 +125,18 @@ export async function csrfJson(page, endpoint, {
 }
 
 export async function navigateToPage(page, pageId) {
-  const control = page.locator(`#mainNavTabs [data-page="${pageId}"]`);
-  await control.scrollIntoViewIfNeeded();
-  await control.click();
+  const responsive = page.locator('#mobileMainNavigationSelect');
+  if (await responsive.isVisible().catch(() => false)) {
+    const values = await responsive.locator('option').evaluateAll(options =>
+      options.map(option => option.value));
+    if (!values.includes(pageId)) {
+      throw new Error(`Responsive navigation does not expose ${pageId}: ${values.join(', ')}`);
+    }
+    await responsive.selectOption(pageId);
+  } else {
+    const control = page.locator(`#mainNavTabs [data-page="${pageId}"]`);
+    await control.click();
+  }
   await page.locator(`#tab-${pageId}`).waitFor({ state: 'visible', timeout: 20_000 });
 }
 

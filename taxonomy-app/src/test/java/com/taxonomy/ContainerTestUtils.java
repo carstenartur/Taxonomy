@@ -204,7 +204,7 @@ final class ContainerTestUtils {
         return configureApplicationContainer(new GenericContainer<>(SHARED_IMAGE))
                 .withExposedPorts(8080)
                 .withStartupTimeout(Duration.ofSeconds(120))
-                .waitingFor(Wait.forHttp("/actuator/health")
+                .waitingFor(Wait.forHttp("/actuator/health/readiness")
                         .forStatusCode(200)
                         .forPort(8080));
     }
@@ -215,7 +215,7 @@ final class ContainerTestUtils {
                 .withNetworkAliases(APP_NETWORK_ALIAS)
                 .withExposedPorts(8080)
                 .withStartupTimeout(Duration.ofSeconds(180))
-                .waitingFor(Wait.forHttp("/actuator/health")
+                .waitingFor(Wait.forHttp("/actuator/health/readiness")
                         .forStatusCode(200)
                         .forPort(8080));
     }

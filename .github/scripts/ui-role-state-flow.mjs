@@ -237,7 +237,7 @@ export async function runRoleStateFlow({
     passed('role-specific navigation');
   }
 
-  await page.locator('#mainNavTabs [data-page="analyze"]').click();
+  await navigateToPage(page, 'analyze');
   await page.locator('#taxonomyTree [role="treeitem"]').first()
     .waitFor({ state: 'visible', timeout: 90_000 });
 
@@ -248,12 +248,36 @@ export async function runRoleStateFlow({
     const secondary = document.getElementById('analysisSecondaryTools');
     const progressRect = progress?.getBoundingClientRect();
     const primaryRect = primary?.getBoundingClientRect();
+    const responsiveNavigation = document.getElementById('mobileMainNavigation');
+    const responsiveSelect = document.getElementById('mobileMainNavigationSelect');
+    const taskJump = document.getElementById('mobileCurrentTaskBtn');
+    const responsiveRect = responsiveNavigation?.getBoundingClientRect();
+    const taskJumpRect = taskJump?.getBoundingClientRect();
+    const authorizedPages = Array.from(
+      document.querySelectorAll('#mainNavTabs .nav-link[data-page]'))
+      .filter(link => {
+        const item = link.closest('.nav-item');
+        return item && getComputedStyle(item).display !== 'none';
+      })
+      .map(link => link.dataset.page);
+    const responsivePages = Array.from(responsiveSelect?.options || [], option => option.value);
     const focusable = Boolean(primary && !primary.disabled
       && primary.tabIndex >= 0 && getComputedStyle(primary).visibility !== 'hidden');
     return {
       progressVisible: Boolean(progressRect && progressRect.width > 0 && progressRect.height > 0),
       progressTop: progressRect?.top ?? Number.POSITIVE_INFINITY,
       viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+      responsiveNavigationVisible: Boolean(responsiveRect
+        && responsiveRect.width > 0 && responsiveRect.height > 0),
+      responsiveNavigationInsideViewport: Boolean(responsiveRect
+        && responsiveRect.top >= 0 && responsiveRect.bottom <= window.innerHeight),
+      taskJumpVisible: Boolean(taskJumpRect && taskJumpRect.width > 0 && taskJumpRect.height > 0),
+      taskJumpInsideViewport: Boolean(taskJumpRect
+        && taskJumpRect.top >= 0 && taskJumpRect.bottom <= window.innerHeight),
+      taskJumpFocusable: Boolean(taskJump && !taskJump.disabled && taskJump.tabIndex >= 0),
+      authorizedPages,
+      responsivePages,
       primaryVisible: Boolean(primaryRect && primaryRect.width > 0 && primaryRect.height > 0),
       primaryEnabled: Boolean(primary && !primary.disabled),
       primaryFocusable: focusable,
@@ -275,6 +299,23 @@ export async function runRoleStateFlow({
     `Initial analysis stage was ${taskSurface.currentStage}, expected describe`);
   assert(taskSurface.primaryVisible && taskSurface.primaryEnabled && taskSurface.primaryFocusable,
     'Primary Analyze action is not visible, enabled and focusable');
+  if (taskSurface.viewportWidth < 992) {
+    assert(taskSurface.responsiveNavigationVisible
+      && taskSurface.responsiveNavigationInsideViewport,
+    'Responsive section navigation is not discoverable before any automatic scroll');
+    assert(taskSurface.taskJumpVisible && taskSurface.taskJumpInsideViewport
+      && taskSurface.taskJumpFocusable,
+    'Responsive current-task jump is not visible and keyboard reachable');
+    assert(JSON.stringify(taskSurface.responsivePages)
+      === JSON.stringify(taskSurface.authorizedPages),
+    `Responsive destinations differ from authorized tabs: ${JSON.stringify(taskSurface)}`);
+    assert(taskSurface.progressTop <= taskSurface.viewportHeight
+      || taskSurface.taskJumpInsideViewport,
+    `Neither task progress nor its explicit current-task jump is initially reachable: `
+      + `${JSON.stringify(taskSurface)}`);
+    assert(taskSurface.primaryInsideViewport || taskSurface.taskJumpInsideViewport,
+      'Neither the primary action nor its explicit task jump is initially visible');
+  }
   assert(taskSurface.operationalCollapsed && taskSurface.operationalContainsOriginalSurfaces,
     'Operational status must be collapsed by default while retaining original detail surfaces');
   assert(taskSurface.secondaryCollapsed && taskSurface.secondaryContainsExpertTools,
@@ -477,7 +518,6 @@ export async function runRoleStateFlow({
       && !nextAction.disabled;
   });
   passed('review action advances explicit continuation stage');
-
   await page.locator('#businessText').fill(
     'Provide resilient hospital communications with an emergency notification capability.');
   await page.locator('#businessText.stale-results').waitFor({ state: 'visible', timeout: 10_000 });
@@ -662,10 +702,17 @@ export async function runRoleStateFlow({
     const right = document.getElementById('rightPanel');
     const row = left?.parentElement;
     const navigation = document.getElementById('mainNavTabs');
-    const visibleLinks = Array.from(navigation?.querySelectorAll('.nav-link') || [])
-      .filter(link => getComputedStyle(link).display !== 'none');
-    const maxLinkHeight = visibleLinks.reduce((maximum, link) =>
-      Math.max(maximum, link.getBoundingClientRect().height), 0);
+    const responsiveNavigation = document.getElementById('mobileMainNavigation');
+    const responsiveSelect = document.getElementById('mobileMainNavigationSelect');
+    const taskJump = document.getElementById('mobileCurrentTaskBtn');
+    const responsiveRect = responsiveNavigation?.getBoundingClientRect();
+    const taskJumpRect = taskJump?.getBoundingClientRect();
+    const authorizedPages = Array.from(navigation?.querySelectorAll('.nav-link[data-page]') || [])
+      .filter(link => {
+        const item = link.closest('.nav-item');
+        return item && getComputedStyle(item).display !== 'none';
+      })
+      .map(link => link.dataset.page);
     return {
       viewportWidth: window.innerWidth,
       leftTop: left?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
@@ -675,10 +722,13 @@ export async function runRoleStateFlow({
       leftPrecedesRightInDom: Boolean(left && right
         && (left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING)),
       taskOrder: row?.dataset.taskOrder || '',
-      navigationHeight: navigation?.getBoundingClientRect().height ?? 0,
-      maxLinkHeight,
-      navigationScrollWidth: navigation?.scrollWidth ?? 0,
-      navigationClientWidth: navigation?.clientWidth ?? 0
+      desktopNavigationDisplayed: getComputedStyle(navigation).display !== 'none',
+      responsiveNavigationVisible: Boolean(responsiveRect
+        && responsiveRect.width > 0 && responsiveRect.height > 0),
+      taskJumpSize: taskJumpRect
+        ? { width: taskJumpRect.width, height: taskJumpRect.height } : null,
+      responsivePages: Array.from(responsiveSelect?.options || [], option => option.value),
+      authorizedPages
     };
   });
   if (taskHierarchy.viewportWidth < 992) {
@@ -688,12 +738,16 @@ export async function runRoleStateFlow({
     assert(taskHierarchy.rightPrecedesLeftInDom && taskHierarchy.taskOrder === 'primary-first',
       'Primary task must also precede the taxonomy browser in reading and focus order');
     passed('primary task precedes taxonomy browser visually and structurally');
-    assert(taskHierarchy.navigationHeight <= taskHierarchy.maxLinkHeight + 6,
-      `Main navigation wrapped to multiple rows: ${taskHierarchy.navigationHeight} > `
-      + `${taskHierarchy.maxLinkHeight + 6}`);
-    assert(taskHierarchy.navigationScrollWidth >= taskHierarchy.navigationClientWidth,
-      'Main navigation must remain horizontally reachable');
-    passed('single-row scrollable main navigation');
+    assert(!taskHierarchy.desktopNavigationDisplayed
+      && taskHierarchy.responsiveNavigationVisible,
+    'Narrow viewport must retain explicit responsive navigation after task interactions');
+    assert(taskHierarchy.taskJumpSize?.width >= 44
+      && taskHierarchy.taskJumpSize?.height >= 44,
+    `Current-task jump touch target regressed: ${JSON.stringify(taskHierarchy)}`);
+    assert(JSON.stringify(taskHierarchy.responsivePages)
+      === JSON.stringify(taskHierarchy.authorizedPages),
+    `Responsive navigation lost authorized destinations: ${JSON.stringify(taskHierarchy)}`);
+    passed('responsive navigation remains structurally available after task interactions');
   } else {
     assert(taskHierarchy.leftPrecedesRightInDom && taskHierarchy.taskOrder === 'reference-first',
       'Desktop reading and focus order must match the left-to-right panel layout');
