@@ -1,0 +1,58 @@
+name: One-shot issue 651 LOCAL_ONNX index readiness
+
+on:
+  push:
+    branches:
+      - fix/issue-651-local-onnx-index-readiness
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-shot-issue-651-local-onnx-index
+  cancel-in-progress: true
+
+jobs:
+  focused-contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Run phased-index and HTTP readiness contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-app -am \
+            -Dtest=com.taxonomy.search.LocalOnnxIndexInitializerTest,com.taxonomy.search.service.SearchFacadeEmbeddingStatusTest,com.taxonomy.search.controller.SearchApiControllerSemanticReadinessTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          git diff --check
+
+  real-browser-semantic-search:
+    needs: focused-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify node-first semantic readiness in the real container
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-app -am verify \
+            -DskipITs=false \
+            -Dtest=com.taxonomy.search.LocalOnnxIndexInitializerTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -Dit.test=OnnxSeleniumIT#semanticSearchViaUiReturnsResults \
+            -Dfailsafe.failIfNoSpecifiedTests=false \
+            -DrunOnnxTests=true \
+            -Dtaxonomy.model.download.skip=false \
+            -Dtaxonomy.ui.skip=true \
+            -Dtaxonomy.quality.skip=true
