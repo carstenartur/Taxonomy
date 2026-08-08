@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.MessageSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,12 +52,13 @@ class SearchApiControllerSemanticReadinessTest {
         status.put("indexDetail", "Building taxonomy-node vectors");
         when(searchFacade.getEmbeddingStatus()).thenReturn(status);
 
-        var response = controller.semanticSearch("communications", 20);
+        ResponseEntity<?> response = controller.semanticSearch("communications", 20);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-        assertThat(response.getBody()).isInstanceOf(Map.class);
+        Object rawBody = response.getBody();
+        assertThat(rawBody).isInstanceOf(Map.class);
         @SuppressWarnings("unchecked")
-        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        Map<String, Object> body = (Map<String, Object>) rawBody;
         assertThat(body)
                 .containsEntry("indexState", "INDEXING_NODES")
                 .containsEntry("semanticReady", false)
