@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CATALOG = ROOT / ".mvn" / "verification-suites.json"
+WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 REMOVED = {
     "accessibility.yml",
     "archimate-import-evidence.yml",
@@ -39,6 +40,19 @@ DIRECT_TEST_PATTERNS = {
         r"check-dependency-hygiene)\.py"
     ),
 }
+
+
+def workflow_paths() -> set[Path]:
+    """Return every workflow file extension accepted by GitHub Actions."""
+    return {
+        path
+        for path in WORKFLOWS.iterdir()
+        if path.is_file() and path.suffix.lower() in WORKFLOW_SUFFIXES
+    }
+
+
+def is_workflow_name(value: object) -> bool:
+    return isinstance(value, str) and Path(value).suffix.lower() in WORKFLOW_SUFFIXES
 
 
 def run_blocks(text: str) -> str:
@@ -83,8 +97,7 @@ def main() -> int:
         invalid_responsibilities = [
             name
             for name, purpose in responsibilities.items()
-            if not isinstance(name, str)
-            or not name.endswith(".yml")
+            if not is_workflow_name(name)
             or not isinstance(purpose, str)
             or not purpose.strip()
         ]
@@ -94,10 +107,11 @@ def main() -> int:
                 + ", ".join(sorted(str(name) for name in invalid_responsibilities))
             )
         classified_workflows = {
-            name for name in responsibilities if isinstance(name, str) and name.endswith(".yml")
+            name for name in responsibilities if is_workflow_name(name)
         }
 
-    workflow_files = {path.name for path in WORKFLOWS.glob("*.yml")}
+    paths = workflow_paths()
+    workflow_files = {path.name for path in paths}
     unexpected = workflow_files - classified_workflows
     missing = classified_workflows - workflow_files
     if unexpected:
@@ -108,7 +122,7 @@ def main() -> int:
     if lingering:
         errors.append(f"redundant workflows were not removed: {', '.join(sorted(lingering))}")
 
-    for path in sorted(WORKFLOWS.glob("*.yml")):
+    for path in sorted(paths):
         commands = run_blocks(path.read_text(encoding="utf-8"))
         for description, pattern in DIRECT_TEST_PATTERNS.items():
             if pattern.search(commands):
