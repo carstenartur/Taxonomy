@@ -69,6 +69,7 @@ class JgitStorageSchemaMigrationConfigTest {
         assertTrue(columns(dataSource, "git_packs").contains("LAST_MODIFIED"));
         assertEquals(32, columnSize(dataSource, "git_packs", "pack_extension"));
         assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
+        assertReflogKeyMatchesMigrationHistory(dataSource);
         assertVersionPrefix(
                 FULL_CORE_HISTORY,
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
@@ -142,6 +143,7 @@ class JgitStorageSchemaMigrationConfigTest {
         assertTrue(columnSize(dataSource, "git_reflog", "ref_name") >= 1024);
         assertArrayEquals(original, packData(dataSource, "legacy", "pack-a", "reftable"));
         assertEquals(refName, reflogRefName(dataSource));
+        assertReflogKeyMatchesMigrationHistory(dataSource);
         try (Connection connection = dataSource.getConnection();
              var statement = connection.prepareStatement(
                      "select committed, committed_at from git_packs "
@@ -346,12 +348,13 @@ class JgitStorageSchemaMigrationConfigTest {
     void establishesHistoryForExactUnversionedCurrentCoreSchema() throws Exception {
         DataSource dataSource = dataSource("unversioned-current");
         flyway(dataSource).migrate();
+        boolean hasReflogKey = columns(dataSource, "git_reflog").contains("REF_NAME_KEY");
         dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
 
         JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
 
         assertVersionPrefix(
-                List.of("0.1.18"),
+                List.of(hasReflogKey ? "0.9.1" : "0.1.18"),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_LEASE_UNTIL"));
         assertTrue(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
@@ -540,6 +543,18 @@ class JgitStorageSchemaMigrationConfigTest {
             assertTrue(resultSet.next());
             return resultSet.getString(1);
         }
+    }
+
+    private static void assertReflogKeyMatchesMigrationHistory(DataSource dataSource)
+            throws SQLException {
+        boolean migrated = successfulVersions(
+                dataSource,
+                CoreSchemaMigrations.SCHEMA_HISTORY_TABLE).contains("0.9.1");
+        boolean columnPresent = columns(dataSource, "git_reflog").contains("REF_NAME_KEY");
+        assertEquals(
+                migrated,
+                columnPresent,
+                "Core migration 0.9.1 and git_reflog.ref_name_key must appear together");
     }
 
     private static void assertVersionPrefix(
