@@ -11,17 +11,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CATALOG = ROOT / ".mvn" / "verification-suites.json"
-ALLOWED = {
-    "ci-cd.yml",
-    "database-compatibility.yml",
-    "codeql.yml",
-    "security-scan.yml",
-    "dependency-submission.yml",
-    "documentation-screenshots.yml",
-    "delivery.yml",
-    "deploy-release.yml",
-    "cleanup-workflow-runs.yml",
-}
 REMOVED = {
     "accessibility.yml",
     "archimate-import-evidence.yml",
@@ -86,9 +75,31 @@ def main() -> int:
     if catalog.get("canonicalCommand") != "./mvnw -B verify -Pci":
         errors.append("verification catalogue must declare './mvnw -B verify -Pci'")
 
+    responsibilities = catalog.get("workflowResponsibilities")
+    if not isinstance(responsibilities, dict) or not responsibilities:
+        errors.append("verification catalogue must classify workflow responsibilities")
+        classified_workflows: set[str] = set()
+    else:
+        invalid_responsibilities = [
+            name
+            for name, purpose in responsibilities.items()
+            if not isinstance(name, str)
+            or not name.endswith(".yml")
+            or not isinstance(purpose, str)
+            or not purpose.strip()
+        ]
+        if invalid_responsibilities:
+            errors.append(
+                "verification catalogue contains invalid workflow responsibilities: "
+                + ", ".join(sorted(str(name) for name in invalid_responsibilities))
+            )
+        classified_workflows = {
+            name for name in responsibilities if isinstance(name, str) and name.endswith(".yml")
+        }
+
     workflow_files = {path.name for path in WORKFLOWS.glob("*.yml")}
-    unexpected = workflow_files - ALLOWED
-    missing = ALLOWED - workflow_files
+    unexpected = workflow_files - classified_workflows
+    missing = classified_workflows - workflow_files
     if unexpected:
         errors.append(f"unclassified workflows remain: {', '.join(sorted(unexpected))}")
     if missing:
