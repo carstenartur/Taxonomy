@@ -33,7 +33,7 @@ class LocalOnnxIndexInitializerTest {
     @BeforeEach
     void setUp() {
         initializer = new LocalOnnxIndexInitializer(
-                embeddingService, initializationState, indexRebuilder);
+                embeddingService, initializationState, indexRebuilder, "LOCAL_ONNX");
     }
 
     @Test
@@ -46,6 +46,22 @@ class LocalOnnxIndexInitializerTest {
                 .isEqualTo(LocalOnnxIndexInitializer.State.DISABLED);
         assertThat(initializer.hasStarted()).isFalse();
         assertThat(initializer.isNodeSearchReady()).isFalse();
+        verifyNoInteractions(initializationState, indexRebuilder);
+    }
+
+    @Test
+    void nonLocalOnnxProviderDoesNotStartIndexing() {
+        initializer = new LocalOnnxIndexInitializer(
+                embeddingService, initializationState, indexRebuilder, "GEMINI");
+        when(embeddingService.isEnabled()).thenReturn(true);
+
+        initializer.initializeLocalOnnxIndex();
+
+        assertThat(initializer.getState())
+                .isEqualTo(LocalOnnxIndexInitializer.State.DISABLED);
+        assertThat(initializer.hasStarted()).isFalse();
+        assertThat(initializer.getDetail())
+                .contains("LLM_PROVIDER=LOCAL_ONNX");
         verifyNoInteractions(initializationState, indexRebuilder);
     }
 
