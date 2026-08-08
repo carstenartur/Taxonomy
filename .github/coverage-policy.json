@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "description": "Aggregate JaCoCo ratchet based on verified reactor evidence; thresholds may only move upward unless a reviewed exception is introduced.",
+  "requiredCounters": [
+    "INSTRUCTION",
+    "LINE",
+    "BRANCH",
+    "METHOD",
+    "CLASS"
+  ],
+  "aggregateMinimums": {
+    "INSTRUCTION": 0.81,
+    "LINE": 0.82,
+    "BRANCH": 0.64,
+    "METHOD": 0.85,
+    "CLASS": 0.92
+  },
+  "expectedGroups": [
+    "taxonomy-domain",
+    "taxonomy-dsl",
+    "taxonomy-export",
+    "taxonomy-extension-api",
+    "taxonomy-app"
+  ]
+}
