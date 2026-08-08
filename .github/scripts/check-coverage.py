@@ -123,8 +123,22 @@ def load_policy(path: Path) -> CoveragePolicy:
         )
     if len(counters) != len(set(counters)):
         raise ValueError("Coverage policy requiredCounters contains duplicates")
-    if "BRANCH" not in counters:
-        raise ValueError("Coverage policy must explicitly require BRANCH coverage")
+    if set(counters) != set(COUNTER_TYPES):
+        missing = [counter for counter in COUNTER_TYPES if counter not in counters]
+        unexpected = [counter for counter in counters if counter not in COUNTER_TYPES]
+        detail = []
+        if missing:
+            detail.append("missing " + ", ".join(missing))
+        if unexpected:
+            detail.append("unexpected " + ", ".join(unexpected))
+        suffix = f" ({'; '.join(detail)})" if detail else ""
+        raise ValueError(
+            "Coverage policy requiredCounters must contain exactly "
+            + ", ".join(COUNTER_TYPES)
+            + suffix
+        )
+    # Normalize policy order so evidence remains stable even when JSON keys are reordered.
+    counters = list(COUNTER_TYPES)
 
     minimums = raw.get("aggregateMinimums")
     if not isinstance(minimums, dict) or set(minimums) != set(counters):
