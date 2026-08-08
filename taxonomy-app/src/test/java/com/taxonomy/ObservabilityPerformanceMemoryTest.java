@@ -11,6 +11,40 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 class ObservabilityPerformanceMemoryTest {
 
     @Test
+    void validatesMemorySamplingConfigurationBeforeAllocatingOrSleeping() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> ObservabilityPerformanceIT
+                        .validateMemorySamplingConfiguration(0, 200L))
+                .withMessageContaining("sample count must be greater than zero");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> ObservabilityPerformanceIT
+                        .validateMemorySamplingConfiguration(7, 0L))
+                .withMessageContaining("sample interval must be greater than zero");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> ObservabilityPerformanceIT
+                        .validateMemorySamplingConfiguration(7, -1L))
+                .withMessageContaining("sample interval must be greater than zero");
+    }
+
+    @Test
+    void lifetimePeakAloneRequiresInvestigationWithoutFailingTheHardGate() {
+        ObservabilityPerformanceIT.MemoryBudgetDecision decision =
+                ObservabilityPerformanceIT.evaluateMemoryBudget(64L, 512L, 256L);
+
+        assertThat(decision.hardLimitExceeded()).isFalse();
+        assertThat(decision.peakInvestigationRequired()).isTrue();
+    }
+
+    @Test
+    void steadyStateRegressionFailsTheMemoryHardGate() {
+        ObservabilityPerformanceIT.MemoryBudgetDecision decision =
+                ObservabilityPerformanceIT.evaluateMemoryBudget(257L, 128L, 256L);
+
+        assertThat(decision.hardLimitExceeded()).isTrue();
+        assertThat(decision.peakInvestigationRequired()).isFalse();
+    }
+
+    @Test
     void parsesNamedMemorySamples() {
         ObservabilityPerformanceIT.MemorySample sample =
                 ObservabilityPerformanceIT.parseMemorySample("cgroup-v2-anon 1048576\n");

@@ -148,8 +148,10 @@ class ObservabilityPerformanceIT {
         boolean startupHardLimit = startupOverhead > 100.0
                 && alwaysOn.startupMillis() - baseline.startupMillis()
                 > HARD_STARTUP_ABSOLUTE_MILLIS;
-        boolean memoryHardLimit = memoryDeltaMiB > HARD_MEMORY_DELTA_MIB;
-        boolean peakMemoryInvestigation = peakMemoryDeltaMiB > HARD_MEMORY_DELTA_MIB;
+        MemoryBudgetDecision memoryBudget = evaluateMemoryBudget(
+                memoryDeltaMiB, peakMemoryDeltaMiB, HARD_MEMORY_DELTA_MIB);
+        boolean memoryHardLimit = memoryBudget.hardLimitExceeded();
+        boolean peakMemoryInvestigation = memoryBudget.peakInvestigationRequired();
         BudgetEvaluation budget = new BudgetEvaluation(
                 INVESTIGATION_THRESHOLD_PERCENT,
                 p95Overhead,
@@ -361,6 +363,8 @@ class ObservabilityPerformanceIT {
 
     private static MemoryMeasurement readMemoryMeasurement(
             GenericContainer<?> application) throws Exception {
+        validateMemorySamplingConfiguration(
+                MEMORY_STEADY_STATE_SAMPLES, MEMORY_SAMPLE_INTERVAL_MILLIS);
         List<Long> samples = new ArrayList<>(MEMORY_STEADY_STATE_SAMPLES);
         String source = null;
         for (int index = 0; index < MEMORY_STEADY_STATE_SAMPLES; index++) {
@@ -405,7 +409,7 @@ class ObservabilityPerformanceIT {
                   fi
                 fi
                 if [ -r /proc/1/status ]; then
-                  value=$(awk '$1 == "VmRSS:" { print $2 * 1024; exit }' /proc/1/status)
+                  value=$(awk '$1 == "VmRSS:" { printf "%.0f\\n", $2 * 1024; exit }' /proc/1/status)
                   if [ -n "$value" ]; then
                     printf 'proc-vmrss %s\n' "$value"
                     exit 0
@@ -425,6 +429,25 @@ class ObservabilityPerformanceIT {
         assertThat(sample.source()).as("steady-state memory source").isNotEqualTo("unavailable");
         assertThat(sample.bytes()).as("steady-state memory bytes").isPositive();
         return sample;
+    }
+
+    static void validateMemorySamplingConfiguration(int samples, long intervalMillis) {
+        if (samples <= 0) {
+            throw new IllegalArgumentException(
+                    "OpenTelemetry memory sample count must be greater than zero: " + samples);
+        }
+        if (intervalMillis <= 0) {
+            throw new IllegalArgumentException(
+                    "OpenTelemetry memory sample interval must be greater than zero: "
+                            + intervalMillis);
+        }
+    }
+
+    static MemoryBudgetDecision evaluateMemoryBudget(
+            long steadyStateDeltaMiB, long peakDeltaMiB, long hardLimitMiB) {
+        return new MemoryBudgetDecision(
+                steadyStateDeltaMiB > hardLimitMiB,
+                peakDeltaMiB > hardLimitMiB);
     }
 
     static MemorySample parseMemorySample(String output) {
@@ -583,6 +606,11 @@ class ObservabilityPerformanceIT {
     }
 
     record MemorySample(String source, long bytes) {
+    }
+
+    record MemoryBudgetDecision(
+            boolean hardLimitExceeded,
+            boolean peakInvestigationRequired) {
     }
 
     private record MemoryMeasurement(
