@@ -1,0 +1,62 @@
+name: One-shot refresh coverage ratchet against main
+
+on:
+  push:
+    branches:
+      - qa/issue-641-coverage-ratchet
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-refresh-coverage-main
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: qa/issue-641-coverage-ratchet
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Merge current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin main
+          if ! git merge --no-edit origin/main; then
+            echo 'Conflicted paths:' >&2
+            git diff --name-only --diff-filter=U >&2
+            git status --short >&2
+            exit 1
+          fi
+
+      - name: Verify policy and Maven model after integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            .github/scripts/check-coverage.py \
+            .github/scripts/test-check-coverage.py
+          python3 .github/scripts/test-check-coverage.py
+          ./mvnw -B -pl taxonomy-build -am \
+            -DskipTests -DskipITs=true \
+            -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true validate
+          git diff --check
+
+      - name: Push integrated branch
+        run: git push origin HEAD:qa/issue-641-coverage-ratchet
