@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Regression tests for check-coverage.py without third-party dependencies."""
+"""Regression tests for the policy-backed multi-counter coverage gate."""
 
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -16,81 +17,169 @@ MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
+COUNTERS = ("INSTRUCTION", "LINE", "BRANCH", "METHOD", "CLASS")
 
-def report_xml(groups: dict[str, tuple[int, int]], aggregate: tuple[int, int]) -> str:
+
+def counters_xml(values: dict[str, tuple[int, int]]) -> str:
+    return "".join(
+        f'<counter type="{name}" missed="{missed}" covered="{covered}"/>'
+        for name, (covered, missed) in values.items()
+    )
+
+
+def report_xml(
+    groups: dict[str, dict[str, tuple[int, int]]],
+    aggregate: dict[str, tuple[int, int]],
+) -> str:
     group_xml = "".join(
-        f'<group name="{name}"><counter type="INSTRUCTION" missed="{missed}" covered="{covered}"/></group>'
-        for name, (covered, missed) in groups.items()
+        f'<group name="{name}">{counters_xml(values)}</group>'
+        for name, values in groups.items()
     )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<report name="Taxonomy Aggregate Coverage">'
-        f'{group_xml}'
-        f'<counter type="INSTRUCTION" missed="{aggregate[1]}" covered="{aggregate[0]}"/>'
+        f'{group_xml}{counters_xml(aggregate)}'
         '</report>'
     )
 
 
+def values(covered: int = 90, missed: int = 10) -> dict[str, tuple[int, int]]:
+    return {counter: (covered, missed) for counter in COUNTERS}
+
+
 class CoverageGateTest(unittest.TestCase):
 
-    def write_report(self, xml: str) -> Path:
+    def temporary_path(self, name: str, content: str) -> Path:
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        path = Path(directory.name) / "jacoco.xml"
-        path.write_text(xml, encoding="utf-8")
+        path = Path(directory.name) / name
+        path.write_text(content, encoding="utf-8")
         return path
 
-    def test_passes_only_with_all_expected_groups_and_threshold(self) -> None:
-        path = self.write_report(report_xml({
-            "taxonomy-domain": (90, 10),
-            "taxonomy-dsl": (80, 20),
-        }, (170, 30)))
-
-        passed, text = MODULE.build_report(
-            path, 0.81, ["Taxonomy Domain", "Taxonomy DSL"]
+    def policy(self, **minimum_overrides: float) -> MODULE.CoveragePolicy:
+        minimums = {
+            "INSTRUCTION": 0.81,
+            "LINE": 0.80,
+            "BRANCH": 0.64,
+            "METHOD": 0.80,
+            "CLASS": 0.80,
+        }
+        minimums.update(minimum_overrides)
+        return MODULE.CoveragePolicy(
+            required_counters=COUNTERS,
+            aggregate_minimums=minimums,
+            expected_groups=("Taxonomy Domain", "Taxonomy DSL"),
         )
+
+    def test_passes_and_publishes_all_counters_for_every_group(self) -> None:
+        path = self.temporary_path("jacoco.xml", report_xml({
+            "taxonomy-domain": values(90, 10),
+            "taxonomy-dsl": values(85, 15),
+        }, values(175, 25)))
+
+        passed, text = MODULE.build_report(path, self.policy())
 
         self.assertTrue(passed)
-        self.assertIn("Aggregate: 85.00%", text)
-        self.assertIn("Result:    PASS", text)
+        for counter in COUNTERS:
+            self.assertIn(f"- {counter}:", text)
+        self.assertIn("taxonomy-domain", text)
+        self.assertIn("Aggregate coverage:", text)
+        self.assertIn("Result: PASS", text)
+
+    def test_branch_ratchet_fails_when_instructions_still_pass(self) -> None:
+        aggregate = values(90, 10)
+        aggregate["BRANCH"] = (63, 37)
+        path = self.temporary_path("jacoco.xml", report_xml({
+            "taxonomy-domain": values(),
+            "taxonomy-dsl": values(),
+        }, aggregate))
+
+        passed, text = MODULE.build_report(path, self.policy())
+
+        self.assertFalse(passed)
+        self.assertIn("INSTRUCTION: 90.00%", text)
+        self.assertIn("BRANCH: 63.00%", text)
+        self.assertIn("Counters below minimum: BRANCH", text)
+
+    def test_fails_closed_when_required_branch_counter_is_missing(self) -> None:
+        incomplete = values()
+        del incomplete["BRANCH"]
+        path = self.temporary_path("jacoco.xml", report_xml({
+            "taxonomy-domain": incomplete,
+            "taxonomy-dsl": values(),
+        }, values()))
+
+        with self.assertRaisesRegex(ValueError, "Missing required counters BRANCH"):
+            MODULE.build_report(path, self.policy())
+
+    def test_fails_closed_when_required_counter_has_no_total(self) -> None:
+        empty = values()
+        empty["CLASS"] = (0, 0)
+        path = self.temporary_path("jacoco.xml", report_xml({
+            "taxonomy-domain": values(),
+            "taxonomy-dsl": values(),
+        }, empty))
+
+        with self.assertRaisesRegex(ValueError, "no measurable total: CLASS"):
+            MODULE.build_report(path, self.policy())
 
     def test_fails_when_a_shipped_module_group_is_missing(self) -> None:
-        path = self.write_report(report_xml({
-            "taxonomy-domain": (90, 10),
-        }, (90, 10)))
+        path = self.temporary_path("jacoco.xml", report_xml({
+            "taxonomy-domain": values(),
+        }, values()))
 
-        passed, text = MODULE.build_report(
-            path, 0.81, ["Taxonomy Domain", "Taxonomy DSL"]
-        )
+        passed, text = MODULE.build_report(path, self.policy())
 
         self.assertFalse(passed)
         self.assertIn("Missing required module groups: Taxonomy DSL", text)
 
-    def test_fails_below_threshold_even_when_all_modules_are_present(self) -> None:
-        path = self.write_report(report_xml({
-            "Taxonomy Domain": (70, 30),
-            "taxonomy-dsl": (70, 30),
-        }, (140, 60)))
-
-        passed, text = MODULE.build_report(
-            path, 0.81, ["taxonomy-domain", "Taxonomy DSL"]
-        )
-
-        self.assertFalse(passed)
-        self.assertIn("Aggregate: 70.00%", text)
-        self.assertIn("Result:    FAIL", text)
-
     def test_rejects_duplicate_group_names(self) -> None:
-        path = self.write_report(
+        xml = (
             '<report name="duplicate">'
-            '<group name="Taxonomy Domain"><counter type="INSTRUCTION" missed="1" covered="9"/></group>'
-            '<group name="Taxonomy Domain"><counter type="INSTRUCTION" missed="1" covered="9"/></group>'
-            '<counter type="INSTRUCTION" missed="2" covered="18"/>'
+            f'<group name="Taxonomy Domain">{counters_xml(values())}</group>'
+            f'<group name="Taxonomy Domain">{counters_xml(values())}</group>'
+            f'{counters_xml(values())}'
             '</report>'
         )
+        path = self.temporary_path("jacoco.xml", xml)
 
         with self.assertRaisesRegex(ValueError, "duplicate group"):
-            MODULE.parse_report(path)
+            MODULE.parse_report(path, COUNTERS)
+
+    def test_policy_requires_an_explicit_positive_branch_minimum(self) -> None:
+        raw = {
+            "schemaVersion": 1,
+            "requiredCounters": list(COUNTERS),
+            "aggregateMinimums": {
+                "INSTRUCTION": 0.81,
+                "LINE": 0.80,
+                "BRANCH": 0.0,
+                "METHOD": 0.80,
+                "CLASS": 0.80,
+            },
+            "expectedGroups": ["taxonomy-domain"],
+        }
+        path = self.temporary_path("policy.json", json.dumps(raw))
+
+        with self.assertRaisesRegex(ValueError, "BRANCH minimum must be greater"):
+            MODULE.load_policy(path)
+
+    def test_policy_rejects_missing_counter_minimums(self) -> None:
+        raw = {
+            "schemaVersion": 1,
+            "requiredCounters": list(COUNTERS),
+            "aggregateMinimums": {
+                "INSTRUCTION": 0.81,
+                "LINE": 0.80,
+                "BRANCH": 0.64,
+                "METHOD": 0.80,
+            },
+            "expectedGroups": ["taxonomy-domain"],
+        }
+        path = self.temporary_path("policy.json", json.dumps(raw))
+
+        with self.assertRaisesRegex(ValueError, "define exactly every required counter"):
+            MODULE.load_policy(path)
 
 
 if __name__ == "__main__":
