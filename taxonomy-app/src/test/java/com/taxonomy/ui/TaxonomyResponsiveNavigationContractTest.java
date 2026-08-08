@@ -60,6 +60,35 @@ class TaxonomyResponsiveNavigationContractTest {
                 .doesNotContain("single-row scrollable main navigation");
     }
 
+    @Test
+    void browserAuthenticationStartsOnlyAfterApplicationReadiness() throws Exception {
+        String containers = repositoryFile(
+                "taxonomy-app/src/test/java/com/taxonomy/ContainerTestUtils.java");
+        String portfolio = repositoryFile(
+                "taxonomy-app/src/test/java/com/taxonomy/PortfolioUiAcceptanceIT.java");
+
+        assertThat(occurrences(
+                containers,
+                "Wait.forHttp(\"/actuator/health/readiness\")"))
+                .isEqualTo(2);
+        assertThat(containers)
+                .doesNotContain("Wait.forHttp(\"/actuator/health\")");
+        assertThat(portfolio)
+                .contains("Configured test administrator was rejected after readiness")
+                .contains("driver.get(ContainerTestUtils.APP_ORIGIN + \"/\");")
+                .contains("doesNotContain(\"/change-password\")");
+    }
+
+    private static int occurrences(String source, String value) {
+        int count = 0;
+        int index = 0;
+        while ((index = source.indexOf(value, index)) >= 0) {
+            count++;
+            index += value.length();
+        }
+        return count;
+    }
+
     private static String between(String source, String startMarker, String endMarker) {
         int start = source.indexOf(startMarker);
         int end = source.indexOf(endMarker, start + startMarker.length());
