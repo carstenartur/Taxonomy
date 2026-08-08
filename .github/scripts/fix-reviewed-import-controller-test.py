@@ -30,11 +30,17 @@ text = text.replace(
                 () -> ''',
     '''catchThrowableOfType(
                 () -> ''')
+
+controller_call = '''controller.importReviewed(41L, request));'''
+controller_typed = '''controller.importReviewed(41L, request), PortfolioException.class);'''
+controller_call_count = text.count(controller_call)
+if controller_call_count != 3:
+    raise SystemExit(
+        f"Expected three untyped request assertions, found {controller_call_count}"
+    )
+text = text.replace(controller_call, controller_typed)
+
 for old, new in (
-    (
-        '''controller.importReviewed(41L, request));''',
-        '''controller.importReviewed(41L, request), PortfolioException.class);''',
-    ),
     (
         '''itemLimited.importReviewed(41L, tooMany));''',
         '''itemLimited.importReviewed(41L, tooMany), PortfolioException.class);''',
@@ -44,8 +50,10 @@ for old, new in (
         '''characterLimited.importReviewed(41L, tooLong), PortfolioException.class);''',
     ),
 ):
-    if old not in text:
-        raise SystemExit(f"Expected assertion call not found: {old.strip()}")
+    if text.count(old) != 1:
+        raise SystemExit(
+            f"Expected one untyped assertion call, found {text.count(old)}: {old.strip()}"
+        )
     text = text.replace(old, new, 1)
 
 for signature in (
@@ -69,5 +77,11 @@ helper = '''    private void stubWorkspace() {
 if text.count(helper_marker) != 1:
     raise SystemExit("Expected one controller helper marker")
 text = text.replace(helper_marker, helper + helper_marker, 1)
+
+if "catchThrowableOfType(\n                () -> controller.importReviewed(41L, request));" in text:
+    raise SystemExit("An untyped reviewed-import assertion remains")
+if "catchThrowableOfType(\n                    () -> controller.importReviewed(41L, request));" in text:
+    raise SystemExit("An indented untyped reviewed-import assertion remains")
+
 path.write_text(text, encoding="utf-8")
-print("Corrected reviewed import controller tests before execution.")
+print("Corrected every reviewed import controller assertion before execution.")
