@@ -43,6 +43,16 @@ class TaxonomyLazyTreeContractTest {
     }
 
     @Test
+    void searchNavigationMaterializesTheExactLazyPathBeforeHighlighting() throws Exception {
+        String search = resource("/static/js/shared/taxonomy-search.js");
+
+        assertThat(search)
+                .contains("window.TaxonomyBrowse.ensureNodeRendered(")
+                .contains("window.TaxonomyState ? window.TaxonomyState.currentScores : null")
+                .contains("header.classList.add('search-highlight')");
+    }
+
+    @Test
     void explicitExpandAllAndManualScoringMayMaterializeTheFullTree() throws Exception {
         String browse = resource("/static/js/core/taxonomy-browse.js");
 
