@@ -24,6 +24,9 @@ class TaxonomyOverlayContractTest {
                 .contains("dialog.addEventListener('cancel'")
                 .contains("trapDialogFocus(dialog, event)")
                 .contains("returnFocus.focus({ preventScroll: true })")
+                .contains("var expertShortcutsInstalled = false;")
+                .contains("if (expertShortcutsInstalled) {")
+                .contains("expertShortcutsInstalled = true;")
                 .doesNotContain("overlay.style.opacity = '0'");
     }
 

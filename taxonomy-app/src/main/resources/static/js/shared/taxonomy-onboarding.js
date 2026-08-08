@@ -8,6 +8,7 @@
     var reviewAcknowledged = false;
     var overlayLaneObserver = null;
     var overlayLaneRefreshFrame = null;
+    var expertShortcutsInstalled = false;
     var TASK_STAGES = [
         {
             id: 'taskStageDescribe',
@@ -551,6 +552,10 @@
         if (operationalSummary) {
             operationalSummary.title = t('analysis.task.shortcut.operational');
         }
+        if (expertShortcutsInstalled) {
+            return;
+        }
+        expertShortcutsInstalled = true;
         document.addEventListener('keydown', function (event) {
             if (!event.altKey || !event.shiftKey) {
                 return;
