@@ -126,7 +126,8 @@ public class SearchApiController {
     private <T> ResponseEntity<T> checkSemanticReady() {
         if (!searchFacade.isSemanticSearchReady()) {
             Map<String, Object> body = new LinkedHashMap<>(searchFacade.getEmbeddingStatus());
-            body.put("error", "Semantic search is not ready yet");
+            body.put("error", messageSource.getMessage("error.semantic.notReady", null,
+                    "Semantic search is not ready yet", LocaleContextHolder.getLocale()));
             return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
         }
         return null;
