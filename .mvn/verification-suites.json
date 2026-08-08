@@ -22,7 +22,7 @@
       "test": "JgitStorageHibernateIntegrationTest,JgitStorageOptimizedIndexContractTest,JgitStorageSchemaIndexValidationTest,JgitStorageSchemaMigrationConfigTest,CommitIndexHibernateSearchTest",
       "itTest": "JgitStoragePostgresMigrationIT,TaxonomyPostgresValidateStartupIT,TaxonomySchemaPostgresMigrationIT",
       "excludedGroups": "real-llm,onnx,db-mssql,db-oracle",
-      "requires": ["Java 21", "Docker", "Python 3", "POSIX shell"]
+      "requires": ["Java 21", "Docker", "Python 3", "Bash 4+"]
     }
   },
   "focusedCommands": {
