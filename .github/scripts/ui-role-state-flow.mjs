@@ -399,6 +399,33 @@ export async function runRoleStateFlow({
   }
   passed('analysis loading, success and contextual next action');
   const architectureContrast = await page.evaluate(() => {
+    const surfaceTokens = [
+      '--taxonomy-layer-cap-surface',
+      '--taxonomy-layer-proc-surface',
+      '--taxonomy-layer-svc-surface',
+      '--taxonomy-layer-app-surface',
+      '--taxonomy-layer-info-surface',
+      '--taxonomy-layer-comm-surface',
+      '--taxonomy-layer-system-surface',
+      '--taxonomy-layer-component-surface',
+      '--taxonomy-layer-default-surface'
+    ];
+    function parseColor(value) {
+      const normalized = value.trim();
+      const hex = normalized.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (hex) {
+        const digits = hex[1].length === 3
+          ? [...hex[1]].map(character => character + character).join('')
+          : hex[1];
+        return [
+          Number.parseInt(digits.slice(0, 2), 16),
+          Number.parseInt(digits.slice(2, 4), 16),
+          Number.parseInt(digits.slice(4, 6), 16)
+        ];
+      }
+      const rgb = normalized.match(/rgba?\(\s*(\d+)\s*[, ]\s*(\d+)\s*[, ]\s*(\d+)/i);
+      return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : null;
+    }
     function channel(value) {
       const normalized = value / 255;
       return normalized <= 0.04045
@@ -406,11 +433,11 @@ export async function runRoleStateFlow({
         : Math.pow((normalized + 0.055) / 1.055, 2.4);
     }
     function luminance(value) {
-      const match = value.match(/rgba?\((\d+)[, ]+(\d+)[, ]+(\d+)/i);
-      if (!match) return null;
-      return 0.2126 * channel(Number(match[1]))
-        + 0.7152 * channel(Number(match[2]))
-        + 0.0722 * channel(Number(match[3]));
+      const color = parseColor(value);
+      if (!color) return null;
+      return 0.2126 * channel(color[0])
+        + 0.7152 * channel(color[1])
+        + 0.0722 * channel(color[2]);
     }
     function ratio(foreground, background) {
       const left = luminance(foreground);
@@ -418,18 +445,24 @@ export async function runRoleStateFlow({
       if (left === null || right === null) return null;
       return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
     }
-    const elements = [...document.querySelectorAll('.summary-layer-element, .impact-node')]
-      .filter(element => element.getClientRects().length > 0);
-    const ratios = elements.map(element => {
-      const style = getComputedStyle(element);
-      return ratio(style.color, style.backgroundColor);
-    }).filter(value => value !== null);
+    const root = getComputedStyle(document.documentElement);
+    const foreground = root.getPropertyValue('--taxonomy-layer-on-surface').trim();
+    const samples = surfaceTokens.map(token => {
+      const background = root.getPropertyValue(token).trim();
+      return { token, foreground, background, ratio: ratio(foreground, background) };
+    });
+    const validRatios = samples.map(sample => sample.ratio).filter(Number.isFinite);
     return {
-      sampleCount: ratios.length,
-      minimumRatio: ratios.length ? Math.min(...ratios) : null
+      sampleCount: samples.length,
+      missingTokens: samples
+        .filter(sample => !sample.foreground || !sample.background || !Number.isFinite(sample.ratio))
+        .map(sample => sample.token),
+      minimumRatio: validRatios.length ? Math.min(...validRatios) : null,
+      samples
     };
   });
-  assert(architectureContrast.sampleCount > 0
+  assert(architectureContrast.sampleCount === 9
+    && architectureContrast.missingTokens.length === 0
     && architectureContrast.minimumRatio >= 4.5,
   `Architecture layer contrast failed: ${JSON.stringify(architectureContrast)}`);
   passed('contrast-safe architecture layer tokens');
