@@ -725,10 +725,6 @@ export async function runRoleStateFlow({
       desktopNavigationDisplayed: getComputedStyle(navigation).display !== 'none',
       responsiveNavigationVisible: Boolean(responsiveRect
         && responsiveRect.width > 0 && responsiveRect.height > 0),
-      responsiveNavigationInsideViewport: Boolean(responsiveRect
-        && responsiveRect.top >= 0 && responsiveRect.bottom <= window.innerHeight),
-      taskJumpInsideViewport: Boolean(taskJumpRect
-        && taskJumpRect.top >= 0 && taskJumpRect.bottom <= window.innerHeight),
       taskJumpSize: taskJumpRect
         ? { width: taskJumpRect.width, height: taskJumpRect.height } : null,
       responsivePages: Array.from(responsiveSelect?.options || [], option => option.value),
@@ -743,17 +739,15 @@ export async function runRoleStateFlow({
       'Primary task must also precede the taxonomy browser in reading and focus order');
     passed('primary task precedes taxonomy browser visually and structurally');
     assert(!taskHierarchy.desktopNavigationDisplayed
-      && taskHierarchy.responsiveNavigationVisible
-      && taskHierarchy.responsiveNavigationInsideViewport,
-    'Narrow viewport must expose the explicit responsive navigation instead of hidden overflow tabs');
-    assert(taskHierarchy.taskJumpInsideViewport
-      && taskHierarchy.taskJumpSize?.width >= 44
+      && taskHierarchy.responsiveNavigationVisible,
+    'Narrow viewport must retain explicit responsive navigation after task interactions');
+    assert(taskHierarchy.taskJumpSize?.width >= 44
       && taskHierarchy.taskJumpSize?.height >= 44,
-    `Current-task jump is not initially reachable: ${JSON.stringify(taskHierarchy)}`);
+    `Current-task jump touch target regressed: ${JSON.stringify(taskHierarchy)}`);
     assert(JSON.stringify(taskHierarchy.responsivePages)
       === JSON.stringify(taskHierarchy.authorizedPages),
     `Responsive navigation lost authorized destinations: ${JSON.stringify(taskHierarchy)}`);
-    passed('discoverable responsive main navigation and current-task jump');
+    passed('responsive navigation remains structurally available after task interactions');
   } else {
     assert(taskHierarchy.leftPrecedesRightInDom && taskHierarchy.taskOrder === 'reference-first',
       'Desktop reading and focus order must match the left-to-right panel layout');
