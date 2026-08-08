@@ -1,0 +1,58 @@
+name: One-shot lazy-tree search navigation fix
+
+on:
+  push:
+    branches:
+      - qa/issue-611-ui-performance
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-lazy-tree-search-navigation
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: qa/issue-611-ui-performance
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Apply lazy search navigation correction
+        run: python3 .github/scripts/apply-lazy-tree-search-navigation.py
+
+      - name: Verify JavaScript and lazy-tree contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/apply-lazy-tree-search-navigation.py
+          node --check taxonomy-app/src/main/resources/static/js/shared/taxonomy-search.js
+          ./mvnw -B -pl taxonomy-app -am \
+            -Dtest=com.taxonomy.ui.TaxonomyLazyTreeContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          git diff --check
+
+      - name: Commit permanent search navigation correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/src/main/resources/static/js/shared/taxonomy-search.js \
+            taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyLazyTreeContractTest.java
+          git diff --cached --quiet && exit 0
+          git commit -m 'Materialize lazy paths for search navigation'
+          git push origin HEAD:qa/issue-611-ui-performance
