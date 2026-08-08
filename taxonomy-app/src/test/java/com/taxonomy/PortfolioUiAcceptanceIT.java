@@ -69,6 +69,7 @@ class PortfolioUiAcceptanceIT {
 
         browserSession = ContainerTestUtils.startBrowser(network);
         driver = browserSession.driver();
+        driver.manage().window().setSize(new Dimension(1440, 1000));
         driver.setFileDetector(new LocalFileDetector());
         wait = new WebDriverWait(driver, Duration.ofSeconds(120));
         login();
