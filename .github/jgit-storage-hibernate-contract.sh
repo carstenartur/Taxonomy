@@ -7,6 +7,17 @@ candidate_version=${JGIT_STORAGE_HIBERNATE_CANDIDATE_VERSION:-}
 evidence_dir=target/jgit-storage-hibernate-contract
 mkdir -p "$evidence_dir"
 
+printf 'bash %s\n' "$BASH_VERSION" | tee "$evidence_dir/bash-version.log"
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "Taxonomy's storage contract requires Bash 4 or newer." >&2
+  exit 1
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Taxonomy's storage contract requires Python 3." >&2
+  exit 1
+fi
+python3 --version 2>&1 | tee "$evidence_dir/python-version.log"
+
 case "$mode" in
   candidate)
     if [[ -z "$candidate_version" ]]; then
