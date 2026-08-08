@@ -57,7 +57,7 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.fullTextSearch(q, maxResults));
     }
 
-    @Operation(summary = "Semantic search", description = "Search taxonomy nodes using embedding similarity (KNN). Requires LOCAL_ONNX or embedding enabled.", tags = {"Search"})
+    @Operation(summary = "Semantic search", description = "Search taxonomy nodes using embedding similarity (KNN). Requires a ready local embedding index.", tags = {"Search"})
     @GetMapping("/search/semantic")
     public ResponseEntity<List<TaxonomyNodeDto>> semanticSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
@@ -65,6 +65,8 @@ public class SearchApiController {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
+        guard = checkSemanticReady();
+        if (guard != null) return guard;
         return ResponseEntity.ok(searchFacade.semanticSearch(q, maxResults));
     }
 
@@ -86,10 +88,12 @@ public class SearchApiController {
             @Parameter(description = "Maximum number of similar nodes") @RequestParam(defaultValue = "10") int topK) {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
+        guard = checkSemanticReady();
+        if (guard != null) return guard;
         return ResponseEntity.ok(searchFacade.findSimilarNodes(code, topK));
     }
 
-    @Operation(summary = "Embedding model status", description = "Returns the current status of the local embedding model", tags = {"Embedding"})
+    @Operation(summary = "Embedding model status", description = "Returns model and semantic-index readiness independently", tags = {"Embedding"})
     @GetMapping("/embedding/status")
     public ResponseEntity<Map<String, Object>> embeddingStatus() {
         return ResponseEntity.ok(searchFacade.getEmbeddingStatus());
@@ -113,6 +117,16 @@ public class SearchApiController {
             body.put("error", messageSource.getMessage("error.loading", null,
                     "Taxonomy data is still loading. Please wait.", LocaleContextHolder.getLocale()));
             body.put("status", searchFacade.getInitStatus());
+            return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> ResponseEntity<T> checkSemanticReady() {
+        if (!searchFacade.isSemanticSearchReady()) {
+            Map<String, Object> body = new LinkedHashMap<>(searchFacade.getEmbeddingStatus());
+            body.put("error", "Semantic search is not ready yet");
             return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
         }
         return null;

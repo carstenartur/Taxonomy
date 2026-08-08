@@ -29,9 +29,10 @@ import com.taxonomy.model.RelationType;
  * Tests for the semantic/hybrid search infrastructure introduced in Phase 3 of the
  * offline embedding plan (bge-small-en-v1.5 via DJL / Lucene KNN).
  *
- * <p>Note: The DJL model is NOT loaded in unit tests (embedding.enabled=true but the
- * model download is not triggered). All semantic endpoints gracefully return empty lists
- * when the model has not been loaded, which the tests verify.
+ * <p>Note: The DJL model is NOT loaded in these default application tests
+ * (embedding.enabled=true but runtime download is disabled). Direct embedding-service
+ * calls retain graceful degradation, while semantic REST endpoints fail closed with
+ * HTTP 503 until a searchable node index is ready.</p>
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -73,7 +74,7 @@ class SemanticSearchTests {
 
     @Test
     void semanticSearchReturnsEmptyListWhenModelNotLoaded() {
-        // In CI the DJL model is not available; graceful degradation returns empty list.
+        // Direct service use continues to degrade gracefully when no model is available.
         List<TaxonomyNodeDto> results = embeddingService.semanticSearch("satellite communications", 10);
         assertThat(results).isNotNull();
     }
@@ -154,12 +155,13 @@ class SemanticSearchTests {
     }
 
     @Test
-    void semanticSearchEndpointReturnsJsonForValidQuery() throws Exception {
+    void semanticSearchEndpointFailsClosedUntilIndexIsReady() throws Exception {
         mockMvc.perform(get("/api/search/semantic").param("q", "satellite")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
+                .andExpect(status().isServiceUnavailable())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.semanticReady").value(false))
+                .andExpect(jsonPath("$.error").value("Semantic search is not ready yet"));
     }
 
     @Test
@@ -187,11 +189,12 @@ class SemanticSearchTests {
     }
 
     @Test
-    void findSimilarEndpointReturnsJsonArray() throws Exception {
+    void findSimilarEndpointFailsClosedUntilIndexIsReady() throws Exception {
         mockMvc.perform(get("/api/search/similar/BP").accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
+                .andExpect(status().isServiceUnavailable())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.semanticReady").value(false))
+                .andExpect(jsonPath("$.error").value("Semantic search is not ready yet"));
     }
 
     @Test
