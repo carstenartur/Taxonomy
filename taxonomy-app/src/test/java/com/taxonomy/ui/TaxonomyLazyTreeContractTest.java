@@ -26,6 +26,10 @@ class TaxonomyLazyTreeContractTest {
                 .contains("childContainer.dataset.renderState = 'deferred'")
                 .contains("wrapper._taxonomyNode = node")
                 .contains("materializeScoredPaths(scores)")
+                .contains("path.push(node)")
+                .contains("found = path.slice()")
+                .contains("path.pop()")
+                .doesNotContain("path.concat(node)")
                 .doesNotContain("node.children.forEach(child => childContainer.appendChild(buildNodeEl(child, scores)))");
     }
 

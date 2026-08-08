@@ -1105,19 +1105,21 @@
     // of hidden DOM elements. A subtree is materialized only when the user opens
     // it or a scored path needs to become visible.
     function findNodePath(code) {
+        const path = [];
         let found = null;
-        function visit(nodes, path) {
+        function visit(nodes) {
             for (const node of (nodes || [])) {
-                const nextPath = path.concat(node);
+                path.push(node);
                 if (node.code === code) {
-                    found = nextPath;
+                    found = path.slice();
                     return true;
                 }
-                if (visit(node.children || [], nextPath)) { return true; }
+                if (visit(node.children || [])) { return true; }
+                path.pop();
             }
             return false;
         }
-        visit(S.taxonomyData || [], []);
+        visit(S.taxonomyData || []);
         return found || [];
     }
 
