@@ -51,6 +51,10 @@ class TaxonomyOverlayContractTest {
                 .contains(".taxonomy-overlay-lane")
                 .contains("min-width: 44px !important")
                 .contains("min-height: 44px !important")
+                .contains(".taxonomy-overlay-lane > .undo-toast > span")
+                .contains("max-width: 7rem")
+                .contains("text-overflow: ellipsis")
+                .contains("white-space: nowrap")
                 .contains("overscroll-behavior: contain");
     }
 
