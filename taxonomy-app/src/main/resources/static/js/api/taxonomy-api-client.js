@@ -12,6 +12,7 @@ window.TaxonomyApiClient = (function () {
     // Capture that wrapper once, then apply the remaining transport policy here.
     var transportFetch = window.fetch.bind(window);
     var accountContextPromise = null;
+    var responseContexts = new WeakMap();
     var DEFAULT_TIMEOUT_MILLIS = 30000;
     var REQUEST_ID_HEADER = 'X-Request-ID';
 
@@ -113,7 +114,10 @@ window.TaxonomyApiClient = (function () {
     }
 
     function checkStatus(response, context) {
-        if (response.ok) return Promise.resolve(response);
+        if (response.ok) {
+            responseContexts.set(response, context);
+            return Promise.resolve(response);
+        }
         return parseResponseBody(response).then(function (body) {
             var problem = body && typeof body === 'object' ? body : {};
             var detail = problem.detail || problem.message || problem.error
@@ -139,10 +143,11 @@ window.TaxonomyApiClient = (function () {
 
     function parseJson(response) {
         if (response.status === 204) return null;
+        var context = responseContexts.get(response) || {};
         return response.json().catch(function (error) {
             throw new ApiError('Invalid JSON response from server', response.status,
-                response.url, null, {
-                    requestId: responseRequestId(response, null),
+                response.url || context.url, null, {
+                    requestId: responseRequestId(response, context.requestId || null),
                     code: 'INVALID_JSON',
                     cause: error
                 });

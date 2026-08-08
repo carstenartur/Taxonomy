@@ -20,6 +20,8 @@ class TaxonomyApiClientContractTest {
                 .contains("var transportFetch = window.fetch.bind(window)")
                 .contains("prepared.credentials = 'same-origin'")
                 .contains("headers.set(REQUEST_ID_HEADER, requestId)")
+                .contains("var responseContexts = new WeakMap()")
+                .contains("responseRequestId(response, context.requestId || null)")
                 .contains("function createRequestScope(options, validated)")
                 .contains("code: 'TIMEOUT'")
                 .contains("code: 'ABORTED'")

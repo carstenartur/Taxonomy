@@ -6,7 +6,14 @@ const source = await readFile(
   new URL('../../taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js', import.meta.url),
   'utf8'
 );
-const core = source.slice(0, source.indexOf('(function loadAuthenticatedUiSurfaces'));
+const authenticatedSurfaceMarker = '(function loadAuthenticatedUiSurfaces';
+const authenticatedSurfaceIndex = source.indexOf(authenticatedSurfaceMarker);
+assert.notEqual(
+  authenticatedSurfaceIndex,
+  -1,
+  `Missing API client bootstrap marker: ${authenticatedSurfaceMarker}`
+);
+const core = source.slice(0, authenticatedSurfaceIndex);
 
 class TestCustomEvent {
   constructor(type, options = {}) {
@@ -143,6 +150,23 @@ function loadClient(fetchImpl) {
   assert.equal(events[0].detail.url, '/api/admin');
   assert.equal(events[0].detail.requestId, 'client-request-id');
   assert.equal(events[0].detail.code, 'HTTP_ERROR');
+}
+
+
+{
+  const { client } = loadClient(async () => new Response('not-json', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  }));
+  await assert.rejects(
+    client.getJson('/api/invalid-json', { requestId: 'invalid-json-request' }),
+    error => {
+      assert.equal(error.code, 'INVALID_JSON');
+      assert.equal(error.requestId, 'invalid-json-request');
+      assert.equal(error.url, '/api/invalid-json');
+      return true;
+    }
+  );
 }
 
 {
