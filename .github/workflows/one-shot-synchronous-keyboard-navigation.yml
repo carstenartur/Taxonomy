@@ -1,0 +1,45 @@
+name: One-shot synchronous keyboard navigation
+
+on:
+  push:
+    branches:
+      - qa/issue-619-responsive-task-navigation
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: qa/issue-619-responsive-task-navigation
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: python3 .github/scripts/apply-synchronous-keyboard-navigation.py
+      - name: Verify syntax and synchronous ARIA contract
+        run: |
+          set -euo pipefail
+          node --check taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js
+          ./mvnw -B -pl taxonomy-app -am \
+            -Dtest=com.taxonomy.ui.TaxonomyMainNavigationKeyboardContractTest,com.taxonomy.ui.TaxonomyResponsiveNavigationContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          git diff --check
+      - name: Commit permanent correction
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js \
+            taxonomy-app/src/test/java/com/taxonomy/ui/TaxonomyMainNavigationKeyboardContractTest.java
+          git diff --cached --quiet && exit 0
+          git commit -m 'Synchronize main navigation semantics on arrow keys'
+          git push origin HEAD:qa/issue-619-responsive-task-navigation
