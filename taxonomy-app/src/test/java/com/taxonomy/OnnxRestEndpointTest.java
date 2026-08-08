@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @Tag("onnx")
 @SpringBootTest(properties = {
+        "llm.provider=LOCAL_ONNX",
         "embedding.enabled=true",
         "embedding.allow-download=false"
 })
