@@ -80,6 +80,38 @@ for forbidden in 'runAsUser:' 'runAsGroup:' 'fsGroup:' 'fsGroupChangePolicy:'; d
   fi
 done
 
+SMALL_OUTPUT="${TMP_DIR}/small.yaml"
+SMALL_EVIDENCE="${ROOT_DIR}/target/taxonomy-helm-small-rendered.yaml"
+helm lint "${CHART_DIR}" \
+  --values "${CHART_DIR}/values-small.yaml" \
+  "${COMMON_VALUES[@]}"
+helm template taxonomy "${CHART_DIR}" \
+  --namespace taxonomy \
+  --values "${CHART_DIR}/values-small.yaml" \
+  --set "image.tag=${VALID_TAG}" \
+  --set existingSecret=taxonomy-secrets \
+  >"${SMALL_OUTPUT}"
+cp "${SMALL_OUTPUT}" "${SMALL_EVIDENCE}"
+for required in \
+  'cpu: 100m' \
+  'cpu: 500m' \
+  'memory: 768Mi' \
+  'memory: 1536Mi' \
+  'name: TAXONOMY_EMBEDDING_ENABLED' \
+  'value: "false"' \
+  'name: TAXONOMY_SEARCH_DIRECTORY_TYPE' \
+  'value: "local-heap"' \
+  'MaxRAMPercentage=65.0'; do
+  if ! grep -Fq "${required}" "${SMALL_OUTPUT}"; then
+    echo "Rendered small profile is missing required contract: ${required}" >&2
+    exit 1
+  fi
+done
+if grep -Fq 'cpu: "2"' "${SMALL_OUTPUT}"; then
+  echo "Small profile must not inherit the universal two-CPU limit" >&2
+  exit 1
+fi
+
 RANCHER_OUTPUT="${TMP_DIR}/rancher.yaml"
 RANCHER_EVIDENCE="${ROOT_DIR}/target/taxonomy-helm-rancher-rke2-rendered.yaml"
 helm template taxonomy "${CHART_DIR}" \

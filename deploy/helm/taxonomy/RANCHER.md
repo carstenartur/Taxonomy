@@ -1,13 +1,25 @@
 # Rancher / RKE2 deployment
 
-`values-rancher-rke2.yaml` is the supported starting point for a Rancher-managed RKE2 cluster with ingress-nginx. It addresses two common deployment failures:
+`values-rancher-rke2.yaml` is the supported starting point for a Rancher-managed RKE2 cluster with ingress-nginx. `values-small.yaml` is the generic quota-compatible evaluation profile for clusters that do not need Rancher-specific ingress annotations. Both use the same 500-mCPU ceiling; the Rancher profile additionally publishes the application below `/taxonomy/`.
+
+The profiles address two common deployment failures:
 
 - namespace CPU quotas that reject the default `limits.cpu: 2`; and
 - HTTP 404 responses when the application is published below `/taxonomy/` without stripping that external prefix.
 
-## 1. Prepare the values
+## 1. Select and prepare the values
 
-Replace `taxonomy.example.invalid` with the real host. Keep an additional private values file for storage class, TLS and environment-specific settings.
+For a root-path evaluation deployment without ingress-specific overrides, layer the small profile:
+
+```bash
+helm template taxonomy deploy/helm/taxonomy \
+  --namespace taxonomy \
+  --values deploy/helm/taxonomy/values-small.yaml \
+  --set image.tag=sha-<full-commit-sha> \
+  --set existingSecret=taxonomy-secrets
+```
+
+For Rancher/RKE2 with ingress-nginx, use `values-rancher-rke2.yaml`. Replace `taxonomy.example.invalid` with the real host. Keep an additional private values file for storage class, TLS and environment-specific settings.
 
 The profile publishes:
 
@@ -56,7 +68,7 @@ helm upgrade --install taxonomy deploy/helm/taxonomy \
 
 ## CPU quota diagnosis
 
-The profile requests `100m` CPU and limits the pod to `500m`. This reduces quota pressure but cannot create free quota. Inspect all allocations in the namespace:
+The small and Rancher profiles request `100m` CPU and limit the pod to `500m`; memory is requested at `768Mi` and limited to `1536Mi`. Optional embeddings and model download remain disabled. This reduces quota pressure but cannot create free quota. Inspect all allocations in the namespace:
 
 ```bash
 kubectl -n <namespace> describe resourcequota
@@ -85,3 +97,10 @@ curl -fsS https://taxonomy.example.com/taxonomy/actuator/health/readiness
 ```
 
 The readiness response must report `UP`. The application remains behind a `ClusterIP` service; external traffic enters through the Ingress.
+
+
+## Profile scope
+
+The small envelope is intended for one replica, demonstrations and functional validation with the in-memory search backend. It is not a claim that ONNX, embedding-model download, bulk imports or high-concurrency analysis fit this envelope. Measured standard/large profiles and live ResourceQuota validation are tracked in issue #638.
+
+The browser base-path contract is verified independently: the bootstrap script derives `/taxonomy` from its own URL, rewrites root-relative application requests, and leaves already-prefixed or external URLs unchanged. Helm verification locks the matching ingress-nginx regex, rewrite target and `X-Forwarded-Prefix` annotation.

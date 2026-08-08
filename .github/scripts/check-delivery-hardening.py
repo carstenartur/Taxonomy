@@ -15,6 +15,7 @@ CSS = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "css" / 
 I18N = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "js" / "taxonomy-i18n.js"
 UI_EVIDENCE = ROOT / ".github" / "scripts" / "ui-role-state-evidence.mjs"
 RANCHER = ROOT / "deploy" / "helm" / "taxonomy" / "values-rancher-rke2.yaml"
+SMALL = ROOT / "deploy" / "helm" / "taxonomy" / "values-small.yaml"
 MODEL_DOWNLOAD = ROOT / ".github" / "scripts" / "download-embedding-model.sh"
 DOCKERFILE = ROOT / "Dockerfile"
 
@@ -33,6 +34,7 @@ def main() -> int:
     i18n = I18N.read_text(encoding="utf-8")
     ui_evidence = UI_EVIDENCE.read_text(encoding="utf-8")
     rancher = RANCHER.read_text(encoding="utf-8")
+    small = SMALL.read_text(encoding="utf-8")
     model_download = MODEL_DOWNLOAD.read_text(encoding="utf-8")
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     failures: list[str] = []
@@ -120,6 +122,20 @@ def main() -> int:
         "Taxonomy tree viewport is unbounded",
     ):
         require(ui_evidence, needle, UI_EVIDENCE, failures)
+
+    for needle in (
+        'cpu: 100m',
+        'cpu: "500m"',
+        'memory: 768Mi',
+        'memory: 1536Mi',
+        'TAXONOMY_EMBEDDING_ENABLED: "false"',
+        'TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"',
+        'TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap',
+        'MaxRAMPercentage=65.0',
+    ):
+        require(small, needle, SMALL, failures)
+    if 'cpu: "2"' in small:
+        failures.append("values-small.yaml must not use the universal two-CPU limit")
 
     for needle in (
         'nginx.ingress.kubernetes.io/rewrite-target: "/$2"',
