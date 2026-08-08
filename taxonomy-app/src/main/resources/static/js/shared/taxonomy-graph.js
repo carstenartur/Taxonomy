@@ -112,19 +112,27 @@
 
     // ── Force-Directed Graph ─────────────────────────────────────────────────
 
-    var GRAPH_NODE_COLORS = {
-        'Capabilities': '#4A90D9',
-        'Business Processes': '#27AE60',
-        'Business Roles': '#27AE60',
-        'Services': '#F39C12',
-        'COI Services': '#F39C12',
-        'Core Services': '#F39C12',
-        'Applications': '#8E44AD',
-        'User Applications': '#8E44AD',
-        'Information Products': '#3498DB',
-        'Communications Services': '#E74C3C',
-        'Systems': '#6A5ACD',
-        'Components': '#9B59B6'
+    var GRAPH_NODE_COLOR_TOKENS = {
+        'Capabilities': '--taxonomy-layer-cap-surface',
+        'CP': '--taxonomy-layer-cap-surface',
+        'Business Processes': '--taxonomy-layer-proc-surface',
+        'Business Roles': '--taxonomy-layer-proc-surface',
+        'BP': '--taxonomy-layer-proc-surface',
+        'BR': '--taxonomy-layer-proc-surface',
+        'Services': '--taxonomy-layer-svc-surface',
+        'COI Services': '--taxonomy-layer-svc-surface',
+        'Core Services': '--taxonomy-layer-svc-surface',
+        'CI': '--taxonomy-layer-svc-surface',
+        'CR': '--taxonomy-layer-svc-surface',
+        'Applications': '--taxonomy-layer-app-surface',
+        'User Applications': '--taxonomy-layer-app-surface',
+        'UA': '--taxonomy-layer-app-surface',
+        'Information Products': '--taxonomy-layer-info-surface',
+        'IP': '--taxonomy-layer-info-surface',
+        'Communications Services': '--taxonomy-layer-comm-surface',
+        'CO': '--taxonomy-layer-comm-surface',
+        'Systems': '--taxonomy-layer-system-surface',
+        'Components': '--taxonomy-layer-component-surface'
     };
 
     var APQC_LEVEL_COLORS = {
@@ -135,8 +143,29 @@
         'Task':         '#D6EAF8'
     };
 
-    function getNodeColor(taxonomySheet) {
-        return GRAPH_NODE_COLORS[taxonomySheet] || '#6c757d';
+    function resolveGraphNodeColorPalette() {
+        var styles = getComputedStyle(document.documentElement);
+        var tokenNames = new Set(Object.values(GRAPH_NODE_COLOR_TOKENS));
+        tokenNames.add('--taxonomy-layer-default-surface');
+        var palette = {};
+        tokenNames.forEach(function (token) {
+            var value = styles.getPropertyValue(token).trim();
+            if (!/^#[0-9a-fA-F]{6}$/.test(value)) {
+                throw new Error('Missing or invalid required taxonomy color token: ' + token);
+            }
+            palette[token] = value;
+        });
+        return palette;
+    }
+
+    function getNodeColor(taxonomySheet, palette) {
+        var token = GRAPH_NODE_COLOR_TOKENS[taxonomySheet]
+            || '--taxonomy-layer-default-surface';
+        var value = palette[token];
+        if (!value) {
+            throw new Error('Unresolved required taxonomy color token: ' + token);
+        }
+        return value;
     }
 
     var GRAPH_MAX_HEIGHT = 400;
@@ -153,6 +182,7 @@
     function renderForceGraph(container, nodes, edges, originCode) {
         if (typeof d3 === 'undefined' || !nodes || nodes.length === 0) return;
 
+        var nodeColorPalette = resolveGraphNodeColorPalette();
         var width = container.clientWidth || 500;
         var height = Math.min(GRAPH_MAX_HEIGHT, Math.max(GRAPH_MIN_HEIGHT, nodes.length * GRAPH_HEIGHT_PER_NODE));
 
@@ -252,7 +282,7 @@
 
         node.append('circle')
             .attr('r', function (d) { return d.isOrigin ? 12 : 8 + (d.relevance * 4); })
-            .attr('fill', function (d) { return getNodeColor(d.sheet); })
+            .attr('fill', function (d) { return getNodeColor(d.sheet, nodeColorPalette); })
             .attr('stroke', function (d) { return d.isOrigin ? '#000' : '#fff'; })
             .attr('stroke-width', function (d) { return d.isOrigin ? 3 : 1.5; })
             .style('cursor', 'pointer');
@@ -305,7 +335,7 @@
             if (sheet) {
                 legendDiv.append('span').attr('class', 'force-graph-legend-item')
                     .html('<span class="force-graph-legend-dot" style="background:' +
-                        getNodeColor(sheet) + '"></span> ' + sheet);
+                        getNodeColor(sheet, nodeColorPalette) + '"></span> ' + sheet);
             }
         });
         legendDiv.append('span').attr('class', 'force-graph-legend-item')
@@ -344,6 +374,7 @@
     function renderImpactForceGraph(container, nodes, edges, options) {
         if (typeof d3 === 'undefined' || !nodes || nodes.length === 0) return;
 
+        var nodeColorPalette = resolveGraphNodeColorPalette();
         var anchorCodes = options.anchorCodes || new Set();
         var hotspotCodes = options.hotspotCodes || new Set();
         var hotspotReasons = options.hotspotReasons || {};
@@ -492,7 +523,7 @@
                 return Math.max(6, 6 + d.relevance * 8);
             })
             .attr('fill', function (d) {
-                var color = getNodeColor(d.sheet);
+                var color = getNodeColor(d.sheet, nodeColorPalette);
                 var opacity = 0.6 + d.relevance * 0.4;
                 // Convert hex to rgba
                 var r = parseInt(color.slice(1, 3), 16);
@@ -601,7 +632,7 @@
                 var label = (layerConfig[sheet] && layerConfig[sheet].label) ? layerConfig[sheet].label : sheet;
                 legendDiv.append('span').attr('class', 'force-graph-legend-item')
                     .html('<span class="force-graph-legend-dot" style="background:' +
-                        getNodeColor(sheet) + '"></span> ' + label);
+                        getNodeColor(sheet, nodeColorPalette) + '"></span> ' + label);
             }
         });
         legendDiv.append('span').attr('class', 'force-graph-legend-item')

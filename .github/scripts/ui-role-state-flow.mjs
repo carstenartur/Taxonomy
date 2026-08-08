@@ -398,6 +398,74 @@ export async function runRoleStateFlow({
     });
   }
   passed('analysis loading, success and contextual next action');
+  const architectureContrast = await page.evaluate(() => {
+    const surfaceTokens = [
+      '--taxonomy-layer-cap-surface',
+      '--taxonomy-layer-proc-surface',
+      '--taxonomy-layer-svc-surface',
+      '--taxonomy-layer-app-surface',
+      '--taxonomy-layer-info-surface',
+      '--taxonomy-layer-comm-surface',
+      '--taxonomy-layer-system-surface',
+      '--taxonomy-layer-component-surface',
+      '--taxonomy-layer-default-surface'
+    ];
+    function parseColor(value) {
+      const normalized = value.trim();
+      const hex = normalized.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if (hex) {
+        const digits = hex[1].length === 3
+          ? [...hex[1]].map(character => character + character).join('')
+          : hex[1];
+        return [
+          Number.parseInt(digits.slice(0, 2), 16),
+          Number.parseInt(digits.slice(2, 4), 16),
+          Number.parseInt(digits.slice(4, 6), 16)
+        ];
+      }
+      const rgb = normalized.match(/rgba?\(\s*(\d+)\s*[, ]\s*(\d+)\s*[, ]\s*(\d+)/i);
+      return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : null;
+    }
+    function channel(value) {
+      const normalized = value / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : Math.pow((normalized + 0.055) / 1.055, 2.4);
+    }
+    function luminance(value) {
+      const color = parseColor(value);
+      if (!color) return null;
+      return 0.2126 * channel(color[0])
+        + 0.7152 * channel(color[1])
+        + 0.0722 * channel(color[2]);
+    }
+    function ratio(foreground, background) {
+      const left = luminance(foreground);
+      const right = luminance(background);
+      if (left === null || right === null) return null;
+      return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
+    }
+    const root = getComputedStyle(document.documentElement);
+    const foreground = root.getPropertyValue('--taxonomy-layer-on-surface').trim();
+    const samples = surfaceTokens.map(token => {
+      const background = root.getPropertyValue(token).trim();
+      return { token, foreground, background, ratio: ratio(foreground, background) };
+    });
+    const validRatios = samples.map(sample => sample.ratio).filter(Number.isFinite);
+    return {
+      sampleCount: samples.length,
+      missingTokens: samples
+        .filter(sample => !sample.foreground || !sample.background || !Number.isFinite(sample.ratio))
+        .map(sample => sample.token),
+      minimumRatio: validRatios.length ? Math.min(...validRatios) : null,
+      samples
+    };
+  });
+  assert(architectureContrast.sampleCount === 9
+    && architectureContrast.missingTokens.length === 0
+    && architectureContrast.minimumRatio >= 4.5,
+  `Architecture layer contrast failed: ${JSON.stringify(architectureContrast)}`);
+  passed('contrast-safe architecture layer tokens');
   await runAxe('analysis-success');
   await saveState('analysis-success');
 
@@ -477,6 +545,93 @@ export async function runRoleStateFlow({
   assert(await page.evaluate(() => document.activeElement?.id === 'businessText'),
     'Dialog did not restore focus to its invoker');
   passed('dialog focus entry and restoration');
+
+  await page.evaluate(() => {
+    localStorage.removeItem('taxonomy_onboarded');
+    window.TaxonomyOnboarding.init();
+  });
+  const onboarding = page.locator('#onboardingOverlay');
+  await onboarding.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.waitForFunction(() => document.activeElement?.id === 'onboardingDismiss');
+  const onboardingState = await onboarding.evaluate(element => ({
+    tagName: element.tagName,
+    open: element.open,
+    role: element.getAttribute('role'),
+    ariaModal: element.getAttribute('aria-modal'),
+    labelledBy: element.getAttribute('aria-labelledby'),
+    describedBy: element.getAttribute('aria-describedby')
+  }));
+  assert(onboardingState.tagName === 'DIALOG' && onboardingState.open
+    && onboardingState.role === 'dialog' && onboardingState.ariaModal === 'true'
+    && onboardingState.labelledBy === 'onboardingTitle'
+    && onboardingState.describedBy === 'onboardingIntro',
+  `Incomplete onboarding dialog semantics: ${JSON.stringify(onboardingState)}`);
+  await runAxe('onboarding-open');
+  await saveState('onboarding-open');
+  await page.keyboard.press('Escape');
+  await onboarding.waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.activeElement?.id === 'businessText');
+  passed('onboarding modal semantics, Escape close and focus restoration');
+
+  await page.evaluate(() => {
+    for (const index of [1, 2]) {
+      const toast = document.createElement('div');
+      toast.className = 'undo-toast';
+      toast.dataset.qaOverlayToast = String(index);
+      const message = document.createElement('span');
+      message.textContent = `QA notification ${index}`;
+      const undo = document.createElement('button');
+      undo.type = 'button';
+      undo.className = 'undo-btn';
+      undo.textContent = 'Undo';
+      toast.append(message, undo);
+      document.body.appendChild(toast);
+    }
+  });
+  await page.waitForFunction(() =>
+    document.querySelectorAll('#taxonomyOverlayLane > [data-qa-overlay-toast]').length === 2);
+  await businessText.scrollIntoViewIfNeeded();
+  await businessText.focus();
+  const overlayRefreshVersion = await page.evaluate(() => {
+    const lane = document.getElementById('taxonomyOverlayLane');
+    const previous = Number.parseInt(lane?.dataset.refreshVersion || '0', 10);
+    window.TaxonomyOnboarding.refreshOverlayLane();
+    return previous;
+  });
+  await page.waitForFunction(previous => {
+    const current = Number.parseInt(
+      document.getElementById('taxonomyOverlayLane')?.dataset.refreshVersion || '0', 10);
+    return current > previous;
+  }, overlayRefreshVersion);
+  const overlayGeometry = await page.evaluate(() => {
+    const lane = document.getElementById('taxonomyOverlayLane');
+    const toasts = [...lane.querySelectorAll('[data-qa-overlay-toast]')];
+    const rects = toasts.map(toast => toast.getBoundingClientRect());
+    const overlaps = rects.length === 2
+      && rects[0].left < rects[1].right && rects[0].right > rects[1].left
+      && rects[0].top < rects[1].bottom && rects[0].bottom > rects[1].top;
+    const undoRect = toasts[0].querySelector('.undo-btn').getBoundingClientRect();
+    return {
+      position: lane.dataset.position,
+      toastCount: toasts.length,
+      overlaps,
+      undoWidth: undoRect.width,
+      undoHeight: undoRect.height,
+      activeUnobscured: window.TaxonomyOnboarding.isElementUnobscured(document.activeElement)
+    };
+  });
+  assert(overlayGeometry.toastCount === 2 && !overlayGeometry.overlaps,
+    `Overlay lane collision: ${JSON.stringify(overlayGeometry)}`);
+  assert(overlayGeometry.undoWidth >= 44 && overlayGeometry.undoHeight >= 44,
+    `Undo touch target is too small: ${JSON.stringify(overlayGeometry)}`);
+  assert(overlayGeometry.activeUnobscured,
+    `Focused control is obscured by overlay lane at ${overlayGeometry.position}`);
+  await runAxe('overlay-lane');
+  await saveState('overlay-lane');
+  await page.evaluate(() => {
+    document.querySelectorAll('[data-qa-overlay-toast]').forEach(toast => toast.remove());
+  });
+  passed('collision-safe overlay lane and touch targets');
 
   const operationalWasOpen = await page.locator('#operationalContextDetails').evaluate(el => el.open);
   await page.keyboard.press('Alt+Shift+O');
