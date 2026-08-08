@@ -46,9 +46,14 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "solution_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "product_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "project_conflict")).isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "slug")).isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_branch")).isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "relationship_type")).isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("0", "1", "2");
+                .containsExactly("0", "1", "2", "3");
     }
 
     @Test
@@ -72,8 +77,14 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "project_requirement")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "analysis_snapshot_id"))
                 .isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_repository_id"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_branch"))
+                .isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("1", "2");
+                .containsExactly("1", "2", "3");
     }
 
     @Test

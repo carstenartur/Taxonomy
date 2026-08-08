@@ -68,6 +68,14 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.PUT, "/api/workspace/**").hasRole("ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/workspace/**").hasRole("ADMIN");
 
+        auth.requestMatchers(HttpMethod.GET, "/api/repositories/**").authenticated();
+        auth.requestMatchers(HttpMethod.POST, "/api/repositories")
+                .hasRole("ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/repositories/*/workspaces")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/repositories/*/forks")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+
         auth.requestMatchers(HttpMethod.POST, "/api/import/preview/**")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/import/**").hasAnyRole("ARCHITECT", "ADMIN");

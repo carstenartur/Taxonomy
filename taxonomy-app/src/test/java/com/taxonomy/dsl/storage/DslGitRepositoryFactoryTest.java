@@ -1,20 +1,19 @@
 package com.taxonomy.dsl.storage;
 
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
-/**
- * Unit tests for {@link DslGitRepositoryFactory}.
- *
- * <p>Verifies that the factory creates distinct repository instances
- * per workspace, caches them correctly, and resolves workspace contexts.
- * Uses in-memory repositories (null SessionFactory) for isolation.
- */
+/** Unit tests for {@link DslGitRepositoryFactory}. */
 class DslGitRepositoryFactoryTest {
 
     private DslGitRepositoryFactory factory;
@@ -29,6 +28,16 @@ class DslGitRepositoryFactoryTest {
         DslGitRepository first = factory.getSystemRepository();
         DslGitRepository second = factory.getSystemRepository();
         assertSame(first, second, "System repository should be cached");
+    }
+
+    @Test
+    void getCentralRepository_isStableAndIsolatedByRepositoryId() {
+        DslGitRepository first = factory.getCentralRepository("repo-a");
+        DslGitRepository again = factory.getCentralRepository("repo-a");
+        DslGitRepository other = factory.getCentralRepository("repo-b");
+
+        assertSame(first, again);
+        assertNotSame(first, other);
     }
 
     @Test
@@ -61,22 +70,49 @@ class DslGitRepositoryFactoryTest {
     }
 
     @Test
-    void resolveRepository_nullContext_returnsSystemRepo() {
-        DslGitRepository result = factory.resolveRepository(null);
+    void resolveRepository_nullLegacyContext_returnsSystemRepo() {
+        DslGitRepository result = factory.resolveRepository((WorkspaceContext) null);
         assertSame(factory.getSystemRepository(), result);
     }
 
     @Test
-    void resolveRepository_sharedContext_returnsSystemRepo() {
+    void resolveRepository_sharedLegacyContext_returnsSystemRepo() {
         DslGitRepository result = factory.resolveRepository(WorkspaceContext.SHARED);
         assertSame(factory.getSystemRepository(), result);
     }
 
     @Test
-    void resolveRepository_workspaceContext_returnsWorkspaceRepo() {
+    void resolveRepository_legacyWorkspaceContext_returnsWorkspaceRepo() {
         WorkspaceContext ctx = new WorkspaceContext("alice", "ws-abc", "main");
         DslGitRepository result = factory.resolveRepository(ctx);
         assertSame(factory.getWorkspaceRepository("ws-abc"), result);
+    }
+
+    @Test
+    void explicitWorkspaceContextNeverInfersPrimarySeed() throws IOException {
+        factory.getSystemRepository().commitDsl(
+                "draft", "meta { language: \"primary\"; }", "system", "primary");
+
+        RepositoryContext context = new RepositoryContext(
+                "repo-a", "explicit-workspace", "main", "alice", RepositoryScope.WORKSPACE);
+        DslGitRepository workspace = factory.resolveRepository(context);
+
+        assertNull(workspace.getDslAtHead("draft"),
+                "Explicit context must not seed an unknown workspace from the primary repository");
+    }
+
+    @Test
+    void createWorkspaceRepositorySeedsFromSelectedCentralRepository() throws IOException {
+        String dsl = "meta { language: \"selected\"; }";
+        factory.getCentralRepository("repo-a")
+                .commitDsl("main", dsl, "alice", "source");
+        factory.getCentralRepository("repo-b")
+                .commitDsl("main", "meta { language: \"other\"; }", "bob", "other");
+
+        DslGitRepository workspace =
+                factory.createWorkspaceRepository("working-copy", "repo-a", "main");
+
+        assertEquals(dsl, workspace.getDslAtHead("draft"));
     }
 
     @Test
@@ -87,11 +123,8 @@ class DslGitRepositoryFactoryTest {
         String dsl = "meta { language: \"taxdsl\"; }";
         repoA.commitDsl("main", dsl, "alice", "initial");
 
-        // repoB should not see repoA's commit
         assertNull(repoB.getDslAtHead("main"),
                 "Commit in workspace A should be invisible in workspace B");
-
-        // repoA should see its own commit
         assertEquals(dsl, repoA.getDslAtHead("main"),
                 "Commit in workspace A should be visible in workspace A");
     }
@@ -104,7 +137,6 @@ class DslGitRepositoryFactoryTest {
         String dsl = "meta { language: \"taxdsl\"; }";
         wsRepo.commitDsl("main", dsl, "bob", "workspace commit");
 
-        // System repo should not see workspace commit
         assertNull(sysRepo.getDslAtHead("main"),
                 "Workspace commit should be invisible in system repo");
     }
