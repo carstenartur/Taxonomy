@@ -11,7 +11,7 @@ if ! command -v helm >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$(dirname "${OUTPUT_FILE}")"
+mkdir -p "$(dirname "${OUTPUT_FILE}")" "${ROOT_DIR}/target"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
