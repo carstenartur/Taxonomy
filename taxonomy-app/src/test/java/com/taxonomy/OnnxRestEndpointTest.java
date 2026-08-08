@@ -1,5 +1,8 @@
 package com.taxonomy;
 
+import com.taxonomy.search.LocalOnnxIndexInitializer;
+import com.taxonomy.shared.service.LocalEmbeddingService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,7 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import java.time.Duration;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -29,22 +32,50 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WithMockUser(roles = "ADMIN")
 class OnnxRestEndpointTest {
 
+    private static final Duration SEMANTIC_READY_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration READINESS_POLL_INTERVAL = Duration.ofMillis(250);
+
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private LocalEmbeddingService embeddingService;
 
+    @Autowired
+    private LocalOnnxIndexInitializer indexInitializer;
+
+    @BeforeEach
+    void awaitSemanticIndexReadiness() throws Exception {
+        long deadline = System.nanoTime() + SEMANTIC_READY_TIMEOUT.toNanos();
+        while (!indexInitializer.isNodeSearchReady()) {
+            if (indexInitializer.getState() == LocalOnnxIndexInitializer.State.FAILED) {
+                throw new AssertionError("LOCAL_ONNX semantic index failed before REST verification: "
+                        + indexInitializer.getDetail()
+                        + "; indexedNodes=" + embeddingService.indexedNodeCount());
+            }
+            if (System.nanoTime() >= deadline) {
+                throw new AssertionError("LOCAL_ONNX semantic index did not become ready within "
+                        + SEMANTIC_READY_TIMEOUT
+                        + "; state=" + indexInitializer.getState()
+                        + "; detail=" + indexInitializer.getDetail()
+                        + "; indexedNodes=" + embeddingService.indexedNodeCount());
+            }
+            Thread.sleep(READINESS_POLL_INTERVAL.toMillis());
+        }
+    }
+
     @Test
     void embeddingStatusEndpointIsOk() throws Exception {
-        // trigger model load so the status reports available=true
-        embeddingService.embed("warm-up");
-
         mockMvc.perform(get("/api/embedding/status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.modelAvailable").value(true))
                 .andExpect(jsonPath("$.available").value(true))
-                .andExpect(jsonPath("$.indexedNodes").isNumber());
+                .andExpect(jsonPath("$.semanticReady").value(true))
+                .andExpect(jsonPath("$.indexedNodes").value(
+                        org.hamcrest.Matchers.greaterThan(0)))
+                .andExpect(jsonPath("$.indexedNodesAtReadiness").value(
+                        org.hamcrest.Matchers.greaterThan(0)));
     }
 
     @Test
