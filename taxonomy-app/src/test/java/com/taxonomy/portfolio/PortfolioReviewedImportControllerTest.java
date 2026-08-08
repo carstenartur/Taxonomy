@@ -15,7 +15,6 @@ import com.taxonomy.portfolio.service.PortfolioReviewedImportService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -45,12 +44,6 @@ class PortfolioReviewedImportControllerTest {
     private final WorkspaceContext context =
             new WorkspaceContext("architect", "ws-architect", "feature/reviewed-import");
 
-    @BeforeEach
-    void configureWorkspace() {
-        when(workspaceResolver.resolveCurrentUsername()).thenReturn(context.username());
-        when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
-    }
-
     @Test
     void missingItemsFailBeforeWorkspaceOrServiceResolution() {
         var controller = controller(10, 1_000);
@@ -61,8 +54,7 @@ class PortfolioReviewedImportControllerTest {
 
         for (ReviewedImportRequest request : invalidRequests) {
             PortfolioException error = catchThrowableOfType(
-                    PortfolioException.class,
-                    () -> controller.importReviewed(41L, request));
+                    () -> controller.importReviewed(41L, request), PortfolioException.class);
 
             assertThat(error.getKind()).isEqualTo(PortfolioException.Kind.VALIDATION);
             assertThat(error).hasMessage("At least one reviewed import item is required");
@@ -77,8 +69,7 @@ class PortfolioReviewedImportControllerTest {
                 item("REQ-2", "two", null)), false);
 
         PortfolioException error = catchThrowableOfType(
-                PortfolioException.class,
-                () -> controller.importReviewed(41L, request));
+                () -> controller.importReviewed(41L, request), PortfolioException.class);
 
         assertThat(error.getKind()).isEqualTo(PortfolioException.Kind.VALIDATION);
         assertThat(error).hasMessage("Reviewed import contains more than 1 items");
@@ -93,8 +84,7 @@ class PortfolioReviewedImportControllerTest {
         var request = request(List.of(item("REQ-1", "abc", source)), false);
 
         PortfolioException error = catchThrowableOfType(
-                PortfolioException.class,
-                () -> controller.importReviewed(41L, request));
+                () -> controller.importReviewed(41L, request), PortfolioException.class);
 
         assertThat(error.getKind()).isEqualTo(PortfolioException.Kind.VALIDATION);
         assertThat(error).hasMessage("Reviewed import exceeds 5 text characters");
@@ -103,6 +93,7 @@ class PortfolioReviewedImportControllerTest {
 
     @Test
     void nullItemsTextAndSourceAreCountedSafely() {
+        stubWorkspace();
         var controller = controller(10, 1);
         List<ReviewedImportItem> items = Arrays.asList(
                 null,
@@ -129,15 +120,13 @@ class PortfolioReviewedImportControllerTest {
                 item("REQ-1", "a", null),
                 item("REQ-2", "b", null)), false);
         PortfolioException itemError = catchThrowableOfType(
-                PortfolioException.class,
-                () -> itemLimited.importReviewed(41L, tooMany));
+                () -> itemLimited.importReviewed(41L, tooMany), PortfolioException.class);
         assertThat(itemError).hasMessage("Reviewed import contains more than 1 items");
 
         var characterLimited = controller(100, 0);
         var tooLong = request(List.of(item("REQ-3", "ab", null)), false);
         PortfolioException characterError = catchThrowableOfType(
-                PortfolioException.class,
-                () -> characterLimited.importReviewed(41L, tooLong));
+                () -> characterLimited.importReviewed(41L, tooLong), PortfolioException.class);
         assertThat(characterError).hasMessage("Reviewed import exceeds 1 text characters");
 
         verifyNoInteractions(importService, analysisService, workspaceResolver);
@@ -145,6 +134,7 @@ class PortfolioReviewedImportControllerTest {
 
     @Test
     void importWithoutRequestedAnalysisReturnsCreatedAndPreservesContext() {
+        stubWorkspace();
         var controller = controller(10, 1_000);
         var request = request(List.of(item("REQ-1", "text", null)), false);
         RequirementView created = requirement(7L);
@@ -172,6 +162,7 @@ class PortfolioReviewedImportControllerTest {
 
     @Test
     void requestedAnalysisIsNotEnqueuedWhenNoRequirementWasAffected() {
+        stubWorkspace();
         var controller = controller(10, 1_000);
         var request = request(List.of(item("REQ-1", "text", null)), true);
         when(importService.persist(
@@ -190,6 +181,7 @@ class PortfolioReviewedImportControllerTest {
 
     @Test
     void requestedAnalysisReturnsAcceptedLocationAndDeduplicatedRequest() {
+        stubWorkspace();
         var controller = controller(10, 1_000);
         var request = new ReviewedImportRequest(
                 List.of(item("REQ-1", "text", null)),
@@ -234,6 +226,11 @@ class PortfolioReviewedImportControllerTest {
         assertThat(analysisRequest.idempotencyKey()).isEqualTo("review-import-key");
         verify(workspaceResolver).resolveCurrentUsername();
         verify(workspaceResolver).resolveCurrentContext();
+    }
+
+    private void stubWorkspace() {
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn(context.username());
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
     }
 
     private PortfolioReviewedImportController controller(int maximumItems,
