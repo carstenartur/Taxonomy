@@ -9,9 +9,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.ObjectPostProcessor;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
@@ -54,6 +56,7 @@ public class KeycloakSecurityConfig {
             .authorizeHttpRequests(auth -> authRules.configure(auth))
             .csrf(csrf -> csrf.ignoringRequestMatchers(csrfExempt))
             .headers(headers -> headers
+                .withObjectPostProcessor(eagerHeaderWriter())
                 .contentTypeOptions(Customizer.withDefaults())
                 .frameOptions(frame -> frame.sameOrigin())
                 .httpStrictTransportSecurity(hsts -> hsts
@@ -69,6 +72,16 @@ public class KeycloakSecurityConfig {
             .logout(logout -> logout.logoutSuccessHandler(logoutHandler));
 
         return http.build();
+    }
+
+    private static ObjectPostProcessor<HeaderWriterFilter> eagerHeaderWriter() {
+        return new ObjectPostProcessor<>() {
+            @Override
+            public <O extends HeaderWriterFilter> O postProcess(O filter) {
+                filter.setShouldWriteHeadersEagerly(true);
+                return filter;
+            }
+        };
     }
 
     private static boolean isStatelessBearerApiClient(HttpServletRequest request) {
