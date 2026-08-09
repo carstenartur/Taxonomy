@@ -281,7 +281,7 @@ public class JgitStorageSchemaMigrationConfig {
         requireSafePackRows(dataSource, false);
         requireCurrentCoreColumnLengths(schema);
         requireRepositoryLockTable(schema);
-        requireCurrentCoreIndexes(schema);
+        requireMigratableCurrentCoreIndexes(schema);
         log.info(
                 "Establishing Flyway history for an exact unversioned 0.1.14.2-0.1.17 schema on {}",
                 family.displayName());
@@ -466,7 +466,7 @@ public class JgitStorageSchemaMigrationConfig {
         }
         if (schema.packColumns().equals(PRE_PACK_DESCRIPTION_PACK_COLUMNS)) {
             requireRepositoryLockTable(schema);
-            requireCurrentCoreIndexes(schema);
+            requireMigratableCurrentCoreIndexes(schema);
             return;
         }
         if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
@@ -567,16 +567,8 @@ public class JgitStorageSchemaMigrationConfig {
                 List.of("REPOSITORY_NAME", "REF_NAME"));
     }
 
-    /**
-     * Validate the actual managed lookup paths rather than redundant exact indexes.
-     *
-     * <p>Since Core 0.1.17 the unique pack identity index supplies the left prefixes
-     * {@code (repository_name)} and {@code (repository_name, pack_name)}, while the
-     * ordered reflog index extends {@code (repository_name, ref_name)} with the row id.
-     * Older released schemas remain valid because their exact indexes satisfy the same
-     * left-prefix contract.</p>
-     */
-    private static void requireManagedCoreIndexes(SchemaSnapshot schema) {
+    /** Validate the pack lookup paths shared by every managed post-0.1.5 schema. */
+    private static void requireManagedPackIndexes(SchemaSnapshot schema) {
         requireIndexPrefix(
                 "git_packs",
                 schema.packIndexes(),
@@ -591,10 +583,13 @@ public class JgitStorageSchemaMigrationConfig {
                 schema.packIndexes(),
                 false,
                 List.of("REPOSITORY_NAME", "COMMITTED"));
-        requireReleasedReflogLookupIndex(schema);
     }
 
-    private static void requireReleasedReflogLookupIndex(SchemaSnapshot schema) {
+    /**
+     * Accept released historical reflog indexes before Flyway advances the schema.
+     * A schema already carrying the 0.9.1 reference key must already carry its final index.
+     */
+    private static void requireMigratableReflogIndex(SchemaSnapshot schema) {
         if (hasReflogReferenceKey(schema)) {
             requireIndexPrefix(
                     "git_reflog",
@@ -608,12 +603,38 @@ public class JgitStorageSchemaMigrationConfig {
                 List.of("REPOSITORY_NAME", "REF_NAME"));
     }
 
+    /** Require the lookup path produced by the released migration stream. */
+    private static void requireCurrentReflogIndex(SchemaSnapshot schema) {
+        if (hasReflogReferenceKey(schema)) {
+            requireIndexPrefix(
+                    "git_reflog",
+                    schema.reflogIndexes(),
+                    List.of("REPOSITORY_NAME", "REF_NAME_KEY", "ID"));
+            return;
+        }
+        requireIndexPrefix(
+                "git_reflog",
+                schema.reflogIndexes(),
+                List.of("REPOSITORY_NAME", "REF_NAME", "ID"));
+    }
+
     private static void requirePreWriteLeaseCoreIndexes(SchemaSnapshot schema) {
-        requireManagedCoreIndexes(schema);
+        requireManagedPackIndexes(schema);
+        requireMigratableReflogIndex(schema);
+    }
+
+    private static void requireMigratableCurrentCoreIndexes(SchemaSnapshot schema) {
+        requirePreWriteLeaseCoreIndexes(schema);
+        requireIndex(
+                "git_packs",
+                schema.packIndexes(),
+                false,
+                List.of("REPOSITORY_NAME", "COMMITTED", "WRITE_LEASE_UNTIL"));
     }
 
     private static void requireCurrentCoreIndexes(SchemaSnapshot schema) {
-        requirePreWriteLeaseCoreIndexes(schema);
+        requireManagedPackIndexes(schema);
+        requireCurrentReflogIndex(schema);
         requireIndex(
                 "git_packs",
                 schema.packIndexes(),
