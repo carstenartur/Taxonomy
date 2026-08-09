@@ -3,9 +3,9 @@ package com.taxonomy.workspace.service;
 /**
  * Explicit routing identity for every repository-sensitive operation.
  *
- * <p>The repository ID, branch, username and scope are mandatory. A central
- * context has no workspace ID; a workspace context must identify the isolated
- * working copy derived from the selected repository.</p>
+ * <p>The repository ID, branch, username and scope are mandatory. Central and
+ * fork contexts have no workspace ID; a workspace context must identify the
+ * isolated working copy derived from the selected repository.</p>
  */
 public record RepositoryContext(
         String repositoryId,
@@ -27,9 +27,9 @@ public record RepositoryContext(
         if (scope == RepositoryScope.WORKSPACE && workspaceId == null) {
             throw new IllegalArgumentException("workspaceId is required for WORKSPACE scope");
         }
-        if (scope == RepositoryScope.CENTRAL_READ && workspaceId != null) {
+        if (scope != RepositoryScope.WORKSPACE && workspaceId != null) {
             throw new IllegalArgumentException(
-                    "workspaceId must be absent for CENTRAL_READ scope");
+                    "workspaceId must be absent outside WORKSPACE scope");
         }
     }
 
@@ -37,6 +37,12 @@ public record RepositoryContext(
             String repositoryId, String branch, String username) {
         return new RepositoryContext(
                 repositoryId, null, branch, username, RepositoryScope.CENTRAL_READ);
+    }
+
+    public static RepositoryContext centralWrite(
+            String repositoryId, String branch, String username) {
+        return new RepositoryContext(
+                repositoryId, null, branch, username, RepositoryScope.CENTRAL_WRITE);
     }
 
     public static RepositoryContext workspace(
