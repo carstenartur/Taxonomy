@@ -766,12 +766,18 @@
         switch (S.currentView) {
             case 'list':
                 renderTree(data, scores);
-                if (scores) { SC().expandMatched(scores); }
+                if (scores) {
+                    materializeScoredPaths(scores);
+                    SC().expandMatched(scores);
+                }
                 document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'list');
                 break;
             case 'tabs':
                 renderTabsView(data, scores);
-                if (scores) { SC().expandMatched(scores); }
+                if (scores) {
+                    materializeScoredPaths(scores);
+                    SC().expandMatched(scores);
+                }
                 document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'tabs');
                 break;
             case 'sunburst':
@@ -1094,6 +1100,96 @@
         }
     }
 
+    // ── Incremental tree materialization ─────────────────────────────────────
+    // Collapsed descendants are represented by their source node, not thousands
+    // of hidden DOM elements. A subtree is materialized only when the user opens
+    // it or a scored path needs to become visible.
+    function findNodePath(code) {
+        const path = [];
+        let found = null;
+        function visit(nodes) {
+            for (const node of (nodes || [])) {
+                path.push(node);
+                if (node.code === code) {
+                    found = path.slice();
+                    return true;
+                }
+                if (visit(node.children || [])) { return true; }
+                path.pop();
+            }
+            return false;
+        }
+        visit(S.taxonomyData || []);
+        return found || [];
+    }
+
+    function materializeChildren(wrapper, scores) {
+        if (!wrapper) { return null; }
+        const childContainer = wrapper.querySelector(':scope > .tax-children');
+        if (!childContainer) { return null; }
+        if (childContainer.dataset.renderState !== 'deferred') { return childContainer; }
+
+        const sourceNode = wrapper._taxonomyNode;
+        const children = sourceNode && Array.isArray(sourceNode.children)
+            ? sourceNode.children : [];
+        childContainer.dataset.renderState = 'materializing';
+        const fragment = document.createDocumentFragment();
+        children.forEach(child => fragment.appendChild(buildNodeEl(child, scores)));
+        childContainer.appendChild(fragment);
+        childContainer.dataset.renderState = 'ready';
+        return childContainer;
+    }
+
+    function ensureNodeRendered(code, scores) {
+        const tree = document.getElementById('taxonomyTree');
+        if (!tree || !code) { return null; }
+        let target = tree.querySelector('[data-code="' + CSS.escape(code) + '"]');
+        if (target) { return target; }
+
+        const path = findNodePath(code);
+        if (path.length === 0) { return null; }
+        let parentEl = null;
+        for (let i = 0; i < path.length; i++) {
+            const current = path[i];
+            let currentEl = tree.querySelector('[data-code="' + CSS.escape(current.code) + '"]');
+            if (!currentEl && parentEl) {
+                materializeChildren(parentEl, scores);
+                currentEl = parentEl.querySelector(
+                    ':scope > .tax-children > [data-code="' + CSS.escape(current.code) + '"]');
+            }
+            // In tabs view the taxonomy root is represented by the tab itself,
+            // while its direct children are the first treeitems in the pane.
+            if (!currentEl && S.currentView === 'tabs' && i === 0) { continue; }
+            if (!currentEl) { return null; }
+            parentEl = currentEl;
+        }
+        return tree.querySelector('[data-code="' + CSS.escape(code) + '"]');
+    }
+
+    function materializeScoredPaths(scores) {
+        if (!scores) { return; }
+        Object.entries(scores).forEach(function (entry) {
+            if (entry[1] > 0) { ensureNodeRendered(entry[0], scores); }
+        });
+    }
+
+    function materializeAllTaxonomyNodes(scores) {
+        const tree = document.getElementById('taxonomyTree');
+        if (!tree) { return; }
+        let deferred = Array.from(
+            tree.querySelectorAll('.tax-children[data-render-state="deferred"]'));
+        while (deferred.length > 0) {
+            deferred.forEach(function (group) {
+                const wrapper = group.parentElement;
+                if (wrapper && wrapper.classList.contains('tax-node')) {
+                    materializeChildren(wrapper, scores);
+                }
+            });
+            deferred = Array.from(
+                tree.querySelectorAll('.tax-children[data-render-state="deferred"]'));
+        }
+    }
+
     function buildNodeEl(node, scores) {
         const hasChildren = node.children && node.children.length > 0;
         const pct = scores ? (scores[node.code] !== undefined ? scores[node.code] : null) : null;
@@ -1102,6 +1198,7 @@
         const wrapper = document.createElement('div');
         wrapper.className = 'tax-node tax-level-' + node.level;
         wrapper.dataset.code = node.code;
+        wrapper._taxonomyNode = node;
 
         // ARIA treeview role (WCAG 4.1.2)
         wrapper.setAttribute('role', 'treeitem');
@@ -1257,13 +1354,14 @@
             wrapper.appendChild(desc);
         }
 
-        // Children container
+        // Children container. Descendants remain deferred while collapsed;
+        // materializeChildren() creates only the next requested level.
         if (hasChildren) {
             const childContainer = document.createElement('div');
             childContainer.className = 'tax-children';
             childContainer.setAttribute('role', 'group');
+            childContainer.dataset.renderState = 'deferred';
             childContainer.style.display = 'none'; // collapsed by default
-            node.children.forEach(child => childContainer.appendChild(buildNodeEl(child, scores)));
             wrapper.appendChild(childContainer);
         }
 
@@ -1271,9 +1369,12 @@
     }
 
     function toggleNode(wrapper, toggleEl) {
-        const children = wrapper.querySelector(':scope > .tax-children');
+        let children = wrapper.querySelector(':scope > .tax-children');
         if (!children) return;
         const isHidden = children.style.display === 'none';
+        if (isHidden) {
+            children = materializeChildren(wrapper, S.currentScores) || children;
+        }
 
         if (isHidden && S.interactiveMode && S.storedBusinessText) {
             const code = wrapper.dataset.code;
@@ -1413,6 +1514,7 @@
                 if (children) {
                     children.style.display = '';
                     toggle.textContent = '▼';
+                    wrapper.setAttribute('aria-expanded', 'true');
                 }
 
                 // Update currentScores
@@ -1434,11 +1536,13 @@
                 if (children) {
                     children.style.display = '';
                     toggle.textContent = '▼';
+                    wrapper.setAttribute('aria-expanded', 'true');
                 }
             });
     }
 
     function expandAll() {
+        materializeAllTaxonomyNodes(S.currentScores);
         document.querySelectorAll('.tax-children').forEach(el => {
             el.style.display = '';
         });
@@ -2039,6 +2143,8 @@
         S.currentReasons = {};
 
         renderView(S.taxonomyData, null);
+        // Manual scoring is an explicit expert action over the complete taxonomy.
+        materializeAllTaxonomyNodes(null);
         addManualScoreInputs();
 
         showStatus('info', t('browse.manual.mode.info'));
@@ -2125,7 +2231,10 @@
         showStatus: showStatus,
         clearStatus: clearStatus,
         escapeHtml: escapeHtml,
-        updateExportGroupVisibility: updateExportGroupVisibility
+        updateExportGroupVisibility: updateExportGroupVisibility,
+        ensureNodeRendered: ensureNodeRendered,
+        materializeChildren: materializeChildren,
+        materializeAllTaxonomyNodes: materializeAllTaxonomyNodes
     };
 
 })();

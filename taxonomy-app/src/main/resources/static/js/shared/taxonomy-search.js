@@ -254,6 +254,11 @@
     }
 
     function revealNodeInTree(code) {
+        if (window.TaxonomyBrowse && window.TaxonomyBrowse.ensureNodeRendered) {
+            window.TaxonomyBrowse.ensureNodeRendered(
+                code,
+                window.TaxonomyState ? window.TaxonomyState.currentScores : null);
+        }
         var node = Array.from(document.querySelectorAll('.tax-node'))
             .find(function (candidate) {
                 return candidate.dataset && candidate.dataset.code === code;

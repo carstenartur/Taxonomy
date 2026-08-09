@@ -25,6 +25,7 @@ public class I18nConfig {
             "messages_jgit_storage",
             "messages_observability",
             "messages_portfolio",
+            "messages_search",
             "messages_task_focus");
 
     @Bean

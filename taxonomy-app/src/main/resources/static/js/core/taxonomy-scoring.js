@@ -11,25 +11,25 @@
     // ── Architecture Summary View ─────────────────────────────────────────────
     var LAYER_CONFIG = {
         // Full sheet names (used by fallback HTML and future backend changes)
-        'Capabilities':           { order: 1, cls: 'layer-cap',  icon: '🔵', label: 'Capabilities' },
-        'Business Processes':     { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Processes' },
-        'Business Roles':         { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Roles' },
-        'Services':               { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'Services' },
-        'COI Services':           { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'COI Services' },
-        'Core Services':          { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'Core Services' },
-        'Applications':           { order: 4, cls: 'layer-app',  icon: '🟣', label: 'Applications' },
-        'User Applications':      { order: 4, cls: 'layer-app',  icon: '🟣', label: 'User Applications' },
-        'Information Products':   { order: 5, cls: 'layer-info', icon: '🔷', label: 'Information Products' },
-        'Communications Services':{ order: 6, cls: 'layer-comm', icon: '🔴', label: 'Communications Services' },
+        'Capabilities':           { order: 1, cls: 'layer-cap',  icon: '◆', label: 'Capabilities' },
+        'Business Processes':     { order: 2, cls: 'layer-proc', icon: '▰', label: 'Business Processes' },
+        'Business Roles':         { order: 2, cls: 'layer-proc', icon: '▰', label: 'Business Roles' },
+        'Services':               { order: 3, cls: 'layer-svc',  icon: '⬡', label: 'Services' },
+        'COI Services':           { order: 3, cls: 'layer-svc',  icon: '⬡', label: 'COI Services' },
+        'Core Services':          { order: 3, cls: 'layer-svc',  icon: '⬡', label: 'Core Services' },
+        'Applications':           { order: 4, cls: 'layer-app',  icon: '▣', label: 'Applications' },
+        'User Applications':      { order: 4, cls: 'layer-app',  icon: '▣', label: 'User Applications' },
+        'Information Products':   { order: 5, cls: 'layer-info', icon: '◇', label: 'Information Products' },
+        'Communications Services':{ order: 6, cls: 'layer-comm', icon: '↔', label: 'Communications Services' },
         // 2-letter taxonomy-root prefixes (returned by RequirementArchitectureViewService)
-        'CP':                     { order: 1, cls: 'layer-cap',  icon: '🔵', label: 'Capabilities' },
-        'BP':                     { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Processes' },
-        'BR':                     { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Roles' },
-        'CI':                     { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'COI Services' },
-        'CO':                     { order: 6, cls: 'layer-comm', icon: '🔴', label: 'Communications Services' },
-        'CR':                     { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'Core Services' },
-        'IP':                     { order: 5, cls: 'layer-info', icon: '🔷', label: 'Information Products' },
-        'UA':                     { order: 4, cls: 'layer-app',  icon: '🟣', label: 'User Applications' }
+        'CP':                     { order: 1, cls: 'layer-cap',  icon: '◆', label: 'Capabilities' },
+        'BP':                     { order: 2, cls: 'layer-proc', icon: '▰', label: 'Business Processes' },
+        'BR':                     { order: 2, cls: 'layer-proc', icon: '▰', label: 'Business Roles' },
+        'CI':                     { order: 3, cls: 'layer-svc',  icon: '⬡', label: 'COI Services' },
+        'CO':                     { order: 6, cls: 'layer-comm', icon: '↔', label: 'Communications Services' },
+        'CR':                     { order: 3, cls: 'layer-svc',  icon: '⬡', label: 'Core Services' },
+        'IP':                     { order: 5, cls: 'layer-info', icon: '◇', label: 'Information Products' },
+        'UA':                     { order: 4, cls: 'layer-app',  icon: '▣', label: 'User Applications' }
     };
 
     // Minimum number of elements required to render the D3 force graph (otherwise show swimlane)
@@ -433,6 +433,7 @@
 
     /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
     function applyScoreToNode(code, pct, reason) {
+        B().ensureNodeRendered(code, S.currentScores);
         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
         if (!el) return;
         const header = el.querySelector(':scope > .tax-node-header');
@@ -488,10 +489,12 @@
 
     /** Expand a node in the DOM and all of its ancestors. */
     function expandNodeByCode(code) {
+        B().ensureNodeRendered(code, S.currentScores);
         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
         if (!el) return;
         const children = el.querySelector(':scope > .tax-children');
         if (children) {
+            B().materializeChildren(el, S.currentScores);
             children.style.display = '';
             const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
             if (toggle) toggle.textContent = '▼';
@@ -515,6 +518,7 @@
 
     /** Add a pulsing CSS class to indicate a node is currently being evaluated. */
     function markNodeAsEvaluating(code) {
+        B().ensureNodeRendered(code, S.currentScores);
         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
         if (el) el.classList.add('tax-evaluating');
     }
@@ -523,14 +527,17 @@
     function expandMatched(scores) {
         Object.entries(scores).forEach(([code, pct]) => {
             if (pct > 0) {
-                const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+                const el = B().ensureNodeRendered(code, scores)
+                    || document.querySelector('[data-code="' + CSS.escape(code) + '"]');
                 if (!el) return;
-                // expand this node
+                // expand this node only after its immediate child level exists
                 const children = el.querySelector(':scope > .tax-children');
                 if (children) {
+                    B().materializeChildren(el, scores);
                     children.style.display = '';
                     const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
                     if (toggle) toggle.textContent = '▼';
+                    el.setAttribute('aria-expanded', 'true');
                 }
                 // expand ancestors
                 let parent = el.parentElement;
@@ -541,6 +548,7 @@
                         if (parentNode) {
                             const t = parentNode.querySelector(':scope > .tax-node-header > .tax-toggle');
                             if (t) t.textContent = '▼';
+                            parentNode.setAttribute('aria-expanded', 'true');
                         }
                     }
                     parent = parent.parentElement;

@@ -261,12 +261,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish immutable release image
+        id: release_image
         if: steps.release_parameters.outputs.dry_run != 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/taxonomy:v${{ steps.release_parameters.outputs.release_version }}
+          provenance: mode=max
+          sbom: true
           labels: |
             org.opencontainers.image.title=Taxonomy Architecture Analyzer
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -276,6 +279,114 @@ jobs:
             BUILD_DATE=${{ steps.release_source.outputs.created }}
             VCS_REF=${{ steps.release_source.outputs.sha }}
             VERSION=${{ steps.release_parameters.outputs.release_version }}
+
+      - name: Scan immutable release image digest
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ github.repository_owner }}/taxonomy@${{ steps.release_image.outputs.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          format: sarif
+          output: release-image-trivy.sarif
+          exit-code: '1'
+
+      - name: Bind release evidence and Helm deployment to immutable image digest
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+          IMAGE_DIGEST: ${{ steps.release_image.outputs.digest }}
+          RELEASE_SOURCE_SHA: ${{ steps.release_source.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Build did not return a valid immutable image digest: $IMAGE_DIGEST"
+            exit 1
+          fi
+
+          tag="v${RELEASE_VERSION}"
+          repository="ghcr.io/${GITHUB_REPOSITORY_OWNER}/taxonomy"
+          immutable_image="${repository}@${IMAGE_DIGEST}"
+          docker buildx imagetools inspect "$immutable_image" >/dev/null
+
+          artifact_dir="$RUNNER_TEMP/helm-release"
+          mkdir -p "$artifact_dir" target
+          evidence_file="target/release-image-evidence.json"
+          export RELEASE_VERSION IMAGE_DIGEST RELEASE_SOURCE_SHA immutable_image evidence_file
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "schemaVersion": 1,
+              "releaseVersion": os.environ["RELEASE_VERSION"],
+              "sourceCommit": os.environ["RELEASE_SOURCE_SHA"],
+              "image": os.environ["immutable_image"],
+              "digest": os.environ["IMAGE_DIGEST"],
+              "scan": {
+                  "tool": "trivy",
+                  "severityGate": ["HIGH", "CRITICAL"],
+                  "result": "passed",
+              },
+              "attestations": {
+                  "provenance": True,
+                  "sbom": True,
+              },
+          }
+          Path(os.environ["evidence_file"]).write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          cp "$evidence_file" \
+            "$artifact_dir/taxonomy-${RELEASE_VERSION}-image-evidence.json"
+          cp release-image-trivy.sarif \
+            "$artifact_dir/taxonomy-${RELEASE_VERSION}-image-trivy.sarif"
+
+          release_checksum_inputs=(
+            "taxonomy-${RELEASE_VERSION}-image-evidence.json"
+            "taxonomy-${RELEASE_VERSION}-image-trivy.sarif"
+          )
+          if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+            digest_manifest="$artifact_dir/taxonomy-${RELEASE_VERSION}-kubernetes-digest.yaml"
+            helm lint deploy/helm/taxonomy \
+              --set-string image.tag='' \
+              --set-string "image.digest=${IMAGE_DIGEST}" \
+              --set existingSecret=taxonomy-secrets
+            helm template taxonomy deploy/helm/taxonomy \
+              --namespace taxonomy \
+              --set-string image.tag='' \
+              --set-string "image.digest=${IMAGE_DIGEST}" \
+              --set existingSecret=taxonomy-secrets \
+              > "$digest_manifest"
+            grep -Fq "image: \"${immutable_image}\"" "$digest_manifest"
+            grep -Fq 'readOnlyRootFilesystem: true' "$digest_manifest"
+            grep -Fq 'runAsUser: 10001' "$digest_manifest"
+            release_checksum_inputs+=("taxonomy-${RELEASE_VERSION}-kubernetes-digest.yaml")
+          fi
+
+          (
+            cd "$artifact_dir"
+            sha256sum "${release_checksum_inputs[@]}" \
+              > "taxonomy-${RELEASE_VERSION}-release.sha256"
+          )
+          gh release upload "$tag" "$artifact_dir"/* --clobber
+
+      - name: Archive immutable release image evidence
+        if: always() && steps.release_parameters.outputs.dry_run != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-image-security-${{ steps.release_parameters.outputs.release_version }}
+          path: |
+            release-image-trivy.sarif
+            target/release-image-evidence.json
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: Verify exact final main snapshot with canonical CI
         if: steps.release_parameters.outputs.dry_run != 'true'
@@ -337,18 +448,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
+          IMAGE_DIGEST: ${{ steps.release_image.outputs.digest }}
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         shell: bash
         run: |
           set -euo pipefail
           tag="v${RELEASE_VERSION}"
-          image="ghcr.io/${GITHUB_REPOSITORY_OWNER}/taxonomy:${tag}"
+          repository="ghcr.io/${GITHUB_REPOSITORY_OWNER}/taxonomy"
+          image="${repository}@${IMAGE_DIGEST}"
 
+          assets=$(gh release view "$tag" --json assets --jq '.assets[].name')
+          for expected in \
+            "taxonomy-${RELEASE_VERSION}-image-evidence.json" \
+            "taxonomy-${RELEASE_VERSION}-image-trivy.sarif" \
+            "taxonomy-${RELEASE_VERSION}-release.sha256"; do
+            if ! grep -Fxq "$expected" <<< "$assets"; then
+              echo "::error::Draft release is missing required image evidence $expected"
+              exit 1
+            fi
+          done
           if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
-            assets=$(gh release view "$tag" --json assets --jq '.assets[].name')
             for expected in \
               "taxonomy-${RELEASE_VERSION}.tgz" \
               "taxonomy-${RELEASE_VERSION}-kubernetes.yaml" \
+              "taxonomy-${RELEASE_VERSION}-kubernetes-digest.yaml" \
               "taxonomy-${RELEASE_VERSION}-helm.sha256"; do
               if ! grep -Fxq "$expected" <<< "$assets"; then
                 echo "::error::Draft release is missing required Helm asset $expected"
@@ -358,6 +481,16 @@ jobs:
           fi
 
           docker buildx imagetools inspect "$image" >/dev/null
+          evidence_digest=$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path('target/release-image-evidence.json').read_text())['digest'])
+          PY
+          )
+          if [[ "$evidence_digest" != "$IMAGE_DIGEST" ]]; then
+            echo "::error::Release image evidence records $evidence_digest, expected $IMAGE_DIGEST"
+            exit 1
+          fi
 
           is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
           if [[ "$is_draft" == "true" ]]; then

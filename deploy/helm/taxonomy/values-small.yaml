@@ -1,0 +1,23 @@
+# Quota-compatible evaluation profile.
+#
+# This profile deliberately disables optional embedding/model-download work and
+# uses the in-memory search backend. It is intended for one small instance,
+# demonstrations and functional validation, not for measured high-throughput or
+# ONNX workloads. Standard/large capacity characterization is tracked in #638.
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 768Mi
+  limits:
+    cpu: "500m"
+    memory: 1536Mi
+
+config:
+  TAXONOMY_INIT_ASYNC: "true"
+  TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap
+  TAXONOMY_EMBEDDING_ENABLED: "false"
+  TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
+  JAVA_OPTS: -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=20.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
+import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebDriver;
@@ -48,6 +49,14 @@ class OnnxSeleniumIT {
             .build();
     private static final Duration SEMANTIC_INDEX_TIMEOUT = Duration.ofMinutes(10);
     private static final String SEMANTIC_QUERY = "communication and collaboration";
+    private static final Path PINNED_MODEL_DIRECTORY =
+            Path.of("models", "bge-small-en-v1.5");
+    private static final List<String> REQUIRED_MODEL_FILES = List.of(
+            "model.onnx",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "special_tokens_map.json",
+            "config.json");
     private static final String BASIC_AUTH = "Basic "
             + Base64.getEncoder().encodeToString(
                     ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
@@ -62,20 +71,15 @@ class OnnxSeleniumIT {
     void startContainers() throws Exception {
         network = Network.newNetwork();
 
+        Path modelDirectory = resolvePinnedModelDirectory();
         appContainer = ContainerTestUtils.appContainer(network)
                 .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
-                .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true");
-
-        String modelDirectory = System.getenv("TAXONOMY_EMBEDDING_MODEL_DIR");
-        if (modelDirectory != null
-                && !modelDirectory.isBlank()
-                && Files.isDirectory(Path.of(modelDirectory))) {
-            appContainer.withFileSystemBind(
-                    modelDirectory,
-                    "/models",
-                    org.testcontainers.containers.BindMode.READ_ONLY);
-            appContainer.withEnv("TAXONOMY_EMBEDDING_MODEL_DIR", "/models");
-        }
+                .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
+                .withFileSystemBind(
+                        modelDirectory.toString(),
+                        "/models",
+                        org.testcontainers.containers.BindMode.READ_ONLY)
+                .withEnv("TAXONOMY_EMBEDDING_MODEL_DIR", "/models");
 
         appContainer.start();
         waitForSemanticBackendReady();
@@ -116,6 +120,64 @@ class OnnxSeleniumIT {
             new WebDriverWait(driver, Duration.ofSeconds(5))
                     .until(ExpectedConditions.invisibilityOfElementLocated(
                             By.id("onboardingOverlay")));
+        }
+    }
+
+    private static Path resolvePinnedModelDirectory() {
+        String configured = System.getenv("TAXONOMY_EMBEDDING_MODEL_DIR");
+        if (configured != null && !configured.isBlank()) {
+            return requireUsableModelDirectory(
+                    Path.of(configured),
+                    "TAXONOMY_EMBEDDING_MODEL_DIR");
+        }
+
+        String reactorRoot = System.getProperty("maven.multiModuleProjectDirectory");
+        if (reactorRoot != null && !reactorRoot.isBlank()) {
+            Path reactorCandidate = Path.of(reactorRoot).resolve(PINNED_MODEL_DIRECTORY);
+            if (isUsableModelDirectory(reactorCandidate)) {
+                return reactorCandidate.toAbsolutePath().normalize();
+            }
+        }
+
+        for (Path candidate : List.of(
+                PINNED_MODEL_DIRECTORY,
+                Path.of("..").resolve(PINNED_MODEL_DIRECTORY))) {
+            if (isUsableModelDirectory(candidate)) {
+                return candidate.toAbsolutePath().normalize();
+            }
+        }
+
+        throw new IllegalStateException(
+                "Pinned LOCAL_ONNX model not found. Run Maven with "
+                        + "-Dtaxonomy.model.download.skip=false or -Ponnx before "
+                        + "starting OnnxSeleniumIT. Expected "
+                        + PINNED_MODEL_DIRECTORY + " with " + REQUIRED_MODEL_FILES);
+    }
+
+    private static Path requireUsableModelDirectory(Path directory, String source) {
+        if (!isUsableModelDirectory(directory)) {
+            throw new IllegalStateException(
+                    source + " points to an incomplete LOCAL_ONNX model directory: "
+                            + directory.toAbsolutePath().normalize()
+                            + "; required files=" + REQUIRED_MODEL_FILES);
+        }
+        return directory.toAbsolutePath().normalize();
+    }
+
+    private static boolean isUsableModelDirectory(Path directory) {
+        if (!Files.isDirectory(directory)) {
+            return false;
+        }
+        return REQUIRED_MODEL_FILES.stream()
+                .map(directory::resolve)
+                .allMatch(path -> Files.isRegularFile(path) && fileHasContent(path));
+    }
+
+    private static boolean fileHasContent(Path path) {
+        try {
+            return Files.size(path) > 0;
+        } catch (java.io.IOException exception) {
+            return false;
         }
     }
 
@@ -323,16 +385,30 @@ class OnnxSeleniumIT {
     private void openDetails(By locator) {
         new WebDriverWait(driver, Duration.ofSeconds(10))
                 .ignoring(StaleElementReferenceException.class)
+                .ignoring(ElementClickInterceptedException.class)
                 .until(currentDriver -> {
                     WebElement details = currentDriver.findElement(locator);
                     if (details.getAttribute("open") != null) {
                         return true;
                     }
                     WebElement summary = details.findElement(By.xpath("./summary"));
-                    ((JavascriptExecutor) currentDriver).executeScript(
+                    JavascriptExecutor javascript = (JavascriptExecutor) currentDriver;
+                    javascript.executeScript(
                             "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
                             summary);
                     if (!summary.isDisplayed() || !summary.isEnabled()) {
+                        return false;
+                    }
+                    Boolean unobscured = (Boolean) javascript.executeScript(
+                            "const target=arguments[0];"
+                                    + "const rect=target.getBoundingClientRect();"
+                                    + "const x=rect.left+rect.width/2;"
+                                    + "const y=rect.top+rect.height/2;"
+                                    + "if (x<0||y<0||x>=innerWidth||y>=innerHeight) return false;"
+                                    + "const top=document.elementFromPoint(x,y);"
+                                    + "return top===target || target.contains(top);",
+                            summary);
+                    if (!Boolean.TRUE.equals(unobscured)) {
                         return false;
                     }
                     summary.click();
