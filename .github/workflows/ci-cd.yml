@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - 'release/**'
     tags:
       - 'v*'
   pull_request:
@@ -113,6 +112,8 @@ jobs:
             Dockerfile \
             taxonomy-app/pom.xml \
             taxonomy-app/src/main \
+            ':(exclude)taxonomy-app/src/main/resources/static/**' \
+            ':(exclude)taxonomy-app/src/main/resources/templates/**' \
             taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java \
             taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java \
             taxonomy-app/src/test/resources/observability \

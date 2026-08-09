@@ -18,6 +18,7 @@ TAG_NAME="v${RELEASE_VERSION}"
 MAJOR_MINOR=$(echo "${RELEASE_VERSION}" | sed 's/\.[^.]*$//')
 MAINTENANCE_BRANCH="maintenance/${MAJOR_MINOR}.x"
 TEMP_BRANCH="release-temp-${RELEASE_VERSION}"
+PROTECTED_MAIN_ADVANCE_WORKFLOW="protected-release-main-advance.yml"
 
 fail() {
   echo "::error::$*"
@@ -172,6 +173,47 @@ print(value.strip())
 '
 }
 
+advance_main_via_protected_pr() {
+  local next_commit=$1
+  local run_title="Advance main to ${NEXT_VERSION} (${next_commit})"
+  local advance_run_id=""
+
+  gh workflow run "$PROTECTED_MAIN_ADVANCE_WORKFLOW" \
+    --ref main \
+    -f release_version="$RELEASE_VERSION" \
+    -f next_version="$NEXT_VERSION" \
+    -f temp_branch="$TEMP_BRANCH" \
+    -f expected_sha="$next_commit" \
+    -f expected_base_sha="$ORIGINAL_MAIN"
+
+  for _ in $(seq 1 60); do
+    advance_run_id=$(gh run list \
+      --workflow "$PROTECTED_MAIN_ADVANCE_WORKFLOW" \
+      --event workflow_dispatch \
+      --limit 20 \
+      --json databaseId,displayTitle,createdAt \
+      --jq ".[] | select(.displayTitle == \"$run_title\") | .databaseId" \
+      | head -n 1)
+    if [[ -n "$advance_run_id" ]]; then break; fi
+    sleep 5
+  done
+  if [[ -z "$advance_run_id" ]]; then
+    fail "Could not locate protected-main advance workflow for $next_commit"
+  fi
+
+  gh run watch "$advance_run_id" --exit-status
+
+  git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
+  if ! git merge-base --is-ancestor "$next_commit" origin/main; then
+    fail "Protected-main workflow completed without merging $next_commit into main"
+  fi
+  if [[ "$(remote_main_version)" != "$NEXT_VERSION" ]]; then
+    fail "origin/main does not expose development version $NEXT_VERSION"
+  fi
+  git checkout --detach origin/main
+  echo "main advanced through protected PR from ${RELEASE_VERSION}-SNAPSHOT to $NEXT_VERSION."
+}
+
 git config user.name 'github-actions[bot]'
 git config user.email 'github-actions[bot]@users.noreply.github.com'
 
@@ -260,19 +302,10 @@ if [[ "$DRY_RUN" != "true" && "$STATE" == "new" ]]; then
   create_maintenance_branch_if_missing "$RELEASE_COMMIT"
   STATE=tagged
 fi
-if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then
-  gh release create "$TAG_NAME" \
-    --verify-tag \
-    --draft \
-    --title "Release $RELEASE_VERSION" \
-    --notes-file release_notes.md \
-    --generate-notes
-  STATE=draft
-fi
 
-# Prepare the next snapshot before publishing the release. main therefore remains a
-# development snapshot throughout: it moves once, by fast-forward, from the old
-# snapshot to the next snapshot while the release commit is addressed only by tag.
+# Prepare the next snapshot before creating or publishing the GitHub release.
+# Protected main is advanced only through a PR whose exact head SHA has passed
+# the canonical Maven verification. The immutable release commit remains tagged.
 if [[ "$MAIN_ALREADY_ADVANCED" == "true" ]]; then
   git checkout --detach "$ORIGINAL_MAIN"
   python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
@@ -289,24 +322,23 @@ else
     git fetch origin main --force
     REMOTE_MAIN=$(git rev-parse origin/main)
     if [[ "$REMOTE_MAIN" != "$ORIGINAL_MAIN" ]]; then
-      fail "origin/main moved from $ORIGINAL_MAIN to $REMOTE_MAIN during the release; refusing to overwrite it"
+      fail "origin/main moved from $ORIGINAL_MAIN to $REMOTE_MAIN during the release; refusing to continue"
     fi
     git merge-base --is-ancestor "$ORIGINAL_MAIN" "$NEXT_COMMIT" \
-      || fail "Next-development commit is not a fast-forward of the original main"
+      || fail "Next-development commit is not descended from the original main"
     git push origin "${NEXT_COMMIT}:refs/heads/${TEMP_BRANCH}" --force
-    gh api "repos/${GITHUB_REPOSITORY}/git/refs/heads/main" \
-      --method PATCH \
-      -f sha="$NEXT_COMMIT"
-    git fetch origin main --force
-    if [[ "$(git rev-parse origin/main)" != "$NEXT_COMMIT" ]]; then
-      fail "origin/main did not advance to the prepared development commit"
-    fi
-    if [[ "$(remote_main_version)" != "$NEXT_VERSION" ]]; then
-      fail "origin/main does not expose development version $NEXT_VERSION"
-    fi
-    git push origin ":refs/heads/${TEMP_BRANCH}" || true
-    echo "main advanced atomically from ${RELEASE_VERSION}-SNAPSHOT to $NEXT_VERSION."
+    advance_main_via_protected_pr "$NEXT_COMMIT"
   fi
+fi
+
+if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then
+  gh release create "$TAG_NAME" \
+    --verify-tag \
+    --draft \
+    --title "Release $RELEASE_VERSION" \
+    --notes-file release_notes.md \
+    --generate-notes
+  STATE=draft
 fi
 
 if [[ "$DRY_RUN" != "true" && "$STATE" == "draft" ]]; then

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Keep the performance gate broad enough for releases and relevant PR changes."""
+"""Keep the performance gate scoped to server/runtime-sensitive PR changes."""
 
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci-cd.yml"
+
+STATIC_EXCLUSION = ":(exclude)taxonomy-app/src/main/resources/static/**"
+TEMPLATE_EXCLUSION = ":(exclude)taxonomy-app/src/main/resources/templates/**"
 
 
 def main() -> int:
@@ -21,6 +24,8 @@ def main() -> int:
         "Dockerfile",
         "taxonomy-app/pom.xml",
         "taxonomy-app/src/main",
+        STATIC_EXCLUSION,
+        TEMPLATE_EXCLUSION,
         ".github/scripts/run-observability-performance.sh",
         "github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true'",
         "TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true'",
@@ -53,6 +58,14 @@ def main() -> int:
         failures.append(
             "Application runtime changes must trigger the performance budget on pull requests"
         )
+    if STATIC_EXCLUSION not in scope_block or TEMPLATE_EXCLUSION not in scope_block:
+        failures.append(
+            "Pure static/template UI changes must not force the server OpenTelemetry benchmark"
+        )
+    if "taxonomy-app/src/main/java" in scope_block:
+        failures.append(
+            "Do not replace the inclusive src/main path with Java-only matching; runtime configuration and resources must stay covered"
+        )
     if "github.event_name != 'pull_request'" not in performance_block:
         failures.append(
             "Main, tag, release and manual CI runs must not be allowed to skip the performance budget"
@@ -65,7 +78,8 @@ def main() -> int:
         return 1
 
     print(
-        "Performance scope covers runtime-sensitive PR changes and always runs on non-PR CI."
+        "Performance scope covers server/runtime-sensitive PR changes, excludes pure UI assets, "
+        "and always runs on non-PR CI."
     )
     return 0
 

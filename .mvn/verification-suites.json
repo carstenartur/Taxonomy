@@ -42,6 +42,7 @@
     "documentation-screenshots.yml": "Maven-owned screenshot evidence publication",
     "delivery.yml": "report, container and deployment delivery",
     "deploy-release.yml": "release state machine",
+    "protected-release-main-advance.yml": "protected next-development snapshot verification and pull-request handoff to main",
     "cleanup-workflow-runs.yml": "Actions retention"
   }
 }

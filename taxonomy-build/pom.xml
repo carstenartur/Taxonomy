@@ -142,12 +142,7 @@
                             <arguments>
                                 <argument>.github/scripts/check-coverage.py</argument>
                                 <argument>--xml</argument><argument>taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml</argument>
-                                <argument>--minimum</argument><argument>0.81</argument>
-                                <argument>--expected-group</argument><argument>taxonomy-domain</argument>
-                                <argument>--expected-group</argument><argument>taxonomy-dsl</argument>
-                                <argument>--expected-group</argument><argument>taxonomy-export</argument>
-                                <argument>--expected-group</argument><argument>taxonomy-extension-api</argument>
-                                <argument>--expected-group</argument><argument>taxonomy-app</argument>
+                                <argument>--policy</argument><argument>.github/coverage-policy.json</argument>
                                 <argument>--report</argument><argument>target/coverage-gate.txt</argument>
                             </arguments>
                         </configuration>
