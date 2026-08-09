@@ -46,6 +46,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "solution_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "product_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "project_conflict")).isTrue();
+        assertThat(tableExists(dataSource, "repository_membership")).isTrue();
         assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
                 .isTrue();
         assertThat(columnExists(dataSource, "system_repository", "slug")).isTrue();
@@ -77,6 +78,7 @@ class TaxonomySchemaPostgresMigrationIT {
                 "select count(*) from app_user where username = 'existing-user'"))
                 .isEqualTo(1L);
         assertThat(tableExists(dataSource, "project_requirement")).isTrue();
+        assertThat(tableExists(dataSource, "repository_membership")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "analysis_snapshot_id"))
                 .isTrue();
         assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
