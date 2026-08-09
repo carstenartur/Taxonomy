@@ -49,6 +49,8 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
                 .isTrue();
         assertThat(columnExists(dataSource, "system_repository", "slug")).isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "provisioning_error"))
+                .isTrue();
         assertThat(columnExists(dataSource, "user_workspace", "source_branch")).isTrue();
         assertThat(columnExists(dataSource, "user_workspace", "relationship_type")).isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
@@ -78,6 +80,8 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(dataSource, "relation_hypothesis", "analysis_snapshot_id"))
                 .isTrue();
         assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "provisioning_error"))
                 .isTrue();
         assertThat(columnExists(dataSource, "user_workspace", "source_repository_id"))
                 .isTrue();
