@@ -40,7 +40,7 @@ public class TaxonomyRelationService {
     // ── Explicit repository/workspace tenant reads ─────────────────
 
     @Transactional(readOnly = true)
-    public List<TaxonomyRelationDto> getRelationsForNode(
+    public List<TaxonomyRelationDto> getRelationsForNodeInContext(
             String code, RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
         List<TaxonomyRelation> relations = tenant.workspaceId() == null
@@ -52,7 +52,7 @@ public class TaxonomyRelationService {
     }
 
     @Transactional(readOnly = true)
-    public List<TaxonomyRelationDto> getRelationsByType(
+    public List<TaxonomyRelationDto> getRelationsByTypeInContext(
             RelationType type, RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
         List<TaxonomyRelation> relations = tenant.workspaceId() == null
@@ -64,7 +64,8 @@ public class TaxonomyRelationService {
     }
 
     @Transactional(readOnly = true)
-    public List<TaxonomyRelationDto> getAllRelations(RepositoryContext context) {
+    public List<TaxonomyRelationDto> getAllRelationsInContext(
+            RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
         List<TaxonomyRelation> relations = tenant.workspaceId() == null
                 ? relationRepository.findCentralByRepository(tenant.repositoryId())
@@ -79,7 +80,7 @@ public class TaxonomyRelationService {
      * central contexts never scan another repository or unpublished workspace.
      */
     @Transactional(readOnly = true)
-    public boolean relationExistsVisible(
+    public boolean relationExistsVisibleInContext(
             String sourceCode,
             String targetCode,
             RelationType type,
@@ -100,7 +101,7 @@ public class TaxonomyRelationService {
     // ── Explicit repository/workspace tenant writes ────────────────
 
     @Transactional
-    public TaxonomyRelationDto createRelation(
+    public TaxonomyRelationDto createRelationInContext(
             String sourceCode,
             String targetCode,
             RelationType type,
@@ -115,7 +116,7 @@ public class TaxonomyRelationService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Target node not found: " + targetCode));
 
-        if (relationExistsVisible(sourceCode, targetCode, type, tenant)) {
+        if (relationExistsVisibleInContext(sourceCode, targetCode, type, tenant)) {
             throw new IllegalArgumentException(String.format(
                     "Relation already exists: %s --[%s]--> %s "
                             + "(repository=%s, workspace=%s)",
@@ -149,7 +150,7 @@ public class TaxonomyRelationService {
 
     /** Delete only from the exact repository and exact mutable workspace scope. */
     @Transactional
-    public void deleteRelation(Long id, RepositoryContext context) {
+    public void deleteRelationInContext(Long id, RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
         TaxonomyRelation relation = relationRepository.findByIdInRepositoryWorkspace(
                         tenant.repositoryId(), id, tenant.workspaceId())
@@ -165,7 +166,7 @@ public class TaxonomyRelationService {
 
     /** Delete matches only from the exact repository and exact workspace scope. */
     @Transactional
-    public void deleteRelationBySourceTargetType(
+    public void deleteRelationBySourceTargetTypeInContext(
             String sourceCode,
             String targetCode,
             RelationType type,
@@ -196,7 +197,7 @@ public class TaxonomyRelationService {
     }
 
     @Transactional(readOnly = true)
-    public long countRelations(RepositoryContext context) {
+    public long countRelationsInContext(RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
         return tenant.workspaceId() == null
                 ? relationRepository.countCentralByRepository(tenant.repositoryId())
@@ -212,18 +213,20 @@ public class TaxonomyRelationService {
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsForNode(
             String code, @Nullable String workspaceId) {
-        return getRelationsForNode(code, primaryContext(workspaceId, SYSTEM_USER));
+        return getRelationsForNodeInContext(
+                code, primaryContext(workspaceId, SYSTEM_USER));
     }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsByType(
             RelationType type, @Nullable String workspaceId) {
-        return getRelationsByType(type, primaryContext(workspaceId, SYSTEM_USER));
+        return getRelationsByTypeInContext(
+                type, primaryContext(workspaceId, SYSTEM_USER));
     }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getAllRelations(@Nullable String workspaceId) {
-        return getAllRelations(primaryContext(workspaceId, SYSTEM_USER));
+        return getAllRelationsInContext(primaryContext(workspaceId, SYSTEM_USER));
     }
 
     @Transactional(readOnly = true)
@@ -232,7 +235,7 @@ public class TaxonomyRelationService {
             String targetCode,
             RelationType type,
             @Nullable String workspaceId) {
-        return relationExistsVisible(
+        return relationExistsVisibleInContext(
                 sourceCode,
                 targetCode,
                 type,
@@ -241,17 +244,17 @@ public class TaxonomyRelationService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsForNode(String code) {
-        return getRelationsForNode(code, (String) null);
+        return getRelationsForNode(code, null);
     }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsByType(RelationType type) {
-        return getRelationsByType(type, (String) null);
+        return getRelationsByType(type, null);
     }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getAllRelations() {
-        return getAllRelations((String) null);
+        return getAllRelations(null);
     }
 
     @Transactional
@@ -263,7 +266,7 @@ public class TaxonomyRelationService {
             String provenance,
             @Nullable String workspaceId,
             @Nullable String ownerUsername) {
-        return createRelation(
+        return createRelationInContext(
                 sourceCode,
                 targetCode,
                 type,
@@ -291,12 +294,12 @@ public class TaxonomyRelationService {
 
     @Transactional
     public void deleteRelation(Long id, @Nullable String workspaceId) {
-        deleteRelation(id, primaryContext(workspaceId, SYSTEM_USER));
+        deleteRelationInContext(id, primaryContext(workspaceId, SYSTEM_USER));
     }
 
     @Transactional
     public void deleteRelation(Long id) {
-        deleteRelation(id, (String) null);
+        deleteRelation(id, null);
     }
 
     @Transactional
@@ -305,7 +308,7 @@ public class TaxonomyRelationService {
             String targetCode,
             RelationType type,
             @Nullable String workspaceId) {
-        deleteRelationBySourceTargetType(
+        deleteRelationBySourceTargetTypeInContext(
                 sourceCode,
                 targetCode,
                 type,
@@ -317,17 +320,17 @@ public class TaxonomyRelationService {
             String sourceCode,
             String targetCode,
             RelationType type) {
-        deleteRelationBySourceTargetType(sourceCode, targetCode, type, (String) null);
+        deleteRelationBySourceTargetType(sourceCode, targetCode, type, null);
     }
 
     @Transactional(readOnly = true)
     public long countRelations(@Nullable String workspaceId) {
-        return countRelations(primaryContext(workspaceId, SYSTEM_USER));
+        return countRelationsInContext(primaryContext(workspaceId, SYSTEM_USER));
     }
 
     @Transactional(readOnly = true)
     public long countRelations() {
-        return countRelations((String) null);
+        return countRelations(null);
     }
 
     public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
