@@ -222,17 +222,35 @@ export async function runRoleStateFlow({
   };
 
   const adminTab = page.locator('#adminNavTab');
+  const responsiveNavigation = page.locator('#mobileMainNavigationSelect');
   if (role === 'ADMIN') {
-    await page.waitForFunction(() => {
-      const tab = document.querySelector('#adminNavTab');
-      return tab && getComputedStyle(tab).display !== 'none';
-    }, null, { timeout: 20_000 });
-    const adminLink = adminTab.locator('a[data-page="admin"]');
-    await adminLink.scrollIntoViewIfNeeded();
-    assert(await adminLink.isVisible(), 'ADMIN navigation is unavailable after role authorization');
+    if (await responsiveNavigation.isVisible().catch(() => false)) {
+      await page.waitForFunction(() => {
+        const selector = document.querySelector('#mobileMainNavigationSelect');
+        return selector && Array.from(selector.options)
+          .some(option => option.value === 'admin');
+      }, null, { timeout: 20_000 });
+      assert(await responsiveNavigation.locator('option[value="admin"]').count() === 1,
+        'ADMIN responsive navigation is unavailable after role authorization');
+    } else {
+      await page.waitForFunction(() => {
+        const link = document.querySelector('#adminNavTab a[data-page="admin"]');
+        return link && link.getClientRects().length > 0;
+      }, null, { timeout: 20_000 });
+      const adminLink = adminTab.locator('a[data-page="admin"]');
+      await adminLink.scrollIntoViewIfNeeded();
+      assert(await adminLink.isVisible(),
+        'ADMIN desktop navigation is unavailable after role authorization');
+    }
     passed('admin role navigation');
   } else {
     await page.locator('#adminLockBtn').waitFor({ state: 'visible', timeout: 15_000 });
+    if (await responsiveNavigation.isVisible().catch(() => false)) {
+      const responsivePages = await responsiveNavigation.locator('option').evaluateAll(options =>
+        options.map(option => option.value));
+      assert(!responsivePages.includes('admin'),
+        `${role} must not see admin in responsive navigation`);
+    }
     assert(!(await adminTab.isVisible().catch(() => false)), `${role} must not see admin navigation`);
     passed('role-specific navigation');
   }
