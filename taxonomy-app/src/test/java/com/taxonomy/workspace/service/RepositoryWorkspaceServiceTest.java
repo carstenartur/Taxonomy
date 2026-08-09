@@ -63,11 +63,11 @@ class RepositoryWorkspaceServiceTest {
         source.setDefaultBranch("main");
         source.setLifecycleState(RepositoryLifecycleState.ACTIVE);
         source.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
-        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
     }
 
     @Test
     void workingCopyUsesOneSeedCommitAndCreatesTrackingBase() throws Exception {
+        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
         List<WorkspaceProvisioningStatus> persistedStates = new ArrayList<>();
         when(workspaceRepository.save(any(UserWorkspace.class))).thenAnswer(invocation -> {
             UserWorkspace workspace = invocation.getArgument(0);
@@ -105,6 +105,7 @@ class RepositoryWorkspaceServiceTest {
 
     @Test
     void failedProvisioningPersistsFailedStateAndCleansPartialStorage() throws Exception {
+        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
         List<WorkspaceProvisioningStatus> persistedStates = new ArrayList<>();
         AtomicReference<String> persistedError = new AtomicReference<>();
         when(workspaceRepository.save(any(UserWorkspace.class))).thenAnswer(invocation -> {
