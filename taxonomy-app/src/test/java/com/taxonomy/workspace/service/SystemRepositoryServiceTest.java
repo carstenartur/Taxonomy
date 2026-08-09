@@ -17,6 +17,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -58,6 +59,7 @@ class SystemRepositoryServiceTest {
                     systemRepository.getVisibility());
             assertEquals(RepositoryLifecycleState.ACTIVE,
                     systemRepository.getLifecycleState());
+            assertNull(systemRepository.getProvisioningError());
             assertEquals(RepositoryOwnerType.SYSTEM, systemRepository.getOwnerType());
             assertEquals("system", systemRepository.getOwnerId());
             assertEquals("draft", systemRepository.getDefaultBranch());
@@ -126,7 +128,7 @@ class SystemRepositoryServiceTest {
     }
 
     @Test
-    void createCentralRepositoryAllocatesStableCatalogIdentity() {
+    void createCentralRepositoryReservesProvisioningCatalogIdentity() {
         when(repository.findBySlug("customer-a")).thenReturn(Optional.empty());
         when(repository.findByStorageRepositoryName(any())).thenReturn(Optional.empty());
 
@@ -143,7 +145,40 @@ class SystemRepositoryServiceTest {
         assertEquals("central-" + created.getRepositoryId(), created.getStorageRepositoryName());
         assertEquals("alice", created.getOwnerId());
         assertEquals("main", created.getDefaultBranch());
+        assertEquals(RepositoryLifecycleState.PROVISIONING, created.getLifecycleState());
+        assertNull(created.getProvisioningError());
         assertFalse(created.isPrimaryRepo());
+    }
+
+    @Test
+    void markProvisioningReadyActivatesRepositoryAndClearsPreviousError() {
+        SystemRepository provisioning = catalogRepository("repo-a");
+        provisioning.setLifecycleState(RepositoryLifecycleState.PROVISIONING);
+        provisioning.setProvisioningError("old failure");
+        when(repository.findByRepositoryId("repo-a")).thenReturn(Optional.of(provisioning));
+
+        SystemRepository ready = service.markProvisioningReady("repo-a");
+
+        assertEquals(RepositoryLifecycleState.ACTIVE, ready.getLifecycleState());
+        assertNull(ready.getProvisioningError());
+        assertNotNull(ready.getUpdatedAt());
+        verify(repository).save(provisioning);
+    }
+
+    @Test
+    void markProvisioningFailedPreservesDescriptionAndStoresDiagnosticSeparately() {
+        SystemRepository provisioning = catalogRepository("repo-a");
+        provisioning.setDescription("Business description");
+        provisioning.setLifecycleState(RepositoryLifecycleState.PROVISIONING);
+        when(repository.findByRepositoryId("repo-a")).thenReturn(Optional.of(provisioning));
+
+        SystemRepository failed = service.markProvisioningFailed(
+                "repo-a", "logical storage allocation failed");
+
+        assertEquals(RepositoryLifecycleState.FAILED, failed.getLifecycleState());
+        assertEquals("logical storage allocation failed", failed.getProvisioningError());
+        assertEquals("Business description", failed.getDescription());
+        verify(repository).save(provisioning);
     }
 
     @Test
@@ -192,9 +227,8 @@ class SystemRepositoryServiceTest {
     }
 
     private static SystemRepository cleanExistingPrimary() {
-        SystemRepository existing = new SystemRepository();
+        SystemRepository existing = catalogRepository("primary-id");
         existing.setPrimaryRepo(true);
-        existing.setRepositoryId("primary-id");
         existing.setStorageRepositoryName(SystemRepositoryService.PRIMARY_STORAGE_NAME);
         existing.setSlug("shared-architecture");
         existing.setDisplayName("Shared Architecture Repository");
@@ -202,11 +236,25 @@ class SystemRepositoryServiceTest {
         existing.setLifecycleState(RepositoryLifecycleState.ACTIVE);
         existing.setOwnerType(RepositoryOwnerType.SYSTEM);
         existing.setOwnerId("system");
-        existing.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
         existing.setDefaultBranch("draft");
         existing.setCreatedBy("system");
-        existing.setCreatedAt(Instant.parse("2026-01-01T00:00:00Z"));
-        existing.setUpdatedAt(Instant.parse("2026-01-01T00:00:00Z"));
         return existing;
+    }
+
+    private static SystemRepository catalogRepository(String repositoryId) {
+        SystemRepository repository = new SystemRepository();
+        repository.setRepositoryId(repositoryId);
+        repository.setStorageRepositoryName("central-" + repositoryId);
+        repository.setSlug(repositoryId);
+        repository.setDisplayName(repositoryId);
+        repository.setVisibility(RepositoryVisibility.PRIVATE);
+        repository.setOwnerType(RepositoryOwnerType.USER);
+        repository.setOwnerId("alice");
+        repository.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
+        repository.setDefaultBranch("main");
+        repository.setCreatedBy("alice");
+        repository.setCreatedAt(Instant.parse("2026-01-01T00:00:00Z"));
+        repository.setUpdatedAt(Instant.parse("2026-01-01T00:00:00Z"));
+        return repository;
     }
 }
