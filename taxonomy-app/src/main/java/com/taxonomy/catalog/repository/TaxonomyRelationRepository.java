@@ -163,6 +163,22 @@ public interface TaxonomyRelationRepository extends JpaRepository<TaxonomyRelati
     @Query("SELECT r FROM TaxonomyRelation r WHERE r.id = :id AND " + PRIMARY_SCOPE)
     Optional<TaxonomyRelation> findById(@Param("id") Long id);
 
+    /**
+     * Historic no-argument bulk deletion is used only by the primary catalog reload.
+     * Resolve the primary-scoped entity list first so a maintenance reload cannot delete
+     * committed relations from independent central repositories.
+     */
+    @Override
+    default void deleteAll() {
+        deleteAll(findAll());
+    }
+
+    /** Same safety boundary as {@link #deleteAll()}, without a global bulk JPQL delete. */
+    @Override
+    default void deleteAllInBatch() {
+        deleteAll(findAll());
+    }
+
     @Query("""
             SELECT r FROM TaxonomyRelation r
             WHERE """ + PRIMARY_SCOPE + """
