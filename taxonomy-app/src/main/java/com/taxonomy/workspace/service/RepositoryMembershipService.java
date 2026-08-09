@@ -2,10 +2,12 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryMembership;
+import com.taxonomy.workspace.model.RepositoryOwnerType;
 import com.taxonomy.workspace.model.RepositoryRole;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,13 +64,63 @@ public class RepositoryMembershipService {
         return membershipRepository.save(membership);
     }
 
+    /** Assign or change a membership after enforcing repository-owner authority. */
+    @Transactional
+    public RepositoryMembership assignRole(
+            SystemRepository repository,
+            String username,
+            RepositoryRole role,
+            String actor) {
+        requireOwner(repository, actor);
+        String member = requireText(username, "username");
+        if (isUserCatalogOwner(repository, member) && role != RepositoryRole.OWNER) {
+            throw new IllegalArgumentException(
+                    "The repository catalog owner must retain the OWNER role");
+        }
+        Optional<RepositoryMembership> existing = membershipRepository
+                .findByRepositoryIdAndUsername(repository.getRepositoryId(), member);
+        if (existing.map(RepositoryMembership::getRole)
+                        .filter(existingRole -> existingRole == RepositoryRole.OWNER)
+                        .isPresent()
+                && role != RepositoryRole.OWNER
+                && !hasImplicitUserOwner(repository)
+                && countOwners(repository.getRepositoryId()) <= 1) {
+            throw new IllegalStateException("A repository must retain at least one OWNER");
+        }
+        return assignRole(repository.getRepositoryId(), member, role, actor);
+    }
+
+    /** Remove a membership after enforcing repository-owner authority and owner retention. */
+    @Transactional
+    public void removeMembership(
+            SystemRepository repository,
+            String username,
+            String actor) {
+        requireOwner(repository, actor);
+        String member = requireText(username, "username");
+        if (isUserCatalogOwner(repository, member)) {
+            throw new IllegalArgumentException(
+                    "The repository catalog owner membership cannot be removed");
+        }
+        RepositoryMembership membership = membershipRepository
+                .findByRepositoryIdAndUsername(repository.getRepositoryId(), member)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Repository membership does not exist: " + member));
+        if (membership.getRole() == RepositoryRole.OWNER
+                && !hasImplicitUserOwner(repository)
+                && countOwners(repository.getRepositoryId()) <= 1) {
+            throw new IllegalStateException("A repository must retain at least one OWNER");
+        }
+        membershipRepository.delete(membership);
+    }
+
     public Optional<RepositoryRole> effectiveRole(
             SystemRepository repository, String username) {
         if (repository == null || username == null || username.isBlank()) {
             return Optional.empty();
         }
         String member = username.strip();
-        if (member.equals(repository.getOwnerId())) {
+        if (isUserCatalogOwner(repository, member)) {
             return Optional.of(RepositoryRole.OWNER);
         }
         return membershipRepository.findByRepositoryIdAndUsername(
@@ -81,8 +133,7 @@ public class RepositoryMembershipService {
      * readable without an explicit membership; all other visibility modes require membership.
      */
     public boolean canRead(SystemRepository repository, String username) {
-        if (repository == null
-                || repository.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {
+        if (!isActive(repository)) {
             return false;
         }
         if (repository.isPrimaryRepo()
@@ -94,9 +145,19 @@ public class RepositoryMembershipService {
                 .orElse(false);
     }
 
+    /**
+     * Working-copy creation requires CONTRIBUTOR. The historic primary repository remains a
+     * compatibility exception for authenticated users until installations can bootstrap explicit
+     * memberships for that pre-existing shared repository.
+     */
     public boolean canContribute(SystemRepository repository, String username) {
-        return isActive(repository)
-                && effectiveRole(repository, username)
+        if (!isActive(repository) || username == null || username.isBlank()) {
+            return false;
+        }
+        if (repository.isPrimaryRepo()) {
+            return true;
+        }
+        return effectiveRole(repository, username)
                 .map(role -> role.grants(RepositoryRole.CONTRIBUTOR))
                 .orElse(false);
     }
@@ -120,9 +181,40 @@ public class RepositoryMembershipService {
                 requireText(repositoryId, "repositoryId"));
     }
 
+    /** List memberships only for an explicit repository owner. */
+    public List<RepositoryMembership> listMemberships(
+            SystemRepository repository, String actor) {
+        requireOwner(repository, actor);
+        return listMemberships(repository.getRepositoryId());
+    }
+
     public long countOwners(String repositoryId) {
         return membershipRepository.countByRepositoryIdAndRole(
                 requireText(repositoryId, "repositoryId"), RepositoryRole.OWNER);
+    }
+
+    private void requireOwner(SystemRepository repository, String actor) {
+        if (!isOwner(repository, actor)) {
+            throw new AccessDeniedException("Repository OWNER role required");
+        }
+    }
+
+    private static boolean isUserCatalogOwner(
+            SystemRepository repository, String username) {
+        if (repository == null || username == null) {
+            return false;
+        }
+        RepositoryOwnerType ownerType = repository.getOwnerType();
+        return (ownerType == null || ownerType == RepositoryOwnerType.USER)
+                && username.equals(repository.getOwnerId());
+    }
+
+    private static boolean hasImplicitUserOwner(SystemRepository repository) {
+        return repository != null
+                && (repository.getOwnerType() == null
+                        || repository.getOwnerType() == RepositoryOwnerType.USER)
+                && repository.getOwnerId() != null
+                && !repository.getOwnerId().isBlank();
     }
 
     private static boolean isActive(SystemRepository repository) {
