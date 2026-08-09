@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,16 +9,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 /**
- * Resolves the current {@link WorkspaceContext} from the security context
- * and the persistent workspace metadata.
+ * Resolves the current workspace and repository contexts from the authenticated
+ * principal and persistent workspace metadata.
  *
- * <p>Combines the username (from Spring Security) with the
- * workspace metadata (from {@link WorkspaceManager}) to produce a
- * consistent context value that downstream services can use for
- * data isolation (workspace-scoped relations, hypotheses, proposals, etc.).
- *
- * <p>Falls back to {@link WorkspaceContext#SHARED} when no provisioned
- * workspace exists for the current user.
+ * <p>The legacy {@link WorkspaceContext} is retained while existing callers are
+ * migrated. New repository-sensitive code must use {@link RepositoryContext} so
+ * a {@code null} workspace can never mean an unspecified global repository.</p>
  */
 @Service
 public class WorkspaceContextResolver {
@@ -33,26 +30,17 @@ public class WorkspaceContextResolver {
         this.systemRepositoryService = systemRepositoryService;
     }
 
-    /**
-     * Resolve the workspace context for the currently authenticated user.
-     *
-     * @return the active workspace context (never {@code null})
-     */
+    /** Resolve the legacy workspace context for the currently authenticated user. */
     public WorkspaceContext resolveCurrentContext() {
-        String username = resolveUsername();
-        return resolveForUser(username);
+        return resolveForUser(resolveUsername());
     }
 
     /**
-     * Resolve the workspace context for a specific user.
+     * Resolve the legacy workspace context for a specific user.
      *
-     * <p>Only users with an explicitly provisioned persistent workspace
-     * receive a workspace-scoped context. Users with only a default
-     * in-memory workspace state receive the {@link WorkspaceContext#SHARED}
-     * fallback (backward-compatible, no data isolation).
-     *
-     * @param username the username to resolve context for
-     * @return the workspace context (never {@code null})
+     * <p>Only users with an explicitly provisioned persistent workspace receive
+     * a workspace-scoped context. Callers that need repository identity must use
+     * {@link #resolveRepositoryContextForUser(String)} instead.</p>
      */
     public WorkspaceContext resolveForUser(String username) {
         if (username == null || username.isBlank()
@@ -60,31 +48,112 @@ public class WorkspaceContextResolver {
             return WorkspaceContext.SHARED;
         }
 
-        // Try active workspace first (multi-workspace aware)
-        UserWorkspace ws = workspaceManager.findActiveWorkspace(username);
-        if (ws == null) {
-            // Fall back to legacy single-workspace lookup for backward compatibility
-            ws = workspaceManager.findUserWorkspace(username);
-        }
-
-        if (ws != null && ws.getWorkspaceId() != null) {
-            String branch = ws.getCurrentBranch() != null
-                    ? ws.getCurrentBranch()
+        UserWorkspace workspace = findWorkspace(username);
+        if (workspace != null && hasText(workspace.getWorkspaceId())) {
+            String branch = hasText(workspace.getCurrentBranch())
+                    ? workspace.getCurrentBranch().strip()
                     : systemRepositoryService.getSharedBranch();
             log.debug("Resolved workspace context for user '{}': workspace={}, branch={}",
-                    username, ws.getWorkspaceId(), branch);
-            return new WorkspaceContext(username, ws.getWorkspaceId(), branch);
+                    username, workspace.getWorkspaceId(), branch);
+            return new WorkspaceContext(
+                    username.strip(), workspace.getWorkspaceId().strip(), branch);
         }
 
         log.debug("No provisioned workspace for user '{}'; falling back to SHARED", username);
         return WorkspaceContext.SHARED;
     }
 
+    /** Resolve an explicit repository context for the authenticated user. */
+    public RepositoryContext resolveCurrentRepositoryContext() {
+        return resolveRepositoryContextForUser(resolveUsername());
+    }
+
+    /**
+     * Resolve the selected logical repository and optional workspace for one user.
+     *
+     * <p>A user without a personal workspace receives an explicit read-only
+     * context for the primary central repository. A legacy workspace without
+     * {@code sourceRepositoryId} is assigned to that same primary repository,
+     * which is the only repository such rows could originate from before the
+     * multi-repository migration.</p>
+     */
+    public RepositoryContext resolveRepositoryContextForUser(String username) {
+        String user = normalizeUsername(username);
+        UserWorkspace workspace = WorkspaceManager.DEFAULT_USER.equals(user)
+                ? null
+                : findWorkspace(user);
+
+        if (workspace != null && hasText(workspace.getWorkspaceId())) {
+            SystemRepository repository = resolveWorkspaceSource(workspace);
+            String branch = hasText(workspace.getCurrentBranch())
+                    ? workspace.getCurrentBranch().strip()
+                    : requireBranch(repository);
+            RepositoryContext context = RepositoryContext.workspace(
+                    requireRepositoryId(repository),
+                    workspace.getWorkspaceId().strip(),
+                    branch,
+                    user);
+            log.debug(
+                    "Resolved repository context for user '{}': repository={}, workspace={}, branch={}",
+                    user, context.repositoryId(), context.workspaceId(), context.branch());
+            return context;
+        }
+
+        SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        RepositoryContext context = RepositoryContext.centralRead(
+                requireRepositoryId(primary), requireBranch(primary), user);
+        log.debug(
+                "Resolved central repository context for user '{}': repository={}, branch={}",
+                user, context.repositoryId(), context.branch());
+        return context;
+    }
+
+    private UserWorkspace findWorkspace(String username) {
+        UserWorkspace workspace = workspaceManager.findActiveWorkspace(username);
+        return workspace != null ? workspace : workspaceManager.findUserWorkspace(username);
+    }
+
+    private SystemRepository resolveWorkspaceSource(UserWorkspace workspace) {
+        if (hasText(workspace.getSourceRepositoryId())) {
+            return systemRepositoryService.getRepository(
+                    workspace.getSourceRepositoryId().strip());
+        }
+        SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        log.debug(
+                "Resolved legacy workspace {} to primary repository {}",
+                workspace.getWorkspaceId(), primary.getRepositoryId());
+        return primary;
+    }
+
+    private static String requireRepositoryId(SystemRepository repository) {
+        if (repository == null || !hasText(repository.getRepositoryId())) {
+            throw new IllegalStateException("Resolved repository has no repositoryId");
+        }
+        return repository.getRepositoryId().strip();
+    }
+
+    private static String requireBranch(SystemRepository repository) {
+        if (repository == null || !hasText(repository.getDefaultBranch())) {
+            throw new IllegalStateException("Resolved repository has no default branch");
+        }
+        return repository.getDefaultBranch().strip();
+    }
+
+    private static String normalizeUsername(String username) {
+        return username == null || username.isBlank()
+                ? WorkspaceManager.DEFAULT_USER
+                : username.strip();
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private String resolveUsername() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated()
-                && !"anonymousUser".equals(auth.getPrincipal())) {
-            return auth.getName();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()
+                && !"anonymousUser".equals(authentication.getPrincipal())) {
+            return authentication.getName();
         }
         return WorkspaceManager.DEFAULT_USER;
     }
