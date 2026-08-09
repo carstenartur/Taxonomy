@@ -3,9 +3,9 @@ package com.taxonomy.workspace.service;
 /**
  * Explicit routing identity for every repository-sensitive operation.
  *
- * <p>The repository ID is mandatory. A {@code null} workspace ID addresses the
- * selected central repository; a non-null workspace ID addresses an isolated
- * working copy derived from that repository.</p>
+ * <p>The repository ID, branch, username and scope are mandatory. A central
+ * context has no workspace ID; a workspace context must identify the isolated
+ * working copy derived from the selected repository.</p>
  */
 public record RepositoryContext(
         String repositoryId,
@@ -15,18 +15,21 @@ public record RepositoryContext(
         RepositoryScope scope) {
 
     public RepositoryContext {
-        if (repositoryId == null || repositoryId.isBlank()) {
-            throw new IllegalArgumentException("repositoryId must not be blank");
-        }
-        if (branch == null || branch.isBlank()) {
-            throw new IllegalArgumentException("branch must not be blank");
-        }
+        repositoryId = requireText(repositoryId, "repositoryId");
+        branch = requireText(branch, "branch");
+        username = requireText(username, "username");
         if (scope == null) {
             throw new IllegalArgumentException("scope must not be null");
         }
-        if (scope == RepositoryScope.WORKSPACE
-                && (workspaceId == null || workspaceId.isBlank())) {
+        if (workspaceId != null) {
+            workspaceId = requireText(workspaceId, "workspaceId");
+        }
+        if (scope == RepositoryScope.WORKSPACE && workspaceId == null) {
             throw new IllegalArgumentException("workspaceId is required for WORKSPACE scope");
+        }
+        if (scope == RepositoryScope.CENTRAL_READ && workspaceId != null) {
+            throw new IllegalArgumentException(
+                    "workspaceId must be absent for CENTRAL_READ scope");
         }
     }
 
@@ -40,5 +43,12 @@ public record RepositoryContext(
             String repositoryId, String workspaceId, String branch, String username) {
         return new RepositoryContext(
                 repositoryId, workspaceId, branch, username, RepositoryScope.WORKSPACE);
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
+        }
+        return value.strip();
     }
 }
