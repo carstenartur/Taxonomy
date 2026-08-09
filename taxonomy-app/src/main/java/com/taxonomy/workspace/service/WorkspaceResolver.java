@@ -7,18 +7,19 @@ import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 
 /**
- * Resolves the current workspace username and request-bound workspace context.
+ * Resolves the current username plus request-bound workspace and repository contexts.
  *
- * <p>A successfully resolved context is cached for the lifetime of the HTTP
- * request. All collaborators in one request therefore observe the same
- * workspace even when the underlying persistence state changes or becomes
- * temporarily unavailable later in the request.</p>
+ * <p>Successfully resolved contexts are cached for the lifetime of the HTTP request.
+ * All collaborators in one request therefore observe the same logical repository
+ * even when active-workspace metadata changes concurrently.</p>
  */
 @Component
 public class WorkspaceResolver {
 
     private static final String REQUEST_CONTEXT_ATTRIBUTE =
             WorkspaceResolver.class.getName() + ".resolvedContext";
+    private static final String REQUEST_REPOSITORY_CONTEXT_ATTRIBUTE =
+            WorkspaceResolver.class.getName() + ".resolvedRepositoryContext";
 
     private final WorkspaceContextResolver contextResolver;
 
@@ -26,12 +27,7 @@ public class WorkspaceResolver {
         this.contextResolver = contextResolver;
     }
 
-    /**
-     * Resolve the current user's username from the security context.
-     *
-     * @return the authenticated username, or the configured default user when
-     *         no authenticated principal exists
-     */
+    /** Resolve the authenticated username or the configured default user. */
     public String resolveCurrentUsername() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated()
@@ -42,10 +38,8 @@ public class WorkspaceResolver {
     }
 
     /**
-     * Resolve the full workspace context for the current request. Resolver
-     * failures propagate; this method never manufactures a shared fallback.
-     *
-     * @return the stable active workspace context for this request
+     * Resolve the legacy workspace context for the current request.
+     * Resolver failures propagate; this method never manufactures a fallback.
      */
     public WorkspaceContext resolveCurrentContext() {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
@@ -61,12 +55,39 @@ public class WorkspaceResolver {
         if (resolved == null) {
             throw new IllegalStateException("Workspace context resolver returned null");
         }
+        cache(attributes, REQUEST_CONTEXT_ATTRIBUTE, resolved);
+        return resolved;
+    }
+
+    /**
+     * Resolve the mandatory logical repository identity for the current request.
+     * A central context always carries a repository ID; it never reuses the
+     * ambiguous legacy {@link WorkspaceContext#SHARED} sentinel.
+     */
+    public RepositoryContext resolveCurrentRepositoryContext() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (attributes != null) {
+            Object cached = attributes.getAttribute(
+                    REQUEST_REPOSITORY_CONTEXT_ATTRIBUTE, RequestAttributes.SCOPE_REQUEST);
+            if (cached instanceof RepositoryContext context) {
+                return context;
+            }
+        }
+
+        RepositoryContext resolved = contextResolver.resolveRepositoryContextForUser(
+                resolveCurrentUsername());
+        if (resolved == null) {
+            throw new IllegalStateException("Repository context resolver returned null");
+        }
+        cache(attributes, REQUEST_REPOSITORY_CONTEXT_ATTRIBUTE, resolved);
+        return resolved;
+    }
+
+    private static void cache(
+            RequestAttributes attributes, String attributeName, Object value) {
         if (attributes != null) {
             attributes.setAttribute(
-                    REQUEST_CONTEXT_ATTRIBUTE,
-                    resolved,
-                    RequestAttributes.SCOPE_REQUEST);
+                    attributeName, value, RequestAttributes.SCOPE_REQUEST);
         }
-        return resolved;
     }
 }
