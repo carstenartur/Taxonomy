@@ -57,6 +57,9 @@ public class SystemRepository {
     @Column(name = "lifecycle_state")
     private RepositoryLifecycleState lifecycleState = RepositoryLifecycleState.ACTIVE;
 
+    @Column(name = "provisioning_error", length = 2000)
+    private String provisioningError;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "owner_type")
     private RepositoryOwnerType ownerType = RepositoryOwnerType.USER;
@@ -177,6 +180,14 @@ public class SystemRepository {
 
     public void setLifecycleState(RepositoryLifecycleState lifecycleState) {
         this.lifecycleState = lifecycleState;
+    }
+
+    public String getProvisioningError() {
+        return provisioningError;
+    }
+
+    public void setProvisioningError(String provisioningError) {
+        this.provisioningError = provisioningError;
     }
 
     public RepositoryOwnerType getOwnerType() {
