@@ -33,7 +33,7 @@ class TaxonomySchemaPostgresMigrationIT {
             .withPassword("taxonomy");
 
     @Test
-    void freshInstallationCreatesLegacyAndPortfolioSchema() throws Exception {
+    void freshInstallationCreatesLegacyPortfolioAndRepositoryCatalogSchema() throws Exception {
         DataSource dataSource = isolatedDataSource("fresh_schema");
         migrateJgit(dataSource);
 
@@ -46,13 +46,23 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "solution_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "product_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "project_conflict")).isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "slug")).isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "visibility")).isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "lifecycle_state")).isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_branch")).isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "relationship_type")).isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "last_fetched_commit")).isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "last_integrated_commit")).isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("0", "1", "2");
+                .containsExactly("0", "1", "2", "3");
     }
 
     @Test
-    void adoptsPreMigrationSchemaAndPreservesExistingData() throws Exception {
+    void adoptsPreMigrationSchemaPreservesDataAndBackfillsRepositoryProvenance()
+            throws Exception {
         DataSource dataSource = isolatedDataSource("upgrade_schema");
         migrateJgit(dataSource);
         installApplicationBaseline(dataSource);
@@ -60,6 +70,30 @@ class TaxonomySchemaPostgresMigrationIT {
                 insert into app_user
                     (username, password_hash, enabled, must_change_password)
                 values ('existing-user', 'hash', true, false)
+                """);
+        execute(dataSource, """
+                insert into system_repository
+                    (repository_id, display_name, topology_mode, default_branch,
+                     primary_repo, created_at)
+                values
+                    ('primary-repo', 'Existing shared repository', 'INTERNAL_SHARED', 'draft',
+                     true, timestamp with time zone '2026-01-01 00:00:00+00')
+                """);
+        execute(dataSource, """
+                insert into user_workspace
+                    (workspace_id, username, display_name, current_branch, base_branch,
+                     shared, created_at, provisioning_status, topology_mode,
+                     source_repository_id, base_commit, current_commit, sync_target_branch,
+                     archived, is_default)
+                values
+                    ('workspace-existing', 'existing-user', 'Existing workspace', 'main', 'draft',
+                     false, timestamp with time zone '2026-01-02 00:00:00+00', 'READY',
+                     'INTERNAL_SHARED', 'primary-repo', 'base-commit', 'local-commit', 'draft',
+                     false, true),
+                    ('workspace-shared', 'shared', 'Shared integration', 'draft', 'draft',
+                     true, timestamp with time zone '2026-01-02 00:00:00+00', 'READY',
+                     'INTERNAL_SHARED', 'primary-repo', 'shared-base', 'shared-base', 'draft',
+                     false, false)
                 """);
         execute(dataSource, "drop table " + TaxonomySchemaMigrationConfig.HISTORY_TABLE);
 
@@ -72,8 +106,44 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "project_requirement")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "analysis_snapshot_id"))
                 .isTrue();
+        assertThat(singleString(dataSource,
+                "select storage_repository_name from system_repository "
+                        + "where repository_id = 'primary-repo'"))
+                .isEqualTo("taxonomy-dsl");
+        assertThat(singleString(dataSource,
+                "select slug from system_repository where repository_id = 'primary-repo'"))
+                .isEqualTo("shared-architecture");
+        assertThat(singleString(dataSource,
+                "select visibility from system_repository where repository_id = 'primary-repo'"))
+                .isEqualTo("ORGANIZATION");
+        assertThat(singleString(dataSource,
+                "select owner_type from system_repository where repository_id = 'primary-repo'"))
+                .isEqualTo("SYSTEM");
+        assertThat(singleString(dataSource,
+                "select owner_id from system_repository where repository_id = 'primary-repo'"))
+                .isEqualTo("system");
+        assertThat(singleString(dataSource,
+                "select source_branch from user_workspace "
+                        + "where workspace_id = 'workspace-existing'"))
+                .isEqualTo("draft");
+        assertThat(singleString(dataSource,
+                "select relationship_type from user_workspace "
+                        + "where workspace_id = 'workspace-existing'"))
+                .isEqualTo("WORKING_COPY");
+        assertThat(singleString(dataSource,
+                "select last_fetched_commit from user_workspace "
+                        + "where workspace_id = 'workspace-existing'"))
+                .isEqualTo("base-commit");
+        assertThat(singleString(dataSource,
+                "select last_integrated_commit from user_workspace "
+                        + "where workspace_id = 'workspace-existing'"))
+                .isEqualTo("base-commit");
+        assertThat(singleString(dataSource,
+                "select relationship_type from user_workspace "
+                        + "where workspace_id = 'workspace-shared'"))
+                .isEqualTo("INDEPENDENT");
         assertThat(successfulVersions(dataSource))
-                .containsExactly("1", "2");
+                .containsExactly("1", "2", "3");
     }
 
     @Test
@@ -188,6 +258,15 @@ class TaxonomySchemaPostgresMigrationIT {
              ResultSet resultSet = statement.executeQuery(sql)) {
             resultSet.next();
             return resultSet.getLong(1);
+        }
+    }
+
+    private static String singleString(DataSource dataSource, String sql) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+            resultSet.next();
+            return resultSet.getString(1);
         }
     }
 
