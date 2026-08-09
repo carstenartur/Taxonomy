@@ -119,7 +119,7 @@ public class WorkspaceContextResolver {
                     workspace.getSourceRepositoryId().strip());
         }
         SystemRepository primary = systemRepositoryService.getPrimaryRepository();
-        log.info(
+        log.debug(
                 "Resolved legacy workspace {} to primary repository {}",
                 workspace.getWorkspaceId(), primary.getRepositoryId());
         return primary;
