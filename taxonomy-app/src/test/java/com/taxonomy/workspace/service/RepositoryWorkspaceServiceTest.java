@@ -138,6 +138,36 @@ class RepositoryWorkspaceServiceTest {
     }
 
     @Test
+    void failedFactorySeedStillCleansAttemptedStorage() throws Exception {
+        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
+        List<WorkspaceProvisioningStatus> persistedStates = new ArrayList<>();
+        AtomicReference<String> persistedError = new AtomicReference<>();
+        when(workspaceRepository.save(any(UserWorkspace.class))).thenAnswer(invocation -> {
+            UserWorkspace workspace = invocation.getArgument(0);
+            persistedStates.add(workspace.getProvisioningStatus());
+            persistedError.set(workspace.getProvisioningError());
+            return workspace;
+        });
+        when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
+        when(sourceGit.getDslAtHead("main"))
+                .thenReturn("meta { language: \"taxdsl\"; }\n");
+        when(sourceGit.getHeadCommit("main")).thenReturn("source-commit");
+        when(repositoryFactory.createWorkspaceRepository(
+                anyString(), eq("source-repository"), eq("main")))
+                .thenThrow(new IllegalStateException("seed failed"));
+
+        assertThrows(IllegalStateException.class,
+                () -> service.createWorkingCopy(
+                        "alice", "source-repository", "main", "Alice workspace", null));
+
+        assertEquals(List.of(
+                WorkspaceProvisioningStatus.PROVISIONING,
+                WorkspaceProvisioningStatus.FAILED), persistedStates);
+        assertEquals("seed failed", persistedError.get());
+        verify(repositoryFactory).deleteWorkspaceRepository(anyString());
+    }
+
+    @Test
     void provisioningMethodHasNoOuterTransactionThatCouldRollbackFailedMetadata()
             throws NoSuchMethodException {
         Method method = RepositoryWorkspaceService.class.getMethod(
