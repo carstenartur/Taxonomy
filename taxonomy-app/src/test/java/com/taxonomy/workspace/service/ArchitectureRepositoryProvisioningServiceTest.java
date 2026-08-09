@@ -31,6 +31,9 @@ class ArchitectureRepositoryProvisioningServiceTest {
     private SystemRepositoryService systemRepositoryService;
 
     @Mock
+    private RepositoryMembershipService membershipService;
+
+    @Mock
     private DslGitRepositoryFactory repositoryFactory;
 
     @Mock
@@ -44,11 +47,11 @@ class ArchitectureRepositoryProvisioningServiceTest {
     @BeforeEach
     void setUp() {
         service = new ArchitectureRepositoryProvisioningService(
-                systemRepositoryService, repositoryFactory);
+                systemRepositoryService, membershipService, repositoryFactory);
     }
 
     @Test
-    void independentRepositoryBecomesActiveOnlyAfterInitialCommit() throws Exception {
+    void independentRepositoryBecomesActiveOnlyAfterOwnerAndInitialCommit() throws Exception {
         SystemRepository provisioning = repository(
                 "repo-a", "central-repo-a", "customer-a", RepositoryLifecycleState.PROVISIONING);
         SystemRepository active = repository(
@@ -66,10 +69,12 @@ class ArchitectureRepositoryProvisioningServiceTest {
                 RepositoryVisibility.PRIVATE, "alice", "main");
 
         assertSame(active, result);
-        InOrder order = inOrder(systemRepositoryService, repositoryFactory, repositoryGit);
+        InOrder order = inOrder(
+                systemRepositoryService, membershipService, repositoryFactory, repositoryGit);
         order.verify(systemRepositoryService).createCentralRepository(
                 "Customer A", "customer-a", "Architecture", RepositoryVisibility.PRIVATE,
                 "alice", "main");
+        order.verify(membershipService).assignOwner("repo-a", "alice");
         order.verify(repositoryFactory).createCentralRepository("repo-a", "central-repo-a");
         order.verify(repositoryGit).commitDsl(
                 "main", "meta { language: \"taxdsl\"; }\n", "alice",
@@ -100,13 +105,36 @@ class ArchitectureRepositoryProvisioningServiceTest {
                         "Customer A", "customer-a", null,
                         RepositoryVisibility.PRIVATE, "alice", "main"));
 
+        verify(membershipService).assignOwner("repo-a", "alice");
         verify(repositoryFactory).deleteCentralRepository("repo-a");
         verify(systemRepositoryService).markProvisioningFailed("repo-a", "ref update failed");
         verify(systemRepositoryService, never()).markProvisioningReady("repo-a");
     }
 
     @Test
-    void forkUsesSelectedSourceAndActivatesAfterForkCommit() throws Exception {
+    void failedOwnerAssignmentPersistsFailedStateWithoutAllocatingStorage() {
+        SystemRepository provisioning = repository(
+                "repo-a", "central-repo-a", "customer-a", RepositoryLifecycleState.PROVISIONING);
+        when(systemRepositoryService.createCentralRepository(
+                "Customer A", "customer-a", null, RepositoryVisibility.PRIVATE,
+                "alice", "main"))
+                .thenReturn(provisioning);
+        when(membershipService.assignOwner("repo-a", "alice"))
+                .thenThrow(new IllegalStateException("membership write failed"));
+
+        assertThrows(IllegalStateException.class,
+                () -> service.createRepository(
+                        "Customer A", "customer-a", null,
+                        RepositoryVisibility.PRIVATE, "alice", "main"));
+
+        verify(systemRepositoryService).markProvisioningFailed(
+                "repo-a", "membership write failed");
+        verify(repositoryFactory, never()).createCentralRepository(anyString(), anyString());
+        verify(repositoryFactory, never()).deleteCentralRepository(anyString());
+    }
+
+    @Test
+    void forkUsesSelectedSourceAndActivatesAfterOwnerAndForkCommit() throws Exception {
         SystemRepository source = repository(
                 "source", "central-source", "reference", RepositoryLifecycleState.ACTIVE);
         SystemRepository provisioningFork = repository(
@@ -131,6 +159,7 @@ class ArchitectureRepositoryProvisioningServiceTest {
                 RepositoryVisibility.PRIVATE, "alice");
 
         assertSame(activeFork, result);
+        verify(membershipService).assignOwner("fork", "alice");
         verify(repositoryGit).commitDsl(
                 "main", "meta { language: \"taxdsl\"; }\n", "alice",
                 "Fork from reference/main");
@@ -149,6 +178,7 @@ class ArchitectureRepositoryProvisioningServiceTest {
                         RepositoryVisibility.PRIVATE, "alice"));
 
         verify(repositoryFactory, never()).getCentralRepository(anyString());
+        verify(membershipService, never()).assignOwner(anyString(), anyString());
     }
 
     private static SystemRepository repository(
