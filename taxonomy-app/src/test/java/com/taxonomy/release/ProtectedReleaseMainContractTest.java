@@ -68,7 +68,12 @@ class ProtectedReleaseMainContractTest {
                 .isLessThan(workflow.indexOf("gh workflow run ci-cd.yml"));
         assertThat(workflow.indexOf("gh run watch \"$run_id\" --exit-status"))
                 .isLessThan(workflow.indexOf("gh pr merge \"$PR_NUMBER\" --merge"));
-        assertThat(ci).contains("workflow_dispatch:");
+
+        assertThat(ci)
+                .contains("workflow_dispatch:")
+                .contains("pull_request:\n    branches: [ main ]")
+                .contains("push:\n    branches:\n      - main")
+                .doesNotContain("- 'release/**'");
     }
 
     private static String repositoryFile(String relative) throws IOException {
