@@ -3,6 +3,12 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createEvidencePolicy } from './ui-evidence-policy.mjs';
 
+export function normalizeEvidenceSelector(selector) {
+  // #docImportPanel is an accessibility anchor without its own layout box.
+  // Evidence must target the visible disclosure that renders the import state.
+  return selector === '#docImportPanel' ? '#documentImportPanel' : selector;
+}
+
 export function createEvidence(page, outputDir) {
   const checks = [];
   const axeFindings = [];
@@ -19,10 +25,11 @@ export function createEvidence(page, outputDir) {
   }
 
   async function saveState(state, selector = '#mainContent') {
-    const target = page.locator(selector);
+    const resolvedSelector = normalizeEvidenceSelector(selector);
+    const target = page.locator(resolvedSelector);
     await target.waitFor({ state: 'visible', timeout: 20_000 });
     const captured = policy.shouldCapture(state);
-    states.push({ state, selector, captured });
+    states.push({ state, selector: resolvedSelector, captured });
     if (!captured) return;
 
     const file = path.join(outputDir, `${state}.png`);
@@ -37,8 +44,9 @@ export function createEvidence(page, outputDir) {
   }
 
   async function axeState(state, selector = '#mainContent') {
+    const resolvedSelector = normalizeEvidenceSelector(selector);
     const result = await new AxeBuilder({ page })
-      .include(selector)
+      .include(resolvedSelector)
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();
     const blocking = result.violations.filter(item =>

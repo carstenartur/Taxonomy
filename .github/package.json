@@ -7,9 +7,10 @@
   },
   "scripts": {
     "test:ui-evidence-policy": "node --test scripts/ui-evidence-policy.test.mjs",
+    "test:ui-evidence-targets": "node --test scripts/ui-primary-evidence.test.mjs",
     "test:state-render-consistency": "node --test scripts/taxonomy-state.test.mjs",
     "test:ui-suite-plan": "node --test scripts/ui-suite-plan.test.mjs",
-    "verify:ui": "npm run test:ui-evidence-policy && npm run test:state-render-consistency && npm run test:ui-suite-plan && node scripts/run-ui-suite.mjs",
+    "verify:ui": "npm run test:ui-evidence-policy && npm run test:ui-evidence-targets && npm run test:state-render-consistency && npm run test:ui-suite-plan && node scripts/run-ui-suite.mjs",
     "test:api-transport": "node scripts/test-taxonomy-api-client.mjs"
   },
   "devDependencies": {
