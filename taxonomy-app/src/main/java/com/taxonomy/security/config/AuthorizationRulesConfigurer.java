@@ -75,6 +75,12 @@ public class AuthorizationRulesConfigurer {
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/repositories/*/forks")
                 .hasAnyRole("ARCHITECT", "ADMIN");
+        // Global authentication is only the outer gate. Repository OWNER authority is
+        // enforced by ArchitectureRepositoryController/RepositoryMembershipService.
+        auth.requestMatchers(HttpMethod.PUT, "/api/repositories/*/members/*")
+                .authenticated();
+        auth.requestMatchers(HttpMethod.DELETE, "/api/repositories/*/members/*")
+                .authenticated();
 
         auth.requestMatchers(HttpMethod.POST, "/api/import/preview/**")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
