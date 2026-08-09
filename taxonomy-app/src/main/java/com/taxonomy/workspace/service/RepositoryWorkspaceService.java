@@ -87,7 +87,7 @@ public class RepositoryWorkspaceService {
         workspace.setLastAccessedAt(now);
         workspaceRepository.save(workspace);
 
-        boolean workspaceStorageCreated = false;
+        boolean workspaceStorageAttempted = false;
         try {
             DslGitRepository sourceGit =
                     repositoryFactory.getCentralRepository(source.getRepositoryId());
@@ -98,9 +98,9 @@ public class RepositoryWorkspaceService {
                         "Source branch has no architecture content: " + sourceBranch);
             }
 
+            workspaceStorageAttempted = true;
             DslGitRepository workspaceGit = repositoryFactory.createWorkspaceRepository(
                     workspace.getWorkspaceId(), source.getRepositoryId(), sourceBranch);
-            workspaceStorageCreated = true;
             String workspaceCommit = workspaceGit.getHeadCommit(WORKSPACE_BRANCH);
             if (workspaceCommit == null) {
                 throw new IllegalStateException(
@@ -122,7 +122,7 @@ public class RepositoryWorkspaceService {
             workspace.setProvisioningError(null);
             return workspaceRepository.save(workspace);
         } catch (IOException | RuntimeException exception) {
-            if (workspaceStorageCreated) {
+            if (workspaceStorageAttempted) {
                 try {
                     repositoryFactory.deleteWorkspaceRepository(workspace.getWorkspaceId());
                 } catch (RuntimeException cleanupException) {
