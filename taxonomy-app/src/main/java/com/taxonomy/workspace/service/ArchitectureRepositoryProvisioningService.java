@@ -16,12 +16,15 @@ public class ArchitectureRepositoryProvisioningService {
     private static final String MINIMAL_DSL = "meta { language: \"taxdsl\"; }\n";
 
     private final SystemRepositoryService systemRepositoryService;
+    private final RepositoryMembershipService membershipService;
     private final DslGitRepositoryFactory repositoryFactory;
 
     public ArchitectureRepositoryProvisioningService(
             SystemRepositoryService systemRepositoryService,
+            RepositoryMembershipService membershipService,
             DslGitRepositoryFactory repositoryFactory) {
         this.systemRepositoryService = systemRepositoryService;
+        this.membershipService = membershipService;
         this.repositoryFactory = repositoryFactory;
     }
 
@@ -104,6 +107,7 @@ public class ArchitectureRepositoryProvisioningService {
         String repositoryId = metadata.getRepositoryId();
         boolean storageAttempted = false;
         try {
+            membershipService.assignOwner(repositoryId, ownerId);
             storageAttempted = true;
             DslGitRepository git = repositoryFactory.createCentralRepository(
                     repositoryId, metadata.getStorageRepositoryName());
