@@ -6,6 +6,7 @@ import com.taxonomy.shared.model.FloatArrayConverter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -30,6 +31,7 @@ import org.hibernate.search.mapper.pojo.mapping.definition.annotation.KeywordFie
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.TypeBinding;
 
 @Entity
+@EntityListeners(PrimaryRepositorySeedRelationListener.class)
 @Table(name = "taxonomy_relation",
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_taxonomy_relation_scope",
