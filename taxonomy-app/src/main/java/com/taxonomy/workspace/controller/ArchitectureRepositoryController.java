@@ -1,5 +1,7 @@
 package com.taxonomy.workspace.controller;
 
+import com.taxonomy.workspace.model.RepositoryMembership;
+import com.taxonomy.workspace.model.RepositoryRole;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -10,14 +12,19 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -105,21 +112,25 @@ public class ArchitectureRepositoryController {
             if (!canView(repository, user)) {
                 return ResponseEntity.notFound().build();
             }
+            if (!membershipService.canContribute(repository, user)) {
+                return forbidden("Repository CONTRIBUTOR role required");
+            }
             UserWorkspace workspace = workspaceService.createWorkingCopy(
                     user,
                     repositoryId,
                     request.sourceBranch(),
                     request.displayName(),
                     request.description());
-            return ResponseEntity.ok(Map.of(
-                    "workspaceId", workspace.getWorkspaceId(),
-                    "displayName", workspace.getDisplayName(),
-                    "sourceRepositoryId", workspace.getSourceRepositoryId(),
-                    "sourceBranch", workspace.getSourceBranch(),
-                    "currentBranch", workspace.getCurrentBranch(),
-                    "baseCommit", workspace.getBaseCommit(),
-                    "currentCommit", workspace.getCurrentCommit(),
-                    "provisioningStatus", workspace.getProvisioningStatus().name()));
+            LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+            result.put("workspaceId", workspace.getWorkspaceId());
+            result.put("displayName", workspace.getDisplayName());
+            result.put("sourceRepositoryId", workspace.getSourceRepositoryId());
+            result.put("sourceBranch", workspace.getSourceBranch());
+            result.put("currentBranch", workspace.getCurrentBranch());
+            result.put("baseCommit", workspace.getBaseCommit());
+            result.put("currentCommit", workspace.getCurrentCommit());
+            result.put("provisioningStatus", workspace.getProvisioningStatus().name());
+            return ResponseEntity.ok(result);
         } catch (IllegalArgumentException | IllegalStateException exception) {
             return ResponseEntity.badRequest().body(Map.of("error", safeMessage(exception)));
         }
@@ -135,6 +146,9 @@ public class ArchitectureRepositoryController {
             SystemRepository source = repositoryService.getRepository(repositoryId);
             if (!canView(source, user)) {
                 return ResponseEntity.notFound().build();
+            }
+            if (!membershipService.canContribute(source, user)) {
+                return forbidden("Repository CONTRIBUTOR role required");
             }
             SystemRepository fork = provisioningService.createFork(
                     repositoryId,
@@ -154,12 +168,85 @@ public class ArchitectureRepositoryController {
         }
     }
 
+    @GetMapping("/{repositoryId}/members")
+    @Operation(summary = "List repository memberships")
+    public ResponseEntity<?> listMemberships(@PathVariable String repositoryId) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        SystemRepository repository = visibleRepository(repositoryId, user);
+        if (repository == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!membershipService.isOwner(repository, user)) {
+            return forbidden("Repository OWNER role required");
+        }
+        return ResponseEntity.ok(membershipService.listMemberships(repository, user).stream()
+                .map(this::toMembershipMap)
+                .toList());
+    }
+
+    @PutMapping("/{repositoryId}/members/{username}")
+    @Operation(summary = "Assign or change a repository membership")
+    public ResponseEntity<?> updateMembership(
+            @PathVariable String repositoryId,
+            @PathVariable String username,
+            @RequestBody UpdateMembershipRequest request) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        SystemRepository repository = visibleRepository(repositoryId, user);
+        if (repository == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!membershipService.isOwner(repository, user)) {
+            return forbidden("Repository OWNER role required");
+        }
+        try {
+            RepositoryMembership membership = membershipService.assignRole(
+                    repository, username, request.role(), user);
+            return ResponseEntity.ok(toMembershipMap(membership));
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            return ResponseEntity.badRequest().body(Map.of("error", safeMessage(exception)));
+        } catch (AccessDeniedException exception) {
+            return forbidden(safeMessage(exception));
+        }
+    }
+
+    @DeleteMapping("/{repositoryId}/members/{username}")
+    @Operation(summary = "Remove a repository membership")
+    public ResponseEntity<?> removeMembership(
+            @PathVariable String repositoryId,
+            @PathVariable String username) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        SystemRepository repository = visibleRepository(repositoryId, user);
+        if (repository == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!membershipService.isOwner(repository, user)) {
+            return forbidden("Repository OWNER role required");
+        }
+        try {
+            membershipService.removeMembership(repository, username, user);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            return ResponseEntity.badRequest().body(Map.of("error", safeMessage(exception)));
+        } catch (AccessDeniedException exception) {
+            return forbidden(safeMessage(exception));
+        }
+    }
+
+    private SystemRepository visibleRepository(String repositoryId, String username) {
+        try {
+            SystemRepository repository = repositoryService.getRepository(repositoryId);
+            return canView(repository, username) ? repository : null;
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
     private boolean canView(SystemRepository repository, String username) {
         return membershipService.canRead(repository, username);
     }
 
     private Map<String, Object> toMap(SystemRepository repository) {
-        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("repositoryId", repository.getRepositoryId());
         result.put("slug", repository.getSlug());
         result.put("displayName", repository.getDisplayName());
@@ -177,6 +264,21 @@ public class ArchitectureRepositoryController {
         result.put("createdAt", repository.getCreatedAt());
         result.put("updatedAt", repository.getUpdatedAt());
         return result;
+    }
+
+    private Map<String, Object> toMembershipMap(RepositoryMembership membership) {
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        result.put("username", membership.getUsername());
+        result.put("role", membership.getRole());
+        result.put("createdAt", membership.getCreatedAt());
+        result.put("createdBy", membership.getCreatedBy());
+        result.put("updatedAt", membership.getUpdatedAt());
+        return result;
+    }
+
+    private static ResponseEntity<Map<String, String>> forbidden(String message) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", message));
     }
 
     private static String safeMessage(Throwable throwable) {
@@ -203,5 +305,8 @@ public class ArchitectureRepositoryController {
             String description,
             RepositoryVisibility visibility,
             String sourceBranch) {
+    }
+
+    public record UpdateMembershipRequest(RepositoryRole role) {
     }
 }
