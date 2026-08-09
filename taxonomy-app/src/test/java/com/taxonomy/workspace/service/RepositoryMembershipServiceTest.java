@@ -2,18 +2,21 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryMembership;
+import com.taxonomy.workspace.model.RepositoryOwnerType;
 import com.taxonomy.workspace.model.RepositoryRole;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -97,6 +100,20 @@ class RepositoryMembershipServiceTest {
     }
 
     @Test
+    void organizationIdentifierIsNotImplicitlyTreatedAsAUserOwner() {
+        SystemRepository organization = repository(
+                RepositoryVisibility.ORGANIZATION, RepositoryLifecycleState.ACTIVE, false);
+        organization.setOwnerType(RepositoryOwnerType.ORGANIZATION);
+        organization.setOwnerId("architecture-team");
+        when(membershipRepository.findByRepositoryIdAndUsername(
+                        "repo-a", "architecture-team"))
+                .thenReturn(Optional.empty());
+
+        assertTrue(service.effectiveRole(organization, "architecture-team").isEmpty());
+        assertFalse(service.isOwner(organization, "architecture-team"));
+    }
+
+    @Test
     void repositoryRolesGrantOnlyTheirDeclaredCapabilityLevel() {
         SystemRepository repository = repository(
                 RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
@@ -120,6 +137,87 @@ class RepositoryMembershipServiceTest {
     }
 
     @Test
+    void primaryRepositoryRetainsWorkingCopyCompatibilityForAuthenticatedUsers() {
+        SystemRepository primary = repository(
+                RepositoryVisibility.ORGANIZATION, RepositoryLifecycleState.ACTIVE, true);
+
+        assertTrue(service.canContribute(primary, "authenticated-user"));
+        assertFalse(service.canContribute(primary, " "));
+    }
+
+    @Test
+    void ownerCanAssignContributorRole() {
+        SystemRepository repository = repository(
+                RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "bob"))
+                .thenReturn(Optional.empty());
+
+        RepositoryMembership assigned = service.assignRole(
+                repository, "bob", RepositoryRole.CONTRIBUTOR, "owner");
+
+        assertEquals("bob", assigned.getUsername());
+        assertEquals(RepositoryRole.CONTRIBUTOR, assigned.getRole());
+        assertEquals("owner", assigned.getCreatedBy());
+        verify(membershipRepository).save(assigned);
+    }
+
+    @Test
+    void nonOwnerCannotAssignRepositoryRoles() {
+        SystemRepository repository = repository(
+                RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "reader"))
+                .thenReturn(Optional.of(membership(
+                        "repo-a", "reader", RepositoryRole.READER)));
+
+        assertThrows(AccessDeniedException.class, () -> service.assignRole(
+                repository, "bob", RepositoryRole.CONTRIBUTOR, "reader"));
+        verify(membershipRepository, never()).save(any());
+    }
+
+    @Test
+    void userCatalogOwnerCannotBeDemotedOrRemoved() {
+        SystemRepository repository = repository(
+                RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+
+        assertThrows(IllegalArgumentException.class, () -> service.assignRole(
+                repository, "owner", RepositoryRole.MAINTAINER, "owner"));
+        assertThrows(IllegalArgumentException.class, () -> service.removeMembership(
+                repository, "owner", "owner"));
+        verify(membershipRepository, never()).delete(any());
+    }
+
+    @Test
+    void organizationRepositoryCannotLoseItsLastExplicitOwner() {
+        SystemRepository repository = repository(
+                RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        repository.setOwnerType(RepositoryOwnerType.ORGANIZATION);
+        repository.setOwnerId("architecture-team");
+        RepositoryMembership owner = membership("repo-a", "alice", RepositoryRole.OWNER);
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "alice"))
+                .thenReturn(Optional.of(owner));
+        when(membershipRepository.countByRepositoryIdAndRole(
+                        "repo-a", RepositoryRole.OWNER))
+                .thenReturn(1L);
+
+        assertThrows(IllegalStateException.class, () -> service.removeMembership(
+                repository, "alice", "alice"));
+        verify(membershipRepository, never()).delete(any());
+    }
+
+    @Test
+    void ownerCanRemoveOrdinaryMembership() {
+        SystemRepository repository = repository(
+                RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        RepositoryMembership reader = membership("repo-a", "reader", RepositoryRole.READER);
+        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "reader"))
+                .thenReturn(Optional.of(reader));
+
+        service.removeMembership(repository, "reader", "owner");
+
+        verify(membershipRepository).delete(reader);
+    }
+
+    @Test
     void inactiveRepositoriesAreNeverReadableOrMutable() {
         SystemRepository failed = repository(
                 RepositoryVisibility.PUBLIC, RepositoryLifecycleState.FAILED, true);
@@ -138,6 +236,7 @@ class RepositoryMembershipServiceTest {
         repository.setRepositoryId("repo-a");
         repository.setVisibility(visibility);
         repository.setLifecycleState(lifecycleState);
+        repository.setOwnerType(RepositoryOwnerType.USER);
         repository.setOwnerId("owner");
         repository.setPrimaryRepo(primary);
         return repository;
