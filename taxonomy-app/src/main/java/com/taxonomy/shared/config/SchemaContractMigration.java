@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -26,14 +27,15 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * Idempotent schema contract migration for deployments that predate workspace
- * isolation and mandatory password replacement.
+ * Idempotent schema contract migration for deployments that predate workspace,
+ * repository isolation and mandatory password replacement.
  *
  * <p>Hibernate {@code ddl-auto=update} cannot remove obsolete unique
  * constraints reliably. This runner inspects JDBC metadata, drops only
- * constraints with proven legacy column sets, backfills a non-null workspace
- * scope key, and creates named constraints that protect both shared and
- * personal rows. It also prepares the local-user password-change column.</p>
+ * constraints with proven legacy column sets, backfills non-null scope keys,
+ * binds legacy committed relations to the one primary repository, and creates
+ * named constraints that protect central and personal rows. It also prepares
+ * the local-user password-change column.</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -50,8 +52,11 @@ public class SchemaContractMigration implements ApplicationRunner {
             "source_node_id", "target_node_id", "relation_type", "workspace_id");
     private static final Set<String> RELATION_WORKSPACE_NULLABLE_COLUMNS = Set.of(
             "source_node_id", "target_node_id", "relation_type", "workspace_id");
-    private static final Set<String> SCOPE_KEY_COLUMNS = Set.of(
+    private static final Set<String> WORKSPACE_SCOPE_KEY_COLUMNS = Set.of(
             "source_node_id", "target_node_id", "relation_type", "workspace_scope_key");
+    private static final Set<String> REPOSITORY_SCOPE_KEY_COLUMNS = Set.of(
+            "repository_id", "source_node_id", "target_node_id",
+            "relation_type", "workspace_scope_key");
 
     private final DataSource dataSource;
 
@@ -70,15 +75,25 @@ public class SchemaContractMigration implements ApplicationRunner {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                migrateScopedUniqueness(connection,
-                        "relation_proposal", "uk_relation_proposal_scope",
-                        List.of(PROPOSAL_LEGACY_COLUMNS, PROPOSAL_WORKSPACE_NULLABLE_COLUMNS));
-                migrateScopedUniqueness(connection,
-                        "taxonomy_relation", "uk_taxonomy_relation_scope",
-                        List.of(RELATION_WORKSPACE_NULLABLE_COLUMNS));
+                migrateScopedUniqueness(
+                        connection,
+                        "relation_proposal",
+                        "uk_relation_proposal_scope",
+                        List.of(PROPOSAL_LEGACY_COLUMNS, PROPOSAL_WORKSPACE_NULLABLE_COLUMNS),
+                        WORKSPACE_SCOPE_KEY_COLUMNS,
+                        false);
+                migrateScopedUniqueness(
+                        connection,
+                        "taxonomy_relation",
+                        "uk_taxonomy_relation_scope",
+                        List.of(
+                                RELATION_WORKSPACE_NULLABLE_COLUMNS,
+                                WORKSPACE_SCOPE_KEY_COLUMNS),
+                        REPOSITORY_SCOPE_KEY_COLUMNS,
+                        true);
                 ensurePasswordChangeColumn(connection);
                 connection.commit();
-                log.info("Verified workspace and account schema contracts");
+                log.info("Verified repository, workspace and account schema contracts");
             } catch (SQLException | RuntimeException error) {
                 rollbackQuietly(connection, error);
                 throw new IllegalStateException(
@@ -91,10 +106,13 @@ public class SchemaContractMigration implements ApplicationRunner {
         }
     }
 
-    private void migrateScopedUniqueness(Connection connection,
-                                         String logicalTableName,
-                                         String targetConstraint,
-                                         List<Set<String>> legacyColumnSets) throws SQLException {
+    private void migrateScopedUniqueness(
+            Connection connection,
+            String logicalTableName,
+            String targetConstraint,
+            List<Set<String>> legacyColumnSets,
+            Set<String> targetColumns,
+            boolean repositoryScoped) throws SQLException {
         TableRef table = findTable(connection, logicalTableName);
         if (table == null) {
             log.debug("Schema migration skipped: table {} does not exist", logicalTableName);
@@ -105,7 +123,13 @@ public class SchemaContractMigration implements ApplicationRunner {
         execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET workspace_scope_key = " + scopeExpression());
 
-        assertNoScopedDuplicates(connection, table);
+        if (repositoryScoped) {
+            ensureColumn(connection, table, "repository_id", "VARCHAR(255)");
+            bindLegacyRelationsToPrimaryRepository(connection, table);
+            ensureRepositoryForeignKey(connection, table);
+        }
+
+        assertNoScopedDuplicates(connection, table, repositoryScoped);
 
         for (IndexDefinition index : uniqueIndexes(connection, table)) {
             Set<String> columns = new LinkedHashSet<>(index.columns());
@@ -117,14 +141,106 @@ public class SchemaContractMigration implements ApplicationRunner {
         }
 
         boolean targetExists = uniqueIndexes(connection, table).stream()
-                .anyMatch(index -> new LinkedHashSet<>(index.columns()).equals(SCOPE_KEY_COLUMNS));
+                .anyMatch(index -> new LinkedHashSet<>(index.columns()).equals(targetColumns));
         if (!targetExists) {
+            String columns = repositoryScoped
+                    ? "repository_id, source_node_id, target_node_id, relation_type, workspace_scope_key"
+                    : "source_node_id, target_node_id, relation_type, workspace_scope_key";
             execute(connection, "ALTER TABLE " + qualified(connection, table)
                     + " ADD CONSTRAINT " + quoted(connection, targetConstraint)
-                    + " UNIQUE (source_node_id, target_node_id, relation_type, workspace_scope_key)");
-            log.info("Created workspace-scoped unique constraint {} on {}",
+                    + " UNIQUE (" + columns + ")");
+            log.info("Created tenant-scoped unique constraint {} on {}",
                     targetConstraint, logicalTableName);
         }
+    }
+
+    private void bindLegacyRelationsToPrimaryRepository(
+            Connection connection, TableRef relationTable) throws SQLException {
+        execute(connection, "UPDATE " + qualified(connection, relationTable)
+                + " SET repository_id = NULL WHERE TRIM(repository_id) = ''");
+        long unbound = singleLong(connection, "SELECT COUNT(*) FROM "
+                + qualified(connection, relationTable)
+                + " WHERE repository_id IS NULL");
+        if (unbound == 0) {
+            return;
+        }
+
+        TableRef repositoryTable = findTable(connection, "system_repository");
+        if (repositoryTable == null) {
+            throw new IllegalStateException(
+                    "Cannot bind legacy taxonomy relations: system_repository is missing");
+        }
+
+        String primaryRepositoryId = null;
+        int primaryCount = 0;
+        String select = "SELECT repository_id, primary_repo FROM "
+                + qualified(connection, repositoryTable);
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(select)) {
+            while (result.next()) {
+                if (result.getBoolean("primary_repo")) {
+                    primaryCount++;
+                    primaryRepositoryId = result.getString("repository_id");
+                }
+            }
+        }
+        if (primaryCount != 1
+                || primaryRepositoryId == null
+                || primaryRepositoryId.isBlank()) {
+            throw new IllegalStateException(
+                    "Cannot bind " + unbound
+                            + " legacy taxonomy relation(s): expected exactly one primary repository, found "
+                            + primaryCount);
+        }
+
+        String update = "UPDATE " + qualified(connection, relationTable)
+                + " SET repository_id = ? WHERE repository_id IS NULL";
+        try (PreparedStatement statement = connection.prepareStatement(update)) {
+            statement.setString(1, primaryRepositoryId);
+            statement.executeUpdate();
+        }
+        log.info("Bound {} legacy taxonomy relation(s) to the primary repository", unbound);
+    }
+
+    private void ensureRepositoryForeignKey(
+            Connection connection, TableRef relationTable) throws SQLException {
+        TableRef repositoryTable = findTable(connection, "system_repository");
+        if (repositoryTable == null) {
+            throw new IllegalStateException(
+                    "Cannot enforce taxonomy relation repository scope: system_repository is missing");
+        }
+        if (hasImportedKey(
+                connection,
+                relationTable,
+                "repository_id",
+                repositoryTable,
+                "repository_id")) {
+            return;
+        }
+        execute(connection, "ALTER TABLE " + qualified(connection, relationTable)
+                + " ADD CONSTRAINT " + quoted(connection, "fk_taxonomy_relation_repository")
+                + " FOREIGN KEY (repository_id) REFERENCES "
+                + qualified(connection, repositoryTable) + " (repository_id)");
+        log.info("Created taxonomy relation repository foreign key");
+    }
+
+    private boolean hasImportedKey(
+            Connection connection,
+            TableRef sourceTable,
+            String sourceColumn,
+            TableRef targetTable,
+            String targetColumn) throws SQLException {
+        try (ResultSet keys = connection.getMetaData().getImportedKeys(
+                sourceTable.catalog(), sourceTable.schema(), sourceTable.name())) {
+            while (keys.next()) {
+                if (sourceColumn.equalsIgnoreCase(keys.getString("FKCOLUMN_NAME"))
+                        && targetTable.name().equalsIgnoreCase(keys.getString("PKTABLE_NAME"))
+                        && targetColumn.equalsIgnoreCase(keys.getString("PKCOLUMN_NAME"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void ensurePasswordChangeColumn(Connection connection) throws SQLException {
@@ -147,10 +263,11 @@ public class SchemaContractMigration implements ApplicationRunner {
         log.info("Added app_user.must_change_password with a safe false default");
     }
 
-    private void ensureColumn(Connection connection,
-                              TableRef table,
-                              String column,
-                              String definition) throws SQLException {
+    private void ensureColumn(
+            Connection connection,
+            TableRef table,
+            String column,
+            String definition) throws SQLException {
         if (columnExists(connection, table, column)) {
             return;
         }
@@ -160,13 +277,18 @@ public class SchemaContractMigration implements ApplicationRunner {
                 + " ADD " + column + " " + definition);
     }
 
-    private void assertNoScopedDuplicates(Connection connection,
-                                          TableRef table) throws SQLException {
+    private void assertNoScopedDuplicates(
+            Connection connection,
+            TableRef table,
+            boolean repositoryScoped) throws SQLException {
+        String repositoryProjection = repositoryScoped ? "repository_id, " : "";
         String sql = "SELECT COUNT(*) FROM (SELECT "
+                + repositoryProjection
                 + "source_node_id, target_node_id, relation_type, "
                 + scopeExpression() + " AS scope_key, COUNT(*) AS duplicate_count FROM "
                 + qualified(connection, table)
-                + " GROUP BY source_node_id, target_node_id, relation_type, "
+                + " GROUP BY " + repositoryProjection
+                + "source_node_id, target_node_id, relation_type, "
                 + scopeExpression()
                 + " HAVING COUNT(*) > 1) taxonomy_duplicates";
         try (Statement statement = connection.createStatement();
@@ -176,7 +298,7 @@ public class SchemaContractMigration implements ApplicationRunner {
             if (duplicateGroups > 0) {
                 throw new IllegalStateException("Table " + table.name()
                         + " contains " + duplicateGroups
-                        + " duplicate source/target/type/workspace groups. "
+                        + " duplicate tenant/source/target/type/workspace groups. "
                         + "Resolve them before starting the upgraded application.");
             }
         }
@@ -186,9 +308,10 @@ public class SchemaContractMigration implements ApplicationRunner {
         return "COALESCE(NULLIF(TRIM(workspace_id), ''), '" + SHARED_SCOPE + "')";
     }
 
-    private void dropConstraintOrIndex(Connection connection,
-                                       TableRef table,
-                                       String name) throws SQLException {
+    private void dropConstraintOrIndex(
+            Connection connection,
+            TableRef table,
+            String name) throws SQLException {
         SQLException constraintFailure;
         try {
             execute(connection, "ALTER TABLE " + qualified(connection, table)
@@ -212,8 +335,8 @@ public class SchemaContractMigration implements ApplicationRunner {
         }
     }
 
-    private List<IndexDefinition> uniqueIndexes(Connection connection,
-                                                 TableRef table) throws SQLException {
+    private List<IndexDefinition> uniqueIndexes(
+            Connection connection, TableRef table) throws SQLException {
         Map<String, Map<Short, String>> byName = new LinkedHashMap<>();
         DatabaseMetaData metadata = connection.getMetaData();
         try (ResultSet indexes = metadata.getIndexInfo(
@@ -238,8 +361,8 @@ public class SchemaContractMigration implements ApplicationRunner {
         return result;
     }
 
-    private TableRef findTable(Connection connection,
-                               String logicalName) throws SQLException {
+    private TableRef findTable(
+            Connection connection, String logicalName) throws SQLException {
         DatabaseMetaData metadata = connection.getMetaData();
         String preferredSchema = safeSchema(connection);
         List<TableRef> matches = new ArrayList<>();
@@ -263,9 +386,10 @@ public class SchemaContractMigration implements ApplicationRunner {
                 .orElse(null);
     }
 
-    private boolean columnExists(Connection connection,
-                                 TableRef table,
-                                 String logicalColumn) throws SQLException {
+    private boolean columnExists(
+            Connection connection,
+            TableRef table,
+            String logicalColumn) throws SQLException {
         try (ResultSet columns = connection.getMetaData().getColumns(
                 table.catalog(), table.schema(), table.name(), "%")) {
             while (columns.next()) {
@@ -276,6 +400,14 @@ public class SchemaContractMigration implements ApplicationRunner {
             }
         }
         return false;
+    }
+
+    private long singleLong(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(sql)) {
+            result.next();
+            return result.getLong(1);
+        }
     }
 
     private void execute(Connection connection, String sql) throws SQLException {
@@ -291,9 +423,10 @@ public class SchemaContractMigration implements ApplicationRunner {
                 ? tableName : quoted(connection, table.schema()) + "." + tableName;
     }
 
-    private String qualifiedIndex(Connection connection,
-                                  TableRef table,
-                                  String indexName) throws SQLException {
+    private String qualifiedIndex(
+            Connection connection,
+            TableRef table,
+            String indexName) throws SQLException {
         String quotedIndex = quoted(connection, indexName);
         return table.schema() == null || table.schema().isBlank()
                 ? quotedIndex : quoted(connection, table.schema()) + "." + quotedIndex;
