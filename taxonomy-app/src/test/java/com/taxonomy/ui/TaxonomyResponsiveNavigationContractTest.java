@@ -44,11 +44,26 @@ class TaxonomyResponsiveNavigationContractTest {
                 fixtures,
                 "export async function navigateToPage(page, pageId) {",
                 "export async function navigateArchitectureSubtab(page, subtab) {");
+        String roleNavigation = between(
+                roleFlow,
+                "  const adminTab = page.locator('#adminNavTab');",
+                "  await navigateToPage(page, 'analyze');");
 
         assertThat(mainNavigationHelper)
                 .contains("const responsive = page.locator('#mobileMainNavigationSelect')")
                 .contains("await responsive.selectOption(pageId)")
                 .doesNotContain("scrollIntoViewIfNeeded");
+
+        assertThat(roleNavigation)
+                .contains("const responsiveNavigation = page.locator('#mobileMainNavigationSelect')")
+                .contains("if (await responsiveNavigation.isVisible().catch(() => false))")
+                .contains("option[value=\"admin\"]")
+                .contains("ADMIN responsive navigation is unavailable after role authorization")
+                .contains("ADMIN desktop navigation is unavailable after role authorization")
+                .contains("responsivePages.includes('admin')");
+        assertThat(roleNavigation.indexOf(
+                "if (await responsiveNavigation.isVisible().catch(() => false))"))
+                .isLessThan(roleNavigation.indexOf("await adminLink.scrollIntoViewIfNeeded()"));
 
         assertThat(roleFlow)
                 .contains("await navigateToPage(page, 'analyze')")
