@@ -1,10 +1,10 @@
 package com.taxonomy.workspace.controller;
 
-import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.RepositoryWorkspaceService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -30,16 +30,19 @@ public class ArchitectureRepositoryController {
     private final SystemRepositoryService repositoryService;
     private final ArchitectureRepositoryProvisioningService provisioningService;
     private final RepositoryWorkspaceService workspaceService;
+    private final RepositoryMembershipService membershipService;
     private final WorkspaceResolver workspaceResolver;
 
     public ArchitectureRepositoryController(
             SystemRepositoryService repositoryService,
             ArchitectureRepositoryProvisioningService provisioningService,
             RepositoryWorkspaceService workspaceService,
+            RepositoryMembershipService membershipService,
             WorkspaceResolver workspaceResolver) {
         this.repositoryService = repositoryService;
         this.provisioningService = provisioningService;
         this.workspaceService = workspaceService;
+        this.membershipService = membershipService;
         this.workspaceResolver = workspaceResolver;
     }
 
@@ -152,18 +155,7 @@ public class ArchitectureRepositoryController {
     }
 
     private boolean canView(SystemRepository repository, String username) {
-        if (repository.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {
-            return false;
-        }
-        if (repository.isPrimaryRepo()) {
-            return true;
-        }
-        RepositoryVisibility visibility = repository.getVisibility();
-        if (visibility == RepositoryVisibility.PUBLIC
-                || visibility == RepositoryVisibility.ORGANIZATION) {
-            return true;
-        }
-        return username != null && username.equals(repository.getOwnerId());
+        return membershipService.canRead(repository, username);
     }
 
     private Map<String, Object> toMap(SystemRepository repository) {
