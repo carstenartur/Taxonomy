@@ -9,7 +9,6 @@ import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.model.WorkspaceRelationshipType;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -19,7 +18,8 @@ import java.util.UUID;
 @Service
 public class RepositoryWorkspaceService {
 
-    private static final String WORKSPACE_BRANCH = "main";
+    private static final String WORKSPACE_BRANCH = "draft";
+    private static final String TRACKING_BRANCH = "sync-base";
 
     private final UserWorkspaceRepository workspaceRepository;
     private final SystemRepositoryService systemRepositoryService;
@@ -37,11 +37,17 @@ public class RepositoryWorkspaceService {
     /**
      * Create and provision a personal working copy from the requested repository and branch.
      *
-     * <p>Metadata is persisted before JGit provisioning. A failed provisioning remains visible
-     * as {@link WorkspaceProvisioningStatus#FAILED}, so storage and metadata can be diagnosed
-     * and retried rather than being silently orphaned.</p>
+     * <p>This method deliberately has no surrounding Spring transaction. The initial
+     * {@link WorkspaceProvisioningStatus#PROVISIONING} metadata must commit before JGit
+     * allocation starts, and a later {@link WorkspaceProvisioningStatus#FAILED} update must
+     * remain durable even though the caller receives an exception. Each Spring Data
+     * {@code save} operation supplies its own transaction boundary.</p>
+     *
+     * <p>The factory performs the one and only initial DSL seed on the historic
+     * {@code draft} workspace branch. The service records that commit and creates the
+     * semantic {@code sync-base} ref at exactly the same commit; it must not manufacture a
+     * second, unrelated initial commit on another branch.</p>
      */
-    @Transactional
     public UserWorkspace createWorkingCopy(
             String username,
             String sourceRepositoryId,
@@ -81,6 +87,7 @@ public class RepositoryWorkspaceService {
         workspace.setLastAccessedAt(now);
         workspaceRepository.save(workspace);
 
+        boolean workspaceStorageCreated = false;
         try {
             DslGitRepository sourceGit =
                     repositoryFactory.getCentralRepository(source.getRepositoryId());
@@ -93,14 +100,21 @@ public class RepositoryWorkspaceService {
 
             DslGitRepository workspaceGit = repositoryFactory.createWorkspaceRepository(
                     workspace.getWorkspaceId(), source.getRepositoryId(), sourceBranch);
-            workspaceGit.commitDsl(
-                    WORKSPACE_BRANCH,
-                    sourceDsl,
-                    user,
-                    "Create working copy from " + source.getSlug() + "/" + sourceBranch);
+            workspaceStorageCreated = true;
+            String workspaceCommit = workspaceGit.getHeadCommit(WORKSPACE_BRANCH);
+            if (workspaceCommit == null) {
+                throw new IllegalStateException(
+                        "Workspace seed did not create branch " + WORKSPACE_BRANCH);
+            }
+            String trackingCommit = workspaceGit.createBranch(
+                    TRACKING_BRANCH, WORKSPACE_BRANCH);
+            if (trackingCommit == null) {
+                throw new IllegalStateException(
+                        "Workspace seed did not create tracking branch " + TRACKING_BRANCH);
+            }
 
             workspace.setBaseCommit(sourceCommit);
-            workspace.setCurrentCommit(workspaceGit.getHeadCommit(WORKSPACE_BRANCH));
+            workspace.setCurrentCommit(workspaceCommit);
             workspace.setLastFetchedCommit(sourceCommit);
             workspace.setLastIntegratedCommit(sourceCommit);
             workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
@@ -108,8 +122,16 @@ public class RepositoryWorkspaceService {
             workspace.setProvisioningError(null);
             return workspaceRepository.save(workspace);
         } catch (IOException | RuntimeException exception) {
+            if (workspaceStorageCreated) {
+                try {
+                    repositoryFactory.deleteWorkspaceRepository(workspace.getWorkspaceId());
+                } catch (RuntimeException cleanupException) {
+                    exception.addSuppressed(cleanupException);
+                }
+            }
             workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
-            workspace.setProvisioningError(exception.getMessage());
+            workspace.setProvisioningError(safeMessage(exception));
+            workspace.setLastAccessedAt(Instant.now());
             workspaceRepository.save(workspace);
             throw new IllegalStateException(
                     "Could not provision working copy from repository " + sourceRepositoryId,
@@ -122,5 +144,11 @@ public class RepositoryWorkspaceService {
             throw new IllegalArgumentException(field + " must not be blank");
         }
         return value.strip();
+    }
+
+    private static String safeMessage(Throwable throwable) {
+        return throwable.getMessage() == null
+                ? throwable.getClass().getSimpleName()
+                : throwable.getMessage();
     }
 }
