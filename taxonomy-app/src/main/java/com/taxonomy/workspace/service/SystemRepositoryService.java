@@ -27,6 +27,7 @@ public class SystemRepositoryService {
 
     private static final Logger log = LoggerFactory.getLogger(SystemRepositoryService.class);
     private static final Pattern SLUG_PATTERN = Pattern.compile("[a-z0-9]+(?:-[a-z0-9]+)*");
+    private static final int MAX_PROVISIONING_ERROR_LENGTH = 2000;
 
     private final SystemRepositoryRepository repository;
 
@@ -57,6 +58,7 @@ public class SystemRepositoryService {
                 systemRepository.setDescription("Default central architecture repository");
                 systemRepository.setVisibility(RepositoryVisibility.ORGANIZATION);
                 systemRepository.setLifecycleState(RepositoryLifecycleState.ACTIVE);
+                systemRepository.setProvisioningError(null);
                 systemRepository.setOwnerType(RepositoryOwnerType.SYSTEM);
                 systemRepository.setOwnerId("system");
                 systemRepository.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
@@ -116,9 +118,10 @@ public class SystemRepositoryService {
     /**
      * Reserve a new central repository identity in the catalog.
      *
-     * <p>JGit storage initialization is intentionally performed by the caller so
-     * a failed allocation can be recorded as {@link RepositoryLifecycleState#FAILED}
-     * instead of silently orphaning storage.</p>
+     * <p>The entry remains {@link RepositoryLifecycleState#PROVISIONING} until the
+     * caller has created the logical JGit repository and its initial branch. A
+     * failed allocation therefore remains diagnosable and can be retried or cleaned
+     * explicitly instead of appearing as an active but unusable repository.</p>
      */
     @Transactional
     public SystemRepository createCentralRepository(
@@ -141,6 +144,7 @@ public class SystemRepositoryService {
             throw new IllegalStateException("Generated repository storage name already exists");
         }
 
+        String owner = requireText(ownerId, "ownerId");
         Instant now = Instant.now();
         SystemRepository architectureRepository = new SystemRepository();
         architectureRepository.setRepositoryId(repositoryId);
@@ -150,14 +154,15 @@ public class SystemRepositoryService {
         architectureRepository.setDescription(description);
         architectureRepository.setVisibility(
                 visibility != null ? visibility : RepositoryVisibility.PRIVATE);
-        architectureRepository.setLifecycleState(RepositoryLifecycleState.ACTIVE);
+        architectureRepository.setLifecycleState(RepositoryLifecycleState.PROVISIONING);
+        architectureRepository.setProvisioningError(null);
         architectureRepository.setOwnerType(RepositoryOwnerType.USER);
-        architectureRepository.setOwnerId(requireText(ownerId, "ownerId"));
+        architectureRepository.setOwnerId(owner);
         architectureRepository.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
         architectureRepository.setDefaultBranch(
                 defaultBranch == null || defaultBranch.isBlank() ? "draft" : defaultBranch.strip());
         architectureRepository.setPrimaryRepo(false);
-        architectureRepository.setCreatedBy(ownerId);
+        architectureRepository.setCreatedBy(owner);
         architectureRepository.setCreatedAt(now);
         architectureRepository.setUpdatedAt(now);
         return repository.save(architectureRepository);
@@ -174,33 +179,37 @@ public class SystemRepositoryService {
             RepositoryVisibility visibility,
             String ownerId) {
         SystemRepository source = getRepository(sourceRepositoryId);
+        String branch = sourceBranch == null || sourceBranch.isBlank()
+                ? source.getDefaultBranch()
+                : sourceBranch.strip();
         SystemRepository fork = createCentralRepository(
                 displayName,
                 slug,
                 description,
                 visibility,
                 ownerId,
-                sourceBranch == null || sourceBranch.isBlank()
-                        ? source.getDefaultBranch() : sourceBranch);
+                branch);
         fork.setUpstreamRepositoryId(source.getRepositoryId());
-        fork.setUpstreamBranch(
-                sourceBranch == null || sourceBranch.isBlank()
-                        ? source.getDefaultBranch() : sourceBranch);
+        fork.setUpstreamBranch(branch);
         fork.setForkPointCommit(forkPointCommit);
         fork.setUpdatedAt(Instant.now());
         return repository.save(fork);
     }
 
     @Transactional
+    public SystemRepository markProvisioningReady(String repositoryId) {
+        SystemRepository architectureRepository = getRepository(repositoryId);
+        architectureRepository.setLifecycleState(RepositoryLifecycleState.ACTIVE);
+        architectureRepository.setProvisioningError(null);
+        architectureRepository.setUpdatedAt(Instant.now());
+        return repository.save(architectureRepository);
+    }
+
+    @Transactional
     public SystemRepository markProvisioningFailed(String repositoryId, String reason) {
         SystemRepository architectureRepository = getRepository(repositoryId);
         architectureRepository.setLifecycleState(RepositoryLifecycleState.FAILED);
-        if (reason != null && !reason.isBlank()) {
-            String current = architectureRepository.getDescription();
-            String failure = "Provisioning failed: " + reason.strip();
-            architectureRepository.setDescription(
-                    current == null || current.isBlank() ? failure : current + "\n" + failure);
-        }
+        architectureRepository.setProvisioningError(normalizeProvisioningError(reason));
         architectureRepository.setUpdatedAt(Instant.now());
         return repository.save(architectureRepository);
     }
@@ -274,6 +283,16 @@ public class SystemRepositoryService {
             throw new IllegalArgumentException("Repository slug is invalid: " + value);
         }
         return normalized;
+    }
+
+    private static String normalizeProvisioningError(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return "Repository provisioning failed";
+        }
+        String normalized = reason.strip();
+        return normalized.length() <= MAX_PROVISIONING_ERROR_LENGTH
+                ? normalized
+                : normalized.substring(0, MAX_PROVISIONING_ERROR_LENGTH);
     }
 
     private static String requireText(String value, String field) {
