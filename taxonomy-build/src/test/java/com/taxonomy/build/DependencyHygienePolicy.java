@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -47,6 +48,9 @@ final class DependencyHygienePolicy {
         INTENDED_PDFBOX_COMPONENTS.stream().sorted().forEach(
                 name -> intendedVersions.put(name, new LinkedHashSet<>()));
         for (Component component : pdfbox) {
+            if (excepted.contains(component)) {
+                continue;
+            }
             Set<String> versions = intendedVersions.get(component.name());
             if (versions != null) {
                 versions.add(component.version());
@@ -131,7 +135,7 @@ final class DependencyHygienePolicy {
             return true;
         }
         return component.group().startsWith("com.openhtmltopdf")
-                && component.name().toLowerCase().contains("pdfbox");
+                && component.name().toLowerCase(Locale.ROOT).contains("pdfbox");
     }
 
     record Component(String group, String name, String version)
