@@ -23,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -121,8 +122,11 @@ public class SchemaContractMigration implements ApplicationRunner {
 
         ensureColumn(connection, table, "workspace_scope_key", "VARCHAR(255)");
         execute(connection, "UPDATE " + qualified(connection, table)
+                + " SET workspace_id = TRIM(workspace_id)"
+                + " WHERE workspace_id IS NOT NULL");
+        execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET workspace_id = NULL"
-                + " WHERE workspace_id IS NOT NULL AND TRIM(workspace_id) = ''");
+                + " WHERE workspace_id = ''");
         execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET workspace_scope_key = " + scopeExpression());
 
@@ -233,12 +237,12 @@ public class SchemaContractMigration implements ApplicationRunner {
                 if (workspaceId == null) {
                     continue;
                 }
-                String previous = sourceRepositories.putIfAbsent(workspaceId, repositoryId);
-                if (previous != null && !previous.equals(repositoryId)) {
+                if (sourceRepositories.containsKey(workspaceId)) {
                     throw new IllegalStateException(
                             "Workspace " + workspaceId
                                     + " has ambiguous source repository provenance");
                 }
+                sourceRepositories.put(workspaceId, repositoryId);
             }
         }
 
@@ -258,6 +262,7 @@ public class SchemaContractMigration implements ApplicationRunner {
         String update = "UPDATE " + qualified(connection, tenantTable)
                 + " SET repository_id = ? WHERE id = ? AND repository_id IS NULL";
         try (PreparedStatement statement = connection.prepareStatement(update)) {
+            int batchSize = 0;
             for (WorkspaceTenantRow row : rows) {
                 String repositoryId = sourceRepositories.get(row.workspaceId());
                 if (repositoryId == null || repositoryId.isBlank()) {
@@ -266,8 +271,11 @@ public class SchemaContractMigration implements ApplicationRunner {
                 statement.setString(1, repositoryId);
                 statement.setObject(2, row.id());
                 statement.addBatch();
+                batchSize++;
             }
-            statement.executeBatch();
+            if (batchSize > 0) {
+                statement.executeBatch();
+            }
         }
     }
 
