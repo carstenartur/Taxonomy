@@ -6,10 +6,16 @@
 alter table relation_proposal
     add column repository_id varchar(255);
 
+-- Persist the same normalized workspace identity that RepositoryContext uses.
+-- Scope keys and repository provenance must never be derived from an identifier
+-- that the application would subsequently strip to another value.
+update relation_proposal
+set workspace_id = btrim(workspace_id)
+where workspace_id is not null;
+
 update relation_proposal
 set workspace_id = null
-where workspace_id is not null
-  and btrim(workspace_id) = '';
+where workspace_id = '';
 
 do $$
 declare
@@ -17,13 +23,23 @@ declare
     unbound_central_proposal_count bigint;
     primary_repository_count bigint;
 begin
+    with unambiguous_workspace_source as (
+        select
+            btrim(workspace_id) as workspace_id,
+            max(source_repository_id) as source_repository_id
+        from user_workspace
+        where workspace_id is not null
+          and btrim(workspace_id) <> ''
+        group by btrim(workspace_id)
+        having count(*) = 1
+           and count(source_repository_id) = 1
+    )
     update relation_proposal proposal
     set repository_id = workspace.source_repository_id
-    from user_workspace workspace
+    from unambiguous_workspace_source workspace
     where proposal.repository_id is null
       and proposal.workspace_id is not null
-      and workspace.workspace_id = proposal.workspace_id
-      and workspace.source_repository_id is not null;
+      and workspace.workspace_id = proposal.workspace_id;
 
     select count(*)
     into unbound_workspace_proposal_count
