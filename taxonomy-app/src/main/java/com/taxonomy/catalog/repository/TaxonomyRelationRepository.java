@@ -13,7 +13,7 @@ import java.util.Optional;
 @Repository
 public interface TaxonomyRelationRepository extends JpaRepository<TaxonomyRelation, Long> {
 
-    String PRIMARY_SCOPE = "r.repositoryId IN ("
+    String PRIMARY_SCOPE = " r.repositoryId IN ("
             + "SELECT repository.repositoryId FROM SystemRepository repository "
             + "WHERE repository.primaryRepo = true)";
 
