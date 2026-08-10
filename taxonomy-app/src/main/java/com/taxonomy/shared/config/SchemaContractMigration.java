@@ -24,11 +24,14 @@ public class SchemaContractMigration implements ApplicationRunner {
 
     private final LegacyScopeIdentityNormalizer identityNormalizer;
     private final SchemaContractMigrator relationMigrator;
+    private final CommitIndexProjectionResetMigrator commitIndexResetMigrator;
     private final CommitIndexSchemaMigrator commitIndexMigrator;
 
     public SchemaContractMigration(DataSource dataSource) {
         this.identityNormalizer = new LegacyScopeIdentityNormalizer(dataSource);
         this.relationMigrator = new SchemaContractMigrator(dataSource);
+        this.commitIndexResetMigrator =
+                new CommitIndexProjectionResetMigrator(dataSource);
         this.commitIndexMigrator = new CommitIndexSchemaMigrator(dataSource);
     }
 
@@ -41,6 +44,7 @@ public class SchemaContractMigration implements ApplicationRunner {
     public void migrate() {
         identityNormalizer.normalize();
         relationMigrator.migrate();
+        commitIndexResetMigrator.resetIfTargetContractIsIncomplete();
         commitIndexMigrator.migrate();
     }
 }
