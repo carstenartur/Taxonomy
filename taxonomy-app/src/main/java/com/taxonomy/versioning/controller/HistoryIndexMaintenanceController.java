@@ -37,10 +37,11 @@ public class HistoryIndexMaintenanceController {
     @PutMapping
     public ResponseEntity<Map<String, Object>> rebuild(
             @RequestParam(defaultValue = "draft") String branch) {
-        int indexed = operations.rebuildHistoryBranch(branch);
+        String normalizedBranch = branch.strip();
+        int indexed = operations.rebuildHistoryBranch(normalizedBranch);
         return ResponseEntity.ok(Map.of(
                 "operation", "rebuild",
-                "branch", branch.strip(),
+                "branch", normalizedBranch,
                 "indexed", indexed));
     }
 
