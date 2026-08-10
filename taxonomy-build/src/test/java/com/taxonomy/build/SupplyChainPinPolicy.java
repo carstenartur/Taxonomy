@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -74,7 +75,8 @@ final class SupplyChainPinPolicy {
             workflowFiles = stream
                     .filter(Files::isRegularFile)
                     .filter(path -> {
-                        String name = path.getFileName().toString().toLowerCase();
+                        String name = path.getFileName().toString()
+                                .toLowerCase(Locale.ROOT);
                         return name.endsWith(".yml") || name.endsWith(".yaml");
                     })
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
