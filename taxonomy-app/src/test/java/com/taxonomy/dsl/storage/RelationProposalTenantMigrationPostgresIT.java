@@ -57,6 +57,12 @@ class RelationProposalTenantMigrationPostgresIT {
                 """))
                 .isEqualTo("repo-b");
         assertThat(singleString(dataSource, """
+                select workspace_id
+                from relation_proposal
+                where provenance = 'legacy-workspace'
+                """))
+                .isEqualTo("workspace-b");
+        assertThat(singleString(dataSource, """
                 select workspace_scope_key
                 from relation_proposal
                 where provenance = 'legacy'
@@ -242,8 +248,8 @@ class RelationProposalTenantMigrationPostgresIT {
                     0.75,
                     'legacy-workspace',
                     current_timestamp,
-                    'workspace-b',
-                    'workspace-b'
+                    '  workspace-b  ',
+                    '  workspace-b  '
                 from taxonomy_node source, taxonomy_node target
                 where source.code = 'BP'
                   and target.code = 'CP'
