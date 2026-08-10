@@ -72,8 +72,10 @@ class DocumentationLinkPolicyTest {
                 .contains(guide, root.resolve("docs/target.md"));
         assertThat(inspection.errors()).isEmpty();
         assertThat(DocumentationLinkPolicy.collectTargets(
-                "![A](a.png) <a href='b.md'>B</a> [c]: c.md"))
-                .containsExactly("a.png", "b.md", "c.md");
+                "![A](a.png) <a href='b.md'>B</a>"))
+                .containsExactly("a.png", "b.md");
+        assertThat(DocumentationLinkPolicy.collectTargets("[c]: c.md"))
+                .containsExactly("c.md");
     }
 
     @Test
