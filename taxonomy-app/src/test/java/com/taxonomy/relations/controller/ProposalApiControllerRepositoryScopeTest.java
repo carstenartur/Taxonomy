@@ -25,6 +25,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -87,7 +88,7 @@ class ProposalApiControllerRepositoryScopeTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(403);
         verify(proposalService, never()).proposeRelationsInContext(
-                any(), any(), any(Integer.class), any());
+                any(), any(), anyInt(), any());
     }
 
     @Test
@@ -99,7 +100,7 @@ class ProposalApiControllerRepositoryScopeTest {
         when(repositoryService.getRepository("repo-a")).thenReturn(repository);
         when(membershipService.canMaintain(repository, "maintainer")).thenReturn(true);
         when(proposalService.proposeRelationsInContext(
-                        any(), any(), any(Integer.class), any()))
+                        any(), any(), anyInt(), any()))
                 .thenReturn(List.of());
 
         ResponseEntity<List<RelationProposalDto>> response = controller.proposeRelations(
@@ -128,7 +129,7 @@ class ProposalApiControllerRepositoryScopeTest {
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(readContext);
         when(repositoryService.getRepository("repo-b")).thenReturn(repository);
         when(proposalService.proposeRelationsInContext(
-                        any(), any(), any(Integer.class), any()))
+                        any(), any(), anyInt(), any()))
                 .thenReturn(List.of());
 
         ResponseEntity<List<RelationProposalDto>> response = controller.proposeRelations(
@@ -138,7 +139,7 @@ class ProposalApiControllerRepositoryScopeTest {
         ArgumentCaptor<RepositoryContext> contextCaptor =
                 ArgumentCaptor.forClass(RepositoryContext.class);
         verify(proposalService).proposeRelationsInContext(
-                any(), any(), any(Integer.class), contextCaptor.capture());
+                any(), any(), anyInt(), contextCaptor.capture());
         assertThat(contextCaptor.getValue().repositoryId()).isEqualTo("repo-b");
         assertThat(contextCaptor.getValue().branch()).isEqualTo("draft");
         assertThat(contextCaptor.getValue().scope()).isEqualTo(RepositoryScope.CENTRAL_WRITE);
