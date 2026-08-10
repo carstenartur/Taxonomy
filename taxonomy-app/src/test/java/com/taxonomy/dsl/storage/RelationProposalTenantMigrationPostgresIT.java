@@ -220,10 +220,16 @@ class RelationProposalTenantMigrationPostgresIT {
         execute(admin, "create schema " + schema);
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName("org.postgresql.Driver");
-        dataSource.setUrl(database.getJdbcUrl() + "?currentSchema=" + schema);
+        dataSource.setUrl(jdbcUrlForSchema(schema));
         dataSource.setUsername(database.getUsername());
         dataSource.setPassword(database.getPassword());
         return dataSource;
+    }
+
+    private static String jdbcUrlForSchema(String schema) {
+        String jdbcUrl = database.getJdbcUrl();
+        String separator = jdbcUrl.contains("?") ? "&" : "?";
+        return jdbcUrl + separator + "currentSchema=" + schema;
     }
 
     private static DataSource baseDataSource() {
