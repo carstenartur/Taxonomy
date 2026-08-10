@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -37,6 +36,7 @@ final class OracleHypothesisSessionColumnMigrator {
     private static final String TABLE = "relation_hypothesis";
     private static final String SOURCE_COLUMN = "analysis_session_id";
     private static final String TEMP_COLUMN = "analysis_session_id_dbcs";
+    private static final String SESSION_INDEX = "idx_hyp_session";
 
     private final DataSource dataSource;
 
@@ -59,7 +59,10 @@ final class OracleHypothesisSessionColumnMigrator {
 
             if (source == null) {
                 if (temporary != null) {
-                    renameColumn(connection, table, TEMP_COLUMN, SOURCE_COLUMN);
+                    String targetName = canonicalIdentifier(
+                            connection.getMetaData(), SOURCE_COLUMN);
+                    renameColumn(connection, table, temporary.name(), targetName);
+                    ensureSessionIndex(connection, table, targetName);
                     log.info("Completed interrupted Oracle hypothesis session-column rename");
                 }
                 return;
@@ -67,26 +70,35 @@ final class OracleHypothesisSessionColumnMigrator {
             if (!isNationalCharacterType(source.typeName())) {
                 if (temporary != null) {
                     execute(connection, "ALTER TABLE " + qualified(connection, table)
-                            + " DROP COLUMN " + quoted(connection, TEMP_COLUMN));
+                            + " DROP COLUMN " + quoted(connection, temporary.name()));
                 }
+                ensureSessionIndex(connection, table, source.name());
                 return;
             }
 
+            String temporaryName;
             if (temporary == null) {
+                temporaryName = canonicalIdentifier(
+                        connection.getMetaData(), TEMP_COLUMN);
                 execute(connection, "ALTER TABLE " + qualified(connection, table)
-                        + " ADD " + quoted(connection, TEMP_COLUMN)
+                        + " ADD " + quoted(connection, temporaryName)
                         + " VARCHAR2(" + Math.max(255, source.size()) + ")");
+            } else {
+                temporaryName = temporary.name();
             }
 
             execute(connection, "UPDATE " + qualified(connection, table)
-                    + " SET " + quoted(connection, TEMP_COLUMN)
-                    + " = TO_CHAR(" + quoted(connection, SOURCE_COLUMN) + ")"
-                    + " WHERE " + quoted(connection, SOURCE_COLUMN) + " IS NOT NULL");
+                    + " SET " + quoted(connection, temporaryName)
+                    + " = TO_CHAR(" + quoted(connection, source.name()) + ")"
+                    + " WHERE " + quoted(connection, source.name()) + " IS NOT NULL");
 
             dropIndexesOrConstraintsReferencingSource(connection, table);
             execute(connection, "ALTER TABLE " + qualified(connection, table)
-                    + " DROP COLUMN " + quoted(connection, SOURCE_COLUMN));
-            renameColumn(connection, table, TEMP_COLUMN, SOURCE_COLUMN);
+                    + " DROP COLUMN " + quoted(connection, source.name()));
+            String targetName = canonicalIdentifier(
+                    connection.getMetaData(), SOURCE_COLUMN);
+            renameColumn(connection, table, temporaryName, targetName);
+            ensureSessionIndex(connection, table, targetName);
             log.info("Converted Oracle relation_hypothesis.analysis_session_id from {} to VARCHAR2",
                     source.typeName());
         } catch (SQLException error) {
@@ -119,6 +131,22 @@ final class OracleHypothesisSessionColumnMigrator {
                 throw indexFailure;
             }
         }
+    }
+
+    private void ensureSessionIndex(
+            Connection connection,
+            TableRef table,
+            String sourceColumnName) throws SQLException {
+        boolean columnAlreadyIndexed = indexes(connection, table).stream()
+                .anyMatch(index -> index.columns().equals(List.of(SOURCE_COLUMN)));
+        if (columnAlreadyIndexed) {
+            return;
+        }
+        String indexName = canonicalIdentifier(
+                connection.getMetaData(), SESSION_INDEX);
+        execute(connection, "CREATE INDEX " + quoted(connection, indexName)
+                + " ON " + qualified(connection, table)
+                + " (" + quoted(connection, sourceColumnName) + ")");
     }
 
     private List<IndexDefinition> indexes(
@@ -206,12 +234,24 @@ final class OracleHypothesisSessionColumnMigrator {
                 .contains("oracle");
     }
 
-    private static boolean isNationalCharacterType(String typeName) {
+    static boolean isNationalCharacterType(String typeName) {
         if (typeName == null) {
             return false;
         }
         String normalized = typeName.toUpperCase(Locale.ROOT);
         return normalized.contains("NVARCHAR") || normalized.equals("NCHAR");
+    }
+
+    static String canonicalIdentifier(
+            DatabaseMetaData metadata,
+            String identifier) throws SQLException {
+        if (metadata.storesUpperCaseIdentifiers()) {
+            return identifier.toUpperCase(Locale.ROOT);
+        }
+        if (metadata.storesLowerCaseIdentifiers()) {
+            return identifier.toLowerCase(Locale.ROOT);
+        }
+        return identifier;
     }
 
     private void execute(Connection connection, String sql) throws SQLException {
