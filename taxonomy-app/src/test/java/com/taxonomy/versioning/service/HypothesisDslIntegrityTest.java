@@ -11,7 +11,7 @@ import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,8 +54,9 @@ class HypothesisDslIntegrityTest {
                 relationService,
                 nodeRepository,
                 repositoryFactory);
-        when(hypothesisRepository.findBySourceNodeIdAndTargetNodeIdAndRelationType(
-                anyString(), anyString(), any())).thenReturn(List.of());
+        when(hypothesisRepository.existsInRepositoryWorkspaceSession(
+                anyString(), anyString(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(false);
         when(hypothesisRepository.save(any(RelationHypothesis.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(nodeRepository.findByCode(anyString())).thenReturn(Optional.empty());
@@ -64,8 +65,9 @@ class HypothesisDslIntegrityTest {
     }
 
     @Test
-    void persistsWorkspaceScopeAndCommitsRoundTrippableTaxDslV2() throws Exception {
-        WorkspaceContext context = new WorkspaceContext("alice", "workspace-a", "draft");
+    void persistsTenantScopeAndCommitsRoundTrippableTaxDslV2() throws Exception {
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "draft", "alice");
         when(repositoryFactory.resolveRepository(context)).thenReturn(workspaceRepository);
 
         RelationHypothesisDto dto = new RelationHypothesisDto(
@@ -77,6 +79,7 @@ class HypothesisDslIntegrityTest {
                 List.of(dto), "analysis-1", context);
 
         assertThat(persisted).hasSize(1);
+        assertThat(persisted.get(0).getRepositoryId()).isEqualTo("repo-a");
         assertThat(persisted.get(0).getWorkspaceId()).isEqualTo("workspace-a");
         assertThat(persisted.get(0).getOwnerUsername()).isEqualTo("alice");
 
