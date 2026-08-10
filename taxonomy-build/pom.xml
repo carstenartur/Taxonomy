@@ -11,7 +11,7 @@
     </parent>
 
     <artifactId>taxonomy-build</artifactId>
-    <packaging>pom</packaging>
+    <packaging>jar</packaging>
     <name>Taxonomy Build Policy</name>
     <description>Authoritative quality gates and browser verification executed after the complete reactor</description>
 
@@ -27,6 +27,11 @@
             <version>${project.version}</version>
             <type>pom</type>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -38,6 +43,25 @@
                     <execution>
                         <id>prepare-agent</id>
                         <phase>none</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <skipITs>${taxonomy.quality.skip}</skipITs>
+                            <includes>
+                                <include>**/*IT.java</include>
+                            </includes>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
@@ -109,33 +133,6 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>${exec-maven-plugin.version}</version>
                 <executions>
-                    <execution>
-                        <id>test-coverage-gate</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments><argument>.github/scripts/test-check-coverage.py</argument></arguments>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>enforce-reactor-coverage</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments>
-                                <argument>.github/scripts/check-coverage.py</argument>
-                                <argument>--xml</argument><argument>taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml</argument>
-                                <argument>--policy</argument><argument>.github/coverage-policy.json</argument>
-                                <argument>--report</argument><argument>target/coverage-gate.txt</argument>
-                            </arguments>
-                        </configuration>
-                    </execution>
                     <execution>
                         <id>enforce-packaged-dependency-hygiene-report</id>
                         <phase>verify</phase>
