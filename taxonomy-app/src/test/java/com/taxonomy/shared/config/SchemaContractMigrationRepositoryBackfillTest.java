@@ -16,78 +16,56 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SchemaContractMigrationRepositoryBackfillTest {
 
     @Test
-    void mapsWorkspaceRowsToTheirSourceRepositoryAndCentralRowsToPrimary() throws Exception {
+    void mapsRelationsAndProposalsToWorkspaceSourceRepositories() throws Exception {
         DataSource dataSource = createLegacySchema();
         insertRepositories(dataSource);
         execute(dataSource, """
                 insert into user_workspace (workspace_id, source_repository_id)
                 values ('workspace-b', 'repo-b')
                 """);
-        insertLegacyRelation(dataSource, null, "__shared__", 1L);
-        insertLegacyRelation(dataSource, "  workspace-b  ", "  workspace-b  ", 2L);
+        insertLegacyRow(dataSource, "taxonomy_relation", null, "__shared__", 1L);
+        insertLegacyRow(
+                dataSource,
+                "taxonomy_relation",
+                "  workspace-b  ",
+                "  workspace-b  ",
+                1L);
+        insertLegacyRow(dataSource, "relation_proposal", null, "__shared__", 1L);
+        insertLegacyRow(
+                dataSource,
+                "relation_proposal",
+                "  workspace-b  ",
+                "  workspace-b  ",
+                1L);
 
         SchemaContractMigration migration = new SchemaContractMigration(dataSource);
         migration.migrate();
         migration.migrate();
 
-        assertThat(singleString(dataSource, """
-                select repository_id
-                from taxonomy_relation
-                where workspace_id is null
-                """))
-                .isEqualTo("repo-a");
-        assertThat(singleString(dataSource, """
-                select repository_id
-                from taxonomy_relation
-                where workspace_id = 'workspace-b'
-                """))
-                .isEqualTo("repo-b");
-        assertThat(singleString(dataSource, """
-                select workspace_scope_key
-                from taxonomy_relation
-                where workspace_id = 'workspace-b'
-                """))
-                .isEqualTo("workspace-b");
+        assertTenantAssignments(dataSource, "taxonomy_relation");
+        assertTenantAssignments(dataSource, "relation_proposal");
 
-        execute(dataSource, """
-                insert into taxonomy_relation (
-                    repository_id,
-                    source_node_id,
-                    target_node_id,
-                    relation_type,
-                    workspace_scope_key)
-                values ('repo-b', 1, 2, 'SUPPORTS', '__shared__')
-                """);
+        insertScopedRow(dataSource, "taxonomy_relation", "repo-b", "__shared__", 1L);
+        insertScopedRow(dataSource, "relation_proposal", "repo-b", "__shared__", 1L);
 
-        assertThatThrownBy(() -> execute(dataSource, """
-                insert into taxonomy_relation (
-                    repository_id,
-                    source_node_id,
-                    target_node_id,
-                    relation_type,
-                    workspace_scope_key)
-                values ('repo-a', 1, 2, 'SUPPORTS', '__shared__')
-                """))
+        assertThatThrownBy(() -> insertScopedRow(
+                dataSource, "taxonomy_relation", "repo-a", "__shared__", 1L))
                 .isInstanceOf(SQLException.class);
-
-        assertThatThrownBy(() -> execute(dataSource, """
-                insert into taxonomy_relation (
-                    repository_id,
-                    source_node_id,
-                    target_node_id,
-                    relation_type,
-                    workspace_scope_key)
-                values ('missing-repository', 9, 10, 'DEPENDS_ON', '__shared__')
-                """))
+        assertThatThrownBy(() -> insertScopedRow(
+                dataSource, "relation_proposal", "repo-a", "__shared__", 1L))
+                .isInstanceOf(SQLException.class);
+        assertThatThrownBy(() -> insertScopedRow(
+                dataSource, "relation_proposal", "missing-repository", "__shared__", 9L))
                 .isInstanceOf(SQLException.class);
     }
 
     @Test
-    void refusesWorkspaceRowsWithoutSourceRepositoryProvenance() throws Exception {
+    void refusesProposalWorkspaceRowsWithoutSourceRepositoryProvenance() throws Exception {
         DataSource dataSource = createLegacySchema();
         insertRepositories(dataSource);
-        insertLegacyRelation(
+        insertLegacyRow(
                 dataSource,
+                "relation_proposal",
                 "workspace-without-metadata",
                 "workspace-without-metadata",
                 20L);
@@ -95,6 +73,42 @@ class SchemaContractMigrationRepositoryBackfillTest {
         assertThatThrownBy(() -> new SchemaContractMigration(dataSource).migrate())
                 .isInstanceOf(IllegalStateException.class)
                 .hasStackTraceContaining("workspace source repository provenance is missing or ambiguous");
+    }
+
+    @Test
+    void refusesWorkspaceRowsWithAmbiguousNormalizedIdentity() throws Exception {
+        DataSource dataSource = createLegacySchema();
+        insertRepositories(dataSource);
+        execute(dataSource, """
+                insert into user_workspace (workspace_id, source_repository_id)
+                values
+                    ('workspace-b', 'repo-a'),
+                    ('  workspace-b  ', 'repo-b')
+                """);
+        insertLegacyRow(
+                dataSource,
+                "relation_proposal",
+                "workspace-b",
+                "workspace-b",
+                30L);
+
+        assertThatThrownBy(() -> new SchemaContractMigration(dataSource).migrate())
+                .isInstanceOf(IllegalStateException.class)
+                .hasStackTraceContaining("ambiguous source repository provenance");
+    }
+
+    private static void assertTenantAssignments(
+            DataSource dataSource,
+            String table) throws SQLException {
+        assertThat(singleString(dataSource, "select repository_id from " + table
+                + " where workspace_id is null"))
+                .isEqualTo("repo-a");
+        assertThat(singleString(dataSource, "select repository_id from " + table
+                + " where workspace_id = 'workspace-b'"))
+                .isEqualTo("repo-b");
+        assertThat(singleString(dataSource, "select workspace_scope_key from " + table
+                + " where workspace_id = 'workspace-b'"))
+                .isEqualTo("workspace-b");
     }
 
     private static DataSource createLegacySchema() throws SQLException {
@@ -115,8 +129,17 @@ class SchemaContractMigrationRepositoryBackfillTest {
                     workspace_id varchar(255) primary key,
                     source_repository_id varchar(255))
                 """);
+        createLegacyTenantTable(dataSource, "taxonomy_relation", "uk_taxonomy_relation_scope");
+        createLegacyTenantTable(dataSource, "relation_proposal", "uk_relation_proposal_scope");
+        return dataSource;
+    }
+
+    private static void createLegacyTenantTable(
+            DataSource dataSource,
+            String table,
+            String constraint) throws SQLException {
         execute(dataSource, """
-                create table taxonomy_relation (
+                create table %s (
                     id bigint generated by default as identity primary key,
                     repository_id varchar(255),
                     source_node_id bigint not null,
@@ -124,10 +147,9 @@ class SchemaContractMigrationRepositoryBackfillTest {
                     relation_type varchar(255) not null,
                     workspace_id varchar(255),
                     workspace_scope_key varchar(255),
-                    constraint uk_taxonomy_relation_scope
+                    constraint %s
                         unique (source_node_id, target_node_id, relation_type, workspace_scope_key))
-                """);
-        return dataSource;
+                """.formatted(table, constraint));
     }
 
     private static void insertRepositories(DataSource dataSource) throws SQLException {
@@ -137,21 +159,44 @@ class SchemaContractMigrationRepositoryBackfillTest {
                 """);
     }
 
-    private static void insertLegacyRelation(
+    private static void insertLegacyRow(
             DataSource dataSource,
+            String table,
             String workspaceId,
             String workspaceScopeKey,
             long sourceId) throws SQLException {
         String workspace = workspaceId == null ? "null" : "'" + workspaceId + "'";
         execute(dataSource, """
-                insert into taxonomy_relation (
+                insert into %s (
                     source_node_id,
                     target_node_id,
                     relation_type,
                     workspace_id,
                     workspace_scope_key)
                 values (%d, %d, 'SUPPORTS', %s, '%s')
-                """.formatted(sourceId, sourceId + 1, workspace, workspaceScopeKey));
+                """.formatted(table, sourceId, sourceId + 1, workspace, workspaceScopeKey));
+    }
+
+    private static void insertScopedRow(
+            DataSource dataSource,
+            String table,
+            String repositoryId,
+            String workspaceScopeKey,
+            long sourceId) throws SQLException {
+        execute(dataSource, """
+                insert into %s (
+                    repository_id,
+                    source_node_id,
+                    target_node_id,
+                    relation_type,
+                    workspace_scope_key)
+                values ('%s', %d, %d, 'SUPPORTS', '%s')
+                """.formatted(
+                        table,
+                        repositoryId,
+                        sourceId,
+                        sourceId + 1,
+                        workspaceScopeKey));
     }
 
     private static String singleString(DataSource dataSource, String sql) throws SQLException {
