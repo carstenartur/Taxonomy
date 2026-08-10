@@ -33,9 +33,9 @@ import java.util.TreeMap;
  * <p>Hibernate {@code ddl-auto=update} cannot remove obsolete unique
  * constraints reliably. This runner inspects JDBC metadata, drops only
  * constraints with proven legacy column sets, backfills non-null scope keys,
- * binds legacy committed relations to the one primary repository, and creates
- * named constraints that protect central and personal rows. It also prepares
- * the local-user password-change column.</p>
+ * preserves workspace-to-source-repository provenance, and creates named
+ * constraints that protect central and personal rows. It also prepares the
+ * local-user password-change column.</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -121,12 +121,15 @@ public class SchemaContractMigration implements ApplicationRunner {
 
         ensureColumn(connection, table, "workspace_scope_key", "VARCHAR(255)");
         execute(connection, "UPDATE " + qualified(connection, table)
+                + " SET workspace_id = NULL"
+                + " WHERE workspace_id IS NOT NULL AND TRIM(workspace_id) = ''");
+        execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET workspace_scope_key = " + scopeExpression());
 
         if (repositoryScoped) {
             ensureColumn(connection, table, "repository_id", "VARCHAR(255)");
-            bindLegacyRelationsToPrimaryRepository(connection, table);
-            ensureRepositoryForeignKey(connection, table);
+            bindLegacyRowsToRepositories(connection, table, logicalTableName);
+            ensureRepositoryForeignKey(connection, table, logicalTableName);
         }
 
         assertNoScopedDuplicates(connection, table, repositoryScoped);
@@ -154,21 +157,129 @@ public class SchemaContractMigration implements ApplicationRunner {
         }
     }
 
-    private void bindLegacyRelationsToPrimaryRepository(
-            Connection connection, TableRef relationTable) throws SQLException {
-        execute(connection, "UPDATE " + qualified(connection, relationTable)
-                + " SET repository_id = NULL WHERE TRIM(repository_id) = ''");
-        long unbound = singleLong(connection, "SELECT COUNT(*) FROM "
-                + qualified(connection, relationTable)
-                + " WHERE repository_id IS NULL");
-        if (unbound == 0) {
+    /**
+     * Bind historic workspace rows to the source repository recorded by their
+     * workspace. Only remaining central rows may fall back to the unique catalog
+     * primary repository.
+     */
+    private void bindLegacyRowsToRepositories(
+            Connection connection,
+            TableRef tenantTable,
+            String logicalTableName) throws SQLException {
+        execute(connection, "UPDATE " + qualified(connection, tenantTable)
+                + " SET repository_id = NULL"
+                + " WHERE repository_id IS NOT NULL AND TRIM(repository_id) = ''");
+
+        bindWorkspaceRowsToSourceRepositories(connection, tenantTable, logicalTableName);
+
+        long unboundWorkspaceRows = singleLong(connection, "SELECT COUNT(*) FROM "
+                + qualified(connection, tenantTable)
+                + " WHERE repository_id IS NULL AND workspace_id IS NOT NULL");
+        if (unboundWorkspaceRows > 0) {
+            throw new IllegalStateException(
+                    "Cannot bind " + unboundWorkspaceRows + " existing workspace "
+                            + logicalTableName + " row(s): workspace source repository "
+                            + "provenance is missing or ambiguous");
+        }
+
+        long unboundCentralRows = singleLong(connection, "SELECT COUNT(*) FROM "
+                + qualified(connection, tenantTable)
+                + " WHERE repository_id IS NULL AND workspace_id IS NULL");
+        if (unboundCentralRows == 0) {
             return;
         }
 
+        String primaryRepositoryId = requireExactlyOnePrimaryRepository(
+                connection, logicalTableName, unboundCentralRows);
+        String update = "UPDATE " + qualified(connection, tenantTable)
+                + " SET repository_id = ?"
+                + " WHERE repository_id IS NULL AND workspace_id IS NULL";
+        try (PreparedStatement statement = connection.prepareStatement(update)) {
+            statement.setString(1, primaryRepositoryId);
+            statement.executeUpdate();
+        }
+        log.info("Bound {} legacy central row(s) in {} to the primary repository",
+                unboundCentralRows, logicalTableName);
+    }
+
+    private void bindWorkspaceRowsToSourceRepositories(
+            Connection connection,
+            TableRef tenantTable,
+            String logicalTableName) throws SQLException {
+        long unboundWorkspaceRows = singleLong(connection, "SELECT COUNT(*) FROM "
+                + qualified(connection, tenantTable)
+                + " WHERE repository_id IS NULL AND workspace_id IS NOT NULL");
+        if (unboundWorkspaceRows == 0) {
+            return;
+        }
+
+        TableRef workspaceTable = findTable(connection, "user_workspace");
+        if (workspaceTable == null
+                || !columnExists(connection, workspaceTable, "source_repository_id")) {
+            throw new IllegalStateException(
+                    "Cannot bind " + unboundWorkspaceRows + " existing workspace "
+                            + logicalTableName + " row(s): user_workspace source repository "
+                            + "provenance is unavailable");
+        }
+
+        Map<String, String> sourceRepositories = new LinkedHashMap<>();
+        String workspaceSelect = "SELECT workspace_id, source_repository_id FROM "
+                + qualified(connection, workspaceTable);
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(workspaceSelect)) {
+            while (result.next()) {
+                String workspaceId = normalizeOptional(result.getString("workspace_id"));
+                String repositoryId = normalizeOptional(result.getString("source_repository_id"));
+                if (workspaceId == null) {
+                    continue;
+                }
+                String previous = sourceRepositories.putIfAbsent(workspaceId, repositoryId);
+                if (previous != null && !previous.equals(repositoryId)) {
+                    throw new IllegalStateException(
+                            "Workspace " + workspaceId
+                                    + " has ambiguous source repository provenance");
+                }
+            }
+        }
+
+        List<WorkspaceTenantRow> rows = new ArrayList<>();
+        String rowSelect = "SELECT id, workspace_id FROM "
+                + qualified(connection, tenantTable)
+                + " WHERE repository_id IS NULL AND workspace_id IS NOT NULL";
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(rowSelect)) {
+            while (result.next()) {
+                rows.add(new WorkspaceTenantRow(
+                        result.getObject("id"),
+                        normalizeOptional(result.getString("workspace_id"))));
+            }
+        }
+
+        String update = "UPDATE " + qualified(connection, tenantTable)
+                + " SET repository_id = ? WHERE id = ? AND repository_id IS NULL";
+        try (PreparedStatement statement = connection.prepareStatement(update)) {
+            for (WorkspaceTenantRow row : rows) {
+                String repositoryId = sourceRepositories.get(row.workspaceId());
+                if (repositoryId == null || repositoryId.isBlank()) {
+                    continue;
+                }
+                statement.setString(1, repositoryId);
+                statement.setObject(2, row.id());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    private String requireExactlyOnePrimaryRepository(
+            Connection connection,
+            String logicalTableName,
+            long unboundCentralRows) throws SQLException {
         TableRef repositoryTable = findTable(connection, "system_repository");
         if (repositoryTable == null) {
             throw new IllegalStateException(
-                    "Cannot bind legacy taxonomy relations: system_repository is missing");
+                    "Cannot bind legacy rows in " + logicalTableName
+                            + ": system_repository is missing");
         }
 
         String primaryRepositoryId = null;
@@ -180,48 +291,44 @@ public class SchemaContractMigration implements ApplicationRunner {
             while (result.next()) {
                 if (result.getBoolean("primary_repo")) {
                     primaryCount++;
-                    primaryRepositoryId = result.getString("repository_id");
+                    primaryRepositoryId = normalizeOptional(result.getString("repository_id"));
                 }
             }
         }
-        if (primaryCount != 1
-                || primaryRepositoryId == null
-                || primaryRepositoryId.isBlank()) {
+        if (primaryCount != 1 || primaryRepositoryId == null) {
             throw new IllegalStateException(
-                    "Cannot bind " + unbound
-                            + " legacy taxonomy relation(s): expected exactly one primary repository, found "
-                            + primaryCount);
+                    "Cannot bind " + unboundCentralRows + " existing central "
+                            + logicalTableName + " row(s): expected exactly one primary "
+                            + "repository, found " + primaryCount);
         }
-
-        String update = "UPDATE " + qualified(connection, relationTable)
-                + " SET repository_id = ? WHERE repository_id IS NULL";
-        try (PreparedStatement statement = connection.prepareStatement(update)) {
-            statement.setString(1, primaryRepositoryId);
-            statement.executeUpdate();
-        }
-        log.info("Bound {} legacy taxonomy relation(s) to the primary repository", unbound);
+        return primaryRepositoryId;
     }
 
     private void ensureRepositoryForeignKey(
-            Connection connection, TableRef relationTable) throws SQLException {
+            Connection connection,
+            TableRef tenantTable,
+            String logicalTableName) throws SQLException {
         TableRef repositoryTable = findTable(connection, "system_repository");
         if (repositoryTable == null) {
             throw new IllegalStateException(
-                    "Cannot enforce taxonomy relation repository scope: system_repository is missing");
+                    "Cannot enforce repository scope for " + logicalTableName
+                            + ": system_repository is missing");
         }
         if (hasImportedKey(
                 connection,
-                relationTable,
+                tenantTable,
                 "repository_id",
                 repositoryTable,
                 "repository_id")) {
             return;
         }
-        execute(connection, "ALTER TABLE " + qualified(connection, relationTable)
-                + " ADD CONSTRAINT " + quoted(connection, "fk_taxonomy_relation_repository")
+        String constraintName = "fk_" + logicalTableName + "_repository";
+        execute(connection, "ALTER TABLE " + qualified(connection, tenantTable)
+                + " ADD CONSTRAINT " + quoted(connection, constraintName)
                 + " FOREIGN KEY (repository_id) REFERENCES "
                 + qualified(connection, repositoryTable) + " (repository_id)");
-        log.info("Created taxonomy relation repository foreign key");
+        log.info("Created repository foreign key {} on {}",
+                constraintName, logicalTableName);
     }
 
     private boolean hasImportedKey(
@@ -271,8 +378,6 @@ public class SchemaContractMigration implements ApplicationRunner {
         if (columnExists(connection, table, column)) {
             return;
         }
-        // Logical model identifiers are intentionally unquoted: each database
-        // applies its normal case folding, matching Hibernate-created columns.
         execute(connection, "ALTER TABLE " + qualified(connection, table)
                 + " ADD " + column + " " + definition);
     }
@@ -454,6 +559,13 @@ public class SchemaContractMigration implements ApplicationRunner {
         } catch (SQLException rollbackFailure) {
             original.addSuppressed(rollbackFailure);
         }
+    }
+
+    private static String normalizeOptional(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    private record WorkspaceTenantRow(Object id, String workspaceId) {
     }
 
     private record TableRef(String catalog, String schema, String name) {
