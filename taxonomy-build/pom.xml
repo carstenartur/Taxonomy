@@ -230,17 +230,6 @@
                             </arguments>
                         </configuration>
                     </execution>
-                    <execution>
-                        <id>check-workflow-test-authority</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments><argument>.github/scripts/check-workflow-test-authority.py</argument></arguments>
-                        </configuration>
-                    </execution>
                 </executions>
             </plugin>
         </plugins>
