@@ -14,6 +14,9 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 class ReactorCoveragePolicyTest {
 
+    private static final String JACOCO_DTD =
+            "<!DOCTYPE report PUBLIC \"-//JACOCO//DTD Report 1.1//EN\" \"report.dtd\">";
+
     private final ReactorCoveragePolicy policy = new ReactorCoveragePolicy();
 
     @Test
@@ -157,7 +160,23 @@ class ReactorCoveragePolicyTest {
     }
 
     @Test
-    void rejectsExternalEntitiesInCoverageXml(@TempDir Path root) throws Exception {
+    void acceptsTheCanonicalJacocoDoctypeWithoutLoadingItsExternalDtd(
+            @TempDir Path root) throws Exception {
+        Path xml = write(root.resolve("jacoco.xml"), JACOCO_DTD + reportXml(
+                Map.of(
+                        "taxonomy-domain", values(90, 10),
+                        "taxonomy-dsl", values(90, 10)),
+                values(180, 20)));
+
+        ReactorCoveragePolicy.Evaluation evaluation = policy.evaluate(
+                xml, policy(0.81, 0.80, 0.64, 0.80, 0.80));
+
+        assertThat(evaluation.passed()).isTrue();
+    }
+
+    @Test
+    void rejectsEveryNonJacocoDoctypeBeforeXmlParsing(@TempDir Path root)
+            throws Exception {
         Path xml = write(root.resolve("jacoco.xml"), """
                 <!DOCTYPE report [<!ENTITY secret SYSTEM "file:///etc/passwd">]>
                 <report name="unsafe">&secret;</report>
@@ -166,7 +185,8 @@ class ReactorCoveragePolicyTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> policy.parseReport(
                         xml, ReactorCoveragePolicy.COUNTER_TYPES))
-                .withMessageContaining("Cannot parse JaCoCo report");
+                .withMessageContaining("Unsupported DOCTYPE in JaCoCo report")
+                .withMessageNotContaining("root:");
     }
 
     private static ReactorCoveragePolicy.CoveragePolicy policy(
