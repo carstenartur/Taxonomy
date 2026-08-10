@@ -17,7 +17,7 @@ class HistoryIndexMaintenanceControllerTest {
     private DslOperationsFacade operations;
 
     @Test
-    void rebuildDelegatesToRepositoryScopedFacadeOperation() {
+    void rebuildNormalizesAndDelegatesToRepositoryScopedFacadeOperation() {
         when(operations.rebuildHistoryBranch("review")).thenReturn(7);
         HistoryIndexMaintenanceController controller =
                 new HistoryIndexMaintenanceController(operations);
@@ -29,7 +29,7 @@ class HistoryIndexMaintenanceControllerTest {
                 .containsEntry("operation", "rebuild")
                 .containsEntry("branch", "review")
                 .containsEntry("indexed", 7);
-        verify(operations).rebuildHistoryBranch("  review  ");
+        verify(operations).rebuildHistoryBranch("review");
     }
 
     @Test
