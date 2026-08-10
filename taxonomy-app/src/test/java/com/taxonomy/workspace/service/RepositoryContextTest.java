@@ -19,13 +19,35 @@ class RepositoryContextTest {
     }
 
     @Test
-    void centralContextRejectsWorkspaceIdentity() {
+    void everyNonWorkspaceContextRejectsWorkspaceIdentity() {
         assertThatIllegalArgumentException().isThrownBy(() -> new RepositoryContext(
                 "repo-a",
                 "workspace-a",
                 "main",
                 "alice",
                 RepositoryScope.CENTRAL_READ));
+        assertThatIllegalArgumentException().isThrownBy(() -> new RepositoryContext(
+                "repo-a",
+                "workspace-a",
+                "main",
+                "alice",
+                RepositoryScope.CENTRAL_WRITE));
+        assertThatIllegalArgumentException().isThrownBy(() -> new RepositoryContext(
+                "repo-a",
+                "workspace-a",
+                "main",
+                "alice",
+                RepositoryScope.FORK));
+    }
+
+    @Test
+    void centralWriteFactoryCreatesAnExplicitNonWorkspaceScope() {
+        RepositoryContext context = RepositoryContext.centralWrite(
+                "repo-a", "main", "alice");
+
+        assertThat(context.repositoryId()).isEqualTo("repo-a");
+        assertThat(context.workspaceId()).isNull();
+        assertThat(context.scope()).isEqualTo(RepositoryScope.CENTRAL_WRITE);
     }
 
     @Test

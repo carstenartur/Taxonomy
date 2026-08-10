@@ -6,6 +6,9 @@ import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
@@ -19,59 +22,225 @@ import java.util.List;
 public class TaxonomyRelationService {
 
     private static final Logger log = LoggerFactory.getLogger(TaxonomyRelationService.class);
+    private static final String SYSTEM_USER = "system";
 
     private final TaxonomyRelationRepository relationRepository;
     private final TaxonomyNodeRepository nodeRepository;
+    private final SystemRepositoryService systemRepositoryService;
 
-    public TaxonomyRelationService(TaxonomyRelationRepository relationRepository,
-                                   TaxonomyNodeRepository nodeRepository) {
+    public TaxonomyRelationService(
+            TaxonomyRelationRepository relationRepository,
+            TaxonomyNodeRepository nodeRepository,
+            SystemRepositoryService systemRepositoryService) {
         this.relationRepository = relationRepository;
         this.nodeRepository = nodeRepository;
+        this.systemRepositoryService = systemRepositoryService;
     }
 
-    // ── Workspace-scoped read methods ───────────────────────────────
+    // ── Explicit repository/workspace tenant reads ─────────────────
 
     @Transactional(readOnly = true)
-    public List<TaxonomyRelationDto> getRelationsForNode(String code, @Nullable String workspaceId) {
-        List<TaxonomyRelation> relations = workspaceId != null
-                ? relationRepository.findVisibleByWorkspaceAndNodeCode(workspaceId, code)
-                : relationRepository.findSharedByNodeCode(code);
+    public List<TaxonomyRelationDto> getRelationsForNodeInContext(
+            String code, RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        List<TaxonomyRelation> relations = tenant.workspaceId() == null
+                ? relationRepository.findCentralByRepositoryAndNodeCode(
+                        tenant.repositoryId(), code)
+                : relationRepository.findVisibleByRepositoryAndWorkspaceAndNodeCode(
+                        tenant.repositoryId(), tenant.workspaceId(), code);
         return toDtos(relations);
     }
 
     @Transactional(readOnly = true)
-    public List<TaxonomyRelationDto> getRelationsByType(RelationType type, @Nullable String workspaceId) {
-        List<TaxonomyRelation> relations = workspaceId != null
-                ? relationRepository.findVisibleByWorkspaceAndRelationType(workspaceId, type)
-                : relationRepository.findByRelationTypeAndWorkspaceIdIsNull(type);
+    public List<TaxonomyRelationDto> getRelationsByTypeInContext(
+            RelationType type, RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        List<TaxonomyRelation> relations = tenant.workspaceId() == null
+                ? relationRepository.findCentralByRepositoryAndRelationType(
+                        tenant.repositoryId(), type)
+                : relationRepository.findVisibleByRepositoryAndWorkspaceAndRelationType(
+                        tenant.repositoryId(), tenant.workspaceId(), type);
         return toDtos(relations);
     }
 
     @Transactional(readOnly = true)
-    public List<TaxonomyRelationDto> getAllRelations(@Nullable String workspaceId) {
-        List<TaxonomyRelation> relations = workspaceId != null
-                ? relationRepository.findVisibleByWorkspace(workspaceId)
-                : relationRepository.findByWorkspaceIdIsNull();
+    public List<TaxonomyRelationDto> getAllRelationsInContext(
+            RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        List<TaxonomyRelation> relations = tenant.workspaceId() == null
+                ? relationRepository.findCentralByRepository(tenant.repositoryId())
+                : relationRepository.findVisibleByRepositoryAndWorkspace(
+                        tenant.repositoryId(), tenant.workspaceId());
         return toDtos(relations);
     }
 
     /**
-     * Returns whether an equivalent relation is already visible in the target
-     * workspace. Personal workspaces inherit shared baseline relations, while a
-     * null workspace checks shared rows only and never scans personal data.
+     * Return whether an equivalent relation is visible in the selected tenant.
+     * Workspace contexts inherit the central baseline of the same repository;
+     * central contexts never scan another repository or unpublished workspace.
      */
     @Transactional(readOnly = true)
-    public boolean relationExistsVisible(String sourceCode, String targetCode,
-                                         RelationType type,
-                                         @Nullable String workspaceId) {
-        List<TaxonomyRelation> existing = workspaceId != null
-                ? relationRepository.findVisibleByWorkspaceAndSourceTargetType(
-                        workspaceId, sourceCode, targetCode, type)
-                : relationRepository.findSharedBySourceTargetType(sourceCode, targetCode, type);
+    public boolean relationExistsVisibleInContext(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        List<TaxonomyRelation> existing = tenant.workspaceId() == null
+                ? relationRepository.findCentralByRepositoryAndSourceTargetType(
+                        tenant.repositoryId(), sourceCode, targetCode, type)
+                : relationRepository.findVisibleByRepositoryAndWorkspaceAndSourceTargetType(
+                        tenant.repositoryId(),
+                        tenant.workspaceId(),
+                        sourceCode,
+                        targetCode,
+                        type);
         return !existing.isEmpty();
     }
 
-    // ── Legacy delegating read methods (shared scope) ───────────────
+    // ── Explicit repository/workspace tenant writes ────────────────
+
+    @Transactional
+    public TaxonomyRelationDto createRelationInContext(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            String description,
+            String provenance,
+            RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        TaxonomyNode source = nodeRepository.findByCode(sourceCode)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Source node not found: " + sourceCode));
+        TaxonomyNode target = nodeRepository.findByCode(targetCode)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Target node not found: " + targetCode));
+
+        if (relationExistsVisibleInContext(sourceCode, targetCode, type, tenant)) {
+            throw new IllegalArgumentException(String.format(
+                    "Relation already exists: %s --[%s]--> %s "
+                            + "(repository=%s, workspace=%s)",
+                    sourceCode,
+                    type,
+                    targetCode,
+                    tenant.repositoryId(),
+                    tenant.workspaceId()));
+        }
+
+        TaxonomyRelation relation = new TaxonomyRelation();
+        relation.setRepositoryId(tenant.repositoryId());
+        relation.setSourceNode(source);
+        relation.setTargetNode(target);
+        relation.setRelationType(type);
+        relation.setDescription(description);
+        relation.setProvenance(provenance);
+        relation.setWorkspaceId(tenant.workspaceId());
+        relation.setOwnerUsername(tenant.username());
+
+        TaxonomyRelation saved = relationRepository.save(relation);
+        log.info(
+                "Created relation: {} --[{}]--> {} (repository={}, workspace={})",
+                sourceCode,
+                type,
+                targetCode,
+                tenant.repositoryId(),
+                tenant.workspaceId());
+        return toDto(saved);
+    }
+
+    /** Delete only from the exact repository and exact mutable workspace scope. */
+    @Transactional
+    public void deleteRelationInContext(Long id, RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        TaxonomyRelation relation = relationRepository.findByIdInRepositoryWorkspace(
+                        tenant.repositoryId(), id, tenant.workspaceId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Relation not found in active repository/workspace: " + id));
+        relationRepository.delete(relation);
+        log.info(
+                "Deleted relation with id: {} (repository={}, workspace={})",
+                id,
+                tenant.repositoryId(),
+                tenant.workspaceId());
+    }
+
+    /** Delete matches only from the exact repository and exact workspace scope. */
+    @Transactional
+    public void deleteRelationBySourceTargetTypeInContext(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        List<TaxonomyRelation> matches = tenant.workspaceId() == null
+                ? relationRepository.findCentralByRepositoryAndSourceTargetType(
+                        tenant.repositoryId(), sourceCode, targetCode, type)
+                : relationRepository
+                        .findByRepositoryIdAndWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(
+                                tenant.repositoryId(),
+                                tenant.workspaceId(),
+                                sourceCode,
+                                targetCode,
+                                type);
+        if (!matches.isEmpty()) {
+            relationRepository.deleteAll(matches);
+            log.info(
+                    "Deleted {} relation(s): {} --[{}]--> {} "
+                            + "(repository={}, workspace={})",
+                    matches.size(),
+                    sourceCode,
+                    type,
+                    targetCode,
+                    tenant.repositoryId(),
+                    tenant.workspaceId());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public long countRelationsInContext(RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        return tenant.workspaceId() == null
+                ? relationRepository.countCentralByRepository(tenant.repositoryId())
+                : relationRepository.countVisibleByRepositoryAndWorkspace(
+                        tenant.repositoryId(), tenant.workspaceId());
+    }
+
+    // ── Primary-repository compatibility boundary ──────────────────
+    // These overloads keep existing internal import/export and analysis callers
+    // working while they migrate. They resolve the catalog primary explicitly;
+    // no null workspace is ever interpreted as a global repository scope.
+
+    @Transactional(readOnly = true)
+    public List<TaxonomyRelationDto> getRelationsForNode(
+            String code, @Nullable String workspaceId) {
+        return getRelationsForNodeInContext(
+                code, primaryContext(workspaceId, SYSTEM_USER));
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaxonomyRelationDto> getRelationsByType(
+            RelationType type, @Nullable String workspaceId) {
+        return getRelationsByTypeInContext(
+                type, primaryContext(workspaceId, SYSTEM_USER));
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaxonomyRelationDto> getAllRelations(@Nullable String workspaceId) {
+        return getAllRelationsInContext(primaryContext(workspaceId, SYSTEM_USER));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean relationExistsVisible(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            @Nullable String workspaceId) {
+        return relationExistsVisibleInContext(
+                sourceCode,
+                targetCode,
+                type,
+                primaryContext(workspaceId, SYSTEM_USER));
+    }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsForNode(String code) {
@@ -88,91 +257,80 @@ public class TaxonomyRelationService {
         return getAllRelations(null);
     }
 
-    // ── Workspace-scoped write methods ──────────────────────────────
-
     @Transactional
-    public TaxonomyRelationDto createRelation(String sourceCode, String targetCode,
-                                              RelationType type, String description,
-                                              String provenance,
-                                              @Nullable String workspaceId,
-                                              @Nullable String ownerUsername) {
-        TaxonomyNode source = nodeRepository.findByCode(sourceCode)
-                .orElseThrow(() -> new IllegalArgumentException("Source node not found: " + sourceCode));
-        TaxonomyNode target = nodeRepository.findByCode(targetCode)
-                .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetCode));
-
-        if (relationExistsVisible(sourceCode, targetCode, type, workspaceId)) {
-            throw new IllegalArgumentException(String.format(
-                    "Relation already exists: %s --[%s]--> %s (workspace=%s)",
-                    sourceCode, type, targetCode, workspaceId));
-        }
-
-        TaxonomyRelation relation = new TaxonomyRelation();
-        relation.setSourceNode(source);
-        relation.setTargetNode(target);
-        relation.setRelationType(type);
-        relation.setDescription(description);
-        relation.setProvenance(provenance);
-        relation.setWorkspaceId(workspaceId);
-        relation.setOwnerUsername(ownerUsername);
-
-        TaxonomyRelation saved = relationRepository.save(relation);
-        log.info("Created relation: {} --[{}]--> {} (workspace={})", sourceCode, type, targetCode, workspaceId);
-        return toDto(saved);
+    public TaxonomyRelationDto createRelation(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            String description,
+            String provenance,
+            @Nullable String workspaceId,
+            @Nullable String ownerUsername) {
+        return createRelationInContext(
+                sourceCode,
+                targetCode,
+                type,
+                description,
+                provenance,
+                primaryContext(workspaceId, ownerUsername));
     }
 
-    /** Legacy overload — creates a shared relation. */
     @Transactional
-    public TaxonomyRelationDto createRelation(String sourceCode, String targetCode,
-                                              RelationType type, String description,
-                                              String provenance) {
-        return createRelation(sourceCode, targetCode, type, description, provenance, null, null);
+    public TaxonomyRelationDto createRelation(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            String description,
+            String provenance) {
+        return createRelation(
+                sourceCode,
+                targetCode,
+                type,
+                description,
+                provenance,
+                null,
+                SYSTEM_USER);
     }
 
-    /**
-     * Deletes a relation only when it belongs to the exact active workspace.
-     * A null workspace ID means shared scope only; a personal workspace can
-     * never delete a shared or foreign-workspace relation by guessing its ID.
-     */
     @Transactional
     public void deleteRelation(Long id, @Nullable String workspaceId) {
-        TaxonomyRelation relation = relationRepository.findByIdInWorkspace(id, workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Relation not found in active workspace: " + id));
-        relationRepository.delete(relation);
-        log.info("Deleted relation with id: {} (workspace={})", id, workspaceId);
+        deleteRelationInContext(id, primaryContext(workspaceId, SYSTEM_USER));
     }
 
-    /** Legacy overload — deletes a shared relation only. */
     @Transactional
     public void deleteRelation(Long id) {
         deleteRelation(id, null);
     }
 
-    /**
-     * Deletes relations matching a source, target, type, and exact workspace.
-     * A null workspace ID means shared relations only, never all workspaces.
-     */
     @Transactional
-    public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
-                                                  RelationType type,
-                                                  @Nullable String workspaceId) {
-        List<TaxonomyRelation> matches = workspaceId != null
-                ? relationRepository.findByWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(
-                        workspaceId, sourceCode, targetCode, type)
-                : relationRepository.findSharedBySourceTargetType(sourceCode, targetCode, type);
-        if (!matches.isEmpty()) {
-            relationRepository.deleteAll(matches);
-            log.info("Deleted {} relation(s): {} --[{}]--> {} (workspace={})",
-                    matches.size(), sourceCode, type, targetCode, workspaceId);
-        }
+    public void deleteRelationBySourceTargetType(
+            String sourceCode,
+            String targetCode,
+            RelationType type,
+            @Nullable String workspaceId) {
+        deleteRelationBySourceTargetTypeInContext(
+                sourceCode,
+                targetCode,
+                type,
+                primaryContext(workspaceId, SYSTEM_USER));
     }
 
-    /** Legacy overload — operates on shared relations only. */
     @Transactional
-    public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
-                                                  RelationType type) {
+    public void deleteRelationBySourceTargetType(
+            String sourceCode,
+            String targetCode,
+            RelationType type) {
         deleteRelationBySourceTargetType(sourceCode, targetCode, type, null);
+    }
+
+    @Transactional(readOnly = true)
+    public long countRelations(@Nullable String workspaceId) {
+        return countRelationsInContext(primaryContext(workspaceId, SYSTEM_USER));
+    }
+
+    @Transactional(readOnly = true)
+    public long countRelations() {
+        return countRelations(null);
     }
 
     public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
@@ -190,17 +348,30 @@ public class TaxonomyRelationService {
         return dto;
     }
 
-    @Transactional(readOnly = true)
-    public long countRelations(@Nullable String workspaceId) {
-        return workspaceId != null
-                ? relationRepository.countVisibleByWorkspace(workspaceId)
-                : relationRepository.countByWorkspaceIdIsNull();
+    private RepositoryContext primaryContext(
+            @Nullable String workspaceId, @Nullable String username) {
+        SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        String user = username == null || username.isBlank()
+                ? SYSTEM_USER
+                : username.strip();
+        String workspace = workspaceId == null || workspaceId.isBlank()
+                ? null
+                : workspaceId.strip();
+        return workspace == null
+                ? RepositoryContext.centralRead(
+                        primary.getRepositoryId(), primary.getDefaultBranch(), user)
+                : RepositoryContext.workspace(
+                        primary.getRepositoryId(),
+                        workspace,
+                        primary.getDefaultBranch(),
+                        user);
     }
 
-    /** Legacy overload — counts shared relations only. */
-    @Transactional(readOnly = true)
-    public long countRelations() {
-        return countRelations(null);
+    private static RepositoryContext requireContext(RepositoryContext context) {
+        if (context == null) {
+            throw new IllegalArgumentException("RepositoryContext must not be null");
+        }
+        return context;
     }
 
     private List<TaxonomyRelationDto> toDtos(List<TaxonomyRelation> relations) {

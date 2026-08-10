@@ -6,6 +6,7 @@ import com.taxonomy.shared.model.FloatArrayConverter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
@@ -30,14 +31,22 @@ import org.hibernate.search.mapper.pojo.mapping.definition.annotation.KeywordFie
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.TypeBinding;
 
 @Entity
+@EntityListeners(PrimaryRepositorySeedRelationListener.class)
 @Table(name = "taxonomy_relation",
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_taxonomy_relation_scope",
                 columnNames = {
-                        "source_node_id", "target_node_id", "relation_type", "workspace_scope_key"
+                        "repository_id",
+                        "source_node_id",
+                        "target_node_id",
+                        "relation_type",
+                        "workspace_scope_key"
                 }),
         indexes = {
-                @Index(name = "idx_rel_workspace", columnList = "workspace_id"),
+                @Index(name = "idx_rel_repository", columnList = "repository_id"),
+                @Index(
+                        name = "idx_rel_repository_workspace",
+                        columnList = "repository_id, workspace_id"),
                 @Index(name = "idx_rel_owner", columnList = "owner_username")
         })
 @Indexed
@@ -49,6 +58,11 @@ public class TaxonomyRelation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** Mandatory logical tenant key. */
+    @Column(name = "repository_id", nullable = false, length = 255)
+    @KeywordField
+    private String repositoryId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_node_id", nullable = false)
@@ -69,8 +83,8 @@ public class TaxonomyRelation {
     @KeywordField
     private String workspaceId;
 
-    /** Non-null uniqueness key for both shared and personal workspace rows. */
-    @Column(name = "workspace_scope_key", length = 255)
+    /** Non-null uniqueness key for both central and personal workspace rows. */
+    @Column(name = "workspace_scope_key", nullable = false, length = 255)
     @KeywordField
     private String workspaceScopeKey = SHARED_SCOPE_KEY;
 
@@ -101,17 +115,24 @@ public class TaxonomyRelation {
 
     @PrePersist
     @PreUpdate
-    void synchronizeWorkspaceScopeKey() {
+    void synchronizeTenantKeys() {
+        repositoryId = requireText(repositoryId, "repositoryId");
+        workspaceId = normalizeOptional(workspaceId);
         workspaceScopeKey = scopeKeyFor(workspaceId);
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        return workspaceId == null || workspaceId.isBlank()
-                ? SHARED_SCOPE_KEY : workspaceId;
+        String normalized = normalizeOptional(workspaceId);
+        return normalized == null ? SHARED_SCOPE_KEY : normalized;
     }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public String getRepositoryId() { return repositoryId; }
+    public void setRepositoryId(String repositoryId) {
+        this.repositoryId = requireText(repositoryId, "repositoryId");
+    }
 
     public TaxonomyNode getSourceNode() { return sourceNode; }
     public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }
@@ -145,12 +166,25 @@ public class TaxonomyRelation {
 
     public String getWorkspaceId() { return workspaceId; }
     public void setWorkspaceId(String workspaceId) {
-        this.workspaceId = workspaceId;
-        synchronizeWorkspaceScopeKey();
+        this.workspaceId = normalizeOptional(workspaceId);
+        this.workspaceScopeKey = scopeKeyFor(this.workspaceId);
     }
 
     public String getWorkspaceScopeKey() { return workspaceScopeKey; }
 
     public String getOwnerUsername() { return ownerUsername; }
-    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }
+    public void setOwnerUsername(String ownerUsername) {
+        this.ownerUsername = normalizeOptional(ownerUsername);
+    }
+
+    private static String normalizeOptional(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
+        }
+        return value.strip();
+    }
 }

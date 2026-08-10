@@ -57,7 +57,9 @@ public class TaxonomyObservationConfiguration {
         private static final Map<String, TargetDescriptor> TARGETS = Map.ofEntries(
                 Map.entry("com.taxonomy.workspace.service.WorkspaceContextResolver",
                         new TargetDescriptor("taxonomy.workspace.resolve", "workspace",
-                                Set.of("resolveCurrentContext", "resolveForUser"))),
+                                Set.of("resolveCurrentContext", "resolveForUser",
+                                        "resolveCurrentRepositoryContext",
+                                        "resolveRepositoryContextForUser"))),
                 Map.entry("com.taxonomy.dsl.storage.DslGitRepositoryFactory",
                         new TargetDescriptor("taxonomy.repository.route", "repository",
                                 Set.of("resolveRepository", "getSystemRepository",

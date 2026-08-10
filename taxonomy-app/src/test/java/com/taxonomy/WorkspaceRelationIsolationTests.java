@@ -11,6 +11,7 @@ import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
 import com.taxonomy.relations.service.RelationProposalService;
 import com.taxonomy.relations.service.RelationReviewService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,7 @@ class WorkspaceRelationIsolationTests {
     @Autowired private RelationProposalService proposalService;
     @Autowired private RelationReviewService reviewService;
     @Autowired private TaxonomyRelationService relationService;
+    @Autowired private SystemRepositoryService systemRepositoryService;
 
     @Test
     void sharedContextCannotReviewForeignWorkspaceProposal() {
@@ -98,6 +100,8 @@ class WorkspaceRelationIsolationTests {
     void sharedRelationReadsDoNotExposeForeignWorkspaceRows() {
         TaxonomyNode node = nodeRepository.findByCode("BP").orElseThrow();
         TaxonomyRelation foreign = new TaxonomyRelation();
+        foreign.setRepositoryId(
+                systemRepositoryService.getPrimaryRepository().getRepositoryId());
         foreign.setSourceNode(node);
         foreign.setTargetNode(node);
         foreign.setRelationType(RelationType.RELATED_TO);
