@@ -81,25 +81,26 @@ final class CommitIndexSchemaMigrator {
         normalizeOptionalColumn(connection, table, "branch");
         normalizeOptionalColumn(connection, table, "commit_id");
 
+        // workspace_scope_key is derivable from workspace_id even in a partially
+        // completed upgrade. Derive it before deciding which projection rows are
+        // irrecoverably ambiguous.
+        execute(connection, "UPDATE " + qualified(connection, table)
+                + " SET workspace_scope_key = " + workspaceScopeExpression());
+
         long ambiguousRows = singleLong(connection, "SELECT COUNT(*) FROM "
                 + qualified(connection, table)
                 + " WHERE repository_id IS NULL"
-                + " OR workspace_scope_key IS NULL"
                 + " OR branch IS NULL"
                 + " OR commit_id IS NULL");
         if (ambiguousRows > 0) {
             execute(connection, "DELETE FROM " + qualified(connection, table)
                     + " WHERE repository_id IS NULL"
-                    + " OR workspace_scope_key IS NULL"
                     + " OR branch IS NULL"
                     + " OR commit_id IS NULL");
             log.warn(
                     "Removed {} ambiguous legacy commit-index row(s); authoritative JGit history remains available for rebuild",
                     ambiguousRows);
         }
-
-        execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET workspace_scope_key = " + workspaceScopeExpression());
 
         long duplicateGroups = duplicateGroupCount(connection, table);
         if (duplicateGroups > 0) {
@@ -136,17 +137,17 @@ final class CommitIndexSchemaMigrator {
             Connection connection,
             TableRef table,
             String column) throws SQLException {
+        String identifier = quoted(connection, column);
         execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET " + quoted(connection, column)
-                + " = TRIM(" + quoted(connection, column) + ")"
-                + " WHERE " + quoted(connection, column) + " IS NOT NULL");
+                + " SET " + identifier + " = TRIM(" + identifier + ")"
+                + " WHERE " + identifier + " IS NOT NULL");
         execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET " + quoted(connection, column) + " = NULL"
-                + " WHERE " + quoted(connection, column) + " IS NOT NULL"
-                + " AND TRIM(" + quoted(connection, column) + ") IS NULL");
+                + " SET " + identifier + " = NULL"
+                + " WHERE " + identifier + " IS NOT NULL"
+                + " AND TRIM(" + identifier + ") IS NULL");
         execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET " + quoted(connection, column) + " = NULL"
-                + " WHERE " + quoted(connection, column) + " = ''");
+                + " SET " + identifier + " = NULL"
+                + " WHERE " + identifier + " = ''");
     }
 
     private long duplicateGroupCount(
@@ -474,11 +475,18 @@ final class CommitIndexSchemaMigrator {
     }
 
     private String quoted(Connection connection, String identifier) throws SQLException {
-        String quote = connection.getMetaData().getIdentifierQuoteString();
-        if (quote == null || quote.isBlank()) {
-            return identifier;
+        DatabaseMetaData metadata = connection.getMetaData();
+        String canonical = identifier;
+        if (metadata.storesUpperCaseIdentifiers()) {
+            canonical = identifier.toUpperCase(Locale.ROOT);
+        } else if (metadata.storesLowerCaseIdentifiers()) {
+            canonical = identifier.toLowerCase(Locale.ROOT);
         }
-        return quote + identifier.replace(quote, quote + quote) + quote;
+        String quote = metadata.getIdentifierQuoteString();
+        if (quote == null || quote.isBlank()) {
+            return canonical;
+        }
+        return quote + canonical.replace(quote, quote + quote) + quote;
     }
 
     private String safeSchema(Connection connection) {
