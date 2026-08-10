@@ -70,15 +70,15 @@ flowchart TD
     end
     CP_1023 -->|realizes| CO_1011
     CP_1023 -->|realizes| CR_1047
-    CO_1011 -->|depends on| CR_1047
     CO_1011 -->|supports| CR_1047
     CR_1047 -->|fulfills| CP_1023
+    CO_1011 -->|depends on| CR_1047
     CR_1047 -->|supports| UA_1574
-    UA_1574 -->|uses| CO_1011
     UA_1574 -->|uses| CR_1047
-    CO_1011 -->|supports| BP_1490
+    UA_1574 -->|uses| CO_1011
     CR_1047 -->|supports| BP_1490
     UA_1574 -->|supports| BP_1490
+    CO_1011 -->|supports| BP_1490
     CP_1023 -->|realizes| CO_1050
     classDef cap fill:#4A90D9,color:#fff,stroke:#2171B5
     classDef proc fill:#27AE60,color:#fff,stroke:#1E8449
