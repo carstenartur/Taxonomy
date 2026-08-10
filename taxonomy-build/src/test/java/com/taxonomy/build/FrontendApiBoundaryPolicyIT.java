@@ -37,7 +37,7 @@ class FrontendApiBoundaryPolicyIT {
         while (current != null) {
             if (Files.isDirectory(current.resolve(
                     "taxonomy-app/src/main/resources/static/js"))
-                    && Files.isDirectory(current.resolve(".git"))) {
+                    && Files.exists(current.resolve(".git"))) {
                 return current;
             }
             current = current.getParent();
