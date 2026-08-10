@@ -24,9 +24,19 @@ class SchemaContractMigrationRepositoryBackfillTest {
                 values ('workspace-b', 'repo-b')
                 """);
         insertLegacyRow(dataSource, "taxonomy_relation", null, "__shared__", 1L);
-        insertLegacyRow(dataSource, "taxonomy_relation", "workspace-b", "workspace-b", 1L);
+        insertLegacyRow(
+                dataSource,
+                "taxonomy_relation",
+                "  workspace-b  ",
+                "  workspace-b  ",
+                1L);
         insertLegacyRow(dataSource, "relation_proposal", null, "__shared__", 1L);
-        insertLegacyRow(dataSource, "relation_proposal", "workspace-b", "workspace-b", 1L);
+        insertLegacyRow(
+                dataSource,
+                "relation_proposal",
+                "  workspace-b  ",
+                "  workspace-b  ",
+                1L);
 
         SchemaContractMigration migration = new SchemaContractMigration(dataSource);
         migration.migrate();
@@ -53,18 +63,6 @@ class SchemaContractMigrationRepositoryBackfillTest {
     void refusesProposalWorkspaceRowsWithoutSourceRepositoryProvenance() throws Exception {
         DataSource dataSource = createLegacySchema();
         insertRepositories(dataSource);
-        execute(dataSource, """
-                insert into user_workspace (workspace_id, source_repository_id)
-                values ('workspace-b', 'repo-b')
-                """);
-        // Include one valid workspace row so all supported JDBC drivers enter
-        // batch mode before the remaining unbound proposal is diagnosed.
-        insertLegacyRow(
-                dataSource,
-                "relation_proposal",
-                "workspace-b",
-                "workspace-b",
-                10L);
         insertLegacyRow(
                 dataSource,
                 "relation_proposal",
@@ -77,6 +75,28 @@ class SchemaContractMigrationRepositoryBackfillTest {
                 .hasStackTraceContaining("workspace source repository provenance is missing or ambiguous");
     }
 
+    @Test
+    void refusesWorkspaceRowsWithAmbiguousNormalizedIdentity() throws Exception {
+        DataSource dataSource = createLegacySchema();
+        insertRepositories(dataSource);
+        execute(dataSource, """
+                insert into user_workspace (workspace_id, source_repository_id)
+                values
+                    ('workspace-b', 'repo-a'),
+                    ('  workspace-b  ', 'repo-b')
+                """);
+        insertLegacyRow(
+                dataSource,
+                "relation_proposal",
+                "workspace-b",
+                "workspace-b",
+                30L);
+
+        assertThatThrownBy(() -> new SchemaContractMigration(dataSource).migrate())
+                .isInstanceOf(IllegalStateException.class)
+                .hasStackTraceContaining("ambiguous source repository provenance");
+    }
+
     private static void assertTenantAssignments(
             DataSource dataSource,
             String table) throws SQLException {
@@ -86,6 +106,9 @@ class SchemaContractMigrationRepositoryBackfillTest {
         assertThat(singleString(dataSource, "select repository_id from " + table
                 + " where workspace_id = 'workspace-b'"))
                 .isEqualTo("repo-b");
+        assertThat(singleString(dataSource, "select workspace_scope_key from " + table
+                + " where workspace_id = 'workspace-b'"))
+                .isEqualTo("workspace-b");
     }
 
     private static DataSource createLegacySchema() throws SQLException {
