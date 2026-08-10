@@ -119,17 +119,26 @@ class RelationProposalTests {
     }
 
     @Test
-    void proposeRelationsReturnsProposals() {
-        List<RelationProposalDto> proposals =
-                proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
+    void explicitCentralWriteContextCanProposeRelations() {
+        List<RelationProposalDto> proposals = proposalService.proposeRelationsInContext(
+                "BP", RelationType.RELATED_TO, 5, centralWriteContext());
         assertThat(proposals).isNotNull();
     }
 
     @Test
-    void proposeRelationsRejectsUnknownNode() {
+    void legacyCentralWriteWrapperFailsClosed() {
         assertThatThrownBy(() -> proposalService.proposeRelations(
-                "NONEXISTENT", RelationType.RELATED_TO, 5))
-                .isInstanceOf(IllegalArgumentException.class);
+                "BP", RelationType.RELATED_TO, 5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("CENTRAL_WRITE");
+    }
+
+    @Test
+    void proposeRelationsRejectsUnknownNodeAfterWriteAuthorization() {
+        assertThatThrownBy(() -> proposalService.proposeRelationsInContext(
+                "NONEXISTENT", RelationType.RELATED_TO, 5, centralWriteContext()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Source node not found");
     }
 
     @Test
@@ -144,8 +153,8 @@ class RelationProposalTests {
 
     @Test
     void acceptProposalCreatesRelation() {
-        List<RelationProposalDto> proposals =
-                proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
+        List<RelationProposalDto> proposals = proposalService.proposeRelationsInContext(
+                "BP", RelationType.RELATED_TO, 5, centralWriteContext());
         if (!proposals.isEmpty()) {
             Long proposalId = proposals.get(0).getId();
             TaxonomyRelationDto relation = reviewService.acceptProposal(
@@ -162,8 +171,8 @@ class RelationProposalTests {
 
     @Test
     void rejectProposalChangesStatus() {
-        List<RelationProposalDto> proposals =
-                proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
+        List<RelationProposalDto> proposals = proposalService.proposeRelationsInContext(
+                "BP", RelationType.RELATED_TO, 5, centralWriteContext());
         if (!proposals.isEmpty()) {
             Long proposalId = proposals.get(0).getId();
             RelationProposalDto rejected = reviewService.rejectProposal(

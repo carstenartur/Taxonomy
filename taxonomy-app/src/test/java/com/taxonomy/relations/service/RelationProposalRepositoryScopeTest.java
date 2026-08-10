@@ -7,6 +7,7 @@ import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -76,6 +77,20 @@ class RelationProposalRepositoryScopeTest {
     }
 
     @Test
+    void centralReadContextCannotCreateProposal() {
+        RepositoryContext context = RepositoryContext.centralRead(
+                "repo-a", "main", "alice");
+
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                service.createFromHypothesisInContext(
+                        "BP", "CP", RelationType.SUPPORTS, 0.5, "reason", context))
+                .withMessageContaining("CENTRAL_WRITE");
+
+        verify(nodeRepository, never()).findByCode(any());
+        verify(proposalRepository, never()).save(any());
+    }
+
+    @Test
     void createFromHypothesisPersistsRepositoryWorkspaceAndOwnerFromContext() {
         TaxonomyNode source = node("BP", "Business Process");
         TaxonomyNode target = node("CP", "Capability");
@@ -109,8 +124,8 @@ class RelationProposalRepositoryScopeTest {
 
     @Test
     void duplicateCheckCannotSeeEquivalentProposalFromAnotherRepository() {
-        RepositoryContext context = RepositoryContext.centralRead(
-                "repo-a", "main", "alice");
+        RepositoryContext context = new RepositoryContext(
+                "repo-a", null, "main", "alice", RepositoryScope.CENTRAL_WRITE);
         when(nodeRepository.findByCode("BP")).thenReturn(Optional.of(node("BP", "BP")));
         when(nodeRepository.findByCode("CP")).thenReturn(Optional.of(node("CP", "CP")));
         when(proposalRepository.existsInRepositoryWorkspace(

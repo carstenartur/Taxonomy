@@ -9,6 +9,7 @@ import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +58,14 @@ public class RelationProposalService {
         this.workspaceResolver = workspaceResolver;
     }
 
-    /** Resolve one request-stable context and run the proposal pipeline. */
+    /**
+     * Resolve one request-stable context and run the proposal pipeline.
+     *
+     * <p>This compatibility boundary deliberately fails for a central read-only
+     * context. HTTP boundaries that authorize central mutation must convert it to
+     * {@link RepositoryScope#CENTRAL_WRITE} explicitly before calling the
+     * context-aware method.</p>
+     */
     @Transactional
     public List<RelationProposalDto> proposeRelations(String sourceNodeCode,
                                                        RelationType relationType,
@@ -69,14 +77,14 @@ public class RelationProposalService {
                 workspaceResolver.resolveCurrentRepositoryContext());
     }
 
-    /** Runs the full proposal pipeline in one explicit repository/workspace tenant. */
+    /** Runs the full proposal pipeline in one explicit writable tenant. */
     @Transactional
     public List<RelationProposalDto> proposeRelationsInContext(
             String sourceNodeCode,
             RelationType relationType,
             int limit,
             RepositoryContext context) {
-        RepositoryContext tenant = requireContext(context);
+        RepositoryContext tenant = requireWritableContext(context);
         TaxonomyNode source = nodeRepository.findByCode(sourceNodeCode)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Source node not found: " + sourceNodeCode));
@@ -215,7 +223,11 @@ public class RelationProposalService {
         return proposals.stream().map(this::toDto).toList();
     }
 
-    /** Resolve one request-stable context and create a proposal from a hypothesis. */
+    /**
+     * Resolve one request-stable context and create a proposal from a hypothesis.
+     * Central read-only contexts fail closed for the same reason as
+     * {@link #proposeRelations(String, RelationType, int)}.
+     */
     @Transactional
     public RelationProposalDto createFromHypothesis(String sourceCode,
                                                      String targetCode,
@@ -231,7 +243,7 @@ public class RelationProposalService {
                 workspaceResolver.resolveCurrentRepositoryContext());
     }
 
-    /** Creates a formal proposal from a provisional hypothesis in the exact tenant. */
+    /** Creates a formal proposal from a provisional hypothesis in the exact writable tenant. */
     @Transactional
     public RelationProposalDto createFromHypothesisInContext(
             String sourceCode,
@@ -240,7 +252,7 @@ public class RelationProposalService {
             double confidence,
             String rationale,
             RepositoryContext context) {
-        RepositoryContext tenant = requireContext(context);
+        RepositoryContext tenant = requireWritableContext(context);
         TaxonomyNode source = nodeRepository.findByCode(sourceCode)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Source node not found: " + sourceCode));
@@ -323,5 +335,22 @@ public class RelationProposalService {
             throw new IllegalArgumentException("RepositoryContext must not be null");
         }
         return context;
+    }
+
+    private static RepositoryContext requireWritableContext(RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        if (tenant.workspaceId() == null) {
+            if (tenant.scope() != RepositoryScope.CENTRAL_WRITE) {
+                throw new IllegalArgumentException(
+                        "Central proposal mutation requires CENTRAL_WRITE scope");
+            }
+            return tenant;
+        }
+        if (tenant.scope() != RepositoryScope.WORKSPACE
+                && tenant.scope() != RepositoryScope.FORK) {
+            throw new IllegalArgumentException(
+                    "Workspace proposal mutation requires WORKSPACE or FORK scope");
+        }
+        return tenant;
     }
 }
