@@ -26,6 +26,7 @@ final class SchemaContractMigrator {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaContractMigrator.class);
     private static final String SHARED_SCOPE = "__shared__";
+    private static final String UNSPECIFIED_SESSION_SCOPE = "__unspecified__";
 
     private static final Set<String> PROPOSAL_LEGACY_COLUMNS = Set.of(
             "source_node_id", "target_node_id", "relation_type");
@@ -38,6 +39,12 @@ final class SchemaContractMigrator {
     private static final Set<String> REPOSITORY_SCOPE_KEY_COLUMNS = Set.of(
             "repository_id", "source_node_id", "target_node_id",
             "relation_type", "workspace_scope_key");
+    private static final Set<String> HYPOTHESIS_LEGACY_COLUMNS = Set.of(
+            "workspace_id", "source_node_id", "target_node_id",
+            "relation_type", "analysis_session_id");
+    private static final Set<String> HYPOTHESIS_TARGET_COLUMNS = Set.of(
+            "repository_id", "workspace_scope_key", "source_node_id",
+            "target_node_id", "relation_type", "analysis_session_scope_key");
 
     private final DataSource dataSource;
 
@@ -67,9 +74,10 @@ final class SchemaContractMigrator {
                                 RELATION_WORKSPACE_NULLABLE_COLUMNS,
                                 WORKSPACE_SCOPE_KEY_COLUMNS),
                         REPOSITORY_SCOPE_KEY_COLUMNS);
+                migrateHypothesisUniqueness(connection);
                 ensurePasswordChangeColumn(connection);
                 connection.commit();
-                log.info("Verified repository, workspace and account schema contracts");
+                log.info("Verified repository, workspace, hypothesis and account schema contracts");
             } catch (SQLException | RuntimeException error) {
                 rollbackQuietly(connection, error);
                 throw new IllegalStateException(
@@ -94,29 +102,13 @@ final class SchemaContractMigrator {
             return;
         }
 
-        ensureColumn(connection, table, "workspace_scope_key", "VARCHAR(255)");
-        execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET workspace_id = TRIM(workspace_id)"
-                + " WHERE workspace_id IS NOT NULL");
-        execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET workspace_id = NULL"
-                + " WHERE workspace_id = ''");
-        execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET workspace_scope_key = " + scopeExpression());
-
+        normalizeWorkspaceScope(connection, table);
         ensureColumn(connection, table, "repository_id", "VARCHAR(255)");
         bindLegacyRowsToRepositories(connection, table, logicalTableName);
         ensureRepositoryForeignKey(connection, table, logicalTableName);
         assertNoScopedDuplicates(connection, table);
-
-        for (IndexDefinition index : uniqueIndexes(connection, table)) {
-            Set<String> columns = new LinkedHashSet<>(index.columns());
-            if (legacyColumnSets.contains(columns)) {
-                dropConstraintOrIndex(connection, table, index.name());
-                log.info("Dropped legacy unique constraint/index {} on {} columns {}",
-                        index.name(), logicalTableName, index.columns());
-            }
-        }
+        replaceLegacyUniqueIndexes(
+                connection, table, logicalTableName, legacyColumnSets);
 
         boolean targetExists = uniqueIndexes(connection, table).stream()
                 .anyMatch(index -> new LinkedHashSet<>(index.columns()).equals(targetColumns));
@@ -130,6 +122,72 @@ final class SchemaContractMigrator {
         }
     }
 
+    private void migrateHypothesisUniqueness(Connection connection) throws SQLException {
+        String logicalTableName = "relation_hypothesis";
+        TableRef table = findTable(connection, logicalTableName);
+        if (table == null) {
+            log.debug("Schema migration skipped: table {} does not exist", logicalTableName);
+            return;
+        }
+
+        normalizeWorkspaceScope(connection, table);
+        ensureColumn(connection, table, "analysis_session_scope_key", "VARCHAR(255)");
+        execute(connection, "UPDATE " + qualified(connection, table)
+                + " SET analysis_session_id = NULL"
+                + " WHERE analysis_session_id IS NOT NULL"
+                + " AND TRIM(analysis_session_id) = ''");
+        execute(connection, "UPDATE " + qualified(connection, table)
+                + " SET analysis_session_scope_key = " + sessionScopeExpression());
+        ensureColumn(connection, table, "repository_id", "VARCHAR(255)");
+        bindLegacyRowsToRepositories(connection, table, logicalTableName);
+        ensureRepositoryForeignKey(connection, table, logicalTableName);
+        assertNoHypothesisDuplicates(connection, table);
+        replaceLegacyUniqueIndexes(
+                connection,
+                table,
+                logicalTableName,
+                List.of(HYPOTHESIS_LEGACY_COLUMNS));
+
+        boolean targetExists = uniqueIndexes(connection, table).stream()
+                .anyMatch(index -> new LinkedHashSet<>(index.columns())
+                        .equals(HYPOTHESIS_TARGET_COLUMNS));
+        if (!targetExists) {
+            execute(connection, "ALTER TABLE " + qualified(connection, table)
+                    + " ADD CONSTRAINT "
+                    + quoted(connection,
+                            "uq_hypothesis_repository_workspace_session_relation")
+                    + " UNIQUE (repository_id, workspace_scope_key, source_node_id, "
+                    + "target_node_id, relation_type, analysis_session_scope_key)");
+            log.info("Created repository/session-scoped hypothesis uniqueness");
+        }
+    }
+
+    private void normalizeWorkspaceScope(
+            Connection connection,
+            TableRef table) throws SQLException {
+        ensureColumn(connection, table, "workspace_scope_key", "VARCHAR(255)");
+        execute(connection, "UPDATE " + qualified(connection, table)
+                + " SET workspace_id = NULL"
+                + " WHERE workspace_id IS NOT NULL AND TRIM(workspace_id) = ''");
+        execute(connection, "UPDATE " + qualified(connection, table)
+                + " SET workspace_scope_key = " + workspaceScopeExpression());
+    }
+
+    private void replaceLegacyUniqueIndexes(
+            Connection connection,
+            TableRef table,
+            String logicalTableName,
+            List<Set<String>> legacyColumnSets) throws SQLException {
+        for (IndexDefinition index : uniqueIndexes(connection, table)) {
+            Set<String> columns = new LinkedHashSet<>(index.columns());
+            if (legacyColumnSets.contains(columns)) {
+                dropConstraintOrIndex(connection, table, index.name());
+                log.info("Dropped legacy unique constraint/index {} on {} columns {}",
+                        index.name(), logicalTableName, index.columns());
+            }
+        }
+    }
+
     private void bindLegacyRowsToRepositories(
             Connection connection,
             TableRef tenantTable,
@@ -137,7 +195,6 @@ final class SchemaContractMigrator {
         execute(connection, "UPDATE " + qualified(connection, tenantTable)
                 + " SET repository_id = NULL"
                 + " WHERE repository_id IS NOT NULL AND TRIM(repository_id) = ''");
-
         bindWorkspaceRowsToSourceRepositories(connection, tenantTable, logicalTableName);
 
         long unboundWorkspaceRows = singleLong(connection, "SELECT COUNT(*) FROM "
@@ -201,7 +258,8 @@ final class SchemaContractMigrator {
                 if (workspaceId == null) {
                     continue;
                 }
-                if (sourceRepositories.containsKey(workspaceId)) {
+                if (sourceRepositories.containsKey(workspaceId)
+                        && !Objects.equals(sourceRepositories.get(workspaceId), repositoryId)) {
                     throw new IllegalStateException(
                             "Workspace " + workspaceId
                                     + " has ambiguous source repository provenance");
@@ -359,10 +417,10 @@ final class SchemaContractMigrator {
             TableRef table) throws SQLException {
         String sql = "SELECT COUNT(*) FROM (SELECT repository_id, "
                 + "source_node_id, target_node_id, relation_type, "
-                + scopeExpression() + " AS scope_key, COUNT(*) AS duplicate_count FROM "
+                + workspaceScopeExpression() + " AS scope_key, COUNT(*) AS duplicate_count FROM "
                 + qualified(connection, table)
                 + " GROUP BY repository_id, source_node_id, target_node_id, relation_type, "
-                + scopeExpression()
+                + workspaceScopeExpression()
                 + " HAVING COUNT(*) > 1) taxonomy_duplicates";
         try (Statement statement = connection.createStatement();
              ResultSet result = statement.executeQuery(sql)) {
@@ -377,8 +435,38 @@ final class SchemaContractMigrator {
         }
     }
 
-    private static String scopeExpression() {
+    private void assertNoHypothesisDuplicates(
+            Connection connection,
+            TableRef table) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM (SELECT repository_id, "
+                + workspaceScopeExpression() + " AS workspace_key, "
+                + "source_node_id, target_node_id, relation_type, "
+                + sessionScopeExpression() + " AS session_key, COUNT(*) AS duplicate_count FROM "
+                + qualified(connection, table)
+                + " GROUP BY repository_id, " + workspaceScopeExpression()
+                + ", source_node_id, target_node_id, relation_type, "
+                + sessionScopeExpression()
+                + " HAVING COUNT(*) > 1) hypothesis_duplicates";
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(sql)) {
+            result.next();
+            long duplicateGroups = result.getLong(1);
+            if (duplicateGroups > 0) {
+                throw new IllegalStateException("Table " + table.name()
+                        + " contains " + duplicateGroups
+                        + " duplicate repository/workspace/session relation groups. "
+                        + "Resolve them before starting the upgraded application.");
+            }
+        }
+    }
+
+    private static String workspaceScopeExpression() {
         return "COALESCE(NULLIF(TRIM(workspace_id), ''), '" + SHARED_SCOPE + "')";
+    }
+
+    private static String sessionScopeExpression() {
+        return "COALESCE(NULLIF(TRIM(analysis_session_id), ''), '"
+                + UNSPECIFIED_SESSION_SCOPE + "')";
     }
 
     private void dropConstraintOrIndex(

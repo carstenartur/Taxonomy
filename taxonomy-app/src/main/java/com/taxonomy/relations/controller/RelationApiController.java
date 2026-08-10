@@ -154,8 +154,8 @@ public class RelationApiController {
 
     /**
      * Workspace contexts are writable by their resolved owner. Central contexts
-     * require repository MAINTAINER/OWNER; a global application ADMIN remains an
-     * explicit operational compatibility override for the selected repository.
+     * require repository MAINTAINER/OWNER; a global ADMIN remains an explicit
+     * operational compatibility override for the historic primary repository.
      */
     private RepositoryContext writableContext(RepositoryContext context) {
         if (context.workspaceId() != null) {

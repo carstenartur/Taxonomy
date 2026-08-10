@@ -23,11 +23,6 @@ declare
     unbound_central_relation_count bigint;
     primary_repository_count bigint;
 begin
-    -- A workspace already records the exact central repository from which it
-    -- was provisioned. Preserve that provenance instead of assigning every
-    -- historic workspace row to the catalog primary repository. A normalized
-    -- workspace ID must identify exactly one workspace row; ambiguous legacy
-    -- IDs remain unbound and therefore fail closed below.
     with unambiguous_workspace_source as (
         select
             btrim(workspace_id) as workspace_id,

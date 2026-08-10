@@ -10,12 +10,11 @@ import org.springframework.stereotype.Component;
 import javax.sql.DataSource;
 
 /**
- * Spring Boot entry point for the portable schema-contract migration.
+ * Spring Boot entry point for portable schema-contract migrations.
  *
- * <p>The JDBC implementation lives in {@link SchemaContractMigrator} so the
- * migration rules can be exercised without constructing an application
- * context and so repository/workspace provenance is shared by all supported
- * databases.</p>
+ * <p>The JDBC implementations remain focused so repository, workspace,
+ * hypothesis-session and database-specific character-set rules can be tested
+ * without a complete application context on every supported database.</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -23,9 +22,14 @@ import javax.sql.DataSource;
         havingValue = "true", matchIfMissing = true)
 public class SchemaContractMigration implements ApplicationRunner {
 
+    private final OracleHypothesisSessionColumnMigrator oracleSessionMigrator;
+    private final LegacyScopeIdentityNormalizer identityNormalizer;
     private final SchemaContractMigrator migrator;
 
     public SchemaContractMigration(DataSource dataSource) {
+        this.oracleSessionMigrator =
+                new OracleHypothesisSessionColumnMigrator(dataSource);
+        this.identityNormalizer = new LegacyScopeIdentityNormalizer(dataSource);
         this.migrator = new SchemaContractMigrator(dataSource);
     }
 
@@ -36,6 +40,8 @@ public class SchemaContractMigration implements ApplicationRunner {
 
     /** Runs the complete idempotent contract migration. */
     public void migrate() {
+        oracleSessionMigrator.migrate();
+        identityNormalizer.normalize();
         migrator.migrate();
     }
 }

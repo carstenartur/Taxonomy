@@ -193,7 +193,8 @@ class SecurityTests {
 
     @Test
     @WithMockUser(roles = "ARCHITECT")
-    void architectWithoutRepositoryMaintainerRoleCannotMutateProposal() throws Exception {
+    void architectWithoutRepositoryMaintainershipIsDeniedBeforeProposalLookup()
+            throws Exception {
         mockMvc.perform(post("/api/proposals/999/accept"))
                 .andExpect(status().isForbidden());
     }

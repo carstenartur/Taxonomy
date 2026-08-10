@@ -8,7 +8,10 @@ import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
 import com.taxonomy.versioning.service.HypothesisService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,10 +29,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @WithMockUser(roles = "ADMIN")
 class HypothesisServiceTest {
 
-    private static final WorkspaceContext SHARED = WorkspaceContext.SHARED;
-    private static final WorkspaceContext ALPHA = new WorkspaceContext("alice", "workspace-alpha", "draft");
-    private static final WorkspaceContext BETA = new WorkspaceContext("bob", "workspace-beta", "draft");
-
     @Autowired
     private HypothesisService hypothesisService;
 
@@ -39,6 +38,25 @@ class HypothesisServiceTest {
     @Autowired
     private RelationEvidenceRepository evidenceRepository;
 
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
+    private RepositoryContext centralWrite;
+    private RepositoryContext alpha;
+    private RepositoryContext beta;
+
+    @BeforeEach
+    void setUpContexts() {
+        SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        String branch = primary.getDefaultBranch();
+        centralWrite = RepositoryContext.centralWrite(
+                primary.getRepositoryId(), branch, "system");
+        alpha = RepositoryContext.workspace(
+                primary.getRepositoryId(), "workspace-alpha", "draft", "alice");
+        beta = RepositoryContext.workspace(
+                primary.getRepositoryId(), "workspace-beta", "draft", "bob");
+    }
+
     @Test
     void persistFromAnalysisSavesHypotheses() {
         List<RelationHypothesisDto> dtos = List.of(
@@ -46,11 +64,12 @@ class HypothesisServiceTest {
                         "REALIZES", 0.80, "Inferred from compatibility matrix"));
 
         List<RelationHypothesis> persisted =
-                hypothesisService.persistFromAnalysis(dtos, "test-persist-1", SHARED);
+                hypothesisService.persistFromAnalysis(dtos, "test-persist-1", centralWrite);
 
         assertThat(persisted).hasSize(1);
         RelationHypothesis h = persisted.get(0);
         assertThat(h.getId()).isNotNull();
+        assertThat(h.getRepositoryId()).isEqualTo(centralWrite.repositoryId());
         assertThat(h.getSourceNodeId()).isEqualTo("BP");
         assertThat(h.getTargetNodeId()).isEqualTo("CP");
         assertThat(h.getStatus()).isEqualTo(HypothesisStatus.PROVISIONAL);
@@ -66,28 +85,28 @@ class HypothesisServiceTest {
                         "SUPPORTS", 0.70, "Test reasoning for evidence"));
 
         List<RelationHypothesis> persisted =
-                hypothesisService.persistFromAnalysis(dtos, "test-evidence-1", SHARED);
+                hypothesisService.persistFromAnalysis(dtos, "test-evidence-1", centralWrite);
         assertThat(persisted).hasSize(1);
 
         List<RelationEvidence> evidence =
-                hypothesisService.findEvidence(persisted.get(0).getId(), SHARED);
+                hypothesisService.findEvidence(persisted.get(0).getId(), centralWrite);
         assertThat(evidence).hasSize(1);
         assertThat(evidence.get(0).getSummary()).isEqualTo("Test reasoning for evidence");
         assertThat(evidence.get(0).getEvidenceType()).isEqualTo("analysis-rule");
     }
 
     @Test
-    void persistFromAnalysisSkipsDuplicatesInSameSessionAndWorkspace() {
+    void persistFromAnalysisSkipsDuplicatesInSameRepositorySessionAndWorkspace() {
         List<RelationHypothesisDto> dtos = List.of(
                 new RelationHypothesisDto("BP", "P", "CP", "C",
                         "DEPENDS_ON", 0.60, "First"));
 
         List<RelationHypothesis> first =
-                hypothesisService.persistFromAnalysis(dtos, "test-dedup-1", ALPHA);
+                hypothesisService.persistFromAnalysis(dtos, "test-dedup-1", alpha);
         List<RelationHypothesis> second =
-                hypothesisService.persistFromAnalysis(dtos, "test-dedup-1", ALPHA);
+                hypothesisService.persistFromAnalysis(dtos, "test-dedup-1", alpha);
         List<RelationHypothesis> otherWorkspace =
-                hypothesisService.persistFromAnalysis(dtos, "test-dedup-1", BETA);
+                hypothesisService.persistFromAnalysis(dtos, "test-dedup-1", beta);
 
         assertThat(first).hasSize(1);
         assertThat(second).isEmpty();
@@ -96,34 +115,52 @@ class HypothesisServiceTest {
 
     @Test
     void persistFromAnalysisWithNullOrEmptyInputReturnsEmpty() {
-        assertThat(hypothesisService.persistFromAnalysis(null, null, SHARED)).isEmpty();
-        assertThat(hypothesisService.persistFromAnalysis(List.of(), null, SHARED)).isEmpty();
+        assertThat(hypothesisService.persistFromAnalysis(
+                null, null, centralWrite)).isEmpty();
+        assertThat(hypothesisService.persistFromAnalysis(
+                List.of(), null, centralWrite)).isEmpty();
     }
 
     @Test
-    void acceptAndRejectChangeStatusWithinOwningWorkspace() {
-        RelationHypothesis acceptedInput = createTestHypothesis("test-accept-status", ALPHA);
-        RelationHypothesis rejectedInput = createTestHypothesis("test-reject-status", ALPHA);
+    void acceptAndRejectChangeStatusWithinOwningRepositoryWorkspace() {
+        RelationHypothesis acceptedInput = createTestHypothesis("test-accept-status", alpha);
+        RelationHypothesis rejectedInput = createTestHypothesis("test-reject-status", alpha);
 
-        assertThat(hypothesisService.accept(acceptedInput.getId(), ALPHA).getStatus())
+        assertThat(hypothesisService.accept(acceptedInput.getId(), alpha).getStatus())
                 .isEqualTo(HypothesisStatus.ACCEPTED);
-        assertThat(hypothesisService.reject(rejectedInput.getId(), ALPHA).getStatus())
+        assertThat(hypothesisService.reject(rejectedInput.getId(), alpha).getStatus())
                 .isEqualTo(HypothesisStatus.REJECTED);
     }
 
     @Test
     void mutationFromAnotherWorkspaceIsHiddenAsNotFound() {
-        RelationHypothesis hypothesis = createTestHypothesis("test-isolation", ALPHA);
+        RelationHypothesis hypothesis = createTestHypothesis("test-isolation", alpha);
 
-        assertThatThrownBy(() -> hypothesisService.accept(hypothesis.getId(), BETA))
+        assertThatThrownBy(() -> hypothesisService.accept(hypothesis.getId(), beta))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not found");
-        assertThatThrownBy(() -> hypothesisService.reject(hypothesis.getId(), BETA))
+        assertThatThrownBy(() -> hypothesisService.reject(hypothesis.getId(), beta))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not found");
-        assertThatThrownBy(() -> hypothesisService.applyForSession(hypothesis.getId(), BETA))
+        assertThatThrownBy(() -> hypothesisService.applyForSession(hypothesis.getId(), beta))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void centralReadContextCannotMutateHypotheses() {
+        RepositoryContext centralRead = RepositoryContext.centralRead(
+                centralWrite.repositoryId(), centralWrite.branch(), "reader");
+        RelationHypothesis hypothesis = createTestHypothesis(
+                "test-central-read-denial", centralWrite);
+
+        assertThatThrownBy(() -> hypothesisService.accept(hypothesis.getId(), centralRead))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("explicit central write context");
+        assertThatThrownBy(() -> hypothesisService.reject(hypothesis.getId(), centralRead))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> hypothesisService.applyForSession(hypothesis.getId(), centralRead))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -131,63 +168,71 @@ class HypothesisServiceTest {
         List<RelationHypothesis> persisted = hypothesisService.persistFromAnalysis(
                 List.of(new RelationHypothesisDto("BP", "P", "CP", "C",
                         "FULFILLS", 0.75, "Evidence test reasoning")),
-                "test-private-evidence", ALPHA);
+                "test-private-evidence", alpha);
 
-        assertThatThrownBy(() -> hypothesisService.findEvidence(persisted.get(0).getId(), BETA))
+        assertThatThrownBy(() -> hypothesisService.findEvidence(
+                persisted.get(0).getId(), beta))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not found");
     }
 
     @Test
-    void workspaceListingsContainSharedAndOwnButNotOtherWorkspace() {
-        RelationHypothesis shared = createTestHypothesis("test-list-shared", SHARED);
-        RelationHypothesis alpha = createTestHypothesis("test-list-alpha", ALPHA);
-        RelationHypothesis beta = createTestHypothesis("test-list-beta", BETA);
+    void workspaceListingsContainSameRepositoryCentralAndOwnButNotOtherWorkspace() {
+        RelationHypothesis shared = createTestHypothesis("test-list-shared", centralWrite);
+        RelationHypothesis alphaHypothesis = createTestHypothesis("test-list-alpha", alpha);
+        RelationHypothesis betaHypothesis = createTestHypothesis("test-list-beta", beta);
 
-        assertThat(hypothesisService.findAll(ALPHA))
+        assertThat(hypothesisService.findAll(alpha))
                 .extracting(RelationHypothesis::getId)
-                .contains(shared.getId(), alpha.getId())
-                .doesNotContain(beta.getId());
-        assertThat(hypothesisService.findAll(SHARED))
+                .contains(shared.getId(), alphaHypothesis.getId())
+                .doesNotContain(betaHypothesis.getId());
+        assertThat(hypothesisService.findAll(centralWrite))
                 .extracting(RelationHypothesis::getId)
                 .contains(shared.getId())
-                .doesNotContain(alpha.getId(), beta.getId());
+                .doesNotContain(alphaHypothesis.getId(), betaHypothesis.getId());
     }
 
     @Test
     void invalidStateAndUnknownIdAreRejected() {
-        RelationHypothesis accepted =
-                createTestHypothesisWithStatus("test-double-accept", HypothesisStatus.ACCEPTED, SHARED);
-        RelationHypothesis rejected =
-                createTestHypothesisWithStatus("test-double-reject", HypothesisStatus.REJECTED, SHARED);
+        RelationHypothesis accepted = createTestHypothesisWithStatus(
+                "test-double-accept", HypothesisStatus.ACCEPTED, centralWrite);
+        RelationHypothesis rejected = createTestHypothesisWithStatus(
+                "test-double-reject", HypothesisStatus.REJECTED, centralWrite);
 
-        assertThatThrownBy(() -> hypothesisService.accept(accepted.getId(), SHARED))
+        assertThatThrownBy(() -> hypothesisService.accept(accepted.getId(), centralWrite))
                 .isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> hypothesisService.reject(rejected.getId(), SHARED))
+        assertThatThrownBy(() -> hypothesisService.reject(rejected.getId(), centralWrite))
                 .isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> hypothesisService.accept(999999L, SHARED))
+        assertThatThrownBy(() -> hypothesisService.accept(999999L, centralWrite))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void findByStatusFiltersWithinContext() {
-        createTestHypothesisWithStatus("test-filter-find", HypothesisStatus.PROPOSED, ALPHA);
-        createTestHypothesisWithStatus("test-filter-other", HypothesisStatus.PROPOSED, BETA);
+    void findByStatusFiltersWithinRepositoryContext() {
+        createTestHypothesisWithStatus(
+                "test-filter-find", HypothesisStatus.PROPOSED, alpha);
+        createTestHypothesisWithStatus(
+                "test-filter-other", HypothesisStatus.PROPOSED, beta);
 
         List<RelationHypothesis> proposed =
-                hypothesisService.findByStatus(HypothesisStatus.PROPOSED, ALPHA);
+                hypothesisService.findByStatus(HypothesisStatus.PROPOSED, alpha);
         assertThat(proposed).isNotEmpty();
         assertThat(proposed).allMatch(h -> h.getStatus() == HypothesisStatus.PROPOSED);
         assertThat(proposed).noneMatch(h -> "workspace-beta".equals(h.getWorkspaceId()));
     }
 
-    private RelationHypothesis createTestHypothesis(String sessionId, WorkspaceContext context) {
-        return createTestHypothesisWithStatus(sessionId, HypothesisStatus.PROVISIONAL, context);
+    private RelationHypothesis createTestHypothesis(
+            String sessionId, RepositoryContext context) {
+        return createTestHypothesisWithStatus(
+                sessionId, HypothesisStatus.PROVISIONAL, context);
     }
 
     private RelationHypothesis createTestHypothesisWithStatus(
-            String sessionId, HypothesisStatus status, WorkspaceContext context) {
+            String sessionId,
+            HypothesisStatus status,
+            RepositoryContext context) {
         RelationHypothesis h = new RelationHypothesis();
+        h.setRepositoryId(context.repositoryId());
         h.setSourceNodeId("CR");
         h.setTargetNodeId("CO");
         h.setRelationType(RelationType.REALIZES);
