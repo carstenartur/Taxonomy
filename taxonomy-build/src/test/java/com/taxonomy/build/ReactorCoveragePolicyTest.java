@@ -186,7 +186,8 @@ class ReactorCoveragePolicyTest {
                 .isThrownBy(() -> policy.parseReport(
                         xml, ReactorCoveragePolicy.COUNTER_TYPES))
                 .withMessageContaining("Unsupported DOCTYPE in JaCoCo report")
-                .withMessageNotContaining("root:");
+                .satisfies(error -> assertThat(error.getMessage())
+                        .doesNotContain("root:"));
     }
 
     private static ReactorCoveragePolicy.CoveragePolicy policy(
