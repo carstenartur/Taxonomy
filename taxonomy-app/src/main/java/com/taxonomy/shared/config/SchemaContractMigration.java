@@ -22,12 +22,15 @@ import javax.sql.DataSource;
         havingValue = "true", matchIfMissing = true)
 public class SchemaContractMigration implements ApplicationRunner {
 
+    private final OracleHypothesisSessionColumnMigrator oracleSessionMigrator;
     private final LegacyScopeIdentityNormalizer identityNormalizer;
     private final SchemaContractMigrator relationMigrator;
     private final CommitIndexProjectionResetMigrator commitIndexResetMigrator;
     private final CommitIndexSchemaMigrator commitIndexMigrator;
 
     public SchemaContractMigration(DataSource dataSource) {
+        this.oracleSessionMigrator =
+                new OracleHypothesisSessionColumnMigrator(dataSource);
         this.identityNormalizer = new LegacyScopeIdentityNormalizer(dataSource);
         this.relationMigrator = new SchemaContractMigrator(dataSource);
         this.commitIndexResetMigrator =
@@ -42,6 +45,7 @@ public class SchemaContractMigration implements ApplicationRunner {
 
     /** Runs all idempotent portable contract migrations. */
     public void migrate() {
+        oracleSessionMigrator.migrate();
         identityNormalizer.normalize();
         relationMigrator.migrate();
         commitIndexResetMigrator.resetIfTargetContractIsIncomplete();
