@@ -6,10 +6,16 @@
 alter table taxonomy_relation
     add column repository_id varchar(255);
 
+-- RepositoryContext normalizes identifiers at the application boundary. Apply
+-- the same rule to legacy rows before deriving scope keys and matching workspace
+-- provenance so whitespace cannot make otherwise valid rows invisible.
+update taxonomy_relation
+set workspace_id = btrim(workspace_id)
+where workspace_id is not null;
+
 update taxonomy_relation
 set workspace_id = null
-where workspace_id is not null
-  and btrim(workspace_id) = '';
+where workspace_id = '';
 
 do $$
 declare
@@ -19,14 +25,26 @@ declare
 begin
     -- A workspace already records the exact central repository from which it
     -- was provisioned. Preserve that provenance instead of assigning every
-    -- historic workspace row to the catalog primary repository.
+    -- historic workspace row to the catalog primary repository. A normalized
+    -- workspace ID must identify exactly one workspace row; ambiguous legacy
+    -- IDs remain unbound and therefore fail closed below.
+    with unambiguous_workspace_source as (
+        select
+            btrim(workspace_id) as workspace_id,
+            max(source_repository_id) as source_repository_id
+        from user_workspace
+        where workspace_id is not null
+          and btrim(workspace_id) <> ''
+        group by btrim(workspace_id)
+        having count(*) = 1
+           and count(source_repository_id) = 1
+    )
     update taxonomy_relation relation
     set repository_id = workspace.source_repository_id
-    from user_workspace workspace
+    from unambiguous_workspace_source workspace
     where relation.repository_id is null
       and relation.workspace_id is not null
-      and workspace.workspace_id = relation.workspace_id
-      and workspace.source_repository_id is not null;
+      and workspace.workspace_id = relation.workspace_id;
 
     select count(*)
     into unbound_workspace_relation_count
