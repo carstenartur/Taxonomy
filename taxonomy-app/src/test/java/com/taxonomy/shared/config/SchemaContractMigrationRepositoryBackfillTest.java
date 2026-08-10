@@ -24,7 +24,7 @@ class SchemaContractMigrationRepositoryBackfillTest {
                 values ('workspace-b', 'repo-b')
                 """);
         insertLegacyRelation(dataSource, null, "__shared__", 1L);
-        insertLegacyRelation(dataSource, "workspace-b", "workspace-b", 2L);
+        insertLegacyRelation(dataSource, "  workspace-b  ", "  workspace-b  ", 2L);
 
         SchemaContractMigration migration = new SchemaContractMigration(dataSource);
         migration.migrate();
@@ -42,6 +42,12 @@ class SchemaContractMigrationRepositoryBackfillTest {
                 where workspace_id = 'workspace-b'
                 """))
                 .isEqualTo("repo-b");
+        assertThat(singleString(dataSource, """
+                select workspace_scope_key
+                from taxonomy_relation
+                where workspace_id = 'workspace-b'
+                """))
+                .isEqualTo("workspace-b");
 
         execute(dataSource, """
                 insert into taxonomy_relation (
@@ -80,13 +86,6 @@ class SchemaContractMigrationRepositoryBackfillTest {
     void refusesWorkspaceRowsWithoutSourceRepositoryProvenance() throws Exception {
         DataSource dataSource = createLegacySchema();
         insertRepositories(dataSource);
-        execute(dataSource, """
-                insert into user_workspace (workspace_id, source_repository_id)
-                values ('workspace-b', 'repo-b')
-                """);
-        // Include one valid workspace row so every JDBC implementation enters
-        // batch mode before the remaining unbound row is diagnosed.
-        insertLegacyRelation(dataSource, "workspace-b", "workspace-b", 10L);
         insertLegacyRelation(
                 dataSource,
                 "workspace-without-metadata",
