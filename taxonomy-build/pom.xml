@@ -61,6 +61,11 @@
                             <includes>
                                 <include>**/*IT.java</include>
                             </includes>
+                            <systemPropertyVariables>
+                                <hibernate.search.version>${hibernate-search.version}</hibernate.search.version>
+                                <hibernate.orm.version.prefix>7.4.</hibernate.orm.version.prefix>
+                                <lucene.version>${lucene.version}</lucene.version>
+                            </systemPropertyVariables>
                         </configuration>
                     </execution>
                 </executions>
@@ -173,22 +178,6 @@
                             <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
                             <executable>python3</executable>
                             <arguments><argument>.github/scripts/check-frontend-api-boundaries.py</argument></arguments>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>check-hibernate-search-alignment</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments>
-                                <argument>.github/scripts/check-hibernate-search-alignment.py</argument>
-                                <argument>--tree</argument><argument>target/hibernate-search-dependencies.txt</argument>
-                                <argument>--search-version</argument><argument>${hibernate-search.version}</argument>
-                                <argument>--lucene-version</argument><argument>${lucene.version}</argument>
-                            </arguments>
                         </configuration>
                     </execution>
                     <execution>
