@@ -57,6 +57,12 @@ class TaxonomyRelationTenantMigrationPostgresIT {
                 """))
                 .isEqualTo("repo-b");
         assertThat(singleString(dataSource, """
+                select workspace_id
+                from taxonomy_relation
+                where provenance = 'legacy-workspace'
+                """))
+                .isEqualTo("workspace-b");
+        assertThat(singleString(dataSource, """
                 select workspace_scope_key
                 from taxonomy_relation
                 where provenance = 'legacy'
@@ -299,8 +305,8 @@ class TaxonomyRelationTenantMigrationPostgresIT {
                     source.id,
                     target.id,
                     'DEPENDS_ON',
-                    'workspace-b',
-                    'workspace-b',
+                    '  workspace-b  ',
+                    '  workspace-b  ',
                     'legacy-workspace',
                     false,
                     false
