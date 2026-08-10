@@ -7,15 +7,25 @@ alter table relation_hypothesis
     add column workspace_scope_key varchar(255),
     add column analysis_session_scope_key varchar(255);
 
+-- Persist the same canonical identities used by RepositoryContext and the
+-- entity lifecycle callbacks before deriving tenant keys or matching workspace
+-- provenance. Otherwise rows containing surrounding whitespace would become
+-- invisible after application-level normalization.
+update relation_hypothesis
+set workspace_id = btrim(workspace_id)
+where workspace_id is not null;
+
 update relation_hypothesis
 set workspace_id = null
-where workspace_id is not null
-  and btrim(workspace_id) = '';
+where workspace_id = '';
+
+update relation_hypothesis
+set analysis_session_id = btrim(analysis_session_id)
+where analysis_session_id is not null;
 
 update relation_hypothesis
 set analysis_session_id = null
-where analysis_session_id is not null
-  and btrim(analysis_session_id) = '';
+where analysis_session_id = '';
 
 do $$
 declare
@@ -24,13 +34,23 @@ declare
     primary_repository_count bigint;
     duplicate_group_count bigint;
 begin
+    with unambiguous_workspace_source as (
+        select
+            btrim(workspace_id) as workspace_id,
+            max(source_repository_id) as source_repository_id
+        from user_workspace
+        where workspace_id is not null
+          and btrim(workspace_id) <> ''
+        group by btrim(workspace_id)
+        having count(*) = 1
+           and count(source_repository_id) = 1
+    )
     update relation_hypothesis hypothesis
     set repository_id = workspace.source_repository_id
-    from user_workspace workspace
+    from unambiguous_workspace_source workspace
     where hypothesis.repository_id is null
       and hypothesis.workspace_id is not null
-      and workspace.workspace_id = hypothesis.workspace_id
-      and workspace.source_repository_id is not null;
+      and workspace.workspace_id = hypothesis.workspace_id;
 
     select count(*)
     into unbound_workspace_hypothesis_count
