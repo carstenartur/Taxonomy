@@ -13,8 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,9 +51,7 @@ class CommitIndexServiceFailureTest {
                 .hasMessageContaining("workspace=workspace-a")
                 .hasMessageContaining("branch=draft")
                 .hasCauseInstanceOf(IOException.class);
-        verify(indexRepository, never())
-                .existsByRepositoryIdAndWorkspaceScopeKeyAndBranchAndCommitId(
-                        "repository-a", "workspace-a", "draft", "missing");
+        verifyNoInteractions(indexRepository);
     }
 
     @Test
@@ -66,9 +63,6 @@ class CommitIndexServiceFailureTest {
         assertThatThrownBy(() -> service.rebuildBranch("draft", CONTEXT))
                 .isInstanceOf(IllegalStateException.class)
                 .hasCauseInstanceOf(IOException.class);
-        verify(indexRepository, never())
-                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderByCommitTimestampDesc(
-                        "repository-a", "workspace-a", "draft");
-        verify(indexRepository, never()).deleteAll(org.mockito.ArgumentMatchers.anyList());
+        verifyNoInteractions(indexRepository);
     }
 }
