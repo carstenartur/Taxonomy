@@ -88,7 +88,8 @@ final class LegacyScopeIdentityNormalizer {
         }
         String sql = "SELECT COUNT(*) FROM (SELECT TRIM(workspace_id) AS workspace_key"
                 + " FROM user_workspace"
-                + " WHERE workspace_id IS NOT NULL AND TRIM(workspace_id) <> ''"
+                + " WHERE workspace_id IS NOT NULL"
+                + " AND TRIM(workspace_id) IS NOT NULL"
                 + " GROUP BY TRIM(workspace_id)"
                 + " HAVING COUNT(*) > 1) normalized_workspaces";
         try (Statement statement = connection.createStatement();
