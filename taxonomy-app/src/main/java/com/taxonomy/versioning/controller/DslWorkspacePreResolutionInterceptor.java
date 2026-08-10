@@ -49,6 +49,14 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
                 workspaceResolver.resolveCurrentRepositoryContext();
         WorkspaceContext workspaceContext = workspaceResolver.resolveCurrentContext();
 
+        if (repositoryContext == null) {
+            throw new IllegalStateException(
+                    "Repository context resolver returned null for a workspace-scoped operation");
+        }
+        if (workspaceContext == null) {
+            throw new IllegalStateException(
+                    "Workspace context resolver returned null for a workspace-scoped operation");
+        }
         if (WorkspaceContext.SHARED.equals(workspaceContext)) {
             throw new IllegalStateException(
                     "Authenticated workspace-scoped operation did not resolve an isolated workspace");
