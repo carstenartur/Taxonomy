@@ -53,12 +53,24 @@ class SchemaContractMigrationRepositoryBackfillTest {
     void refusesProposalWorkspaceRowsWithoutSourceRepositoryProvenance() throws Exception {
         DataSource dataSource = createLegacySchema();
         insertRepositories(dataSource);
+        execute(dataSource, """
+                insert into user_workspace (workspace_id, source_repository_id)
+                values ('workspace-b', 'repo-b')
+                """);
+        // Include one valid workspace row so all supported JDBC drivers enter
+        // batch mode before the remaining unbound proposal is diagnosed.
+        insertLegacyRow(
+                dataSource,
+                "relation_proposal",
+                "workspace-b",
+                "workspace-b",
+                10L);
         insertLegacyRow(
                 dataSource,
                 "relation_proposal",
                 "workspace-without-metadata",
                 "workspace-without-metadata",
-                1L);
+                20L);
 
         assertThatThrownBy(() -> new SchemaContractMigration(dataSource).migrate())
                 .isInstanceOf(IllegalStateException.class)
