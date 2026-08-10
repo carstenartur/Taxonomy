@@ -28,7 +28,9 @@ A pass in one control does not suppress or waive another control.
 
 ## Supply-chain pin contract
 
-`SupplyChainPinPolicyIT` runs in the final `taxonomy-build` reactor module during Maven `verify`. It scans the repository-owned workflow, Dockerfile, and production Compose inputs and writes the machine-readable result to:
+`SupplyChainPinPolicyRepositoryTest` lives in the final `taxonomy-build` reactor module. The canonical Maven build runs it as an ordinary JUnit policy test; the separate Security Scan invokes the Maven-owned `supply-chain-policy` profile after installing the packaged reactor with tests skipped. The workflow therefore owns neither test selection nor an independent implementation.
+
+The policy scans repository-owned workflow, Dockerfile, and production Compose inputs and writes the machine-readable result to:
 
 ```text
 target/supply-chain-pins.json
@@ -42,15 +44,13 @@ The canonical verification command is:
 ./mvnw -B verify -Pci
 ```
 
-A focused policy-fixture run is:
+After the reactor artifacts have been installed, the exact focused repository scan is:
 
 ```bash
-./mvnw -B -pl taxonomy-build -am test \
-  -Dtest=SupplyChainPinPolicyTest \
-  -Dsurefire.failIfNoSpecifiedTests=false
+./mvnw -B -pl taxonomy-build test -Psupply-chain-policy
 ```
 
-The fixture run does not replace the real post-reactor repository scan or its JSON evidence.
+A fixture-only developer run can still execute the complete `taxonomy-build` unit suite. Neither fixture execution nor direct script invocation replaces the Maven-owned repository test or its JSON evidence.
 
 ## Least privilege
 
@@ -61,7 +61,7 @@ Workflows default to `contents: read`. Additional permissions are declared only 
 1. Resolve the desired release tag to its immutable Git commit or image manifest digest.
 2. Replace the existing SHA or digest while retaining the human-readable release comment or image tag.
 3. Review the upstream release notes and diff before accepting the update.
-4. Run the canonical Maven verification, or at minimum the focused policy fixtures followed by the real Failsafe gate.
+4. Run the canonical Maven verification or the catalogued `supply-chain-policy` profile against an installed reactor.
 5. Verify CodeQL, Trivy, Maven, database compatibility, and container restart checks.
 6. Retain the generated JSON as CI evidence, not as repository state.
 
