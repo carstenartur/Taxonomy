@@ -6,17 +6,47 @@
 alter table taxonomy_relation
     add column repository_id varchar(255);
 
+update taxonomy_relation
+set workspace_id = null
+where workspace_id is not null
+  and btrim(workspace_id) = '';
+
 do $$
 declare
-    unbound_relation_count bigint;
+    unbound_workspace_relation_count bigint;
+    unbound_central_relation_count bigint;
     primary_repository_count bigint;
 begin
-    select count(*)
-    into unbound_relation_count
-    from taxonomy_relation
-    where repository_id is null;
+    -- A workspace already records the exact central repository from which it
+    -- was provisioned. Preserve that provenance instead of assigning every
+    -- historic workspace row to the catalog primary repository.
+    update taxonomy_relation relation
+    set repository_id = workspace.source_repository_id
+    from user_workspace workspace
+    where relation.repository_id is null
+      and relation.workspace_id is not null
+      and workspace.workspace_id = relation.workspace_id
+      and workspace.source_repository_id is not null;
 
-    if unbound_relation_count > 0 then
+    select count(*)
+    into unbound_workspace_relation_count
+    from taxonomy_relation
+    where repository_id is null
+      and workspace_id is not null;
+
+    if unbound_workspace_relation_count > 0 then
+        raise exception
+            'Cannot bind % existing workspace taxonomy relation(s): workspace source repository provenance is missing or ambiguous',
+            unbound_workspace_relation_count;
+    end if;
+
+    select count(*)
+    into unbound_central_relation_count
+    from taxonomy_relation
+    where repository_id is null
+      and workspace_id is null;
+
+    if unbound_central_relation_count > 0 then
         select count(*)
         into primary_repository_count
         from system_repository
@@ -24,8 +54,8 @@ begin
 
         if primary_repository_count <> 1 then
             raise exception
-                'Cannot bind % existing taxonomy relation(s): expected exactly one primary repository, found %',
-                unbound_relation_count,
+                'Cannot bind % existing central taxonomy relation(s): expected exactly one primary repository, found %',
+                unbound_central_relation_count,
                 primary_repository_count;
         end if;
 
@@ -35,15 +65,11 @@ begin
             from system_repository
             where primary_repo = true
         )
-        where repository_id is null;
+        where repository_id is null
+          and workspace_id is null;
     end if;
 end
 $$;
-
-update taxonomy_relation
-set workspace_id = null
-where workspace_id is not null
-  and btrim(workspace_id) = '';
 
 update taxonomy_relation
 set workspace_scope_key = coalesce(workspace_id, '__shared__');
