@@ -2,6 +2,7 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** Unit tests for {@link WorkspaceContextResolver}. */
@@ -22,11 +24,15 @@ class WorkspaceContextResolverTest {
     @Mock
     private SystemRepositoryService systemRepositoryService;
 
+    @Mock
+    private UserWorkspaceRepository workspaceRepository;
+
     private WorkspaceContextResolver resolver;
 
     @BeforeEach
     void setUp() {
-        resolver = new WorkspaceContextResolver(workspaceManager, systemRepositoryService);
+        resolver = new WorkspaceContextResolver(
+                workspaceManager, systemRepositoryService, workspaceRepository);
     }
 
     @Test
@@ -127,7 +133,7 @@ class WorkspaceContextResolverTest {
     }
 
     @Test
-    void legacyWorkspaceWithoutSourceRepositoryIsBoundToPrimaryRepository() {
+    void legacyWorkspaceWithoutSourceRepositoryIsBoundAndPersistedToPrimaryRepository() {
         UserWorkspace workspace = workspace("alice", "legacy-ws", "draft");
         SystemRepository primary = repository("primary-repo", "draft");
         when(workspaceManager.findActiveWorkspace("alice")).thenReturn(workspace);
@@ -138,6 +144,8 @@ class WorkspaceContextResolverTest {
         assertThat(context.repositoryId()).isEqualTo("primary-repo");
         assertThat(context.workspaceId()).isEqualTo("legacy-ws");
         assertThat(context.scope()).isEqualTo(RepositoryScope.WORKSPACE);
+        assertThat(workspace.getSourceRepositoryId()).isEqualTo("primary-repo");
+        verify(workspaceRepository).save(workspace);
     }
 
     @Test
