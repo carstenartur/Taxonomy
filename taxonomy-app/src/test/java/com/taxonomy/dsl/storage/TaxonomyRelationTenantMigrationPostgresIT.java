@@ -31,13 +31,16 @@ class TaxonomyRelationTenantMigrationPostgresIT {
             .withPassword("taxonomy");
 
     @Test
-    void backfillsLegacyRelationsAndMakesUniquenessRepositoryLocal() throws Exception {
+    void preservesCentralAndWorkspaceRepositoryProvenanceAndLocalUniqueness() throws Exception {
         DataSource dataSource = isolatedDataSource("relation_tenant_upgrade");
         migrateJgit(dataSource);
         migrateApplicationTo(dataSource, "4");
         insertRepository(dataSource, "repo-a", "repo-a", true);
+        insertRepository(dataSource, "repo-b", "repo-b", false);
+        insertWorkspace(dataSource, "workspace-b", "repo-b");
         insertNodes(dataSource);
         insertLegacyRelation(dataSource);
+        insertLegacyWorkspaceRelation(dataSource);
 
         migrateApplicationTo(dataSource, "5");
 
@@ -48,13 +51,30 @@ class TaxonomyRelationTenantMigrationPostgresIT {
                 """))
                 .isEqualTo("repo-a");
         assertThat(singleString(dataSource, """
+                select repository_id
+                from taxonomy_relation
+                where provenance = 'legacy-workspace'
+                """))
+                .isEqualTo("repo-b");
+        assertThat(singleString(dataSource, """
+                select workspace_id
+                from taxonomy_relation
+                where provenance = 'legacy-workspace'
+                """))
+                .isEqualTo("workspace-b");
+        assertThat(singleString(dataSource, """
                 select workspace_scope_key
                 from taxonomy_relation
                 where provenance = 'legacy'
                 """))
                 .isEqualTo("__shared__");
+        assertThat(singleString(dataSource, """
+                select workspace_scope_key
+                from taxonomy_relation
+                where provenance = 'legacy-workspace'
+                """))
+                .isEqualTo("workspace-b");
 
-        insertRepository(dataSource, "repo-b", "repo-b", false);
         execute(dataSource, """
                 insert into taxonomy_relation (
                     repository_id,
@@ -79,7 +99,7 @@ class TaxonomyRelationTenantMigrationPostgresIT {
                   and target.code = 'CP'
                 """);
         assertThat(singleLong(dataSource, "select count(*) from taxonomy_relation"))
-                .isEqualTo(2L);
+                .isEqualTo(3L);
 
         assertThatThrownBy(() -> execute(dataSource, """
                 insert into taxonomy_relation (
@@ -133,7 +153,7 @@ class TaxonomyRelationTenantMigrationPostgresIT {
     }
 
     @Test
-    void refusesLegacyRelationBackfillWithoutExactlyOnePrimaryRepository() throws Exception {
+    void refusesLegacyCentralRelationBackfillWithoutExactlyOnePrimaryRepository() throws Exception {
         DataSource dataSource = isolatedDataSource("relation_tenant_upgrade_failure");
         migrateJgit(dataSource);
         migrateApplicationTo(dataSource, "4");
@@ -142,6 +162,19 @@ class TaxonomyRelationTenantMigrationPostgresIT {
 
         assertThatThrownBy(() -> migrateApplicationTo(dataSource, "5"))
                 .hasStackTraceContaining("expected exactly one primary repository");
+    }
+
+    @Test
+    void refusesWorkspaceRelationWhenWorkspaceSourceProvenanceIsMissing() throws Exception {
+        DataSource dataSource = isolatedDataSource("relation_workspace_provenance_failure");
+        migrateJgit(dataSource);
+        migrateApplicationTo(dataSource, "4");
+        insertRepository(dataSource, "repo-a", "repo-a", true);
+        insertNodes(dataSource);
+        insertLegacyWorkspaceRelation(dataSource);
+
+        assertThatThrownBy(() -> migrateApplicationTo(dataSource, "5"))
+                .hasStackTraceContaining("workspace source repository provenance is missing or ambiguous");
     }
 
     private static void insertRepository(
@@ -183,6 +216,40 @@ class TaxonomyRelationTenantMigrationPostgresIT {
                 """.formatted(repositoryId, repositoryId, primary, repositoryId, slug));
     }
 
+    private static void insertWorkspace(
+            DataSource dataSource,
+            String workspaceId,
+            String sourceRepositoryId) throws SQLException {
+        execute(dataSource, """
+                insert into user_workspace (
+                    workspace_id,
+                    username,
+                    display_name,
+                    current_branch,
+                    base_branch,
+                    shared,
+                    created_at,
+                    provisioning_status,
+                    topology_mode,
+                    source_repository_id,
+                    archived,
+                    is_default)
+                values (
+                    '%s',
+                    'workspace-user',
+                    '%s',
+                    'draft',
+                    'draft',
+                    false,
+                    current_timestamp,
+                    'ACTIVE',
+                    'INTERNAL_SHARED',
+                    '%s',
+                    false,
+                    false)
+                """.formatted(workspaceId, workspaceId, sourceRepositoryId));
+    }
+
     private static void insertNodes(DataSource dataSource) throws SQLException {
         execute(dataSource, """
                 insert into taxonomy_node (
@@ -215,6 +282,32 @@ class TaxonomyRelationTenantMigrationPostgresIT {
                     'SUPPORTS',
                     '__shared__',
                     'legacy',
+                    false,
+                    false
+                from taxonomy_node source, taxonomy_node target
+                where source.code = 'BP'
+                  and target.code = 'CP'
+                """);
+    }
+
+    private static void insertLegacyWorkspaceRelation(DataSource dataSource) throws SQLException {
+        execute(dataSource, """
+                insert into taxonomy_relation (
+                    source_node_id,
+                    target_node_id,
+                    relation_type,
+                    workspace_id,
+                    workspace_scope_key,
+                    provenance,
+                    bidirectional,
+                    has_embedding)
+                select
+                    source.id,
+                    target.id,
+                    'DEPENDS_ON',
+                    '  workspace-b  ',
+                    '  workspace-b  ',
+                    'legacy-workspace',
                     false,
                     false
                 from taxonomy_node source, taxonomy_node target
