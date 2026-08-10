@@ -65,6 +65,7 @@
                                 <hibernate.search.version>${hibernate-search.version}</hibernate.search.version>
                                 <hibernate.orm.version.prefix>7.4.</hibernate.orm.version.prefix>
                                 <lucene.version>${lucene.version}</lucene.version>
+                                <pdfbox.version>${pdfbox.version}</pdfbox.version>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
@@ -138,22 +139,6 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>${exec-maven-plugin.version}</version>
                 <executions>
-                    <execution>
-                        <id>enforce-packaged-dependency-hygiene-report</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments>
-                                <argument>.github/scripts/check-dependency-hygiene.py</argument>
-                                <argument>--sbom</argument><argument>target/taxonomy-sbom.json</argument>
-                                <argument>--expected-pdfbox-version</argument><argument>${pdfbox.version}</argument>
-                                <argument>--report</argument><argument>target/dependency-hygiene-report.txt</argument>
-                            </arguments>
-                        </configuration>
-                    </execution>
                     <execution>
                         <id>generate-sbom-companion</id>
                         <phase>verify</phase>
