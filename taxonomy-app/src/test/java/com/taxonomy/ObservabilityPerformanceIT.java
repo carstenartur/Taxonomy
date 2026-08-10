@@ -74,6 +74,13 @@ class ObservabilityPerformanceIT {
             "taxonomy.observability.performance.memory-samples", 7);
     private static final long MEMORY_SAMPLE_INTERVAL_MILLIS = Long.getLong(
             "taxonomy.observability.performance.memory-sample-interval-millis", 200L);
+    private static final String BENCHMARK_JAVA_TOOL_OPTIONS = System.getProperty(
+            "taxonomy.observability.performance.java-tool-options",
+            "-Xms1024m -Xmx1024m -XX:+AlwaysPreTouch").strip();
+    private static final String JAVA_AGENT_OPTION =
+            "-javaagent:/tmp/opentelemetry-javaagent.jar";
+    private static final Pattern XMS_OPTION = Pattern.compile("(?:^|\\s)-Xms(\\S+)");
+    private static final Pattern XMX_OPTION = Pattern.compile("(?:^|\\s)-Xmx(\\S+)");
     private static final Pattern EXPORTED_SPAN = Pattern.compile("Trace ID\\s*:");
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -267,6 +274,9 @@ class ObservabilityPerformanceIT {
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "false")
                 .withEnv("TAXONOMY_THYMELEAF_CACHE", "true")
                 .withEnv("LLM_MOCK", "true")
+                .withEnv(
+                        "JAVA_TOOL_OPTIONS",
+                        javaToolOptions(BENCHMARK_JAVA_TOOL_OPTIONS, mode.agentAttached()))
                 .waitingFor(Wait.forHttp("/actuator/health")
                         .forStatusCode(200)
                         .withStartupTimeout(Duration.ofMinutes(3)));
@@ -274,7 +284,6 @@ class ObservabilityPerformanceIT {
             return application;
         }
         application
-                .withEnv("JAVA_TOOL_OPTIONS", "-javaagent:/tmp/opentelemetry-javaagent.jar")
                 .withEnv("OTEL_JAVAAGENT_CONFIGURATION_FILE", "/tmp/javaagent.properties")
                 .withEnv("OTEL_SERVICE_NAME", "taxonomy-observability-performance")
                 .withEnv("OTEL_TRACES_EXPORTER", "otlp")
@@ -290,6 +299,38 @@ class ObservabilityPerformanceIT {
             application.withEnv("OTEL_TRACES_SAMPLER_ARG", mode.samplerArgument());
         }
         return application;
+    }
+
+    static String javaToolOptions(String commonOptions, boolean agentAttached) {
+        if (commonOptions == null || commonOptions.isBlank()) {
+            throw new IllegalArgumentException(
+                    "OpenTelemetry benchmark JVM options must not be blank");
+        }
+        String normalized = commonOptions.strip();
+        String xms = optionValue(XMS_OPTION, normalized, "-Xms");
+        String xmx = optionValue(XMX_OPTION, normalized, "-Xmx");
+        if (!xms.equalsIgnoreCase(xmx)) {
+            throw new IllegalArgumentException(
+                    "OpenTelemetry benchmark requires identical -Xms and -Xmx values: "
+                            + xms + " != " + xmx);
+        }
+        if (!normalized.contains("-XX:+AlwaysPreTouch")) {
+            throw new IllegalArgumentException(
+                    "OpenTelemetry benchmark JVM options must include -XX:+AlwaysPreTouch");
+        }
+        return agentAttached ? normalized + " " + JAVA_AGENT_OPTION : normalized;
+    }
+
+    private static String optionValue(
+            Pattern pattern,
+            String options,
+            String optionName) {
+        Matcher matcher = pattern.matcher(options);
+        if (!matcher.find()) {
+            throw new IllegalArgumentException(
+                    "OpenTelemetry benchmark JVM options must include " + optionName);
+        }
+        return matcher.group(1);
     }
 
     private ImageFromDockerfile performanceApplicationImage() {
@@ -535,6 +576,8 @@ class ObservabilityPerformanceIT {
         StringBuilder markdown = new StringBuilder("# OpenTelemetry performance evidence\n\n")
                 .append("Generated: `").append(report.generatedAt()).append("`  \n")
                 .append("Java: `").append(report.javaVersion()).append("`  \n")
+                .append("Common benchmark JVM options: `")
+                .append(BENCHMARK_JAVA_TOOL_OPTIONS).append("`  \n")
                 .append("Application image built and runtime-prewarmed before timing: `")
                 .append(report.imageBuiltAndRuntimePrewarmed()).append("`  \n")
                 .append("Workload: ").append(report.measuredRequests())
