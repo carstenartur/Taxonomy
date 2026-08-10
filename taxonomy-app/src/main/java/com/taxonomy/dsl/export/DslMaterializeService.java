@@ -23,6 +23,7 @@ import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +60,7 @@ public class DslMaterializeService {
     private final DslValidator validator = new DslValidator();
     private final ModelDiffer differ = new ModelDiffer();
 
+    @Autowired
     public DslMaterializeService(TaxonomyRelationService relationService,
                                  RelationHypothesisRepository hypothesisRepository,
                                  ArchitectureDslDocumentRepository documentRepository,
