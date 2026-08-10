@@ -2,6 +2,7 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.versioning.controller.DslWorkspacePreResolutionInterceptor;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
@@ -83,6 +84,9 @@ class WorkspaceRequestIsolationTest {
         DslWorkspacePreResolutionInterceptor interceptor =
                 new DslWorkspacePreResolutionInterceptor(resolver, repositoryStateService);
         when(resolver.resolveCurrentUsername()).thenReturn("architect");
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.workspace(
+                        "repository-a", "workspace-1", "draft", "architect"));
         when(resolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
 
         assertThatThrownBy(() -> interceptor.preHandle(
