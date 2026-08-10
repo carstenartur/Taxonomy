@@ -5,7 +5,7 @@ import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
 import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.junit.jupiter.api.Test;
@@ -1045,10 +1045,12 @@ class DslApiControllerTest {
                 .andExpect(jsonPath("$.commitId").isNotEmpty())
                 .andExpect(jsonPath("$.resolution").value("manual"));
     }
+
     private void scopeToCurrentWorkspace(RelationHypothesis hypothesis) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         repositoryStateService.ensureWorkspaceState(username);
-        WorkspaceContext context = workspaceResolver.resolveCurrentContext();
+        RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
+        hypothesis.setRepositoryId(context.repositoryId());
         hypothesis.setWorkspaceId(context.workspaceId());
         hypothesis.setOwnerUsername(context.username());
     }
