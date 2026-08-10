@@ -31,6 +31,8 @@ final class ReactorCoveragePolicy {
             "INSTRUCTION", "LINE", "BRANCH", "METHOD", "CLASS");
     private static final Set<String> COUNTER_TYPE_SET = Set.copyOf(COUNTER_TYPES);
     private static final Pattern NON_KEY_CHARACTER = Pattern.compile("[^a-z0-9]+");
+    private static final String JACOCO_REPORT_DTD =
+            "<!DOCTYPE report PUBLIC \"-//JACOCO//DTD Report 1.1//EN\" \"report.dtd\">";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -129,8 +131,11 @@ final class ReactorCoveragePolicy {
     CoverageReport parseReport(Path path, List<String> requiredCounters) {
         Document document;
         try {
+            validateDoctype(path);
             DocumentBuilderFactory factory = secureDocumentBuilderFactory();
             document = factory.newDocumentBuilder().parse(path.toFile());
+        } catch (IllegalArgumentException error) {
+            throw error;
         } catch (IOException | SAXException | ParserConfigurationException error) {
             throw new IllegalArgumentException(
                     "Cannot parse JaCoCo report " + path + ": " + error.getMessage(),
@@ -306,13 +311,35 @@ final class ReactorCoveragePolicy {
         return result;
     }
 
+    private static void validateDoctype(Path path) throws IOException {
+        String xml = Files.readString(path);
+        int start = xml.indexOf("<!DOCTYPE");
+        if (start < 0) {
+            return;
+        }
+        int end = xml.indexOf('>', start);
+        if (end < 0) {
+            throw new IllegalArgumentException(
+                    "Unterminated DOCTYPE in JaCoCo report " + path);
+        }
+        String declaration = xml.substring(start, end + 1)
+                .replaceAll("\\s+", " ")
+                .strip();
+        if (!JACOCO_REPORT_DTD.equals(declaration)
+                || xml.indexOf("<!DOCTYPE", end + 1) >= 0) {
+            throw new IllegalArgumentException(
+                    "Unsupported DOCTYPE in JaCoCo report " + path);
+        }
+    }
+
     private static DocumentBuilderFactory secureDocumentBuilderFactory()
             throws ParserConfigurationException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
         factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
         factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        factory.setFeature(
+                "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
         factory.setXIncludeAware(false);
