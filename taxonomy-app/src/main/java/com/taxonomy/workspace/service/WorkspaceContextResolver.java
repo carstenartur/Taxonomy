@@ -2,8 +2,10 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -23,11 +25,21 @@ public class WorkspaceContextResolver {
 
     private final WorkspaceManager workspaceManager;
     private final SystemRepositoryService systemRepositoryService;
+    private final UserWorkspaceRepository workspaceRepository;
 
+    @Autowired
     public WorkspaceContextResolver(WorkspaceManager workspaceManager,
-                                     SystemRepositoryService systemRepositoryService) {
+                                    SystemRepositoryService systemRepositoryService,
+                                    UserWorkspaceRepository workspaceRepository) {
         this.workspaceManager = workspaceManager;
         this.systemRepositoryService = systemRepositoryService;
+        this.workspaceRepository = workspaceRepository;
+    }
+
+    /** Compatibility constructor for focused unit tests without persistence. */
+    public WorkspaceContextResolver(WorkspaceManager workspaceManager,
+                                    SystemRepositoryService systemRepositoryService) {
+        this(workspaceManager, systemRepositoryService, null);
     }
 
     /** Resolve the legacy workspace context for the currently authenticated user. */
@@ -75,7 +87,9 @@ public class WorkspaceContextResolver {
      * context for the primary central repository. A legacy workspace without
      * {@code sourceRepositoryId} is assigned to that same primary repository,
      * which is the only repository such rows could originate from before the
-     * multi-repository migration.</p>
+     * multi-repository migration. The inferred provenance is persisted so
+     * remaining legacy adapters cannot later resolve the same workspace against
+     * an unspecified repository.</p>
      */
     public RepositoryContext resolveRepositoryContextForUser(String username) {
         String user = normalizeUsername(username);
@@ -118,10 +132,16 @@ public class WorkspaceContextResolver {
             return systemRepositoryService.getRepository(
                     workspace.getSourceRepositoryId().strip());
         }
+
         SystemRepository primary = systemRepositoryService.getPrimaryRepository();
-        log.debug(
-                "Resolved legacy workspace {} to primary repository {}",
-                workspace.getWorkspaceId(), primary.getRepositoryId());
+        String primaryRepositoryId = requireRepositoryId(primary);
+        workspace.setSourceRepositoryId(primaryRepositoryId);
+        if (workspaceRepository != null) {
+            workspaceRepository.save(workspace);
+        }
+        log.info(
+                "Persisted primary repository {} as source provenance for legacy workspace {}",
+                primaryRepositoryId, workspace.getWorkspaceId());
         return primary;
     }
 
