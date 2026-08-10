@@ -73,6 +73,21 @@ public class DslMaterializeService {
         this.contextResolver = contextResolver;
     }
 
+    /**
+     * Compatibility constructor for focused unit tests that still provide only
+     * the historic workspace resolver. Productive Spring wiring uses the
+     * six-argument constructor and therefore the request-stable
+     * {@link RepositoryContext} path.
+     */
+    public DslMaterializeService(TaxonomyRelationService relationService,
+                                 RelationHypothesisRepository hypothesisRepository,
+                                 ArchitectureDslDocumentRepository documentRepository,
+                                 @Nullable RepositoryStateService repositoryStateService,
+                                 @Nullable WorkspaceContextResolver contextResolver) {
+        this(relationService, hypothesisRepository, documentRepository,
+                repositoryStateService, null, contextResolver);
+    }
+
     public record MaterializeResult(
             boolean valid,
             List<String> errors,
