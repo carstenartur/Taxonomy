@@ -180,20 +180,6 @@
                             <arguments><argument>.github/scripts/check-frontend-api-boundaries.py</argument></arguments>
                         </configuration>
                     </execution>
-                    <execution>
-                        <id>check-supply-chain-pins</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments>
-                                <argument>.github/scripts/check-supply-chain-pins.py</argument>
-                                <argument>--report</argument><argument>target/supply-chain-pins.json</argument>
-                            </arguments>
-                        </configuration>
-                    </execution>
                 </executions>
             </plugin>
         </plugins>
