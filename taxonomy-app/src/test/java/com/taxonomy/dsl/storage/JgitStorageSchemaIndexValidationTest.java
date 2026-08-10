@@ -104,9 +104,13 @@ class JgitStorageSchemaIndexValidationTest {
 
     private static void installReferenceKeyShape(
             DataSource dataSource, boolean createMatchingIndex) throws SQLException {
-        execute(dataSource,
-                "alter table git_reflog add column ref_name_key varchar(128) default '' not null");
-        execute(dataSource, "drop index idx_reflog_repo_ref_id");
+        if (!columnExists(dataSource, "git_reflog", "ref_name_key")) {
+            execute(dataSource,
+                    "alter table git_reflog add column ref_name_key varchar(128) "
+                            + "default '' not null");
+        }
+        execute(dataSource, "drop index if exists idx_reflog_repo_ref_id");
+        execute(dataSource, "drop index if exists idx_reflog_repo_ref_key_id");
         if (createMatchingIndex) {
             execute(dataSource,
                     "create index idx_reflog_repo_ref_key_id "
