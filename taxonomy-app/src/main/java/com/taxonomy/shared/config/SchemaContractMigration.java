@@ -33,9 +33,9 @@ import java.util.TreeMap;
  * <p>Hibernate {@code ddl-auto=update} cannot remove obsolete unique
  * constraints reliably. This runner inspects JDBC metadata, drops only
  * constraints with proven legacy column sets, backfills non-null scope keys,
- * binds legacy committed relations to the one primary repository, and creates
- * named constraints that protect central and personal rows. It also prepares
- * the local-user password-change column.</p>
+ * binds legacy committed relations and relation proposals to the one primary
+ * repository, and creates named constraints that protect central and personal
+ * rows. It also prepares the local-user password-change column.</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -79,9 +79,12 @@ public class SchemaContractMigration implements ApplicationRunner {
                         connection,
                         "relation_proposal",
                         "uk_relation_proposal_scope",
-                        List.of(PROPOSAL_LEGACY_COLUMNS, PROPOSAL_WORKSPACE_NULLABLE_COLUMNS),
-                        WORKSPACE_SCOPE_KEY_COLUMNS,
-                        false);
+                        List.of(
+                                PROPOSAL_LEGACY_COLUMNS,
+                                PROPOSAL_WORKSPACE_NULLABLE_COLUMNS,
+                                WORKSPACE_SCOPE_KEY_COLUMNS),
+                        REPOSITORY_SCOPE_KEY_COLUMNS,
+                        true);
                 migrateScopedUniqueness(
                         connection,
                         "taxonomy_relation",
@@ -125,8 +128,8 @@ public class SchemaContractMigration implements ApplicationRunner {
 
         if (repositoryScoped) {
             ensureColumn(connection, table, "repository_id", "VARCHAR(255)");
-            bindLegacyRelationsToPrimaryRepository(connection, table);
-            ensureRepositoryForeignKey(connection, table);
+            bindLegacyRowsToPrimaryRepository(connection, table, logicalTableName);
+            ensureRepositoryForeignKey(connection, table, logicalTableName);
         }
 
         assertNoScopedDuplicates(connection, table, repositoryScoped);
@@ -154,12 +157,14 @@ public class SchemaContractMigration implements ApplicationRunner {
         }
     }
 
-    private void bindLegacyRelationsToPrimaryRepository(
-            Connection connection, TableRef relationTable) throws SQLException {
-        execute(connection, "UPDATE " + qualified(connection, relationTable)
+    private void bindLegacyRowsToPrimaryRepository(
+            Connection connection,
+            TableRef tenantTable,
+            String logicalTableName) throws SQLException {
+        execute(connection, "UPDATE " + qualified(connection, tenantTable)
                 + " SET repository_id = NULL WHERE TRIM(repository_id) = ''");
         long unbound = singleLong(connection, "SELECT COUNT(*) FROM "
-                + qualified(connection, relationTable)
+                + qualified(connection, tenantTable)
                 + " WHERE repository_id IS NULL");
         if (unbound == 0) {
             return;
@@ -168,7 +173,8 @@ public class SchemaContractMigration implements ApplicationRunner {
         TableRef repositoryTable = findTable(connection, "system_repository");
         if (repositoryTable == null) {
             throw new IllegalStateException(
-                    "Cannot bind legacy taxonomy relations: system_repository is missing");
+                    "Cannot bind legacy rows in " + logicalTableName
+                            + ": system_repository is missing");
         }
 
         String primaryRepositoryId = null;
@@ -188,40 +194,46 @@ public class SchemaContractMigration implements ApplicationRunner {
                 || primaryRepositoryId == null
                 || primaryRepositoryId.isBlank()) {
             throw new IllegalStateException(
-                    "Cannot bind " + unbound
-                            + " legacy taxonomy relation(s): expected exactly one primary repository, found "
+                    "Cannot bind " + unbound + " legacy " + logicalTableName
+                            + " row(s): expected exactly one primary repository, found "
                             + primaryCount);
         }
 
-        String update = "UPDATE " + qualified(connection, relationTable)
+        String update = "UPDATE " + qualified(connection, tenantTable)
                 + " SET repository_id = ? WHERE repository_id IS NULL";
         try (PreparedStatement statement = connection.prepareStatement(update)) {
             statement.setString(1, primaryRepositoryId);
             statement.executeUpdate();
         }
-        log.info("Bound {} legacy taxonomy relation(s) to the primary repository", unbound);
+        log.info("Bound {} legacy row(s) in {} to the primary repository",
+                unbound, logicalTableName);
     }
 
     private void ensureRepositoryForeignKey(
-            Connection connection, TableRef relationTable) throws SQLException {
+            Connection connection,
+            TableRef tenantTable,
+            String logicalTableName) throws SQLException {
         TableRef repositoryTable = findTable(connection, "system_repository");
         if (repositoryTable == null) {
             throw new IllegalStateException(
-                    "Cannot enforce taxonomy relation repository scope: system_repository is missing");
+                    "Cannot enforce repository scope for " + logicalTableName
+                            + ": system_repository is missing");
         }
         if (hasImportedKey(
                 connection,
-                relationTable,
+                tenantTable,
                 "repository_id",
                 repositoryTable,
                 "repository_id")) {
             return;
         }
-        execute(connection, "ALTER TABLE " + qualified(connection, relationTable)
-                + " ADD CONSTRAINT " + quoted(connection, "fk_taxonomy_relation_repository")
+        String constraintName = "fk_" + logicalTableName + "_repository";
+        execute(connection, "ALTER TABLE " + qualified(connection, tenantTable)
+                + " ADD CONSTRAINT " + quoted(connection, constraintName)
                 + " FOREIGN KEY (repository_id) REFERENCES "
                 + qualified(connection, repositoryTable) + " (repository_id)");
-        log.info("Created taxonomy relation repository foreign key");
+        log.info("Created repository foreign key {} on {}",
+                constraintName, logicalTableName);
     }
 
     private boolean hasImportedKey(
