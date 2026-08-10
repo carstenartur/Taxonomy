@@ -31,7 +31,8 @@ class RelationHypothesisTenantMigrationPostgresIT {
             .withPassword("taxonomy");
 
     @Test
-    void preservesCentralAndWorkspaceRepositoryProvenanceAndLocalUniqueness() throws Exception {
+    void preservesCanonicalCentralAndWorkspaceRepositoryProvenanceAndLocalUniqueness()
+            throws Exception {
         DataSource dataSource = isolatedDataSource("hypothesis_tenant_upgrade");
         migrateJgit(dataSource);
         migrateApplicationTo(dataSource, "6");
@@ -40,7 +41,10 @@ class RelationHypothesisTenantMigrationPostgresIT {
         insertWorkspace(dataSource, "workspace-b", "repo-b");
         insertLegacyHypothesis(dataSource, null, "session-central", "legacy");
         insertLegacyHypothesis(
-                dataSource, "workspace-b", "session-workspace", "legacy-workspace");
+                dataSource,
+                "  workspace-b  ",
+                "  session-workspace  ",
+                "legacy-workspace");
 
         migrateApplicationTo(dataSource, "7");
 
@@ -56,6 +60,12 @@ class RelationHypothesisTenantMigrationPostgresIT {
                 where analysis_session_id = 'session-workspace'
                 """))
                 .isEqualTo("repo-b");
+        assertThat(singleString(dataSource, """
+                select workspace_id
+                from relation_hypothesis
+                where analysis_session_id = 'session-workspace'
+                """))
+                .isEqualTo("workspace-b");
         assertThat(singleString(dataSource, """
                 select workspace_scope_key
                 from relation_hypothesis
@@ -74,6 +84,12 @@ class RelationHypothesisTenantMigrationPostgresIT {
                 where analysis_session_id = 'session-central'
                 """))
                 .isEqualTo("session-central");
+        assertThat(singleString(dataSource, """
+                select analysis_session_scope_key
+                from relation_hypothesis
+                where analysis_session_id = 'session-workspace'
+                """))
+                .isEqualTo("session-workspace");
 
         insertScopedHypothesis(
                 dataSource, "repo-b", null, "session-central", "same-key-other-repository");
@@ -106,6 +122,22 @@ class RelationHypothesisTenantMigrationPostgresIT {
         migrateJgit(dataSource);
         migrateApplicationTo(dataSource, "6");
         insertRepository(dataSource, "repo-a", "repo-a", true);
+        insertLegacyHypothesis(
+                dataSource, "  workspace-b  ", "session-workspace", "legacy-workspace");
+
+        assertThatThrownBy(() -> migrateApplicationTo(dataSource, "7"))
+                .hasStackTraceContaining("workspace source repository provenance is missing or ambiguous");
+    }
+
+    @Test
+    void refusesAmbiguousNormalizedWorkspaceProvenance() throws Exception {
+        DataSource dataSource = isolatedDataSource("hypothesis_workspace_ambiguous_failure");
+        migrateJgit(dataSource);
+        migrateApplicationTo(dataSource, "6");
+        insertRepository(dataSource, "repo-a", "repo-a", true);
+        insertRepository(dataSource, "repo-b", "repo-b", false);
+        insertWorkspace(dataSource, "workspace-b", "repo-a");
+        insertWorkspace(dataSource, "  workspace-b  ", "repo-b");
         insertLegacyHypothesis(
                 dataSource, "workspace-b", "session-workspace", "legacy-workspace");
 
@@ -185,7 +217,7 @@ class RelationHypothesisTenantMigrationPostgresIT {
                     is_default)
                 values (
                     '%s',
-                    'workspace-user',
+                    'workspace-user-%s',
                     '%s',
                     'draft',
                     'draft',
@@ -196,7 +228,11 @@ class RelationHypothesisTenantMigrationPostgresIT {
                     '%s',
                     false,
                     false)
-                """.formatted(workspaceId, workspaceId, sourceRepositoryId));
+                """.formatted(
+                        workspaceId,
+                        Math.abs(workspaceId.hashCode()),
+                        workspaceId,
+                        sourceRepositoryId));
     }
 
     private static void insertLegacyHypothesis(
