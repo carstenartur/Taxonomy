@@ -59,82 +59,40 @@ public class CommitIndexService {
         try {
             DslGitRepository repository = repositoryFactory.resolveRepository(context);
             List<DslCommit> commits = repository.getDslHistory(normalizedBranch);
-            int indexed = 0;
-
-            for (DslCommit commit : commits) {
-                if (indexRepository
-                        .existsByRepositoryIdAndWorkspaceScopeKeyAndBranchAndCommitId(
-                                scope.repositoryId(),
-                                scope.workspaceScopeKey(),
-                                normalizedBranch,
-                                commit.commitId())) {
-                    continue;
-                }
-
-                String dslText = repository.getDslAtCommit(commit.commitId());
-                if (dslText == null) {
-                    continue;
-                }
-
-                ArchitectureCommitIndex entry = new ArchitectureCommitIndex();
-                entry.setRepositoryId(scope.repositoryId());
-                entry.setWorkspaceId(scope.workspaceId());
-                entry.setCommitId(commit.commitId());
-                entry.setAuthor(commit.author());
-                entry.setCommitTimestamp(commit.timestamp());
-                entry.setMessage(commit.message());
-                entry.setBranch(normalizedBranch);
-                entry.setChangedFiles("architecture.taxdsl");
-                entry.setTokenizedChangeText(tokenizer.tokenize(dslText));
-
-                Set<String> elementIds = tokenizer.extractElementIds(dslText);
-                entry.setAffectedElementIds(String.join(",", elementIds));
-
-                Set<String> relationKeys = tokenizer.extractRelationKeys(dslText);
-                entry.setAffectedRelationIds(String.join(";", relationKeys));
-
-                indexRepository.save(entry);
-                indexed++;
-            }
-
-            if (indexed > 0) {
-                log.info(
-                        "Indexed {} new commit(s) for repository={} workspace={} branch={}",
-                        indexed,
-                        scope.repositoryId(),
-                        scope.workspaceScopeKey(),
-                        normalizedBranch);
-            }
-            return indexed;
+            return indexCommits(repository, commits, normalizedBranch, scope);
         } catch (IOException exception) {
-            log.error(
-                    "Failed to index repository={} workspace={} branch={}",
-                    scope.repositoryId(),
-                    scope.workspaceScopeKey(),
-                    normalizedBranch,
-                    exception);
-            return 0;
+            throw indexingFailure(scope, normalizedBranch, exception);
         }
     }
 
     /**
      * Rebuild one branch projection without touching another repository,
      * workspace or branch.
+     *
+     * <p>The authoritative history is opened before the old projection is
+     * deleted. Any later JGit failure propagates and rolls back the surrounding
+     * transaction, so a failed rebuild cannot commit an empty replacement.</p>
      */
     @Transactional
     public int rebuildBranch(String branch, RepositoryContext context) {
         TenantScope scope = TenantScope.from(context);
         String normalizedBranch = requireText(branch, "branch");
-        List<ArchitectureCommitIndex> existing = indexRepository
-                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderByCommitTimestampDesc(
-                        scope.repositoryId(),
-                        scope.workspaceScopeKey(),
-                        normalizedBranch);
-        if (!existing.isEmpty()) {
-            indexRepository.deleteAll(existing);
-            entityManager.flush();
+        try {
+            DslGitRepository repository = repositoryFactory.resolveRepository(context);
+            List<DslCommit> commits = repository.getDslHistory(normalizedBranch);
+            List<ArchitectureCommitIndex> existing = indexRepository
+                    .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderByCommitTimestampDesc(
+                            scope.repositoryId(),
+                            scope.workspaceScopeKey(),
+                            normalizedBranch);
+            if (!existing.isEmpty()) {
+                indexRepository.deleteAll(existing);
+                entityManager.flush();
+            }
+            return indexCommits(repository, commits, normalizedBranch, scope);
+        } catch (IOException exception) {
+            throw indexingFailure(scope, normalizedBranch, exception);
         }
-        return indexBranch(normalizedBranch, context);
     }
 
     /** Delete only the selected central/workspace history projection. */
@@ -335,6 +293,77 @@ public class CommitIndexService {
                 commits.size(),
                 volatility,
                 recentMessages);
+    }
+
+    private int indexCommits(
+            DslGitRepository repository,
+            List<DslCommit> commits,
+            String branch,
+            TenantScope scope) throws IOException {
+        int indexed = 0;
+        for (DslCommit commit : commits) {
+            if (indexRepository
+                    .existsByRepositoryIdAndWorkspaceScopeKeyAndBranchAndCommitId(
+                            scope.repositoryId(),
+                            scope.workspaceScopeKey(),
+                            branch,
+                            commit.commitId())) {
+                continue;
+            }
+
+            String dslText = repository.getDslAtCommit(commit.commitId());
+            if (dslText == null) {
+                continue;
+            }
+
+            ArchitectureCommitIndex entry = new ArchitectureCommitIndex();
+            entry.setRepositoryId(scope.repositoryId());
+            entry.setWorkspaceId(scope.workspaceId());
+            entry.setCommitId(commit.commitId());
+            entry.setAuthor(commit.author());
+            entry.setCommitTimestamp(commit.timestamp());
+            entry.setMessage(commit.message());
+            entry.setBranch(branch);
+            entry.setChangedFiles("architecture.taxdsl");
+            entry.setTokenizedChangeText(tokenizer.tokenize(dslText));
+
+            Set<String> elementIds = tokenizer.extractElementIds(dslText);
+            entry.setAffectedElementIds(String.join(",", elementIds));
+
+            Set<String> relationKeys = tokenizer.extractRelationKeys(dslText);
+            entry.setAffectedRelationIds(String.join(";", relationKeys));
+
+            indexRepository.save(entry);
+            indexed++;
+        }
+
+        if (indexed > 0) {
+            log.info(
+                    "Indexed {} new commit(s) for repository={} workspace={} branch={}",
+                    indexed,
+                    scope.repositoryId(),
+                    scope.workspaceScopeKey(),
+                    branch);
+        }
+        return indexed;
+    }
+
+    private IllegalStateException indexingFailure(
+            TenantScope scope,
+            String branch,
+            IOException exception) {
+        log.error(
+                "Failed to index repository={} workspace={} branch={}",
+                scope.repositoryId(),
+                scope.workspaceScopeKey(),
+                branch,
+                exception);
+        return new IllegalStateException(
+                "Unable to read authoritative JGit history for repository="
+                        + scope.repositoryId()
+                        + ", workspace=" + scope.workspaceScopeKey()
+                        + ", branch=" + branch,
+                exception);
     }
 
     private static String requireText(String value, String field) {
