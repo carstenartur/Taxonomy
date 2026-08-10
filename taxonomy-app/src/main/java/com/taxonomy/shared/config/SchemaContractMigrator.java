@@ -284,6 +284,7 @@ final class SchemaContractMigrator {
         String update = "UPDATE " + qualified(connection, tenantTable)
                 + " SET repository_id = ? WHERE id = ? AND repository_id IS NULL";
         try (PreparedStatement statement = connection.prepareStatement(update)) {
+            int batchSize = 0;
             for (WorkspaceTenantRow row : rows) {
                 String repositoryId = sourceRepositories.get(row.workspaceId());
                 if (repositoryId == null) {
@@ -292,8 +293,11 @@ final class SchemaContractMigrator {
                 statement.setString(1, repositoryId);
                 statement.setObject(2, row.id());
                 statement.addBatch();
+                batchSize++;
             }
-            statement.executeBatch();
+            if (batchSize > 0) {
+                statement.executeBatch();
+            }
         }
     }
 
