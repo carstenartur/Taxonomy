@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -199,7 +198,7 @@ final class WorkflowTestAuthorityPolicy {
     static String runBlocks(String text) {
         List<String> lines = text.lines().toList();
         List<String> result = new ArrayList<>();
-        Pattern runPattern = Pattern.compile("^(\\s*)run:\\s*(.*)$");
+        Pattern runPattern = Pattern.compile("^(\\s*)(?:-\\s+)?run:\\s*(.*)$");
         int index = 0;
         while (index < lines.size()) {
             String line = lines.get(index);
