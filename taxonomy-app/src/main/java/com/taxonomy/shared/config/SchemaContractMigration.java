@@ -22,9 +22,11 @@ import javax.sql.DataSource;
         havingValue = "true", matchIfMissing = true)
 public class SchemaContractMigration implements ApplicationRunner {
 
+    private final LegacyScopeIdentityNormalizer identityNormalizer;
     private final SchemaContractMigrator migrator;
 
     public SchemaContractMigration(DataSource dataSource) {
+        this.identityNormalizer = new LegacyScopeIdentityNormalizer(dataSource);
         this.migrator = new SchemaContractMigrator(dataSource);
     }
 
@@ -35,6 +37,7 @@ public class SchemaContractMigration implements ApplicationRunner {
 
     /** Runs the complete idempotent contract migration. */
     public void migrate() {
+        identityNormalizer.normalize();
         migrator.migrate();
     }
 }
