@@ -61,6 +61,30 @@ class WorkflowTestAuthorityPolicyTest {
     }
 
     @Test
+    void reportsDirectBrowserAndPythonQualityExecution(
+            @TempDir Path root) throws Exception {
+        writeCatalog(root, Map.of(
+                "ci-cd.yml", "canonical verification",
+                "database-compatibility.yml", "database matrix",
+                "delivery.yml", "artifact delivery only"));
+        writeCanonicalWorkflows(root);
+        writeWorkflow(root, "delivery.yml", """
+                name: Delivery
+                jobs:
+                  publish:
+                    steps:
+                      - run: node .github/scripts/accessibility-audit.mjs
+                      - run: python3 .github/scripts/check-doc-links.py
+                """);
+
+        WorkflowTestAuthorityPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.errors())
+                .anyMatch(error -> error.contains("direct browser/a11y script"))
+                .anyMatch(error -> error.contains("workflow-owned local quality test"));
+    }
+
+    @Test
     void reportsUnclassifiedMissingAndPreviouslyRemovedWorkflows(
             @TempDir Path root) throws Exception {
         writeCatalog(root, Map.of(
