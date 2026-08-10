@@ -4,6 +4,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +45,12 @@ class ProjectAnalysisSingleRequirementMvcContractTest {
 
     private static final WorkspaceContext CONTEXT =
             new WorkspaceContext("architect", "workspace-a", "feature-a");
+    private static final RepositoryContext REPOSITORY_CONTEXT =
+            RepositoryContext.workspace(
+                    "repository-a",
+                    CONTEXT.workspaceId(),
+                    CONTEXT.currentBranch(),
+                    CONTEXT.username());
 
     @Autowired
     private MockMvc mockMvc;
@@ -60,6 +67,8 @@ class ProjectAnalysisSingleRequirementMvcContractTest {
     @BeforeEach
     void configureWorkspace() {
         when(workspaceResolver.resolveCurrentUsername()).thenReturn(CONTEXT.username());
+        when(workspaceResolver.resolveCurrentRepositoryContext())
+                .thenReturn(REPOSITORY_CONTEXT);
         when(workspaceResolver.resolveCurrentContext()).thenReturn(CONTEXT);
     }
 
