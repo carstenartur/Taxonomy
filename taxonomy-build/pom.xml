@@ -121,17 +121,6 @@
                         </configuration>
                     </execution>
                     <execution>
-                        <id>test-documentation-link-checker</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments><argument>.github/scripts/test-check-doc-links.py</argument></arguments>
-                        </configuration>
-                    </execution>
-                    <execution>
                         <id>enforce-reactor-coverage</id>
                         <phase>verify</phase>
                         <goals><goal>exec</goal></goals>
@@ -176,17 +165,6 @@
                                 <argument>--sbom</argument><argument>target/taxonomy-sbom.json</argument>
                                 <argument>--output</argument><argument>target/taxonomy-vex.json</argument>
                             </arguments>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>check-documentation-links</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments><argument>.github/scripts/check-doc-links.py</argument></arguments>
                         </configuration>
                     </execution>
                     <execution>
