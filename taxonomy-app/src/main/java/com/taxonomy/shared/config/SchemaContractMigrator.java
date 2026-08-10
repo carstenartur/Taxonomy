@@ -96,8 +96,11 @@ final class SchemaContractMigrator {
 
         ensureColumn(connection, table, "workspace_scope_key", "VARCHAR(255)");
         execute(connection, "UPDATE " + qualified(connection, table)
+                + " SET workspace_id = TRIM(workspace_id)"
+                + " WHERE workspace_id IS NOT NULL");
+        execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET workspace_id = NULL"
-                + " WHERE workspace_id IS NOT NULL AND TRIM(workspace_id) = ''");
+                + " WHERE workspace_id = ''");
         execute(connection, "UPDATE " + qualified(connection, table)
                 + " SET workspace_scope_key = " + scopeExpression());
 
@@ -198,8 +201,7 @@ final class SchemaContractMigrator {
                 if (workspaceId == null) {
                     continue;
                 }
-                if (sourceRepositories.containsKey(workspaceId)
-                        && !Objects.equals(sourceRepositories.get(workspaceId), repositoryId)) {
+                if (sourceRepositories.containsKey(workspaceId)) {
                     throw new IllegalStateException(
                             "Workspace " + workspaceId
                                     + " has ambiguous source repository provenance");
@@ -224,6 +226,7 @@ final class SchemaContractMigrator {
         String update = "UPDATE " + qualified(connection, tenantTable)
                 + " SET repository_id = ? WHERE id = ? AND repository_id IS NULL";
         try (PreparedStatement statement = connection.prepareStatement(update)) {
+            int batchSize = 0;
             for (WorkspaceTenantRow row : rows) {
                 String repositoryId = sourceRepositories.get(row.workspaceId());
                 if (repositoryId == null) {
@@ -232,8 +235,11 @@ final class SchemaContractMigrator {
                 statement.setString(1, repositoryId);
                 statement.setObject(2, row.id());
                 statement.addBatch();
+                batchSize++;
             }
-            statement.executeBatch();
+            if (batchSize > 0) {
+                statement.executeBatch();
+            }
         }
     }
 
