@@ -1,16 +1,17 @@
 package com.taxonomy.relations.service;
 
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.dsl.model.TaxonomyRootTypes;
 import com.taxonomy.model.RelationType;
-import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import com.taxonomy.catalog.service.TaxonomyRelationService;
 
 /**
  * Loads and filters traversable relations for the architecture view.
@@ -32,6 +33,19 @@ public class RelationTraversalService {
             RelationType.FULFILLS,
             RelationType.DEPENDS_ON
     );
+
+    /**
+     * Stable persistence order used for deterministic architecture views and exports.
+     *
+     * <p>JPQL without an explicit order has no ordering contract and PostgreSQL may
+     * legitimately return the same rows in a different order after a schema/index
+     * change. Relation IDs reflect the reviewed/imported persistence order and retain
+     * the established diagram/readme contract across supported databases.</p>
+     */
+    private static final Comparator<TaxonomyRelation> PERSISTENCE_ORDER =
+            Comparator.comparing(
+                    TaxonomyRelation::getId,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
 
     private final TaxonomyRelationRepository relationRepository;
     private final TaxonomyRelationService relationService;
@@ -67,30 +81,36 @@ public class RelationTraversalService {
     }
 
     /**
-     * Returns all relations of the whitelisted types.
+     * Returns all relations of the whitelisted types in stable persistence order.
      */
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getAllTraversableRelations() {
-        List<TaxonomyRelation> relations = relationRepository.findByRelationTypeIn(WHITELISTED_TYPES);
+        List<TaxonomyRelation> relations = new ArrayList<>(
+                relationRepository.findByRelationTypeIn(WHITELISTED_TYPES));
+        relations.sort(PERSISTENCE_ORDER);
         List<TaxonomyRelationDto> dtos = new ArrayList<>();
-        for (TaxonomyRelation r : relations) {
-            dtos.add(relationService.toDto(r));
+        for (TaxonomyRelation relation : relations) {
+            dtos.add(relationService.toDto(relation));
         }
         return dtos;
     }
 
     private void addRelationsFor(String code, List<TaxonomyRelationDto> result) {
-        List<TaxonomyRelation> outgoing =
-                relationRepository.findBySourceNodeCodeAndRelationTypeIn(code, WHITELISTED_TYPES);
-        for (TaxonomyRelation r : outgoing) {
-            result.add(relationService.toDto(r));
+        List<TaxonomyRelation> outgoing = new ArrayList<>(
+                relationRepository.findBySourceNodeCodeAndRelationTypeIn(
+                        code, WHITELISTED_TYPES));
+        outgoing.sort(PERSISTENCE_ORDER);
+        for (TaxonomyRelation relation : outgoing) {
+            result.add(relationService.toDto(relation));
         }
 
-        List<TaxonomyRelation> incoming =
-                relationRepository.findByTargetNodeCodeAndRelationTypeIn(code, WHITELISTED_TYPES);
-        for (TaxonomyRelation r : incoming) {
-            if (r.isBidirectional()) {
-                result.add(relationService.toDto(r));
+        List<TaxonomyRelation> incoming = new ArrayList<>(
+                relationRepository.findByTargetNodeCodeAndRelationTypeIn(
+                        code, WHITELISTED_TYPES));
+        incoming.sort(PERSISTENCE_ORDER);
+        for (TaxonomyRelation relation : incoming) {
+            if (relation.isBidirectional()) {
+                result.add(relationService.toDto(relation));
             }
         }
     }
