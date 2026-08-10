@@ -10,8 +10,10 @@ import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -22,15 +24,15 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.Map;
 
+/** REST API for taxonomy relations. */
 @RestController
 @RequestMapping("/api")
-@Tag(name = "Relations")
+@Tag(name = "Relations", description = "Taxonomy relation management")
 public class RelationApiController {
 
     private final TaxonomyRelationService relationService;
@@ -51,82 +53,84 @@ public class RelationApiController {
 
     @Operation(
             summary = "List relations",
-            description = "Returns relations from the selected repository/workspace, optionally filtered by type")
+            description = "Returns relations visible in the selected repository/workspace")
     @GetMapping("/relations")
-    public ResponseEntity<List<TaxonomyRelationDto>> getRelations(
-            @Parameter(description = "Filter by relation type")
-            @RequestParam(required = false) String type) {
+    public ResponseEntity<List<TaxonomyRelationDto>> getRelations() {
         RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
-        if (type != null && !type.isBlank()) {
-            RelationType relationType;
-            try {
-                relationType = RelationType.valueOf(type.toUpperCase());
-            } catch (IllegalArgumentException exception) {
-                return ResponseEntity.badRequest().build();
-            }
-            return ResponseEntity.ok(
-                    relationService.getRelationsByTypeInContext(relationType, context));
-        }
-        return ResponseEntity.ok(relationService.getAllRelationsInContext(context));
+        return ResponseEntity.ok(relationService.getRelationsInContext(context));
     }
 
     @Operation(
-            summary = "Get node relations",
-            description = "Returns node relations from the selected repository/workspace")
-    @GetMapping("/node/{code}/relations")
-    public ResponseEntity<List<TaxonomyRelationDto>> getRelationsForNode(
-            @PathVariable String code) {
+            summary = "List outgoing relations",
+            description = "Returns outgoing relations visible in the selected repository/workspace")
+    @GetMapping("/relations/from/{sourceId}")
+    public ResponseEntity<List<TaxonomyRelationDto>> getRelationsFrom(
+            @PathVariable String sourceId) {
         RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
         return ResponseEntity.ok(
-                relationService.getRelationsForNodeInContext(code, context));
+                relationService.getRelationsFromInContext(sourceId, context));
     }
 
     @Operation(
-            summary = "Create relation",
-            description = "Creates a relation in the active workspace or an explicitly authorized central repository")
+            summary = "List incoming relations",
+            description = "Returns incoming relations visible in the selected repository/workspace")
+    @GetMapping("/relations/to/{targetId}")
+    public ResponseEntity<List<TaxonomyRelationDto>> getRelationsTo(
+            @PathVariable String targetId) {
+        RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();
+        return ResponseEntity.ok(
+                relationService.getRelationsToInContext(targetId, context));
+    }
+
+    @Operation(summary = "Create relation")
     @PostMapping("/relations")
     public ResponseEntity<TaxonomyRelationDto> createRelation(
-            @RequestBody Map<String, String> body) {
-        String sourceCode = body.get("sourceCode");
-        String targetCode = body.get("targetCode");
-        String relationTypeStr = body.get("relationType");
-        String description = body.get("description");
-        String provenance = body.get("provenance");
-
-        if (sourceCode == null || sourceCode.isBlank()
-                || targetCode == null || targetCode.isBlank()
-                || relationTypeStr == null || relationTypeStr.isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        RelationType relationType;
-        try {
-            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());
-        } catch (IllegalArgumentException exception) {
-            return ResponseEntity.badRequest().build();
-        }
-
+            @Valid @RequestBody CreateRelationRequest request) {
         RepositoryContext context = writableContext(
                 workspaceResolver.resolveCurrentRepositoryContext());
         if (context == null) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-
         try {
-            TaxonomyRelationDto dto = relationService.createRelationInContext(
-                    sourceCode,
-                    targetCode,
-                    relationType,
-                    description,
-                    provenance,
+            TaxonomyRelationDto created = relationService.createRelationInContext(
+                    request.sourceNodeId(),
+                    request.targetNodeId(),
+                    RelationType.valueOf(request.relationType()),
+                    request.rationale(),
+                    request.createdBy(),
                     context);
-            return ResponseEntity.ok(dto);
+            return ResponseEntity.status(HttpStatus.CREATED).body(created);
         } catch (IllegalArgumentException exception) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    @Operation(summary = "Delete relation", description = "Deletes a relation in the exact active tenant scope")
+    @Operation(summary = "Create relations in bulk")
+    @PostMapping("/relations/bulk")
+    public ResponseEntity<List<TaxonomyRelationDto>> createRelationsBulk(
+            @Valid @RequestBody @NotEmpty List<CreateRelationRequest> requests) {
+        RepositoryContext context = writableContext(
+                workspaceResolver.resolveCurrentRepositoryContext());
+        if (context == null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        try {
+            List<TaxonomyRelationDto> created = requests.stream()
+                    .map(request -> relationService.createRelationInContext(
+                            request.sourceNodeId(),
+                            request.targetNodeId(),
+                            RelationType.valueOf(request.relationType()),
+                            request.rationale(),
+                            request.createdBy(),
+                            context))
+                    .toList();
+            return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @Operation(summary = "Delete relation")
     @DeleteMapping("/relations/{id}")
     public ResponseEntity<Void> deleteRelation(@PathVariable Long id) {
         RepositoryContext context = writableContext(
@@ -154,8 +158,8 @@ public class RelationApiController {
 
     /**
      * Workspace contexts are writable by their resolved owner. Central contexts
-     * require repository MAINTAINER/OWNER; a global ADMIN remains an explicit
-     * operational compatibility override for the historic primary repository.
+     * require repository MAINTAINER/OWNER; a global application ADMIN remains an
+     * explicit operational compatibility override for the selected repository.
      */
     private RepositoryContext writableContext(RepositoryContext context) {
         if (context.workspaceId() != null) {
@@ -178,6 +182,14 @@ public class RelationApiController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null
                 && authentication.getAuthorities().stream()
-                        .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
+    }
+
+    public record CreateRelationRequest(
+            @NotBlank String sourceNodeId,
+            @NotBlank String targetNodeId,
+            @NotBlank String relationType,
+            String rationale,
+            String createdBy) {
     }
 }
