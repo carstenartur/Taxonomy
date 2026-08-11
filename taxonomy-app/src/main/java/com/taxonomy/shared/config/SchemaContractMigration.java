@@ -12,9 +12,9 @@ import javax.sql.DataSource;
 /**
  * Spring Boot entry point for portable schema-contract migrations.
  *
- * <p>The JDBC implementations remain focused so repository, workspace,
- * hypothesis-session and database-specific character-set rules can be tested
- * without a complete application context on every supported database.</p>
+ * <p>Each focused JDBC migrator owns one invariant family so repository,
+ * workspace, hypothesis-session and commit-index rules can be tested without a
+ * complete application context on every supported database.</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -24,13 +24,18 @@ public class SchemaContractMigration implements ApplicationRunner {
 
     private final OracleHypothesisSessionColumnMigrator oracleSessionMigrator;
     private final LegacyScopeIdentityNormalizer identityNormalizer;
-    private final SchemaContractMigrator migrator;
+    private final SchemaContractMigrator relationMigrator;
+    private final CommitIndexProjectionResetMigrator commitIndexResetMigrator;
+    private final CommitIndexSchemaMigrator commitIndexMigrator;
 
     public SchemaContractMigration(DataSource dataSource) {
         this.oracleSessionMigrator =
                 new OracleHypothesisSessionColumnMigrator(dataSource);
         this.identityNormalizer = new LegacyScopeIdentityNormalizer(dataSource);
-        this.migrator = new SchemaContractMigrator(dataSource);
+        this.relationMigrator = new SchemaContractMigrator(dataSource);
+        this.commitIndexResetMigrator =
+                new CommitIndexProjectionResetMigrator(dataSource);
+        this.commitIndexMigrator = new CommitIndexSchemaMigrator(dataSource);
     }
 
     @Override
@@ -38,10 +43,12 @@ public class SchemaContractMigration implements ApplicationRunner {
         migrate();
     }
 
-    /** Runs the complete idempotent contract migration. */
+    /** Runs all idempotent portable contract migrations. */
     public void migrate() {
         oracleSessionMigrator.migrate();
         identityNormalizer.normalize();
-        migrator.migrate();
+        relationMigrator.migrate();
+        commitIndexResetMigrator.resetIfTargetContractIsIncomplete();
+        commitIndexMigrator.migrate();
     }
 }
