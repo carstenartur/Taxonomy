@@ -34,7 +34,7 @@ import java.util.Locale;
 
 /** Git-authoritative human review API for relation proposals. */
 @RestController
-@RequestMapping("/api/architecture/proposals")
+@RequestMapping("/api/proposals/git")
 @Tag(name = "Git-authoritative proposal review")
 public class GitProposalReviewApiController {
 
