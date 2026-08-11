@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -118,10 +119,7 @@ class GitAuthoritativeProposalReviewServiceTest {
 
         ArgumentCaptor<RelationDefinition> definition =
                 ArgumentCaptor.forClass(RelationDefinition.class);
-        relationMutationService.upsert(
-                eq(context), eq(PREVIOUS), definition.capture(),
-                any(CommandMetadata.class));
-        org.mockito.Mockito.verify(relationMutationService).upsert(
+        verify(relationMutationService).upsert(
                 eq(context), eq(PREVIOUS), definition.capture(),
                 any(CommandMetadata.class));
         assertThat(definition.getValue().status()).isEqualTo("rejected");
