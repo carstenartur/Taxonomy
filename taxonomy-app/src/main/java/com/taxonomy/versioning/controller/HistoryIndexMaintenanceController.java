@@ -37,7 +37,13 @@ public class HistoryIndexMaintenanceController {
     @PutMapping
     public ResponseEntity<Map<String, Object>> rebuild(
             @RequestParam(defaultValue = "draft") String branch) {
-        String normalizedBranch = branch.strip();
+        String normalizedBranch = branch == null ? "" : branch.strip();
+        if (normalizedBranch.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "operation", "rebuild",
+                    "error", "branch must not be blank"));
+        }
+
         int indexed = operations.rebuildHistoryBranch(normalizedBranch);
         return ResponseEntity.ok(Map.of(
                 "operation", "rebuild",
