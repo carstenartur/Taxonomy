@@ -44,7 +44,7 @@ import java.util.Map;
  * returned as the response ETag; the database projection can never precede it.</p>
  */
 @RestController
-@RequestMapping("/api/architecture/relations")
+@RequestMapping("/api/relations/git")
 @Tag(name = "Git-authoritative relations")
 public class GitRelationCommandApiController {
 
