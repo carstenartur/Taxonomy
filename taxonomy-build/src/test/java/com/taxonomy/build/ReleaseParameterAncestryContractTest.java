@@ -7,8 +7,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,8 +40,8 @@ class ReleaseParameterAncestryContractTest {
 
         assertThat(result.exitCode()).isZero();
         assertThat(result.stderr()).isEmpty();
-        assertThat(repository.resolve("github-output"))
-                .content(StandardCharsets.UTF_8)
+        assertThat(Files.readString(
+                repository.resolve("github-output"), StandardCharsets.UTF_8))
                 .contains(
                         "release_version=1.3.1",
                         "next_development_version=1.3.2-SNAPSHOT",
@@ -59,9 +57,9 @@ class ReleaseParameterAncestryContractTest {
         Path repository = temporaryDirectory.resolve("repository");
         Files.createDirectories(repository);
         run(repository, "git", "init");
+        run(repository, "git", "symbolic-ref", "HEAD", "refs/heads/main");
         run(repository, "git", "config", "user.name", "Release Contract");
         run(repository, "git", "config", "user.email", "release-contract@taxonomy.local");
-        run(repository, "git", "checkout", "-b", "main");
 
         writePom(repository, "1.3.1-SNAPSHOT");
         commitAll(repository, "Development base");
@@ -155,9 +153,13 @@ class ReleaseParameterAncestryContractTest {
     }
 
     private static boolean isExpectedFailure(String[] command) {
-        List<String> arguments = new ArrayList<>(List.of(command));
-        return arguments.contains("resolve-release-parameters.py")
-                || arguments.contains("--is-ancestor");
+        for (String argument : command) {
+            if (argument.endsWith("resolve-release-parameters.py")
+                    || "--is-ancestor".equals(argument)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Path repositoryRoot() {
