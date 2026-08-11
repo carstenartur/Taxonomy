@@ -1,16 +1,20 @@
 # Packaged Dependency Hygiene
 
 The normal Maven lifecycle enforces the runtime dependency boundary. This is not
-a GitHub-specific policy: `./mvnw verify` executes Maven Enforcer in every module.
+a GitHub-specific policy: `./mvnw verify` executes Maven Enforcer in every module
+and evaluates the packaged CycloneDX component set through JUnit/Failsafe in the
+final `taxonomy-build` reactor module.
 
 ## Enforced invariants
 
 - No Apache PDFBox component below major version 3 may be packaged.
-- `org.apache.pdfbox:xmpbox` is prohibited unless a real product feature needs it.
+- `org.apache.pdfbox:xmpbox` is prohibited unless a reviewed exception exists.
 - The unused Flexmark PDF converter is prohibited.
 - OpenHTMLToPDF adapters whose artifact name contains `pdfbox` are prohibited.
 - The CycloneDX SBOM must contain aligned `pdfbox`, `pdfbox-io`, and `fontbox`
   versions matching the centrally managed `pdfbox.version` property.
+- Exception records must be complete, exact-coordinate, owner-assigned,
+  unexpired, and have an objective removal condition.
 
 Test-scoped fixtures are not matched by the compile/runtime Maven bans. They must
 still be justified in the test that introduces them and must never enter the
@@ -41,15 +45,35 @@ code must not add duplicate JavaScript packages to work around a Maven warning.
 
 ## Verification and diagnostics
 
+The authoritative command is:
+
 ```bash
-./mvnw verify
+./mvnw -B verify -Pci
+```
 
-PDFBOX_VERSION=$(./mvnw help:evaluate \
-  -Dexpression=pdfbox.version -q -DforceStdout)
-python3 .github/scripts/check-dependency-hygiene.py \
-  --sbom target/taxonomy-sbom.json \
-  --expected-pdfbox-version "$PDFBOX_VERSION"
+`DependencyHygienePolicyIT` runs after the shipped modules and the CycloneDX
+aggregate have been packaged. When CycloneDX emitted the usable JSON/XML pair in a
+module target directory, the test materializes it at the canonical root paths:
 
+```text
+target/taxonomy-sbom.json
+target/taxonomy-sbom.xml
+```
+
+It then writes the stable human-readable decision to:
+
+```text
+target/dependency-hygiene-report.txt
+```
+
+Positive and negative JUnit fixtures cover legacy PDFBox versions, `xmpbox`, the
+Flexmark and OpenHTMLToPDF adapters, missing and version-skewed intended artifacts,
+exact reviewed exceptions, expired or incomplete ledgers, malformed/empty SBOMs,
+and deterministic fallback materialization.
+
+For dependency-tree diagnostics, run:
+
+```bash
 ./mvnw -pl taxonomy-app dependency:tree \
   -Dscope=runtime \
   -Dincludes='org.apache.pdfbox:*,com.vladsch.flexmark:flexmark-pdf-converter,com.openhtmltopdf:*'
@@ -83,6 +107,5 @@ Example:
 }
 ```
 
-Expired or incomplete exception records fail SBOM validation. Broad wildcard
-exceptions, ownerless records, and exceptions without a removal condition are
-not accepted.
+Expired, duplicate, incomplete, broad, or ownerless exception records fail the
+JUnit-owned SBOM policy. An exception suppresses only its exact coordinate.
