@@ -7,6 +7,7 @@ import com.taxonomy.relations.service.RelationDecisionProjectionService.Projecti
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionOutcome;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionRequest;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionResult;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ public class RelationDecisionProjectionWriter {
     private final RelationDecisionProjectionRepository projectionRepository;
     private final RelationDecisionProjectionCheckpointRepository checkpointRepository;
 
+    @Autowired
     public RelationDecisionProjectionWriter(
             RelationDecisionProjectionRepository projectionRepository,
             RelationDecisionProjectionCheckpointRepository checkpointRepository) {
@@ -26,6 +28,14 @@ public class RelationDecisionProjectionWriter {
                 projectionRepository, "projectionRepository");
         this.checkpointRepository = Objects.requireNonNull(
                 checkpointRepository, "checkpointRepository");
+    }
+
+    /** Compatibility constructor for focused pre-checkpoint unit tests in this package. */
+    RelationDecisionProjectionWriter(
+            RelationDecisionProjectionRepository projectionRepository) {
+        this.projectionRepository = Objects.requireNonNull(
+                projectionRepository, "projectionRepository");
+        this.checkpointRepository = null;
     }
 
     @Transactional
@@ -38,10 +48,12 @@ public class RelationDecisionProjectionWriter {
         // is a semantic no-op, it must not leave a previous full-branch checkpoint
         // available as an assurance that every row was rebuilt at this commit.
         // Runtime failures roll this deletion back with the relation write.
-        checkpointRepository.deleteExact(
-                request.repositoryId(),
-                workspaceScopeKey,
-                request.branch());
+        if (checkpointRepository != null) {
+            checkpointRepository.deleteExact(
+                    request.repositoryId(),
+                    workspaceScopeKey,
+                    request.branch());
+        }
 
         RelationDecisionProjection existing = projectionRepository
                 .findExactForUpdate(
