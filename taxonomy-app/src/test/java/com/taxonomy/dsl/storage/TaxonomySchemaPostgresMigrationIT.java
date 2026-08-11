@@ -87,9 +87,39 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(
                 dataSource, "relation_decision_projection", "authoritative_commit_id"))
                 .isTrue();
+        assertThat(tableExists(
+                dataSource, "relation_decision_projection_checkpoint"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "workspace_scope_key"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "authoritative_commit_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "relation_count"))
+                .isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("0", "1", "2", "3", "4", "5", "6", "7", "8", "9");
+                .containsExactly(
+                        "0", "1", "2", "3", "4", "5",
+                        "6", "7", "8", "9", "10");
     }
 
     @Test
@@ -141,8 +171,23 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(
                 dataSource, "relation_decision_projection", "authoritative_commit_id"))
                 .isTrue();
+        assertThat(tableExists(
+                dataSource, "relation_decision_projection_checkpoint"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "authoritative_commit_id"))
+                .isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+                .containsExactly(
+                        "1", "2", "3", "4", "5",
+                        "6", "7", "8", "9", "10");
     }
 
     @Test
