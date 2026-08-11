@@ -34,11 +34,8 @@ public final class ExpectedHeadDslCommitter {
 
         Repository repository = dslRepository.getGitRepository();
         String refName = Constants.R_HEADS + request.branch();
-        Ref branchRef = repository.getRefDatabase().exactRef(refName);
-        ObjectId actualHead = branchRef == null || branchRef.getObjectId() == null
-                ? ObjectId.zeroId()
-                : branchRef.getObjectId();
         ObjectId expectedHead = request.expectedHeadObjectId();
+        ObjectId actualHead = currentHead(repository, refName);
         if (!actualHead.equals(expectedHead)) {
             throw conflict(request.branch(), expectedHead, actualHead, null);
         }
@@ -90,6 +87,55 @@ public final class ExpectedHeadDslCommitter {
         }
     }
 
+    /**
+     * Verifies that a semantic no-op still refers to the exact selected branch
+     * head and therefore may safely return that commit as the authority token.
+     *
+     * <p>For an existing branch the verification uses a no-change ref update
+     * with an expected-old-object precondition, so a concurrent writer cannot be
+     * silently accepted. For an expected absent branch JGit has no object ID to
+     * lock; the method performs a fail-closed exact-ref check and returns
+     * {@code null} only while the branch remains absent.</p>
+     */
+    public String verifyExpectedHead(
+            DslGitRepository dslRepository,
+            String branch,
+            String expectedHeadCommit) throws IOException {
+        Objects.requireNonNull(dslRepository, "dslRepository");
+        String normalizedBranch = normalizeBranch(branch);
+        ObjectId expectedHead = expectedHeadObjectId(expectedHeadCommit);
+        Repository repository = dslRepository.getGitRepository();
+        String refName = Constants.R_HEADS + normalizedBranch;
+        ObjectId actualHead = currentHead(repository, refName);
+        if (!actualHead.equals(expectedHead)) {
+            throw conflict(normalizedBranch, expectedHead, actualHead, null);
+        }
+        if (ObjectId.zeroId().equals(expectedHead)) {
+            return null;
+        }
+
+        RefUpdate update = repository.updateRef(refName);
+        update.setNewObjectId(expectedHead);
+        update.setExpectedOldObjectId(expectedHead);
+        update.setForceUpdate(false);
+        update.disableRefLog();
+        RefUpdate.Result result = update.update();
+        if (result == RefUpdate.Result.NO_CHANGE) {
+            return expectedHead.name();
+        }
+        if (result == RefUpdate.Result.LOCK_FAILURE
+                || result == RefUpdate.Result.REJECTED
+                || result == RefUpdate.Result.REJECTED_CURRENT_BRANCH) {
+            throw conflict(
+                    normalizedBranch,
+                    expectedHead,
+                    currentHead(repository, refName),
+                    result);
+        }
+        throw new IOException(
+                "Expected-head verification failed for " + refName + ": " + result);
+    }
+
     private static ObjectId currentHead(
             Repository repository,
             String refName) throws IOException {
@@ -128,6 +174,30 @@ public final class ExpectedHeadDslCommitter {
         return new PersonIdent(normalized, email);
     }
 
+    private static String normalizeBranch(String branch) {
+        if (branch == null || branch.isBlank()) {
+            throw new IllegalArgumentException("branch must not be blank");
+        }
+        String normalized = branch.strip();
+        if (!Repository.isValidRefName(Constants.R_HEADS + normalized)) {
+            throw new IllegalArgumentException(
+                    "invalid branch name: " + normalized);
+        }
+        return normalized;
+    }
+
+    private static ObjectId expectedHeadObjectId(String expectedHeadCommit) {
+        if (expectedHeadCommit == null) {
+            return ObjectId.zeroId();
+        }
+        String normalized = expectedHeadCommit.strip();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "expectedHeadCommit must be null or a full commit ID");
+        }
+        return ObjectId.fromString(normalized);
+    }
+
     public record CommitRequest(
             String branch,
             String expectedHeadCommit,
@@ -136,21 +206,11 @@ public final class ExpectedHeadDslCommitter {
             String message) {
 
         public CommitRequest {
-            if (branch == null || branch.isBlank()) {
-                throw new IllegalArgumentException("branch must not be blank");
-            }
-            branch = branch.strip();
-            if (!Repository.isValidRefName(Constants.R_HEADS + branch)) {
-                throw new IllegalArgumentException(
-                        "invalid branch name: " + branch);
-            }
+            branch = normalizeBranch(branch);
             if (expectedHeadCommit != null) {
                 expectedHeadCommit = expectedHeadCommit.strip();
-                if (expectedHeadCommit.isEmpty()) {
-                    throw new IllegalArgumentException(
-                            "expectedHeadCommit must be null or a full commit ID");
-                }
-                ObjectId.fromString(expectedHeadCommit);
+                ExpectedHeadDslCommitter.expectedHeadObjectId(
+                        expectedHeadCommit);
             }
             dslText = Objects.requireNonNull(dslText, "dslText");
             author = author == null || author.isBlank()
@@ -162,9 +222,8 @@ public final class ExpectedHeadDslCommitter {
         }
 
         ObjectId expectedHeadObjectId() {
-            return expectedHeadCommit == null
-                    ? ObjectId.zeroId()
-                    : ObjectId.fromString(expectedHeadCommit);
+            return ExpectedHeadDslCommitter.expectedHeadObjectId(
+                    expectedHeadCommit);
         }
     }
 
