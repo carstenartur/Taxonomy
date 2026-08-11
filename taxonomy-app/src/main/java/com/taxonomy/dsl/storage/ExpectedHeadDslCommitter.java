@@ -209,7 +209,8 @@ public final class ExpectedHeadDslCommitter {
             branch = normalizeBranch(branch);
             if (expectedHeadCommit != null) {
                 expectedHeadCommit = expectedHeadCommit.strip();
-                expectedHeadObjectId(expectedHeadCommit);
+                ExpectedHeadDslCommitter.expectedHeadObjectId(
+                        expectedHeadCommit);
             }
             dslText = Objects.requireNonNull(dslText, "dslText");
             author = author == null || author.isBlank()
