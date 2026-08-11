@@ -24,6 +24,7 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -115,7 +116,7 @@ class GitProposalReviewApiControllerTest {
                 eq(PREVIOUS),
                 eq("proposal-17"),
                 eq(ProposalReviewDecision.ACCEPT),
-                eq(null)))
+                isNull()))
                 .thenThrow(new ProposalReviewProjectionPendingException(
                         17L,
                         authority(),
