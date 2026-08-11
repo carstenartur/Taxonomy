@@ -39,7 +39,10 @@ import java.time.Instant;
                 @Index(
                         name = "idx_proposal_repository_workspace",
                         columnList = "repository_id, workspace_id"),
-                @Index(name = "idx_proposal_owner", columnList = "owner_username")
+                @Index(name = "idx_proposal_owner", columnList = "owner_username"),
+                @Index(
+                        name = "idx_proposal_review_commit",
+                        columnList = "repository_id, review_commit_id")
         })
 public class RelationProposal {
 
@@ -85,6 +88,18 @@ public class RelationProposal {
     @Column(name = "reviewed_at")
     private Instant reviewedAt;
 
+    /** Exact branch whose Git commit made the review decision authoritative. */
+    @Column(name = "review_branch", length = 255)
+    private String reviewBranch;
+
+    /** Full immutable Git commit that is authoritative for the review decision. */
+    @Column(name = "review_commit_id", length = 40)
+    private String reviewCommitId;
+
+    /** Idempotency/causation token embedded in the authoritative commit metadata. */
+    @Column(name = "review_causation_id", length = 255)
+    private String reviewCausationId;
+
     @Column(name = "workspace_id")
     private String workspaceId;
 
@@ -115,6 +130,9 @@ public class RelationProposal {
         workspaceId = normalizeOptional(workspaceId);
         workspaceScopeKey = scopeKeyFor(workspaceId);
         ownerUsername = normalizeOptional(ownerUsername);
+        reviewBranch = normalizeOptional(reviewBranch);
+        reviewCommitId = normalizeOptional(reviewCommitId);
+        reviewCausationId = normalizeOptional(reviewCausationId);
     }
 
     public static String scopeKeyFor(String workspaceId) {
@@ -156,6 +174,21 @@ public class RelationProposal {
 
     public Instant getReviewedAt() { return reviewedAt; }
     public void setReviewedAt(Instant reviewedAt) { this.reviewedAt = reviewedAt; }
+
+    public String getReviewBranch() { return reviewBranch; }
+    public void setReviewBranch(String reviewBranch) {
+        this.reviewBranch = normalizeOptional(reviewBranch);
+    }
+
+    public String getReviewCommitId() { return reviewCommitId; }
+    public void setReviewCommitId(String reviewCommitId) {
+        this.reviewCommitId = normalizeOptional(reviewCommitId);
+    }
+
+    public String getReviewCausationId() { return reviewCausationId; }
+    public void setReviewCausationId(String reviewCausationId) {
+        this.reviewCausationId = normalizeOptional(reviewCausationId);
+    }
 
     public String getWorkspaceId() { return workspaceId; }
     public void setWorkspaceId(String workspaceId) {
