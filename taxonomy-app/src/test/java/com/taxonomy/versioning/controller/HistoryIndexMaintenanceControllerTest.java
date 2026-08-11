@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,6 +31,34 @@ class HistoryIndexMaintenanceControllerTest {
                 .containsEntry("branch", "review")
                 .containsEntry("indexed", 7);
         verify(operations).rebuildHistoryBranch("review");
+    }
+
+    @Test
+    void rebuildRejectsBlankBranchWithoutTouchingTheTenantFacade() {
+        HistoryIndexMaintenanceController controller =
+                new HistoryIndexMaintenanceController(operations);
+
+        var response = controller.rebuild("   ");
+
+        assertThat(response.getStatusCode().is4xxClientError()).isTrue();
+        assertThat(response.getBody())
+                .containsEntry("operation", "rebuild")
+                .containsEntry("error", "branch must not be blank");
+        verifyNoInteractions(operations);
+    }
+
+    @Test
+    void rebuildRejectsNullBranchWithoutTouchingTheTenantFacade() {
+        HistoryIndexMaintenanceController controller =
+                new HistoryIndexMaintenanceController(operations);
+
+        var response = controller.rebuild(null);
+
+        assertThat(response.getStatusCode().is4xxClientError()).isTrue();
+        assertThat(response.getBody())
+                .containsEntry("operation", "rebuild")
+                .containsEntry("error", "branch must not be blank");
+        verifyNoInteractions(operations);
     }
 
     @Test
