@@ -13,8 +13,8 @@ import javax.sql.DataSource;
  * Spring Boot entry point for portable schema-contract migrations.
  *
  * <p>Each focused JDBC migrator owns one invariant family so repository,
- * workspace, hypothesis-session and commit-index rules can be tested without a
- * complete application context on every supported database.</p>
+ * workspace, hypothesis-session, proposal-review and commit-index rules can be
+ * tested without a complete application context on every supported database.</p>
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -25,6 +25,7 @@ public class SchemaContractMigration implements ApplicationRunner {
     private final OracleHypothesisSessionColumnMigrator oracleSessionMigrator;
     private final LegacyScopeIdentityNormalizer identityNormalizer;
     private final SchemaContractMigrator relationMigrator;
+    private final ProposalReviewAuthoritySchemaMigrator proposalReviewMigrator;
     private final CommitIndexProjectionResetMigrator commitIndexResetMigrator;
     private final CommitIndexSchemaMigrator commitIndexMigrator;
 
@@ -33,6 +34,8 @@ public class SchemaContractMigration implements ApplicationRunner {
                 new OracleHypothesisSessionColumnMigrator(dataSource);
         this.identityNormalizer = new LegacyScopeIdentityNormalizer(dataSource);
         this.relationMigrator = new SchemaContractMigrator(dataSource);
+        this.proposalReviewMigrator =
+                new ProposalReviewAuthoritySchemaMigrator(dataSource);
         this.commitIndexResetMigrator =
                 new CommitIndexProjectionResetMigrator(dataSource);
         this.commitIndexMigrator = new CommitIndexSchemaMigrator(dataSource);
@@ -48,6 +51,7 @@ public class SchemaContractMigration implements ApplicationRunner {
         oracleSessionMigrator.migrate();
         identityNormalizer.normalize();
         relationMigrator.migrate();
+        proposalReviewMigrator.migrate();
         commitIndexResetMigrator.resetIfTargetContractIsIncomplete();
         commitIndexMigrator.migrate();
     }
