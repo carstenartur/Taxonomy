@@ -71,9 +71,25 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(
                 dataSource, "architecture_commit_index", "workspace_scope_key"))
                 .isTrue();
+        assertThat(tableExists(dataSource, "relation_decision_projection")).isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "workspace_scope_key"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "relation_present"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "authoritative_commit_id"))
+                .isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("0", "1", "2", "3", "4", "5", "6", "7", "8");
+                .containsExactly("0", "1", "2", "3", "4", "5", "6", "7", "8", "9");
     }
 
     @Test
@@ -118,8 +134,15 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(
                 dataSource, "architecture_commit_index", "workspace_scope_key"))
                 .isTrue();
+        assertThat(tableExists(dataSource, "relation_decision_projection")).isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "authoritative_commit_id"))
+                .isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
     }
 
     @Test
