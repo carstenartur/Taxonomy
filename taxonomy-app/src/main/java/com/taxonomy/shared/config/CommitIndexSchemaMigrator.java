@@ -139,15 +139,8 @@ final class CommitIndexSchemaMigrator {
             String column) throws SQLException {
         String identifier = quoted(connection, column);
         execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET " + identifier + " = TRIM(" + identifier + ")"
+                + " SET " + identifier + " = NULLIF(TRIM(" + identifier + "), '')"
                 + " WHERE " + identifier + " IS NOT NULL");
-        execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET " + identifier + " = NULL"
-                + " WHERE " + identifier + " IS NOT NULL"
-                + " AND TRIM(" + identifier + ") IS NULL");
-        execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET " + identifier + " = NULL"
-                + " WHERE " + identifier + " = ''");
     }
 
     private long duplicateGroupCount(
