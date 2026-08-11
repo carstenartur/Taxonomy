@@ -152,6 +152,7 @@ class ArchitectureRelationGitCommandServiceTest {
                           status: accepted;
                           confidence: 0.8;
                           provenance: manual;
+                          x-command-source: relation-review;
                         }
                         """,
                 "system",
@@ -184,6 +185,7 @@ class ArchitectureRelationGitCommandServiceTest {
                   status: accepted;
                   confidence: 0.8;
                   provenance: manual;
+                  x-command-source: relation-review;
                 }
                 """;
         String expected = repository.commitDsl(
