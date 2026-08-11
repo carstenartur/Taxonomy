@@ -138,8 +138,13 @@ final class CommitIndexSchemaMigrator {
             TableRef table,
             String column) throws SQLException {
         String identifier = quoted(connection, column);
+        String product = connection.getMetaData().getDatabaseProductName()
+                .toLowerCase(Locale.ROOT);
+        String normalizedExpression = product.contains("oracle")
+                ? "TRIM(" + identifier + ")"
+                : "NULLIF(TRIM(" + identifier + "), '')";
         execute(connection, "UPDATE " + qualified(connection, table)
-                + " SET " + identifier + " = NULLIF(TRIM(" + identifier + "), '')"
+                + " SET " + identifier + " = " + normalizedExpression
                 + " WHERE " + identifier + " IS NOT NULL");
     }
 
