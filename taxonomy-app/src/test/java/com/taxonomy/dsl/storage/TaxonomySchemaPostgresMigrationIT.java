@@ -56,6 +56,9 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(dataSource, "user_workspace", "relationship_type")).isTrue();
         assertThat(columnExists(dataSource, "taxonomy_relation", "repository_id")).isTrue();
         assertThat(columnExists(dataSource, "relation_proposal", "repository_id")).isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "review_branch")).isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "review_commit_id")).isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "review_causation_id")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "repository_id")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "workspace_scope_key"))
                 .isTrue();
@@ -119,7 +122,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10");
+                        "6", "7", "8", "9", "10", "11");
     }
 
     @Test
@@ -156,6 +159,12 @@ class TaxonomySchemaPostgresMigrationIT {
                 .isTrue();
         assertThat(columnExists(dataSource, "relation_proposal", "repository_id"))
                 .isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "review_branch"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "review_commit_id"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "review_causation_id"))
+                .isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "repository_id"))
                 .isTrue();
         assertThat(columnExists(
@@ -187,7 +196,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10");
+                        "6", "7", "8", "9", "10", "11");
     }
 
     @Test
