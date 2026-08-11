@@ -28,9 +28,12 @@ final class HibernateSearchAlignmentPolicy {
             String expectedSearchVersion,
             String expectedOrmPrefix,
             String expectedLuceneVersion) {
-        requireText(expectedSearchVersion, "expectedSearchVersion");
-        requireText(expectedOrmPrefix, "expectedOrmPrefix");
-        requireText(expectedLuceneVersion, "expectedLuceneVersion");
+        String normalizedSearchVersion = requireText(
+                expectedSearchVersion, "expectedSearchVersion");
+        String normalizedOrmPrefix = requireText(
+                expectedOrmPrefix, "expectedOrmPrefix");
+        String normalizedLuceneVersion = requireText(
+                expectedLuceneVersion, "expectedLuceneVersion");
 
         final String text;
         try {
@@ -60,19 +63,19 @@ final class HibernateSearchAlignmentPolicy {
             failures.add("No org.hibernate.search artifacts were found in the dependency tree");
         }
         searchEntries.forEach((artifact, versions) -> {
-            if (!versions.equals(Set.of(expectedSearchVersion))) {
+            if (!versions.equals(Set.of(normalizedSearchVersion))) {
                 failures.add(artifact + " resolved to " + sorted(versions)
-                        + ", expected only " + expectedSearchVersion);
+                        + ", expected only " + normalizedSearchVersion);
             }
         });
         if (ormVersions.size() != 1
-                || !ormVersions.iterator().next().startsWith(expectedOrmPrefix)) {
+                || !ormVersions.iterator().next().startsWith(normalizedOrmPrefix)) {
             failures.add("hibernate-core resolved to " + sorted(ormVersions)
-                    + ", expected one " + expectedOrmPrefix + "x version");
+                    + ", expected one " + normalizedOrmPrefix + "x version");
         }
-        if (!luceneVersions.equals(Set.of(expectedLuceneVersion))) {
+        if (!luceneVersions.equals(Set.of(normalizedLuceneVersion))) {
             failures.add("lucene-core resolved to " + sorted(luceneVersions)
-                    + ", expected " + expectedLuceneVersion);
+                    + ", expected " + normalizedLuceneVersion);
         }
 
         StringBuilder report = new StringBuilder(
