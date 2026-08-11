@@ -79,6 +79,11 @@ public class ArchitectureRelationGitCommandService {
                     repository,
                     context.branch(),
                     normalizedExpectedHead);
+            if (authoritativeHead == null) {
+                throw new MissingAuthoritativeHeadException(
+                        "Semantic no-op has no existing Git commit on branch '"
+                                + context.branch() + "'");
+            }
             return result(
                     context,
                     normalizedExpectedHead,
@@ -224,11 +229,27 @@ public class ArchitectureRelationGitCommandService {
             ChangeKind changeKind,
             boolean commitCreated,
             String causationId) {
+        public CommandResult {
+            repositoryId = Objects.requireNonNull(repositoryId, "repositoryId");
+            branch = Objects.requireNonNull(branch, "branch");
+            scope = Objects.requireNonNull(scope, "scope");
+            authoritativeCommitId = Objects.requireNonNull(
+                    authoritativeCommitId, "authoritativeCommitId");
+            changeKind = Objects.requireNonNull(changeKind, "changeKind");
+            causationId = Objects.requireNonNull(causationId, "causationId");
+        }
     }
 
     public static final class ReadOnlyRepositoryContextException
             extends IllegalStateException {
         public ReadOnlyRepositoryContextException(String message) {
+            super(message);
+        }
+    }
+
+    public static final class MissingAuthoritativeHeadException
+            extends IllegalStateException {
+        public MissingAuthoritativeHeadException(String message) {
             super(message);
         }
     }
