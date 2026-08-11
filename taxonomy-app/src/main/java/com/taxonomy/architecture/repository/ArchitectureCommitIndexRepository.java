@@ -6,20 +6,43 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
-import com.taxonomy.architecture.service.CommitIndexService;
 
 /**
- * Repository for architecture commit index entries.
+ * Repository for tenant-scoped architecture commit-index projections.
  *
- * <p>Simple JPA lookups only — full-text search is handled by
- * {@link com.taxonomy.architecture.service.CommitIndexService} via Hibernate Search.
+ * <p>Full-text search is handled by Hibernate Search in the service layer, but
+ * every relational lookup carries the exact repository/workspace scope. No
+ * commit or branch is globally unique across logical repositories.</p>
  */
 @Repository
-public interface ArchitectureCommitIndexRepository extends JpaRepository<ArchitectureCommitIndex, Long> {
+public interface ArchitectureCommitIndexRepository
+        extends JpaRepository<ArchitectureCommitIndex, Long> {
 
-    Optional<ArchitectureCommitIndex> findByCommitId(String commitId);
+    Optional<ArchitectureCommitIndex>
+            findByRepositoryIdAndWorkspaceScopeKeyAndBranchAndCommitId(
+                    String repositoryId,
+                    String workspaceScopeKey,
+                    String branch,
+                    String commitId);
 
-    List<ArchitectureCommitIndex> findByBranchOrderByCommitTimestampDesc(String branch);
+    List<ArchitectureCommitIndex>
+            findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderByCommitTimestampDesc(
+                    String repositoryId,
+                    String workspaceScopeKey,
+                    String branch);
 
-    boolean existsByCommitId(String commitId);
+    List<ArchitectureCommitIndex>
+            findByRepositoryIdAndWorkspaceScopeKey(
+                    String repositoryId,
+                    String workspaceScopeKey);
+
+    boolean existsByRepositoryIdAndWorkspaceScopeKeyAndBranchAndCommitId(
+            String repositoryId,
+            String workspaceScopeKey,
+            String branch,
+            String commitId);
+
+    long countByRepositoryIdAndWorkspaceScopeKey(
+            String repositoryId,
+            String workspaceScopeKey);
 }

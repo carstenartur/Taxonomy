@@ -62,9 +62,18 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(
                 dataSource, "relation_hypothesis", "analysis_session_scope_key"))
                 .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "workspace_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "workspace_scope_key"))
+                .isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("0", "1", "2", "3", "4", "5", "6", "7");
+                .containsExactly("0", "1", "2", "3", "4", "5", "6", "7", "8");
     }
 
     @Test
@@ -103,8 +112,14 @@ class TaxonomySchemaPostgresMigrationIT {
                 .isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "repository_id"))
                 .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "workspace_scope_key"))
+                .isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
     }
 
     @Test
