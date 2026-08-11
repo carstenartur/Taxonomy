@@ -25,6 +25,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -138,7 +139,7 @@ class GitRelationCommandApiControllerTest {
                         AUTHORITY,
                         true);
         when(mutationService.upsert(
-                eq(context), eq(null), any(RelationDefinition.class),
+                eq(context), isNull(), any(RelationDefinition.class),
                 any(CommandMetadata.class)))
                 .thenReturn(new MutationResult(authority, projection));
 
