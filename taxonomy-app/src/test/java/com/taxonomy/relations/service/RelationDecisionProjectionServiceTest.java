@@ -222,10 +222,10 @@ class RelationDecisionProjectionServiceTest {
                 context.workspaceId(),
                 context.branch(),
                 context.scope(),
-                null,
                 authoritativeCommit,
-                ChangeKind.ADDED,
-                true,
+                authoritativeCommit,
+                ChangeKind.UNCHANGED,
+                false,
                 "proposal-43");
         RelationDecisionProjectionService service =
                 new RelationDecisionProjectionService(
@@ -234,6 +234,85 @@ class RelationDecisionProjectionServiceTest {
         assertThatThrownBy(() -> service.project(context, forged, command))
                 .isInstanceOf(ProjectionSourceException.class)
                 .hasMessageContaining("does not contain upserted relation");
+        verifyNoInteractions(writer);
+    }
+
+    @Test
+    void staleAuthorityIsRejectedBeforeWriterAccess() throws Exception {
+        RelationDecisionProjectionWriter writer =
+                mock(RelationDecisionProjectionWriter.class);
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "draft", "alice");
+        ArchitectureRelationGitCommandService commandService = commandService();
+        DslGitRepository gitRepository =
+                gitRepositoryFactory.resolveRepository(context);
+        String expectedHead = gitRepository.commitDsl(
+                "draft", seedElements(), "system", "Seed architecture");
+        UpsertRelation command = upsert(
+                "proposal-44", "accepted", 0.9, "manual");
+        CommandResult commandResult = commandService.execute(
+                context, expectedHead, command);
+        gitRepository.commitDsl(
+                "draft",
+                gitRepository.getDslAtCommit(
+                        commandResult.authoritativeCommitId())
+                        + "\n# concurrent update\n",
+                "bob",
+                "Concurrent edit");
+        RelationDecisionProjectionService service =
+                new RelationDecisionProjectionService(
+                        writer, gitRepositoryFactory);
+
+        assertThatThrownBy(() -> service.project(
+                context, commandResult, command))
+                .isInstanceOf(ProjectionSourceException.class)
+                .hasMessageContaining("Unable to verify authoritative relation commit");
+        verifyNoInteractions(writer);
+    }
+
+    @Test
+    void forgedCreatedCommitMetadataIsRejectedBeforeWriterAccess()
+            throws Exception {
+        RelationDecisionProjectionWriter writer =
+                mock(RelationDecisionProjectionWriter.class);
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "draft", "alice");
+        commandService();
+        DslGitRepository gitRepository =
+                gitRepositoryFactory.resolveRepository(context);
+        String previousHead = gitRepository.commitDsl(
+                "draft", seedElements(), "system", "Seed architecture");
+        String forgedCommit = gitRepository.commitDsl(
+                "draft",
+                seedElements() + """
+                        
+                        relation APP-1 USES SVC-1 {
+                          status: accepted;
+                          confidence: 0.9;
+                          provenance: manual;
+                        }
+                        """,
+                "alice",
+                "Unrelated DSL edit");
+        UpsertRelation command = upsert(
+                "proposal-45", "accepted", 0.9, "manual");
+        CommandResult forged = new CommandResult(
+                context.repositoryId(),
+                context.workspaceId(),
+                context.branch(),
+                context.scope(),
+                previousHead,
+                forgedCommit,
+                ChangeKind.ADDED,
+                true,
+                "proposal-45");
+        RelationDecisionProjectionService service =
+                new RelationDecisionProjectionService(
+                        writer, gitRepositoryFactory);
+
+        assertThatThrownBy(() -> service.project(context, forged, command))
+                .isInstanceOf(ProjectionSourceException.class)
+                .hasMessageContaining("summary does not match");
         verifyNoInteractions(writer);
     }
 

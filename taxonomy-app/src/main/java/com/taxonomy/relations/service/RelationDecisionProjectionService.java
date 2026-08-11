@@ -7,6 +7,7 @@ import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdent
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
@@ -15,12 +16,15 @@ import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.Upse
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -42,23 +46,31 @@ public class RelationDecisionProjectionService {
     private final RelationDecisionProjectionWriter projectionWriter;
     private final DslGitRepositoryFactory gitRepositoryFactory;
     private final TaxDslParser parser;
+    private final ExpectedHeadDslCommitter expectedHeadVerifier;
 
     @Autowired
     public RelationDecisionProjectionService(
             RelationDecisionProjectionWriter projectionWriter,
             DslGitRepositoryFactory gitRepositoryFactory) {
-        this(projectionWriter, gitRepositoryFactory, new TaxDslParser());
+        this(
+                projectionWriter,
+                gitRepositoryFactory,
+                new TaxDslParser(),
+                new ExpectedHeadDslCommitter());
     }
 
     RelationDecisionProjectionService(
             RelationDecisionProjectionWriter projectionWriter,
             DslGitRepositoryFactory gitRepositoryFactory,
-            TaxDslParser parser) {
+            TaxDslParser parser,
+            ExpectedHeadDslCommitter expectedHeadVerifier) {
         this.projectionWriter = Objects.requireNonNull(
                 projectionWriter, "projectionWriter");
         this.gitRepositoryFactory = Objects.requireNonNull(
                 gitRepositoryFactory, "gitRepositoryFactory");
         this.parser = Objects.requireNonNull(parser, "parser");
+        this.expectedHeadVerifier = Objects.requireNonNull(
+                expectedHeadVerifier, "expectedHeadVerifier");
     }
 
     /**
@@ -72,7 +84,8 @@ public class RelationDecisionProjectionService {
         ValidatedCommand validated = validate(context, commandResult, command);
         AuthoritativeState state = readAuthoritativeState(
                 context,
-                validated.authoritativeCommitId(),
+                validated,
+                commandResult,
                 command);
         RelationIdentity identity = command.identity();
         ProjectionRequest request = new ProjectionRequest(
@@ -122,6 +135,15 @@ public class RelationDecisionProjectionService {
             throw new ProjectionContextMismatchException(
                     "Command result commit-created flag contradicts its change kind");
         }
+        String previousHeadCommit = result.previousHeadCommit();
+        if (previousHeadCommit != null) {
+            previousHeadCommit = requireCommitId(previousHeadCommit);
+        }
+        if (!changed
+                && !authoritativeCommitId.equals(previousHeadCommit)) {
+            throw new ProjectionContextMismatchException(
+                    "No-op command result must retain its exact previous head");
+        }
         if (command instanceof UpsertRelation
                 && result.changeKind() == ChangeKind.REMOVED) {
             throw new ProjectionContextMismatchException(
@@ -149,9 +171,17 @@ public class RelationDecisionProjectionService {
 
     private AuthoritativeState readAuthoritativeState(
             RepositoryContext context,
-            String authoritativeCommitId,
+            ValidatedCommand validated,
+            CommandResult commandResult,
             RelationCommand command) {
+        String authoritativeCommitId = validated.authoritativeCommitId();
         DslGitRepository repository = gitRepositoryFactory.resolveRepository(context);
+        verifyAuthority(
+                repository,
+                context,
+                commandResult,
+                command,
+                authoritativeCommitId);
         String dsl;
         try {
             dsl = repository.getDslAtCommit(authoritativeCommitId);
@@ -210,6 +240,81 @@ public class RelationDecisionProjectionService {
                             + display(identity));
         }
         return new AuthoritativeState(false, null, null, null);
+    }
+
+    private void verifyAuthority(
+            DslGitRepository repository,
+            RepositoryContext context,
+            CommandResult commandResult,
+            RelationCommand command,
+            String authoritativeCommitId) {
+        try {
+            String verifiedHead = expectedHeadVerifier.verifyExpectedHead(
+                    repository,
+                    context.branch(),
+                    authoritativeCommitId);
+            if (!authoritativeCommitId.equals(verifiedHead)) {
+                throw new ProjectionSourceException(
+                        "Authoritative commit is not the selected branch head: "
+                                + authoritativeCommitId);
+            }
+            if (commandResult.commitCreated()) {
+                verifyCreatedCommit(
+                        repository,
+                        context,
+                        commandResult,
+                        command,
+                        authoritativeCommitId);
+            }
+        } catch (IOException error) {
+            throw new ProjectionSourceException(
+                    "Unable to verify authoritative relation commit "
+                            + authoritativeCommitId,
+                    error);
+        }
+    }
+
+    private static void verifyCreatedCommit(
+            DslGitRepository repository,
+            RepositoryContext context,
+            CommandResult commandResult,
+            RelationCommand command,
+            String authoritativeCommitId) throws IOException {
+        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
+            RevCommit commit = walk.parseCommit(
+                    ObjectId.fromString(authoritativeCommitId));
+            String expectedSummary = "relation: "
+                    + commandResult.changeKind().name().toLowerCase(Locale.ROOT)
+                    + " " + display(command.identity());
+            if (!expectedSummary.equals(commit.getShortMessage())) {
+                throw new ProjectionSourceException(
+                        "Authoritative commit summary does not match the relation command");
+            }
+            if (!context.username().equals(commit.getAuthorIdent().getName())) {
+                throw new ProjectionSourceException(
+                        "Authoritative commit author does not match the repository context");
+            }
+            String expectedCausation = "Causation-Id: "
+                    + command.metadata().causationId();
+            boolean causationPresent = commit.getFullMessage().lines()
+                    .anyMatch(expectedCausation::equals);
+            if (!causationPresent) {
+                throw new ProjectionSourceException(
+                        "Authoritative commit does not contain the command causation ID");
+            }
+
+            String previousHeadCommit = commandResult.previousHeadCommit();
+            if (previousHeadCommit == null) {
+                if (commit.getParentCount() != 0) {
+                    throw new ProjectionSourceException(
+                            "Initial relation command commit unexpectedly has a parent");
+                }
+            } else if (commit.getParentCount() != 1
+                    || !previousHeadCommit.equals(commit.getParent(0).name())) {
+                throw new ProjectionSourceException(
+                        "Authoritative commit parent does not match the command result");
+            }
+        }
     }
 
     private static List<BlockAst> matchingRelationBlocks(
