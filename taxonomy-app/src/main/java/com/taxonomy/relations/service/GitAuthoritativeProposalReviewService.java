@@ -158,7 +158,7 @@ public class GitAuthoritativeProposalReviewService {
         private final Long proposalId;
         private final CommandResult authority;
 
-        ProposalReviewProjectionPendingException(
+        public ProposalReviewProjectionPendingException(
                 Long proposalId,
                 CommandResult authority,
                 Throwable cause) {
