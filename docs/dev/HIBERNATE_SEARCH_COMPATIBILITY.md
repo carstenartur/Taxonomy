@@ -12,19 +12,36 @@ The application uses the Hibernate Search **platform BOM**, not independently ve
 
 Hibernate Search 8.4 targets Hibernate ORM 7.4 and its Lucene backend uses Lucene 9.12.3. The platform BOM coordinates these dependencies and prevents mapper/backend minor-version skew.
 
-## Local verification
+## Verification
+
+The canonical command is:
 
 ```bash
-./mvnw -B -q -pl taxonomy-app -am install -DskipTests
-./mvnw -B -q -pl taxonomy-app dependency:tree \
-  -Dincludes='org.hibernate.search:*,org.hibernate.orm:hibernate-core,org.apache.lucene:lucene-core' \
-  -DoutputFile=../target/hibernate-search-dependencies.txt
-python3 .github/scripts/check-hibernate-search-alignment.py \
-  --tree target/hibernate-search-dependencies.txt \
-  --search-version 8.4.0.Final
+./mvnw -B verify -Pci
 ```
 
-The same check runs in `Hibernate Search Alignment` and archives the resolved tree for each POM change.
+`taxonomy-app` writes the resolved Maven dependency tree to:
+
+```text
+target/hibernate-search-dependencies.txt
+```
+
+Because `taxonomy-build` is the final reactor module, `HibernateSearchAlignmentPolicyIT` consumes that exact resolved tree after the application module has completed. The Failsafe/JUnit gate requires:
+
+- at least one `org.hibernate.search` artifact;
+- exactly the configured `hibernate-search.version` for every Search artifact;
+- exactly one `org.hibernate.orm:hibernate-core` version from the `7.4.x` line;
+- exactly the configured `lucene.version` for `org.apache.lucene:lucene-core`.
+
+Positive and negative parser/policy fixtures live in `HibernateSearchAlignmentPolicyTest`. A focused unit run is:
+
+```bash
+./mvnw -B -pl taxonomy-build -am test \
+  -Dtest=HibernateSearchAlignmentPolicyTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+The real resolved-tree decision remains a post-reactor `verify` gate and is not simulated by the unit fixtures. CI retains the dependency tree as evidence for every relevant change.
 
 ## Upgrade procedure
 

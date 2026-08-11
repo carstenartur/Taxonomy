@@ -61,6 +61,11 @@
                             <includes>
                                 <include>**/*IT.java</include>
                             </includes>
+                            <systemPropertyVariables>
+                                <hibernate.search.version>${hibernate-search.version}</hibernate.search.version>
+                                <hibernate.orm.version.prefix>7.4.</hibernate.orm.version.prefix>
+                                <lucene.version>${lucene.version}</lucene.version>
+                            </systemPropertyVariables>
                         </configuration>
                     </execution>
                 </executions>
@@ -175,38 +180,27 @@
                             <arguments><argument>.github/scripts/check-frontend-api-boundaries.py</argument></arguments>
                         </configuration>
                     </execution>
-                    <execution>
-                        <id>check-hibernate-search-alignment</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments>
-                                <argument>.github/scripts/check-hibernate-search-alignment.py</argument>
-                                <argument>--tree</argument><argument>target/hibernate-search-dependencies.txt</argument>
-                                <argument>--search-version</argument><argument>${hibernate-search.version}</argument>
-                                <argument>--lucene-version</argument><argument>${lucene.version}</argument>
-                            </arguments>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>check-supply-chain-pins</id>
-                        <phase>verify</phase>
-                        <goals><goal>exec</goal></goals>
-                        <configuration>
-                            <skip>${taxonomy.quality.skip}</skip>
-                            <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
-                            <arguments>
-                                <argument>.github/scripts/check-supply-chain-pins.py</argument>
-                                <argument>--report</argument><argument>target/supply-chain-pins.json</argument>
-                            </arguments>
-                        </configuration>
-                    </execution>
                 </executions>
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>supply-chain-policy</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/SupplyChainPinPolicyRepositoryTest.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

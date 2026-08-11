@@ -16,7 +16,7 @@ Taxonomy treats security analysis as a set of independent, evidence-producing ga
 
 ## Pull-request coverage
 
-The security workflows run for Java-only, JavaScript-only, Maven, Docker, Compose, workflow, and security-script changes. Source changes therefore cannot bypass analysis merely because no dependency descriptor changed.
+The security workflows run for Java-only, JavaScript-only, Maven, Docker, Compose, workflow, and security-policy changes. Source changes therefore cannot bypass analysis merely because no dependency descriptor changed.
 
 CodeQL and Trivy remain separate jobs because they answer different questions:
 
@@ -25,6 +25,32 @@ CodeQL and Trivy remain separate jobs because they answer different questions:
 - The pinning gate verifies build-input immutability.
 
 A pass in one control does not suppress or waive another control.
+
+## Supply-chain pin contract
+
+`SupplyChainPinPolicyRepositoryTest` lives in the final `taxonomy-build` reactor module. The canonical Maven build runs it as an ordinary JUnit policy test; the separate Security Scan invokes the Maven-owned `supply-chain-policy` profile after installing the packaged reactor with tests skipped. The workflow therefore owns neither test selection nor an independent implementation.
+
+The policy scans repository-owned workflow, Dockerfile, and production Compose inputs and writes the machine-readable result to:
+
+```text
+target/supply-chain-pins.json
+```
+
+The report records the decision, the number of checked external actions, the number of checked production images, and every source-located violation. Positive and negative fixtures in `SupplyChainPinPolicyTest` cover local actions, quoted references, YAML extensions, mutable action tags, mutable image tags, digest pins, deployment variables, comments, invalid UTF-8, and report serialization.
+
+The canonical verification command is:
+
+```bash
+./mvnw -B verify -Pci
+```
+
+After the reactor artifacts have been installed, the exact focused repository scan is:
+
+```bash
+./mvnw -B -pl taxonomy-build test -Psupply-chain-policy
+```
+
+A fixture-only developer run can still execute the complete `taxonomy-build` unit suite. Neither fixture execution nor direct script invocation replaces the Maven-owned repository test or its JSON evidence.
 
 ## Least privilege
 
@@ -35,14 +61,9 @@ Workflows default to `contents: read`. Additional permissions are declared only 
 1. Resolve the desired release tag to its immutable Git commit or image manifest digest.
 2. Replace the existing SHA or digest while retaining the human-readable release comment or image tag.
 3. Review the upstream release notes and diff before accepting the update.
-4. Run:
-
-   ```bash
-   python3 .github/scripts/check-supply-chain-pins.py
-   ```
-
+4. Run the canonical Maven verification or the catalogued `supply-chain-policy` profile against an installed reactor.
 5. Verify CodeQL, Trivy, Maven, database compatibility, and container restart checks.
-6. Commit the generated JSON evidence only as a CI artifact, not as repository state.
+6. Retain the generated JSON as CI evidence, not as repository state.
 
 Mutable tags such as `@v7`, `:latest`, or an unqualified model `main` branch are not acceptable production inputs.
 
