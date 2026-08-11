@@ -110,6 +110,7 @@ required_reports=(
   taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.dsl.storage.JgitStoragePostgresMigrationIT.xml
   taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.dsl.storage.TaxonomyPostgresValidateStartupIT.xml
   taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.dsl.storage.TaxonomySchemaPostgresMigrationIT.xml
+  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.dsl.storage.ArchitectureCommitIndexTenantMigrationPostgresIT.xml
 )
 for report in "${required_reports[@]}"; do
   if [[ ! -s "$report" ]]; then
