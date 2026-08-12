@@ -102,6 +102,17 @@ public class GitAuthoritativeRelationMutationService {
         private final CommandResult authority;
         private final RecoveryRecord recovery;
 
+        /**
+         * Compatibility form for callers that know the Git authority but do
+         * not have a durable recovery record, for example isolated tests or a
+         * secondary recovery-store failure.
+         */
+        public ProjectionPendingException(
+                CommandResult authority,
+                Throwable cause) {
+            this(authority, null, cause);
+        }
+
         public ProjectionPendingException(
                 CommandResult authority,
                 RecoveryRecord recovery,
