@@ -3,7 +3,6 @@ package com.taxonomy.relations.service;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
-import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationDecisionProjection;
@@ -23,10 +22,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Product read boundary for relation decisions.
@@ -70,13 +69,53 @@ public class RelationProjectionReadService {
 
     public ReadResult readAll(RepositoryContext context) {
         RepositoryContext selected = Objects.requireNonNull(context, "context");
+        return read(
+                selected,
+                ignored -> true,
+                () -> legacyRelationService.getAllRelationsInContext(selected));
+    }
+
+    public ReadResult readByType(
+            RepositoryContext context,
+            RelationType relationType) {
+        RepositoryContext selected = Objects.requireNonNull(context, "context");
+        RelationType type = Objects.requireNonNull(
+                relationType, "relationType");
+        return read(
+                selected,
+                row -> row.getRelationType() == type,
+                () -> legacyRelationService.getRelationsByTypeInContext(
+                        type, selected));
+    }
+
+    public ReadResult readForNode(
+            RepositoryContext context,
+            String nodeCode) {
+        RepositoryContext selected = Objects.requireNonNull(context, "context");
+        String code = requireText(nodeCode, "nodeCode");
+        return read(
+                selected,
+                row -> code.equals(row.getSourceCode())
+                        || code.equals(row.getTargetCode()),
+                () -> legacyRelationService.getRelationsForNodeInContext(
+                        code, selected));
+    }
+
+    private ReadResult read(
+            RepositoryContext selected,
+            Predicate<RelationDecisionProjection> projectionFilter,
+            Supplier<List<TaxonomyRelationDto>> legacyRead) {
         Readiness readiness = readinessService.inspect(selected);
         if (readiness.state() == ReadinessState.READY) {
+            List<RelationDecisionProjection> selectedRows = readiness.rows()
+                    .stream()
+                    .filter(projectionFilter)
+                    .toList();
             return new ReadResult(
                     ReadModel.PROJECTION,
                     readiness.state(),
                     readiness.currentHeadCommit(),
-                    projectionDtos(readiness.rows()));
+                    projectionDtos(selectedRows));
         }
 
         long pendingRecoveries = recoveryService.pendingCount(selected);
@@ -88,7 +127,7 @@ public class RelationProjectionReadService {
                     ReadModel.LEGACY_FALLBACK,
                     readiness.state(),
                     readiness.currentHeadCommit(),
-                    legacyRelationService.getAllRelationsInContext(selected));
+                    legacyRead.get());
         }
 
         throw new RelationProjectionUnavailableException(
@@ -97,46 +136,6 @@ public class RelationProjectionReadService {
                 readiness.currentHeadCommit(),
                 readiness.projectedCommit(),
                 pendingRecoveries);
-    }
-
-    public ReadResult readByType(
-            RepositoryContext context,
-            RelationType relationType) {
-        Objects.requireNonNull(relationType, "relationType");
-        return readAll(context).filter(relation -> relationType.name().equals(
-                relation.getRelationType()));
-    }
-
-    public ReadResult readForNode(
-            RepositoryContext context,
-            String nodeCode) {
-        String code = requireText(nodeCode, "nodeCode");
-        return readAll(context).filter(relation -> code.equals(
-                relation.getSourceCode()) || code.equals(relation.getTargetCode()));
-    }
-
-    public Optional<RelationIdentity> findIdentityById(
-            RepositoryContext context,
-            Long id) {
-        Objects.requireNonNull(id, "id");
-        return readAll(context).relations().stream()
-                .filter(relation -> id.equals(relation.getId()))
-                .findFirst()
-                .map(RelationProjectionReadService::identity);
-    }
-
-    public Optional<TaxonomyRelationDto> findByIdentity(
-            RepositoryContext context,
-            RelationIdentity identity) {
-        Objects.requireNonNull(identity, "identity");
-        return readAll(context).relations().stream()
-                .filter(relation -> identity.sourceId().equals(
-                        relation.getSourceCode()))
-                .filter(relation -> identity.relationType().equals(
-                        relation.getRelationType()))
-                .filter(relation -> identity.targetId().equals(
-                        relation.getTargetCode()))
-                .findFirst();
     }
 
     private List<TaxonomyRelationDto> projectionDtos(
@@ -207,13 +206,6 @@ public class RelationProjectionReadService {
         }
     }
 
-    private static RelationIdentity identity(TaxonomyRelationDto relation) {
-        return new RelationIdentity(
-                relation.getSourceCode(),
-                relation.getRelationType(),
-                relation.getTargetCode());
-    }
-
     private static String requireText(String value, String field) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(field + " must not be blank");
@@ -237,15 +229,6 @@ public class RelationProjectionReadService {
                     readinessState, "readinessState");
             relations = List.copyOf(Objects.requireNonNull(
                     relations, "relations"));
-        }
-
-        public ReadResult filter(Predicate<TaxonomyRelationDto> predicate) {
-            Objects.requireNonNull(predicate, "predicate");
-            return new ReadResult(
-                    readModel,
-                    readinessState,
-                    authoritativeCommitId,
-                    relations.stream().filter(predicate).toList());
         }
     }
 
