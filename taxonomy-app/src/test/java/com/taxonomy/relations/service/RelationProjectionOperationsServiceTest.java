@@ -11,12 +11,15 @@ import com.taxonomy.relations.service.RelationProjectionRecoveryService.Reconcil
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,7 +35,7 @@ class RelationProjectionOperationsServiceTest {
     }
 
     @Test
-    void rebuildRequiresTheExactHeadThenReconcilesAndProvesReadiness()
+    void rebuildRequiresTheExactHeadThenProvesReadinessBeforeReconciliation()
             throws Exception {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "review", "alice");
@@ -55,9 +58,9 @@ class RelationProjectionOperationsServiceTest {
         Readiness readiness = new Readiness(
                 ReadinessState.READY, head, head, List.of());
         when(rebuildService.rebuild(context)).thenReturn(rebuilt);
+        when(readinessService.inspect(context)).thenReturn(readiness);
         when(recoveryService.reconcileAfterRebuild(context, head))
                 .thenReturn(reconciliation);
-        when(readinessService.inspect(context)).thenReturn(readiness);
 
         var operation = new RelationProjectionOperationsService(
                 repositoryFactory,
@@ -68,9 +71,11 @@ class RelationProjectionOperationsServiceTest {
         assertThat(operation.rebuild()).isSameAs(rebuilt);
         assertThat(operation.reconciliation()).isSameAs(reconciliation);
         assertThat(operation.readiness()).isSameAs(readiness);
-        verify(rebuildService).rebuild(context);
-        verify(recoveryService).reconcileAfterRebuild(context, head);
-        verify(readinessService).inspect(context);
+        InOrder order = inOrder(
+                rebuildService, readinessService, recoveryService);
+        order.verify(rebuildService).rebuild(context);
+        order.verify(readinessService).inspect(context);
+        order.verify(recoveryService).reconcileAfterRebuild(context, head);
     }
 
     @Test
@@ -99,11 +104,11 @@ class RelationProjectionOperationsServiceTest {
         assertThatThrownBy(() -> service.rebuild(
                 context, "a".repeat(40)))
                 .isInstanceOf(BranchHeadConflictException.class);
-        verify(rebuildService, org.mockito.Mockito.never()).rebuild(context);
+        verify(rebuildService, never()).rebuild(context);
     }
 
     @Test
-    void sameHeadButCorruptReadModelIsNotReportedAsAHeadConflict()
+    void corruptReadModelNeverCompletesRecoveryAndIsNotAHeadConflict()
             throws Exception {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "review", "alice");
@@ -121,13 +126,9 @@ class RelationProjectionOperationsServiceTest {
                 mock(RelationProjectionRecoveryService.class);
         RebuildResult rebuilt = new RebuildResult(
                 "repo-a", "workspace-a", "review", head, 1);
-        ReconciliationResult reconciliation = new ReconciliationResult(
-                head, 0, 0, 0);
         Readiness corrupt = new Readiness(
                 ReadinessState.CORRUPT, head, head, List.of());
         when(rebuildService.rebuild(context)).thenReturn(rebuilt);
-        when(recoveryService.reconcileAfterRebuild(context, head))
-                .thenReturn(reconciliation);
         when(readinessService.inspect(context)).thenReturn(corrupt);
 
         assertThatThrownBy(() -> new RelationProjectionOperationsService(
@@ -141,10 +142,11 @@ class RelationProjectionOperationsServiceTest {
                             assertThat(error.getRebuild()).isSameAs(rebuilt);
                             assertThat(error.getReadiness()).isSameAs(corrupt);
                         });
+        verify(recoveryService, never()).reconcileAfterRebuild(context, head);
     }
 
     @Test
-    void reconciliationFailureStillExposesTheSuccessfulRebuildCommit()
+    void reconciliationFailureStillExposesTheVerifiedRebuildCommit()
             throws Exception {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "review", "alice");
@@ -161,8 +163,11 @@ class RelationProjectionOperationsServiceTest {
         RelationProjectionRecoveryService recoveryService =
                 mock(RelationProjectionRecoveryService.class);
         RebuildResult rebuilt = new RebuildResult(
-                "repo-a", "workspace-a", "review", head, 1);
+                "repo-a", "workspace-a", "review", head, 0);
+        Readiness readiness = new Readiness(
+                ReadinessState.READY, head, head, List.of());
         when(rebuildService.rebuild(context)).thenReturn(rebuilt);
+        when(readinessService.inspect(context)).thenReturn(readiness);
         when(recoveryService.reconcileAfterRebuild(context, head))
                 .thenThrow(new IllegalStateException("recovery unavailable"));
 
