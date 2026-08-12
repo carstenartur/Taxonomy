@@ -5,7 +5,8 @@
  * This adapter captures create/delete actions before the retired DB-first
  * handlers, refreshes one authoritative snapshot immediately before each
  * command, and addresses relations by the source/type/target identity visible
- * in the same table row.
+ * in the same table row. It deliberately does not issue parallel browser-load
+ * requests on panel or filter events.
  */
 (function () {
     'use strict';
@@ -18,21 +19,7 @@
     function init() {
         if (initialized) return;
         initialized = true;
-
         document.addEventListener('click', captureRelationCommand, true);
-
-        var panel = document.getElementById('relationsBrowser');
-        if (panel) {
-            panel.addEventListener('toggle', function () {
-                if (panel.open) refreshSnapshot();
-            });
-            if (panel.open) refreshSnapshot();
-        }
-
-        var typeFilter = document.getElementById('relationsTypeFilter');
-        if (typeFilter) {
-            typeFilter.addEventListener('change', refreshSnapshot);
-        }
     }
 
     function captureRelationCommand(event) {
@@ -202,7 +189,6 @@
         }
         if (response.status === 412) {
             headEtag = null;
-            refreshSnapshot().catch(function () {});
             throw new Error(
                 'The selected branch changed. Relations are being reloaded.');
         }
@@ -237,18 +223,12 @@
     }
 
     function refreshBrowser() {
-        return refreshSnapshot()
-            .catch(function (error) {
-                showBrowserError(error.message);
-            })
-            .then(function () {
-                if (window.TaxonomyRelations) {
-                    window.TaxonomyRelations.loadRelations();
-                }
-                if (window.TaxonomyQuality) {
-                    window.TaxonomyQuality.loadQualityDashboard();
-                }
-            });
+        if (window.TaxonomyRelations) {
+            window.TaxonomyRelations.loadRelations();
+        }
+        if (window.TaxonomyQuality) {
+            window.TaxonomyQuality.loadQualityDashboard();
+        }
     }
 
     function projectionError(response) {
