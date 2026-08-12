@@ -32,7 +32,7 @@ public class ProposalReviewStateStore {
             Long proposalId,
             RepositoryContext context) {
         RepositoryContext tenant = requireWritableContext(context);
-        RelationProposal proposal = find(proposalId, tenant);
+        RelationProposal proposal = find(proposalId, tenant, false);
         return new ProposalSnapshot(
                 proposal.getId(),
                 proposal.getSourceNode().getCode(),
@@ -51,7 +51,7 @@ public class ProposalReviewStateStore {
             ProposalStatus expected,
             ProposalStatus target) {
         RepositoryContext tenant = requireWritableContext(context);
-        RelationProposal proposal = find(proposalId, tenant);
+        RelationProposal proposal = find(proposalId, tenant, true);
         if (proposal.getStatus() != expected) {
             throw new ProposalStateConflictException(
                     "Proposal " + proposalId + " is " + proposal.getStatus()
@@ -66,14 +66,20 @@ public class ProposalReviewStateStore {
 
     private RelationProposal find(
             Long proposalId,
-            RepositoryContext context) {
+            RepositoryContext context,
+            boolean forUpdate) {
         if (proposalId == null) {
             throw new IllegalArgumentException("proposalId must not be null");
         }
-        return proposalRepository.findByIdInRepositoryWorkspace(
+        return (forUpdate
+                ? proposalRepository.findByIdInRepositoryWorkspaceForUpdate(
                         context.repositoryId(),
                         proposalId,
                         context.workspaceId())
+                : proposalRepository.findByIdInRepositoryWorkspace(
+                        context.repositoryId(),
+                        proposalId,
+                        context.workspaceId()))
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Proposal not found in active repository/workspace: "
                                 + proposalId));
