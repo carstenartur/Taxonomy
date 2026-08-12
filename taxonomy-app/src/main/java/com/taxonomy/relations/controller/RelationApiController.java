@@ -4,6 +4,8 @@ import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationProjectionReadService;
+import com.taxonomy.relations.service.RelationProjectionReadService.CountResult;
+import com.taxonomy.relations.service.RelationProjectionReadService.ReadModel;
 import com.taxonomy.relations.service.RelationProjectionReadService.ReadResult;
 import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -126,16 +128,18 @@ public class RelationApiController {
 
     @Operation(
             summary = "Count relations",
-            description = "Returns the size of the same complete relation projection used by list and node reads")
+            description = "Returns the size of the same complete relation projection used by list and node reads without materializing DTOs")
     @GetMapping("/relations/count")
     public ResponseEntity<Map<String, Long>> countRelations() {
         RepositoryContext context = workspaceResolver
                 .resolveCurrentRepositoryContext();
         try {
-            ReadResult result = relationReadService.readAll(context);
-            ResponseEntity.BodyBuilder response = readHeaders(result);
-            return response.body(Map.of(
-                    "count", (long) result.relations().size()));
+            CountResult result = relationReadService.count(context);
+            return readHeaders(
+                    result.readModel(),
+                    result.readinessState(),
+                    result.authoritativeCommitId())
+                    .body(Map.of("count", result.count()));
         } catch (RelationProjectionUnavailableException error) {
             return unavailable(error).build();
         }
@@ -143,20 +147,25 @@ public class RelationApiController {
 
     private static ResponseEntity<List<TaxonomyRelationDto>> readResponse(
             ReadResult result) {
-        return readHeaders(result).body(result.relations());
+        return readHeaders(
+                result.readModel(),
+                result.readinessState(),
+                result.authoritativeCommitId())
+                .body(result.relations());
     }
 
-    private static ResponseEntity.BodyBuilder readHeaders(ReadResult result) {
+    private static ResponseEntity.BodyBuilder readHeaders(
+            ReadModel readModel,
+            ReadinessState readinessState,
+            String authoritativeCommitId) {
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
-                .header(READ_MODEL_HEADER, result.readModel().name())
-                .header(PROJECTION_STATE_HEADER,
-                        result.readinessState().name())
+                .header(READ_MODEL_HEADER, readModel.name())
+                .header(PROJECTION_STATE_HEADER, readinessState.name())
                 .header(HttpHeaders.CACHE_CONTROL, "no-store");
-        if (result.authoritativeCommitId() != null) {
+        if (authoritativeCommitId != null) {
             response.header(
                     HttpHeaders.ETAG,
-                    GitHttpPrecondition.etag(
-                            result.authoritativeCommitId()));
+                    GitHttpPrecondition.etag(authoritativeCommitId));
         }
         return response;
     }
