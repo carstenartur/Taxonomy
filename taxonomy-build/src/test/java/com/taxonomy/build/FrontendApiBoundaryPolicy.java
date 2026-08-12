@@ -30,6 +30,7 @@ final class FrontendApiBoundaryPolicy {
             "taxonomy-app/src/main/resources/static/js";
     private static final String TEMPLATE =
             "taxonomy-app/src/main/resources/templates/index.html";
+    private static final String TEMPLATE_KEY = "templates/index.html";
     private static final Pattern DIRECT_FETCH = Pattern.compile("\\bfetch\\s*\\(");
     private static final Pattern DIRECT_API_FETCH = Pattern.compile(
             "\\bfetch\\s*\\(\\s*['\"`]\\/api\\/");
@@ -116,9 +117,11 @@ final class FrontendApiBoundaryPolicy {
 
         Path template = root.resolve(TEMPLATE);
         if (Files.isRegularFile(template)) {
-            List<Integer> templateLines = matchLines(readUtf8(template), DIRECT_API_FETCH);
+            String text = readUtf8(template);
+            fetchCounts.put(TEMPLATE_KEY, countDirectFetch(text));
+            List<Integer> templateLines = matchLines(text, DIRECT_API_FETCH);
             if (!templateLines.isEmpty()) {
-                legacyApiInventory.put("templates/index.html", templateLines.size());
+                legacyApiInventory.put(TEMPLATE_KEY, templateLines.size());
             }
         }
 
@@ -227,17 +230,27 @@ final class FrontendApiBoundaryPolicy {
                 comparisonPaths.add(relative);
             }
         }
+        if (reader.paths(baseRef, TEMPLATE).stream()
+                .map(path -> path.replace('\\', '/'))
+                .anyMatch(TEMPLATE::equals)) {
+            comparisonPaths.add(TEMPLATE_KEY);
+        }
 
         Map<String, Integer> counts = new TreeMap<>();
         for (String relative : comparisonPaths) {
             Optional<String> text = reader.read(
-                    baseRef, STATIC_JS + "/" + relative);
+                    baseRef, repositoryPath(relative));
             if (text.isEmpty()) {
                 continue;
             }
             counts.put(relative, countDirectFetch(text.get()));
         }
         return counts;
+    }
+
+    private static String repositoryPath(String comparisonPath) {
+        return TEMPLATE_KEY.equals(comparisonPath)
+                ? TEMPLATE : STATIC_JS + "/" + comparisonPath;
     }
 
     private static Map<String, Integer> debtOnly(Map<String, Integer> counts) {
