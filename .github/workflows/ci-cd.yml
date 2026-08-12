@@ -38,18 +38,6 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Verify repository version state
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/test-check-version-state.py
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            python3 .github/scripts/check-version-state.py \
-              --mode release --tag "${GITHUB_REF_NAME}"
-          else
-            python3 .github/scripts/check-version-state.py --mode development
-          fi
-
       - name: Verify release and delivery contracts
         shell: bash
         run: |
@@ -138,6 +126,8 @@ jobs:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
           FRONTEND_API_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          VERSION_STATE_MODE: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'development' }}
+          VERSION_STATE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         shell: bash
         run: |
           mkdir -p target
@@ -178,6 +168,7 @@ jobs:
           cp -a taxonomy-coverage/target/site/jacoco-aggregate/. target/quality-reports/coverage/
           for evidence in \
             target/maven-verification.log \
+            target/version-state-report.txt \
             target/coverage-gate.txt \
             target/dependency-hygiene-report.txt \
             target/frontend-api-boundary-report.txt \
