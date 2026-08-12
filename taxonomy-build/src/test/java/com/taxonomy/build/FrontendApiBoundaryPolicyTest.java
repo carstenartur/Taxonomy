@@ -54,7 +54,8 @@ class FrontendApiBoundaryPolicyTest {
                 .containsEntry("shared/clean.js", 0)
                 .containsEntry("taxonomy-i18n.js", 1)
                 .containsEntry("shared/taxonomy-search.js", 2)
-                .containsEntry("workspace/new-feature.mjs", 1);
+                .containsEntry("workspace/new-feature.mjs", 1)
+                .containsEntry("templates/index.html", 1);
         assertThat(scan.legacyApiInventory())
                 .containsEntry("taxonomy-i18n.js", 1)
                 .containsEntry("shared/taxonomy-search.js", 2)
@@ -104,6 +105,19 @@ class FrontendApiBoundaryPolicyTest {
                 .anyMatch(failure -> failure.contains("increased from 1 to 2"))
                 .anyMatch(failure -> failure.contains("debt increased from 6 to 7"));
         assertThat(inspection.report()).contains("Result: FAIL");
+    }
+
+    @Test
+    void rejectsAdditionalTemplateFetchDebt() {
+        FrontendApiBoundaryPolicy.Inspection inspection = policy.evaluate(
+                scan(Map.of("templates/index.html", 2)),
+                Map.of("templates/index.html", 1),
+                "base");
+
+        assertThat(inspection.passed()).isFalse();
+        assertThat(inspection.failures())
+                .contains("templates/index.html: direct fetch() count increased from 1 to 2")
+                .contains("legacy direct fetch() debt increased from 1 to 2");
     }
 
     @Test
@@ -168,7 +182,7 @@ class FrontendApiBoundaryPolicyTest {
     }
 
     @Test
-    void retainsBaselineDebtFromModulesDeletedByTheChange(@TempDir Path root)
+    void retainsBaselineDebtFromFilesDeletedByTheChange(@TempDir Path root)
             throws Exception {
         writeJs(root, "shared/cleaned.js", "const migrated = true;\n");
         FrontendApiBoundaryPolicy.RevisionTextReader reader =
@@ -183,6 +197,9 @@ class FrontendApiBoundaryPolicyTest {
                         if (repositoryPath.endsWith("shared/deleted.mjs")) {
                             return Optional.of("fetch('/one'); fetch('/two');");
                         }
+                        if (repositoryPath.endsWith("templates/index.html")) {
+                            return Optional.of("<script>fetch('/template')</script>");
+                        }
                         return Optional.empty();
                     }
 
@@ -190,12 +207,20 @@ class FrontendApiBoundaryPolicyTest {
                     public Set<String> paths(
                             String revision, String repositoryPathPrefix) {
                         assertThat(revision).isEqualTo("baseline");
-                        assertThat(repositoryPathPrefix).isEqualTo(
-                                "taxonomy-app/src/main/resources/static/js");
-                        return Set.of(
-                                "taxonomy-app/src/main/resources/static/js/shared/cleaned.js",
-                                "taxonomy-app/src/main/resources/static/js/shared/deleted.mjs",
-                                "taxonomy-app/src/main/resources/static/js/shared/ignored.txt");
+                        if (repositoryPathPrefix.equals(
+                                "taxonomy-app/src/main/resources/static/js")) {
+                            return Set.of(
+                                    "taxonomy-app/src/main/resources/static/js/shared/cleaned.js",
+                                    "taxonomy-app/src/main/resources/static/js/shared/deleted.mjs",
+                                    "taxonomy-app/src/main/resources/static/js/shared/ignored.txt");
+                        }
+                        if (repositoryPathPrefix.equals(
+                                "taxonomy-app/src/main/resources/templates/index.html")) {
+                            return Set.of(
+                                    "taxonomy-app/src/main/resources/templates/index.html");
+                        }
+                        throw new AssertionError(
+                                "Unexpected baseline path prefix: " + repositoryPathPrefix);
                     }
                 };
 
@@ -204,9 +229,9 @@ class FrontendApiBoundaryPolicyTest {
 
         assertThat(inspection.passed()).isTrue();
         assertThat(inspection.currentDebt()).isZero();
-        assertThat(inspection.baselineDebt()).isEqualTo(3);
+        assertThat(inspection.baselineDebt()).isEqualTo(4);
         assertThat(inspection.report()).contains(
-                "0 call(s) in 0 file(s); baseline 3 call(s) in 2 file(s)");
+                "0 call(s) in 0 file(s); baseline 4 call(s) in 3 file(s)");
     }
 
     @Test
