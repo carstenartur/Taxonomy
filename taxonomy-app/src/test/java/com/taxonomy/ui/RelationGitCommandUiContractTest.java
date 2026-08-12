@@ -40,7 +40,9 @@ class RelationGitCommandUiContractTest {
                         + "            method: 'POST'")
                 .doesNotContain("'/api/relations/' + id")
                 .doesNotContain("relationsById")
-                .doesNotContain("function ensureSnapshot");
+                .doesNotContain("function ensureSnapshot")
+                .doesNotContain("addEventListener('toggle'")
+                .doesNotContain("typeFilter.addEventListener");
     }
 
     @Test
@@ -98,5 +100,21 @@ class RelationGitCommandUiContractTest {
         assertThat(target).isGreaterThan(source);
         assertThat(type).isGreaterThan(target);
         assertThat(sameIdentity).isGreaterThan(type);
+    }
+
+    @Test
+    void browserRefreshDelegatesToTheExistingRendererWithoutOwnFetch()
+            throws Exception {
+        String adapter = Files.readString(RELATION_ADAPTER);
+        int refreshStart = adapter.indexOf(
+                "    function refreshBrowser() {");
+        int refreshEnd = adapter.indexOf(
+                "    function projectionError", refreshStart);
+        String refreshBody = adapter.substring(refreshStart, refreshEnd);
+
+        assertThat(refreshBody)
+                .contains("window.TaxonomyRelations.loadRelations()")
+                .doesNotContain("refreshSnapshot()")
+                .doesNotContain("fetch(");
     }
 }
