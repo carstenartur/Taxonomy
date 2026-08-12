@@ -103,9 +103,7 @@ final class FrontendApiBoundaryPolicy {
             String relative = jsRoot.relativize(path).toString().replace('\\', '/');
             String text = readUtf8(path);
             int fetchCount = countDirectFetch(text);
-            if (fetchCount > 0) {
-                fetchCounts.put(relative, fetchCount);
-            }
+            fetchCounts.put(relative, fetchCount);
             List<Integer> apiLines = matchLines(text, DIRECT_API_FETCH);
             if (apiLines.isEmpty() || relative.startsWith("api/")) {
                 continue;
@@ -226,10 +224,7 @@ final class FrontendApiBoundaryPolicy {
             if (text.isEmpty()) {
                 continue;
             }
-            int count = countDirectFetch(text.get());
-            if (count > 0) {
-                counts.put(relative, count);
-            }
+            counts.put(relative, countDirectFetch(text.get()));
         }
         return counts;
     }
@@ -237,7 +232,7 @@ final class FrontendApiBoundaryPolicy {
     private static Map<String, Integer> debtOnly(Map<String, Integer> counts) {
         Map<String, Integer> result = new TreeMap<>();
         counts.forEach((path, count) -> {
-            if (!isTransportOwner(path)) {
+            if (!isTransportOwner(path) && count > 0) {
                 result.put(path, count);
             }
         });
