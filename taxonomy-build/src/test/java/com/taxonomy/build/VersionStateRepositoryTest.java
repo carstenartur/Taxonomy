@@ -54,6 +54,26 @@ class VersionStateRepositoryTest {
                 .isZero();
     }
 
+    @Test
+    void releaseWorkflowUsesTheJUnitOwnedContractWithoutPythonUnittestDuplication()
+            throws Exception {
+        Path root = findRepositoryRoot();
+        Path releaseWorkflow = root.resolve(".github/workflows/deploy-release.yml");
+        Path obsoletePythonTest = root.resolve(
+                ".github/scripts/test-check-version-state.py");
+        String workflow = Files.readString(releaseWorkflow, StandardCharsets.UTF_8);
+
+        assertThat(workflow)
+                .as("release workflow must retain the runtime version-state adapter")
+                .contains("check-version-state.py");
+        assertThat(workflow)
+                .as("JUnit owns the adapter contract; workflows must not run Python unittest")
+                .doesNotContain("test-check-version-state.py");
+        assertThat(obsoletePythonTest)
+                .as("duplicate Python unittest implementation must be removed")
+                .doesNotExist();
+    }
+
     private static String environmentOrDefault(String name, String fallback) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : value.strip();
