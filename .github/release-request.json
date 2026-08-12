@@ -1,8 +1,9 @@
 {
-  "release_version": "1.3.1",
-  "next_development_version": "1.3.2-SNAPSHOT",
+  "release_version": "1.4.0",
+  "next_development_version": "1.4.1-SNAPSHOT",
   "skip_tests": false,
-  "dry_run": false,
-  "request_revision": 7,
-  "requested_after_commit": "64a6a7227a8cf13c1b349004bdd911cdffcf3f45"
+  "dry_run": true,
+  "resume_staged_release": false,
+  "request_revision": 8,
+  "requested_after_commit": "b4f2847f0d940803c4d666b5986197362ee04e78"
 }
