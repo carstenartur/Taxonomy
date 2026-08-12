@@ -79,6 +79,34 @@ class RelationProjectionOperationsServiceTest {
     }
 
     @Test
+    void branchCreationPreconditionIsRejectedBeforeRepositoryOrProjectionAccess()
+            throws Exception {
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "review", "alice");
+        repositoryFactory = mock(DslGitRepositoryFactory.class);
+        RelationBranchProjectionReadinessService readinessService =
+                mock(RelationBranchProjectionReadinessService.class);
+        RelationBranchProjectionRebuildService rebuildService =
+                mock(RelationBranchProjectionRebuildService.class);
+        RelationProjectionRecoveryService recoveryService =
+                mock(RelationProjectionRecoveryService.class);
+
+        assertThatThrownBy(() -> new RelationProjectionOperationsService(
+                repositoryFactory,
+                readinessService,
+                rebuildService,
+                recoveryService).rebuild(context, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires If-Match");
+
+        verify(repositoryFactory, never()).resolveRepository(context);
+        verify(rebuildService, never()).rebuild(context);
+        verify(readinessService, never()).inspect(context);
+        verify(recoveryService, never()).reconcileAfterRebuild(
+                context, null);
+    }
+
+    @Test
     void staleExpectedHeadIsRejectedBeforeAnyProjectionWrite() throws Exception {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "review", "alice");
