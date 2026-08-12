@@ -41,8 +41,9 @@ public class RelationDecisionProjectionWriter {
     @Transactional
     public ProjectionResult write(ProjectionRequest request) {
         Objects.requireNonNull(request, "request");
+        ProjectionRequest effectiveRequest = effectiveState(request);
         String workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(
-                request.workspaceId());
+                effectiveRequest.workspaceId());
 
         // An incremental command proves only one relation identity. Even when it
         // is a semantic no-op, it must not leave a previous full-branch checkpoint
@@ -50,47 +51,68 @@ public class RelationDecisionProjectionWriter {
         // Runtime failures roll this deletion back with the relation write.
         if (checkpointRepository != null) {
             checkpointRepository.deleteExact(
-                    request.repositoryId(),
+                    effectiveRequest.repositoryId(),
                     workspaceScopeKey,
-                    request.branch());
+                    effectiveRequest.branch());
         }
 
         RelationDecisionProjection existing = projectionRepository
                 .findExactForUpdate(
-                        request.repositoryId(),
+                        effectiveRequest.repositoryId(),
                         workspaceScopeKey,
-                        request.branch(),
-                        request.sourceCode(),
-                        request.relationType(),
-                        request.targetCode())
+                        effectiveRequest.branch(),
+                        effectiveRequest.sourceCode(),
+                        effectiveRequest.relationType(),
+                        effectiveRequest.targetCode())
                 .orElse(null);
 
         if (existing == null) {
             RelationDecisionProjection created = new RelationDecisionProjection();
-            applyIdentity(created, request);
-            applyState(created, request);
-            applyAuthority(created, request);
+            applyIdentity(created, effectiveRequest);
+            applyState(created, effectiveRequest);
+            applyAuthority(created, effectiveRequest);
             projectionRepository.save(created);
-            return result(ProjectionOutcome.CREATED, request);
+            return result(ProjectionOutcome.CREATED, effectiveRequest);
         }
 
-        if (request.authoritativeCommitId().equals(
+        if (effectiveRequest.authoritativeCommitId().equals(
                 existing.getAuthoritativeCommitId())) {
-            if (!sameState(existing, request)
-                    || !request.causationId().equals(
+            if (!sameState(existing, effectiveRequest)
+                    || !effectiveRequest.causationId().equals(
                             existing.getCausationId())) {
                 throw new ProjectionConflictException(
                         "Authoritative commit "
-                                + request.authoritativeCommitId()
+                                + effectiveRequest.authoritativeCommitId()
                                 + " is already projected with different relation state");
             }
-            return result(ProjectionOutcome.REPLAYED, request);
+            return result(ProjectionOutcome.REPLAYED, effectiveRequest);
         }
 
-        applyState(existing, request);
-        applyAuthority(existing, request);
+        applyState(existing, effectiveRequest);
+        applyAuthority(existing, effectiveRequest);
         projectionRepository.save(existing);
-        return result(ProjectionOutcome.UPDATED, request);
+        return result(ProjectionOutcome.UPDATED, effectiveRequest);
+    }
+
+    private static ProjectionRequest effectiveState(ProjectionRequest request) {
+        boolean relationPresent = request.relationPresent()
+                && RelationDecisionStatusPolicy.isRelationPresent(request.status());
+        if (relationPresent == request.relationPresent()) {
+            return request;
+        }
+        return new ProjectionRequest(
+                request.repositoryId(),
+                request.workspaceId(),
+                request.branch(),
+                request.sourceCode(),
+                request.relationType(),
+                request.targetCode(),
+                false,
+                request.status(),
+                request.confidence(),
+                request.provenance(),
+                request.authoritativeCommitId(),
+                request.causationId());
     }
 
     private static void applyIdentity(
