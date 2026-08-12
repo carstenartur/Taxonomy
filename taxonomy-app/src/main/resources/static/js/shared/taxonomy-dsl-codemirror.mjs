@@ -4,7 +4,7 @@
  * Provides:
  *  - Custom TaxDSL v2 syntax highlighting via StreamLanguage
  *  - Context-aware autocompletion
- *  - Live validation (debounced lint via /api/dsl/validate)
+ *  - Live validation through the canonical API client
  *  - Dark-mode theme switching
  *  - Shift+Alt+F format shortcut (delegates to window.dslFormatContent)
  *
@@ -23,6 +23,11 @@ import {
     keymap,
     MergeView
 } from '../vendor/codemirror-bundle.mjs';
+
+const apiClient = window.TaxonomyApiClient;
+if (!apiClient) {
+    throw new Error('TaxonomyApiClient must be loaded before the TaxDSL editor');
+}
 
 // ── TaxDSL token sets ──────────────────────────────────────────────────
 const BLOCK_KEYWORDS = new Set([
@@ -96,8 +101,9 @@ let cachedTaxCodes = null;
 async function fetchTaxCodes() {
     if (cachedTaxCodes) return cachedTaxCodes;
     try {
-        const resp = await fetch('/api/taxonomy');
-        const data = await resp.json();
+        const data = await apiClient.getJson('/api/taxonomy', {
+            timeoutMillis: 10000
+        });
         cachedTaxCodes = extractAllCodes(data);
         return cachedTaxCodes;
     } catch {
@@ -290,10 +296,12 @@ const taxDslLinter = linter(view => {
         clearTimeout(lintTimer);
         lintTimer = setTimeout(() => {
             const text = view.state.doc.toString();
-            fetch('/api/dsl/validate', {
+            apiClient.request('/api/dsl/validate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: text
+            }, {
+                timeoutMillis: 10000
             })
             .then(r => r.json())
             .then(data => {

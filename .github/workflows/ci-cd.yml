@@ -51,8 +51,6 @@ jobs:
           fi
 
       - name: Verify release and delivery contracts
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -61,7 +59,6 @@ jobs:
           python3 .github/scripts/test-generate-quality-site.py
           python3 .github/scripts/test-verify-quality-publication.py
           python3 .github/scripts/test-verify-deployment.py
-          python3 .github/scripts/test-check-frontend-api-boundary.py
           node .github/scripts/test-taxonomy-base-path.mjs
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
@@ -70,9 +67,6 @@ jobs:
           python3 .github/scripts/check-release-delivery-contract.py
           python3 .github/scripts/check-delivery-hardening.py
           python3 .github/scripts/check-observability-performance-scope.py
-
-          frontend_base="${PR_BASE_SHA:-HEAD^}"
-          python3 .github/scripts/check-frontend-api-boundary.py --base-ref "$frontend_base"
 
           current_version=$(./mvnw -q -DforceStdout help:evaluate \
             -Dexpression=project.version)
@@ -143,6 +137,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: ${{ github.event.pull_request.base.sha }}
         shell: bash
         run: |
           mkdir -p target
@@ -185,6 +180,7 @@ jobs:
             target/maven-verification.log \
             target/coverage-gate.txt \
             target/dependency-hygiene-report.txt \
+            target/frontend-api-boundary-report.txt \
             target/hibernate-search-dependencies.txt \
             target/supply-chain-pins.json \
             target/taxonomy-sbom.json \
