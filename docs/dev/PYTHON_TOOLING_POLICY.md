@@ -28,10 +28,12 @@ one-file checker is convenient.
 | Action and production-image pinning | #683 |
 | Packaged CycloneDX dependency hygiene | #685 |
 | Frontend API transport boundaries | #687 |
+| Release version-state adapter contract | #689 |
 
 The entries after #680 remain subject to exact-head verification and ordered
-integration. Their Python implementations are removed in the corresponding
-slice rather than retained as fallback code.
+integration. Python policy implementations are removed in their corresponding
+slice. A retained adapter may remain only where the workflow boundary is the
+reason for its existence.
 
 ## Retained artifact generators and format transformers
 
@@ -64,6 +66,16 @@ release staging, deployment targets or external report formats:
 - `verify-quality-publication.py`
 - `check-codeql-sarif.py`
 - `check-observability-performance-scope.py`
+
+`check-version-state.py` is retained because `release.sh` copies it to a temporary
+location and invokes it while switching between a detached immutable release tag
+and the next-development `main`. `VersionStateAdapterContractTest` owns its
+positive and negative fixture contract, while `VersionStateRepositoryTest` owns
+the canonical checkout decision, publishes `target/version-state-report.txt`,
+and prevents the release workflow from reintroducing a Python `unittest` guard.
+The obsolete `test-check-version-state.py` implementation and its direct release
+workflow invocation have been removed; productive workflow calls use only the
+retained adapter.
 
 This list is a temporary classification, not an allow-list for new Python.
 Core validation logic should move to JUnit/Maven-native contracts where the same
