@@ -68,20 +68,21 @@ public class RelationProjectionOperationsService {
     }
 
     /**
-     * Rebuilds only after proving the caller's exact branch head. A benign
-     * rebuild of a concurrently newer head is reported as a precondition
-     * conflict rather than silently satisfying the stale request.
+     * Rebuilds only after proving the caller's exact existing branch head. A
+     * benign rebuild of a concurrently newer head is reported as a
+     * precondition conflict rather than silently satisfying the stale request.
      */
     public RebuildOperation rebuild(
             RepositoryContext context,
             String expectedHeadCommit) throws IOException {
         RepositoryContext selected = requireMutable(context);
+        String requiredHead = requireExistingHead(expectedHeadCommit);
         DslGitRepository repository = gitRepositoryFactory
                 .resolveRepository(selected);
         String verifiedHead = expectedHeadVerifier.verifyExpectedHead(
                 repository,
                 selected.branch(),
-                expectedHeadCommit);
+                requiredHead);
         if (verifiedHead == null) {
             throw new BranchProjectionSourceException(
                     "Cannot rebuild relation projection for an absent branch");
@@ -117,6 +118,14 @@ public class RelationProjectionOperationsService {
             throw new RecoveryReconciliationPendingException(rebuilt, error);
         }
         return new RebuildOperation(rebuilt, reconciliation, readiness);
+    }
+
+    private static String requireExistingHead(String expectedHeadCommit) {
+        if (expectedHeadCommit == null || expectedHeadCommit.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Projection rebuild requires If-Match with the exact existing branch commit");
+        }
+        return expectedHeadCommit.strip();
     }
 
     private static RepositoryContext requireMutable(RepositoryContext context) {
