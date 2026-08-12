@@ -3,7 +3,9 @@ package com.taxonomy.relations.repository;
 import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationProposal;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -94,6 +96,20 @@ public interface RelationProposalRepository extends JpaRepository<RelationPropos
                    OR p.workspaceId = :workspaceId)
             """)
     Optional<RelationProposal> findByIdInRepositoryWorkspace(
+            @Param("repositoryId") String repositoryId,
+            @Param("id") Long id,
+            @Param("workspaceId") String workspaceId);
+
+    /** Locks one exact mutable proposal row for the final review-state transition. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND p.id = :id
+              AND ((:workspaceId IS NULL AND p.workspaceId IS NULL)
+                   OR p.workspaceId = :workspaceId)
+            """)
+    Optional<RelationProposal> findByIdInRepositoryWorkspaceForUpdate(
             @Param("repositoryId") String repositoryId,
             @Param("id") Long id,
             @Param("workspaceId") String workspaceId);
