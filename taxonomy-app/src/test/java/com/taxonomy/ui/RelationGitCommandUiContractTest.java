@@ -43,20 +43,30 @@ class RelationGitCommandUiContractTest {
     void deleteUsesIdentityFromTheSameVisibleTableRow() throws Exception {
         String adapter = Files.readString(RELATION_ADAPTER);
 
-        int rowLookup = adapter.indexOf("button.closest('tr')");
+        int deleteStart = adapter.indexOf(
+                "    function deleteRelation(button) {");
+        int identityUse = adapter.indexOf(
+                "var relation = relationIdentity(button);", deleteStart);
+        int deleteCommand = adapter.indexOf(
+                "return fetch(commandUrl(", identityUse);
+        int rowFunction = adapter.indexOf(
+                "    function relationIdentity(button) {");
+        int rowLookup = adapter.indexOf(
+                "button.closest('tr')", rowFunction);
         int source = adapter.indexOf(
                 "row.cells[0].textContent.trim()", rowLookup);
         int target = adapter.indexOf(
                 "row.cells[1].textContent.trim()", rowLookup);
         int type = adapter.indexOf(
                 "row.cells[2].textContent.trim()", rowLookup);
-        int command = adapter.indexOf(
-                "return fetch(commandUrl(", type);
 
-        assertThat(rowLookup).isGreaterThanOrEqualTo(0);
+        assertThat(deleteStart).isGreaterThanOrEqualTo(0);
+        assertThat(identityUse).isGreaterThan(deleteStart);
+        assertThat(deleteCommand).isGreaterThan(identityUse);
+        assertThat(rowFunction).isGreaterThan(deleteCommand);
+        assertThat(rowLookup).isGreaterThan(rowFunction);
         assertThat(source).isGreaterThan(rowLookup);
         assertThat(target).isGreaterThan(source);
         assertThat(type).isGreaterThan(target);
-        assertThat(command).isGreaterThan(type);
     }
 }
