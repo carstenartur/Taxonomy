@@ -101,6 +101,33 @@ public class RelationProjectionReadService {
                         code, selected));
     }
 
+    /** Count from the same proven source without allocating relation DTOs. */
+    public CountResult count(RepositoryContext context) {
+        RepositoryContext selected = Objects.requireNonNull(context, "context");
+        Readiness readiness = readinessService.inspect(selected);
+        if (readiness.state() == ReadinessState.READY) {
+            return new CountResult(
+                    ReadModel.PROJECTION,
+                    readiness.state(),
+                    readiness.currentHeadCommit(),
+                    readiness.rows().size());
+        }
+
+        long pendingRecoveries = recoveryService.pendingCount(selected);
+        if (readiness.state() == ReadinessState.NOT_BUILT
+                && pendingRecoveries == 0
+                && mayUseLegacyFallback(selected)) {
+            reportFallback(selected);
+            return new CountResult(
+                    ReadModel.LEGACY_FALLBACK,
+                    readiness.state(),
+                    readiness.currentHeadCommit(),
+                    legacyRelationService.countRelationsInContext(selected));
+        }
+
+        throw unavailable(selected, readiness, pendingRecoveries);
+    }
+
     private ReadResult read(
             RepositoryContext selected,
             Predicate<RelationDecisionProjection> projectionFilter,
@@ -130,7 +157,14 @@ public class RelationProjectionReadService {
                     legacyRead.get());
         }
 
-        throw new RelationProjectionUnavailableException(
+        throw unavailable(selected, readiness, pendingRecoveries);
+    }
+
+    private static RelationProjectionUnavailableException unavailable(
+            RepositoryContext selected,
+            Readiness readiness,
+            long pendingRecoveries) {
+        return new RelationProjectionUnavailableException(
                 selected,
                 readiness.state(),
                 readiness.currentHeadCommit(),
@@ -229,6 +263,21 @@ public class RelationProjectionReadService {
                     readinessState, "readinessState");
             relations = List.copyOf(Objects.requireNonNull(
                     relations, "relations"));
+        }
+    }
+
+    public record CountResult(
+            ReadModel readModel,
+            ReadinessState readinessState,
+            String authoritativeCommitId,
+            long count) {
+        public CountResult {
+            readModel = Objects.requireNonNull(readModel, "readModel");
+            readinessState = Objects.requireNonNull(
+                    readinessState, "readinessState");
+            if (count < 0) {
+                throw new IllegalArgumentException("count must not be negative");
+            }
         }
     }
 
