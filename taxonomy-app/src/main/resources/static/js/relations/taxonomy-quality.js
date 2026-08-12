@@ -117,7 +117,7 @@
     };
 })();
 
-/* Load the sibling command adapter under the same application context path. */
+/* Load the sibling relation command adapter under the application context path. */
 (function () {
     'use strict';
     var loader = document.currentScript;
@@ -125,6 +125,18 @@
     var script = document.createElement('script');
     script.src = new URL(
         'taxonomy-relations-git-commands.js', loader.src).href;
+    script.async = false;
+    document.head.appendChild(script);
+})();
+
+/* Load the sibling proposal review adapter under the application context path. */
+(function () {
+    'use strict';
+    var loader = document.currentScript;
+    if (!loader || !loader.src) return;
+    var script = document.createElement('script');
+    script.src = new URL(
+        'taxonomy-proposals-git-commands.js', loader.src).href;
     script.async = false;
     document.head.appendChild(script);
 })();
