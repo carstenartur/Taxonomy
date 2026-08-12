@@ -33,6 +33,7 @@ class FrontendApiBoundaryPolicyTest {
     void scansFixedInventoryLineNumbersTemplateAndUnexpectedModules(
             @TempDir Path root) throws Exception {
         writeJs(root, "api/client.js", "fetch('/api/owned');\n");
+        writeJs(root, "shared/clean.js", "const safe = true;\n");
         writeJs(root, "taxonomy-i18n.js", "fetch('/api/i18n');\n");
         writeJs(root, "shared/taxonomy-search.js", """
                 const one = fetch('/api/one');
@@ -50,6 +51,7 @@ class FrontendApiBoundaryPolicyTest {
 
         assertThat(scan.fetchCounts())
                 .containsEntry("api/client.js", 1)
+                .containsEntry("shared/clean.js", 0)
                 .containsEntry("taxonomy-i18n.js", 1)
                 .containsEntry("shared/taxonomy-search.js", 2)
                 .containsEntry("workspace/new-feature.mjs", 1);
@@ -143,6 +145,26 @@ class FrontendApiBoundaryPolicyTest {
         assertThat(inspection.passed()).isTrue();
         assertThat(inspection.currentDebt()).isEqualTo(1);
         assertThat(inspection.baselineDebt()).isEqualTo(2);
+    }
+
+    @Test
+    void retainsBaselineDebtWhenCurrentFetchCountReachedZero(@TempDir Path root)
+            throws Exception {
+        writeJs(root, "shared/cleaned.js", "const migrated = true;\n");
+
+        FrontendApiBoundaryPolicy.Inspection inspection = policy.inspect(
+                root,
+                "baseline",
+                (revision, repositoryPath) -> repositoryPath.endsWith(
+                        "shared/cleaned.js")
+                        ? Optional.of("fetch('/old'); fetch('/old-two');")
+                        : Optional.empty());
+
+        assertThat(inspection.passed()).isTrue();
+        assertThat(inspection.currentDebt()).isZero();
+        assertThat(inspection.baselineDebt()).isEqualTo(2);
+        assertThat(inspection.report()).contains(
+                "0 call(s) in 0 file(s); baseline 2 call(s) in 1 file(s)");
     }
 
     @Test
