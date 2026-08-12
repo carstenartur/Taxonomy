@@ -6,8 +6,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -217,8 +215,21 @@ final class FrontendApiBoundaryPolicy {
             String baseRef,
             Set<String> currentPaths,
             RevisionTextReader reader) {
+        Set<String> comparisonPaths = new TreeSet<>(currentPaths);
+        String prefix = STATIC_JS + "/";
+        for (String repositoryPath : reader.paths(baseRef, STATIC_JS)) {
+            String normalized = repositoryPath.replace('\\', '/');
+            if (!normalized.startsWith(prefix)) {
+                continue;
+            }
+            String relative = normalized.substring(prefix.length());
+            if (isJavaScript(relative)) {
+                comparisonPaths.add(relative);
+            }
+        }
+
         Map<String, Integer> counts = new TreeMap<>();
-        for (String relative : new TreeSet<>(currentPaths)) {
+        for (String relative : comparisonPaths) {
             Optional<String> text = reader.read(
                     baseRef, STATIC_JS + "/" + relative);
             if (text.isEmpty()) {
@@ -250,7 +261,10 @@ final class FrontendApiBoundaryPolicy {
     }
 
     private static boolean isJavaScript(Path path) {
-        String name = path.getFileName().toString();
+        return isJavaScript(path.getFileName().toString());
+    }
+
+    private static boolean isJavaScript(String name) {
         return name.endsWith(".js") || name.endsWith(".mjs");
     }
 
@@ -265,6 +279,10 @@ final class FrontendApiBoundaryPolicy {
     @FunctionalInterface
     interface RevisionTextReader {
         Optional<String> read(String revision, String repositoryPath);
+
+        default Set<String> paths(String revision, String repositoryPathPrefix) {
+            return Set.of();
+        }
     }
 
     record CurrentScan(
