@@ -102,12 +102,18 @@ public class RelationProjectionOperationsService {
                     rebuilt.authoritativeCommitId());
         }
         Readiness readiness = readinessService.inspect(selected);
-        if (readiness.state() != ReadinessState.READY
-                || !rebuilt.authoritativeCommitId().equals(
-                        readiness.currentHeadCommit())) {
+        if (!rebuilt.authoritativeCommitId().equals(
+                readiness.currentHeadCommit())) {
             throw new RebuildHeadConflictException(
                     rebuilt.authoritativeCommitId(),
                     readiness.currentHeadCommit());
+        }
+        boolean verifiedProjection = readiness.state() == ReadinessState.READY
+                && rebuilt.authoritativeCommitId().equals(
+                        readiness.projectedCommit())
+                && rebuilt.relationCount() == readiness.rows().size();
+        if (!verifiedProjection) {
+            throw new RebuildVerificationException(rebuilt, readiness);
         }
         return new RebuildOperation(rebuilt, reconciliation, readiness);
     }
@@ -163,6 +169,31 @@ public class RelationProjectionOperationsService {
 
         public String getActualHeadCommit() {
             return actualHeadCommit;
+        }
+    }
+
+    public static final class RebuildVerificationException
+            extends IllegalStateException {
+        private final RebuildResult rebuild;
+        private final Readiness readiness;
+
+        public RebuildVerificationException(
+                RebuildResult rebuild,
+                Readiness readiness) {
+            super("Relation projection rebuild at "
+                    + rebuild.authoritativeCommitId()
+                    + " did not produce a verified READY projection: "
+                    + readiness.state());
+            this.rebuild = Objects.requireNonNull(rebuild, "rebuild");
+            this.readiness = Objects.requireNonNull(readiness, "readiness");
+        }
+
+        public RebuildResult getRebuild() {
+            return rebuild;
+        }
+
+        public Readiness getReadiness() {
+            return readiness;
         }
     }
 
