@@ -44,7 +44,7 @@ import java.util.Map;
  * returned as the response ETag; the database projection can never precede it.</p>
  */
 @RestController
-@RequestMapping("/api/relations/git")
+@RequestMapping("/api/architecture/relations")
 @Tag(name = "Git-authoritative relations")
 public class GitRelationCommandApiController {
 
@@ -76,7 +76,7 @@ public class GitRelationCommandApiController {
             String ifMatch,
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
             String ifNoneMatch,
-            @RequestHeader(value = IDEMPOTENCY_KEY, required = false)
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = true)
             String causationId,
             @RequestBody(required = false) MutationBody body) {
         try {
@@ -130,7 +130,7 @@ public class GitRelationCommandApiController {
             String ifMatch,
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
             String ifNoneMatch,
-            @RequestHeader(value = IDEMPOTENCY_KEY, required = false)
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = true)
             String causationId) {
         try {
             RepositoryContext context = writableContext(
