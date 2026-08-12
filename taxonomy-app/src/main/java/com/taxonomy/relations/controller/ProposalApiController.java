@@ -1,10 +1,8 @@
 package com.taxonomy.relations.controller;
 
 import com.taxonomy.dto.RelationProposalDto;
-import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationProposalService;
-import com.taxonomy.relations.service.RelationReviewService;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
@@ -24,29 +22,32 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** REST API for repository/workspace-scoped relation proposals and review. */
+/**
+ * REST API for repository/workspace-scoped proposal generation and reads.
+ *
+ * <p>Proposal decisions are Git-authoritative and therefore live under
+ * {@code /api/architecture/proposals}. The historic DB-first review routes
+ * remain only as explicit HTTP 410 migration guards.</p>
+ */
 @RestController
 @RequestMapping("/api")
 @Tag(name = "Proposals")
 public class ProposalApiController {
 
     private final RelationProposalService proposalService;
-    private final RelationReviewService reviewService;
     private final WorkspaceResolver workspaceResolver;
     private final SystemRepositoryService repositoryService;
     private final RepositoryMembershipService membershipService;
 
-    public ProposalApiController(RelationProposalService proposalService,
-                                 RelationReviewService reviewService,
-                                 WorkspaceResolver workspaceResolver,
-                                 SystemRepositoryService repositoryService,
-                                 RepositoryMembershipService membershipService) {
+    public ProposalApiController(
+            RelationProposalService proposalService,
+            WorkspaceResolver workspaceResolver,
+            SystemRepositoryService repositoryService,
+            RepositoryMembershipService membershipService) {
         this.proposalService = proposalService;
-        this.reviewService = reviewService;
         this.workspaceResolver = workspaceResolver;
         this.repositoryService = repositoryService;
         this.membershipService = membershipService;
@@ -108,34 +109,29 @@ public class ProposalApiController {
                 proposalService.getProposalsForNodeInContext(code, context));
     }
 
-    @Operation(summary = "Accept proposal")
+    /**
+     * DB-first acceptance is retired. Call the Git-authoritative endpoint with
+     * an exact branch precondition and an idempotency key.
+     */
+    @Deprecated(forRemoval = true)
+    @Operation(
+            summary = "Retired DB-first accept route",
+            description = "Use POST /api/architecture/proposals/{proposalId}/accept")
     @PostMapping("/proposals/{id}/accept")
-    public ResponseEntity<TaxonomyRelationDto> acceptProposal(@PathVariable Long id) {
-        RepositoryContext context = writableContext(
-                workspaceResolver.resolveCurrentRepositoryContext());
-        if (context == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        try {
-            return ResponseEntity.ok(reviewService.acceptProposal(id, context));
-        } catch (IllegalArgumentException | IllegalStateException error) {
-            return ResponseEntity.badRequest().build();
-        }
+    public ResponseEntity<Void> acceptProposal(
+            @PathVariable("id") Long ignoredId) {
+        return ResponseEntity.status(HttpStatus.GONE).build();
     }
 
-    @Operation(summary = "Reject proposal")
+    /** DB-first rejection is retired in favor of a Git relation decision. */
+    @Deprecated(forRemoval = true)
+    @Operation(
+            summary = "Retired DB-first reject route",
+            description = "Use POST /api/architecture/proposals/{proposalId}/reject")
     @PostMapping("/proposals/{id}/reject")
-    public ResponseEntity<RelationProposalDto> rejectProposal(@PathVariable Long id) {
-        RepositoryContext context = writableContext(
-                workspaceResolver.resolveCurrentRepositoryContext());
-        if (context == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        try {
-            return ResponseEntity.ok(reviewService.rejectProposal(id, context));
-        } catch (IllegalArgumentException | IllegalStateException error) {
-            return ResponseEntity.badRequest().build();
-        }
+    public ResponseEntity<Void> rejectProposal(
+            @PathVariable("id") Long ignoredId) {
+        return ResponseEntity.status(HttpStatus.GONE).build();
     }
 
     @Operation(summary = "Create proposal from hypothesis")
@@ -183,71 +179,36 @@ public class ProposalApiController {
         }
     }
 
-    @Operation(summary = "Revert proposal")
+    /** DB-first revert is retired in favor of a Git removal command. */
+    @Deprecated(forRemoval = true)
+    @Operation(
+            summary = "Retired DB-first revert route",
+            description = "Use POST /api/architecture/proposals/{proposalId}/revert")
     @PostMapping("/proposals/{id}/revert")
-    public ResponseEntity<RelationProposalDto> revertProposal(@PathVariable Long id) {
-        RepositoryContext context = writableContext(
-                workspaceResolver.resolveCurrentRepositoryContext());
-        if (context == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        try {
-            return ResponseEntity.ok(reviewService.revertProposal(id, context));
-        } catch (IllegalArgumentException | IllegalStateException error) {
-            return ResponseEntity.badRequest().build();
-        }
+    public ResponseEntity<Void> revertProposal(
+            @PathVariable("id") Long ignoredId) {
+        return ResponseEntity.status(HttpStatus.GONE).build();
     }
 
-    @Operation(summary = "Bulk action on proposals")
+    /**
+     * The former bulk endpoint executed independent database transactions with
+     * no Git-head precondition. Clients must sequence the Git-authoritative
+     * single-proposal commands and advance the returned ETag after every commit.
+     */
+    @Deprecated(forRemoval = true)
+    @Operation(
+            summary = "Retired DB-first bulk review route",
+            description = "Sequence the Git-authoritative single-proposal endpoints")
     @PostMapping("/proposals/bulk")
-    public ResponseEntity<Map<String, Object>> bulkAction(
-            @RequestBody Map<String, Object> body) {
-        @SuppressWarnings("unchecked")
-        List<Number> ids = body.get("ids") instanceof List<?> list
-                ? (List<Number>) list : null;
-        String action = body.get("action") instanceof String value ? value : null;
-        if (ids == null || ids.isEmpty() || action == null || action.isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        RepositoryContext context = writableContext(
-                workspaceResolver.resolveCurrentRepositoryContext());
-        if (context == null) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-
-        int success = 0;
-        int failed = 0;
-        for (Number idNumber : ids) {
-            if (idNumber == null) {
-                failed++;
-                continue;
-            }
-            try {
-                if ("ACCEPT".equalsIgnoreCase(action)) {
-                    reviewService.acceptProposal(idNumber.longValue(), context);
-                } else if ("REJECT".equalsIgnoreCase(action)) {
-                    reviewService.rejectProposal(idNumber.longValue(), context);
-                } else {
-                    return ResponseEntity.badRequest().build();
-                }
-                success++;
-            } catch (IllegalArgumentException | IllegalStateException error) {
-                failed++;
-            }
-        }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("action", action);
-        result.put("success", success);
-        result.put("failed", failed);
-        result.put("total", ids.size());
-        return ResponseEntity.ok(result);
+    public ResponseEntity<Void> bulkAction(
+            @RequestBody(required = false) Map<String, Object> ignoredBody) {
+        return ResponseEntity.status(HttpStatus.GONE).build();
     }
 
-    /** Convert a central read context into an explicitly authorized write context. */
+    /** Preserve isolated write scopes; authorize central reads before upgrading. */
     private RepositoryContext writableContext(RepositoryContext context) {
-        if (context.workspaceId() != null) {
+        if (context.scope() == RepositoryScope.WORKSPACE
+                || context.scope() == RepositoryScope.FORK) {
             return context;
         }
         SystemRepository repository = repositoryService.getRepository(context.repositoryId());
