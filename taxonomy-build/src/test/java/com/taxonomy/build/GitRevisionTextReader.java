@@ -68,10 +68,16 @@ final class GitRevisionTextReader implements FrontendApiBoundaryPolicy.RevisionT
                                 + repositoryPathPrefix + ": " + output.strip());
             }
             Set<String> paths = new TreeSet<>();
-            for (String path : output.split("\\u0000", -1)) {
-                if (!path.isEmpty()) {
-                    paths.add(path);
+            int start = 0;
+            while (start < output.length()) {
+                int end = output.indexOf(0, start);
+                if (end < 0) {
+                    end = output.length();
                 }
+                if (end > start) {
+                    paths.add(output.substring(start, end));
+                }
+                start = end + 1;
             }
             return Collections.unmodifiableSet(paths);
         } catch (IOException error) {
