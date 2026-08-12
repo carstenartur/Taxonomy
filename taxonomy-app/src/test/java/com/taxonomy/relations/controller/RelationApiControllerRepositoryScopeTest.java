@@ -96,7 +96,7 @@ class RelationApiControllerRepositoryScopeTest {
     }
 
     @Test
-    void unsafeProjectionReturnsConflictInsteadOfLegacyRows() {
+    void unsafeProjectionReturnsConflictAndActualPendingRecoveryCount() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-b", "workspace-b1", "feature/b1", "alice");
         when(workspaceResolver.resolveCurrentRepositoryContext())
@@ -121,6 +121,28 @@ class RelationApiControllerRepositoryScopeTest {
                 .isEqualTo("2");
         assertThat(response.getHeaders().getETag())
                 .isEqualTo("\"" + "c".repeat(40) + "\"");
+    }
+
+    @Test
+    void unsafeProjectionWithoutPendingRecoveryOmitsRecoveryHeader() {
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-b", "workspace-b1", "feature/b1", "alice");
+        when(workspaceResolver.resolveCurrentRepositoryContext())
+                .thenReturn(context);
+        when(relationReadService.readAll(context)).thenThrow(
+                new RelationProjectionUnavailableException(
+                        context,
+                        ReadinessState.CORRUPT,
+                        "d".repeat(40),
+                        "d".repeat(40),
+                        0));
+
+        ResponseEntity<List<TaxonomyRelationDto>> response =
+                controller.getRelations(null);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getHeaders().containsKey(
+                RelationApiController.PENDING_RECOVERY_HEADER)).isFalse();
     }
 
     @Test
