@@ -21,8 +21,11 @@ class RelationGitCommandUiContractTest {
         String adapter = Files.readString(RELATION_ADAPTER);
         String loader = Files.readString(QUALITY_MODULE);
 
-        assertThat(loader).contains(
-                "/js/relations/taxonomy-relations-git-commands.js");
+        assertThat(loader)
+                .contains("var loader = document.currentScript;")
+                .contains("new URL(")
+                .contains("'taxonomy-relations-git-commands.js', loader.src")
+                .doesNotContain("script.src = '/js/");
         assertThat(adapter)
                 .contains("document.addEventListener('click', "
                         + "captureRelationCommand, true)")
