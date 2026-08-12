@@ -71,9 +71,11 @@ release staging, deployment targets or external report formats:
 location and invokes it while switching between a detached immutable release tag
 and the next-development `main`. `VersionStateAdapterContractTest` owns its
 positive and negative fixture contract, while `VersionStateRepositoryTest` owns
-the canonical checkout decision and publishes `target/version-state-report.txt`.
-The separate release workflow guard is transitional and must be removed once the
-release-flow contract tests are migrated together.
+the canonical checkout decision, publishes `target/version-state-report.txt`,
+and prevents the release workflow from reintroducing a Python `unittest` guard.
+The obsolete `test-check-version-state.py` implementation and its direct release
+workflow invocation have been removed; productive workflow calls use only the
+retained adapter.
 
 This list is a temporary classification, not an allow-list for new Python.
 Core validation logic should move to JUnit/Maven-native contracts where the same
