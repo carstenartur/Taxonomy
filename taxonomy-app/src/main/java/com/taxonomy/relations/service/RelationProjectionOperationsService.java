@@ -88,19 +88,12 @@ public class RelationProjectionOperationsService {
         }
 
         RebuildResult rebuilt = rebuildService.rebuild(selected);
-        ReconciliationResult reconciliation;
-        try {
-            reconciliation = recoveryService.reconcileAfterRebuild(
-                    selected, rebuilt.authoritativeCommitId());
-        } catch (RuntimeException error) {
-            throw new RecoveryReconciliationPendingException(rebuilt, error);
-        }
-
         if (!verifiedHead.equals(rebuilt.authoritativeCommitId())) {
             throw new RebuildHeadConflictException(
                     verifiedHead,
                     rebuilt.authoritativeCommitId());
         }
+
         Readiness readiness = readinessService.inspect(selected);
         if (!rebuilt.authoritativeCommitId().equals(
                 readiness.currentHeadCommit())) {
@@ -114,6 +107,14 @@ public class RelationProjectionOperationsService {
                 && rebuilt.relationCount() == readiness.rows().size();
         if (!verifiedProjection) {
             throw new RebuildVerificationException(rebuilt, readiness);
+        }
+
+        ReconciliationResult reconciliation;
+        try {
+            reconciliation = recoveryService.reconcileAfterRebuild(
+                    selected, rebuilt.authoritativeCommitId());
+        } catch (RuntimeException error) {
+            throw new RecoveryReconciliationPendingException(rebuilt, error);
         }
         return new RebuildOperation(rebuilt, reconciliation, readiness);
     }
