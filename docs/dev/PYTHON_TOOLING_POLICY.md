@@ -67,6 +67,14 @@ release staging, deployment targets or external report formats:
 - `check-codeql-sarif.py`
 - `check-observability-performance-scope.py`
 
+`resolve-release-parameters.py` remains the small adapter between GitHub event
+inputs, reviewed JSON and stable workflow outputs. For push-triggered releases it
+also verifies that the request commit names its exact first parent, increments
+`request_revision` exactly once, and changes no path except
+`.github/release-request.json`. `ReleaseRequestAnchorContractTest` owns positive
+and negative Git fixtures for this boundary; no Python `unittest` is added for
+the new policy.
+
 `check-version-state.py` is retained because `release.sh` copies it to a temporary
 location and invokes it while switching between a detached immutable release tag
 and the next-development `main`. `VersionStateAdapterContractTest` owns its

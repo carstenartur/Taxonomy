@@ -18,8 +18,9 @@ class ReleaseParameterAncestryContractTest {
     Path temporaryDirectory;
 
     @Test
-    void rejectsAnAlreadyAdvancedDevelopmentTreeWhoseReleaseTagDiverged() throws Exception {
-        Path repository = createDivergedReleaseRepository();
+    void rejectsAnAlreadyAdvancedDevelopmentTreeWhoseReleaseTagDiverged()
+            throws Exception {
+        Path repository = createReleaseRepository(false);
 
         ProcessResult result = runResolver(repository);
 
@@ -31,10 +32,9 @@ class ReleaseParameterAncestryContractTest {
     }
 
     @Test
-    void acceptsTheSameDevelopmentTreeAfterAHistoryOnlyAncestryMerge() throws Exception {
-        Path repository = createDivergedReleaseRepository();
-        run(repository, "git", "merge", "-s", "ours", "--no-ff", "release/1.3.1",
-                "-m", "Repair v1.3.1 ancestry");
+    void acceptsTheSameDevelopmentTreeAfterAHistoryOnlyAncestryMerge()
+            throws Exception {
+        Path repository = createReleaseRepository(true);
 
         ProcessResult result = runResolver(repository);
 
@@ -53,13 +53,15 @@ class ReleaseParameterAncestryContractTest {
         assertThat(readProjectVersion(repository)).isEqualTo("1.3.2-SNAPSHOT");
     }
 
-    private Path createDivergedReleaseRepository() throws Exception {
+    private Path createReleaseRepository(boolean repairAncestry)
+            throws Exception {
         Path repository = temporaryDirectory.resolve("repository");
         Files.createDirectories(repository);
         run(repository, "git", "init");
         run(repository, "git", "symbolic-ref", "HEAD", "refs/heads/main");
         run(repository, "git", "config", "user.name", "Release Contract");
-        run(repository, "git", "config", "user.email", "release-contract@taxonomy.local");
+        run(repository, "git", "config", "user.email",
+                "release-contract@taxonomy.local");
 
         writePom(repository, "1.3.1-SNAPSHOT");
         commitAll(repository, "Development base");
@@ -72,7 +74,11 @@ class ReleaseParameterAncestryContractTest {
         run(repository, "git", "checkout", "main");
         writePom(repository, "1.3.2-SNAPSHOT");
         commitAll(repository, "Prepare next development version 1.3.2-SNAPSHOT");
-        writeReleaseRequest(repository);
+        if (repairAncestry) {
+            run(repository, "git", "merge", "-s", "ours", "--no-ff",
+                    "release/1.3.1", "-m", "Repair v1.3.1 ancestry");
+        }
+        commitReleaseRequest(repository);
         return repository;
     }
 
@@ -83,13 +89,26 @@ class ReleaseParameterAncestryContractTest {
                 repository,
                 Map.of(
                         "EVENT_NAME", "push",
-                        "RELEASE_REQUEST_PATH", repository.resolve("release-request.json").toString(),
+                        "RELEASE_REQUEST_PATH",
+                        repository.resolve("release-request.json").toString(),
                         "GITHUB_OUTPUT", output.toString()),
                 "python3",
-                repositoryRoot().resolve(".github/scripts/resolve-release-parameters.py").toString());
+                repositoryRoot().resolve(
+                        ".github/scripts/resolve-release-parameters.py").toString());
     }
 
-    private static void writeReleaseRequest(Path repository) throws IOException {
+    private static void commitReleaseRequest(Path repository) throws Exception {
+        String requestedAfter = run(
+                repository, "git", "rev-parse", "HEAD").stdout().strip();
+        writeReleaseRequest(repository, requestedAfter, 1);
+        run(repository, "git", "add", "release-request.json");
+        run(repository, "git", "commit", "-m", "Request staged release resume");
+    }
+
+    private static void writeReleaseRequest(
+            Path repository,
+            String requestedAfter,
+            int requestRevision) throws IOException {
         Files.writeString(
                 repository.resolve("release-request.json"),
                 """
@@ -97,13 +116,17 @@ class ReleaseParameterAncestryContractTest {
                           "release_version": "1.3.1",
                           "next_development_version": "1.3.2-SNAPSHOT",
                           "skip_tests": false,
-                          "dry_run": false
+                          "dry_run": false,
+                          "resume_staged_release": false,
+                          "request_revision": %d,
+                          "requested_after_commit": "%s"
                         }
-                        """,
+                        """.formatted(requestRevision, requestedAfter),
                 StandardCharsets.UTF_8);
     }
 
-    private static void writePom(Path repository, String version) throws IOException {
+    private static void writePom(Path repository, String version)
+            throws IOException {
         Files.writeString(
                 repository.resolve("pom.xml"),
                 """
@@ -118,18 +141,22 @@ class ReleaseParameterAncestryContractTest {
                 StandardCharsets.UTF_8);
     }
 
-    private static String readProjectVersion(Path repository) throws IOException {
-        String pom = Files.readString(repository.resolve("pom.xml"), StandardCharsets.UTF_8);
+    private static String readProjectVersion(Path repository)
+            throws IOException {
+        String pom = Files.readString(
+                repository.resolve("pom.xml"), StandardCharsets.UTF_8);
         int start = pom.indexOf("<version>") + "<version>".length();
         return pom.substring(start, pom.indexOf("</version>", start));
     }
 
-    private static void commitAll(Path repository, String message) throws Exception {
+    private static void commitAll(Path repository, String message)
+            throws Exception {
         run(repository, "git", "add", "pom.xml");
         run(repository, "git", "commit", "-m", message);
     }
 
-    private static ProcessResult run(Path directory, String... command) throws Exception {
+    private static ProcessResult run(Path directory, String... command)
+            throws Exception {
         return run(directory, Map.of(), command);
     }
 
@@ -141,12 +168,15 @@ class ReleaseParameterAncestryContractTest {
                 .directory(directory.toFile());
         builder.environment().putAll(environment);
         Process process = builder.start();
-        String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+        String stdout = new String(
+                process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        String stderr = new String(
+                process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
         int exitCode = process.waitFor();
         ProcessResult result = new ProcessResult(exitCode, stdout, stderr);
         if (exitCode != 0 && !isExpectedFailure(command)) {
-            throw new AssertionError("Command failed: " + String.join(" ", command)
+            throw new AssertionError("Command failed: "
+                    + String.join(" ", command)
                     + "\nstdout:\n" + stdout + "\nstderr:\n" + stderr);
         }
         return result;
