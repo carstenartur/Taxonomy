@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from typing import Mapping
 import xml.etree.ElementTree as ET
@@ -210,6 +211,58 @@ def resolve_parameters(
     return parameters
 
 
+def validate_staged_release_ancestry(
+    root: Path,
+    parameters: Mapping[str, str],
+    current_version: str,
+) -> None:
+    """Reject a staged tag that is not part of an already-advanced main history."""
+    next_version = parameters["next_development_version"]
+    if not next_version or current_version != next_version:
+        return
+
+    root = root.resolve()
+    git_repository = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    # Pure unit invocations may deliberately use a directory without Git. The
+    # real workflow always checks out a full repository before this guard runs.
+    if git_repository.returncode != 0:
+        return
+
+    tag = f"v{parameters['release_version']}"
+    tag_commit = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{tag}^{{commit}}"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if tag_commit.returncode != 0:
+        return
+
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", tag_commit.stdout.strip(), "HEAD"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if ancestry.returncode == 0:
+        return
+    if ancestry.returncode == 1:
+        raise ValueError(
+            f"staged release tag {tag} is not an ancestor of the current "
+            f"{current_version} checkout; repair release ancestry before publication"
+        )
+    detail = ancestry.stderr.strip() or "unknown git merge-base error"
+    raise ValueError(f"cannot verify staged release ancestry for {tag}: {detail}")
+
+
 def append_outputs(output_path: Path, parameters: Mapping[str, str]) -> None:
     with output_path.open("a", encoding="utf-8") as output:
         for key in _OUTPUT_KEYS:
@@ -225,9 +278,10 @@ def require_env(name: str) -> str:
 
 def main() -> int:
     try:
+        root = Path(".")
         event_name = require_env("EVENT_NAME")
         request = None
-        current_version = None
+        current_version = repository_version(root)
         if event_name == "push":
             request_path = Path(
                 os.environ.get("RELEASE_REQUEST_PATH", ".github/release-request.json")
@@ -236,8 +290,6 @@ def main() -> int:
             if not isinstance(loaded, dict):
                 raise ValueError("release request must contain a JSON object")
             request = loaded
-        elif event_name == "workflow_dispatch":
-            current_version = repository_version(Path("."))
 
         parameters = resolve_parameters(
             event_name,
@@ -245,6 +297,7 @@ def main() -> int:
             request,
             current_version=current_version,
         )
+        validate_staged_release_ancestry(root, parameters, current_version)
         append_outputs(Path(require_env("GITHUB_OUTPUT")), parameters)
     except (OSError, ET.ParseError, json.JSONDecodeError, ValueError) as error:
         print(f"::error::{error}", file=sys.stderr)
