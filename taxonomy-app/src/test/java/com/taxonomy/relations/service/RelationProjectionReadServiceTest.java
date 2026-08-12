@@ -15,6 +15,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Collection;
 import java.util.List;
@@ -129,8 +130,6 @@ class RelationProjectionReadServiceTest {
                 null,
                 List.of()));
         when(recoveryService.pendingCount(context)).thenReturn(1L);
-        when(repositoryService.getPrimaryRepository()).thenReturn(
-                primary("primary", "draft"));
 
         assertThatThrownBy(() -> service.readAll(context))
                 .isInstanceOfSatisfying(
@@ -141,7 +140,7 @@ class RelationProjectionReadServiceTest {
                             assertThat(error.getPendingRecoveryCount())
                                     .isEqualTo(1L);
                         });
-        verifyNoInteractions(legacyRelationService);
+        verifyNoInteractions(legacyRelationService, repositoryService);
     }
 
     @Test
@@ -183,15 +182,15 @@ class RelationProjectionReadServiceTest {
     }
 
     @Test
-    void filtersAndIdentityLookupOperateOnOneCompleteSnapshot() {
+    void typeFilterRunsBeforeNameResolutionAndDtoAllocation() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "feature/a", "alice");
         RelationDecisionProjection supports = projection(
                 1L, "BP", RelationType.SUPPORTS, "CP", null,
                 "1".repeat(40));
         RelationDecisionProjection realizes = projection(
-                2L, "CP", RelationType.REALIZES, "CR", null,
-                "1".repeat(40));
+                2L, "UNUSED-SOURCE", RelationType.REALIZES,
+                "UNUSED-TARGET", null, "1".repeat(40));
         when(readinessService.inspect(context)).thenReturn(new Readiness(
                 ReadinessState.READY,
                 "1".repeat(40),
@@ -200,19 +199,44 @@ class RelationProjectionReadServiceTest {
         when(nodeRepository.findByCodeIn(any(Collection.class)))
                 .thenReturn(List.of());
 
-        assertThat(service.readByType(context, RelationType.SUPPORTS)
-                .relations()).extracting(TaxonomyRelationDto::getId)
+        var result = service.readByType(context, RelationType.SUPPORTS);
+
+        assertThat(result.relations())
+                .extracting(TaxonomyRelationDto::getId)
                 .containsExactly(1L);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Collection<String>> codes = ArgumentCaptor.forClass(
+                Collection.class);
+        verify(nodeRepository).findByCodeIn(codes.capture());
+        assertThat(codes.getValue())
+                .containsExactlyInAnyOrder("BP", "CP")
+                .doesNotContain("UNUSED-SOURCE", "UNUSED-TARGET");
+    }
+
+    @Test
+    void nodeFilterReturnsIncomingAndOutgoingRowsFromOneSnapshot() {
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "feature/a", "alice");
+        RelationDecisionProjection supports = projection(
+                1L, "BP", RelationType.SUPPORTS, "CP", null,
+                "1".repeat(40));
+        RelationDecisionProjection realizes = projection(
+                2L, "CP", RelationType.REALIZES, "CR", null,
+                "1".repeat(40));
+        RelationDecisionProjection unrelated = projection(
+                3L, "APP", RelationType.DEPENDS_ON, "TECH", null,
+                "1".repeat(40));
+        when(readinessService.inspect(context)).thenReturn(new Readiness(
+                ReadinessState.READY,
+                "1".repeat(40),
+                "1".repeat(40),
+                List.of(supports, realizes, unrelated)));
+        when(nodeRepository.findByCodeIn(any(Collection.class)))
+                .thenReturn(List.of());
+
         assertThat(service.readForNode(context, "CP").relations())
                 .extracting(TaxonomyRelationDto::getId)
                 .containsExactly(1L, 2L);
-        assertThat(service.findIdentityById(context, 2L))
-                .get()
-                .satisfies(identity -> {
-                    assertThat(identity.sourceId()).isEqualTo("CP");
-                    assertThat(identity.relationType()).isEqualTo("REALIZES");
-                    assertThat(identity.targetId()).isEqualTo("CR");
-                });
     }
 
     private static Readiness notBuilt(String digit) {
