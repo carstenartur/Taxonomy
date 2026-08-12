@@ -1,0 +1,149 @@
+name: Prepare Development Version
+
+run-name: Prepare ${{ inputs.next_version }} from main
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_version:
+        description: Exact canonical development version, for example 1.4.0-SNAPSHOT
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prepare-development-version
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Create verified version-advance pull request
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Validate and prepare exact development version
+        id: version
+        env:
+          NEXT_VERSION_INPUT: ${{ inputs.next_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          next_version="$NEXT_VERSION_INPUT"
+          if [[ "$next_version" != "${next_version# }" \
+                || "$next_version" != "${next_version% }" \
+                || "$next_version" == *$'\n'* \
+                || "$next_version" == *$'\r'* \
+                || "$next_version" == *$'\t'* ]]; then
+            echo "::error::next_version must be a canonical single-line value without surrounding whitespace"
+            exit 1
+          fi
+          if ! [[ "$next_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-SNAPSHOT$ ]]; then
+            echo "::error::next_version must use canonical X.Y.Z-SNAPSHOT SemVer"
+            exit 1
+          fi
+
+          current_version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
+          if ! [[ "$current_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-SNAPSHOT$ ]]; then
+            echo "::error::Current project version is not a canonical development version: $current_version"
+            exit 1
+          fi
+
+          CURRENT_VERSION="$current_version" NEXT_VERSION="$next_version" python3 - <<'PY'
+          import os
+
+          def version_tuple(value: str) -> tuple[int, int, int]:
+              return tuple(map(int, value.removesuffix("-SNAPSHOT").split(".")))
+
+          current = version_tuple(os.environ["CURRENT_VERSION"])
+          target = version_tuple(os.environ["NEXT_VERSION"])
+          if target <= current:
+              raise SystemExit(
+                  f"next development version {os.environ['NEXT_VERSION']} must be newer than "
+                  f"current {os.environ['CURRENT_VERSION']}"
+              )
+          PY
+
+          branch="prepare-development-${next_version%-SNAPSHOT}"
+          branch=${branch//./-}
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "::error::Remote branch $branch already exists; finish or remove its version-advance PR first"
+            exit 1
+          fi
+
+          echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "current_release=${current_version%-SNAPSHOT}" >> "$GITHUB_OUTPUT"
+          echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Create coherent version transition
+        env:
+          CURRENT_RELEASE: ${{ steps.version.outputs.current_release }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+          BRANCH: ${{ steps.version.outputs.branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+
+          ./mvnw -B versions:set \
+            -DnewVersion="$NEXT_VERSION" \
+            -DgenerateBackupPoms=false
+          python3 .github/scripts/update-release-metadata.py "$NEXT_VERSION"
+          python3 .github/scripts/check-version-state.py \
+            --mode development \
+            --expected-version "$NEXT_VERSION"
+          ./mvnw -B -Prelease-check validate \
+            -DreleaseVersion="$CURRENT_RELEASE" \
+            -DnextDevelopmentVersion="$NEXT_VERSION" \
+            -DreleaseCheckCurrentState=advanced \
+            -DreleaseCheckRequireClean=false
+
+          mapfile -d '' tracked_poms < <(
+            git ls-files -z -- 'pom.xml' ':(glob)**/pom.xml'
+          )
+          git add -- "${tracked_poms[@]}" \
+            CITATION.cff CITATION.md .zenodo.json codemeta.json
+          if [[ -f deploy/helm/taxonomy/Chart.yaml ]]; then
+            git add -- deploy/helm/taxonomy/Chart.yaml
+          fi
+
+          if git diff --cached --quiet; then
+            echo "::error::Version transition produced no tracked metadata changes"
+            exit 1
+          fi
+          git commit -m "Prepare development version $NEXT_VERSION"
+          git push origin "$BRANCH"
+
+      - name: Open protected main pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_VERSION: ${{ steps.version.outputs.current_version }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+          BRANCH: ${{ steps.version.outputs.branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Prepare development version $NEXT_VERSION" \
+            --body "Advance Taxonomy from \`$CURRENT_VERSION\` to \`$NEXT_VERSION\` as one coherent Maven/citation/CodeMeta/Zenodo/Helm transition. Merge only after exact-head CI/CD, database compatibility, CodeQL and security gates are green. Tracks #704."
