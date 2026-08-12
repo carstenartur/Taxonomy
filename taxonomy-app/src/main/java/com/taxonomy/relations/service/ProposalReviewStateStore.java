@@ -92,15 +92,15 @@ public class ProposalReviewStateStore {
                     "RepositoryContext must not be null");
         }
         if (context.workspaceId() == null
-                && context.scope() != RepositoryScope.CENTRAL_WRITE) {
-            throw new IllegalArgumentException(
-                    "Central proposal review requires CENTRAL_WRITE scope");
-        }
-        if (context.workspaceId() != null
-                && context.scope() != RepositoryScope.WORKSPACE
+                && context.scope() != RepositoryScope.CENTRAL_WRITE
                 && context.scope() != RepositoryScope.FORK) {
             throw new IllegalArgumentException(
-                    "Workspace proposal review requires WORKSPACE or FORK scope");
+                    "Repository proposal review requires CENTRAL_WRITE or FORK scope");
+        }
+        if (context.workspaceId() != null
+                && context.scope() != RepositoryScope.WORKSPACE) {
+            throw new IllegalArgumentException(
+                    "Workspace proposal review requires WORKSPACE scope");
         }
         return context;
     }
