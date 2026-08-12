@@ -170,9 +170,12 @@ public class RelationApiController {
         ResponseEntity.BodyBuilder response = ResponseEntity.status(status)
                 .header(PROJECTION_STATE_HEADER,
                         error.getReadinessState().name())
-                .header(PENDING_RECOVERY_HEADER,
-                        String.valueOf(error.getPendingRecoveryCount()))
                 .header(HttpHeaders.CACHE_CONTROL, "no-store");
+        if (error.getPendingRecoveryCount() > 0) {
+            response.header(
+                    PENDING_RECOVERY_HEADER,
+                    String.valueOf(error.getPendingRecoveryCount()));
+        }
         if (error.getCurrentHeadCommit() != null) {
             response.header(
                     HttpHeaders.ETAG,
