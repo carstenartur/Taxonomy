@@ -3,8 +3,9 @@
  *
  * The legacy browser remains responsible for rendering and impact analysis.
  * This adapter captures create/delete actions before the retired DB-first
- * handlers, binds them to the ETag of the displayed projection, and addresses
- * relations by the source/type/target identity visible in the same table row.
+ * handlers, refreshes one authoritative snapshot immediately before each
+ * command, and addresses relations by the source/type/target identity visible
+ * in the same table row.
  */
 (function () {
     'use strict';
@@ -77,13 +78,6 @@
             });
     }
 
-    function ensureSnapshot() {
-        if (headEtag || branchMissing) {
-            return Promise.resolve();
-        }
-        return refreshSnapshot();
-    }
-
     function createRelation() {
         var sourceCode = valueOf('newRelSource');
         var targetCode = valueOf('newRelTarget');
@@ -100,7 +94,7 @@
         }
 
         setSpinner(true);
-        ensureSnapshot()
+        refreshSnapshot()
             .then(function () {
                 var extensions = {};
                 if (description) extensions['x-description'] = description;
@@ -146,10 +140,16 @@
             'relations.delete.confirm',
             'Delete this relation?'))) return;
 
-        ensureSnapshot()
-            .then(function () {
+        refreshSnapshot()
+            .then(function (relations) {
                 if (!headEtag) {
                     throw new Error('The selected branch has no relation head.');
+                }
+                if (!(relations || []).some(function (candidate) {
+                    return sameIdentity(candidate, relation);
+                })) {
+                    throw new Error(
+                        'The displayed relation no longer exists in the current branch snapshot.');
                 }
                 return fetch(commandUrl(
                     relation.sourceCode,
@@ -162,6 +162,7 @@
             .then(handleCommandResponse)
             .then(refreshBrowser)
             .catch(function (error) {
+                refreshBrowser();
                 showBrowserError(message(
                     'relations.delete.failed',
                     'Could not delete relation') + ': ' + error.message);
@@ -180,6 +181,13 @@
             relationType: relationType,
             targetCode: targetCode
         };
+    }
+
+    function sameIdentity(left, right) {
+        return left
+            && left.sourceCode === right.sourceCode
+            && left.relationType === right.relationType
+            && left.targetCode === right.targetCode;
     }
 
     function handleCommandResponse(response) {
