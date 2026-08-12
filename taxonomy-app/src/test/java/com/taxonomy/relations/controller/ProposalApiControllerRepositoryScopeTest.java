@@ -1,10 +1,8 @@
 package com.taxonomy.relations.controller;
 
 import com.taxonomy.dto.RelationProposalDto;
-import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationProposalService;
-import com.taxonomy.relations.service.RelationReviewService;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
@@ -29,12 +27,12 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ProposalApiControllerRepositoryScopeTest {
 
     private RelationProposalService proposalService;
-    private RelationReviewService reviewService;
     private WorkspaceResolver workspaceResolver;
     private SystemRepositoryService repositoryService;
     private RepositoryMembershipService membershipService;
@@ -43,13 +41,11 @@ class ProposalApiControllerRepositoryScopeTest {
     @BeforeEach
     void setUp() {
         proposalService = mock(RelationProposalService.class);
-        reviewService = mock(RelationReviewService.class);
         workspaceResolver = mock(WorkspaceResolver.class);
         repositoryService = mock(SystemRepositoryService.class);
         membershipService = mock(RepositoryMembershipService.class);
         controller = new ProposalApiController(
                 proposalService,
-                reviewService,
                 workspaceResolver,
                 repositoryService,
                 membershipService);
@@ -147,34 +143,46 @@ class ProposalApiControllerRepositoryScopeTest {
     }
 
     @Test
-    void workspaceReviewPreservesRepositoryWorkspaceAndUser() {
-        RepositoryContext context = RepositoryContext.workspace(
-                "repo-b", "workspace-b1", "feature/b1", "alice");
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(context);
-        when(reviewService.acceptProposal(42L, context))
-                .thenReturn(new TaxonomyRelationDto());
+    void forkProposalGenerationPreservesTheResolvedForkScope() {
+        RepositoryContext fork = new RepositoryContext(
+                "fork-a",
+                null,
+                "review",
+                "alice",
+                RepositoryScope.FORK);
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(fork);
+        when(proposalService.proposeRelationsInContext(
+                        any(), any(), anyInt(), any()))
+                .thenReturn(List.of());
 
-        ResponseEntity<TaxonomyRelationDto> response = controller.acceptProposal(42L);
+        ResponseEntity<List<RelationProposalDto>> response = controller.proposeRelations(
+                validProposalBody());
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
-        verify(reviewService).acceptProposal(42L, context);
-        verify(repositoryService, never()).getRepository(any());
-        verify(membershipService, never()).canMaintain(any(), any());
+        verify(proposalService).proposeRelationsInContext(
+                "BP", RelationType.RELATED_TO, 3, fork);
+        verifyNoInteractions(repositoryService, membershipService);
     }
 
     @Test
-    void centralReaderCannotUseReviewEndpointToProbeAProposalIdentifier() {
-        RepositoryContext context = RepositoryContext.centralRead(
-                "repo-a", "main", "reader");
-        SystemRepository repository = repository("repo-a");
-        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(context);
-        when(repositoryService.getRepository("repo-a")).thenReturn(repository);
-        when(membershipService.canMaintain(repository, "reader")).thenReturn(false);
+    void dbFirstReviewRoutesAreExplicitlyGoneWithoutResolvingAProposal() {
+        assertThat(controller.acceptProposal(42L).getStatusCode().value())
+                .isEqualTo(410);
+        assertThat(controller.rejectProposal(42L).getStatusCode().value())
+                .isEqualTo(410);
+        assertThat(controller.revertProposal(42L).getStatusCode().value())
+                .isEqualTo(410);
+        assertThat(controller.bulkAction(Map.of(
+                        "ids", List.of(42L),
+                        "action", "ACCEPT"))
+                .getStatusCode().value())
+                .isEqualTo(410);
 
-        ResponseEntity<TaxonomyRelationDto> response = controller.acceptProposal(42L);
-
-        assertThat(response.getStatusCode().value()).isEqualTo(403);
-        verify(reviewService, never()).acceptProposal(any(), any());
+        verifyNoInteractions(
+                proposalService,
+                workspaceResolver,
+                repositoryService,
+                membershipService);
     }
 
     private static Map<String, String> validProposalBody() {
