@@ -142,8 +142,8 @@ class RelationApiControllerRepositoryScopeTest {
                 controller.getRelations(null);
 
         assertThat(response.getStatusCode().value()).isEqualTo(409);
-        assertThat(response.getHeaders().containsKey(
-                RelationApiController.PENDING_RECOVERY_HEADER)).isFalse();
+        assertThat(response.getHeaders().getFirst(
+                RelationApiController.PENDING_RECOVERY_HEADER)).isNull();
     }
 
     @Test
