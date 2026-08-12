@@ -4,6 +4,7 @@ import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationProjectionReadService;
+import com.taxonomy.relations.service.RelationProjectionReadService.CountResult;
 import com.taxonomy.relations.service.RelationProjectionReadService.ReadModel;
 import com.taxonomy.relations.service.RelationProjectionReadService.ReadResult;
 import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
@@ -146,19 +147,17 @@ class RelationApiControllerRepositoryScopeTest {
     }
 
     @Test
-    void countUsesTheExactSameReadResult() {
+    void countUsesDirectMetadataFromTheSameProvenReadSource() {
         RepositoryContext context = RepositoryContext.centralRead(
                 "repo-a", "draft", "alice");
-        ReadResult result = new ReadResult(
+        CountResult result = new CountResult(
                 ReadModel.LEGACY_FALLBACK,
                 ReadinessState.NOT_BUILT,
                 "e".repeat(40),
-                List.of(
-                        relation(1L, "BP", RelationType.SUPPORTS, "CP"),
-                        relation(2L, "CP", RelationType.REALIZES, "CR")));
+                2L);
         when(workspaceResolver.resolveCurrentRepositoryContext())
                 .thenReturn(context);
-        when(relationReadService.readAll(context)).thenReturn(result);
+        when(relationReadService.count(context)).thenReturn(result);
 
         ResponseEntity<Map<String, Long>> response = controller.countRelations();
 
@@ -167,6 +166,9 @@ class RelationApiControllerRepositoryScopeTest {
         assertThat(response.getHeaders().getFirst(
                 RelationApiController.READ_MODEL_HEADER))
                 .isEqualTo("LEGACY_FALLBACK");
+        assertThat(response.getHeaders().getETag())
+                .isEqualTo("\"" + "e".repeat(40) + "\"");
+        verify(relationReadService).count(context);
     }
 
     @Test
