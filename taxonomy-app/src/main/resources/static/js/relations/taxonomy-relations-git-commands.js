@@ -4,14 +4,13 @@
  * The legacy browser remains responsible for rendering and impact analysis.
  * This adapter captures create/delete actions before the retired DB-first
  * handlers, binds them to the ETag of the displayed projection, and addresses
- * relations by their stable source/type/target identity.
+ * relations by the source/type/target identity visible in the same table row.
  */
 (function () {
     'use strict';
 
     var headEtag = null;
     var branchMissing = false;
-    var relationsById = new Map();
     var commandSequence = 0;
     var initialized = false;
 
@@ -48,7 +47,7 @@
         if (deleteButton) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            deleteRelation(deleteButton.getAttribute('data-id'));
+            deleteRelation(deleteButton);
         }
     }
 
@@ -66,24 +65,15 @@
                         'X-Taxonomy-Relation-Projection-State') === 'BRANCH_MISSING';
                 if (branchMissing) {
                     headEtag = null;
-                    relationsById.clear();
                     return [];
                 }
                 if (!response.ok) {
                     headEtag = null;
-                    relationsById.clear();
                     throw new Error(projectionError(response));
                 }
                 headEtag = response.headers.get('ETag');
                 branchMissing = false;
                 return response.json();
-            })
-            .then(function (relations) {
-                relationsById.clear();
-                (relations || []).forEach(function (relation) {
-                    relationsById.set(String(relation.id), relation);
-                });
-                return relations || [];
             });
     }
 
@@ -144,13 +134,12 @@
             });
     }
 
-    function deleteRelation(id) {
-        var relation = relationsById.get(String(id));
+    function deleteRelation(button) {
+        var relation = relationIdentity(button);
         if (!relation) {
-            refreshSnapshot().catch(function () {});
             showBrowserError(message(
                 'relations.load.failed',
-                'The displayed relation snapshot is no longer available.'));
+                'The displayed relation identity is incomplete.'));
             return;
         }
         if (!window.confirm(message(
@@ -177,6 +166,20 @@
                     'relations.delete.failed',
                     'Could not delete relation') + ': ' + error.message);
             });
+    }
+
+    function relationIdentity(button) {
+        var row = button.closest('tr');
+        if (!row || !row.cells || row.cells.length < 3) return null;
+        var sourceCode = row.cells[0].textContent.trim();
+        var targetCode = row.cells[1].textContent.trim();
+        var relationType = row.cells[2].textContent.trim();
+        if (!sourceCode || !targetCode || !relationType) return null;
+        return {
+            sourceCode: sourceCode,
+            relationType: relationType,
+            targetCode: targetCode
+        };
     }
 
     function handleCommandResponse(response) {
