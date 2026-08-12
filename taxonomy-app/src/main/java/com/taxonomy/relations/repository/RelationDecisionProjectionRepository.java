@@ -5,6 +5,7 @@ import com.taxonomy.relations.model.RelationDecisionProjection;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -46,4 +47,16 @@ public interface RelationDecisionProjectionRepository
             String repositoryId,
             String workspaceScopeKey,
             String branch);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = false)
+    @Query("""
+            DELETE FROM RelationDecisionProjection projection
+            WHERE projection.repositoryId = :repositoryId
+              AND projection.workspaceScopeKey = :workspaceScopeKey
+              AND projection.branch = :branch
+            """)
+    int deleteExactBranch(
+            @Param("repositoryId") String repositoryId,
+            @Param("workspaceScopeKey") String workspaceScopeKey,
+            @Param("branch") String branch);
 }

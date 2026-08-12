@@ -1,26 +1,41 @@
 package com.taxonomy.relations.service;
 
 import com.taxonomy.relations.model.RelationDecisionProjection;
+import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
 import com.taxonomy.relations.repository.RelationDecisionProjectionRepository;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionConflictException;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionOutcome;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionRequest;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionResult;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 
-/** Transactional writer for one already Git-verified projection state. */
+/** Transactional writer for one already Git-verified incremental projection state. */
 @Service
 public class RelationDecisionProjectionWriter {
 
     private final RelationDecisionProjectionRepository projectionRepository;
+    private final RelationDecisionProjectionCheckpointRepository checkpointRepository;
 
+    @Autowired
     public RelationDecisionProjectionWriter(
+            RelationDecisionProjectionRepository projectionRepository,
+            RelationDecisionProjectionCheckpointRepository checkpointRepository) {
+        this.projectionRepository = Objects.requireNonNull(
+                projectionRepository, "projectionRepository");
+        this.checkpointRepository = Objects.requireNonNull(
+                checkpointRepository, "checkpointRepository");
+    }
+
+    /** Compatibility constructor for focused pre-checkpoint unit tests in this package. */
+    RelationDecisionProjectionWriter(
             RelationDecisionProjectionRepository projectionRepository) {
         this.projectionRepository = Objects.requireNonNull(
                 projectionRepository, "projectionRepository");
+        this.checkpointRepository = null;
     }
 
     @Transactional
@@ -28,6 +43,18 @@ public class RelationDecisionProjectionWriter {
         Objects.requireNonNull(request, "request");
         String workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(
                 request.workspaceId());
+
+        // An incremental command proves only one relation identity. Even when it
+        // is a semantic no-op, it must not leave a previous full-branch checkpoint
+        // available as an assurance that every row was rebuilt at this commit.
+        // Runtime failures roll this deletion back with the relation write.
+        if (checkpointRepository != null) {
+            checkpointRepository.deleteExact(
+                    request.repositoryId(),
+                    workspaceScopeKey,
+                    request.branch());
+        }
+
         RelationDecisionProjection existing = projectionRepository
                 .findExactForUpdate(
                         request.repositoryId(),
