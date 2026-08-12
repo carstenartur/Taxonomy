@@ -35,26 +35,28 @@ class RelationGitCommandUiContractTest {
                 .contains("response.status === 412")
                 .doesNotContain("fetch('/api/relations', {\n"
                         + "            method: 'POST'")
-                .doesNotContain("'/api/relations/' + id");
+                .doesNotContain("'/api/relations/' + id")
+                .doesNotContain("relationsById");
     }
 
     @Test
-    void deleteResolvesTheDisplayedProjectionIdToStableIdentity()
-            throws Exception {
+    void deleteUsesIdentityFromTheSameVisibleTableRow() throws Exception {
         String adapter = Files.readString(RELATION_ADAPTER);
 
-        int lookup = adapter.indexOf(
-                "relationsById.get(String(id))");
+        int rowLookup = adapter.indexOf("button.closest('tr')");
         int source = adapter.indexOf(
-                "relation.sourceCode", lookup);
-        int type = adapter.indexOf(
-                "relation.relationType", lookup);
+                "row.cells[0].textContent.trim()", rowLookup);
         int target = adapter.indexOf(
-                "relation.targetCode", lookup);
+                "row.cells[1].textContent.trim()", rowLookup);
+        int type = adapter.indexOf(
+                "row.cells[2].textContent.trim()", rowLookup);
+        int command = adapter.indexOf(
+                "return fetch(commandUrl(", type);
 
-        assertThat(lookup).isGreaterThanOrEqualTo(0);
-        assertThat(source).isGreaterThan(lookup);
-        assertThat(type).isGreaterThan(source);
-        assertThat(target).isGreaterThan(type);
+        assertThat(rowLookup).isGreaterThanOrEqualTo(0);
+        assertThat(source).isGreaterThan(rowLookup);
+        assertThat(target).isGreaterThan(source);
+        assertThat(type).isGreaterThan(target);
+        assertThat(command).isGreaterThan(type);
     }
 }
