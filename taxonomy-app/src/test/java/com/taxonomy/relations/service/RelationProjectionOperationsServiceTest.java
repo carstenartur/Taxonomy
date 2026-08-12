@@ -5,6 +5,7 @@ import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictExcep
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.RebuildResult;
+import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildVerificationException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RecoveryReconciliationPendingException;
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.ReconciliationResult;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -48,7 +49,7 @@ class RelationProjectionOperationsServiceTest {
         RelationProjectionRecoveryService recoveryService =
                 mock(RelationProjectionRecoveryService.class);
         RebuildResult rebuilt = new RebuildResult(
-                "repo-a", "workspace-a", "review", head, 2);
+                "repo-a", "workspace-a", "review", head, 0);
         ReconciliationResult reconciliation = new ReconciliationResult(
                 head, 1, 1, 0);
         Readiness readiness = new Readiness(
@@ -99,6 +100,47 @@ class RelationProjectionOperationsServiceTest {
                 context, "a".repeat(40)))
                 .isInstanceOf(BranchHeadConflictException.class);
         verify(rebuildService, org.mockito.Mockito.never()).rebuild(context);
+    }
+
+    @Test
+    void sameHeadButCorruptReadModelIsNotReportedAsAHeadConflict()
+            throws Exception {
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "review", "alice");
+        repositoryFactory = new DslGitRepositoryFactory(null);
+        String head = repositoryFactory.resolveRepository(context).commitDsl(
+                "review",
+                "element APP-1 type Application {\n}\n",
+                "alice",
+                "Seed branch");
+        RelationBranchProjectionReadinessService readinessService =
+                mock(RelationBranchProjectionReadinessService.class);
+        RelationBranchProjectionRebuildService rebuildService =
+                mock(RelationBranchProjectionRebuildService.class);
+        RelationProjectionRecoveryService recoveryService =
+                mock(RelationProjectionRecoveryService.class);
+        RebuildResult rebuilt = new RebuildResult(
+                "repo-a", "workspace-a", "review", head, 1);
+        ReconciliationResult reconciliation = new ReconciliationResult(
+                head, 0, 0, 0);
+        Readiness corrupt = new Readiness(
+                ReadinessState.CORRUPT, head, head, List.of());
+        when(rebuildService.rebuild(context)).thenReturn(rebuilt);
+        when(recoveryService.reconcileAfterRebuild(context, head))
+                .thenReturn(reconciliation);
+        when(readinessService.inspect(context)).thenReturn(corrupt);
+
+        assertThatThrownBy(() -> new RelationProjectionOperationsService(
+                repositoryFactory,
+                readinessService,
+                rebuildService,
+                recoveryService).rebuild(context, head))
+                .isInstanceOfSatisfying(
+                        RebuildVerificationException.class,
+                        error -> {
+                            assertThat(error.getRebuild()).isSameAs(rebuilt);
+                            assertThat(error.getReadiness()).isSameAs(corrupt);
+                        });
     }
 
     @Test
