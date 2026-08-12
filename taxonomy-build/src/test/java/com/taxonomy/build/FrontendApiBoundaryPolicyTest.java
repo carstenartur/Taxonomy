@@ -123,7 +123,7 @@ class FrontendApiBoundaryPolicyTest {
     }
 
     @Test
-    void inspectLoadsOnlyCurrentPathsFromTheRequestedRevision(@TempDir Path root)
+    void inspectUsesCurrentPathsWhenReaderCannotListTheBaseline(@TempDir Path root)
             throws Exception {
         writeJs(root, "shared/existing.js", "fetch('/other');\n");
         writeJs(root, "api/client.js", "fetch('/api/owned');\n");
@@ -165,6 +165,48 @@ class FrontendApiBoundaryPolicyTest {
         assertThat(inspection.baselineDebt()).isEqualTo(2);
         assertThat(inspection.report()).contains(
                 "0 call(s) in 0 file(s); baseline 2 call(s) in 1 file(s)");
+    }
+
+    @Test
+    void retainsBaselineDebtFromModulesDeletedByTheChange(@TempDir Path root)
+            throws Exception {
+        writeJs(root, "shared/cleaned.js", "const migrated = true;\n");
+        FrontendApiBoundaryPolicy.RevisionTextReader reader =
+                new FrontendApiBoundaryPolicy.RevisionTextReader() {
+                    @Override
+                    public Optional<String> read(
+                            String revision, String repositoryPath) {
+                        assertThat(revision).isEqualTo("baseline");
+                        if (repositoryPath.endsWith("shared/cleaned.js")) {
+                            return Optional.of("fetch('/old');");
+                        }
+                        if (repositoryPath.endsWith("shared/deleted.mjs")) {
+                            return Optional.of("fetch('/one'); fetch('/two');");
+                        }
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public Set<String> paths(
+                            String revision, String repositoryPathPrefix) {
+                        assertThat(revision).isEqualTo("baseline");
+                        assertThat(repositoryPathPrefix).isEqualTo(
+                                "taxonomy-app/src/main/resources/static/js");
+                        return Set.of(
+                                "taxonomy-app/src/main/resources/static/js/shared/cleaned.js",
+                                "taxonomy-app/src/main/resources/static/js/shared/deleted.mjs",
+                                "taxonomy-app/src/main/resources/static/js/shared/ignored.txt");
+                    }
+                };
+
+        FrontendApiBoundaryPolicy.Inspection inspection = policy.inspect(
+                root, "baseline", reader);
+
+        assertThat(inspection.passed()).isTrue();
+        assertThat(inspection.currentDebt()).isZero();
+        assertThat(inspection.baselineDebt()).isEqualTo(3);
+        assertThat(inspection.report()).contains(
+                "0 call(s) in 0 file(s); baseline 3 call(s) in 2 file(s)");
     }
 
     @Test
