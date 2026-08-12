@@ -116,3 +116,12 @@
         loadQualityDashboard: loadQualityDashboard
     };
 })();
+
+/* Load the command adapter before users can invoke relation mutations. */
+(function () {
+    'use strict';
+    var script = document.createElement('script');
+    script.src = '/js/relations/taxonomy-relations-git-commands.js';
+    script.async = false;
+    document.head.appendChild(script);
+})();
