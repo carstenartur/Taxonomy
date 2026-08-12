@@ -115,11 +115,30 @@ class TaxonomySchemaPostgresMigrationIT {
                 "relation_decision_projection_checkpoint",
                 "relation_count"))
                 .isTrue();
+        assertThat(tableExists(dataSource, "relation_projection_recovery")).isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "workspace_scope_key"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "authoritative_commit_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "status"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "attempt_count"))
+                .isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10");
+                        "6", "7", "8", "9", "10", "11");
     }
 
     @Test
@@ -184,10 +203,17 @@ class TaxonomySchemaPostgresMigrationIT {
                 "relation_decision_projection_checkpoint",
                 "authoritative_commit_id"))
                 .isTrue();
+        assertThat(tableExists(dataSource, "relation_projection_recovery")).isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "authoritative_commit_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "status"))
+                .isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10");
+                        "6", "7", "8", "9", "10", "11");
     }
 
     @Test

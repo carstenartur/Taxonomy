@@ -7,7 +7,9 @@ import com.taxonomy.relations.command.ArchitectureRelationGitCommandService;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
+import com.taxonomy.relations.model.RelationProjectionRecovery.RecoveryStatus;
 import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.ProjectionPendingException;
+import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,7 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +40,9 @@ class GitAuthoritativeRelationMutationServiceTest {
 
     @Mock
     private RelationDecisionProjectionService projectionService;
+
+    @Mock
+    private RelationProjectionRecoveryService recoveryService;
 
     @Test
     void commitsBeforeProjectingAndReturnsBothResults() throws Exception {
@@ -67,18 +74,25 @@ class GitAuthoritativeRelationMutationServiceTest {
                 eq(context), eq(PREVIOUS), any(RelationCommand.class));
         order.verify(projectionService).project(
                 eq(context), eq(authority), any(RelationCommand.class));
+        verifyNoInteractions(recoveryService);
     }
 
     @Test
-    void exposesAuthoritativeCommitWhenProjectionNeedsRecovery() throws Exception {
+    void persistsRecoveryAfterProjectionFailureAndExposesAuthority()
+            throws Exception {
         RepositoryContext context = context();
         CommandResult authority = authority();
+        IllegalStateException projectionFailure =
+                new IllegalStateException("database unavailable");
+        RecoveryRecord recovery = recovery();
         when(commandService.execute(
                 eq(context), eq(PREVIOUS), any(RelationCommand.class)))
                 .thenReturn(authority);
         when(projectionService.project(
                 eq(context), eq(authority), any(RelationCommand.class)))
-                .thenThrow(new IllegalStateException("database unavailable"));
+                .thenThrow(projectionFailure);
+        when(recoveryService.recordPending(authority, projectionFailure))
+                .thenReturn(recovery);
         GitAuthoritativeRelationMutationService service = service();
 
         assertThatThrownBy(() -> service.remove(
@@ -86,16 +100,63 @@ class GitAuthoritativeRelationMutationServiceTest {
                 PREVIOUS,
                 definition().identity(),
                 new CommandMetadata("request-17")))
-                .isInstanceOf(ProjectionPendingException.class)
-                .satisfies(error -> assertThat(
-                        ((ProjectionPendingException) error).getAuthority())
-                        .isSameAs(authority))
+                .isInstanceOfSatisfying(
+                        ProjectionPendingException.class,
+                        error -> {
+                            assertThat(error.getAuthority()).isSameAs(authority);
+                            assertThat(error.getRecovery()).isSameAs(recovery);
+                            assertThat(error.isRecoveryPersisted()).isTrue();
+                        })
                 .hasMessageContaining(AUTHORITY);
+
+        InOrder order = inOrder(
+                commandService, projectionService, recoveryService);
+        order.verify(commandService).execute(
+                eq(context), eq(PREVIOUS), any(RelationCommand.class));
+        order.verify(projectionService).project(
+                eq(context), eq(authority), any(RelationCommand.class));
+        order.verify(recoveryService).recordPending(
+                authority, projectionFailure);
+    }
+
+    @Test
+    void secondaryRecoveryFailureNeverMasksTheImmutableGitAuthority()
+            throws Exception {
+        RepositoryContext context = context();
+        CommandResult authority = authority();
+        IllegalStateException projectionFailure =
+                new IllegalStateException("projection unavailable");
+        IllegalStateException recoveryFailure =
+                new IllegalStateException("recovery table unavailable");
+        when(commandService.execute(
+                eq(context), eq(PREVIOUS), any(RelationCommand.class)))
+                .thenReturn(authority);
+        when(projectionService.project(
+                eq(context), eq(authority), any(RelationCommand.class)))
+                .thenThrow(projectionFailure);
+        when(recoveryService.recordPending(authority, projectionFailure))
+                .thenThrow(recoveryFailure);
+
+        assertThatThrownBy(() -> service().upsert(
+                context,
+                PREVIOUS,
+                definition(),
+                new CommandMetadata("request-17")))
+                .isInstanceOfSatisfying(
+                        ProjectionPendingException.class,
+                        error -> {
+                            assertThat(error.getAuthority()).isSameAs(authority);
+                            assertThat(error.isRecoveryPersisted()).isFalse();
+                            assertThat(error.getCause())
+                                    .isSameAs(projectionFailure);
+                            assertThat(error.getCause().getSuppressed())
+                                    .containsExactly(recoveryFailure);
+                        });
     }
 
     private GitAuthoritativeRelationMutationService service() {
         return new GitAuthoritativeRelationMutationService(
-                commandService, projectionService);
+                commandService, projectionService, recoveryService);
     }
 
     private static RepositoryContext context() {
@@ -127,5 +188,24 @@ class GitAuthoritativeRelationMutationServiceTest {
                 ChangeKind.UPDATED,
                 true,
                 "request-17");
+    }
+
+    private static RecoveryRecord recovery() {
+        Instant observed = Instant.parse("2026-08-12T12:00:00Z");
+        return new RecoveryRecord(
+                23L,
+                "repo-a",
+                "workspace-a",
+                "review",
+                PREVIOUS,
+                AUTHORITY,
+                "request-17",
+                RecoveryStatus.PENDING,
+                1,
+                IllegalStateException.class.getName(),
+                "database unavailable",
+                observed,
+                observed,
+                null);
     }
 }

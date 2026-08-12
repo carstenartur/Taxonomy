@@ -1,13 +1,14 @@
 package com.taxonomy.relations.service;
 
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RemoveRelation;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.UpsertRelation;
-import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
-import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
+import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Service;
 
@@ -19,23 +20,27 @@ import java.util.Objects;
  * relational projection.
  *
  * <p>The method is deliberately not transactional: a failed projection must
- * never roll back or hide the already successful Git command. Callers receive
- * the authoritative commit through {@link ProjectionPendingException} and can
- * report an accepted/pending-rebuild outcome.</p>
+ * never roll back or hide the already successful Git command. Recovery is
+ * persisted in an independent transaction and callers always receive the
+ * immutable authority, even when that secondary persistence also fails.</p>
  */
 @Service
 public class GitAuthoritativeRelationMutationService {
 
     private final ArchitectureRelationGitCommandService commandService;
     private final RelationDecisionProjectionService projectionService;
+    private final RelationProjectionRecoveryService recoveryService;
 
     public GitAuthoritativeRelationMutationService(
             ArchitectureRelationGitCommandService commandService,
-            RelationDecisionProjectionService projectionService) {
+            RelationDecisionProjectionService projectionService,
+            RelationProjectionRecoveryService recoveryService) {
         this.commandService = Objects.requireNonNull(
                 commandService, "commandService");
         this.projectionService = Objects.requireNonNull(
                 projectionService, "projectionService");
+        this.recoveryService = Objects.requireNonNull(
+                recoveryService, "recoveryService");
     }
 
     public MutationResult upsert(
@@ -71,7 +76,15 @@ public class GitAuthoritativeRelationMutationService {
                     projectionService.project(context, authority, command);
             return new MutationResult(authority, projection);
         } catch (RuntimeException projectionFailure) {
-            throw new ProjectionPendingException(authority, projectionFailure);
+            RecoveryRecord recovery = null;
+            try {
+                recovery = recoveryService.recordPending(
+                        authority, projectionFailure);
+            } catch (RuntimeException recoveryFailure) {
+                projectionFailure.addSuppressed(recoveryFailure);
+            }
+            throw new ProjectionPendingException(
+                    authority, recovery, projectionFailure);
         }
     }
 
@@ -87,18 +100,40 @@ public class GitAuthoritativeRelationMutationService {
     public static final class ProjectionPendingException
             extends IllegalStateException {
         private final CommandResult authority;
+        private final RecoveryRecord recovery;
+
+        /**
+         * Compatibility form for callers that know the Git authority but do
+         * not have a durable recovery record, for example isolated tests or a
+         * secondary recovery-store failure.
+         */
+        public ProjectionPendingException(
+                CommandResult authority,
+                Throwable cause) {
+            this(authority, null, cause);
+        }
 
         public ProjectionPendingException(
                 CommandResult authority,
+                RecoveryRecord recovery,
                 Throwable cause) {
             super("Git relation command succeeded at "
                     + authority.authoritativeCommitId()
                     + ", but its projection requires recovery", cause);
             this.authority = Objects.requireNonNull(authority, "authority");
+            this.recovery = recovery;
         }
 
         public CommandResult getAuthority() {
             return authority;
+        }
+
+        public RecoveryRecord getRecovery() {
+            return recovery;
+        }
+
+        public boolean isRecoveryPersisted() {
+            return recovery != null;
         }
     }
 }
