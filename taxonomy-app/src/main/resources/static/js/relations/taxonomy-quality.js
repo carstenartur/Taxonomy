@@ -117,11 +117,14 @@
     };
 })();
 
-/* Load the command adapter before users can invoke relation mutations. */
+/* Load the sibling command adapter under the same application context path. */
 (function () {
     'use strict';
+    var loader = document.currentScript;
+    if (!loader || !loader.src) return;
     var script = document.createElement('script');
-    script.src = '/js/relations/taxonomy-relations-git-commands.js';
+    script.src = new URL(
+        'taxonomy-relations-git-commands.js', loader.src).href;
     script.async = false;
     document.head.appendChild(script);
 })();
