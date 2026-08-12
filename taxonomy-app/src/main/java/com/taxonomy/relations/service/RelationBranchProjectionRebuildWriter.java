@@ -33,6 +33,8 @@ public class RelationBranchProjectionRebuildWriter {
     /**
      * Replaces the exact repository/workspace/branch rows and checkpoint in one
      * transaction. Failure leaves the previously complete projection untouched.
+     * Rejected decisions stay in authoritative TaxDSL but are omitted from the
+     * complete active-relation projection.
      */
     @Transactional
     public RebuildResult replace(
@@ -60,6 +62,8 @@ public class RelationBranchProjectionRebuildWriter {
         projectionRepository.flush();
 
         List<RelationDecisionProjection> replacements = snapshots.stream()
+                .filter(snapshot -> RelationDecisionStatusPolicy
+                        .isRelationPresent(snapshot.status()))
                 .sorted(Comparator
                         .comparing(RelationSnapshot::sourceCode)
                         .thenComparing(snapshot -> snapshot.relationType().name())
