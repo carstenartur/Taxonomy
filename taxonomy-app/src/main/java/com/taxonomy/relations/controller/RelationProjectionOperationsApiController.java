@@ -6,6 +6,7 @@ import com.taxonomy.relations.service.RelationProjectionOperationsService;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.ProjectionStatus;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildHeadConflictException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildOperation;
+import com.taxonomy.relations.service.RelationProjectionOperationsService.RebuildVerificationException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.RecoveryReconciliationPendingException;
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -108,6 +109,8 @@ public class RelationProjectionOperationsApiController {
             return preconditionFailed(
                     error.getExpectedHeadCommit(),
                     error.getActualHeadCommit());
+        } catch (RebuildVerificationException error) {
+            return verificationFailed(error);
         } catch (RecoveryReconciliationPendingException error) {
             String commit = error.getRebuild().authoritativeCommitId();
             return ResponseEntity.status(HttpStatus.ACCEPTED)
@@ -142,6 +145,20 @@ public class RelationProjectionOperationsApiController {
         }
         return response.body(ProjectionOperationResponse.conflict(
                 expectedHeadCommit, actualHeadCommit));
+    }
+
+    private static ResponseEntity<ProjectionOperationResponse>
+            verificationFailed(RebuildVerificationException error) {
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(
+                HttpStatus.CONFLICT);
+        String currentHead = error.getReadiness().currentHeadCommit();
+        if (currentHead != null) {
+            response.header(
+                    HttpHeaders.ETAG,
+                    GitHttpPrecondition.etag(currentHead));
+        }
+        return response.body(
+                ProjectionOperationResponse.verificationFailed(error));
     }
 
     /** Central projection operations require repository-maintainer authority. */
@@ -261,6 +278,25 @@ public class RelationProjectionOperationsApiController {
                     operation.reconciliation().recoveredCount(),
                     operation.reconciliation().supersededCount(),
                     operation.reconciliation().remainingPendingCount(),
+                    null,
+                    null);
+        }
+
+        static ProjectionOperationResponse verificationFailed(
+                RebuildVerificationException error) {
+            return new ProjectionOperationResponse(
+                    error.getRebuild().repositoryId(),
+                    error.getRebuild().workspaceId(),
+                    error.getRebuild().branch(),
+                    "VERIFICATION_FAILED",
+                    error.getReadiness().state().name(),
+                    error.getReadiness().currentHeadCommit(),
+                    error.getReadiness().projectedCommit(),
+                    error.getRebuild().relationCount(),
+                    List.of(),
+                    null,
+                    null,
+                    null,
                     null,
                     null);
         }
