@@ -161,8 +161,10 @@ def main() -> int:
         '--commit "$EXPECTED_MAIN_SHA"',
         'gh workflow run "$workflow" --ref main',
         "run_sha=$(gh run view \"$run_id\" --json headSha --jq '.headSha')",
-        'gh run watch "$run_id" --exit-status',
+        "watch_exit=0",
+        'gh run watch "$run_id" --exit-status || watch_exit=$?',
         'if [[ "$status" != "completed" || "$conclusion" != "success" ]]',
+        "if (( watch_exit != 0 ))",
         'echo "All exact release gates passed',
     ):
         require(gate_helper, needle, RELEASE_GATE_HELPER, failures)
@@ -229,8 +231,8 @@ def main() -> int:
             failures.append(
                 "deploy-release.yml must bind checkout to the triggering source, "
                 "then either stage or validate a resumable draft, record the exact "
-                "main commit, fetch and build the immutable tag, scan and bind the "
-                "pushed image digest, verify that exact main commit, and publish last"
+                "main commit, verify its full gate matrix, then fetch and build the "
+                "immutable tag, scan and bind the pushed image digest, and publish last"
             )
 
         checkout_block = workflow[checkout:resolve]
