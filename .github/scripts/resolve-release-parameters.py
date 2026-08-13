@@ -7,12 +7,14 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from typing import Mapping
 import xml.etree.ElementTree as ET
 
 _RELEASE_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _DEVELOPMENT_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$")
+_COMMIT_ID = re.compile(r"^[0-9a-f]{40}$")
 _INCREMENT_VALUES = {"patch", "minor", "major"}
 _OUTPUT_KEYS = (
     "release_version",
@@ -57,6 +59,13 @@ def normalize_boolean(value: object, field: str) -> str:
         if normalized in {"true", "false"}:
             return normalized
     raise ValueError(f"{field} must be true or false")
+
+
+def normalize_request_revision(value: object) -> int:
+    """Require a positive, non-boolean release-request revision."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("request_revision must be a positive integer")
+    return value
 
 
 def repository_version(root: Path) -> str:
@@ -210,6 +219,159 @@ def resolve_parameters(
     return parameters
 
 
+def git_output(root: Path, *arguments: str) -> str:
+    """Run one read-only Git command and return its standard output."""
+    result = subprocess.run(
+        ["git", *arguments],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown Git error"
+        raise ValueError(f"git {' '.join(arguments)} failed: {detail}")
+    return result.stdout
+
+
+def validate_release_request_anchor(
+    root: Path,
+    request_path: Path,
+    request: Mapping[str, object],
+) -> None:
+    """Bind a push-triggered request to the immediately preceding verified tree."""
+    root = root.resolve()
+    absolute_request = (
+        request_path if request_path.is_absolute() else root / request_path
+    ).resolve()
+    try:
+        relative_request = absolute_request.relative_to(root).as_posix()
+    except ValueError as error:
+        raise ValueError("release request path must stay inside the repository") from error
+
+    requested_after = request.get("requested_after_commit")
+    if not isinstance(requested_after, str):
+        raise ValueError("requested_after_commit must be a full Git commit ID")
+    requested_after = requested_after.strip()
+    if not _COMMIT_ID.fullmatch(requested_after):
+        raise ValueError("requested_after_commit must be a full Git commit ID")
+    request_revision = normalize_request_revision(request.get("request_revision"))
+
+    parent = git_output(root, "rev-parse", "HEAD^1").strip()
+    if parent != requested_after:
+        raise ValueError(
+            "requested_after_commit must equal the release-request commit's "
+            f"first parent {parent}, got {requested_after}"
+        )
+
+    changed_paths = [
+        path
+        for path in git_output(
+            root,
+            "diff",
+            "--name-only",
+            "--diff-filter=ACDMRTUXB",
+            requested_after,
+            "HEAD",
+            "--",
+        ).splitlines()
+        if path
+    ]
+    if changed_paths != [relative_request]:
+        changed = ", ".join(changed_paths) if changed_paths else "<none>"
+        raise ValueError(
+            f"release request commit must change only {relative_request}; "
+            f"changed paths: {changed}"
+        )
+
+    previous_exists = subprocess.run(
+        ["git", "cat-file", "-e", f"{requested_after}:{relative_request}"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if previous_exists.returncode == 0:
+        previous_text = git_output(
+            root, "show", f"{requested_after}:{relative_request}"
+        )
+        try:
+            previous_request = json.loads(previous_text)
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                "previous release request is not valid JSON"
+            ) from error
+        if not isinstance(previous_request, dict):
+            raise ValueError("previous release request must contain a JSON object")
+        previous_revision = normalize_request_revision(
+            previous_request.get("request_revision")
+        )
+    elif previous_exists.returncode in {1, 128}:
+        previous_revision = 0
+    else:
+        detail = previous_exists.stderr.strip() or "unknown Git error"
+        raise ValueError(f"cannot inspect previous release request: {detail}")
+
+    expected_revision = previous_revision + 1
+    if request_revision != expected_revision:
+        raise ValueError(
+            f"request_revision must advance from {previous_revision} to "
+            f"{expected_revision}, got {request_revision}"
+        )
+
+
+def validate_staged_release_ancestry(
+    root: Path,
+    parameters: Mapping[str, str],
+    current_version: str,
+) -> None:
+    """Reject a staged tag that is not part of an already-advanced main history."""
+    next_version = parameters["next_development_version"]
+    if not next_version or current_version != next_version:
+        return
+
+    root = root.resolve()
+    git_repository = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    # Pure unit invocations may deliberately use a directory without Git. The
+    # real workflow always checks out a full repository before this guard runs.
+    if git_repository.returncode != 0:
+        return
+
+    tag = f"v{parameters['release_version']}"
+    tag_commit = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{tag}^{{commit}}"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if tag_commit.returncode != 0:
+        return
+
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", tag_commit.stdout.strip(), "HEAD"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if ancestry.returncode == 0:
+        return
+    if ancestry.returncode == 1:
+        raise ValueError(
+            f"staged release tag {tag} is not an ancestor of the current "
+            f"{current_version} checkout; repair release ancestry before publication"
+        )
+    detail = ancestry.stderr.strip() or "unknown git merge-base error"
+    raise ValueError(f"cannot verify staged release ancestry for {tag}: {detail}")
+
+
 def append_outputs(output_path: Path, parameters: Mapping[str, str]) -> None:
     with output_path.open("a", encoding="utf-8") as output:
         for key in _OUTPUT_KEYS:
@@ -225,9 +387,10 @@ def require_env(name: str) -> str:
 
 def main() -> int:
     try:
+        root = Path(".")
         event_name = require_env("EVENT_NAME")
         request = None
-        current_version = None
+        current_version = repository_version(root)
         if event_name == "push":
             request_path = Path(
                 os.environ.get("RELEASE_REQUEST_PATH", ".github/release-request.json")
@@ -235,9 +398,8 @@ def main() -> int:
             loaded = json.loads(request_path.read_text(encoding="utf-8"))
             if not isinstance(loaded, dict):
                 raise ValueError("release request must contain a JSON object")
+            validate_release_request_anchor(root, request_path, loaded)
             request = loaded
-        elif event_name == "workflow_dispatch":
-            current_version = repository_version(Path("."))
 
         parameters = resolve_parameters(
             event_name,
@@ -245,6 +407,7 @@ def main() -> int:
             request,
             current_version=current_version,
         )
+        validate_staged_release_ancestry(root, parameters, current_version)
         append_outputs(Path(require_env("GITHUB_OUTPUT")), parameters)
     except (OSError, ET.ParseError, json.JSONDecodeError, ValueError) as error:
         print(f"::error::{error}", file=sys.stderr)

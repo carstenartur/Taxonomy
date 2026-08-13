@@ -148,23 +148,28 @@ before browser scenarios execute.
 
 ## Workflow responsibilities
 
-Only eight workflows remain:
+Every workflow is classified in `.mvn/verification-suites.json`; the table below
+must remain synchronized with that executable catalogue.
 
 | Workflow | Responsibility |
 |---|---|
 | `ci-cd.yml` | Call the canonical Maven command and publish its reports |
 | `database-compatibility.yml` | Schedule/select database environments and call Maven profiles |
+| `jgit-storage-hibernate-contract.yml` | Run the consumer-owned storage compatibility contract through catalogued Maven selectors |
 | `codeql.yml` | External CodeQL source analysis |
 | `security-scan.yml` | External Trivy analysis |
+| `dependency-submission.yml` | Publish the Maven dependency graph |
 | `documentation-screenshots.yml` | Invoke the Maven screenshot profile and publish reviewed output |
 | `delivery.yml` | Publish reports/images and trigger deployment after verified CI |
 | `deploy-release.yml` | Execute the repository release state machine |
+| `protected-release-main-advance.yml` | Verify and hand off the protected next-development snapshot to `main` |
 | `cleanup-workflow-runs.yml` | Retain Actions history according to policy |
 
-The build-policy module executes
-`.github/scripts/check-workflow-test-authority.py`. It fails when a new workflow
-runs a browser/a11y script directly, selects Java test classes, uses an unpinned
-Maven executable, or introduces an unclassified workflow.
+`WorkflowTestAuthorityPolicyTest` is a JUnit contract in `taxonomy-app`. It fails
+when a new workflow runs browser/a11y scripts directly, selects Java tests,
+uses an unpinned Maven executable, bypasses the catalogued database profiles, or
+introduces an unclassified or previously removed workflow. Positive and negative
+filesystem fixtures exercise the policy without relying on GitHub Actions.
 
 CodeQL, Trivy, publishing and deployment are deliberately not described as
 locally equivalent tests. Their evidence remains separate from Maven test

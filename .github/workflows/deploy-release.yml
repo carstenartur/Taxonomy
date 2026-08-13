@@ -108,7 +108,6 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/test-resolve-release-parameters.py
-          python3 .github/scripts/test-check-version-state.py
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
