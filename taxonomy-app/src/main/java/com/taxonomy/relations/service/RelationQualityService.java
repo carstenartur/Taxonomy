@@ -81,8 +81,8 @@ public class RelationQualityService {
         if (limit <= 0) {
             return List.of();
         }
-        return visibleProposals(context).stream()
-                .filter(proposal -> proposal.getStatus() == ProposalStatus.REJECTED)
+        return visibleProposalsByStatus(
+                        context, ProposalStatus.REJECTED).stream()
                 .sorted(Comparator
                         .comparingDouble(RelationProposal::getConfidence)
                         .reversed()
@@ -143,6 +143,18 @@ public class RelationQualityService {
         }
         return proposalRepository.findVisibleByRepositoryAndWorkspace(
                 tenant.repositoryId(), tenant.workspaceId());
+    }
+
+    private List<RelationProposal> visibleProposalsByStatus(
+            RepositoryContext context,
+            ProposalStatus status) {
+        RepositoryContext tenant = requireContext(context);
+        if (tenant.workspaceId() == null) {
+            return proposalRepository.findCentralByRepositoryAndStatus(
+                    tenant.repositoryId(), status);
+        }
+        return proposalRepository.findVisibleByRepositoryAndWorkspaceAndStatus(
+                tenant.repositoryId(), tenant.workspaceId(), status);
     }
 
     private static List<RelationTypeMetrics> metricsByRelationType(
