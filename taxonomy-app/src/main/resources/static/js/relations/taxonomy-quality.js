@@ -117,14 +117,43 @@
     };
 })();
 
-/* Load the sibling command adapter under the same application context path. */
+/* Load the relation API boundary before its sibling command adapter. */
 (function () {
     'use strict';
     var loader = document.currentScript;
     if (!loader || !loader.src) return;
-    var script = document.createElement('script');
-    script.src = new URL(
-        'taxonomy-relations-git-commands.js', loader.src).href;
-    script.async = false;
-    document.head.appendChild(script);
+
+    function loadCommandAdapter() {
+        if (document.querySelector(
+            'script[data-taxonomy-relation-command-adapter]')) return;
+        var script = document.createElement('script');
+        script.src = new URL(
+            'taxonomy-relations-git-commands.js', loader.src).href;
+        script.async = false;
+        script.setAttribute(
+            'data-taxonomy-relation-command-adapter', 'true');
+        document.head.appendChild(script);
+    }
+
+    if (window.TaxonomyRelationsApi) {
+        loadCommandAdapter();
+        return;
+    }
+
+    var existingApi = document.querySelector(
+        'script[data-taxonomy-relations-api]');
+    if (existingApi) {
+        existingApi.addEventListener('load', loadCommandAdapter, { once: true });
+        return;
+    }
+
+    var apiScript = document.createElement('script');
+    apiScript.src = new URL('../api/relations-api.js', loader.src).href;
+    apiScript.async = false;
+    apiScript.setAttribute('data-taxonomy-relations-api', 'true');
+    apiScript.addEventListener('load', loadCommandAdapter, { once: true });
+    apiScript.addEventListener('error', function () {
+        console.error('[Taxonomy] Failed to load relation API client');
+    }, { once: true });
+    document.head.appendChild(apiScript);
 })();
