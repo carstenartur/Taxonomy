@@ -6,6 +6,7 @@ Taxonomy separates release verification from publication.
 - `.github/scripts/release.sh` owns the atomic Git state transition.
 - `.github/workflows/deploy-release.yml` owns GitHub Release, Helm, container and
   deployment publication gates.
+- `release_notes.md` in the immutable release commit owns the public release body.
 
 There is deliberately no second SCM authority through `maven-release-plugin`.
 
@@ -49,6 +50,26 @@ For example, a major transition is valid:
 Repeating `1.3.0-SNAPSHOT` as the next version is invalid because the current
 snapshot is the source of release `1.3.0`; development must continue at a newer
 version.
+
+## Reviewed release-notes check
+
+The public GitHub Release body is not generated during publication. Review and
+commit `release_notes.md` together with the release candidate, then validate it:
+
+```bash
+RELEASE_VERSION=1.4.0 \
+RELEASE_NOTES_FILE=release_notes.md \
+  bash .github/scripts/validate-reviewed-release-notes.sh
+```
+
+The validator requires the exact `# Taxonomy X.Y.Z` heading, substantive
+sections, canonical UTF-8/LF content, and rejects generated or unfinished
+placeholders. During publication, `release.sh` reads the `release_notes.md` Git
+blob from the immutable release commit, verifies its object ID, and uses a
+read-only snapshot. The draft body, every resumed release, and the final
+publication gate are compared byte-for-byte with that snapshot. The release
+body is never generated from the issue list, combined with GitHub-generated
+notes, or silently replaced after review.
 
 ## Complete local release verification
 
@@ -101,12 +122,15 @@ cannot safely replace:
 
 - synchronize Maven, citation, Zenodo, Codemeta and Helm versions;
 - create and verify the immutable release commit and annotated tag;
+- capture and validate the reviewed release-notes blob from that exact commit;
 - create a maintenance branch without overwriting an existing one;
+- create or repair the GitHub Release draft with the exact reviewed body;
 - keep the GitHub Release as a draft until downstream artifacts are complete;
 - generate and attach JAR, SBOM, VEX and Helm artifacts;
 - build the container image from the immutable tag;
 - advance `main` once, by fast-forward, to the selected next snapshot;
 - verify the exact resulting `main` commit with canonical CI;
+- revalidate the draft body byte-for-byte immediately before publication;
 - publish and deploy only after every preceding gate succeeds;
 - resume a staged release without recreating its tag or version commits.
 
