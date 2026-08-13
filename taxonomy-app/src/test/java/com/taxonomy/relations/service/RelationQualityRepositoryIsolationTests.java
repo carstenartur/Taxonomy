@@ -6,13 +6,18 @@ import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,7 +40,15 @@ class RelationQualityRepositoryIsolationTests {
 
     @Autowired private TaxonomyNodeRepository nodeRepository;
     @Autowired private RelationProposalRepository proposalRepository;
+    @Autowired private SystemRepositoryRepository systemRepositoryRepository;
     @Autowired private RelationQualityService qualityService;
+
+    @BeforeEach
+    void persistReferencedRepositoryCatalogRows() {
+        persistRepository(REPOSITORY_A);
+        persistRepository(REPOSITORY_B);
+        systemRepositoryRepository.flush();
+    }
 
     @Test
     void metricsAndTopRejectedExcludeForeignRepositoriesAndSiblingWorkspaces() {
@@ -132,6 +145,27 @@ class RelationQualityRepositoryIsolationTests {
     private double historyWeight(RepositoryContext context) {
         return qualityService.acceptanceHistoryWeight(
                 "BP", "CP", RelationType.RELATED_TO, context);
+    }
+
+    private void persistRepository(String repositoryId) {
+        if (systemRepositoryRepository.findByRepositoryId(repositoryId).isPresent()) {
+            return;
+        }
+        Instant now = Instant.now();
+        SystemRepository repository = new SystemRepository();
+        repository.setRepositoryId(repositoryId);
+        repository.setStorageRepositoryName(repositoryId);
+        repository.setSlug(repositoryId);
+        repository.setDisplayName("Quality isolation " + repositoryId);
+        repository.setDescription("Database-profile tenant isolation fixture");
+        repository.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
+        repository.setDefaultBranch("main");
+        repository.setOwnerId("quality-admin");
+        repository.setCreatedBy("quality-admin");
+        repository.setCreatedAt(now);
+        repository.setUpdatedAt(now);
+        repository.setPrimaryRepo(false);
+        systemRepositoryRepository.save(repository);
     }
 
     private TaxonomyNode node(String code, String taxonomyRoot) {
