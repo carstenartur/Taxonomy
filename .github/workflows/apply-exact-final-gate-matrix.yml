@@ -111,6 +111,42 @@ jobs:
               '\n'.join(workflow_lines) + '\n', encoding='utf-8'
           )
 
+          image_gate_path = Path('.github/scripts/check-release-image-gate.py')
+          image_gate_lines = image_gate_path.read_text(encoding='utf-8').splitlines()
+          index = find_unique(
+              image_gate_lines,
+              '        final_ci = workflow.index(',
+              'image gate final CI variable',
+          )
+          image_gate_lines[index] = '        final_gates = workflow.index('
+          if image_gate_lines[index + 1] != (
+              '            "- name: Verify exact final main snapshot with canonical CI"'
+          ):
+              raise SystemExit('image gate final CI step name did not match expected source')
+          image_gate_lines[index + 1] = (
+              '            "- name: Verify exact final main release gate matrix"'
+          )
+          index = find_unique(
+              image_gate_lines,
+              '        if not build < scan < bind < archive < final_ci < publish:',
+              'image gate ordering',
+          )
+          image_gate_lines[index] = (
+              '        if not final_gates < build < scan < bind < archive < publish:'
+          )
+          message_index = find_unique(
+              image_gate_lines,
+              '                "release image must be built, digest-scanned, evidence-bound and archived "',
+              'image gate order diagnostic',
+          )
+          image_gate_lines[message_index:message_index + 2] = [
+              '                "the exact final main gate matrix must pass before the release image is "',
+              '                "built, digest-scanned, evidence-bound, archived and published"',
+          ]
+          image_gate_path.write_text(
+              '\n'.join(image_gate_lines) + '\n', encoding='utf-8'
+          )
+
           contract_path = Path('.github/scripts/check-release-delivery-contract.py')
           contract_lines = contract_path.read_text(encoding='utf-8').splitlines()
 
@@ -263,6 +299,7 @@ jobs:
 
           rm .github/workflows/apply-exact-final-gate-matrix.yml
           bash -n .github/scripts/verify-exact-release-gates.sh
+          python3 -m py_compile .github/scripts/check-release-image-gate.py
           python3 -m py_compile .github/scripts/check-release-delivery-contract.py
           python3 .github/scripts/check-release-delivery-contract.py
           git diff --check
