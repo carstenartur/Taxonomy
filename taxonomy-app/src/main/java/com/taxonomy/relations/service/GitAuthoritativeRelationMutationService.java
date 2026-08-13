@@ -8,6 +8,9 @@ import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.Comm
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RemoveRelation;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.UpsertRelation;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.RebuildResult;
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Service;
@@ -20,25 +23,35 @@ import java.util.Objects;
  * relational projection.
  *
  * <p>The method is deliberately not transactional: a failed projection must
- * never roll back or hide the already successful Git command. Recovery is
- * persisted in an independent transaction and callers always receive the
- * immutable authority, even when that secondary persistence also fails.</p>
+ * never roll back or hide the already successful Git command. The exact command
+ * state is projected first, then the complete branch is rebuilt and proven ready
+ * before any pending recovery is reconciled. Recovery is persisted in an
+ * independent transaction and callers always receive the immutable Git authority,
+ * even when that secondary persistence also fails.</p>
  */
 @Service
 public class GitAuthoritativeRelationMutationService {
 
     private final ArchitectureRelationGitCommandService commandService;
     private final RelationDecisionProjectionService projectionService;
+    private final RelationBranchProjectionRebuildService rebuildService;
+    private final RelationBranchProjectionReadinessService readinessService;
     private final RelationProjectionRecoveryService recoveryService;
 
     public GitAuthoritativeRelationMutationService(
             ArchitectureRelationGitCommandService commandService,
             RelationDecisionProjectionService projectionService,
+            RelationBranchProjectionRebuildService rebuildService,
+            RelationBranchProjectionReadinessService readinessService,
             RelationProjectionRecoveryService recoveryService) {
         this.commandService = Objects.requireNonNull(
                 commandService, "commandService");
         this.projectionService = Objects.requireNonNull(
                 projectionService, "projectionService");
+        this.rebuildService = Objects.requireNonNull(
+                rebuildService, "rebuildService");
+        this.readinessService = Objects.requireNonNull(
+                readinessService, "readinessService");
         this.recoveryService = Objects.requireNonNull(
                 recoveryService, "recoveryService");
     }
@@ -74,6 +87,10 @@ public class GitAuthoritativeRelationMutationService {
         try {
             RelationDecisionProjectionService.ProjectionResult projection =
                     projectionService.project(context, authority, command);
+            RebuildResult rebuild = rebuildService.rebuild(context);
+            verifyCompleteProjection(context, authority, rebuild);
+            recoveryService.reconcileAfterRebuild(
+                    context, authority.authoritativeCommitId());
             return new MutationResult(authority, projection);
         } catch (RuntimeException projectionFailure) {
             RecoveryRecord recovery = null;
@@ -88,12 +105,45 @@ public class GitAuthoritativeRelationMutationService {
         }
     }
 
+    private void verifyCompleteProjection(
+            RepositoryContext context,
+            CommandResult authority,
+            RebuildResult rebuild) {
+        String authoritativeCommit = authority.authoritativeCommitId();
+        if (!authoritativeCommit.equals(rebuild.authoritativeCommitId())) {
+            throw new ProjectionCompletionException(
+                    "Complete relation projection rebuilt commit "
+                            + rebuild.authoritativeCommitId()
+                            + " instead of command authority "
+                            + authoritativeCommit);
+        }
+
+        Readiness readiness = readinessService.inspect(context);
+        boolean complete = readiness.state() == ReadinessState.READY
+                && authoritativeCommit.equals(readiness.currentHeadCommit())
+                && authoritativeCommit.equals(readiness.projectedCommit())
+                && rebuild.relationCount() == readiness.rows().size();
+        if (!complete) {
+            throw new ProjectionCompletionException(
+                    "Relation command at " + authoritativeCommit
+                            + " did not produce a complete readable branch projection: "
+                            + readiness.state());
+        }
+    }
+
     public record MutationResult(
             CommandResult authority,
             RelationDecisionProjectionService.ProjectionResult projection) {
         public MutationResult {
             authority = Objects.requireNonNull(authority, "authority");
             projection = Objects.requireNonNull(projection, "projection");
+        }
+    }
+
+    public static final class ProjectionCompletionException
+            extends IllegalStateException {
+        public ProjectionCompletionException(String message) {
+            super(message);
         }
     }
 
@@ -119,7 +169,7 @@ public class GitAuthoritativeRelationMutationService {
                 Throwable cause) {
             super("Git relation command succeeded at "
                     + authority.authoritativeCommitId()
-                    + ", but its projection requires recovery", cause);
+                    + ", but its complete projection requires recovery", cause);
             this.authority = Objects.requireNonNull(authority, "authority");
             this.recovery = recovery;
         }

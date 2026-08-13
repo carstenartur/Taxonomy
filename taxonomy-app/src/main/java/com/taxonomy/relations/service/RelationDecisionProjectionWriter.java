@@ -77,14 +77,17 @@ public class RelationDecisionProjectionWriter {
 
         if (effectiveRequest.authoritativeCommitId().equals(
                 existing.getAuthoritativeCommitId())) {
-            if (!sameState(existing, effectiveRequest)
-                    || !effectiveRequest.causationId().equals(
-                            existing.getCausationId())) {
+            if (!sameState(existing, effectiveRequest)) {
                 throw new ProjectionConflictException(
                         "Authoritative commit "
                                 + effectiveRequest.authoritativeCommitId()
                                 + " is already projected with different relation state");
             }
+            // Multiple commands may legitimately prove the same semantic no-op
+            // at one unchanged Git head. Their causation IDs identify command
+            // attempts, not different authoritative relation states. A complete
+            // rebuild also records its own rebuild:<commit> causation ID, so
+            // requiring equality here would reject every later unchanged command.
             return result(ProjectionOutcome.REPLAYED, effectiveRequest);
         }
 

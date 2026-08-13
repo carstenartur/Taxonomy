@@ -45,6 +45,26 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.PUT, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
 
+        // Git-authoritative architecture decisions use identity-based endpoints
+        // outside the historic /api/relations and /api/proposals paths. Keep the
+        // same global role gate here; repository/workspace authority remains an
+        // additional controller-level check.
+        auth.requestMatchers(
+                        HttpMethod.POST,
+                        "/api/architecture/relations/**",
+                        "/api/architecture/proposals/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(
+                        HttpMethod.PUT,
+                        "/api/architecture/relations/**",
+                        "/api/architecture/proposals/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(
+                        HttpMethod.DELETE,
+                        "/api/architecture/relations/**",
+                        "/api/architecture/proposals/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+
         auth.requestMatchers(HttpMethod.POST, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format")
                 .authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");

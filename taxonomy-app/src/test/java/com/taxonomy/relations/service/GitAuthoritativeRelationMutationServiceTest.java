@@ -9,6 +9,10 @@ import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.Comm
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
 import com.taxonomy.relations.model.RelationProjectionRecovery.RecoveryStatus;
 import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.ProjectionPendingException;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.RebuildResult;
+import com.taxonomy.relations.service.RelationProjectionRecoveryService.ReconciliationResult;
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
@@ -19,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,6 +31,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -42,26 +49,38 @@ class GitAuthoritativeRelationMutationServiceTest {
     private RelationDecisionProjectionService projectionService;
 
     @Mock
+    private RelationBranchProjectionRebuildService rebuildService;
+
+    @Mock
+    private RelationBranchProjectionReadinessService readinessService;
+
+    @Mock
     private RelationProjectionRecoveryService recoveryService;
 
     @Test
-    void commitsBeforeProjectingAndReturnsBothResults() throws Exception {
+    void commandIsProjectedRebuiltProvenReadyThenReconciled() throws Exception {
         RepositoryContext context = context();
         CommandResult authority = authority();
-        RelationDecisionProjectionService.ProjectionResult projection =
-                new RelationDecisionProjectionService.ProjectionResult(
-                        RelationDecisionProjectionService.ProjectionOutcome.UPDATED,
-                        AUTHORITY,
-                        true);
+        RelationDecisionProjectionService.ProjectionResult projection = projection();
+        RebuildResult rebuild = new RebuildResult(
+                "repo-a", "workspace-a", "review", AUTHORITY, 0);
+        Readiness readiness = new Readiness(
+                ReadinessState.READY,
+                AUTHORITY,
+                AUTHORITY,
+                List.of());
         when(commandService.execute(
                 eq(context), eq(PREVIOUS), any(RelationCommand.class)))
                 .thenReturn(authority);
         when(projectionService.project(
                 eq(context), eq(authority), any(RelationCommand.class)))
                 .thenReturn(projection);
-        GitAuthoritativeRelationMutationService service = service();
+        when(rebuildService.rebuild(context)).thenReturn(rebuild);
+        when(readinessService.inspect(context)).thenReturn(readiness);
+        when(recoveryService.reconcileAfterRebuild(context, AUTHORITY))
+                .thenReturn(new ReconciliationResult(AUTHORITY, 0, 0, 0));
 
-        var result = service.upsert(
+        var result = service().upsert(
                 context,
                 PREVIOUS,
                 definition(),
@@ -69,16 +88,25 @@ class GitAuthoritativeRelationMutationServiceTest {
 
         assertThat(result.authority()).isSameAs(authority);
         assertThat(result.projection()).isSameAs(projection);
-        InOrder order = inOrder(commandService, projectionService);
+        InOrder order = inOrder(
+                commandService,
+                projectionService,
+                rebuildService,
+                readinessService,
+                recoveryService);
         order.verify(commandService).execute(
                 eq(context), eq(PREVIOUS), any(RelationCommand.class));
         order.verify(projectionService).project(
                 eq(context), eq(authority), any(RelationCommand.class));
-        verifyNoInteractions(recoveryService);
+        order.verify(rebuildService).rebuild(context);
+        order.verify(readinessService).inspect(context);
+        order.verify(recoveryService).reconcileAfterRebuild(
+                context, AUTHORITY);
+        verify(recoveryService, never()).recordPending(any(), any());
     }
 
     @Test
-    void persistsRecoveryAfterProjectionFailureAndExposesAuthority()
+    void projectionFailurePersistsRecoveryAndExposesAuthority()
             throws Exception {
         RepositoryContext context = context();
         CommandResult authority = authority();
@@ -93,9 +121,8 @@ class GitAuthoritativeRelationMutationServiceTest {
                 .thenThrow(projectionFailure);
         when(recoveryService.recordPending(authority, projectionFailure))
                 .thenReturn(recovery);
-        GitAuthoritativeRelationMutationService service = service();
 
-        assertThatThrownBy(() -> service.remove(
+        assertThatThrownBy(() -> service().remove(
                 context,
                 PREVIOUS,
                 definition().identity(),
@@ -117,6 +144,70 @@ class GitAuthoritativeRelationMutationServiceTest {
                 eq(context), eq(authority), any(RelationCommand.class));
         order.verify(recoveryService).recordPending(
                 authority, projectionFailure);
+        verifyNoInteractions(rebuildService, readinessService);
+    }
+
+    @Test
+    void rebuildAtAnotherHeadIsRecoveryNotFalseSuccess() throws Exception {
+        RepositoryContext context = context();
+        CommandResult authority = authority();
+        when(commandService.execute(
+                eq(context), eq(PREVIOUS), any(RelationCommand.class)))
+                .thenReturn(authority);
+        when(projectionService.project(
+                eq(context), eq(authority), any(RelationCommand.class)))
+                .thenReturn(projection());
+        when(rebuildService.rebuild(context)).thenReturn(new RebuildResult(
+                "repo-a",
+                "workspace-a",
+                "review",
+                "c".repeat(40),
+                1));
+        when(recoveryService.recordPending(eq(authority), any()))
+                .thenReturn(recovery());
+
+        assertThatThrownBy(() -> service().upsert(
+                context,
+                PREVIOUS,
+                definition(),
+                new CommandMetadata("request-17")))
+                .isInstanceOfSatisfying(
+                        ProjectionPendingException.class,
+                        error -> assertThat(error.getCause())
+                                .isInstanceOf(
+                                        GitAuthoritativeRelationMutationService
+                                                .ProjectionCompletionException.class));
+        verifyNoInteractions(readinessService);
+        verify(recoveryService, never()).reconcileAfterRebuild(any(), any());
+    }
+
+    @Test
+    void corruptCompleteProjectionNeverReconcilesRecovery() throws Exception {
+        RepositoryContext context = context();
+        CommandResult authority = authority();
+        when(commandService.execute(
+                eq(context), eq(PREVIOUS), any(RelationCommand.class)))
+                .thenReturn(authority);
+        when(projectionService.project(
+                eq(context), eq(authority), any(RelationCommand.class)))
+                .thenReturn(projection());
+        when(rebuildService.rebuild(context)).thenReturn(new RebuildResult(
+                "repo-a", "workspace-a", "review", AUTHORITY, 1));
+        when(readinessService.inspect(context)).thenReturn(new Readiness(
+                ReadinessState.CORRUPT,
+                AUTHORITY,
+                AUTHORITY,
+                List.of()));
+        when(recoveryService.recordPending(eq(authority), any()))
+                .thenReturn(recovery());
+
+        assertThatThrownBy(() -> service().upsert(
+                context,
+                PREVIOUS,
+                definition(),
+                new CommandMetadata("request-17")))
+                .isInstanceOf(ProjectionPendingException.class);
+        verify(recoveryService, never()).reconcileAfterRebuild(any(), any());
     }
 
     @Test
@@ -156,7 +247,18 @@ class GitAuthoritativeRelationMutationServiceTest {
 
     private GitAuthoritativeRelationMutationService service() {
         return new GitAuthoritativeRelationMutationService(
-                commandService, projectionService, recoveryService);
+                commandService,
+                projectionService,
+                rebuildService,
+                readinessService,
+                recoveryService);
+    }
+
+    private static RelationDecisionProjectionService.ProjectionResult projection() {
+        return new RelationDecisionProjectionService.ProjectionResult(
+                RelationDecisionProjectionService.ProjectionOutcome.UPDATED,
+                AUTHORITY,
+                true);
     }
 
     private static RepositoryContext context() {

@@ -65,23 +65,49 @@ export async function runRelationWorkflows({ page, evidence }) {
     await page.locator('#newRelDescription').fill('Primary workflow relation');
   }
 
+  async function submitCreateCommand() {
+    const responsePromise = page.waitForResponse(response => {
+      const pathname = new URL(response.url()).pathname;
+      return response.request().method() === 'PUT'
+        && pathname.endsWith('/api/architecture/relations/CP/CONSUMES/IP');
+    }, { timeout: 15_000 });
+    await page.locator('#createRelationSubmit').click();
+    const response = await responsePromise;
+    return {
+      status: response.status(),
+      etag: response.headers().etag || null,
+      body: await response.json()
+    };
+  }
+
   await openCreate();
-  await page.locator('#createRelationSubmit').click();
+  const created = await submitCreateCommand();
+  if (created.status !== 201
+      || created.body.changeKind !== 'ADDED'
+      || created.body.commitCreated !== true
+      || !created.etag) {
+    throw new Error(`Expected a committed ADDED relation, received ${JSON.stringify(created)}`);
+  }
   await page.locator('#createRelationModal').waitFor({ state: 'hidden', timeout: 15_000 });
   await waitForRelation(true);
   await assertBackendRelationCount(1);
   passed('relation create');
 
   await openCreate();
-  await page.locator('#createRelationSubmit').click();
-  await page.locator('#createRelationError').waitFor({ state: 'visible', timeout: 15_000 });
+  const unchanged = await submitCreateCommand();
+  if (unchanged.status !== 200
+      || unchanged.body.changeKind !== 'UNCHANGED'
+      || unchanged.body.commitCreated !== false
+      || unchanged.etag !== created.etag
+      || unchanged.body.authoritativeCommitId !== created.body.authoritativeCommitId) {
+    throw new Error(`Expected an idempotent UNCHANGED upsert, received ${JSON.stringify(unchanged)}`);
+  }
+  await page.locator('#createRelationModal').waitFor({ state: 'hidden', timeout: 15_000 });
+  await waitForRelation(true);
   await assertBackendRelationCount(1);
-  await axeState('relation-duplicate-error', '#createRelationModal');
-  await saveState('relation-duplicate-error', '#createRelationModal');
-  const modal = page.locator('#createRelationModal');
-  await modal.locator('[data-bs-dismiss="modal"]').first().click();
-  await modal.waitFor({ state: 'hidden' });
-  passed('relation duplicate conflict feedback');
+  await axeState('relation-idempotent-upsert', '#relationsBrowser');
+  await saveState('relation-idempotent-upsert', '#relationsBrowser');
+  passed('relation idempotent duplicate upsert');
 
   const row = await exactRelationRow();
   page.once('dialog', dialog => dialog.accept());
