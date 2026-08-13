@@ -6,6 +6,9 @@ import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationProjectionReadService.IdentitySnapshot;
+import com.taxonomy.relations.service.RelationProjectionReadService.ReadModel;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -15,6 +18,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
@@ -29,6 +33,7 @@ class RelationProposalRepositoryScopeTest {
     private TaxonomyNodeRepository nodeRepository;
     private RelationProposalRepository proposalRepository;
     private RelationCandidateService candidateService;
+    private RelationProjectionReadService relationReadService;
     private RelationValidationService validationService;
     private WorkspaceResolver workspaceResolver;
     private RelationProposalService service;
@@ -38,12 +43,20 @@ class RelationProposalRepositoryScopeTest {
         nodeRepository = mock(TaxonomyNodeRepository.class);
         proposalRepository = mock(RelationProposalRepository.class);
         candidateService = mock(RelationCandidateService.class);
+        relationReadService = mock(RelationProjectionReadService.class);
         validationService = mock(RelationValidationService.class);
         workspaceResolver = mock(WorkspaceResolver.class);
+        when(relationReadService.readIdentitySnapshot(any()))
+                .thenReturn(new IdentitySnapshot(
+                        ReadModel.PROJECTION,
+                        ReadinessState.READY,
+                        "a".repeat(40),
+                        Set.of()));
         service = new RelationProposalService(
                 nodeRepository,
                 proposalRepository,
                 candidateService,
+                relationReadService,
                 validationService,
                 workspaceResolver);
     }
@@ -88,6 +101,7 @@ class RelationProposalRepositoryScopeTest {
 
         verify(nodeRepository, never()).findByCode(any());
         verify(proposalRepository, never()).save(any());
+        verify(relationReadService, never()).readIdentitySnapshot(any());
     }
 
     @Test
@@ -115,6 +129,7 @@ class RelationProposalRepositoryScopeTest {
         ArgumentCaptor<RelationProposal> captor =
                 ArgumentCaptor.forClass(RelationProposal.class);
         verify(proposalRepository).save(captor.capture());
+        verify(relationReadService).readIdentitySnapshot(context);
         RelationProposal saved = captor.getValue();
         assertThat(saved.getRepositoryId()).isEqualTo("repo-a");
         assertThat(saved.getWorkspaceId()).isEqualTo("workspace-a");
@@ -140,6 +155,7 @@ class RelationProposalRepositoryScopeTest {
 
         verify(proposalRepository).existsInRepositoryWorkspace(
                 "repo-a", "BP", "CP", RelationType.SUPPORTS, null);
+        verify(relationReadService).readIdentitySnapshot(context);
         verify(proposalRepository, never()).existsInWorkspace(any(), any(), any(), any());
     }
 

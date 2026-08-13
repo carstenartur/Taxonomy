@@ -98,11 +98,11 @@ class ProposalProjectionUnavailableHttpTest {
         assertThat(response.getHeaders().getFirst(
                 RelationApiController.PROJECTION_STATE_HEADER))
                 .isEqualTo("BRANCH_MISSING");
-        assertThat(response.getHeaders().containsKey(HttpHeaders.ETAG))
-                .isFalse();
-        assertThat(response.getHeaders().containsKey(
+        assertThat(response.getHeaders().getFirst(HttpHeaders.ETAG))
+                .isNull();
+        assertThat(response.getHeaders().getFirst(
                 RelationApiController.PENDING_RECOVERY_HEADER))
-                .isFalse();
+                .isNull();
     }
 
     private static Map<String, String> validProposalBody() {
