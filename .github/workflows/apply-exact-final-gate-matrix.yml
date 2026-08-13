@@ -162,7 +162,7 @@ jobs:
 
           index = find_unique(
               contract_lines,
-              '        "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",',
+              '        "EXPECTED_MAIN_SHA: ' + EXPR_OPEN + ' steps.final_main.outputs.sha ' + EXPR_CLOSE + '",',
               'gate helper invocation requirement',
           )
           contract_lines.insert(
@@ -239,7 +239,7 @@ jobs:
           contract_lines[old_block_start:publish_block] = [
               '        final_gate_block = workflow[final_gates:checkout_tag]',
               '        for needle in (',
-              '            "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",',
+              '            "EXPECTED_MAIN_SHA: ' + EXPR_OPEN + ' steps.final_main.outputs.sha ' + EXPR_CLOSE + '",',
               '            \'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"\',',
               '        ):',
               '            if needle not in final_gate_block:',
