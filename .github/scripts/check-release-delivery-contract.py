@@ -79,6 +79,10 @@ def main() -> int:
 
     for needle in (
         "DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}",
+        'RELEASE_NOTES_OUTPUT="${RUNNER_TEMP:-target}/taxonomy-${RELEASE_VERSION}-release-notes.md"',
+        "materialize_reviewed_release_notes()",
+        'RELEASE_NOTES_FILE="$RELEASE_NOTES_OUTPUT"',
+        '--notes-file "$RELEASE_NOTES_OUTPUT"',
         "run_maven_release_check()",
         "stage_version_metadata()",
         "git ls-files -z -- 'pom.xml' ':(glob)**/pom.xml'",
@@ -97,6 +101,21 @@ def main() -> int:
             "release.sh must stage all tracked Maven POMs for both the release "
             "commit and the next-development commit"
         )
+    if script.count("materialize_reviewed_release_notes") != 4:
+        failures.append(
+            "release.sh must materialize reviewed notes for early validation, "
+            "draft creation and direct publication"
+        )
+    if script.count('--notes-file "$RELEASE_NOTES_OUTPUT"') != 2:
+        failures.append(
+            "release.sh must use the immutable notes file for draft creation "
+            "and direct publication"
+        )
+    if "--notes-file release_notes.md" in script:
+        failures.append(
+            "release.sh must not publish notes from a checkout that may have advanced"
+        )
+
     if "git add pom.xml */pom.xml" in script:
         failures.append(
             "release.sh must not use a one-directory POM glob that omits nested modules"
