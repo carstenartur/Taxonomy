@@ -1,0 +1,63 @@
+name: Repair exact final gate patch expressions
+
+on:
+  push:
+    branches:
+      - release/exact-final-gate-matrix
+    paths:
+      - '.github/workflows/repair-exact-final-gate-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: release/exact-final-gate-matrix
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Mask target-workflow expressions inside the patch program
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/apply-exact-final-gate-matrix.yml')
+          text = path.read_text(encoding='utf-8')
+          expression = '$' + '{{' + ' steps.final_main.outputs.sha ' + '}}'
+
+          replacements = {
+              "'        \"EXPECTED_MAIN_SHA: " + expression + "\",',":
+                  "'        \"EXPECTED_MAIN_SHA: ' + EXPR_OPEN + ' steps.final_main.outputs.sha ' + EXPR_CLOSE + '\",',",
+              "'            \"EXPECTED_MAIN_SHA: " + expression + "\",',":
+                  "'            \"EXPECTED_MAIN_SHA: ' + EXPR_OPEN + ' steps.final_main.outputs.sha ' + EXPR_CLOSE + '\",',",
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(
+                      f'expected exactly one masked-expression target, found {count}: {old}'
+                  )
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          rm .github/workflows/repair-exact-final-gate-patch.yml
+          git diff --check
+
+      - name: Commit repaired patch workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Mask expressions in release gate patch workflow"
+          git push origin "HEAD:release/exact-final-gate-matrix"
