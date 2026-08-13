@@ -66,7 +66,7 @@ Relevante Implementierungsstellen sind insbesondere:
 - [`ExternalParser.java`](../../taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/ExternalParser.java)
 - [`FrameworkImportService.java`](../../taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/FrameworkImportService.java)
 - [`ExternalModelMapper.java`](../../taxonomy-dsl/src/main/java/com/taxonomy/dsl/mapping/ExternalModelMapper.java)
-- [Repository-Topologie](../en/REPOSITORY_TOPOLOGY.md)
+- [Repository-Topologie](REPOSITORY_TOPOLOGY.md)
 
 ### 2.2 Wesentliche Lücken
 
