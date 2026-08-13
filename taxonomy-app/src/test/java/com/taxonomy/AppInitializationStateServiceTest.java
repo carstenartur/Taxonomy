@@ -1,13 +1,18 @@
 package com.taxonomy;
 
 import com.taxonomy.shared.service.AppInitializationStateService;
+import com.taxonomy.shared.service.AppInitializationStateService.InitializationReadyEvent;
 import com.taxonomy.shared.service.AppInitializationStateService.State;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * Unit tests for {@link AppInitializationStateService}.
@@ -51,6 +56,22 @@ class AppInitializationStateServiceTest {
     }
 
     @Test
+    void readyTransitionPublishesCompletionEvent() {
+        ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
+        service.setApplicationEventPublisher(publisher);
+
+        service.update(State.READY, "Application is ready");
+
+        ArgumentCaptor<Object> event = ArgumentCaptor.forClass(Object.class);
+        verify(publisher).publishEvent(event.capture());
+        assertThat(event.getValue()).isInstanceOf(InitializationReadyEvent.class);
+        InitializationReadyEvent readyEvent =
+                (InitializationReadyEvent) event.getValue();
+        assertThat(readyEvent.snapshot().state()).isEqualTo(State.READY);
+        assertThat(readyEvent.snapshot().message()).isEqualTo("Application is ready");
+    }
+
+    @Test
     void failTransitionsToFailed() {
         service.update(State.LOADING_TAXONOMY, "Loading taxonomy from Excel\u2026");
 
@@ -90,9 +111,9 @@ class AppInitializationStateServiceTest {
 
     @Test
     void isReadyOnlyTrueForReadyState() {
-        for (State s : State.values()) {
-            service.update(s, "test");
-            assertThat(service.isReady()).isEqualTo(s == State.READY);
+        for (State state : State.values()) {
+            service.update(state, "test");
+            assertThat(service.isReady()).isEqualTo(state == State.READY);
         }
     }
 }
