@@ -100,11 +100,14 @@ jobs:
           cp .github/scripts/generate-vex.py "$RUNNER_TEMP/generate-vex.py"
           cp .github/scripts/verify-exact-release-gates.sh \
             "$RUNNER_TEMP/verify-exact-release-gates.sh"
+          cp .github/scripts/validate-reviewed-release-notes.sh \
+            "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
           chmod +x "$RUNNER_TEMP/release.sh" \
             "$RUNNER_TEMP/update-release-metadata.py" \
             "$RUNNER_TEMP/check-version-state.py" \
             "$RUNNER_TEMP/generate-vex.py" \
-            "$RUNNER_TEMP/verify-exact-release-gates.sh"
+            "$RUNNER_TEMP/verify-exact-release-gates.sh" \
+            "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
 
       - name: Test release guards
         shell: bash
@@ -113,6 +116,7 @@ jobs:
           python3 .github/scripts/test-resolve-release-parameters.py
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/verify-exact-release-gates.sh
+          bash -n .github/scripts/validate-reviewed-release-notes.sh
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
           python3 .github/scripts/check-release-delivery-contract.py
@@ -131,6 +135,7 @@ jobs:
           METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
           VERSION_STATE_HELPER: ${{ runner.temp }}/check-version-state.py
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
+          RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: "$RUNNER_TEMP/release.sh"
@@ -141,6 +146,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
           NEXT_VERSION_INPUT: ${{ steps.release_parameters.outputs.next_development_version }}
+          RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
         shell: bash
         run: |
           set -euo pipefail
@@ -157,6 +163,9 @@ jobs:
           git checkout --detach "$tag"
           python3 "$RUNNER_TEMP/check-version-state.py" \
             --mode release --expected-version "$RELEASE_VERSION" --tag "$tag"
+          RELEASE_NOTES_COMMIT="$tag" \
+            RELEASE_NOTES_FILE=release_notes.md \
+            "$RELEASE_NOTES_VALIDATOR"
 
           release_tag=$(gh release view "$tag" --json tagName --jq '.tagName')
           is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
@@ -405,6 +414,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.release_parameters.outputs.release_version }}
           IMAGE_DIGEST: ${{ steps.release_image.outputs.digest }}
+          RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         shell: bash
         run: |
@@ -412,6 +422,10 @@ jobs:
           tag="v${RELEASE_VERSION}"
           repository="ghcr.io/${GITHUB_REPOSITORY_OWNER}/taxonomy"
           image="${repository}@${IMAGE_DIGEST}"
+
+          RELEASE_NOTES_COMMIT="$tag" \
+            RELEASE_NOTES_FILE=release_notes.md \
+            "$RELEASE_NOTES_VALIDATOR"
 
           assets=$(gh release view "$tag" --json assets --jq '.assets[].name')
           for expected in \
@@ -450,7 +464,10 @@ jobs:
 
           is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft')
           if [[ "$is_draft" == "true" ]]; then
-            gh release edit "$tag" --draft=false --latest
+            gh release edit "$tag" \
+              --notes-file release_notes.md \
+              --draft=false \
+              --latest
           elif [[ "$is_draft" != "false" ]]; then
             echo "::error::Unexpected draft state for $tag: $is_draft"
             exit 1
