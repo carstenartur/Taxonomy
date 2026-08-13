@@ -3,24 +3,15 @@ package com.taxonomy.relations.service;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.model.RelationType;
+import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Service;
 
 /**
  * Validates a candidate relation and computes a confidence score.
  *
- * <p>Repository/workspace/branch duplicate detection is deliberately performed
- * by {@link RelationProposalService} against one immutable identity snapshot.
- * This service therefore remains a persistence-free compatibility and scoring
- * component.</p>
- *
- * <p>Validation rules:
- * <ol>
- *   <li>Compatibility — source/target roots must be allowed for the relation type.</li>
- *   <li>Self-relation check — source must differ from target.</li>
- * </ol>
- *
- * <p>Confidence is derived from the candidate's search rank position
- * (higher rank → higher confidence).
+ * <p>Repository/workspace/branch duplicate detection is performed by
+ * {@link RelationProposalService} against one immutable identity snapshot.
+ * Review-history feedback is delegated with the same explicit context.</p>
  */
 @Service
 public class RelationValidationService {
@@ -35,17 +26,14 @@ public class RelationValidationService {
         this.qualityService = qualityService;
     }
 
-    /**
-     * Validates a candidate relation.
-     *
-     * @return a {@link ValidationResult} with pass/fail and confidence
-     */
+    /** Validates and scores a candidate in the proposal-generation context. */
     public ValidationResult validate(
             TaxonomyNode source,
             TaxonomyNodeDto candidateTarget,
             RelationType relationType,
             int rank,
-            int totalCandidates) {
+            int totalCandidates,
+            RepositoryContext context) {
         if (source.getCode().equals(candidateTarget.getCode())) {
             return ValidationResult.fail("Self-relation not allowed");
         }
@@ -56,21 +44,20 @@ public class RelationValidationService {
                 relationType)) {
             return ValidationResult.fail(
                     "Incompatible roots: " + source.getTaxonomyRoot()
-                    + " → " + candidateTarget.getTaxonomyRoot()
+                    + " to " + candidateTarget.getTaxonomyRoot()
                     + " for " + relationType);
         }
 
-        // Confidence: 80% rank-based + 20% acceptance history feedback.
-        // Repository scoping of that feedback is tracked separately by #728.
         double rankConfidence = computeConfidence(rank, totalCandidates);
         double historyWeight = qualityService.acceptanceHistoryWeight(
                 source.getTaxonomyRoot(),
                 candidateTarget.getTaxonomyRoot(),
-                relationType);
+                relationType,
+                context);
         double confidence = 0.80 * rankConfidence + 0.20 * historyWeight;
 
         String rationale = String.format(
-                "%s [%s] → %s [%s] (%s), rank %d/%d",
+                "%s [%s] to %s [%s] (%s), rank %d/%d",
                 source.getCode(), source.getTaxonomyRoot(),
                 candidateTarget.getCode(), candidateTarget.getTaxonomyRoot(),
                 relationType, rank + 1, totalCandidates);
@@ -80,10 +67,12 @@ public class RelationValidationService {
 
     /**
      * Computes confidence from the rank position.
-     * Rank 0 → highest confidence (0.95), higher ranks → lower confidence (min 0.3).
+     * Rank 0 has the highest confidence, later ranks decline to 0.3.
      */
     public double computeConfidence(int rank, int totalCandidates) {
-        if (totalCandidates <= 1) return 0.9;
+        if (totalCandidates <= 1) {
+            return 0.9;
+        }
         double ratio = (double) rank / (totalCandidates - 1);
         return 0.95 - (0.65 * ratio);
     }

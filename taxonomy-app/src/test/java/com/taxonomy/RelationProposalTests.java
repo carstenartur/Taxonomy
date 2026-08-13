@@ -89,7 +89,12 @@ class RelationProposalTests {
         candidate.setTaxonomyRoot("BP");
 
         var result = validationService.validate(
-                source, candidate, RelationType.RELATED_TO, 0, 1);
+                source,
+                candidate,
+                RelationType.RELATED_TO,
+                0,
+                1,
+                centralWriteContext());
 
         assertThat(result.isValid()).isFalse();
         assertThat(result.getRationale()).contains("Self-relation");
