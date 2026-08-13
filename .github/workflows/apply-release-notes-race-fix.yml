@@ -1,4 +1,4 @@
-name: Apply release-notes contract ratchet
+name: Verify release-notes race fix
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -21,68 +21,126 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
-      - name: Ratchet the static release contract
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Update only the JUnit source contract
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path('.github/scripts/check-release-delivery-contract.py')
+          path = Path('taxonomy-build/src/test/java/com/taxonomy/build/ReviewedReleaseNotesContractTest.java')
           text = path.read_text(encoding='utf-8')
 
           def once(old, new):
               global text
               if text.count(old) != 1:
-                  raise SystemExit(f'expected one occurrence: {old!r}')
+                  raise SystemExit(f'expected one occurrence: {old[:100]!r}')
               text = text.replace(old, new, 1)
 
-          once(
-              '''        "DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}",
-                  "run_maven_release_check()",
-          ''',
-              '''        "DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}",
-                  'RELEASE_NOTES_OUTPUT="${RUNNER_TEMP:-target}/taxonomy-${RELEASE_VERSION}-release-notes.md"',
-                  "materialize_reviewed_release_notes()",
-                  'RELEASE_NOTES_FILE="$RELEASE_NOTES_OUTPUT"',
-                  '--notes-file "$RELEASE_NOTES_OUTPUT"',
-                  "run_maven_release_check()",
-          ''',
-          )
+          old_assertions = '''        assertThat(releaseScript)
+                  .contains(": \\\"${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}\\\"")
+                  .contains("validate_release_notes()")
+                  .contains("$(git rev-parse HEAD)")
+                  .contains("git ls-files --error-unmatch \\\"$notes_file\\\"")
+                  .contains("git diff --quiet HEAD -- \\\"$notes_file\\\"")
+                  .contains("RELEASE_NOTES_COMMIT=\\\"$RELEASE_COMMIT\\\"")
+                  .contains("RELEASE_NOTES_FILE=\\\"$notes_file\\\"")
+                  .contains("\\\"$RELEASE_NOTES_VALIDATOR\\\"")
+                  .doesNotContain("generate_release_notes()")
+                  .doesNotContain("gh issue list")
+                  .doesNotContain("--generate-notes")
+                  .doesNotContain("No closed issues found since");
 
-          marker = '''    if "git add pom.xml */pom.xml" in script:
+              assertThat(countOccurrences(releaseScript, "--notes-file release_notes.md"))
+                  .isEqualTo(2);
           '''
-          extra = '''    if script.count("materialize_reviewed_release_notes") != 4:
-                  failures.append(
-                      "release.sh must materialize reviewed notes for early validation, "
-                      "draft creation and direct publication"
-                  )
-              if script.count('--notes-file "$RELEASE_NOTES_OUTPUT"') != 2:
-                  failures.append(
-                      "release.sh must use the immutable notes file for draft creation "
-                      "and direct publication"
-                  )
-              if "--notes-file release_notes.md" in script:
-                  failures.append(
-                      "release.sh must not publish notes from a checkout that may have advanced"
-                  )
+          new_assertions = '''        assertThat(releaseScript)
+                  .contains(": \\\"${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}\\\"")
+                  .contains("RELEASE_NOTES_OUTPUT=\\\"${RUNNER_TEMP:-target}/taxonomy-${RELEASE_VERSION}-release-notes.md\\\"")
+                  .contains("materialize_reviewed_release_notes()")
+                  .contains("RELEASE_NOTES_COMMIT=\\\"$RELEASE_COMMIT\\\"")
+                  .contains("RELEASE_NOTES_FILE=\\\"$RELEASE_NOTES_OUTPUT\\\"")
+                  .contains("\\\"$RELEASE_NOTES_VALIDATOR\\\"")
+                  .doesNotContain("validate_release_notes()")
+                  .doesNotContain("generate_release_notes()")
+                  .doesNotContain("gh issue list")
+                  .doesNotContain("--generate-notes")
+                  .doesNotContain("--notes-file release_notes.md")
+                  .doesNotContain("No closed issues found since");
 
-              if "git add pom.xml */pom.xml" in script:
+              assertThat(countOccurrences(releaseScript,
+                      "materialize_reviewed_release_notes"))
+                  .isEqualTo(4);
+              assertThat(countOccurrences(releaseScript,
+                      "--notes-file \\\"$RELEASE_NOTES_OUTPUT\\\""))
+                  .isEqualTo(2);
           '''
-          once(marker, extra)
+          once(old_assertions, new_assertions)
+
+          old_direct = '''        String directPublishBlock = between(
+                  releaseScript,
+                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" && \\\"$STATE\\\" == \\\"draft\\\" ]]; then",
+                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" ]]; then");
+              assertThat(directPublishBlock)
+                  .contains("gh release edit \\\"$TAG_NAME\\\"")
+                  .contains("--notes-file release_notes.md")
+                  .contains("--draft=false")
+                  .contains("--latest");
+          '''
+          new_direct = '''        String createBlock = between(
+                  releaseScript,
+                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" && \\\"$STATE\\\" == \\\"tagged\\\" ]]; then",
+                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" && \\\"$STATE\\\" == \\\"draft\\\" ]]; then");
+              assertThat(createBlock)
+                  .contains("materialize_reviewed_release_notes")
+                  .contains("gh release create \\\"$TAG_NAME\\\"")
+                  .contains("--notes-file \\\"$RELEASE_NOTES_OUTPUT\\\"");
+
+              String directPublishBlock = between(
+                  releaseScript,
+                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" && \\\"$STATE\\\" == \\\"draft\\\" ]]; then",
+                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" ]]; then");
+              assertThat(directPublishBlock)
+                  .contains("materialize_reviewed_release_notes")
+                  .contains("gh release edit \\\"$TAG_NAME\\\"")
+                  .contains("--notes-file \\\"$RELEASE_NOTES_OUTPUT\\\"")
+                  .contains("--draft=false")
+                  .contains("--latest");
+          '''
+          once(old_direct, new_direct)
           path.write_text(text, encoding='utf-8')
           PY
 
-          python3 .github/scripts/check-release-delivery-contract.py
           git diff --check
 
-      - name: Commit only the static contract
+      - name: Run focused Maven contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n .github/scripts/release.sh
+          python3 .github/scripts/check-release-delivery-contract.py
+          ./mvnw -B -pl taxonomy-build -am \
+            -Dtest=ReviewedReleaseNotesContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -DskipITs \
+            -Dtaxonomy.model.download.skip=true \
+            -Dtaxonomy.quality.skip=true \
+            -Dtaxonomy.ui.skip=true \
+            test
+
+      - name: Commit only the JUnit contract
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/scripts/check-release-delivery-contract.py
-          test "$(git diff --cached --name-only)" = '.github/scripts/check-release-delivery-contract.py'
-          git commit -m 'Ratchet immutable reviewed-notes publication contract'
+          git add taxonomy-build/src/test/java/com/taxonomy/build/ReviewedReleaseNotesContractTest.java
+          test "$(git diff --cached --name-only)" = 'taxonomy-build/src/test/java/com/taxonomy/build/ReviewedReleaseNotesContractTest.java'
+          git commit -m 'Test checkout-independent reviewed-notes publication'
           git push origin HEAD:release/reviewed-notes-race-fix-build
