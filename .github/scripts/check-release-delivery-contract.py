@@ -79,10 +79,9 @@ def main() -> int:
 
     for needle in (
         "DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}",
-        'RELEASE_NOTES_OUTPUT="${RUNNER_TEMP:-target}/taxonomy-${RELEASE_VERSION}-release-notes.md"',
+        "validate_release_notes()",
         "materialize_reviewed_release_notes()",
-        'RELEASE_NOTES_FILE="$RELEASE_NOTES_OUTPUT"',
-        '--notes-file "$RELEASE_NOTES_OUTPUT"',
+        "RELEASE_NOTES_FILE=release_notes.md",
         "run_maven_release_check()",
         "stage_version_metadata()",
         "git ls-files -z -- 'pom.xml' ':(glob)**/pom.xml'",
@@ -101,19 +100,19 @@ def main() -> int:
             "release.sh must stage all tracked Maven POMs for both the release "
             "commit and the next-development commit"
         )
-    if script.count("materialize_reviewed_release_notes") != 4:
+    if script.count("materialize_reviewed_release_notes") != 3:
         failures.append(
-            "release.sh must materialize reviewed notes for early validation, "
+            "release.sh must rematerialize reviewed notes immediately before "
             "draft creation and direct publication"
         )
-    if script.count('--notes-file "$RELEASE_NOTES_OUTPUT"') != 2:
+    if script.count("RELEASE_NOTES_FILE=release_notes.md") != 1:
         failures.append(
-            "release.sh must use the immutable notes file for draft creation "
-            "and direct publication"
+            "release.sh must source publication notes from the exact release commit"
         )
-    if "--notes-file release_notes.md" in script:
+    if script.count("--notes-file release_notes.md") != 2:
         failures.append(
-            "release.sh must not publish notes from a checkout that may have advanced"
+            "release.sh must pass freshly materialized reviewed notes to both "
+            "draft creation and direct publication"
         )
 
     if "git add pom.xml */pom.xml" in script:
