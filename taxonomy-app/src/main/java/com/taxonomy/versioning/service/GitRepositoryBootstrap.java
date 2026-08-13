@@ -81,14 +81,16 @@ public class GitRepositoryBootstrap {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void initializeDraftBranch() {
-        if (!BOOTSTRAPPED.compareAndSet(false, true)) {
-            log.debug("Draft branch already bootstrapped in this JVM — skipping.");
+        // Check readiness before acquiring the one-shot guard. Otherwise an
+        // ApplicationReady listener can hold the guard while the asynchronous
+        // READY event is dispatched, causing that only retry to be skipped.
+        if (!stateService.isReady()) {
+            log.debug("Taxonomy not yet loaded — deferring draft branch bootstrap.");
             return;
         }
 
-        if (!stateService.isReady()) {
-            log.debug("Taxonomy not yet loaded — deferring draft branch bootstrap.");
-            BOOTSTRAPPED.set(false);
+        if (!BOOTSTRAPPED.compareAndSet(false, true)) {
+            log.debug("Draft branch already bootstrapped in this JVM — skipping.");
             return;
         }
 
