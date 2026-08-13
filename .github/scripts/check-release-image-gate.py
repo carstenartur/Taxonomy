@@ -52,16 +52,16 @@ def main() -> int:
             "- name: Bind release evidence and Helm deployment to immutable image digest"
         )
         archive = workflow.index("- name: Archive immutable release image evidence")
-        final_ci = workflow.index(
-            "- name: Verify exact final main snapshot with canonical CI"
+        final_gates = workflow.index(
+            "- name: Verify exact final main release gate matrix"
         )
         publish = workflow.index(
             "- name: Publish complete release and trigger deployment"
         )
-        if not build < scan < bind < archive < final_ci < publish:
+        if not final_gates < build < scan < bind < archive < publish:
             failures.append(
-                "release image must be built, digest-scanned, evidence-bound and archived "
-                "before final CI and publication"
+                "the exact final main gate matrix must pass before the release image is "
+                "built, digest-scanned, evidence-bound, archived and published"
             )
 
         scan_block = workflow[scan:bind]

@@ -52,7 +52,7 @@ helm template taxonomy deploy/helm/taxonomy \
   --set existingSecret=taxonomy-secrets
 ```
 
-Use an immutable release tag such as `v1.3.1` or `sha-<commit>`; mutable tags such as `latest` are rejected.
+Use an immutable release tag such as `v1.4.0` or `sha-<commit>`; mutable tags such as `latest` are rejected.
 
 ## 4. Install or upgrade
 
