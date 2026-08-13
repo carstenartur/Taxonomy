@@ -9,6 +9,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RelationGitCommandUiContractTest {
 
+    private static final Path RELATION_API = Path.of(
+            "src/main/resources/static/js/api/relations-api.js");
     private static final Path RELATION_ADAPTER = Path.of(
             "src/main/resources/static/js/relations/"
                     + "taxonomy-relations-git-commands.js");
@@ -18,26 +20,35 @@ class RelationGitCommandUiContractTest {
     @Test
     void loadedAdapterCapturesLegacyButtonsAndUsesIdentityCommands()
             throws Exception {
+        String api = Files.readString(RELATION_API);
         String adapter = Files.readString(RELATION_ADAPTER);
         String loader = Files.readString(QUALITY_MODULE);
 
         assertThat(loader)
                 .contains("var loader = document.currentScript;")
-                .contains("new URL(")
+                .contains("new URL('../api/relations-api.js', loader.src)")
+                .contains("apiScript.addEventListener('load', loadCommandAdapter")
                 .contains("'taxonomy-relations-git-commands.js', loader.src")
                 .doesNotContain("script.src = '/js/");
+        assertThat(api)
+                .contains("window.TaxonomyRelationsApi")
+                .contains("/api/architecture/relations/")
+                .contains("function readSnapshot(relationType)")
+                .contains("function upsertRelation(")
+                .contains("function deleteRelation(");
         assertThat(adapter)
                 .contains("document.addEventListener('click', "
                         + "captureRelationCommand, true)")
                 .contains("event.stopImmediatePropagation()")
-                .contains("/api/architecture/relations/")
+                .contains("RelationsApi().readSnapshot(type)")
+                .contains("RelationsApi().upsertRelation(")
+                .contains("RelationsApi().deleteRelation(")
                 .contains("'If-Match'")
                 .contains("'If-None-Match'")
                 .contains("'Idempotency-Key'")
                 .contains("response.status === 202")
                 .contains("response.status === 412")
-                .doesNotContain("fetch('/api/relations', {\n"
-                        + "            method: 'POST'")
+                .doesNotContain("fetch(")
                 .doesNotContain("'/api/relations/' + id")
                 .doesNotContain("relationsById")
                 .doesNotContain("function ensureSnapshot")
@@ -55,7 +66,7 @@ class RelationGitCommandUiContractTest {
         int createRefresh = adapter.indexOf(
                 "refreshSnapshot()", createStart);
         int createCommand = adapter.indexOf(
-                "return fetch(commandUrl(", createRefresh);
+                "return RelationsApi().upsertRelation(", createRefresh);
         int deleteStart = adapter.indexOf(
                 "    function deleteRelation(button) {");
         int identityUse = adapter.indexOf(
@@ -65,7 +76,7 @@ class RelationGitCommandUiContractTest {
         int identityProof = adapter.indexOf(
                 "sameIdentity(candidate, relation)", deleteRefresh);
         int deleteCommand = adapter.indexOf(
-                "return fetch(commandUrl(", identityProof);
+                "return RelationsApi().deleteRelation(", identityProof);
 
         assertThat(createStart).isGreaterThanOrEqualTo(0);
         assertThat(createRefresh).isGreaterThan(createStart);
@@ -75,6 +86,19 @@ class RelationGitCommandUiContractTest {
         assertThat(deleteRefresh).isGreaterThan(identityUse);
         assertThat(identityProof).isGreaterThan(deleteRefresh);
         assertThat(deleteCommand).isGreaterThan(identityProof);
+    }
+
+    @Test
+    void transportLivesInTheNamedApiLayer() throws Exception {
+        String api = Files.readString(RELATION_API);
+        String adapter = Files.readString(RELATION_ADAPTER);
+
+        assertThat(api)
+                .contains("return fetch(url, { cache: 'no-store' })")
+                .contains("return fetch(commandUrl(")
+                .contains("method: 'PUT'")
+                .contains("method: 'DELETE'");
+        assertThat(adapter).doesNotContain("fetch(");
     }
 
     @Test
