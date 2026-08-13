@@ -6,7 +6,6 @@ import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,11 +39,11 @@ public class SystemRepositoryService {
      * and erase credentials persisted by releases that stored external Git tokens
      * in plaintext.
      *
-     * <p>Initialization fails closed. Continuing after a failed cleanup could
-     * leave a usable plaintext credential in the database while the operator
-     * assumes migration succeeded.</p>
+     * <p>This method is invoked by {@link SystemRepositoryCatalogInitializer}
+     * through the Spring-managed service proxy. Initialization therefore runs in
+     * one real transaction and fails closed before later application runners use
+     * repository-owned state.</p>
      */
-    @PostConstruct
     @Transactional
     public void ensureSystemRepository() {
         try {
