@@ -22,6 +22,13 @@
         document.addEventListener('click', captureRelationCommand, true);
     }
 
+    function RelationsApi() {
+        if (!window.TaxonomyRelationsApi) {
+            throw new Error('Relation API client is not available.');
+        }
+        return window.TaxonomyRelationsApi;
+    }
+
     function captureRelationCommand(event) {
         var createButton = event.target.closest('#createRelationSubmit');
         if (createButton) {
@@ -42,11 +49,8 @@
     function refreshSnapshot() {
         var typeFilter = document.getElementById('relationsTypeFilter');
         var type = typeFilter ? typeFilter.value : '';
-        var url = type
-            ? '/api/relations?type=' + encodeURIComponent(type)
-            : '/api/relations';
 
-        return fetch(url, { cache: 'no-store' })
+        return RelationsApi().readSnapshot(type)
             .then(function (response) {
                 branchMissing = response.status === 404
                     && response.headers.get(
@@ -85,16 +89,16 @@
             .then(function () {
                 var extensions = {};
                 if (description) extensions['x-description'] = description;
-                return fetch(commandUrl(
-                    sourceCode, relationType, targetCode), {
-                    method: 'PUT',
-                    headers: commandHeaders('relation-create', true),
-                    body: JSON.stringify({
+                return RelationsApi().upsertRelation(
+                    sourceCode,
+                    relationType,
+                    targetCode,
+                    {
                         provenance: 'manual',
                         extensions: extensions,
                         rationale: description || null
-                    })
-                });
+                    },
+                    commandHeaders('relation-create', true));
             })
             .then(handleCommandResponse)
             .then(function () {
@@ -138,13 +142,11 @@
                     throw new Error(
                         'The displayed relation no longer exists in the current branch snapshot.');
                 }
-                return fetch(commandUrl(
+                return RelationsApi().deleteRelation(
                     relation.sourceCode,
                     relation.relationType,
-                    relation.targetCode), {
-                    method: 'DELETE',
-                    headers: commandHeaders('relation-delete', false)
-                });
+                    relation.targetCode,
+                    commandHeaders('relation-delete', false));
             })
             .then(handleCommandResponse)
             .then(refreshBrowser)
@@ -213,13 +215,6 @@
             throw new Error('No authoritative relation ETag is available.');
         }
         return headers;
-    }
-
-    function commandUrl(sourceCode, relationType, targetCode) {
-        return '/api/architecture/relations/'
-            + encodeURIComponent(sourceCode) + '/'
-            + encodeURIComponent(relationType) + '/'
-            + encodeURIComponent(targetCode);
     }
 
     function refreshBrowser() {
