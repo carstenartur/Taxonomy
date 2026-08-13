@@ -204,9 +204,10 @@ public class GitProposalReviewApiController {
                 proposalId, action, error));
     }
 
-    /** Convert a central read context into an explicitly authorized write context. */
+    /** Preserve isolated write scopes; authorize central reads before upgrading. */
     private RepositoryContext writableContext(RepositoryContext context) {
-        if (context.workspaceId() != null) {
+        if (context.scope() == RepositoryScope.WORKSPACE
+                || context.scope() == RepositoryScope.FORK) {
             return context;
         }
         SystemRepository repository = repositoryService.getRepository(

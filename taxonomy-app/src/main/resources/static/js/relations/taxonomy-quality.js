@@ -116,3 +116,71 @@
         loadQualityDashboard: loadQualityDashboard
     };
 })();
+
+/*
+ * Load the relation API boundary before its sibling command adapter. Expose one
+ * shared readiness promise so the separately loaded browser can safely await
+ * the API even when the dynamic script is slower than parser-inserted scripts.
+ */
+(function () {
+    'use strict';
+    var loader = document.currentScript;
+    if (!loader || !loader.src) return;
+
+    function loadCommandAdapter() {
+        if (document.querySelector(
+            'script[data-taxonomy-relation-command-adapter]')) return;
+        var script = document.createElement('script');
+        script.src = new URL(
+            'taxonomy-relations-git-commands.js', loader.src).href;
+        script.async = false;
+        script.setAttribute(
+            'data-taxonomy-relation-command-adapter', 'true');
+        document.head.appendChild(script);
+    }
+
+    function createApiPromise() {
+        if (window.TaxonomyRelationsApi) {
+            return Promise.resolve(window.TaxonomyRelationsApi);
+        }
+
+        return new Promise(function (resolve, reject) {
+            var apiScript = document.querySelector(
+                'script[data-taxonomy-relations-api]');
+            var created = false;
+            if (!apiScript) {
+                apiScript = document.createElement('script');
+                apiScript.src = new URL('../api/relations-api.js', loader.src).href;
+                apiScript.async = false;
+                apiScript.setAttribute('data-taxonomy-relations-api', 'true');
+                created = true;
+            }
+
+            apiScript.addEventListener('load', function () {
+                if (window.TaxonomyRelationsApi) {
+                    resolve(window.TaxonomyRelationsApi);
+                } else {
+                    reject(new Error('Relation API client did not initialise.'));
+                }
+            }, { once: true });
+            apiScript.addEventListener('error', function () {
+                reject(new Error('Failed to load relation API client.'));
+            }, { once: true });
+
+            if (created) {
+                document.head.appendChild(apiScript);
+            } else if (window.TaxonomyRelationsApi) {
+                resolve(window.TaxonomyRelationsApi);
+            }
+        });
+    }
+
+    if (!window.TaxonomyRelationsApiReady) {
+        window.TaxonomyRelationsApiReady = createApiPromise();
+    }
+    window.TaxonomyRelationsApiReady
+        .then(loadCommandAdapter)
+        .catch(function (error) {
+            console.error('[Taxonomy] ' + error.message);
+        });
+})();
