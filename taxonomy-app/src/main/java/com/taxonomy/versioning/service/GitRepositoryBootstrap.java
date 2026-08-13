@@ -4,6 +4,7 @@ import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.shared.service.AppInitializationStateService;
+import com.taxonomy.shared.service.AppInitializationStateService.InitializationReadyEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,9 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * version history, variants, compare) work correctly from the start.
  *
  * <p>In synchronous init mode (default), the taxonomy is already loaded by the time
- * {@link ApplicationReadyEvent} fires. In asynchronous init mode, this component
- * checks {@link AppInitializationStateService#isReady()} and skips if not ready —
- * the first user-initiated DSL commit will create the branch in that case.
+ * {@link ApplicationReadyEvent} fires. In asynchronous init mode, the application-ready
+ * event can precede catalogue completion; {@link InitializationReadyEvent} retries the
+ * same idempotent bootstrap immediately after the catalogue becomes authoritative.
  *
  * <p>Controlled by the {@code taxonomy.git.bootstrap} property (default: {@code true}).
  * A JVM-wide static guard ensures that only the <em>first</em> Spring context in a
@@ -39,10 +40,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code ddl-auto=create} recreates tables between contexts.
  */
 @Component
-@ConditionalOnProperty(name = "taxonomy.git.bootstrap", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+        name = "taxonomy.git.bootstrap",
+        havingValue = "true",
+        matchIfMissing = true)
 public class GitRepositoryBootstrap {
 
-    private static final Logger log = LoggerFactory.getLogger(GitRepositoryBootstrap.class);
+    private static final Logger log = LoggerFactory.getLogger(
+            GitRepositoryBootstrap.class);
 
     /**
      * JVM-wide guard: ensures bootstrap runs at most once per JVM lifetime.
@@ -57,9 +62,10 @@ public class GitRepositoryBootstrap {
     private final TaxDslExportService exportService;
     private final AppInitializationStateService stateService;
 
-    public GitRepositoryBootstrap(DslGitRepositoryFactory repositoryFactory,
-                                  TaxDslExportService exportService,
-                                  AppInitializationStateService stateService) {
+    public GitRepositoryBootstrap(
+            DslGitRepositoryFactory repositoryFactory,
+            TaxDslExportService exportService,
+            AppInitializationStateService stateService) {
         this.gitRepository = repositoryFactory.getSystemRepository();
         this.exportService = exportService;
         this.stateService = stateService;
@@ -81,8 +87,8 @@ public class GitRepositoryBootstrap {
         }
 
         if (!stateService.isReady()) {
-            log.debug("Taxonomy not yet loaded (async mode) — skipping draft branch bootstrap.");
-            BOOTSTRAPPED.set(false); // allow retry after taxonomy loads
+            log.debug("Taxonomy not yet loaded — deferring draft branch bootstrap.");
+            BOOTSTRAPPED.set(false);
             return;
         }
 
@@ -93,13 +99,26 @@ public class GitRepositoryBootstrap {
             }
 
             String dsl = exportService.exportAll("default");
-            String commitId = gitRepository.commitDsl("draft", dsl, "system",
+            String commitId = gitRepository.commitDsl(
+                    "draft",
+                    dsl,
+                    "system",
                     "Initial taxonomy materialization");
 
-            log.info("Bootstrapped 'draft' branch with initial taxonomy DSL " +
-                    "(commit={}, {} chars)", commitId.substring(0, 7), dsl.length());
-        } catch (IOException e) {
-            log.warn("Failed to bootstrap 'draft' branch: {}", e.getMessage());
+            log.info(
+                    "Bootstrapped 'draft' branch with initial taxonomy DSL "
+                            + "(commit={}, {} chars)",
+                    commitId.substring(0, 7),
+                    dsl.length());
+        } catch (IOException error) {
+            BOOTSTRAPPED.set(false);
+            log.warn("Failed to bootstrap 'draft' branch: {}", error.getMessage());
         }
+    }
+
+    /** Completes the deferred bootstrap after asynchronous taxonomy loading. */
+    @EventListener(InitializationReadyEvent.class)
+    public void initializeAfterTaxonomyReady() {
+        initializeDraftBranch();
     }
 }
