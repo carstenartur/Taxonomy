@@ -143,7 +143,8 @@ def main() -> int:
         "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
         'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"',
         'docker buildx imagetools inspect "$image"',
-        'gh release edit "$tag" --draft=false --latest',
+        'gh release edit "$tag"',
+        "--notes-file release_notes.md",
         "Draft release is missing required Helm asset",
         "Render deployment triggered after complete release publication.",
     ):
