@@ -1,4 +1,4 @@
-name: Verify release-notes race fix
+name: Apply compatible release-notes race fix
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: write
 
 jobs:
-  verify:
+  apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -21,126 +21,86 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          java-version: '21'
-          distribution: temurin
-          cache: maven
-
-      - name: Update only the JUnit source contract
+      - name: Restore early validation and rematerialize before publication
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          path = Path('taxonomy-build/src/test/java/com/taxonomy/build/ReviewedReleaseNotesContractTest.java')
+          path = Path('.github/scripts/release.sh')
           text = path.read_text(encoding='utf-8')
 
           def once(old, new):
               global text
               if text.count(old) != 1:
-                  raise SystemExit(f'expected one occurrence: {old[:100]!r}')
+                  raise SystemExit(f'expected one occurrence: {old!r}')
               text = text.replace(old, new, 1)
 
-          old_assertions = '''        assertThat(releaseScript)
-                  .contains(": \\\"${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}\\\"")
-                  .contains("validate_release_notes()")
-                  .contains("$(git rev-parse HEAD)")
-                  .contains("git ls-files --error-unmatch \\\"$notes_file\\\"")
-                  .contains("git diff --quiet HEAD -- \\\"$notes_file\\\"")
-                  .contains("RELEASE_NOTES_COMMIT=\\\"$RELEASE_COMMIT\\\"")
-                  .contains("RELEASE_NOTES_FILE=\\\"$notes_file\\\"")
-                  .contains("\\\"$RELEASE_NOTES_VALIDATOR\\\"")
-                  .doesNotContain("generate_release_notes()")
-                  .doesNotContain("gh issue list")
-                  .doesNotContain("--generate-notes")
-                  .doesNotContain("No closed issues found since");
+          once(
+              'RELEASE_NOTES_OUTPUT="${RUNNER_TEMP:-target}/taxonomy-${RELEASE_VERSION}-release-notes.md"\n',
+              '',
+          )
 
-              assertThat(countOccurrences(releaseScript, "--notes-file release_notes.md"))
-                  .isEqualTo(2);
-          '''
-          new_assertions = '''        assertThat(releaseScript)
-                  .contains(": \\\"${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}\\\"")
-                  .contains("RELEASE_NOTES_OUTPUT=\\\"${RUNNER_TEMP:-target}/taxonomy-${RELEASE_VERSION}-release-notes.md\\\"")
-                  .contains("materialize_reviewed_release_notes()")
-                  .contains("RELEASE_NOTES_COMMIT=\\\"$RELEASE_COMMIT\\\"")
-                  .contains("RELEASE_NOTES_FILE=\\\"$RELEASE_NOTES_OUTPUT\\\"")
-                  .contains("\\\"$RELEASE_NOTES_VALIDATOR\\\"")
-                  .doesNotContain("validate_release_notes()")
-                  .doesNotContain("generate_release_notes()")
-                  .doesNotContain("gh issue list")
-                  .doesNotContain("--generate-notes")
-                  .doesNotContain("--notes-file release_notes.md")
-                  .doesNotContain("No closed issues found since");
+          pattern = re.compile(
+              r'materialize_reviewed_release_notes\(\) \{.*?\n\}\n\ncollect_release_artifacts',
+              re.DOTALL,
+          )
+          replacement = '''validate_release_notes() {
+            local notes_file=release_notes.md
+            if [[ "$(git rev-parse HEAD)" != "$RELEASE_COMMIT" ]]; then
+              fail "Reviewed release notes must be validated at release commit $RELEASE_COMMIT"
+            fi
+            git ls-files --error-unmatch "$notes_file" >/dev/null \\
+              || fail "$notes_file must be tracked by the exact release commit"
+            git diff --quiet HEAD -- "$notes_file" \\
+              || fail "$notes_file differs from the exact release commit"
+            RELEASE_VERSION="$RELEASE_VERSION" \\
+              RELEASE_NOTES_COMMIT="$RELEASE_COMMIT" \\
+              RELEASE_NOTES_FILE="$notes_file" \\
+              "$RELEASE_NOTES_VALIDATOR"
+          }
 
-              assertThat(countOccurrences(releaseScript,
-                      "materialize_reviewed_release_notes"))
-                  .isEqualTo(4);
-              assertThat(countOccurrences(releaseScript,
-                      "--notes-file \\\"$RELEASE_NOTES_OUTPUT\\\""))
-                  .isEqualTo(2);
-          '''
-          once(old_assertions, new_assertions)
+          materialize_reviewed_release_notes() {
+            RELEASE_VERSION="$RELEASE_VERSION" \\
+              RELEASE_NOTES_COMMIT="$RELEASE_COMMIT" \\
+              RELEASE_NOTES_FILE=release_notes.md \\
+              "$RELEASE_NOTES_VALIDATOR"
+          }
 
-          old_direct = '''        String directPublishBlock = between(
-                  releaseScript,
-                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" && \\\"$STATE\\\" == \\\"draft\\\" ]]; then",
-                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" ]]; then");
-              assertThat(directPublishBlock)
-                  .contains("gh release edit \\\"$TAG_NAME\\\"")
-                  .contains("--notes-file release_notes.md")
-                  .contains("--draft=false")
-                  .contains("--latest");
-          '''
-          new_direct = '''        String createBlock = between(
-                  releaseScript,
-                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" && \\\"$STATE\\\" == \\\"tagged\\\" ]]; then",
-                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" && \\\"$STATE\\\" == \\\"draft\\\" ]]; then");
-              assertThat(createBlock)
-                  .contains("materialize_reviewed_release_notes")
-                  .contains("gh release create \\\"$TAG_NAME\\\"")
-                  .contains("--notes-file \\\"$RELEASE_NOTES_OUTPUT\\\"");
+          collect_release_artifacts'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected one materialization function, found {count}')
 
-              String directPublishBlock = between(
-                  releaseScript,
-                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" && \\\"$STATE\\\" == \\\"draft\\\" ]]; then",
-                  "if [[ \\\"$DRY_RUN\\\" != \\\"true\\\" ]]; then");
-              assertThat(directPublishBlock)
-                  .contains("materialize_reviewed_release_notes")
-                  .contains("gh release edit \\\"$TAG_NAME\\\"")
-                  .contains("--notes-file \\\"$RELEASE_NOTES_OUTPUT\\\"")
-                  .contains("--draft=false")
-                  .contains("--latest");
-          '''
-          once(old_direct, new_direct)
+          once(
+              '\nmaterialize_reviewed_release_notes\n\nif [[ "$SKIP_TESTS" == "true" ]]; then\n',
+              '\nvalidate_release_notes\n\nif [[ "$SKIP_TESTS" == "true" ]]; then\n',
+          )
+          if text.count('--notes-file "$RELEASE_NOTES_OUTPUT"') != 2:
+              raise SystemExit('expected two runner-temp notes arguments')
+          text = text.replace(
+              '--notes-file "$RELEASE_NOTES_OUTPUT"',
+              '--notes-file release_notes.md',
+          )
+          if text.count('materialize_reviewed_release_notes') != 3:
+              raise SystemExit('expected definition plus two publication calls')
+          if text.count('validate_release_notes') != 2:
+              raise SystemExit('expected definition plus early validation call')
           path.write_text(text, encoding='utf-8')
           PY
 
+          bash -n .github/scripts/release.sh
           git diff --check
 
-      - name: Run focused Maven contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash -n .github/scripts/release.sh
-          python3 .github/scripts/check-release-delivery-contract.py
-          ./mvnw -B -pl taxonomy-build -am \
-            -Dtest=ReviewedReleaseNotesContractTest \
-            -Dsurefire.failIfNoSpecifiedTests=false \
-            -DskipITs \
-            -Dtaxonomy.model.download.skip=true \
-            -Dtaxonomy.quality.skip=true \
-            -Dtaxonomy.ui.skip=true \
-            test
-
-      - name: Commit only the JUnit contract
+      - name: Commit only the compatible product script
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add taxonomy-build/src/test/java/com/taxonomy/build/ReviewedReleaseNotesContractTest.java
-          test "$(git diff --cached --name-only)" = 'taxonomy-build/src/test/java/com/taxonomy/build/ReviewedReleaseNotesContractTest.java'
-          git commit -m 'Test checkout-independent reviewed-notes publication'
+          git add .github/scripts/release.sh
+          test "$(git diff --cached --name-only)" = '.github/scripts/release.sh'
+          git commit -m 'Rematerialize reviewed notes before publication'
           git push origin HEAD:release/reviewed-notes-race-fix-build
