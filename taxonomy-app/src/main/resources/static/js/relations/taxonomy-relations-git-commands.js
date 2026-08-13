@@ -61,7 +61,9 @@
                 }
                 if (!response.ok) {
                     headEtag = null;
-                    throw new Error(projectionError(response));
+                    throw commandError(
+                        'PROJECTION_UNAVAILABLE',
+                        projectionError(response));
                 }
                 headEtag = response.headers.get('ETag');
                 branchMissing = false;
@@ -101,22 +103,34 @@
                     commandHeaders('relation-create', true));
             })
             .then(handleCommandResponse)
-            .then(function () {
+            .then(function (outcome) {
                 setSpinner(false);
-                var modalElement = document.getElementById(
-                    'createRelationModal');
-                var modal = modalElement && window.bootstrap
-                    ? window.bootstrap.Modal.getInstance(modalElement)
-                    : null;
-                if (modal) modal.hide();
+                closeCreateModal();
                 refreshBrowser();
+                if (outcome.projectionPending) {
+                    showPendingRecovery(outcome);
+                }
             })
             .catch(function (error) {
                 setSpinner(false);
+                if (error.kind === 'CONFLICT') {
+                    showCommandStatus('warning', error.message);
+                    refreshBrowser();
+                    return;
+                }
                 showError(errorElement, message(
                     'relations.create.error',
                     'Could not create relation') + ': ' + error.message);
             });
+    }
+
+    function closeCreateModal() {
+        var modalElement = document.getElementById(
+            'createRelationModal');
+        var modal = modalElement && window.bootstrap
+            ? window.bootstrap.Modal.getInstance(modalElement)
+            : null;
+        if (modal) modal.hide();
     }
 
     function deleteRelation(button) {
@@ -149,9 +163,18 @@
                     commandHeaders('relation-delete', false));
             })
             .then(handleCommandResponse)
-            .then(refreshBrowser)
+            .then(function (outcome) {
+                refreshBrowser();
+                if (outcome.projectionPending) {
+                    showPendingRecovery(outcome);
+                }
+            })
             .catch(function (error) {
                 refreshBrowser();
+                if (error.kind === 'CONFLICT') {
+                    showCommandStatus('warning', error.message);
+                    return;
+                }
                 showBrowserError(message(
                     'relations.delete.failed',
                     'Could not delete relation') + ': ' + error.message);
@@ -185,20 +208,63 @@
             headEtag = nextEtag;
             branchMissing = false;
         }
-        if (response.status === 202) {
-            throw new Error(
-                'Git accepted the change, but projection recovery is pending.');
+
+        return readJson(response).then(function (body) {
+            if (response.status === 202) {
+                return {
+                    projectionPending: true,
+                    body: body
+                };
+            }
+            if (response.status === 412) {
+                headEtag = null;
+                throw commandError(
+                    'CONFLICT',
+                    'The selected branch changed. Relations are being reloaded.',
+                    body);
+            }
+            if (!response.ok) {
+                throw commandError(
+                    'HTTP',
+                    'HTTP ' + response.status,
+                    body);
+            }
+            return {
+                projectionPending: false,
+                body: body
+            };
+        });
+    }
+
+    function readJson(response) {
+        if (response.status === 204) {
+            return Promise.resolve(null);
         }
-        if (response.status === 412) {
-            headEtag = null;
-            throw new Error(
-                'The selected branch changed. Relations are being reloaded.');
+        var contentType = response.headers.get('Content-Type') || '';
+        if (contentType.indexOf('application/json') < 0) {
+            return Promise.resolve(null);
         }
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-        if (response.status === 204) return null;
-        return response.json();
+        return response.json().catch(function () { return null; });
+    }
+
+    function commandError(kind, text, body) {
+        var error = new Error(text);
+        error.kind = kind;
+        error.body = body || null;
+        return error;
+    }
+
+    function showPendingRecovery(outcome) {
+        var body = outcome.body || {};
+        var commit = body.authoritativeCommitId
+            ? ' (' + body.authoritativeCommitId.substring(0, 12) + ')'
+            : '';
+        showCommandStatus(
+            'warning',
+            message(
+                'relations.command.projection.pending',
+                'Git accepted the relation change' + commit
+                    + ', but its readable projection still requires recovery.'));
     }
 
     function commandHeaders(prefix, allowCreation) {
@@ -260,15 +326,25 @@
         element.classList.remove('d-none');
     }
 
-    function showBrowserError(text) {
+    function showCommandStatus(type, text) {
+        if (window.TaxonomyBrowse
+                && typeof window.TaxonomyBrowse.showStatus === 'function') {
+            window.TaxonomyBrowse.showStatus(type, text);
+            return;
+        }
+
         var container = document.getElementById(
             'relationsTableContainer');
         if (!container) return;
-        var error = document.createElement('div');
-        error.className = 'text-danger small p-1';
-        error.textContent = text;
-        container.prepend(error);
-        window.setTimeout(function () { error.remove(); }, 5000);
+        var notice = document.createElement('div');
+        notice.className = 'alert alert-' + type + ' py-1 mb-1';
+        notice.setAttribute('role', type === 'danger' ? 'alert' : 'status');
+        notice.textContent = text;
+        container.prepend(notice);
+    }
+
+    function showBrowserError(text) {
+        showCommandStatus('danger', text);
     }
 
     function message(key, fallback) {

@@ -79,6 +79,33 @@ class RelationGitCommandUiContractTest {
     }
 
     @Test
+    void acceptedGitCommandPreservesAuthorityAndReportsProjectionRecoverySeparately()
+            throws Exception {
+        String adapter = Files.readString(RELATION_ADAPTER);
+
+        int etagUpdate = adapter.indexOf("headEtag = nextEtag");
+        int accepted = adapter.indexOf("if (response.status === 202)");
+        int pendingOutcome = adapter.indexOf(
+                "projectionPending: true", accepted);
+        int conflict = adapter.indexOf(
+                "if (response.status === 412)", pendingOutcome);
+
+        assertThat(etagUpdate).isGreaterThanOrEqualTo(0);
+        assertThat(accepted).isGreaterThan(etagUpdate);
+        assertThat(pendingOutcome).isGreaterThan(accepted);
+        assertThat(conflict).isGreaterThan(pendingOutcome);
+        assertThat(adapter)
+                .contains("showPendingRecovery(outcome)")
+                .contains("showCommandStatus(")
+                .doesNotContain(
+                        "throw new Error(\n"
+                                + "                'Git accepted the change");
+        assertThat(adapter.split(
+                "showPendingRecovery\\(outcome\\)", -1))
+                .hasSize(4);
+    }
+
+    @Test
     void createAndDeleteRefreshTheAuthoritativeSnapshotImmediately()
             throws Exception {
         String adapter = Files.readString(RELATION_ADAPTER);
