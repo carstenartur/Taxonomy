@@ -110,7 +110,7 @@ public class GitRepositoryBootstrap {
                             + "(commit={}, {} chars)",
                     commitId.substring(0, 7),
                     dsl.length());
-        } catch (IOException error) {
+        } catch (IOException | RuntimeException error) {
             BOOTSTRAPPED.set(false);
             log.warn("Failed to bootstrap 'draft' branch: {}", error.getMessage());
         }
