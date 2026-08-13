@@ -20,6 +20,7 @@ MAJOR_MINOR=$(echo "${RELEASE_VERSION}" | sed 's/\.[^.]*$//')
 MAINTENANCE_BRANCH="maintenance/${MAJOR_MINOR}.x"
 TEMP_BRANCH="release-temp-${RELEASE_VERSION}"
 PROTECTED_MAIN_ADVANCE_WORKFLOW="protected-release-main-advance.yml"
+RELEASE_NOTES_OUTPUT="${RUNNER_TEMP:-target}/taxonomy-${RELEASE_VERSION}-release-notes.md"
 
 fail() {
   echo "::error::$*"
@@ -86,18 +87,10 @@ if next_version <= release:
     )
 PY
 
-validate_release_notes() {
-  local notes_file=release_notes.md
-  if [[ "$(git rev-parse HEAD)" != "$RELEASE_COMMIT" ]]; then
-    fail "Reviewed release notes must be validated at release commit $RELEASE_COMMIT"
-  fi
-  git ls-files --error-unmatch "$notes_file" >/dev/null \
-    || fail "$notes_file must be tracked by the exact release commit"
-  git diff --quiet HEAD -- "$notes_file" \
-    || fail "$notes_file differs from the exact release commit"
+materialize_reviewed_release_notes() {
   RELEASE_VERSION="$RELEASE_VERSION" \
     RELEASE_NOTES_COMMIT="$RELEASE_COMMIT" \
-    RELEASE_NOTES_FILE="$notes_file" \
+    RELEASE_NOTES_FILE="$RELEASE_NOTES_OUTPUT" \
     "$RELEASE_NOTES_VALIDATOR"
 }
 
@@ -280,7 +273,7 @@ else
     --expected-version "$RELEASE_VERSION" --tag "$TAG_NAME"
 fi
 
-validate_release_notes
+materialize_reviewed_release_notes
 
 if [[ "$SKIP_TESTS" == "true" ]]; then
   run_maven_release_check release release-check clean package -DskipTests
@@ -327,11 +320,12 @@ else
 fi
 
 if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then
+  materialize_reviewed_release_notes
   gh release create "$TAG_NAME" \
     --verify-tag \
     --draft \
     --title "Release $RELEASE_VERSION" \
-    --notes-file release_notes.md
+    --notes-file "$RELEASE_NOTES_OUTPUT"
   STATE=draft
 fi
 
@@ -345,8 +339,9 @@ if [[ "$DRY_RUN" != "true" && "$STATE" == "draft" ]]; then
   if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then
     echo "Release $TAG_NAME remains a draft until downstream artifacts and final CI succeed."
   else
+    materialize_reviewed_release_notes
     gh release edit "$TAG_NAME" \
-      --notes-file release_notes.md \
+      --notes-file "$RELEASE_NOTES_OUTPUT" \
       --draft=false \
       --latest
     STATE=published
