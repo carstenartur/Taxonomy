@@ -7,6 +7,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.oracle.OracleContainer;
 
+import java.time.Duration;
+
 /**
  * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
  * but against an <strong>Oracle Database Free</strong> backend.
@@ -24,7 +26,8 @@ class DiagnosticsOracleContainerIT extends AbstractDatabaseContainerIT {
     static Network network = Network.newNetwork();
 
     @Container
-    static OracleContainer db = ContainerTestUtils.oracleContainer(network);
+    static OracleContainer db = ContainerTestUtils.oracleContainer(network)
+            .withStartupTimeout(Duration.ofMinutes(3));
 
     @Container
     static GenericContainer<?> app = ContainerTestUtils.oracleAppContainer(network)
