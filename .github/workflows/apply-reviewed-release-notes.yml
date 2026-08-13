@@ -1,0 +1,149 @@
+name: Apply reviewed release notes authority fix
+
+on:
+  push:
+    branches:
+      - automation/apply-exact-gate-behavior-contract
+    paths:
+      - '.github/workflows/apply-reviewed-release-notes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: release/preserve-reviewed-notes
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Preserve exact reviewed release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          release_path = Path('.github/scripts/release.sh')
+          release = release_path.read_text(encoding='utf-8')
+
+          requirement = ': "${VEX_HELPER:?VEX_HELPER is required}"\n'
+          replacement = requirement + ': "${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}"\n'
+          if release.count(requirement) != 1:
+              raise SystemExit('expected one VEX helper requirement')
+          if 'RELEASE_NOTES_VALIDATOR is required' in release:
+              raise SystemExit('release-notes validator requirement already present')
+          release = release.replace(requirement, replacement)
+
+          start = release.index('generate_release_notes() {')
+          end = release.index('\n\ncollect_release_artifacts() {', start)
+          validator_function = '''validate_release_notes() {
+            local notes_file=release_notes.md
+            if ! git ls-files --error-unmatch "$notes_file" >/dev/null 2>&1; then
+              fail "Reviewed release notes are not tracked in the release commit: $notes_file"
+            fi
+            if ! git diff --quiet HEAD -- "$notes_file"; then
+              fail "Reviewed release notes differ from the immutable release commit"
+            fi
+            RELEASE_VERSION="$RELEASE_VERSION" RELEASE_NOTES_FILE="$notes_file" \\
+              "$RELEASE_NOTES_VALIDATOR"
+          }'''
+          validator_function = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in validator_function.splitlines()
+          )
+          release = release[:start] + validator_function + release[end:]
+
+          if release.count('\ngenerate_release_notes\n') != 1:
+              raise SystemExit('expected one generate_release_notes invocation')
+          release = release.replace('\ngenerate_release_notes\n', '\nvalidate_release_notes\n')
+
+          generated_notes = '''    --title "Release $RELEASE_VERSION" \\
+            --notes-file release_notes.md \\
+            --generate-notes'''
+          reviewed_notes = '''    --title "Release $RELEASE_VERSION" \\
+            --notes-file release_notes.md'''
+          generated_notes = '\n'.join(
+              line[8:] if line.startswith('        ') else line
+              for line in generated_notes.splitlines()
+          )
+          reviewed_notes = '\n'.join(
+              line[8:] if line.startswith('        ') else line
+              for line in reviewed_notes.splitlines()
+          )
+          if release.count(generated_notes) != 1:
+              raise SystemExit('expected one generated-notes gh release block')
+          release = release.replace(generated_notes, reviewed_notes)
+
+          for forbidden in (
+              'generate_release_notes()',
+              'gh issue list',
+              '--generate-notes',
+              'No closed issues found since',
+              'echo "Initial release"',
+          ):
+              if forbidden in release:
+                  raise SystemExit(f'release script still contains {forbidden!r}')
+          release_path.write_text(release, encoding='utf-8')
+
+          workflow_path = Path('.github/workflows/deploy-release.yml')
+          workflow = workflow_path.read_text(encoding='utf-8')
+
+          copy_anchor = '          cp .github/scripts/generate-vex.py "$RUNNER_TEMP/generate-vex.py"\n'
+          copy_validator = '''          cp .github/scripts/validate-reviewed-release-notes.sh \\
+            "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
+'''
+          if workflow.count(copy_anchor) != 1:
+              raise SystemExit('expected one generate-vex copy anchor')
+          workflow = workflow.replace(copy_anchor, copy_anchor + copy_validator)
+
+          chmod_anchor = '''            "$RUNNER_TEMP/generate-vex.py" \\
+            "$RUNNER_TEMP/verify-exact-release-gates.sh"'''
+          chmod_replacement = '''            "$RUNNER_TEMP/generate-vex.py" \\
+            "$RUNNER_TEMP/validate-reviewed-release-notes.sh" \\
+            "$RUNNER_TEMP/verify-exact-release-gates.sh"'''
+          if workflow.count(chmod_anchor) != 1:
+              raise SystemExit('expected one release-helper chmod anchor')
+          workflow = workflow.replace(chmod_anchor, chmod_replacement)
+
+          syntax_anchor = '          bash -n .github/scripts/verify-exact-release-gates.sh\n'
+          syntax_line = '          bash -n .github/scripts/validate-reviewed-release-notes.sh\n'
+          if workflow.count(syntax_anchor) != 1:
+              raise SystemExit('expected one exact-gate syntax anchor')
+          workflow = workflow.replace(syntax_anchor, syntax_anchor + syntax_line)
+
+          env_anchor = '          VEX_HELPER: ${{ runner.temp }}/generate-vex.py\n'
+          env_line = '          RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh\n'
+          if workflow.count(env_anchor) != 1:
+              raise SystemExit('expected one VEX helper environment anchor')
+          workflow = workflow.replace(env_anchor, env_anchor + env_line)
+
+          workflow_path.write_text(workflow, encoding='utf-8')
+          PY
+
+          bash -n .github/scripts/release.sh
+          bash -n .github/scripts/validate-reviewed-release-notes.sh
+          bash -n .github/scripts/verify-exact-release-gates.sh
+          python3 .github/scripts/check-release-delivery-contract.py
+          ./mvnw -B -pl taxonomy-build -am \
+            -Dtest=ReviewedReleaseNotesContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -DskipITs \
+            -Dtaxonomy.model.download.skip=true \
+            -Dtaxonomy.quality.skip=true \
+            -Dtaxonomy.ui.skip=true test
+          git diff --check
+
+      - name: Commit reviewed-notes authority fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/scripts/release.sh .github/workflows/deploy-release.yml
+          git commit -m "Publish exact reviewed release notes"
+          git push origin "HEAD:release/preserve-reviewed-notes"
