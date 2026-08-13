@@ -14,6 +14,8 @@ class RelationGitCommandUiContractTest {
     private static final Path RELATION_ADAPTER = Path.of(
             "src/main/resources/static/js/relations/"
                     + "taxonomy-relations-git-commands.js");
+    private static final Path RELATION_BROWSER = Path.of(
+            "src/main/resources/static/js/relations/taxonomy-relations.js");
     private static final Path QUALITY_MODULE = Path.of(
             "src/main/resources/static/js/relations/taxonomy-quality.js");
 
@@ -26,8 +28,8 @@ class RelationGitCommandUiContractTest {
 
         assertThat(loader)
                 .contains("var loader = document.currentScript;")
+                .contains("window.TaxonomyRelationsApiReady")
                 .contains("new URL('../api/relations-api.js', loader.src)")
-                .contains("apiScript.addEventListener('load', loadCommandAdapter")
                 .contains("'taxonomy-relations-git-commands.js', loader.src")
                 .doesNotContain("script.src = '/js/");
         assertThat(api)
@@ -54,6 +56,26 @@ class RelationGitCommandUiContractTest {
                 .doesNotContain("function ensureSnapshot")
                 .doesNotContain("addEventListener('toggle'")
                 .doesNotContain("typeFilter.addEventListener");
+    }
+
+    @Test
+    void relationBrowserFailsClosedInsteadOfRenderingUnavailableProjectionAsEmpty()
+            throws Exception {
+        String browser = Files.readString(RELATION_BROWSER);
+
+        assertThat(browser)
+                .contains("relationApiReady()")
+                .contains("api.readSnapshot(type)")
+                .contains("if (!response.ok)")
+                .contains("throw projectionReadError(response)")
+                .contains("X-Taxonomy-Relation-Projection-State")
+                .contains("X-Taxonomy-Relation-Pending-Recovery")
+                .contains("renderRelationsLoadError(content, error)")
+                .contains("retry.addEventListener('click', loadRelations)")
+                .contains("content.setAttribute('aria-busy', 'false')")
+                .doesNotContain("r.ok ? r.json() : []")
+                .doesNotContain(
+                        "var url = type ? '/api/relations?type='");
     }
 
     @Test
