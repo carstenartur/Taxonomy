@@ -3,7 +3,7 @@
  *
  * Checks the provisioning status of the user's workspace on page load.
  * If the workspace is not yet provisioned, a modal dialog guides the user
- * through the creation of their personal working copy.
+ * through creation of the personal working copy and its branch projection.
  *
  * Uses i18n keys for all user-visible labels.
  *
@@ -13,8 +13,12 @@ window.TaxonomyWorkspaceProvisioning = (function () {
     'use strict';
 
     var t = TaxonomyI18n.t;
-    var POLL_INTERVAL = 2000; // 2 seconds
+    var POLL_INTERVAL = 2000;
     var pollTimer = null;
+    var loaderScript = document.currentScript;
+    var apiReady = loadApiClient(loaderScript);
+
+    window.TaxonomyWorkspaceProvisioningApiReady = apiReady;
 
     // ── Public API ──────────────────────────────────────────────────
 
@@ -23,12 +27,19 @@ window.TaxonomyWorkspaceProvisioning = (function () {
      * Called on page load after i18n strings are available.
      */
     function check() {
-        fetch('/api/workspace/provisioning-status')
-            .then(function (r) { return r.json(); })
-            .then(function (status) {
+        apiReady
+            .then(function () {
+                return Api().provisioningStatus();
+            })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error(responseError(
+                        'Could not check provisioning status', response));
+                }
+                var status = response.body;
                 switch (status.status) {
                     case 'NOT_PROVISIONED':
-                        showProvisioningDialog(status);
+                        showProvisioningDialog();
                         break;
                     case 'PROVISIONING':
                         showSpinner();
@@ -38,18 +49,20 @@ window.TaxonomyWorkspaceProvisioning = (function () {
                         showRetryDialog(status.error);
                         break;
                     case 'READY':
-                        // Workspace is ready, nothing to do
+                        ensureRelationProjection().catch(function (error) {
+                            showRetryDialog(error.message || String(error));
+                        });
                         break;
                 }
             })
-            .catch(function (err) {
-                console.warn('Could not check provisioning status:', err);
+            .catch(function (error) {
+                console.warn('Could not check provisioning status:', error);
             });
     }
 
     // ── Provisioning Dialog ─────────────────────────────────────────
 
-    function showProvisioningDialog(status) {
+    function showProvisioningDialog() {
         removeExistingModal();
         var modal = document.createElement('div');
         modal.id = 'workspaceProvisioningModal';
@@ -188,43 +201,138 @@ window.TaxonomyWorkspaceProvisioning = (function () {
             existingModal.hide();
         }
         showSpinner();
-        fetch('/api/workspace/provision', { method: 'POST' })
-            .then(function (r) { return r.json(); })
-            .then(function (result) {
-                if (result.status === 'READY') {
-                    showReadyDialog();
-                } else if (result.error) {
-                    showRetryDialog(result.error || result.message);
-                } else {
-                    pollUntilReady();
-                }
+        apiReady
+            .then(function () {
+                return Api().provisionWorkspace();
             })
-            .catch(function (err) {
-                showRetryDialog(err.message || String(err));
+            .then(function (response) {
+                var result = response.body;
+                if (!response.ok) {
+                    throw new Error(result.message || result.error ||
+                        'Workspace provisioning failed');
+                }
+                if (result.status === 'READY') {
+                    return ensureRelationProjection().then(showReadyDialog);
+                }
+                if (result.error) {
+                    showRetryDialog(result.error || result.message);
+                    return null;
+                }
+                pollUntilReady();
+                return null;
+            })
+            .catch(function (error) {
+                showRetryDialog(error.message || String(error));
             });
     }
 
     function pollUntilReady() {
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = setInterval(function () {
-            fetch('/api/workspace/provisioning-status')
-                .then(function (r) { return r.json(); })
-                .then(function (status) {
+            apiReady
+                .then(function () {
+                    return Api().provisioningStatus();
+                })
+                .then(function (response) {
+                    var status = response.body;
                     if (status.status === 'READY') {
                         clearInterval(pollTimer);
                         pollTimer = null;
-                        showReadyDialog();
+                        ensureRelationProjection()
+                            .then(showReadyDialog)
+                            .catch(function (error) {
+                                showRetryDialog(error.message || String(error));
+                            });
                     } else if (status.status === 'FAILED') {
                         clearInterval(pollTimer);
                         pollTimer = null;
                         showRetryDialog(status.error);
                     }
-                    // PROVISIONING: keep polling
                 })
                 .catch(function () {
-                    // Network error, keep polling
+                    // Network error, keep polling.
                 });
         }, POLL_INTERVAL);
+    }
+
+    /**
+     * Materialize the exact workspace branch before the UI reports the workspace
+     * as usable. This keeps product reads and proposal duplicate validation on
+     * the same fail-closed, Git-authoritative projection.
+     */
+    function ensureRelationProjection() {
+        return apiReady
+            .then(function () {
+                return Api().projectionReadiness();
+            })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error(responseError(
+                        'Could not inspect relation projection', response));
+                }
+                var readiness = response.body;
+                if (readiness.readinessState === 'READY') {
+                    return readiness;
+                }
+                if (!readiness.currentHeadCommit) {
+                    throw new Error(responseError(
+                        'Workspace has no authoritative branch head', response));
+                }
+                return Api().rebuildProjection(readiness.currentHeadCommit)
+                    .then(function (rebuildResponse) {
+                        if (!rebuildResponse.ok ||
+                                rebuildResponse.body.readinessState !== 'READY') {
+                            throw new Error(responseError(
+                                'Could not rebuild relation projection',
+                                rebuildResponse));
+                        }
+                        return rebuildResponse.body;
+                    });
+            });
+    }
+
+    function Api() {
+        if (!window.TaxonomyWorkspaceProvisioningApi) {
+            throw new Error('Workspace provisioning API client is unavailable.');
+        }
+        return window.TaxonomyWorkspaceProvisioningApi;
+    }
+
+    function loadApiClient(currentScript) {
+        if (window.TaxonomyWorkspaceProvisioningApi) {
+            return Promise.resolve(window.TaxonomyWorkspaceProvisioningApi);
+        }
+        if (!currentScript || !currentScript.src) {
+            return Promise.reject(new Error(
+                'Cannot resolve workspace provisioning API client URL.'));
+        }
+
+        return new Promise(function (resolve, reject) {
+            var script = document.createElement('script');
+            script.src = new URL(
+                '../api/workspace-provisioning-api.js',
+                currentScript.src).href;
+            script.async = false;
+            script.setAttribute('data-taxonomy-workspace-provisioning-api', 'true');
+            script.onload = function () {
+                if (window.TaxonomyWorkspaceProvisioningApi) {
+                    resolve(window.TaxonomyWorkspaceProvisioningApi);
+                } else {
+                    reject(new Error(
+                        'Workspace provisioning API client did not initialize.'));
+                }
+            };
+            script.onerror = function () {
+                reject(new Error('Workspace provisioning API client failed to load.'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+
+    function responseError(prefix, response) {
+        var body = response.body || {};
+        return prefix + ' (' + response.status + '): ' +
+            (body.message || body.operationStatus || body.readinessState || 'unknown error');
     }
 
     // ── Helpers ─────────────────────────────────────────────────────

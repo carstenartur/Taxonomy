@@ -5,6 +5,8 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
+
 /**
  * Selenium UI + REST tests against <strong>Oracle Database Free</strong>.
  * <p>
@@ -20,7 +22,8 @@ class SeleniumOracleContainerIT extends AbstractSeleniumContainerIT {
 
     @Override
     protected GenericContainer<?> createDbContainer(Network net) {
-        return ContainerTestUtils.oracleContainer(net);
+        return ContainerTestUtils.oracleContainer(net)
+                .withStartupTimeout(Duration.ofMinutes(3));
     }
 
     @Override
