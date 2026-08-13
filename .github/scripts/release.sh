@@ -6,6 +6,7 @@ set -euo pipefail
 : "${METADATA_HELPER:?METADATA_HELPER is required}"
 : "${VERSION_STATE_HELPER:?VERSION_STATE_HELPER is required}"
 : "${VEX_HELPER:?VEX_HELPER is required}"
+: "${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}"
 
 NEXT_VERSION_INPUT=${NEXT_VERSION_INPUT:-}
 SKIP_TESTS=${SKIP_TESTS:-false}
@@ -19,6 +20,9 @@ MAJOR_MINOR=$(echo "${RELEASE_VERSION}" | sed 's/\.[^.]*$//')
 MAINTENANCE_BRANCH="maintenance/${MAJOR_MINOR}.x"
 TEMP_BRANCH="release-temp-${RELEASE_VERSION}"
 PROTECTED_MAIN_ADVANCE_WORKFLOW="protected-release-main-advance.yml"
+RELEASE_NOTES_PATH="release_notes.md"
+RELEASE_NOTES_SNAPSHOT=""
+RELEASE_NOTES_BLOB_SHA=""
 
 fail() {
   echo "::error::$*"
@@ -85,26 +89,71 @@ if next_version <= release:
     )
 PY
 
-generate_release_notes() {
-  echo "Generating release notes..."
-  local previous_tag=""
-  previous_tag=$(git tag --merged HEAD --sort=-creatordate \
-    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-    | grep -vx "$TAG_NAME" \
-    | head -n 1 || true)
-
-  if [[ -n "$previous_tag" ]]; then
-    local previous_date
-    previous_date=$(git log -1 --format=%aI "$previous_tag")
-    gh issue list --state closed --search "closed:>$previous_date" \
-      --json number,title --jq '.[] | "- #\(.number): \(.title)"' > release_notes.md || true
-    if [[ ! -s release_notes.md ]]; then
-      echo "No closed issues found since $previous_tag" > release_notes.md
-    fi
-  else
-    echo "Initial release" > release_notes.md
+cleanup_release_notes_snapshot() {
+  if [[ -n "${RELEASE_NOTES_SNAPSHOT:-}" ]]; then
+    rm -f -- "$RELEASE_NOTES_SNAPSHOT"
   fi
-  cat release_notes.md
+}
+trap cleanup_release_notes_snapshot EXIT
+
+capture_reviewed_release_notes() {
+  local snapshot_directory=${RUNNER_TEMP:-${TMPDIR:-/tmp}}
+
+  mkdir -p "$snapshot_directory"
+  if ! RELEASE_NOTES_BLOB_SHA=$(git rev-parse \
+      "${RELEASE_COMMIT}:${RELEASE_NOTES_PATH}" 2>/dev/null); then
+    fail "Release commit $RELEASE_COMMIT does not contain $RELEASE_NOTES_PATH"
+  fi
+  if [[ "$(git cat-file -t "$RELEASE_NOTES_BLOB_SHA")" != "blob" ]]; then
+    fail "$RELEASE_NOTES_PATH in release commit $RELEASE_COMMIT is not a regular Git blob"
+  fi
+
+  RELEASE_NOTES_SNAPSHOT=$(mktemp \
+    "${snapshot_directory}/taxonomy-${RELEASE_VERSION}-release-notes.XXXXXX.md")
+  git cat-file blob "$RELEASE_NOTES_BLOB_SHA" > "$RELEASE_NOTES_SNAPSHOT"
+
+  if [[ "$(git hash-object "$RELEASE_NOTES_SNAPSHOT")" != "$RELEASE_NOTES_BLOB_SHA" ]]; then
+    fail "Captured release notes do not match the immutable release commit"
+  fi
+  RELEASE_VERSION="$RELEASE_VERSION" \
+    RELEASE_NOTES_FILE="$RELEASE_NOTES_SNAPSHOT" \
+    bash "$RELEASE_NOTES_VALIDATOR"
+  chmod 0444 "$RELEASE_NOTES_SNAPSHOT"
+
+  echo "Captured reviewed release notes from ${RELEASE_COMMIT}:${RELEASE_NOTES_PATH}."
+}
+
+verify_reviewed_release_notes_snapshot() {
+  if [[ -z "$RELEASE_NOTES_SNAPSHOT" || ! -f "$RELEASE_NOTES_SNAPSHOT" ]]; then
+    fail "Reviewed release-notes snapshot is unavailable"
+  fi
+  if [[ "$(git hash-object "$RELEASE_NOTES_SNAPSHOT")" != "$RELEASE_NOTES_BLOB_SHA" ]]; then
+    fail "Reviewed release-notes snapshot changed after capture"
+  fi
+  RELEASE_VERSION="$RELEASE_VERSION" \
+    RELEASE_NOTES_FILE="$RELEASE_NOTES_SNAPSHOT" \
+    bash "$RELEASE_NOTES_VALIDATOR"
+}
+
+verify_github_release_notes() {
+  local snapshot_directory=${RUNNER_TEMP:-${TMPDIR:-/tmp}}
+  local release_body_json
+
+  verify_reviewed_release_notes_snapshot
+  release_body_json=$(mktemp \
+    "${snapshot_directory}/taxonomy-${RELEASE_VERSION}-release-body.XXXXXX.json")
+  if ! gh release view "$TAG_NAME" --json body > "$release_body_json"; then
+    rm -f -- "$release_body_json"
+    fail "Unable to read GitHub Release body for $TAG_NAME"
+  fi
+  if ! RELEASE_VERSION="$RELEASE_VERSION" \
+      RELEASE_NOTES_FILE="$RELEASE_NOTES_SNAPSHOT" \
+      RELEASE_BODY_JSON_FILE="$release_body_json" \
+      bash "$RELEASE_NOTES_VALIDATOR"; then
+    rm -f -- "$release_body_json"
+    fail "GitHub Release body is not the reviewed body from $RELEASE_COMMIT"
+  fi
+  rm -f -- "$release_body_json"
 }
 
 collect_release_artifacts() {
@@ -286,6 +335,8 @@ else
     --expected-version "$RELEASE_VERSION" --tag "$TAG_NAME"
 fi
 
+capture_reviewed_release_notes
+
 if [[ "$SKIP_TESTS" == "true" ]]; then
   run_maven_release_check release release-check clean package -DskipTests
 else
@@ -293,7 +344,7 @@ else
 fi
 python3 "$VEX_HELPER"
 collect_release_artifacts
-generate_release_notes
+verify_reviewed_release_notes_snapshot
 
 PUBLISHED_THIS_RUN=false
 if [[ "$DRY_RUN" != "true" && "$STATE" == "new" ]]; then
@@ -332,16 +383,20 @@ else
 fi
 
 if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then
+  verify_reviewed_release_notes_snapshot
   gh release create "$TAG_NAME" \
     --verify-tag \
     --draft \
     --title "Release $RELEASE_VERSION" \
-    --notes-file release_notes.md \
-    --generate-notes
+    --notes-file "$RELEASE_NOTES_SNAPSHOT"
   STATE=draft
 fi
 
 if [[ "$DRY_RUN" != "true" && "$STATE" == "draft" ]]; then
+  verify_reviewed_release_notes_snapshot
+  gh release edit "$TAG_NAME" --notes-file "$RELEASE_NOTES_SNAPSHOT"
+  verify_github_release_notes
+
   mapfile -d '' ARTIFACTS < <(find target/release-artifacts -type f -print0)
   if [[ ${#ARTIFACTS[@]} -gt 0 ]]; then
     gh release upload "$TAG_NAME" "${ARTIFACTS[@]}" --clobber
@@ -351,10 +406,16 @@ if [[ "$DRY_RUN" != "true" && "$STATE" == "draft" ]]; then
   if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then
     echo "Release $TAG_NAME remains a draft until downstream artifacts and final CI succeed."
   else
-    gh release edit "$TAG_NAME" --draft=false --latest
+    gh release edit "$TAG_NAME" \
+      --notes-file "$RELEASE_NOTES_SNAPSHOT" \
+      --draft=false \
+      --latest
     STATE=published
     PUBLISHED_THIS_RUN=true
   fi
+fi
+if [[ "$DRY_RUN" != "true" && "$STATE" == "published" ]]; then
+  verify_github_release_notes
 fi
 if [[ "$DRY_RUN" != "true" ]]; then
   RELEASE_IS_DRAFT=$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')
