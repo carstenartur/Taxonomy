@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -47,7 +48,7 @@ class RelationValidationServiceRepositoryContextTest {
                 context);
 
         assertThat(result.isValid()).isTrue();
-        assertThat(result.getConfidence()).isEqualTo(0.81);
+        assertThat(result.getConfidence()).isCloseTo(0.81, within(1.0e-12));
         verify(qualityService).acceptanceHistoryWeight(
                 "BP", "CP", RelationType.RELATED_TO, context);
     }
