@@ -12,6 +12,7 @@ ROOT_POM = ROOT / "pom.xml"
 RELEASE_PLAN_CHECK = ROOT / ".github" / "scripts" / "check-release-plan.py"
 RELEASE_SCRIPT = ROOT / ".github" / "scripts" / "release.sh"
 RELEASE_IMAGE_GATE = ROOT / ".github" / "scripts" / "check-release-image-gate.py"
+RELEASE_GATE_HELPER = ROOT / ".github" / "scripts" / "verify-exact-release-gates.sh"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-cd.yml"
 
@@ -25,6 +26,7 @@ def main() -> int:
     pom = ROOT_POM.read_text(encoding="utf-8")
     plan_check = RELEASE_PLAN_CHECK.read_text(encoding="utf-8")
     script = RELEASE_SCRIPT.read_text(encoding="utf-8")
+    gate_helper = RELEASE_GATE_HELPER.read_text(encoding="utf-8")
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     failures: list[str] = []
@@ -126,6 +128,9 @@ def main() -> int:
         'git merge-base --is-ancestor "$tag" origin/main',
         "Release $tag must still be a draft before publication resumes",
         "DEFER_RELEASE_PUBLICATION: 'true'",
+        "cp .github/scripts/verify-exact-release-gates.sh",
+        "bash -n .github/scripts/verify-exact-release-gates.sh",
+        "timeout-minutes: 300",
         "- name: Record exact final main snapshot",
         "- name: Checkout immutable release source",
         "- name: Package and stage immutable Helm artifacts",
@@ -133,17 +138,40 @@ def main() -> int:
         "- name: Scan immutable release image digest",
         "- name: Bind release evidence and Helm deployment to immutable image digest",
         "- name: Archive immutable release image evidence",
-        "- name: Verify exact final main snapshot with canonical CI",
+        "- name: Verify exact final main release gate matrix",
         "- name: Publish complete release and trigger deployment",
         "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
-        '--commit "$EXPECTED_MAIN_SHA"',
-        "run_sha=$(gh run view \"$run_id\" --json headSha --jq '.headSha')",
+        'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"',
         'docker buildx imagetools inspect "$image"',
         'gh release edit "$tag" --draft=false --latest',
         "Draft release is missing required Helm asset",
         "Render deployment triggered after complete release publication.",
     ):
         require(workflow, needle, RELEASE_WORKFLOW, failures)
+
+    for needle in (
+        "EXPECTED_MAIN_SHA=${EXPECTED_MAIN_SHA:-}",
+        "readonly -a REQUIRED_WORKFLOWS=(",
+        "ci-cd.yml",
+        "database-compatibility.yml",
+        "codeql.yml",
+        "security-scan.yml",
+        "assert_main_unchanged",
+        '--branch main',
+        '--commit "$EXPECTED_MAIN_SHA"',
+        'gh workflow run "$workflow" --ref main',
+        "run_sha=$(gh run view \"$run_id\" --json headSha --jq '.headSha')",
+        'gh run watch "$run_id" --exit-status',
+        'if [[ "$status" != "completed" || "$conclusion" != "success" ]]',
+        'echo "All exact release gates passed',
+    ):
+        require(gate_helper, needle, RELEASE_GATE_HELPER, failures)
+
+    if gate_helper.count("assert_main_unchanged") < 4:
+        failures.append(
+            "verify-exact-release-gates.sh must bind discovery, dispatch "
+            "and final readiness to unchanged main"
+        )
 
     for forbidden in (
         "      release_version:",
@@ -191,13 +219,13 @@ def main() -> int:
             "- name: Bind release evidence and Helm deployment to immutable image digest"
         )
         archive = workflow.index("- name: Archive immutable release image evidence")
-        final_ci = workflow.index(
-            "- name: Verify exact final main snapshot with canonical CI"
+        final_gates = workflow.index(
+            "- name: Verify exact final main release gate matrix"
         )
         publish = workflow.index(
             "- name: Publish complete release and trigger deployment"
         )
-        if not checkout < resolve < stage < resume < record_main < checkout_tag < package < image < scan < bind < archive < final_ci < publish:
+        if not checkout < resolve < stage < resume < record_main < final_gates < checkout_tag < package < image < scan < bind < archive < publish:
             failures.append(
                 "deploy-release.yml must bind checkout to the triggering source, "
                 "then either stage or validate a resumable draft, record the exact "
@@ -254,11 +282,15 @@ def main() -> int:
         ):
             failures.append("Immutable tag must be fetched before it is checked out")
 
-        final_ci_block = workflow[final_ci:publish]
-        if 'run_sha" != "$EXPECTED_MAIN_SHA' not in final_ci_block:
-            failures.append(
-                "The final CI step must compare the selected run head to the recorded SHA"
-            )
+        final_gate_block = workflow[final_gates:checkout_tag]
+        for needle in (
+            "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",
+            'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"',
+        ):
+            if needle not in final_gate_block:
+                failures.append(
+                    f"Exact final gate step is missing {needle!r}"
+                )
 
         publish_block = workflow[publish:]
         if "RENDER_DEPLOY_HOOK_URL" not in publish_block:
@@ -276,7 +308,7 @@ def main() -> int:
         "Release delivery contract is Maven-verifiable, atomic, freely versionable, "
         "resumable and digest-bound: the local profile validates the release plan "
         "without SCM mutation, immutable sources and images are verified explicitly, "
-        "the exact main snapshot is checked, and publication remains the final gate."
+        "the exact main snapshot passes CI, database, CodeQL and security gates before immutable artifact work, and publication remains the final operation."
     )
     return 0
 
