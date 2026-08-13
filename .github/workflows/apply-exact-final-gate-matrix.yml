@@ -28,204 +28,238 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
-              return text.replace(old, new, 1)
+          BACKSLASH = chr(92)
+          EXPR_OPEN = "$" + "{{"
+          EXPR_CLOSE = "}" + "}"
+
+          def find_unique(lines: list[str], value: str, label: str) -> int:
+              matches = [index for index, line in enumerate(lines) if line == value]
+              if len(matches) != 1:
+                  raise SystemExit(
+                      f"{label}: expected exactly one match, found {len(matches)}"
+                  )
+              return matches[0]
 
           workflow_path = Path('.github/workflows/deploy-release.yml')
-          workflow = workflow_path.read_text(encoding='utf-8')
-          workflow = replace_once(
-              workflow,
-              '    timeout-minutes: 180\n',
-              '    timeout-minutes: 300\n',
-              'release timeout',
+          workflow_lines = workflow_path.read_text(encoding='utf-8').splitlines()
+
+          index = find_unique(
+              workflow_lines, '    timeout-minutes: 180', 'release timeout'
           )
-          workflow = replace_once(
-              workflow,
-              '          cp .github/scripts/generate-vex.py "$RUNNER_TEMP/generate-vex.py"\n'
-              '          chmod +x "$RUNNER_TEMP/release.sh" \\\n',
-              '          cp .github/scripts/generate-vex.py "$RUNNER_TEMP/generate-vex.py"\n'
-              '          cp .github/scripts/verify-exact-release-gates.sh \\\n'
-              '            "$RUNNER_TEMP/verify-exact-release-gates.sh"\n'
-              '          chmod +x "$RUNNER_TEMP/release.sh" \\\n',
-              'preserve exact gate helper',
+          workflow_lines[index] = '    timeout-minutes: 300'
+
+          index = find_unique(
+              workflow_lines,
+              '          cp .github/scripts/generate-vex.py "$RUNNER_TEMP/generate-vex.py"',
+              'preserve helper insertion point',
           )
-          workflow = replace_once(
-              workflow,
-              '            "$RUNNER_TEMP/check-version-state.py" \\\n'
-              '            "$RUNNER_TEMP/generate-vex.py"\n',
-              '            "$RUNNER_TEMP/check-version-state.py" \\\n'
-              '            "$RUNNER_TEMP/generate-vex.py" \\\n'
-              '            "$RUNNER_TEMP/verify-exact-release-gates.sh"\n',
-              'make exact gate helper executable',
+          workflow_lines[index + 1:index + 1] = [
+              '          cp .github/scripts/verify-exact-release-gates.sh ' + BACKSLASH,
+              '            "$RUNNER_TEMP/verify-exact-release-gates.sh"',
+          ]
+
+          index = find_unique(
+              workflow_lines,
+              '            "$RUNNER_TEMP/generate-vex.py"',
+              'helper chmod insertion point',
           )
-          workflow = replace_once(
-              workflow,
-              '          bash -n .github/scripts/release.sh\n'
-              '          bash -n .github/scripts/install-helm.sh\n',
-              '          bash -n .github/scripts/release.sh\n'
-              '          bash -n .github/scripts/verify-exact-release-gates.sh\n'
-              '          bash -n .github/scripts/install-helm.sh\n',
-              'syntax-check exact gate helper',
+          workflow_lines[index] = workflow_lines[index] + ' ' + BACKSLASH
+          workflow_lines.insert(
+              index + 1,
+              '            "$RUNNER_TEMP/verify-exact-release-gates.sh"',
           )
 
-          old_gate_start = workflow.index(
-              '      - name: Verify exact final main snapshot with canonical CI\n'
+          index = find_unique(
+              workflow_lines,
+              '          bash -n .github/scripts/release.sh',
+              'helper syntax-check insertion point',
           )
-          publication_start = workflow.index(
-              '      - name: Publish complete release and trigger deployment\n',
-              old_gate_start,
+          workflow_lines.insert(
+              index + 1,
+              '          bash -n .github/scripts/verify-exact-release-gates.sh',
           )
-          workflow = workflow[:old_gate_start] + workflow[publication_start:]
 
-          immutable_checkout = '      - name: Checkout immutable release source\n'
-          exact_gate_step = '''      - name: Verify exact final main release gate matrix
-        if: steps.release_parameters.outputs.dry_run != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}
-        shell: bash
-        run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"
-
-'''
-          workflow = replace_once(
-              workflow,
-              immutable_checkout,
-              exact_gate_step + immutable_checkout,
-              'place exact gate matrix before immutable artifacts',
+          old_gate = find_unique(
+              workflow_lines,
+              '      - name: Verify exact final main snapshot with canonical CI',
+              'obsolete single CI gate',
           )
-          workflow_path.write_text(workflow, encoding='utf-8')
+          publication = find_unique(
+              workflow_lines,
+              '      - name: Publish complete release and trigger deployment',
+              'publication step',
+          )
+          del workflow_lines[old_gate:publication]
+
+          immutable_checkout = find_unique(
+              workflow_lines,
+              '      - name: Checkout immutable release source',
+              'immutable checkout',
+          )
+          exact_gate_step = [
+              '      - name: Verify exact final main release gate matrix',
+              "        if: steps.release_parameters.outputs.dry_run != 'true'",
+              '        env:',
+              f'          GH_TOKEN: {EXPR_OPEN} github.token {EXPR_CLOSE}',
+              f'          EXPECTED_MAIN_SHA: {EXPR_OPEN} steps.final_main.outputs.sha {EXPR_CLOSE}',
+              '        shell: bash',
+              '        run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"',
+              '',
+          ]
+          workflow_lines[immutable_checkout:immutable_checkout] = exact_gate_step
+          workflow_path.write_text(
+              '\n'.join(workflow_lines) + '\n', encoding='utf-8'
+          )
 
           contract_path = Path('.github/scripts/check-release-delivery-contract.py')
-          contract = contract_path.read_text(encoding='utf-8')
-          contract = replace_once(
-              contract,
-              'RELEASE_IMAGE_GATE = ROOT / ".github" / "scripts" / "check-release-image-gate.py"\n'
-              'RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-release.yml"\n',
-              'RELEASE_IMAGE_GATE = ROOT / ".github" / "scripts" / "check-release-image-gate.py"\n'
-              'RELEASE_GATE_HELPER = ROOT / ".github" / "scripts" / "verify-exact-release-gates.sh"\n'
-              'RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-release.yml"\n',
-              'declare exact gate helper',
+          contract_lines = contract_path.read_text(encoding='utf-8').splitlines()
+
+          index = find_unique(
+              contract_lines,
+              'RELEASE_IMAGE_GATE = ROOT / ".github" / "scripts" / "check-release-image-gate.py"',
+              'gate helper constant insertion point',
           )
-          contract = replace_once(
-              contract,
-              '    script = RELEASE_SCRIPT.read_text(encoding="utf-8")\n'
-              '    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")\n',
-              '    script = RELEASE_SCRIPT.read_text(encoding="utf-8")\n'
-              '    gate_helper = RELEASE_GATE_HELPER.read_text(encoding="utf-8")\n'
-              '    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")\n',
-              'read exact gate helper',
-          )
-          contract = replace_once(
-              contract,
-              '        "DEFER_RELEASE_PUBLICATION: \'true\'",\n'
-              '        "- name: Record exact final main snapshot",\n',
-              '        "DEFER_RELEASE_PUBLICATION: \'true\'",\n'
-              '        "cp .github/scripts/verify-exact-release-gates.sh",\n'
-              '        "bash -n .github/scripts/verify-exact-release-gates.sh",\n'
-              '        "timeout-minutes: 300",\n'
-              '        "- name: Record exact final main snapshot",\n',
-              'require helper preservation and release budget',
-          )
-          contract = replace_once(
-              contract,
-              '        "- name: Verify exact final main snapshot with canonical CI",\n'
-              '        "- name: Publish complete release and trigger deployment",\n'
-              '        "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",\n'
-              '        \'--commit "$EXPECTED_MAIN_SHA"\',\n'
-              '        "run_sha=$(gh run view \\\"$run_id\\\" --json headSha --jq \'.headSha\')",\n',
-              '        "- name: Verify exact final main release gate matrix",\n'
-              '        "- name: Publish complete release and trigger deployment",\n'
-              '        "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",\n'
-              '        \'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"\',\n',
-              'replace single CI workflow contract',
+          contract_lines.insert(
+              index + 1,
+              'RELEASE_GATE_HELPER = ROOT / ".github" / "scripts" / "verify-exact-release-gates.sh"',
           )
 
-          helper_contract = '''
-    for needle in (
-        "EXPECTED_MAIN_SHA=${EXPECTED_MAIN_SHA:-}",
-        "readonly -a REQUIRED_WORKFLOWS=(",
-        "ci-cd.yml",
-        "database-compatibility.yml",
-        "codeql.yml",
-        "security-scan.yml",
-        "assert_main_unchanged",
-        '--branch main',
-        '--commit "$EXPECTED_MAIN_SHA"',
-        'gh workflow run "$workflow" --ref main',
-        'run_sha=$(gh run view "$run_id" --json headSha --jq \'.headSha\')',
-        'gh run watch "$run_id" --exit-status',
-        'if [[ "$status" != "completed" || "$conclusion" != "success" ]]',
-        'assert_main_unchanged\n\necho "All exact release gates passed',
-    ):
-        require(gate_helper, needle, RELEASE_GATE_HELPER, failures)
+          index = find_unique(
+              contract_lines,
+              '    script = RELEASE_SCRIPT.read_text(encoding="utf-8")',
+              'gate helper read insertion point',
+          )
+          contract_lines.insert(
+              index + 1,
+              '    gate_helper = RELEASE_GATE_HELPER.read_text(encoding="utf-8")',
+          )
 
-    if gate_helper.count("assert_main_unchanged") < 4:
-        failures.append(
-            "verify-exact-release-gates.sh must bind discovery, dispatch and final publication readiness to unchanged main"
-        )
+          index = find_unique(
+              contract_lines,
+              '        "DEFER_RELEASE_PUBLICATION: \'true\'",',
+              'workflow required needles insertion point',
+          )
+          contract_lines[index + 1:index + 1] = [
+              '        "cp .github/scripts/verify-exact-release-gates.sh",',
+              '        "bash -n .github/scripts/verify-exact-release-gates.sh",',
+              '        "timeout-minutes: 300",',
+          ]
 
-'''
-          contract = replace_once(
-              contract,
-              '    for forbidden in (\n',
-              helper_contract + '    for forbidden in (\n',
-              'add exact gate helper contract',
+          old_step = find_unique(
+              contract_lines,
+              '        "- name: Verify exact final main snapshot with canonical CI",',
+              'old workflow gate requirement',
           )
-          contract = replace_once(
-              contract,
-              '        final_ci = workflow.index(\n'
-              '            "- name: Verify exact final main snapshot with canonical CI"\n'
-              '        )\n',
-              '        final_gates = workflow.index(\n'
-              '            "- name: Verify exact final main release gate matrix"\n'
-              '        )\n',
-              'rename final gate step variable',
+          contract_lines[old_step] = (
+              '        "- name: Verify exact final main release gate matrix",'
           )
-          contract = replace_once(
-              contract,
-              '        if not checkout < resolve < stage < resume < record_main < checkout_tag < package < image < scan < bind < archive < final_ci < publish:\n',
-              '        if not checkout < resolve < stage < resume < record_main < final_gates < checkout_tag < package < image < scan < bind < archive < publish:\n',
-              'require complete gate matrix before immutable artifacts',
+          for obsolete in (
+              '        \'--commit "$EXPECTED_MAIN_SHA"\',',
+              '        "run_sha=$(gh run view \\\"$run_id\\\" --json headSha --jq \'.headSha\')",',
+          ):
+              index = find_unique(contract_lines, obsolete, 'obsolete inline CI requirement')
+              contract_lines.pop(index)
+
+          index = find_unique(
+              contract_lines,
+              '        "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",',
+              'gate helper invocation requirement',
           )
-          contract = replace_once(
-              contract,
-              '                "main commit, fetch and build the immutable tag, scan and bind the "\n'
-              '                "pushed image digest, verify that exact main commit, and publish last"\n',
-              '                "main commit, verify the complete exact-head gate matrix, fetch and "\n'
-              '                "build the immutable tag, scan and bind the pushed image digest, and publish last"\n',
-              'update release order diagnostic',
+          contract_lines.insert(
+              index + 1,
+              '        \'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"\',',
           )
-          contract = replace_once(
-              contract,
-              '        final_ci_block = workflow[final_ci:publish]\n'
-              '        if \'run_sha" != "$EXPECTED_MAIN_SHA\' not in final_ci_block:\n'
-              '            failures.append(\n'
-              '                "The final CI step must compare the selected run head to the recorded SHA"\n'
-              '            )\n',
-              '        final_gate_block = workflow[final_gates:checkout_tag]\n'
-              '        for needle in (\n'
-              '            "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",\n'
-              '            \'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"\',\n'
-              '        ):\n'
-              '            if needle not in final_gate_block:\n'
-              '                failures.append(f"Exact final gate step is missing {needle!r}")\n',
-              'validate exact gate workflow step',
+
+          forbidden_index = find_unique(
+              contract_lines, '    for forbidden in (', 'helper contract insertion point'
           )
-          contract = replace_once(
-              contract,
-              '        "the exact main snapshot is checked, and publication remains the final gate."\n',
-              '        "the exact main snapshot passes CI, database, CodeQL and security gates before "\n'
-              '        "immutable artifact work, and publication remains the final operation."\n',
-              'update success message',
+          helper_contract = [
+              '    for needle in (',
+              '        "EXPECTED_MAIN_SHA=${EXPECTED_MAIN_SHA:-}",',
+              '        "readonly -a REQUIRED_WORKFLOWS=(",',
+              '        "ci-cd.yml",',
+              '        "database-compatibility.yml",',
+              '        "codeql.yml",',
+              '        "security-scan.yml",',
+              '        "assert_main_unchanged",',
+              '        \'--branch main\',',
+              '        \'--commit "$EXPECTED_MAIN_SHA"\',',
+              '        \'gh workflow run "$workflow" --ref main\',',
+              '        \'run_sha=$(gh run view "$run_id" --json headSha --jq \'.headSha\')\',',
+              '        \'gh run watch "$run_id" --exit-status\',',
+              '        \'if [[ "$status" != "completed" || "$conclusion" != "success" ]]\',',
+              '        \'echo "All exact release gates passed\',',
+              '    ):',
+              '        require(gate_helper, needle, RELEASE_GATE_HELPER, failures)',
+              '',
+              '    if gate_helper.count("assert_main_unchanged") < 4:',
+              '        failures.append(',
+              '            "verify-exact-release-gates.sh must bind discovery, dispatch "',
+              '            "and final readiness to unchanged main"',
+              '        )',
+              '',
+          ]
+          contract_lines[forbidden_index:forbidden_index] = helper_contract
+
+          index = find_unique(
+              contract_lines,
+              '        final_ci = workflow.index(',
+              'final gate variable',
+          )
+          contract_lines[index] = '        final_gates = workflow.index('
+          if contract_lines[index + 1] != (
+              '            "- name: Verify exact final main snapshot with canonical CI"'
+          ):
+              raise SystemExit('final gate step name did not match expected source')
+          contract_lines[index + 1] = (
+              '            "- name: Verify exact final main release gate matrix"'
+          )
+
+          index = find_unique(
+              contract_lines,
+              '        if not checkout < resolve < stage < resume < record_main < checkout_tag < package < image < scan < bind < archive < final_ci < publish:',
+              'release step ordering',
+          )
+          contract_lines[index] = (
+              '        if not checkout < resolve < stage < resume < record_main '
+              '< final_gates < checkout_tag < package < image < scan < bind '
+              '< archive < publish:'
+          )
+
+          old_block_start = find_unique(
+              contract_lines,
+              '        final_ci_block = workflow[final_ci:publish]',
+              'old final CI block',
+          )
+          publish_block = find_unique(
+              contract_lines,
+              '        publish_block = workflow[publish:]',
+              'publish block',
+          )
+          contract_lines[old_block_start:publish_block] = [
+              '        final_gate_block = workflow[final_gates:checkout_tag]',
+              '        for needle in (',
+              '            "EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}",',
+              '            \'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"\',',
+              '        ):',
+              '            if needle not in final_gate_block:',
+              '                failures.append(',
+              '                    f"Exact final gate step is missing {needle!r}"',
+              '                )',
+              '',
+          ]
+
+          contract = '\n'.join(contract_lines) + '\n'
+          contract = contract.replace(
+              'the exact main snapshot is checked, and publication remains the final gate.',
+              'the exact main snapshot passes CI, database, CodeQL and security gates before immutable artifact work, and publication remains the final operation.',
           )
           contract_path.write_text(contract, encoding='utf-8')
           PY
 
           rm .github/workflows/apply-exact-final-gate-matrix.yml
           bash -n .github/scripts/verify-exact-release-gates.sh
+          python3 -m py_compile .github/scripts/check-release-delivery-contract.py
           python3 .github/scripts/check-release-delivery-contract.py
           git diff --check
 
