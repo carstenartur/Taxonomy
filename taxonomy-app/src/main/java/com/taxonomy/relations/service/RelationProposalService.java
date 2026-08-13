@@ -8,6 +8,7 @@ import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.relations.service.RelationProjectionReadService.IdentitySnapshot;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -28,6 +29,7 @@ import java.util.List;
  *
  * <p>Pipeline stages:
  * <ol>
+ *   <li>Resolve one complete active-relation identity snapshot</li>
  *   <li>Candidate Search (via {@link RelationCandidateService})</li>
  *   <li>RelationType Compatibility filtering</li>
  *   <li>Validation (via {@link RelationValidationService})</li>
@@ -38,22 +40,27 @@ import java.util.List;
 @Service
 public class RelationProposalService {
 
-    private static final Logger log = LoggerFactory.getLogger(RelationProposalService.class);
+    private static final Logger log = LoggerFactory.getLogger(
+            RelationProposalService.class);
 
     private final TaxonomyNodeRepository nodeRepository;
     private final RelationProposalRepository proposalRepository;
     private final RelationCandidateService candidateService;
+    private final RelationProjectionReadService relationReadService;
     private final RelationValidationService validationService;
     private final WorkspaceResolver workspaceResolver;
 
-    public RelationProposalService(TaxonomyNodeRepository nodeRepository,
-                                   RelationProposalRepository proposalRepository,
-                                   RelationCandidateService candidateService,
-                                   RelationValidationService validationService,
-                                   WorkspaceResolver workspaceResolver) {
+    public RelationProposalService(
+            TaxonomyNodeRepository nodeRepository,
+            RelationProposalRepository proposalRepository,
+            RelationCandidateService candidateService,
+            RelationProjectionReadService relationReadService,
+            RelationValidationService validationService,
+            WorkspaceResolver workspaceResolver) {
         this.nodeRepository = nodeRepository;
         this.proposalRepository = proposalRepository;
         this.candidateService = candidateService;
+        this.relationReadService = relationReadService;
         this.validationService = validationService;
         this.workspaceResolver = workspaceResolver;
     }
@@ -67,9 +74,10 @@ public class RelationProposalService {
      * context-aware method.</p>
      */
     @Transactional
-    public List<RelationProposalDto> proposeRelations(String sourceNodeCode,
-                                                       RelationType relationType,
-                                                       int limit) {
+    public List<RelationProposalDto> proposeRelations(
+            String sourceNodeCode,
+            RelationType relationType,
+            int limit) {
         return proposeRelationsInContext(
                 sourceNodeCode,
                 relationType,
@@ -89,12 +97,16 @@ public class RelationProposalService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Source node not found: " + sourceNodeCode));
 
-        log.info("Proposing {} relations for node '{}' (repository={}, workspace={})",
+        log.info("Proposing {} relations for node '{}' "
+                        + "(repository={}, workspace={}, branch={})",
                 relationType,
                 sourceNodeCode,
                 tenant.repositoryId(),
-                tenant.workspaceId());
+                tenant.workspaceId(),
+                tenant.branch());
 
+        IdentitySnapshot existingRelations =
+                relationReadService.readIdentitySnapshot(tenant);
         List<TaxonomyNodeDto> candidates = candidateService.findCandidates(
                 source, relationType, limit);
         List<RelationProposalDto> proposals = new ArrayList<>();
@@ -118,9 +130,28 @@ public class RelationProposalService {
                 continue;
             }
 
+            if (existingRelations.contains(
+                    sourceNodeCode,
+                    relationType,
+                    candidate.getCode())) {
+                log.debug("Active relation already exists: {} → {} [{}] "
+                                + "(repository={}, workspace={}, branch={})",
+                        sourceNodeCode,
+                        candidate.getCode(),
+                        relationType,
+                        tenant.repositoryId(),
+                        tenant.workspaceId(),
+                        tenant.branch());
+                continue;
+            }
+
             RelationValidationService.ValidationResult result =
-                    validationService.validate(source, candidate, relationType,
-                            i, candidates.size());
+                    validationService.validate(
+                            source,
+                            candidate,
+                            relationType,
+                            i,
+                            candidates.size());
 
             if (!result.isValid()) {
                 continue;
@@ -157,12 +188,14 @@ public class RelationProposalService {
         }
 
         log.info("Proposed {} relations for node '{}' [{}] "
-                        + "(repository={}, workspace={})",
+                        + "(repository={}, workspace={}, branch={}, relationCommit={})",
                 proposals.size(),
                 sourceNodeCode,
                 relationType,
                 tenant.repositoryId(),
-                tenant.workspaceId());
+                tenant.workspaceId(),
+                tenant.branch(),
+                existingRelations.authoritativeCommitId());
         return proposals;
     }
 
@@ -229,11 +262,12 @@ public class RelationProposalService {
      * {@link #proposeRelations(String, RelationType, int)}.
      */
     @Transactional
-    public RelationProposalDto createFromHypothesis(String sourceCode,
-                                                     String targetCode,
-                                                     RelationType relationType,
-                                                     double confidence,
-                                                     String rationale) {
+    public RelationProposalDto createFromHypothesis(
+            String sourceCode,
+            String targetCode,
+            RelationType relationType,
+            double confidence,
+            String rationale) {
         return createFromHypothesisInContext(
                 sourceCode,
                 targetCode,
@@ -273,6 +307,20 @@ public class RelationProposalService {
                     relationType,
                     tenant.repositoryId(),
                     tenant.workspaceId());
+            return null;
+        }
+
+        IdentitySnapshot existingRelations =
+                relationReadService.readIdentitySnapshot(tenant);
+        if (existingRelations.contains(sourceCode, relationType, targetCode)) {
+            log.debug("Active relation already exists: {} → {} [{}] "
+                            + "(repository={}, workspace={}, branch={})",
+                    sourceCode,
+                    targetCode,
+                    relationType,
+                    tenant.repositoryId(),
+                    tenant.workspaceId(),
+                    tenant.branch());
             return null;
         }
 
@@ -332,12 +380,14 @@ public class RelationProposalService {
 
     private static RepositoryContext requireContext(RepositoryContext context) {
         if (context == null) {
-            throw new IllegalArgumentException("RepositoryContext must not be null");
+            throw new IllegalArgumentException(
+                    "RepositoryContext must not be null");
         }
         return context;
     }
 
-    private static RepositoryContext requireWritableContext(RepositoryContext context) {
+    private static RepositoryContext requireWritableContext(
+            RepositoryContext context) {
         RepositoryContext tenant = requireContext(context);
         if (tenant.workspaceId() == null) {
             if (tenant.scope() != RepositoryScope.CENTRAL_WRITE) {

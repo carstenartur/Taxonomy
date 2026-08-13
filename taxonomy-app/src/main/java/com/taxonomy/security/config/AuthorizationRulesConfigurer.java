@@ -79,6 +79,11 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.GET, "/api/workspace/**").authenticated();
+        // Provisioning creates only the authenticated user's isolated working
+        // copy. It must remain available to every product role and is ordered
+        // before the privileged catch-all for workspace administration.
+        auth.requestMatchers(HttpMethod.POST, "/api/workspace/provision")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST,
                         "/api/workspace/sync-from-shared",
                         "/api/workspace/publish",

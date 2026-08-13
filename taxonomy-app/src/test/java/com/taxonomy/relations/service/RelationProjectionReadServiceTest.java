@@ -93,14 +93,75 @@ class RelationProjectionReadServiceTest {
     }
 
     @Test
+    void readyIdentitySnapshotAvoidsDtoAndNameMaterialization() {
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "feature/a", "alice");
+        when(readinessService.inspect(context)).thenReturn(new Readiness(
+                ReadinessState.READY,
+                "a".repeat(40),
+                "a".repeat(40),
+                List.of(
+                        projection(
+                                1L, "BP", RelationType.SUPPORTS, "CP",
+                                "manual", "a".repeat(40)),
+                        projection(
+                                2L, "CP", RelationType.REALIZES, "CR",
+                                "manual", "a".repeat(40)))));
+
+        var snapshot = service.readIdentitySnapshot(context);
+
+        assertThat(snapshot.readModel()).isEqualTo(ReadModel.PROJECTION);
+        assertThat(snapshot.readinessState()).isEqualTo(ReadinessState.READY);
+        assertThat(snapshot.authoritativeCommitId()).isEqualTo("a".repeat(40));
+        assertThat(snapshot.contains("BP", RelationType.SUPPORTS, "CP"))
+                .isTrue();
+        assertThat(snapshot.contains("BP", RelationType.SUPPORTS, "CR"))
+                .isFalse();
+        verifyNoInteractions(
+                nodeRepository, legacyRelationService, repositoryService);
+        verify(recoveryService, never()).pendingCount(context);
+    }
+
+    @Test
+    void identitySnapshotsRemainBranchLocal() {
+        RepositoryContext branchA = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "feature/a", "alice");
+        RepositoryContext branchB = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "feature/b", "alice");
+        when(readinessService.inspect(branchA)).thenReturn(new Readiness(
+                ReadinessState.READY,
+                "a".repeat(40),
+                "a".repeat(40),
+                List.of(projection(
+                        1L, "BP", RelationType.SUPPORTS, "CP",
+                        null, "a".repeat(40)))));
+        when(readinessService.inspect(branchB)).thenReturn(new Readiness(
+                ReadinessState.READY,
+                "b".repeat(40),
+                "b".repeat(40),
+                List.of(projection(
+                        2L, "BP", RelationType.SUPPORTS, "CR",
+                        null, "b".repeat(40)))));
+
+        var snapshotA = service.readIdentitySnapshot(branchA);
+        var snapshotB = service.readIdentitySnapshot(branchB);
+
+        assertThat(snapshotA.contains("BP", RelationType.SUPPORTS, "CP"))
+                .isTrue();
+        assertThat(snapshotA.contains("BP", RelationType.SUPPORTS, "CR"))
+                .isFalse();
+        assertThat(snapshotB.contains("BP", RelationType.SUPPORTS, "CP"))
+                .isFalse();
+        assertThat(snapshotB.contains("BP", RelationType.SUPPORTS, "CR"))
+                .isTrue();
+    }
+
+    @Test
     void primaryDefaultBranchMayUseLegacyOnlyBeforeAnyBuildOrFailure() {
         RepositoryContext context = RepositoryContext.centralRead(
                 "primary", "draft", "alice");
-        TaxonomyRelationDto legacy = new TaxonomyRelationDto();
-        legacy.setId(8L);
-        legacy.setSourceCode("BP");
-        legacy.setTargetCode("CP");
-        legacy.setRelationType("SUPPORTS");
+        TaxonomyRelationDto legacy = relation(
+                8L, "BP", RelationType.SUPPORTS, "CP");
         when(readinessService.inspect(context)).thenReturn(new Readiness(
                 ReadinessState.NOT_BUILT,
                 "b".repeat(40),
@@ -118,6 +179,27 @@ class RelationProjectionReadServiceTest {
         assertThat(result.readinessState()).isEqualTo(ReadinessState.NOT_BUILT);
         assertThat(result.authoritativeCommitId()).isEqualTo("b".repeat(40));
         assertThat(result.relations()).containsExactly(legacy);
+    }
+
+    @Test
+    void identitySnapshotUsesTheSamePrimaryMigrationFallback() {
+        RepositoryContext context = RepositoryContext.centralRead(
+                "primary", "draft", "alice");
+        when(readinessService.inspect(context)).thenReturn(notBuilt("b"));
+        when(recoveryService.pendingCount(context)).thenReturn(0L);
+        when(repositoryService.getPrimaryRepository()).thenReturn(
+                primary("primary", "draft"));
+        when(legacyRelationService.getAllRelationsInContext(context))
+                .thenReturn(List.of(relation(
+                        8L, "BP", RelationType.SUPPORTS, "CP")));
+
+        var snapshot = service.readIdentitySnapshot(context);
+
+        assertThat(snapshot.readModel()).isEqualTo(ReadModel.LEGACY_FALLBACK);
+        assertThat(snapshot.readinessState()).isEqualTo(ReadinessState.NOT_BUILT);
+        assertThat(snapshot.contains("BP", RelationType.SUPPORTS, "CP"))
+                .isTrue();
+        verifyNoInteractions(nodeRepository);
     }
 
     @Test
@@ -174,6 +256,11 @@ class RelationProjectionReadServiceTest {
         when(recoveryService.pendingCount(context)).thenReturn(0L);
 
         assertThatThrownBy(() -> service.readAll(context))
+                .isInstanceOfSatisfying(
+                        RelationProjectionUnavailableException.class,
+                        error -> assertThat(error.getReadinessState())
+                                .isEqualTo(ReadinessState.STALE));
+        assertThatThrownBy(() -> service.readIdentitySnapshot(context))
                 .isInstanceOfSatisfying(
                         RelationProjectionUnavailableException.class,
                         error -> assertThat(error.getReadinessState())
@@ -267,6 +354,19 @@ class RelationProjectionReadServiceTest {
         projection.setAuthoritativeCommitId(commit);
         projection.setCausationId("rebuild:" + commit);
         return projection;
+    }
+
+    private static TaxonomyRelationDto relation(
+            Long id,
+            String source,
+            RelationType type,
+            String target) {
+        TaxonomyRelationDto relation = new TaxonomyRelationDto();
+        relation.setId(id);
+        relation.setSourceCode(source);
+        relation.setRelationType(type.name());
+        relation.setTargetCode(target);
+        return relation;
     }
 
     private static TaxonomyNode node(String code, String name) {

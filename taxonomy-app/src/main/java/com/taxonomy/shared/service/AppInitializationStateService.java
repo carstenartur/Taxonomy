@@ -1,8 +1,11 @@
 package com.taxonomy.shared.service;
 
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.ApplicationEventPublisherAware;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -17,7 +20,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * single {@link AtomicReference} to guarantee a consistent view across threads.
  */
 @Service
-public class AppInitializationStateService {
+public class AppInitializationStateService
+        implements ApplicationEventPublisherAware {
 
     public enum State {
         STARTING,
@@ -28,10 +32,36 @@ public class AppInitializationStateService {
     }
 
     /** Immutable snapshot of the current initialisation state. */
-    public record StateSnapshot(State state, String message, Instant updatedAt, String error) {}
+    public record StateSnapshot(
+            State state,
+            String message,
+            Instant updatedAt,
+            String error) {
+    }
+
+    /** Emitted synchronously after the application enters the READY state. */
+    public record InitializationReadyEvent(StateSnapshot snapshot) {
+        public InitializationReadyEvent {
+            snapshot = Objects.requireNonNull(snapshot, "snapshot");
+        }
+    }
 
     private final AtomicReference<StateSnapshot> snapshot =
-            new AtomicReference<>(new StateSnapshot(State.STARTING, "Starting application", Instant.now(), null));
+            new AtomicReference<>(new StateSnapshot(
+                    State.STARTING,
+                    "Starting application",
+                    Instant.now(),
+                    null));
+
+    private volatile ApplicationEventPublisher eventPublisher;
+
+    @Override
+    public void setApplicationEventPublisher(
+            ApplicationEventPublisher applicationEventPublisher) {
+        this.eventPublisher = Objects.requireNonNull(
+                applicationEventPublisher,
+                "applicationEventPublisher");
+    }
 
     public State getState() {
         return snapshot.get().state();
@@ -54,11 +84,24 @@ public class AppInitializationStateService {
     }
 
     public void update(State newState, String newMessage) {
-        snapshot.set(new StateSnapshot(newState, newMessage, Instant.now(), null));
+        StateSnapshot updated = new StateSnapshot(
+                newState,
+                newMessage,
+                Instant.now(),
+                null);
+        snapshot.set(updated);
+
+        ApplicationEventPublisher publisher = eventPublisher;
+        if (newState == State.READY && publisher != null) {
+            publisher.publishEvent(new InitializationReadyEvent(updated));
+        }
     }
 
     public void fail(String newMessage, Throwable t) {
-        snapshot.set(new StateSnapshot(State.FAILED, newMessage, Instant.now(),
+        snapshot.set(new StateSnapshot(
+                State.FAILED,
+                newMessage,
+                Instant.now(),
                 t == null ? null : t.getMessage()));
     }
 }
