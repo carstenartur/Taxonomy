@@ -77,7 +77,8 @@ class RelationProposalProjectionDuplicateTest {
                 candidate,
                 RelationType.RELATED_TO,
                 0,
-                1)).thenReturn(
+                1,
+                repositoryA)).thenReturn(
                         RelationValidationService.ValidationResult.fail(
                                 "stop after duplicate boundary"));
 
@@ -85,7 +86,12 @@ class RelationProposalProjectionDuplicateTest {
                 "BP", RelationType.RELATED_TO, 1, repositoryA);
 
         verify(validationService).validate(
-                source, candidate, RelationType.RELATED_TO, 0, 1);
+                source,
+                candidate,
+                RelationType.RELATED_TO,
+                0,
+                1,
+                repositoryA);
         clearInvocations(validationService);
 
         service.proposeRelationsInContext(
@@ -110,14 +116,25 @@ class RelationProposalProjectionDuplicateTest {
         when(relationReadService.readIdentitySnapshot(workspaceA2))
                 .thenReturn(snapshot("2", Set.of(new RelationIdentity(
                         "BP", RelationType.RELATED_TO, "CR"))));
-        when(validationService.validate(any(), any(), any(), anyInt(), anyInt()))
+        when(validationService.validate(
+                any(TaxonomyNode.class),
+                any(TaxonomyNodeDto.class),
+                any(RelationType.class),
+                anyInt(),
+                anyInt(),
+                any(RepositoryContext.class)))
                 .thenReturn(RelationValidationService.ValidationResult.fail(
                         "stop after duplicate boundary"));
 
         service.proposeRelationsInContext(
                 "BP", RelationType.RELATED_TO, 1, workspaceA1);
         verify(validationService).validate(
-                source, candidate, RelationType.RELATED_TO, 0, 1);
+                source,
+                candidate,
+                RelationType.RELATED_TO,
+                0,
+                1,
+                workspaceA1);
         clearInvocations(validationService);
 
         service.proposeRelationsInContext(
@@ -146,7 +163,13 @@ class RelationProposalProjectionDuplicateTest {
                 eq(RelationType.RELATED_TO),
                 eq("workspace-a")))
                 .thenReturn(false);
-        when(validationService.validate(any(), any(), any(), anyInt(), anyInt()))
+        when(validationService.validate(
+                any(TaxonomyNode.class),
+                any(TaxonomyNodeDto.class),
+                any(RelationType.class),
+                anyInt(),
+                anyInt(),
+                any(RepositoryContext.class)))
                 .thenReturn(RelationValidationService.ValidationResult.fail(
                         "not relevant"));
 
@@ -155,7 +178,12 @@ class RelationProposalProjectionDuplicateTest {
 
         verify(relationReadService, times(1)).readIdentitySnapshot(context);
         verify(validationService, times(2)).validate(
-                eq(source), any(), eq(RelationType.RELATED_TO), anyInt(), eq(2));
+                eq(source),
+                any(TaxonomyNodeDto.class),
+                eq(RelationType.RELATED_TO),
+                anyInt(),
+                eq(2),
+                eq(context));
     }
 
     @Test
