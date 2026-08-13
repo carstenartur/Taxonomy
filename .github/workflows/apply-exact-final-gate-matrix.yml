@@ -185,7 +185,11 @@ jobs:
               '        \'--branch main\',',
               '        \'--commit "$EXPECTED_MAIN_SHA"\',',
               '        \'gh workflow run "$workflow" --ref main\',',
-              '        \'run_sha=$(gh run view "$run_id" --json headSha --jq \'.headSha\')\',',
+              (
+                  '        "run_sha=$(gh run view ' + BACKSLASH + '"$run_id'
+                  + BACKSLASH + '" --json headSha --jq ' + chr(39)
+                  + '.headSha' + chr(39) + ')",'
+              ),
               '        \'gh run watch "$run_id" --exit-status\',',
               '        \'if [[ "$status" != "completed" || "$conclusion" != "success" ]]\',',
               '        \'echo "All exact release gates passed\',',
