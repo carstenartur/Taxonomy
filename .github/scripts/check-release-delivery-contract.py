@@ -13,6 +13,7 @@ RELEASE_PLAN_CHECK = ROOT / ".github" / "scripts" / "check-release-plan.py"
 RELEASE_SCRIPT = ROOT / ".github" / "scripts" / "release.sh"
 RELEASE_IMAGE_GATE = ROOT / ".github" / "scripts" / "check-release-image-gate.py"
 RELEASE_GATE_HELPER = ROOT / ".github" / "scripts" / "verify-exact-release-gates.sh"
+RELEASE_GATE_BEHAVIOR_TEST = ROOT / ".github" / "scripts" / "test-verify-exact-release-gates.py"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci-cd.yml"
 
@@ -30,6 +31,23 @@ def main() -> int:
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     failures: list[str] = []
+
+    gate_behavior = subprocess.run(
+        [sys.executable, str(RELEASE_GATE_BEHAVIOR_TEST)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if gate_behavior.stdout:
+        print(gate_behavior.stdout, end="")
+    if gate_behavior.returncode != 0:
+        if gate_behavior.stderr:
+            print(gate_behavior.stderr, end="", file=sys.stderr)
+        failures.append(
+            "Exact final release gate behavioral contract failed; "
+            "see test-verify-exact-release-gates.py output"
+        )
 
     image_gate = subprocess.run(
         [sys.executable, str(RELEASE_IMAGE_GATE)],
