@@ -87,6 +87,28 @@ public interface RelationProposalRepository extends JpaRepository<RelationPropos
             @Param("workspaceId") String workspaceId,
             @Param("sourceCode") String sourceCode);
 
+    /**
+     * Counts reviewed history visible in one selected context. A null workspace
+     * intentionally means central rows only; a workspace inherits central rows
+     * plus rows from that exact workspace and never sibling workspaces.
+     */
+    @Query("""
+            SELECT COUNT(p) FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND (p.workspaceId IS NULL OR p.workspaceId = :workspaceId)
+              AND p.sourceNode.taxonomyRoot = :sourceRoot
+              AND p.targetNode.taxonomyRoot = :targetRoot
+              AND p.relationType = :relationType
+              AND p.status = :status
+            """)
+    long countVisibleReviewHistory(
+            @Param("repositoryId") String repositoryId,
+            @Param("workspaceId") String workspaceId,
+            @Param("sourceRoot") String sourceRoot,
+            @Param("targetRoot") String targetRoot,
+            @Param("relationType") RelationType relationType,
+            @Param("status") ProposalStatus status);
+
     /** Looks up a proposal in exactly one mutable repository/workspace scope. */
     @Query("""
             SELECT p FROM RelationProposal p
