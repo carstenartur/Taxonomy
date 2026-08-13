@@ -112,28 +112,49 @@ class RelationQualityServiceRepositoryScopeTest {
     }
 
     @Test
-    void topRejectedNeverReadsAnotherRepositoryOrSiblingWorkspace() {
+    void topRejectedQueriesOnlyRejectedRowsFromTheExactWorkspaceView() {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a1", "feature/a1", "alice");
-        when(repository.findVisibleByRepositoryAndWorkspace(
-                "repo-a", "workspace-a1"))
+        when(repository.findVisibleByRepositoryAndWorkspaceAndStatus(
+                "repo-a", "workspace-a1", ProposalStatus.REJECTED))
                 .thenReturn(List.of(
                         proposal(1L, ProposalStatus.REJECTED, 0.4,
                                 RelationType.RELATED_TO, "manual", "A", "B"),
                         proposal(2L, ProposalStatus.REJECTED, 0.9,
-                                RelationType.DEPENDS_ON, "manual", "A", "C"),
-                        proposal(3L, ProposalStatus.ACCEPTED, 0.99,
-                                RelationType.RELATED_TO, "manual", "A", "D")));
+                                RelationType.DEPENDS_ON, "manual", "A", "C")));
 
         var rejected = service.topRejected(1, context);
 
         assertThat(rejected).hasSize(1);
         assertThat(rejected.getFirst().targetCode()).isEqualTo("C");
         assertThat(rejected.getFirst().confidence()).isEqualTo(0.9);
-        verify(repository).findVisibleByRepositoryAndWorkspace(
-                "repo-a", "workspace-a1");
+        verify(repository).findVisibleByRepositoryAndWorkspaceAndStatus(
+                "repo-a", "workspace-a1", ProposalStatus.REJECTED);
+        verify(repository, never()).findVisibleByRepositoryAndWorkspace(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
         verify(repository, never()).findByStatusOrderByConfidenceDesc(
                 ProposalStatus.REJECTED);
+    }
+
+    @Test
+    void topRejectedQueriesOnlyRejectedRowsFromTheSelectedCentralRepository() {
+        RepositoryContext context = RepositoryContext.centralRead(
+                "repo-b", "main", "bob");
+        when(repository.findCentralByRepositoryAndStatus(
+                "repo-b", ProposalStatus.REJECTED))
+                .thenReturn(List.of(
+                        proposal(4L, ProposalStatus.REJECTED, 0.7,
+                                RelationType.RELATED_TO, "manual", "B", "C")));
+
+        var rejected = service.topRejected(5, context);
+
+        assertThat(rejected).singleElement()
+                .satisfies(item -> assertThat(item.confidence()).isEqualTo(0.7));
+        verify(repository).findCentralByRepositoryAndStatus(
+                "repo-b", ProposalStatus.REJECTED);
+        verify(repository, never()).findCentralByRepository(
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     private static RelationProposal proposal(
