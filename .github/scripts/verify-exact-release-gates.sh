@@ -132,13 +132,17 @@ done
 for index in "${!SELECTED_RUN_IDS[@]}"; do
   workflow=${SELECTED_WORKFLOWS[$index]}
   run_id=${SELECTED_RUN_IDS[$index]}
-  gh run watch "$run_id" --exit-status
+  watch_exit=0
+  gh run watch "$run_id" --exit-status || watch_exit=$?
   validate_run_identity "$workflow" "$run_id"
 
   status=$(gh run view "$run_id" --json status --jq '.status')
   conclusion=$(gh run view "$run_id" --json conclusion --jq '.conclusion')
   if [[ "$status" != "completed" || "$conclusion" != "success" ]]; then
-    fail "$workflow run $run_id ended with status=$status conclusion=$conclusion"
+    fail "$workflow run $run_id ended with status=$status conclusion=$conclusion (gh run watch exit=$watch_exit)"
+  fi
+  if (( watch_exit != 0 )); then
+    fail "$workflow run $run_id could not be watched reliably (exit=$watch_exit) despite status=$status conclusion=$conclusion"
   fi
   echo "::notice::$workflow passed for exact commit $EXPECTED_MAIN_SHA"
 done
