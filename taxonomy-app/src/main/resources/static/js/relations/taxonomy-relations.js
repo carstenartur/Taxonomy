@@ -44,18 +44,91 @@
     function loadRelations() {
         var content = document.getElementById('relationsTableContainer');
         if (!content) return;
+        content.setAttribute('aria-busy', 'true');
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('relations.loading') + '</div>';
 
         var typeFilter = document.getElementById('relationsTypeFilter');
         var type = typeFilter ? typeFilter.value : '';
-        var url = type ? '/api/relations?type=' + encodeURIComponent(type) : '/api/relations';
 
-        fetch(url)
-            .then(function (r) { return r.ok ? r.json() : []; })
-            .then(function (relations) { renderRelationsTable(relations); })
-            .catch(function () {
-                content.innerHTML = '<div class="text-danger small p-2">' + t('relations.load.failed') + '</div>';
+        relationApiReady()
+            .then(function (api) {
+                return api.readSnapshot(type);
+            })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw projectionReadError(response);
+                }
+                return response.json();
+            })
+            .then(function (relations) {
+                content.setAttribute('aria-busy', 'false');
+                renderRelationsTable(relations);
+            })
+            .catch(function (error) {
+                renderRelationsLoadError(content, error);
             });
+    }
+
+    function relationApiReady() {
+        if (window.TaxonomyRelationsApi) {
+            return Promise.resolve(window.TaxonomyRelationsApi);
+        }
+        if (window.TaxonomyRelationsApiReady) {
+            return window.TaxonomyRelationsApiReady;
+        }
+        return Promise.reject(new Error(
+            'Relation API client is not available.'));
+    }
+
+    function projectionReadError(response) {
+        var state = response.headers.get(
+            'X-Taxonomy-Relation-Projection-State');
+        var pending = response.headers.get(
+            'X-Taxonomy-Relation-Pending-Recovery');
+        var detail = 'HTTP ' + response.status;
+        if (state) detail += ', projection=' + state;
+        if (pending && pending !== '0') {
+            detail += ', pending recovery=' + pending;
+        }
+
+        var error = new Error(t('relations.load.failed') + ': ' + detail);
+        error.projectionState = state;
+        error.httpStatus = response.status;
+        return error;
+    }
+
+    function renderRelationsLoadError(content, error) {
+        content.setAttribute('aria-busy', 'false');
+        content.replaceChildren();
+
+        var alert = document.createElement('div');
+        alert.className = error && error.projectionState
+            ? 'alert alert-warning d-flex align-items-center gap-2 mb-0'
+            : 'alert alert-danger d-flex align-items-center gap-2 mb-0';
+        alert.setAttribute('role', 'alert');
+
+        var message = document.createElement('span');
+        message.className = 'flex-grow-1';
+        message.textContent = error && error.message
+            ? error.message
+            : t('relations.load.failed');
+        alert.appendChild(message);
+
+        var retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn btn-sm btn-outline-secondary';
+        retry.textContent = translatedOr(
+            'relations.load.retry',
+            translatedOr('workspace.manager.refresh', 'Retry'));
+        retry.addEventListener('click', loadRelations);
+        alert.appendChild(retry);
+
+        content.appendChild(alert);
+    }
+
+    function translatedOr(key, fallback) {
+        var value = t(key);
+        return value && value !== key ? value : fallback;
     }
 
     function renderRelationsTable(relations) {

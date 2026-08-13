@@ -46,9 +46,99 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "solution_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "product_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "project_conflict")).isTrue();
+        assertThat(tableExists(dataSource, "repository_membership")).isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "slug")).isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "provisioning_error"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_branch")).isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "relationship_type")).isTrue();
+        assertThat(columnExists(dataSource, "taxonomy_relation", "repository_id")).isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "repository_id")).isTrue();
+        assertThat(columnExists(dataSource, "relation_hypothesis", "repository_id")).isTrue();
+        assertThat(columnExists(dataSource, "relation_hypothesis", "workspace_scope_key"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_hypothesis", "analysis_session_scope_key"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "workspace_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "workspace_scope_key"))
+                .isTrue();
+        assertThat(tableExists(dataSource, "relation_decision_projection")).isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "workspace_scope_key"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "relation_present"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "authoritative_commit_id"))
+                .isTrue();
+        assertThat(tableExists(
+                dataSource, "relation_decision_projection_checkpoint"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "workspace_scope_key"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "authoritative_commit_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "relation_count"))
+                .isTrue();
+        assertThat(tableExists(dataSource, "relation_projection_recovery")).isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "workspace_scope_key"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "authoritative_commit_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "status"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "attempt_count"))
+                .isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("0", "1", "2");
+                .containsExactly(
+                        "0", "1", "2", "3", "4", "5",
+                        "6", "7", "8", "9", "10", "11");
     }
 
     @Test
@@ -70,10 +160,180 @@ class TaxonomySchemaPostgresMigrationIT {
                 "select count(*) from app_user where username = 'existing-user'"))
                 .isEqualTo(1L);
         assertThat(tableExists(dataSource, "project_requirement")).isTrue();
+        assertThat(tableExists(dataSource, "repository_membership")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "analysis_snapshot_id"))
                 .isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "system_repository", "provisioning_error"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_repository_id"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_branch"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "taxonomy_relation", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(dataSource, "relation_hypothesis", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "repository_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "architecture_commit_index", "workspace_scope_key"))
+                .isTrue();
+        assertThat(tableExists(dataSource, "relation_decision_projection")).isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_decision_projection", "authoritative_commit_id"))
+                .isTrue();
+        assertThat(tableExists(
+                dataSource, "relation_decision_projection_checkpoint"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "branch"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource,
+                "relation_decision_projection_checkpoint",
+                "authoritative_commit_id"))
+                .isTrue();
+        assertThat(tableExists(dataSource, "relation_projection_recovery")).isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "authoritative_commit_id"))
+                .isTrue();
+        assertThat(columnExists(
+                dataSource, "relation_projection_recovery", "status"))
+                .isTrue();
         assertThat(successfulVersions(dataSource))
-                .containsExactly("1", "2");
+                .containsExactly(
+                        "1", "2", "3", "4", "5",
+                        "6", "7", "8", "9", "10", "11");
+    }
+
+    @Test
+    void bindsExistingWorkspacesToTheOnlyPrimaryRepository() throws Exception {
+        DataSource dataSource = isolatedDataSource("workspace_repository_binding");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "3");
+        execute(dataSource, """
+                insert into system_repository (
+                    repository_id,
+                    display_name,
+                    topology_mode,
+                    default_branch,
+                    primary_repo,
+                    created_at,
+                    storage_repository_name,
+                    slug,
+                    visibility,
+                    lifecycle_state,
+                    owner_type,
+                    owner_id,
+                    created_by,
+                    updated_at)
+                values (
+                    'primary-repository',
+                    'Primary',
+                    'INTERNAL_SHARED',
+                    'draft',
+                    true,
+                    current_timestamp,
+                    'taxonomy-dsl',
+                    'shared-architecture',
+                    'ORGANIZATION',
+                    'ACTIVE',
+                    'SYSTEM',
+                    'system',
+                    'system',
+                    current_timestamp)
+                """);
+        execute(dataSource, """
+                insert into user_workspace (
+                    workspace_id,
+                    username,
+                    display_name,
+                    current_branch,
+                    base_branch,
+                    shared,
+                    created_at,
+                    provisioning_status,
+                    topology_mode,
+                    archived,
+                    is_default,
+                    source_branch,
+                    relationship_type)
+                values (
+                    'legacy-workspace',
+                    'alice',
+                    'Legacy workspace',
+                    'alice/workspace',
+                    'draft',
+                    false,
+                    current_timestamp,
+                    'READY',
+                    'INTERNAL_SHARED',
+                    false,
+                    true,
+                    'draft',
+                    'WORKING_COPY')
+                """);
+
+        TaxonomySchemaMigrationConfig.migrateApplicationSchema(
+                Flyway.configure().dataSource(dataSource).load().getConfiguration());
+
+        assertThat(singleString(dataSource, """
+                select source_repository_id
+                from user_workspace
+                where workspace_id = 'legacy-workspace'
+                """))
+                .isEqualTo("primary-repository");
+        assertThatThrownBy(() -> execute(dataSource, """
+                update user_workspace
+                set source_repository_id = 'missing-repository'
+                where workspace_id = 'legacy-workspace'
+                """))
+                .isInstanceOf(SQLException.class);
+    }
+
+    @Test
+    void refusesToBindExistingWorkspacesWithoutExactlyOnePrimaryRepository() throws Exception {
+        DataSource dataSource = isolatedDataSource("workspace_repository_binding_failure");
+        migrateJgit(dataSource);
+        installApplicationAtVersion(dataSource, "3");
+        execute(dataSource, """
+                insert into user_workspace (
+                    workspace_id,
+                    username,
+                    display_name,
+                    current_branch,
+                    shared,
+                    created_at,
+                    provisioning_status,
+                    topology_mode,
+                    archived,
+                    is_default)
+                values (
+                    'unbound-workspace',
+                    'alice',
+                    'Unbound workspace',
+                    'draft',
+                    false,
+                    current_timestamp,
+                    'READY',
+                    'INTERNAL_SHARED',
+                    false,
+                    true)
+                """);
+
+        assertThatThrownBy(() -> TaxonomySchemaMigrationConfig.migrateApplicationSchema(
+                Flyway.configure().dataSource(dataSource).load().getConfiguration()))
+                .hasStackTraceContaining("expected exactly one primary repository");
     }
 
     @Test
@@ -111,6 +371,10 @@ class TaxonomySchemaPostgresMigrationIT {
     }
 
     private static void installApplicationBaseline(DataSource dataSource) {
+        installApplicationAtVersion(dataSource, "1");
+    }
+
+    private static void installApplicationAtVersion(DataSource dataSource, String version) {
         Flyway.configure()
                 .dataSource(dataSource)
                 .locations(TaxonomySchemaMigrationConfig.POSTGRES_LOCATION)
@@ -118,15 +382,13 @@ class TaxonomySchemaPostgresMigrationIT {
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
                 .baselineDescription("before Taxonomy application schema")
-                .target("1")
+                .target(version)
                 .load()
                 .migrate();
     }
 
     private static DataSource isolatedDataSource(String schema) throws SQLException {
         DataSource admin = baseDataSource();
-        // Surefire may rerun a failed test in the same container. Recreate the
-        // fixed schema names so no prior DDL or Flyway history can leak in.
         execute(admin, "drop schema if exists " + schema + " cascade");
         execute(admin, "create schema " + schema);
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
@@ -188,6 +450,15 @@ class TaxonomySchemaPostgresMigrationIT {
              ResultSet resultSet = statement.executeQuery(sql)) {
             resultSet.next();
             return resultSet.getLong(1);
+        }
+    }
+
+    private static String singleString(DataSource dataSource, String sql) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+            resultSet.next();
+            return resultSet.getString(1);
         }
     }
 

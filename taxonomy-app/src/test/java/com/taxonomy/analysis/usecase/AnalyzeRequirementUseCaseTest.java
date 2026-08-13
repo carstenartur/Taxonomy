@@ -114,7 +114,8 @@ class AnalyzeRequirementUseCaseTest {
 
         assertThat(result.analysisResult().getArchitectureView()).isNull();
         assertThat(result.analysisResult().getProvisionalRelations()).isEmpty();
-        verify(hypothesisService, never()).persistFromAnalysis(any(), any(), any());
+        verify(hypothesisService, never()).persistFromAnalysis(
+                any(), any(), any(WorkspaceContext.class));
         verifyNoInteractions(architectureViewService, preferencesService);
         verify(llmService).clearRequestProvider();
     }

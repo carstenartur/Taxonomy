@@ -60,6 +60,8 @@ class KeycloakSecurityContainerIT {
     private static final String ISSUER = KEYCLOAK_ORIGIN + "/realms/" + REALM;
     private static final String CLIENT_ID = "taxonomy-app";
     private static final String CLIENT_SECRET = "taxonomy-test-secret";
+    private static final String GIT_PROPOSAL_REVIEW_PATH =
+            "/api/architecture/proposals/1/accept";
     private static final String KEYCLOAK_IMAGE = System.getProperty(
             "keycloak.container.image", "quay.io/keycloak/keycloak:26.7.0");
 
@@ -180,11 +182,14 @@ class KeycloakSecurityContainerIT {
                 "GET", "/api/relations", userToken, null, null, Map.of())
                 .statusCode()).isEqualTo(200);
 
-        assertThat(jsonPost("/api/relations", userToken, "{}").statusCode())
+        // The Git-authoritative review endpoint requires ARCHITECT/ADMIN. Bearer
+        // clients are CSRF-exempt; missing Idempotency-Key then reaches MVC as 400.
+        assertThat(jsonPost(GIT_PROPOSAL_REVIEW_PATH, userToken, "{}").statusCode())
                 .isEqualTo(403);
-        assertThat(jsonPost("/api/relations", architectToken, "{}").statusCode())
+        assertThat(jsonPost(
+                GIT_PROPOSAL_REVIEW_PATH, architectToken, "{}").statusCode())
                 .isEqualTo(400);
-        assertThat(jsonPost("/api/relations", adminToken, "{}").statusCode())
+        assertThat(jsonPost(GIT_PROPOSAL_REVIEW_PATH, adminToken, "{}").statusCode())
                 .isEqualTo(400);
 
         assertThat(appRequest(
@@ -249,12 +254,14 @@ class KeycloakSecurityContainerIT {
         assertThat(csrfToken).isNotBlank();
 
         HttpResponse<String> withoutCsrf = appRequest(
-                "POST", "/api/relations", null, "application/json", "{}",
+                "POST", GIT_PROPOSAL_REVIEW_PATH,
+                null, "application/json", "{}",
                 Map.of("Cookie", sessionCookie));
         assertThat(withoutCsrf.statusCode()).isEqualTo(403);
 
         HttpResponse<String> withCsrf = appRequest(
-                "POST", "/api/relations", null, "application/json", "{}",
+                "POST", GIT_PROPOSAL_REVIEW_PATH,
+                null, "application/json", "{}",
                 Map.of("Cookie", sessionCookie, csrfHeader, csrfToken));
         assertThat(withCsrf.statusCode()).isEqualTo(400);
 
@@ -381,7 +388,7 @@ class KeycloakSecurityContainerIT {
     private void assertNoApplicationRoles(String token, String expectedUsername)
             throws Exception {
         assertAccount(token, expectedUsername, Set.of());
-        assertThat(jsonPost("/api/relations", token, "{}").statusCode())
+        assertThat(jsonPost(GIT_PROPOSAL_REVIEW_PATH, token, "{}").statusCode())
                 .isEqualTo(403);
         assertThat(appRequest(
                 "GET", "/api/preferences", token, null, null, Map.of())

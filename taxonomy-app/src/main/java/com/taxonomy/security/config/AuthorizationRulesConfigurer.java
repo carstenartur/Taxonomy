@@ -45,6 +45,26 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.PUT, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
 
+        // Git-authoritative architecture decisions use identity-based endpoints
+        // outside the historic /api/relations and /api/proposals paths. Keep the
+        // same global role gate here; repository/workspace authority remains an
+        // additional controller-level check.
+        auth.requestMatchers(
+                        HttpMethod.POST,
+                        "/api/architecture/relations/**",
+                        "/api/architecture/proposals/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(
+                        HttpMethod.PUT,
+                        "/api/architecture/relations/**",
+                        "/api/architecture/proposals/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(
+                        HttpMethod.DELETE,
+                        "/api/architecture/relations/**",
+                        "/api/architecture/proposals/**")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+
         auth.requestMatchers(HttpMethod.POST, "/api/dsl/parse", "/api/dsl/validate", "/api/dsl/format")
                 .authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
@@ -59,6 +79,11 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.GET, "/api/workspace/**").authenticated();
+        // Provisioning creates only the authenticated user's isolated working
+        // copy. It must remain available to every product role and is ordered
+        // before the privileged catch-all for workspace administration.
+        auth.requestMatchers(HttpMethod.POST, "/api/workspace/provision")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST,
                         "/api/workspace/sync-from-shared",
                         "/api/workspace/publish",
@@ -67,6 +92,20 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/workspace/**").hasRole("ADMIN");
         auth.requestMatchers(HttpMethod.PUT, "/api/workspace/**").hasRole("ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/workspace/**").hasRole("ADMIN");
+
+        auth.requestMatchers(HttpMethod.GET, "/api/repositories/**").authenticated();
+        auth.requestMatchers(HttpMethod.POST, "/api/repositories")
+                .hasRole("ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/repositories/*/workspaces")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/repositories/*/forks")
+                .hasAnyRole("ARCHITECT", "ADMIN");
+        // Global authentication is only the outer gate. Repository OWNER authority is
+        // enforced by ArchitectureRepositoryController/RepositoryMembershipService.
+        auth.requestMatchers(HttpMethod.PUT, "/api/repositories/*/members/*")
+                .authenticated();
+        auth.requestMatchers(HttpMethod.DELETE, "/api/repositories/*/members/*")
+                .authenticated();
 
         auth.requestMatchers(HttpMethod.POST, "/api/import/preview/**")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");

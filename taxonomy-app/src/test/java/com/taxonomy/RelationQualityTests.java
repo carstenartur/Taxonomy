@@ -1,22 +1,25 @@
 package com.taxonomy;
 
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.repository.RelationProposalRepository;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.relations.service.RelationQualityService;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
-import com.taxonomy.relations.controller.QualityApiController;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests for the Relation Quality Dashboard:
@@ -31,6 +34,7 @@ class RelationQualityTests {
     @Autowired private RelationQualityService qualityService;
     @Autowired private RelationProposalRepository proposalRepository;
     @Autowired private TaxonomyRelationRepository relationRepository;
+    @Autowired private SystemRepositoryService systemRepositoryService;
 
     @BeforeEach
     void clean() {
@@ -94,7 +98,14 @@ class RelationQualityTests {
 
     @Test
     void feedbackLoopServiceReturnsNeutralWithNoHistory() {
-        double weight = qualityService.acceptanceHistoryWeight("BP", "CP", RelationType.RELATED_TO);
+        double weight = qualityService.acceptanceHistoryWeight(
+                "BP", "CP", RelationType.RELATED_TO, centralReadContext());
         assertThat(weight).isEqualTo(0.5);
+    }
+
+    private RepositoryContext centralReadContext() {
+        SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        return RepositoryContext.centralRead(
+                primary.getRepositoryId(), primary.getDefaultBranch(), "user");
     }
 }

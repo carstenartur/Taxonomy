@@ -27,6 +27,36 @@ class ObservabilityPerformanceMemoryTest {
     }
 
     @Test
+    void benchmarkModesShareOneFullyCommittedFixedHeap() {
+        String common = "-Xms1024m -Xmx1024m -XX:+AlwaysPreTouch";
+
+        assertThat(ObservabilityPerformanceIT.javaToolOptions(common, false))
+                .isEqualTo(common);
+        assertThat(ObservabilityPerformanceIT.javaToolOptions(common, true))
+                .startsWith(common + " ")
+                .endsWith("-javaagent:/tmp/opentelemetry-javaagent.jar");
+    }
+
+    @Test
+    void rejectsJvmOptionsThatWouldReintroduceHeapErgonomicsNoise() {
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> ObservabilityPerformanceIT.javaToolOptions(" ", false))
+                .withMessageContaining("must not be blank");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> ObservabilityPerformanceIT.javaToolOptions(
+                        "-Xmx1024m -XX:+AlwaysPreTouch", false))
+                .withMessageContaining("must include -Xms");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> ObservabilityPerformanceIT.javaToolOptions(
+                        "-Xms512m -Xmx1024m -XX:+AlwaysPreTouch", false))
+                .withMessageContaining("identical -Xms and -Xmx");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> ObservabilityPerformanceIT.javaToolOptions(
+                        "-Xms1024m -Xmx1024m", false))
+                .withMessageContaining("AlwaysPreTouch");
+    }
+
+    @Test
     void lifetimePeakAloneRequiresInvestigationWithoutFailingTheHardGate() {
         ObservabilityPerformanceIT.MemoryBudgetDecision decision =
                 ObservabilityPerformanceIT.evaluateMemoryBudget(64L, 512L, 256L);

@@ -52,7 +52,7 @@ class ObservabilityContainerIT {
     private static final String DEBUG_EXPORT_START = "ResourceSpans #";
     private static final String SAFE_OPERATION_LOG =
             "Observed taxonomy operation component=workspace "
-                    + "operation=resolveCurrentContext outcome=success";
+                    + "operation=resolveRepositoryContextForUser outcome=success";
     private static final String BASIC_AUTH = "Basic "
             + Base64.getEncoder().encodeToString(
                     ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
@@ -135,14 +135,14 @@ class ObservabilityContainerIT {
         assertThat(prometheus.body())
                 .contains("taxonomy_workspace_resolve_seconds_count")
                 .contains("taxonomy_component=\"workspace\"")
-                .contains("taxonomy_operation=\"resolveCurrentContext\"")
+                .contains("taxonomy_operation=\"resolveRepositoryContextForUser\"")
                 .contains("outcome=\"success\"");
 
         TraceEvidence evidence = awaitCorrelatedTrace();
         assertThat(evidence.spanNames())
                 .anyMatch(name -> name.contains("/api/relations"));
         assertThat(evidence.spanNames())
-                .anyMatch(name -> name.contains("resolveCurrentContext"));
+                .anyMatch(name -> name.contains("resolveRepositoryContextForUser"));
         assertThat(evidence.exportedTelemetry())
                 .doesNotContain(
                         "taxonomy.workspace.name",
@@ -193,7 +193,7 @@ class ObservabilityContainerIT {
                 boolean http = trace.getValue().stream()
                         .anyMatch(name -> name.contains("/api/relations"));
                 boolean taxonomy = trace.getValue().stream()
-                        .anyMatch(name -> name.contains("resolveCurrentContext"));
+                        .anyMatch(name -> name.contains("resolveRepositoryContextForUser"));
                 if (http && taxonomy) {
                     return new TraceEvidence(
                             trace.getKey(),

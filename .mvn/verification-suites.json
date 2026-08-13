@@ -25,7 +25,7 @@
     "jgit-storage-hibernate-contract": {
       "purpose": "Bounded consumer-owned Core schema, Hibernate Search and PostgreSQL compatibility contract for jgit-storage-hibernate upgrades",
       "test": "JgitStorageHibernateIntegrationTest,JgitStorageOptimizedIndexContractTest,JgitStorageSchemaIndexValidationTest,JgitStorageSchemaMigrationConfigTest,CommitIndexHibernateSearchTest",
-      "itTest": "JgitStoragePostgresMigrationIT,TaxonomyPostgresValidateStartupIT,TaxonomySchemaPostgresMigrationIT",
+      "itTest": "JgitStoragePostgresMigrationIT,TaxonomyPostgresValidateStartupIT,TaxonomySchemaPostgresMigrationIT,ArchitectureCommitIndexTenantMigrationPostgresIT",
       "excludedGroups": "real-llm,onnx,db-mssql,db-oracle",
       "requires": ["Java 21", "Docker", "Python 3", "Bash 4+"]
     }

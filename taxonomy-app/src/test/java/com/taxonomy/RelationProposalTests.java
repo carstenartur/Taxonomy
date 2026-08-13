@@ -1,19 +1,27 @@
 package com.taxonomy;
 
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.repository.RelationProposalRepository;
-import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.relations.service.RelationCandidateService;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import com.taxonomy.relations.service.RelationProposalService;
-import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.relations.service.RelationReviewService;
+import com.taxonomy.relations.service.RelationValidationService;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -21,18 +29,15 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
-import com.taxonomy.relations.service.RelationCandidateService;
-import com.taxonomy.relations.service.RelationCompatibilityMatrix;
-import com.taxonomy.relations.service.RelationReviewService;
-import com.taxonomy.relations.service.RelationValidationService;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Tests for the relation proposal pipeline and REST API. */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(username = "proposal-admin", roles = "ADMIN")
 class RelationProposalTests {
 
     @Autowired private MockMvc mockMvc;
@@ -43,6 +48,7 @@ class RelationProposalTests {
     @Autowired private RelationCompatibilityMatrix compatibilityMatrix;
     @Autowired private RelationProposalRepository proposalRepository;
     @Autowired private TaxonomyRelationRepository relationRepository;
+    @Autowired private SystemRepositoryService systemRepositoryService;
 
     @BeforeEach
     void clean() {
@@ -82,7 +88,13 @@ class RelationProposalTests {
         candidate.setCode("BP");
         candidate.setTaxonomyRoot("BP");
 
-        var result = validationService.validate(source, candidate, RelationType.RELATED_TO, 0, 1);
+        var result = validationService.validate(
+                source,
+                candidate,
+                RelationType.RELATED_TO,
+                0,
+                1,
+                centralWriteContext());
 
         assertThat(result.isValid()).isFalse();
         assertThat(result.getRationale()).contains("Self-relation");
@@ -112,17 +124,26 @@ class RelationProposalTests {
     }
 
     @Test
-    void proposeRelationsReturnsProposals() {
-        List<RelationProposalDto> proposals =
-                proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
+    void explicitCentralWriteContextCanProposeRelations() {
+        List<RelationProposalDto> proposals = proposalService.proposeRelationsInContext(
+                "BP", RelationType.RELATED_TO, 5, centralWriteContext());
         assertThat(proposals).isNotNull();
     }
 
     @Test
-    void proposeRelationsRejectsUnknownNode() {
+    void legacyCentralWriteWrapperFailsClosed() {
         assertThatThrownBy(() -> proposalService.proposeRelations(
-                "NONEXISTENT", RelationType.RELATED_TO, 5))
-                .isInstanceOf(IllegalArgumentException.class);
+                "BP", RelationType.RELATED_TO, 5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("CENTRAL_WRITE");
+    }
+
+    @Test
+    void proposeRelationsRejectsUnknownNodeAfterWriteAuthorization() {
+        assertThatThrownBy(() -> proposalService.proposeRelationsInContext(
+                "NONEXISTENT", RelationType.RELATED_TO, 5, centralWriteContext()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Source node not found");
     }
 
     @Test
@@ -137,12 +158,12 @@ class RelationProposalTests {
 
     @Test
     void acceptProposalCreatesRelation() {
-        List<RelationProposalDto> proposals =
-                proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
+        List<RelationProposalDto> proposals = proposalService.proposeRelationsInContext(
+                "BP", RelationType.RELATED_TO, 5, centralWriteContext());
         if (!proposals.isEmpty()) {
             Long proposalId = proposals.get(0).getId();
             TaxonomyRelationDto relation = reviewService.acceptProposal(
-                    proposalId, WorkspaceContext.SHARED);
+                    proposalId, centralWriteContext());
             assertThat(relation).isNotNull();
             assertThat(relation.getSourceCode()).isEqualTo("BP");
             assertThat(relation.getRelationType()).isEqualTo("RELATED_TO");
@@ -155,12 +176,12 @@ class RelationProposalTests {
 
     @Test
     void rejectProposalChangesStatus() {
-        List<RelationProposalDto> proposals =
-                proposalService.proposeRelations("BP", RelationType.RELATED_TO, 5);
+        List<RelationProposalDto> proposals = proposalService.proposeRelationsInContext(
+                "BP", RelationType.RELATED_TO, 5, centralWriteContext());
         if (!proposals.isEmpty()) {
             Long proposalId = proposals.get(0).getId();
             RelationProposalDto rejected = reviewService.rejectProposal(
-                    proposalId, WorkspaceContext.SHARED);
+                    proposalId, centralWriteContext());
             assertThat(rejected.getStatus()).isEqualTo("REJECTED");
             var updated = proposalRepository.findById(proposalId).orElseThrow();
             assertThat(updated.getStatus()).isEqualTo(ProposalStatus.REJECTED);
@@ -171,14 +192,14 @@ class RelationProposalTests {
     @Test
     void acceptNonExistentProposalThrows() {
         assertThatThrownBy(() -> reviewService.acceptProposal(
-                999L, WorkspaceContext.SHARED))
+                999L, centralWriteContext()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectNonExistentProposalThrows() {
         assertThatThrownBy(() -> reviewService.rejectProposal(
-                999L, WorkspaceContext.SHARED))
+                999L, centralWriteContext()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -248,5 +269,15 @@ class RelationProposalTests {
     void proposalsApiRejectReturnsBadRequestForNonExistent() throws Exception {
         mockMvc.perform(post("/api/proposals/999/reject"))
                 .andExpect(status().isBadRequest());
+    }
+
+    private RepositoryContext centralWriteContext() {
+        SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+        return new RepositoryContext(
+                primary.getRepositoryId(),
+                null,
+                primary.getDefaultBranch(),
+                "proposal-admin",
+                RepositoryScope.CENTRAL_WRITE);
     }
 }

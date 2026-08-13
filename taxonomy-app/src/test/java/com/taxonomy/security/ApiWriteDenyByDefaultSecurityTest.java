@@ -71,6 +71,24 @@ class ApiWriteDenyByDefaultSecurityTest {
     }
 
     @Test
+    @WithMockUser(roles = "ARCHITECT")
+    void architectReachesSelfServiceWorkspaceProvisioning() throws Exception {
+        mockMvc.perform(post("/api/workspace/provision").with(csrf()))
+                .andExpect(result -> assertThat(result.getResponse().getStatus())
+                        .as("architect workspace provisioning must pass authorization")
+                        .isNotEqualTo(403));
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void userReachesSelfServiceWorkspaceProvisioning() throws Exception {
+        mockMvc.perform(post("/api/workspace/provision").with(csrf()))
+                .andExpect(result -> assertThat(result.getResponse().getStatus())
+                        .as("user workspace provisioning must pass authorization")
+                        .isNotEqualTo(403));
+    }
+
+    @Test
     @WithMockUser(roles = "USER")
     void userCannotTriggerDerivedMetadataWrites() throws Exception {
         mockMvc.perform(post("/api/architecture/metadata/recompute").with(csrf()))

@@ -45,30 +45,41 @@ class ProductionPersistenceRestartIT {
         GenericContainer<?> second = null;
 
         try {
-            long countBeforeWrite;
             first = persistentAppContainer(dataVolume);
             first.start();
             URI firstOrigin = origin(first);
             awaitInitialized(client, firstOrigin);
 
-            countBeforeWrite = relationCount(client, firstOrigin);
+            RelationSnapshot beforeWrite = relationSnapshot(client, firstOrigin);
             HttpResponse<String> createResponse = send(client, HttpRequest.newBuilder(
-                    firstOrigin.resolve("/api/relations"))
+                    firstOrigin.resolve(
+                            "/api/architecture/relations/BP/RELATED_TO/BR"))
                     .header("Authorization", AUTHORIZATION)
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString("""
+                    .header("If-Match", beforeWrite.etag())
+                    .header(
+                            "Idempotency-Key",
+                            "production-persistence-restart:"
+                                    + UUID.randomUUID())
+                    .PUT(HttpRequest.BodyPublishers.ofString("""
                             {
-                              "sourceCode": "BP",
-                              "targetCode": "BR",
-                              "relationType": "RELATED_TO",
-                              "description": "Persistence restart proof",
-                              "provenance": "%s"
+                              "status": "accepted",
+                              "provenance": "%s",
+                              "extensions": {
+                                "x-description": "Persistence restart proof"
+                              },
+                              "rationale": "Persistence restart proof"
                             }
                             """.formatted(PERSISTENCE_PROVENANCE)))
                     .build());
-            assertThat(createResponse.statusCode()).isEqualTo(200);
-            assertThat(createResponse.body()).contains(PERSISTENCE_PROVENANCE);
-            assertThat(relationCount(client, firstOrigin)).isGreaterThan(countBeforeWrite);
+            assertThat(createResponse.statusCode()).isIn(200, 201);
+            assertThat(createResponse.headers().firstValue("ETag")).isPresent();
+
+            HttpResponse<String> writtenRelations = relations(client, firstOrigin);
+            assertThat(writtenRelations.statusCode()).isEqualTo(200);
+            assertThat(writtenRelations.body()).contains(PERSISTENCE_PROVENANCE);
+            assertThat(relationCount(client, firstOrigin))
+                    .isGreaterThan(beforeWrite.count());
             first.stop();
             first = null;
 
@@ -77,21 +88,17 @@ class ProductionPersistenceRestartIT {
             URI secondOrigin = origin(second);
             awaitInitialized(client, secondOrigin);
 
-            HttpResponse<String> relations = send(client, HttpRequest.newBuilder(
-                    secondOrigin.resolve("/api/relations"))
-                    .header("Authorization", AUTHORIZATION)
-                    .GET()
-                    .build());
-            assertThat(relations.statusCode()).isEqualTo(200);
-            assertThat(relations.body())
-                    .as("relation written before container replacement must remain present")
+            HttpResponse<String> persistedRelations = relations(client, secondOrigin);
+            assertThat(persistedRelations.statusCode()).isEqualTo(200);
+            assertThat(persistedRelations.body())
+                    .as("Git-authoritative relation written before container replacement must remain present")
                     .contains(PERSISTENCE_PROVENANCE);
 
             // Catalogue-derived relation totals may be normalized during startup. The
-            // persistence contract is that the explicit user relation survives and that
+            // persistence contract is that the explicit Git decision survives and that
             // the repository does not fall below its pre-write baseline.
             assertThat(relationCount(client, secondOrigin))
-                    .isGreaterThanOrEqualTo(countBeforeWrite);
+                    .isGreaterThanOrEqualTo(beforeWrite.count());
         } finally {
             stopQuietly(second);
             stopQuietly(first);
@@ -163,7 +170,23 @@ class ProductionPersistenceRestartIT {
                 });
     }
 
+    private static HttpResponse<String> relations(
+            HttpClient client,
+            URI origin) throws Exception {
+        return send(client, HttpRequest.newBuilder(
+                origin.resolve("/api/relations"))
+                .header("Authorization", AUTHORIZATION)
+                .GET()
+                .build());
+    }
+
     private static long relationCount(HttpClient client, URI origin) throws Exception {
+        return relationSnapshot(client, origin).count();
+    }
+
+    private static RelationSnapshot relationSnapshot(
+            HttpClient client,
+            URI origin) throws Exception {
         HttpResponse<String> response = send(client, HttpRequest.newBuilder(
                 origin.resolve("/api/relations/count"))
                 .header("Authorization", AUTHORIZATION)
@@ -172,10 +195,16 @@ class ProductionPersistenceRestartIT {
         assertThat(response.statusCode()).isEqualTo(200);
         String digits = response.body().replaceAll("[^0-9]", "");
         assertThat(digits).isNotBlank();
-        return Long.parseLong(digits);
+        String etag = response.headers().firstValue("ETag").orElseThrow(
+                () -> new AssertionError(
+                        "relation count response must expose the authoritative Git ETag"));
+        return new RelationSnapshot(Long.parseLong(digits), etag);
     }
 
     private static HttpResponse<String> send(HttpClient client, HttpRequest request) throws Exception {
         return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private record RelationSnapshot(long count, String etag) {
     }
 }

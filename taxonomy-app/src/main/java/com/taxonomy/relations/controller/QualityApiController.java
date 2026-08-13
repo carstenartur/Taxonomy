@@ -5,24 +5,26 @@ import com.taxonomy.dto.RelationQualityMetrics;
 import com.taxonomy.dto.RelationTypeMetrics;
 import com.taxonomy.dto.TopRejectedProposal;
 import com.taxonomy.relations.service.RelationQualityService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
 /**
  * REST API for the Relation Quality Dashboard.
  *
- * <p>Endpoints:
- * <ul>
- *   <li>{@code GET /api/relations/metrics} — full quality dashboard</li>
- *   <li>{@code GET /api/relations/metrics/by-type} — metrics by relation type</li>
- *   <li>{@code GET /api/relations/metrics/by-provenance} — metrics by provenance</li>
- *   <li>{@code GET /api/relations/metrics/top-rejected} — top rejected proposals</li>
- * </ul>
+ * <p>Every request resolves one stable selected repository context. Responses
+ * are not cacheable because the URL is intentionally independent of the
+ * repository/workspace selection stored in the user session.</p>
  */
 @RestController
 @RequestMapping("/api/relations/metrics")
@@ -30,45 +32,64 @@ import java.util.List;
 public class QualityApiController {
 
     private final RelationQualityService qualityService;
+    private final WorkspaceResolver workspaceResolver;
 
-    public QualityApiController(RelationQualityService qualityService) {
+    public QualityApiController(
+            RelationQualityService qualityService,
+            WorkspaceResolver workspaceResolver) {
         this.qualityService = qualityService;
+        this.workspaceResolver = workspaceResolver;
     }
 
-    /**
-     * Returns the full quality dashboard metrics.
-     */
-    @Operation(summary = "Quality dashboard", description = "Returns the full quality dashboard metrics")
+    /** Returns the full quality dashboard metrics. */
+    @Operation(
+            summary = "Quality dashboard",
+            description = "Returns quality metrics for the selected repository context")
     @GetMapping
     public ResponseEntity<RelationQualityMetrics> getMetrics() {
-        return ResponseEntity.ok(qualityService.calculateMetrics());
+        RepositoryContext context = currentContext();
+        return noStore(qualityService.calculateMetrics(context));
     }
 
-    /**
-     * Returns metrics broken down by relation type.
-     */
-    @Operation(summary = "Metrics by relation type", description = "Returns quality metrics broken down by relation type")
+    /** Returns metrics broken down by relation type. */
+    @Operation(
+            summary = "Metrics by relation type",
+            description = "Returns relation-type metrics for the selected repository context")
     @GetMapping("/by-type")
     public ResponseEntity<List<RelationTypeMetrics>> getMetricsByType() {
-        return ResponseEntity.ok(qualityService.metricsByRelationType());
+        RepositoryContext context = currentContext();
+        return noStore(qualityService.metricsByRelationType(context));
     }
 
-    /**
-     * Returns metrics broken down by provenance.
-     */
-    @Operation(summary = "Metrics by provenance", description = "Returns quality metrics broken down by provenance")
+    /** Returns metrics broken down by provenance. */
+    @Operation(
+            summary = "Metrics by provenance",
+            description = "Returns provenance metrics for the selected repository context")
     @GetMapping("/by-provenance")
     public ResponseEntity<List<ProvenanceMetrics>> getMetricsByProvenance() {
-        return ResponseEntity.ok(qualityService.metricsByProvenance());
+        RepositoryContext context = currentContext();
+        return noStore(qualityService.metricsByProvenance(context));
     }
 
-    /**
-     * Returns top rejected proposals ordered by confidence descending.
-     */
-    @Operation(summary = "Top rejected proposals", description = "Returns top rejected proposals ordered by confidence descending")
+    /** Returns the highest-confidence rejected proposals in the visible scope. */
+    @Operation(
+            summary = "Top rejected proposals",
+            description = "Returns rejected proposals from the selected repository context")
     @GetMapping("/top-rejected")
     public ResponseEntity<List<TopRejectedProposal>> getTopRejected(
-            @Parameter(description = "Maximum number of results") @RequestParam(defaultValue = "10") int limit) {
-        return ResponseEntity.ok(qualityService.topRejected(limit));
+            @Parameter(description = "Maximum number of results")
+            @RequestParam(defaultValue = "10") int limit) {
+        RepositoryContext context = currentContext();
+        return noStore(qualityService.topRejected(limit, context));
+    }
+
+    private RepositoryContext currentContext() {
+        return workspaceResolver.resolveCurrentRepositoryContext();
+    }
+
+    private static <T> ResponseEntity<T> noStore(T body) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(body);
     }
 }

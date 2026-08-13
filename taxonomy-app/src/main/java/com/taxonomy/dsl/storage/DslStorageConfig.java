@@ -1,5 +1,6 @@
 package com.taxonomy.dsl.storage;
 
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import jakarta.persistence.EntityManagerFactory;
@@ -34,8 +35,9 @@ public class DslStorageConfig {
     /** Create the Taxonomy-specific logical-repository router. */
     @Bean
     public DslGitRepositoryFactory dslGitRepositoryFactory(
-            HibernateRepositoryFactory hibernateRepositoryFactory) {
+            HibernateRepositoryFactory hibernateRepositoryFactory,
+            SystemRepositoryService systemRepositoryService) {
         log.info("Creating DslGitRepositoryFactory backed by jgit-storage-hibernate-core");
-        return new DslGitRepositoryFactory(hibernateRepositoryFactory);
+        return new DslGitRepositoryFactory(hibernateRepositoryFactory, systemRepositoryService);
     }
 }

@@ -44,6 +44,28 @@ public class ImpactRelationStep implements ArchitecturePipelineStep {
 
     private static final Logger log = LoggerFactory.getLogger(ImpactRelationStep.class);
 
+    /** Semantic strength/order used only after priority and measured relevance tie. */
+    private static final Map<String, Integer> RELATION_TYPE_ORDER = Map.of(
+            "REALIZES", 10,
+            "SUPPORTS", 20,
+            "FULFILLS", 30,
+            "USES", 40,
+            "DEPENDS_ON", 50);
+
+    /** Canonical architecture-layer tie breaker, independent of persistence order. */
+    private static final Map<String, Integer> ROOT_ORDER = Map.of(
+            "CP", 10,
+            "BP", 20,
+            "BR", 21,
+            "CR", 30,
+            "CI", 31,
+            "UA", 40,
+            "IP", 50,
+            "CO", 60);
+
+    private static final Comparator<String> NULL_SAFE_TEXT =
+            Comparator.nullsLast(Comparator.naturalOrder());
+
     private final TaxonomyNodeRepository nodeRepository;
 
     public ImpactRelationStep(TaxonomyNodeRepository nodeRepository) {
@@ -133,7 +155,7 @@ public class ImpactRelationStep implements ArchitecturePipelineStep {
      * provisional relations are emitted.
      */
     private void emitImpactHypotheses(List<RequirementRelationshipView> relationships,
-                                       List<RelationHypothesisDto> provisionalRelations) {
+                                      List<RelationHypothesisDto> provisionalRelations) {
         if (provisionalRelations == null) return;
 
         Set<String> existingSignatures = new LinkedHashSet<>();
@@ -174,13 +196,25 @@ public class ImpactRelationStep implements ArchitecturePipelineStep {
      *   <li>Root-level propagation relations (non-seed)</li>
      *   <li>Seed-origin root-to-root relations (structural context)</li>
      * </ol>
-     * Within each tier, relations are sorted by confidence/relevance descending.
+     * Within each tier, relations are sorted by confidence/relevance descending,
+     * then by stable semantic tie breakers. The final tie breakers are required:
+     * Java's stable sort cannot provide deterministic output when the input list
+     * came from an unordered database query or hash-based intermediate structure.
      */
-    private static void rankRelationships(List<RequirementRelationshipView> relationships) {
+    static void rankRelationships(List<RequirementRelationshipView> relationships) {
         relationships.sort(Comparator
                 .comparingInt(ImpactRelationStep::relationPriority)
-                .thenComparing(Comparator.comparingDouble(RequirementRelationshipView::getConfidence).reversed())
-                .thenComparing(Comparator.comparingDouble(RequirementRelationshipView::getPropagatedRelevance).reversed()));
+                .thenComparing(Comparator.comparingDouble(
+                        RequirementRelationshipView::getConfidence).reversed())
+                .thenComparing(Comparator.comparingDouble(
+                        RequirementRelationshipView::getPropagatedRelevance).reversed())
+                .thenComparingInt(rel -> relationTypeOrder(rel.getRelationType()))
+                .thenComparingInt(rel -> rootOrder(rel.getSourceCode()))
+                .thenComparingInt(rel -> rootOrder(rel.getTargetCode()))
+                .thenComparing(RequirementRelationshipView::getSourceCode, NULL_SAFE_TEXT)
+                .thenComparing(RequirementRelationshipView::getTargetCode, NULL_SAFE_TEXT)
+                .thenComparing(RequirementRelationshipView::getRelationType, NULL_SAFE_TEXT)
+                .thenComparing(RequirementRelationshipView::getIncludedBecause, NULL_SAFE_TEXT));
     }
 
     private static int relationPriority(RequirementRelationshipView rel) {
@@ -194,6 +228,14 @@ public class ImpactRelationStep implements ArchitecturePipelineStep {
         if (srcIsLeaf || tgtIsLeaf) return 3;
         if (isSeed) return 5;
         return 4;
+    }
+
+    private static int relationTypeOrder(String relationType) {
+        return RELATION_TYPE_ORDER.getOrDefault(relationType, Integer.MAX_VALUE);
+    }
+
+    private static int rootOrder(String code) {
+        return ROOT_ORDER.getOrDefault(rootOf(code), Integer.MAX_VALUE);
     }
 
     /**

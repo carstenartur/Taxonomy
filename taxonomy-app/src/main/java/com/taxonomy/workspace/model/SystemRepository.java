@@ -8,11 +8,18 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.Instant;
 
 /**
- * Represents the system-owned central repository configuration.
+ * Catalog entry for a central architecture repository.
+ *
+ * <p>The historic class name is retained as a compatibility boundary while the
+ * application evolves from one implicit system repository to an explicit
+ * multi-repository catalog. Every entry owns a distinct logical JGit storage
+ * name. The repository marked {@link #isPrimaryRepo()} keeps the legacy
+ * {@code taxonomy-dsl} storage name.</p>
  *
  * <p>Credentials are deliberately not part of the public entity contract. The
  * legacy plaintext column remains mapped only so startup migration can erase
@@ -30,8 +37,35 @@ public class SystemRepository {
     @Column(name = "repository_id", nullable = false, unique = true)
     private String repositoryId;
 
+    @Column(name = "storage_repository_name", unique = true)
+    private String storageRepositoryName;
+
+    @Column(name = "slug", unique = true)
+    private String slug;
+
     @Column(name = "display_name")
     private String displayName;
+
+    @Column(name = "description", length = 1000)
+    private String description;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility")
+    private RepositoryVisibility visibility = RepositoryVisibility.PRIVATE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "lifecycle_state")
+    private RepositoryLifecycleState lifecycleState = RepositoryLifecycleState.ACTIVE;
+
+    @Column(name = "provisioning_error", length = 2000)
+    private String provisioningError;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "owner_type")
+    private RepositoryOwnerType ownerType = RepositoryOwnerType.USER;
+
+    @Column(name = "owner_id")
+    private String ownerId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "topology_mode", nullable = false)
@@ -47,6 +81,15 @@ public class SystemRepository {
     @Column(name = "external_auth_token")
     private String legacyExternalAuthToken;
 
+    @Column(name = "upstream_repository_id")
+    private String upstreamRepositoryId;
+
+    @Column(name = "upstream_branch")
+    private String upstreamBranch;
+
+    @Column(name = "fork_point_commit")
+    private String forkPointCommit;
+
     @Column(name = "last_fetch_at")
     private Instant lastFetchAt;
 
@@ -57,10 +100,20 @@ public class SystemRepository {
     private String lastFetchCommit;
 
     @Column(name = "primary_repo", nullable = false)
-    private boolean primaryRepo = true;
+    private boolean primaryRepo;
+
+    @Column(name = "created_by")
+    private String createdBy;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
+    @Version
+    @Column(name = "version")
+    private long version;
 
     public SystemRepository() {
     }
@@ -81,12 +134,76 @@ public class SystemRepository {
         this.repositoryId = repositoryId;
     }
 
+    public String getStorageRepositoryName() {
+        return storageRepositoryName;
+    }
+
+    public void setStorageRepositoryName(String storageRepositoryName) {
+        this.storageRepositoryName = storageRepositoryName;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
+    }
+
     public String getDisplayName() {
         return displayName;
     }
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public RepositoryVisibility getVisibility() {
+        return visibility;
+    }
+
+    public void setVisibility(RepositoryVisibility visibility) {
+        this.visibility = visibility;
+    }
+
+    public RepositoryLifecycleState getLifecycleState() {
+        return lifecycleState;
+    }
+
+    public void setLifecycleState(RepositoryLifecycleState lifecycleState) {
+        this.lifecycleState = lifecycleState;
+    }
+
+    public String getProvisioningError() {
+        return provisioningError;
+    }
+
+    public void setProvisioningError(String provisioningError) {
+        this.provisioningError = provisioningError;
+    }
+
+    public RepositoryOwnerType getOwnerType() {
+        return ownerType;
+    }
+
+    public void setOwnerType(RepositoryOwnerType ownerType) {
+        this.ownerType = ownerType;
+    }
+
+    public String getOwnerId() {
+        return ownerId;
+    }
+
+    public void setOwnerId(String ownerId) {
+        this.ownerId = ownerId;
     }
 
     public RepositoryTopologyMode getTopologyMode() {
@@ -123,6 +240,30 @@ public class SystemRepository {
         legacyExternalAuthToken = null;
     }
 
+    public String getUpstreamRepositoryId() {
+        return upstreamRepositoryId;
+    }
+
+    public void setUpstreamRepositoryId(String upstreamRepositoryId) {
+        this.upstreamRepositoryId = upstreamRepositoryId;
+    }
+
+    public String getUpstreamBranch() {
+        return upstreamBranch;
+    }
+
+    public void setUpstreamBranch(String upstreamBranch) {
+        this.upstreamBranch = upstreamBranch;
+    }
+
+    public String getForkPointCommit() {
+        return forkPointCommit;
+    }
+
+    public void setForkPointCommit(String forkPointCommit) {
+        this.forkPointCommit = forkPointCommit;
+    }
+
     public Instant getLastFetchAt() {
         return lastFetchAt;
     }
@@ -155,11 +296,31 @@ public class SystemRepository {
         this.primaryRepo = primaryRepo;
     }
 
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }
