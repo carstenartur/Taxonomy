@@ -151,7 +151,8 @@ public class RelationProposalService {
                             candidate,
                             relationType,
                             i,
-                            candidates.size());
+                            candidates.size(),
+                            tenant);
 
             if (!result.isValid()) {
                 continue;
@@ -368,7 +369,9 @@ public class RelationProposalService {
 
     private String deriveExplanationBasis(RelationProposal proposal) {
         String provenance = proposal.getProvenance();
-        if (provenance == null) return "unknown source";
+        if (provenance == null) {
+            return "unknown source";
+        }
 
         return switch (provenance) {
             case "hybrid-search" -> "Discovered via hybrid search (semantic + keyword) "
