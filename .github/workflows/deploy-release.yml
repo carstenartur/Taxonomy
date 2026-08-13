@@ -47,7 +47,7 @@ jobs:
   release:
     name: Build, stage and advance to the next snapshot
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
       - name: Checkout authoritative release source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -98,10 +98,13 @@ jobs:
           cp .github/scripts/check-version-state.py \
             "$RUNNER_TEMP/check-version-state.py"
           cp .github/scripts/generate-vex.py "$RUNNER_TEMP/generate-vex.py"
+          cp .github/scripts/verify-exact-release-gates.sh \
+            "$RUNNER_TEMP/verify-exact-release-gates.sh"
           chmod +x "$RUNNER_TEMP/release.sh" \
             "$RUNNER_TEMP/update-release-metadata.py" \
             "$RUNNER_TEMP/check-version-state.py" \
-            "$RUNNER_TEMP/generate-vex.py"
+            "$RUNNER_TEMP/generate-vex.py" \
+            "$RUNNER_TEMP/verify-exact-release-gates.sh"
 
       - name: Test release guards
         shell: bash
@@ -109,6 +112,7 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/test-resolve-release-parameters.py
           bash -n .github/scripts/release.sh
+          bash -n .github/scripts/verify-exact-release-gates.sh
           bash -n .github/scripts/install-helm.sh
           bash -n deploy/helm/taxonomy/verify.sh
           python3 .github/scripts/check-release-delivery-contract.py
@@ -183,6 +187,14 @@ jobs:
             exit 1
           fi
           echo "sha=$expected_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact final main release gate matrix
+        if: steps.release_parameters.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}
+        shell: bash
+        run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"
 
       - name: Checkout immutable release source
         if: steps.release_parameters.outputs.dry_run != 'true'
@@ -386,61 +398,6 @@ jobs:
             target/release-image-evidence.json
           if-no-files-found: warn
           retention-days: 90
-
-      - name: Verify exact final main snapshot with canonical CI
-        if: steps.release_parameters.outputs.dry_run != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_MAIN_SHA: ${{ steps.final_main.outputs.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          run_id=""
-
-          # Updating main through the refs API normally emits a push run. Reuse it
-          # so the exact commit is tested even when main advances again meanwhile.
-          for _ in $(seq 1 24); do
-            run_id=$(gh run list \
-              --workflow ci-cd.yml \
-              --commit "$EXPECTED_MAIN_SHA" \
-              --limit 10 \
-              --json databaseId,createdAt \
-              --jq 'sort_by(.createdAt) | last | .databaseId // empty')
-            if [[ -n "$run_id" ]]; then break; fi
-            sleep 5
-          done
-
-          if [[ -z "$run_id" ]]; then
-            git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
-            remote_sha=$(git rev-parse origin/main)
-            if [[ "$remote_sha" != "$EXPECTED_MAIN_SHA" ]]; then
-              echo "::error::No CI run exists for $EXPECTED_MAIN_SHA and main moved to $remote_sha"
-              exit 1
-            fi
-            gh workflow run ci-cd.yml --ref main
-            for _ in $(seq 1 60); do
-              run_id=$(gh run list \
-                --workflow ci-cd.yml \
-                --event workflow_dispatch \
-                --commit "$EXPECTED_MAIN_SHA" \
-                --limit 10 \
-                --json databaseId,createdAt \
-                --jq 'sort_by(.createdAt) | last | .databaseId // empty')
-              if [[ -n "$run_id" ]]; then break; fi
-              sleep 5
-            done
-          fi
-
-          if [[ -z "$run_id" ]]; then
-            echo "::error::Could not locate canonical CI for exact commit $EXPECTED_MAIN_SHA"
-            exit 1
-          fi
-          run_sha=$(gh run view "$run_id" --json headSha --jq '.headSha')
-          if [[ "$run_sha" != "$EXPECTED_MAIN_SHA" ]]; then
-            echo "::error::Selected CI run $run_id verifies $run_sha, not $EXPECTED_MAIN_SHA"
-            exit 1
-          fi
-          gh run watch "$run_id" --exit-status
 
       - name: Publish complete release and trigger deployment
         if: steps.release_parameters.outputs.dry_run != 'true'
