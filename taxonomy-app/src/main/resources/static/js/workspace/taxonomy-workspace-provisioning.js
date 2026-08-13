@@ -3,7 +3,7 @@
  *
  * Checks the provisioning status of the user's workspace on page load.
  * If the workspace is not yet provisioned, a modal dialog guides the user
- * through the creation of their personal working copy.
+ * through creation of the personal working copy and its branch projection.
  *
  * Uses i18n keys for all user-visible labels.
  *
@@ -13,7 +13,8 @@ window.TaxonomyWorkspaceProvisioning = (function () {
     'use strict';
 
     var t = TaxonomyI18n.t;
-    var POLL_INTERVAL = 2000; // 2 seconds
+    var POLL_INTERVAL = 2000;
+    var PROJECTION_ENDPOINT = '/api/architecture/relations/projection';
     var pollTimer = null;
 
     // ── Public API ──────────────────────────────────────────────────
@@ -24,8 +25,9 @@ window.TaxonomyWorkspaceProvisioning = (function () {
      */
     function check() {
         fetch('/api/workspace/provisioning-status')
-            .then(function (r) { return r.json(); })
-            .then(function (status) {
+            .then(parseJsonResponse)
+            .then(function (response) {
+                var status = response.body;
                 switch (status.status) {
                     case 'NOT_PROVISIONED':
                         showProvisioningDialog(status);
@@ -38,12 +40,14 @@ window.TaxonomyWorkspaceProvisioning = (function () {
                         showRetryDialog(status.error);
                         break;
                     case 'READY':
-                        // Workspace is ready, nothing to do
+                        ensureRelationProjection().catch(function (error) {
+                            showRetryDialog(error.message || String(error));
+                        });
                         break;
                 }
             })
-            .catch(function (err) {
-                console.warn('Could not check provisioning status:', err);
+            .catch(function (error) {
+                console.warn('Could not check provisioning status:', error);
             });
     }
 
@@ -188,19 +192,29 @@ window.TaxonomyWorkspaceProvisioning = (function () {
             existingModal.hide();
         }
         showSpinner();
-        fetch('/api/workspace/provision', { method: 'POST' })
-            .then(function (r) { return r.json(); })
-            .then(function (result) {
-                if (result.status === 'READY') {
-                    showReadyDialog();
-                } else if (result.error) {
-                    showRetryDialog(result.error || result.message);
-                } else {
-                    pollUntilReady();
+        fetch('/api/workspace/provision', {
+            method: 'POST',
+            headers: csrfHeaders()
+        })
+            .then(parseJsonResponse)
+            .then(function (response) {
+                var result = response.body;
+                if (!response.ok) {
+                    throw new Error(result.message || result.error ||
+                        'Workspace provisioning failed');
                 }
+                if (result.status === 'READY') {
+                    return ensureRelationProjection().then(showReadyDialog);
+                }
+                if (result.error) {
+                    showRetryDialog(result.error || result.message);
+                    return null;
+                }
+                pollUntilReady();
+                return null;
             })
-            .catch(function (err) {
-                showRetryDialog(err.message || String(err));
+            .catch(function (error) {
+                showRetryDialog(error.message || String(error));
             });
     }
 
@@ -208,23 +222,104 @@ window.TaxonomyWorkspaceProvisioning = (function () {
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = setInterval(function () {
             fetch('/api/workspace/provisioning-status')
-                .then(function (r) { return r.json(); })
-                .then(function (status) {
+                .then(parseJsonResponse)
+                .then(function (response) {
+                    var status = response.body;
                     if (status.status === 'READY') {
                         clearInterval(pollTimer);
                         pollTimer = null;
-                        showReadyDialog();
+                        ensureRelationProjection()
+                            .then(showReadyDialog)
+                            .catch(function (error) {
+                                showRetryDialog(error.message || String(error));
+                            });
                     } else if (status.status === 'FAILED') {
                         clearInterval(pollTimer);
                         pollTimer = null;
                         showRetryDialog(status.error);
                     }
-                    // PROVISIONING: keep polling
                 })
                 .catch(function () {
-                    // Network error, keep polling
+                    // Network error, keep polling.
                 });
         }, POLL_INTERVAL);
+    }
+
+    /**
+     * Materialize the exact workspace branch before the UI reports the workspace
+     * as usable. This keeps product reads and proposal duplicate validation on
+     * the same fail-closed, Git-authoritative projection.
+     */
+    function ensureRelationProjection() {
+        return fetch(PROJECTION_ENDPOINT + '/readiness')
+            .then(parseJsonResponse)
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error(projectionError(
+                        'Could not inspect relation projection', response));
+                }
+                var readiness = response.body;
+                if (readiness.readinessState === 'READY') {
+                    return readiness;
+                }
+                if (!readiness.currentHeadCommit) {
+                    throw new Error(projectionError(
+                        'Workspace has no authoritative branch head', response));
+                }
+                return fetch(PROJECTION_ENDPOINT + '/rebuild', {
+                    method: 'POST',
+                    headers: csrfHeaders({
+                        'If-Match': '"' + readiness.currentHeadCommit + '"'
+                    })
+                })
+                    .then(parseJsonResponse)
+                    .then(function (rebuildResponse) {
+                        if (!rebuildResponse.ok ||
+                                rebuildResponse.body.readinessState !== 'READY') {
+                            throw new Error(projectionError(
+                                'Could not rebuild relation projection',
+                                rebuildResponse));
+                        }
+                        return rebuildResponse.body;
+                    });
+            });
+    }
+
+    function csrfHeaders(additionalHeaders) {
+        var headers = Object.assign({
+            'Accept': 'application/json'
+        }, additionalHeaders || {});
+        var token = document.querySelector('meta[name="_csrf"]');
+        var header = document.querySelector('meta[name="_csrf_header"]');
+        if (token && token.content) {
+            headers[header && header.content ? header.content : 'X-CSRF-TOKEN'] =
+                token.content;
+        }
+        return headers;
+    }
+
+    function parseJsonResponse(response) {
+        return response.text().then(function (text) {
+            var body = {};
+            if (text) {
+                try {
+                    body = JSON.parse(text);
+                } catch (error) {
+                    body = { message: text };
+                }
+            }
+            return {
+                ok: response.ok,
+                status: response.status,
+                body: body
+            };
+        });
+    }
+
+    function projectionError(prefix, response) {
+        var body = response.body || {};
+        return prefix + ' (' + response.status + '): ' +
+            (body.message || body.operationStatus || body.readinessState || 'unknown error');
     }
 
     // ── Helpers ─────────────────────────────────────────────────────
