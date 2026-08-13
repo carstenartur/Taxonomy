@@ -1,6 +1,5 @@
 package com.taxonomy.relations.controller;
 
-import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
@@ -61,17 +60,8 @@ class ProposalProjectionUnavailableHttpTest {
 
         var response = controller.proposeRelations(validProposalBody());
 
-        assertThat(response.getStatusCode().value()).isEqualTo(409);
-        assertThat(response.getHeaders().getFirst(
-                RelationApiController.PROJECTION_STATE_HEADER))
-                .isEqualTo("STALE");
-        assertThat(response.getHeaders().getFirst(
-                RelationApiController.PENDING_RECOVERY_HEADER))
-                .isEqualTo("2");
-        assertThat(response.getHeaders().getFirst(HttpHeaders.ETAG))
-                .isEqualTo('"' + currentHead + '"');
-        assertThat(response.getHeaders().getCacheControl())
-                .isEqualTo("no-store");
+        assertStaleResponse(response.getStatusCode().value(),
+                response.getHeaders(), currentHead, "2");
     }
 
     @Test
@@ -94,15 +84,92 @@ class ProposalProjectionUnavailableHttpTest {
 
         var response = controller.proposeRelations(validProposalBody());
 
-        assertThat(response.getStatusCode().value()).isEqualTo(404);
-        assertThat(response.getHeaders().getFirst(
+        assertMissingBranchResponse(
+                response.getStatusCode().value(), response.getHeaders());
+    }
+
+    @Test
+    void staleProjectionBlocksHypothesisConversionWithRecoveryMetadata() {
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "feature/a", "alice");
+        String currentHead = "c".repeat(40);
+        when(workspaceResolver.resolveCurrentRepositoryContext())
+                .thenReturn(context);
+        when(proposalService.createFromHypothesisInContext(
+                eq("BP"),
+                eq("CP"),
+                eq(RelationType.RELATED_TO),
+                eq(0.82),
+                eq("model evidence"),
+                eq(context)))
+                .thenThrow(new RelationProjectionUnavailableException(
+                        context,
+                        ReadinessState.STALE,
+                        currentHead,
+                        "d".repeat(40),
+                        3L));
+
+        var response = controller.createFromHypothesis(validHypothesisBody());
+
+        assertStaleResponse(response.getStatusCode().value(),
+                response.getHeaders(), currentHead, "3");
+    }
+
+    @Test
+    void missingBranchBlocksHypothesisConversionWithoutInventingAnEtag() {
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "missing", "alice");
+        when(workspaceResolver.resolveCurrentRepositoryContext())
+                .thenReturn(context);
+        when(proposalService.createFromHypothesisInContext(
+                eq("BP"),
+                eq("CP"),
+                eq(RelationType.RELATED_TO),
+                eq(0.82),
+                eq("model evidence"),
+                eq(context)))
+                .thenThrow(new RelationProjectionUnavailableException(
+                        context,
+                        ReadinessState.BRANCH_MISSING,
+                        null,
+                        null,
+                        0L));
+
+        var response = controller.createFromHypothesis(validHypothesisBody());
+
+        assertMissingBranchResponse(
+                response.getStatusCode().value(), response.getHeaders());
+    }
+
+    private static void assertStaleResponse(
+            int status,
+            HttpHeaders headers,
+            String currentHead,
+            String pendingRecoveryCount) {
+        assertThat(status).isEqualTo(409);
+        assertThat(headers.getFirst(
+                RelationApiController.PROJECTION_STATE_HEADER))
+                .isEqualTo("STALE");
+        assertThat(headers.getFirst(
+                RelationApiController.PENDING_RECOVERY_HEADER))
+                .isEqualTo(pendingRecoveryCount);
+        assertThat(headers.getFirst(HttpHeaders.ETAG))
+                .isEqualTo('"' + currentHead + '"');
+        assertThat(headers.getCacheControl()).isEqualTo("no-store");
+    }
+
+    private static void assertMissingBranchResponse(
+            int status,
+            HttpHeaders headers) {
+        assertThat(status).isEqualTo(404);
+        assertThat(headers.getFirst(
                 RelationApiController.PROJECTION_STATE_HEADER))
                 .isEqualTo("BRANCH_MISSING");
-        assertThat(response.getHeaders().getFirst(HttpHeaders.ETAG))
-                .isNull();
-        assertThat(response.getHeaders().getFirst(
+        assertThat(headers.getFirst(HttpHeaders.ETAG)).isNull();
+        assertThat(headers.getFirst(
                 RelationApiController.PENDING_RECOVERY_HEADER))
                 .isNull();
+        assertThat(headers.getCacheControl()).isEqualTo("no-store");
     }
 
     private static Map<String, String> validProposalBody() {
@@ -110,5 +177,14 @@ class ProposalProjectionUnavailableHttpTest {
                 "sourceCode", "BP",
                 "relationType", "RELATED_TO",
                 "limit", "3");
+    }
+
+    private static Map<String, Object> validHypothesisBody() {
+        return Map.of(
+                "sourceCode", "BP",
+                "targetCode", "CP",
+                "relationType", "RELATED_TO",
+                "confidence", 0.82,
+                "rationale", "model evidence");
     }
 }
