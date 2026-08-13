@@ -1,0 +1,69 @@
+name: Apply release review contract fix
+
+on:
+  push:
+    branches:
+      - release/exact-final-gate-matrix
+    paths:
+      - '.github/workflows/apply-release-review-contract-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: release/exact-final-gate-matrix
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Apply and verify review contract corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/check-release-delivery-contract.py')
+          text = path.read_text(encoding='utf-8')
+
+          old_watch = '''        'gh run watch "$run_id" --exit-status',
+                  'if [[ "$status" != "completed" || "$conclusion" != "success" ]]','''
+          new_watch = '''        "watch_exit=0",
+                  'gh run watch "$run_id" --exit-status || watch_exit=$?',
+                  'if [[ "$status" != "completed" || "$conclusion" != "success" ]]',
+                  "if (( watch_exit != 0 ))",'''
+          if text.count(old_watch) != 1:
+              raise SystemExit('expected one legacy watch contract block')
+          text = text.replace(old_watch, new_watch)
+
+          old_order = '''                "main commit, fetch and build the immutable tag, scan and bind the "
+                          "pushed image digest, verify that exact main commit, and publish last"'''
+          new_order = '''                "main commit, verify its full gate matrix, then fetch and build the "
+                          "immutable tag, scan and bind the pushed image digest, and publish last"'''
+          if text.count(old_order) != 1:
+              raise SystemExit('expected one legacy release-order diagnostic')
+          text = text.replace(old_order, new_order)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          bash -n .github/scripts/verify-exact-release-gates.sh
+          python3 -m py_compile .github/scripts/check-release-image-gate.py
+          python3 -m py_compile .github/scripts/check-release-delivery-contract.py
+          python3 .github/scripts/check-release-delivery-contract.py
+          git diff --check
+
+      - name: Commit contract corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/scripts/check-release-delivery-contract.py
+          git commit -m "Cover failed exact-gate diagnostics in release contract"
+          git push origin "HEAD:release/exact-final-gate-matrix"
