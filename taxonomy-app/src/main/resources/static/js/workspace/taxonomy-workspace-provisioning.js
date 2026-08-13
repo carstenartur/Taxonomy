@@ -14,8 +14,11 @@ window.TaxonomyWorkspaceProvisioning = (function () {
 
     var t = TaxonomyI18n.t;
     var POLL_INTERVAL = 2000;
-    var PROJECTION_ENDPOINT = '/api/architecture/relations/projection';
     var pollTimer = null;
+    var loaderScript = document.currentScript;
+    var apiReady = loadApiClient(loaderScript);
+
+    window.TaxonomyWorkspaceProvisioningApiReady = apiReady;
 
     // ── Public API ──────────────────────────────────────────────────
 
@@ -24,13 +27,19 @@ window.TaxonomyWorkspaceProvisioning = (function () {
      * Called on page load after i18n strings are available.
      */
     function check() {
-        fetch('/api/workspace/provisioning-status')
-            .then(parseJsonResponse)
+        apiReady
+            .then(function () {
+                return Api().provisioningStatus();
+            })
             .then(function (response) {
+                if (!response.ok) {
+                    throw new Error(responseError(
+                        'Could not check provisioning status', response));
+                }
                 var status = response.body;
                 switch (status.status) {
                     case 'NOT_PROVISIONED':
-                        showProvisioningDialog(status);
+                        showProvisioningDialog();
                         break;
                     case 'PROVISIONING':
                         showSpinner();
@@ -53,7 +62,7 @@ window.TaxonomyWorkspaceProvisioning = (function () {
 
     // ── Provisioning Dialog ─────────────────────────────────────────
 
-    function showProvisioningDialog(status) {
+    function showProvisioningDialog() {
         removeExistingModal();
         var modal = document.createElement('div');
         modal.id = 'workspaceProvisioningModal';
@@ -192,11 +201,10 @@ window.TaxonomyWorkspaceProvisioning = (function () {
             existingModal.hide();
         }
         showSpinner();
-        fetch('/api/workspace/provision', {
-            method: 'POST',
-            headers: csrfHeaders()
-        })
-            .then(parseJsonResponse)
+        apiReady
+            .then(function () {
+                return Api().provisionWorkspace();
+            })
             .then(function (response) {
                 var result = response.body;
                 if (!response.ok) {
@@ -221,8 +229,10 @@ window.TaxonomyWorkspaceProvisioning = (function () {
     function pollUntilReady() {
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = setInterval(function () {
-            fetch('/api/workspace/provisioning-status')
-                .then(parseJsonResponse)
+            apiReady
+                .then(function () {
+                    return Api().provisioningStatus();
+                })
                 .then(function (response) {
                     var status = response.body;
                     if (status.status === 'READY') {
@@ -251,11 +261,13 @@ window.TaxonomyWorkspaceProvisioning = (function () {
      * the same fail-closed, Git-authoritative projection.
      */
     function ensureRelationProjection() {
-        return fetch(PROJECTION_ENDPOINT + '/readiness')
-            .then(parseJsonResponse)
+        return apiReady
+            .then(function () {
+                return Api().projectionReadiness();
+            })
             .then(function (response) {
                 if (!response.ok) {
-                    throw new Error(projectionError(
+                    throw new Error(responseError(
                         'Could not inspect relation projection', response));
                 }
                 var readiness = response.body;
@@ -263,20 +275,14 @@ window.TaxonomyWorkspaceProvisioning = (function () {
                     return readiness;
                 }
                 if (!readiness.currentHeadCommit) {
-                    throw new Error(projectionError(
+                    throw new Error(responseError(
                         'Workspace has no authoritative branch head', response));
                 }
-                return fetch(PROJECTION_ENDPOINT + '/rebuild', {
-                    method: 'POST',
-                    headers: csrfHeaders({
-                        'If-Match': '"' + readiness.currentHeadCommit + '"'
-                    })
-                })
-                    .then(parseJsonResponse)
+                return Api().rebuildProjection(readiness.currentHeadCommit)
                     .then(function (rebuildResponse) {
                         if (!rebuildResponse.ok ||
                                 rebuildResponse.body.readinessState !== 'READY') {
-                            throw new Error(projectionError(
+                            throw new Error(responseError(
                                 'Could not rebuild relation projection',
                                 rebuildResponse));
                         }
@@ -285,38 +291,45 @@ window.TaxonomyWorkspaceProvisioning = (function () {
             });
     }
 
-    function csrfHeaders(additionalHeaders) {
-        var headers = Object.assign({
-            'Accept': 'application/json'
-        }, additionalHeaders || {});
-        var token = document.querySelector('meta[name="_csrf"]');
-        var header = document.querySelector('meta[name="_csrf_header"]');
-        if (token && token.content) {
-            headers[header && header.content ? header.content : 'X-CSRF-TOKEN'] =
-                token.content;
+    function Api() {
+        if (!window.TaxonomyWorkspaceProvisioningApi) {
+            throw new Error('Workspace provisioning API client is unavailable.');
         }
-        return headers;
+        return window.TaxonomyWorkspaceProvisioningApi;
     }
 
-    function parseJsonResponse(response) {
-        return response.text().then(function (text) {
-            var body = {};
-            if (text) {
-                try {
-                    body = JSON.parse(text);
-                } catch (error) {
-                    body = { message: text };
+    function loadApiClient(currentScript) {
+        if (window.TaxonomyWorkspaceProvisioningApi) {
+            return Promise.resolve(window.TaxonomyWorkspaceProvisioningApi);
+        }
+        if (!currentScript || !currentScript.src) {
+            return Promise.reject(new Error(
+                'Cannot resolve workspace provisioning API client URL.'));
+        }
+
+        return new Promise(function (resolve, reject) {
+            var script = document.createElement('script');
+            script.src = new URL(
+                '../api/workspace-provisioning-api.js',
+                currentScript.src).href;
+            script.async = false;
+            script.setAttribute('data-taxonomy-workspace-provisioning-api', 'true');
+            script.onload = function () {
+                if (window.TaxonomyWorkspaceProvisioningApi) {
+                    resolve(window.TaxonomyWorkspaceProvisioningApi);
+                } else {
+                    reject(new Error(
+                        'Workspace provisioning API client did not initialize.'));
                 }
-            }
-            return {
-                ok: response.ok,
-                status: response.status,
-                body: body
             };
+            script.onerror = function () {
+                reject(new Error('Workspace provisioning API client failed to load.'));
+            };
+            document.head.appendChild(script);
         });
     }
 
-    function projectionError(prefix, response) {
+    function responseError(prefix, response) {
         var body = response.body || {};
         return prefix + ' (' + response.status + '): ' +
             (body.message || body.operationStatus || body.readinessState || 'unknown error');
