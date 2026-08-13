@@ -104,45 +104,75 @@ public class RelationProjectionReadService {
     /** Count from the same proven source without allocating relation DTOs. */
     public CountResult count(RepositoryContext context) {
         RepositoryContext selected = Objects.requireNonNull(context, "context");
-        Readiness readiness = readinessService.inspect(selected);
-        if (readiness.state() == ReadinessState.READY) {
-            return new CountResult(
-                    ReadModel.PROJECTION,
-                    readiness.state(),
-                    readiness.currentHeadCommit(),
-                    readiness.rows().size());
-        }
+        ResolvedSource source = resolveSource(selected);
+        long count = source.readModel() == ReadModel.PROJECTION
+                ? source.readiness().rows().size()
+                : legacyRelationService.countRelationsInContext(selected);
+        return new CountResult(
+                source.readModel(),
+                source.readiness().state(),
+                source.readiness().currentHeadCommit(),
+                count);
+    }
 
-        long pendingRecoveries = recoveryService.pendingCount(selected);
-        if (readiness.state() == ReadinessState.NOT_BUILT
-                && pendingRecoveries == 0
-                && mayUseLegacyFallback(selected)) {
-            reportFallback(selected);
-            return new CountResult(
-                    ReadModel.LEGACY_FALLBACK,
-                    readiness.state(),
-                    readiness.currentHeadCommit(),
-                    legacyRelationService.countRelationsInContext(selected));
+    /**
+     * Resolve one immutable relation-identity snapshot for proposal duplicate
+     * validation without loading node names or allocating relation DTOs for a
+     * ready projection.
+     */
+    public IdentitySnapshot readIdentitySnapshot(RepositoryContext context) {
+        RepositoryContext selected = Objects.requireNonNull(context, "context");
+        ResolvedSource source = resolveSource(selected);
+        Set<RelationIdentity> identities = new LinkedHashSet<>();
+        if (source.readModel() == ReadModel.PROJECTION) {
+            source.readiness().rows().forEach(row -> identities.add(
+                    new RelationIdentity(
+                            row.getSourceCode(),
+                            row.getRelationType(),
+                            row.getTargetCode())));
+        } else {
+            legacyRelationService.getAllRelationsInContext(selected)
+                    .forEach(relation -> identities.add(new RelationIdentity(
+                            relation.getSourceCode(),
+                            RelationType.valueOf(relation.getRelationType()),
+                            relation.getTargetCode())));
         }
-
-        throw unavailable(selected, readiness, pendingRecoveries);
+        return new IdentitySnapshot(
+                source.readModel(),
+                source.readiness().state(),
+                source.readiness().currentHeadCommit(),
+                identities);
     }
 
     private ReadResult read(
             RepositoryContext selected,
             Predicate<RelationDecisionProjection> projectionFilter,
             Supplier<List<TaxonomyRelationDto>> legacyRead) {
-        Readiness readiness = readinessService.inspect(selected);
-        if (readiness.state() == ReadinessState.READY) {
-            List<RelationDecisionProjection> selectedRows = readiness.rows()
+        ResolvedSource source = resolveSource(selected);
+        if (source.readModel() == ReadModel.PROJECTION) {
+            List<RelationDecisionProjection> selectedRows = source.readiness()
+                    .rows()
                     .stream()
                     .filter(projectionFilter)
                     .toList();
             return new ReadResult(
-                    ReadModel.PROJECTION,
-                    readiness.state(),
-                    readiness.currentHeadCommit(),
+                    source.readModel(),
+                    source.readiness().state(),
+                    source.readiness().currentHeadCommit(),
                     projectionDtos(selectedRows));
+        }
+        return new ReadResult(
+                source.readModel(),
+                source.readiness().state(),
+                source.readiness().currentHeadCommit(),
+                legacyRead.get());
+    }
+
+    /** One authority/fallback decision shared by list, count and identity reads. */
+    private ResolvedSource resolveSource(RepositoryContext selected) {
+        Readiness readiness = readinessService.inspect(selected);
+        if (readiness.state() == ReadinessState.READY) {
+            return new ResolvedSource(ReadModel.PROJECTION, readiness);
         }
 
         long pendingRecoveries = recoveryService.pendingCount(selected);
@@ -150,11 +180,7 @@ public class RelationProjectionReadService {
                 && pendingRecoveries == 0
                 && mayUseLegacyFallback(selected)) {
             reportFallback(selected);
-            return new ReadResult(
-                    ReadModel.LEGACY_FALLBACK,
-                    readiness.state(),
-                    readiness.currentHeadCommit(),
-                    legacyRead.get());
+            return new ResolvedSource(ReadModel.LEGACY_FALLBACK, readiness);
         }
 
         throw unavailable(selected, readiness, pendingRecoveries);
@@ -278,6 +304,49 @@ public class RelationProjectionReadService {
             if (count < 0) {
                 throw new IllegalArgumentException("count must not be negative");
             }
+        }
+    }
+
+    public record RelationIdentity(
+            String sourceCode,
+            RelationType relationType,
+            String targetCode) {
+        public RelationIdentity {
+            sourceCode = requireText(sourceCode, "sourceCode");
+            relationType = Objects.requireNonNull(
+                    relationType, "relationType");
+            targetCode = requireText(targetCode, "targetCode");
+        }
+    }
+
+    public record IdentitySnapshot(
+            ReadModel readModel,
+            ReadinessState readinessState,
+            String authoritativeCommitId,
+            Set<RelationIdentity> identities) {
+        public IdentitySnapshot {
+            readModel = Objects.requireNonNull(readModel, "readModel");
+            readinessState = Objects.requireNonNull(
+                    readinessState, "readinessState");
+            identities = Set.copyOf(Objects.requireNonNull(
+                    identities, "identities"));
+        }
+
+        public boolean contains(
+                String sourceCode,
+                RelationType relationType,
+                String targetCode) {
+            return identities.contains(new RelationIdentity(
+                    sourceCode, relationType, targetCode));
+        }
+    }
+
+    private record ResolvedSource(
+            ReadModel readModel,
+            Readiness readiness) {
+        private ResolvedSource {
+            readModel = Objects.requireNonNull(readModel, "readModel");
+            readiness = Objects.requireNonNull(readiness, "readiness");
         }
     }
 
