@@ -1,0 +1,96 @@
+name: Apply release-notes race fix
+
+on:
+  push:
+    branches:
+      - release/reviewed-notes-race-fix-build
+    paths:
+      - '.github/workflows/apply-release-notes-race-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Apply exact source transformation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('.github/scripts/release.sh')
+          text = path.read_text(encoding='utf-8')
+
+          def once(old, new):
+              global text
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected one occurrence: {old!r}')
+              text = text.replace(old, new, 1)
+
+          once(
+              'PROTECTED_MAIN_ADVANCE_WORKFLOW="protected-release-main-advance.yml"\n',
+              'PROTECTED_MAIN_ADVANCE_WORKFLOW="protected-release-main-advance.yml"\n'
+              'RELEASE_NOTES_OUTPUT="${RUNNER_TEMP:-target}/taxonomy-${RELEASE_VERSION}-release-notes.md"\n',
+          )
+
+          pattern = re.compile(
+              r'validate_release_notes\(\) \{.*?\n\}\n\ncollect_release_artifacts',
+              re.DOTALL,
+          )
+          replacement = '''materialize_reviewed_release_notes() {
+            RELEASE_VERSION="$RELEASE_VERSION" \\
+              RELEASE_NOTES_COMMIT="$RELEASE_COMMIT" \\
+              RELEASE_NOTES_FILE="$RELEASE_NOTES_OUTPUT" \\
+              "$RELEASE_NOTES_VALIDATOR"
+          }
+
+          collect_release_artifacts'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected one validator function, found {count}')
+
+          once('\nvalidate_release_notes\n', '\nmaterialize_reviewed_release_notes\n')
+          once(
+              'if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then\n  gh release create',
+              'if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then\n'
+              '  materialize_reviewed_release_notes\n  gh release create',
+          )
+          once(
+              '  else\n    gh release edit "$TAG_NAME"',
+              '  else\n    materialize_reviewed_release_notes\n    gh release edit "$TAG_NAME"',
+          )
+          if text.count('--notes-file release_notes.md') != 2:
+              raise SystemExit('expected two checkout-bound notes-file arguments')
+          text = text.replace(
+              '--notes-file release_notes.md',
+              '--notes-file "$RELEASE_NOTES_OUTPUT"',
+          )
+          if text.count('materialize_reviewed_release_notes') != 4:
+              raise SystemExit('expected definition plus three materialization calls')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          bash -n .github/scripts/release.sh
+          git diff --check
+
+      - name: Commit only the product script
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/scripts/release.sh
+          test "$(git diff --cached --name-only)" = '.github/scripts/release.sh'
+          git commit -m 'Materialize reviewed notes before each publication boundary'
+          git push origin HEAD:release/reviewed-notes-race-fix-build
