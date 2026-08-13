@@ -7,15 +7,16 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * Initializes the central repository catalog after the Spring context is ready.
+ * Initializes the central repository catalog through the transactional service proxy.
  *
- * <p>The initializer deliberately delegates to a separate Spring-managed service
- * bean. That inter-bean call crosses the transactional proxy, unlike invoking a
- * {@code @Transactional} method from the service bean's own {@code @PostConstruct}
- * callback.</p>
+ * <p>The runner executes after the highest-precedence portable schema migration and
+ * before repository-sensitive search lifecycle runners. Delegating to a separate
+ * Spring-managed service bean makes the {@code @Transactional} boundary effective;
+ * invoking the same method from that service bean's own {@code @PostConstruct}
+ * callback would bypass the proxy.</p>
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 100)
 public class SystemRepositoryCatalogInitializer implements ApplicationRunner {
 
     private final SystemRepositoryService systemRepositoryService;
