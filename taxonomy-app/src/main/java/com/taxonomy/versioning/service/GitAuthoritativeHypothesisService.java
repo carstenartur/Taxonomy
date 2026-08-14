@@ -2,6 +2,7 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
@@ -16,7 +17,6 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -33,8 +33,6 @@ import java.util.Objects;
 @Service
 @Primary
 public class GitAuthoritativeHypothesisService extends HypothesisService {
-
-    private static final String TEST_REPOSITORY_ID = "test-primary";
 
     private final GitAuthoritativeHypothesisReviewService reviewService;
     private final RelationBranchProjectionReadinessService readinessService;
@@ -132,10 +130,22 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
         };
     }
 
+    /** Validate exact tenant visibility and lifecycle before exposing branch state. */
+    public void requireReviewable(
+            Long hypothesisId,
+            RepositoryContext context,
+            ReviewAction action) {
+        reviewService.requireReviewable(
+                hypothesisId,
+                requireContext(context),
+                action);
+    }
+
     private ReviewResult reviewUnchecked(
             Long hypothesisId,
             RepositoryContext context,
             ReviewAction action) {
+        requireReviewable(hypothesisId, context, action);
         Readiness readiness = readinessService.inspect(context);
         String expectedHead = readiness.currentHeadCommit();
         if (expectedHead == null) {
