@@ -4,15 +4,17 @@ import org.w3c.dom.Element;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /** Verifies Maven, citation, archive and Helm metadata as one version state. */
 public final class VersionStateVerifier {
@@ -84,15 +86,31 @@ public final class VersionStateVerifier {
     private static List<String> pomFailures(Path root, String expected)
             throws IOException {
         List<String> failures = new ArrayList<>();
-        List<Path> poms;
-        try (Stream<Path> paths = Files.walk(root)) {
-            poms = paths.filter(Files::isRegularFile)
-                    .filter(path -> "pom.xml".equals(path.getFileName().toString()))
-                    .filter(path -> !contains(path, "target"))
-                    .filter(path -> !contains(path, ".git"))
-                    .sorted(Comparator.comparing(Path::toString))
-                    .toList();
-        }
+        List<Path> poms = new ArrayList<>();
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(
+                    Path directory,
+                    BasicFileAttributes attributes) {
+                if (!directory.equals(root) && ignoredDirectory(directory)) {
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(
+                    Path file,
+                    BasicFileAttributes attributes) {
+                if (attributes.isRegularFile()
+                        && "pom.xml".equals(file.getFileName().toString())) {
+                    poms.add(file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        poms.sort(Comparator.comparing(Path::toString));
+
         for (Path pom : poms) {
             Element project = XmlSupport.parse(pom).getDocumentElement();
             Element parent = XmlSupport.child(project, "parent");
@@ -193,13 +211,13 @@ public final class VersionStateVerifier {
         }
     }
 
-    private static boolean contains(Path path, String name) {
-        for (Path component : path) {
-            if (name.equals(component.toString())) {
-                return true;
-            }
+    private static boolean ignoredDirectory(Path directory) {
+        Path fileName = directory.getFileName();
+        if (fileName == null) {
+            return false;
         }
-        return false;
+        String name = fileName.toString();
+        return ".git".equals(name) || "target".equals(name);
     }
 
     private static String read(Path path) throws IOException {
