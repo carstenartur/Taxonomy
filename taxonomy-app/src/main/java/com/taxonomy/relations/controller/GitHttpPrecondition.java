@@ -3,7 +3,7 @@ package com.taxonomy.relations.controller;
 import org.eclipse.jgit.lib.ObjectId;
 
 /** Parses strong HTTP entity-tag preconditions into an exact Git branch head. */
-final class GitHttpPrecondition {
+public final class GitHttpPrecondition {
 
     private GitHttpPrecondition() {
     }
@@ -12,7 +12,7 @@ final class GitHttpPrecondition {
      * Returns the expected commit from {@code If-Match}; {@code null} means the
      * caller supplied {@code If-None-Match: *} and expects an absent branch.
      */
-    static String expectedHead(String ifMatch, String ifNoneMatch) {
+    public static String expectedHead(String ifMatch, String ifNoneMatch) {
         String match = normalize(ifMatch);
         String noneMatch = normalize(ifNoneMatch);
         if (match != null && noneMatch != null) {
@@ -53,7 +53,7 @@ final class GitHttpPrecondition {
         }
     }
 
-    static String etag(String commitId) {
+    public static String etag(String commitId) {
         return '"' + ObjectId.fromString(commitId).name() + '"';
     }
 
@@ -61,18 +61,20 @@ final class GitHttpPrecondition {
         return value == null || value.isBlank() ? null : value.strip();
     }
 
-    static final class PreconditionRequiredException extends IllegalArgumentException {
-        PreconditionRequiredException(String message) {
+    public static final class PreconditionRequiredException
+            extends IllegalArgumentException {
+        public PreconditionRequiredException(String message) {
             super(message);
         }
     }
 
-    static final class InvalidPreconditionException extends IllegalArgumentException {
-        InvalidPreconditionException(String message) {
+    public static final class InvalidPreconditionException
+            extends IllegalArgumentException {
+        public InvalidPreconditionException(String message) {
             super(message);
         }
 
-        InvalidPreconditionException(String message, Throwable cause) {
+        public InvalidPreconditionException(String message, Throwable cause) {
             super(message, cause);
         }
     }
