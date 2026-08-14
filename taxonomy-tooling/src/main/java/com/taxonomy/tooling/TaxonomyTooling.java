@@ -26,6 +26,14 @@ public final class TaxonomyTooling {
         }
     }
 
+    static int run(
+            String[] arguments,
+            Path workingDirectory,
+            PrintStream output,
+            PrintStream error) {
+        return run(arguments, Map.of(), workingDirectory, output, error);
+    }
+
     public static int run(
             String[] arguments,
             Map<String, String> environment,
@@ -138,7 +146,9 @@ public final class TaxonomyTooling {
                 }
             } else {
                 version = XmlSupport.rootProjectVersion(
-                        arguments.path("file", workingDirectory));
+                        arguments.path(
+                                "file",
+                                workingDirectory.resolve("pom.xml")));
             }
             output.println(version);
             return 0;
