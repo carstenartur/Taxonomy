@@ -33,5 +33,10 @@ class ReleasePlanStateNormalizationTest {
 
         assertThat(result.state()).isEqualTo("development");
         assertThat(result.pomCount()).isEqualTo(1);
+        assertThat(ReleasePlanValidator.expectedCurrentVersion(
+                "1.3.0",
+                "1.3.1-SNAPSHOT",
+                "\t release "))
+                .isEqualTo("1.3.0");
     }
 }
