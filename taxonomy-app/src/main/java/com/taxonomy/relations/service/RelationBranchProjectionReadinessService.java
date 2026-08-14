@@ -43,6 +43,17 @@ public class RelationBranchProjectionReadinessService {
                 checkpointRepository, "checkpointRepository");
     }
 
+    /**
+     * Returns the current Git head commit for the given branch without loading
+     * or validating projection rows.  Use this when only the head SHA is needed
+     * (e.g. to seed the expected-head for a review command).
+     */
+    public String readCurrentHead(RepositoryContext context) {
+        Objects.requireNonNull(context, "context");
+        DslGitRepository repository = gitRepositoryFactory.resolveRepository(context);
+        return readHead(repository, context.branch());
+    }
+
     @Transactional(readOnly = true)
     public Readiness inspect(RepositoryContext context) {
         Objects.requireNonNull(context, "context");
