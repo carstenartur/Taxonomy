@@ -6,6 +6,7 @@ set -euo pipefail
 : "${METADATA_HELPER:?METADATA_HELPER is required}"
 : "${VERSION_STATE_HELPER:?VERSION_STATE_HELPER is required}"
 : "${VEX_HELPER:?VEX_HELPER is required}"
+: "${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}"
 
 NEXT_VERSION_INPUT=${NEXT_VERSION_INPUT:-}
 SKIP_TESTS=${SKIP_TESTS:-false}
@@ -85,26 +86,30 @@ if next_version <= release:
     )
 PY
 
-generate_release_notes() {
-  echo "Generating release notes..."
-  local previous_tag=""
-  previous_tag=$(git tag --merged HEAD --sort=-creatordate \
-    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-    | grep -vx "$TAG_NAME" \
-    | head -n 1 || true)
+materialize_release_notes() {
+  RELEASE_VERSION="$RELEASE_VERSION" \
+    RELEASE_NOTES_COMMIT="$RELEASE_COMMIT" \
+    RELEASE_NOTES_FILE=release_notes.md \
+    "$RELEASE_NOTES_VALIDATOR"
+}
 
-  if [[ -n "$previous_tag" ]]; then
-    local previous_date
-    previous_date=$(git log -1 --format=%aI "$previous_tag")
-    gh issue list --state closed --search "closed:>$previous_date" \
-      --json number,title --jq '.[] | "- #\(.number): \(.title)"' > release_notes.md || true
-    if [[ ! -s release_notes.md ]]; then
-      echo "No closed issues found since $previous_tag" > release_notes.md
-    fi
-  else
-    echo "Initial release" > release_notes.md
+restore_release_notes_checkout() {
+  # The reviewed notes may deliberately differ from the already-advanced main
+  # checkout. Restore the current HEAD after GitHub has consumed the immutable
+  # file so the workflow can subsequently checkout the release tag safely.
+  git restore --source=HEAD --worktree -- release_notes.md
+}
+
+validate_release_notes() {
+  local notes_file=release_notes.md
+  if [[ "$(git rev-parse HEAD)" != "$RELEASE_COMMIT" ]]; then
+    fail "Reviewed release notes must be validated at release commit $RELEASE_COMMIT"
   fi
-  cat release_notes.md
+  git ls-files --error-unmatch "$notes_file" >/dev/null \
+    || fail "$notes_file must be tracked by the exact release commit"
+  git diff --quiet HEAD -- "$notes_file" \
+    || fail "$notes_file differs from the exact release commit"
+  materialize_release_notes
 }
 
 collect_release_artifacts() {
@@ -286,6 +291,8 @@ else
     --expected-version "$RELEASE_VERSION" --tag "$TAG_NAME"
 fi
 
+validate_release_notes
+
 if [[ "$SKIP_TESTS" == "true" ]]; then
   run_maven_release_check release release-check clean package -DskipTests
 else
@@ -293,7 +300,6 @@ else
 fi
 python3 "$VEX_HELPER"
 collect_release_artifacts
-generate_release_notes
 
 PUBLISHED_THIS_RUN=false
 if [[ "$DRY_RUN" != "true" && "$STATE" == "new" ]]; then
@@ -332,12 +338,13 @@ else
 fi
 
 if [[ "$DRY_RUN" != "true" && "$STATE" == "tagged" ]]; then
+  materialize_release_notes
   gh release create "$TAG_NAME" \
     --verify-tag \
     --draft \
     --title "Release $RELEASE_VERSION" \
-    --notes-file release_notes.md \
-    --generate-notes
+    --notes-file release_notes.md
+  restore_release_notes_checkout
   STATE=draft
 fi
 
@@ -351,7 +358,12 @@ if [[ "$DRY_RUN" != "true" && "$STATE" == "draft" ]]; then
   if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then
     echo "Release $TAG_NAME remains a draft until downstream artifacts and final CI succeed."
   else
-    gh release edit "$TAG_NAME" --draft=false --latest
+    materialize_release_notes
+    gh release edit "$TAG_NAME" \
+      --notes-file release_notes.md \
+      --draft=false \
+      --latest
+    restore_release_notes_checkout
     STATE=published
     PUBLISHED_THIS_RUN=true
   fi
