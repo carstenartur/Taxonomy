@@ -81,9 +81,10 @@ class SbomCompanionGeneratorTest {
         assertThat(rendered)
                 .contains("\"vulnerabilities\": []")
                 .contains("not-assessed")
-                .doesNotContain("not_affected")
-                .doesNotContain("resolved")
-                .doesNotContain("exploitable");
+                .doesNotContain("\"state\": \"not_affected\"")
+                .doesNotContain("\"state\": \"resolved\"")
+                .doesNotContain("\"state\": \"exploitable\"")
+                .doesNotContain("\"analysis\":");
         assertThat(FlatJson.pretty(companion) + "\n").isEqualTo(rendered);
     }
 
