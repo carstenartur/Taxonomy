@@ -207,7 +207,7 @@ class MermaidExportTests {
                         .content("{\"ids\":[99999],\"action\":\"ACCEPT\"}"))
                 .andExpect(status().isMultiStatus())
                 .andExpect(jsonPath("$.failed").value(1))
-                .andExpect(jsonPath("$.success").value(0));
+                .andExpect(jsonPath("$.projected").value(0));
     }
 
     @Test
