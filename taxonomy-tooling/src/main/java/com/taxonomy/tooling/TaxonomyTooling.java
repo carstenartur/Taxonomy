@@ -93,7 +93,9 @@ public final class TaxonomyTooling {
                 }
             } else {
                 version = XmlSupport.rootProjectVersion(
-                        arguments.path("file", workingDirectory));
+                        arguments.path(
+                                "file",
+                                workingDirectory.resolve("pom.xml")));
             }
             output.println(version);
             return 0;
