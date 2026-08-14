@@ -112,7 +112,9 @@ jobs:
           ./mvnw -B versions:set \
             -DnewVersion="$NEXT_VERSION" \
             -DgenerateBackupPoms=false
-          python3 .github/scripts/update-release-metadata.py "$NEXT_VERSION"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" update-release-metadata \
+            --root . \
+            --version "$NEXT_VERSION"
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
             --root . --mode development --expected-version "$NEXT_VERSION"
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-plan \
