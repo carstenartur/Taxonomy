@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -130,7 +131,7 @@ class ReleaseMetadataUpdaterTest {
                         "--version", "1.4.1-SNAPSHOT",
                         "--date", "2026-08-16"},
                 root,
-                new PrintStream(ByteArrayOutputStream.nullOutputStream()),
+                new PrintStream(OutputStream.nullOutputStream()),
                 new PrintStream(errors, true, StandardCharsets.UTF_8));
         assertThat(invalidExit).isEqualTo(1);
         assertThat(errors.toString(StandardCharsets.UTF_8))
