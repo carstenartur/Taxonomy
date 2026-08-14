@@ -7,16 +7,17 @@ import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.export.MermaidExportService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -204,13 +205,19 @@ class MermaidExportTests {
     }
 
     @Test
-    void bulkEndpointHandlesNonexistentIds() throws Exception {
+    void bulkEndpointReportsNonexistentIdsAsExplicitPartialFailure() throws Exception {
         mockMvc.perform(post("/api/proposals/bulk")
                         .contentType("application/json")
                         .content("{\"ids\":[99999],\"action\":\"ACCEPT\"}"))
-                .andExpect(status().isOk())
+                .andExpect(status().isMultiStatus())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.processed").value(1))
+                .andExpect(jsonPath("$.projected").value(0))
                 .andExpect(jsonPath("$.failed").value(1))
-                .andExpect(jsonPath("$.success").value(0));
+                .andExpect(jsonPath("$.complete").value(false))
+                .andExpect(jsonPath("$.items[0].proposalId").value(99999))
+                .andExpect(jsonPath("$.items[0].projectionStatus")
+                        .value("REVIEW_REJECTED"));
     }
 
     @Test
