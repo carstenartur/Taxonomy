@@ -203,7 +203,8 @@ class ProposalApiControllerRepositoryScopeTest {
     }
 
     @Test
-    void centralReaderCannotUseReviewEndpointToProbeAProposalIdentifier() {
+    void centralReaderCannotUseReviewEndpointToProbeAProposalIdentifier()
+            throws Exception {
         RepositoryContext context = RepositoryContext.centralRead(
                 "repo-a", "main", "reader");
         SystemRepository repository = repository("repo-a");
