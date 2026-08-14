@@ -44,3 +44,72 @@ window.TaxonomyRelationsApi = (function () {
         deleteRelation: deleteRelation
     };
 }());
+
+/*
+ * Proposal review is part of the same Git-authoritative relation surface. Load
+ * its raw-response API first and then the capture-phase browser adapter. The
+ * readiness promise prevents duplicate scripts and makes delayed loading safe.
+ */
+(function () {
+    'use strict';
+    var loader = document.currentScript;
+    if (!loader || !loader.src) return;
+
+    function loadProposalAdapter() {
+        if (document.querySelector(
+            'script[data-taxonomy-proposal-command-adapter]')) return;
+        var script = document.createElement('script');
+        script.src = new URL(
+            '../relations/taxonomy-proposals-git-commands.js',
+            loader.src).href;
+        script.async = false;
+        script.setAttribute(
+            'data-taxonomy-proposal-command-adapter', 'true');
+        document.head.appendChild(script);
+    }
+
+    function createProposalApiPromise() {
+        if (window.TaxonomyProposalsApi) {
+            return Promise.resolve(window.TaxonomyProposalsApi);
+        }
+        return new Promise(function (resolve, reject) {
+            var script = document.querySelector(
+                'script[data-taxonomy-proposals-api]');
+            var created = false;
+            if (!script) {
+                script = document.createElement('script');
+                script.src = new URL('proposals-api.js', loader.src).href;
+                script.async = false;
+                script.setAttribute(
+                    'data-taxonomy-proposals-api', 'true');
+                created = true;
+            }
+            script.addEventListener('load', function () {
+                if (window.TaxonomyProposalsApi) {
+                    resolve(window.TaxonomyProposalsApi);
+                } else {
+                    reject(new Error(
+                        'Proposal review API client did not initialise.'));
+                }
+            }, { once: true });
+            script.addEventListener('error', function () {
+                reject(new Error(
+                    'Failed to load proposal review API client.'));
+            }, { once: true });
+            if (created) {
+                document.head.appendChild(script);
+            } else if (window.TaxonomyProposalsApi) {
+                resolve(window.TaxonomyProposalsApi);
+            }
+        });
+    }
+
+    if (!window.TaxonomyProposalsApiReady) {
+        window.TaxonomyProposalsApiReady = createProposalApiPromise();
+    }
+    window.TaxonomyProposalsApiReady
+        .then(loadProposalAdapter)
+        .catch(function (error) {
+            console.error('[Taxonomy] ' + error.message);
+        });
+}());

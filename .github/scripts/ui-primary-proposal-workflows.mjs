@@ -133,7 +133,7 @@ export async function runProposalWorkflows({ page, evidence }) {
 
   await page.getByRole('button', { name: `Accept proposal ${ids[0]}` }).click();
   await page.locator('#undoToast').waitFor({ state: 'visible', timeout: 15_000 });
-  await page.locator('#undoBtn').click();
+  await page.locator('#proposalGitUndoBtn').click();
   await waitForText('#statusArea', text => /revert|undo/i.test(text));
   passed('proposal accept and revert');
 

@@ -1,10 +1,11 @@
 package com.taxonomy.relations.controller;
 
 import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
 import com.taxonomy.relations.service.RelationProposalService;
-import com.taxonomy.relations.service.RelationReviewService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
@@ -33,7 +34,8 @@ class ProposalProjectionUnavailableHttpTest {
         workspaceResolver = mock(WorkspaceResolver.class);
         controller = new ProposalApiController(
                 proposalService,
-                mock(RelationReviewService.class),
+                mock(GitAuthoritativeProposalReviewService.class),
+                mock(RelationBranchProjectionReadinessService.class),
                 workspaceResolver,
                 mock(SystemRepositoryService.class),
                 mock(RepositoryMembershipService.class));
