@@ -43,11 +43,12 @@ The `taxonomy-tooling` reactor module is a dependency-free executable Java JAR.
 It owns the release boundary before and after immutable checkout changes and is
 preserved in `$RUNNER_TEMP` by the release workflows.
 
-The first #673 migration slice replaces and deletes:
+The first #673 migration group replaces and deletes:
 
 - `resolve-release-parameters.py` and its Python test suite;
 - `check-release-plan.py` and its Python test suite;
-- `check-version-state.py`.
+- `check-version-state.py`;
+- `update-release-metadata.py`.
 
 The Java implementation and JUnit contracts cover:
 
@@ -60,7 +61,13 @@ The Java implementation and JUnit contracts cover:
 - ordinary and linked-worktree cleanliness;
 - Maven, citation, CodeMeta, Zenodo and Helm version-state agreement;
 - release, development and advanced lifecycle states;
-- stable GitHub output ordering and user-facing failure diagnostics.
+- stable GitHub output ordering and user-facing failure diagnostics;
+- deterministic nested JSON parsing and writing with Unicode preservation;
+- coherent CFF, citation, Zenodo, CodeMeta and Helm metadata transitions;
+- release-date insertion, snapshot date removal, ORCID restoration and
+  validation-before-write behavior;
+- source-level proof that both productive metadata transitions use the Java JAR
+  and the removed Python helper cannot return.
 
 Release, protected-main and manual development-version workflows call the same
 Java JAR rather than reconstructing these rules in YAML or shell.
@@ -70,11 +77,10 @@ Java JAR rather than reconstructing these rules in YAML or shell.
 The following programs are still present only until their Java/Maven-native or
 bounded shell replacements have equivalent JUnit contracts:
 
-### Artifact and metadata generation
+### Artifact generation
 
 - `generate-vex.py`
 - `generate-quality-site.py`
-- `update-release-metadata.py`
 
 ### Release, delivery and external-format verification
 
@@ -96,9 +102,10 @@ No remaining item is an accepted permanent exception.
 
 ## Migration order
 
-1. Release parameter, plan and version-state core in `taxonomy-tooling`.
+1. Release parameter, plan, version-state and metadata core in
+   `taxonomy-tooling`.
 2. Release/delivery, CodeQL and observability policy checks under JUnit authority.
-3. Quality-site, VEX and version-metadata generation in Java/Maven-native code.
+3. Quality-site and VEX generation in Java/Maven-native code.
 4. Deployment and quality-publication verification at their real process
    boundaries.
 5. Repository-wide source contract rejecting every Python path and invocation.
