@@ -141,7 +141,8 @@ public final class ReleaseMetadataUpdater {
             updated = replaceRequired(
                     CITATION_BIBTEX_VERSION,
                     updated,
-                    "$0\n  date         = {" + releaseDate + "},",
+                    "$1" + Matcher.quoteReplacement(version)
+                            + "$2\n  date         = {" + releaseDate + "},",
                     "CITATION.md has no BibTeX version for the release date");
         }
 
