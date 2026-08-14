@@ -42,18 +42,32 @@ public final class SbomCompanionGenerator {
                 timestamp, "timestamp").truncatedTo(ChronoUnit.SECONDS);
         UUID companionId = Objects.requireNonNull(
                 serialNumber, "serialNumber");
+        if (sbom.equals(output)) {
+            throw new IllegalArgumentException(
+                    "SBOM companion output must differ from the source SBOM");
+        }
         if (!Files.isRegularFile(sbom)) {
+            Files.deleteIfExists(output);
             throw new IllegalArgumentException(
                     "CycloneDX SBOM file is missing: " + sbom);
         }
 
-        Map<String, Object> source = FlatJson.parseObject(
-                Files.readString(sbom, StandardCharsets.UTF_8));
-        String sourceSerial = scalarText(
-                source.get("serialNumber"), "unknown", "serialNumber");
-        String sourceVersion = scalarText(
-                source.get("version"), "1", "version");
-        int componentCount = componentCount(source.get("components"));
+        final Map<String, Object> source;
+        final String sourceSerial;
+        final String sourceVersion;
+        final int componentCount;
+        try {
+            source = FlatJson.parseObject(
+                    Files.readString(sbom, StandardCharsets.UTF_8));
+            sourceSerial = scalarText(
+                    source.get("serialNumber"), "unknown", "serialNumber");
+            sourceVersion = scalarText(
+                    source.get("version"), "1", "version");
+            componentCount = componentCount(source.get("components"));
+        } catch (IOException | IllegalArgumentException failure) {
+            Files.deleteIfExists(output);
+            throw failure;
+        }
 
         LinkedHashMap<String, Object> companion = new LinkedHashMap<>();
         companion.put("bomFormat", "CycloneDX");
@@ -78,10 +92,12 @@ public final class SbomCompanionGenerator {
             Instant timestamp,
             String sourceSerial,
             String sourceVersion) {
+        LinkedHashMap<String, Object> tools = new LinkedHashMap<>();
+        tools.put("components", List.of(toolComponent()));
+
         LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("timestamp", timestamp.toString());
-        metadata.put("tools", Map.of(
-                "components", List.of(toolComponent())));
+        metadata.put("tools", tools);
         metadata.put("component", applicationComponent());
         metadata.put("properties", List.of(
                 property("taxonomy:sbom-ref", sourceSerial),
@@ -104,14 +120,16 @@ public final class SbomCompanionGenerator {
     }
 
     private static Map<String, Object> applicationComponent() {
+        LinkedHashMap<String, Object> supplier = new LinkedHashMap<>();
+        supplier.put("name", "Carsten Hammer");
+        supplier.put("url", List.of("https://github.com/carstenartur"));
+
         LinkedHashMap<String, Object> component = new LinkedHashMap<>();
         component.put("type", "application");
         component.put("name", "Taxonomy Architecture Analyzer");
         component.put("bom-ref", "taxonomy-app");
         component.put("purl", "pkg:github/carstenartur/Taxonomy");
-        component.put("supplier", Map.of(
-                "name", "Carsten Hammer",
-                "url", List.of("https://github.com/carstenartur")));
+        component.put("supplier", supplier);
         return component;
     }
 
