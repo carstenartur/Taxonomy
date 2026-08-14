@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Entry point for dependency-free release parameter and version tooling. */
+/** Entry point for dependency-free release and repository tooling. */
 public final class TaxonomyTooling {
 
     private TaxonomyTooling() {
@@ -51,6 +51,8 @@ public final class TaxonomyTooling {
             case "resolve-release-parameters" -> resolveReleaseParameters(
                     commandArguments, environment, workingDirectory, error);
             case "check-version-state" -> checkVersionState(
+                    commandArguments, workingDirectory, output, error);
+            case "check-release-plan" -> checkReleasePlan(
                     commandArguments, workingDirectory, output, error);
             case "compare-versions" -> compareVersions(commandArguments, error);
             case "read-pom-version" -> readPomVersion(
@@ -106,6 +108,34 @@ public final class TaxonomyTooling {
             return 0;
         } catch (IOException | IllegalArgumentException failure) {
             error.println("Version-state check failed: " + failure.getMessage());
+            return 1;
+        }
+    }
+
+    private static int checkReleasePlan(
+            String[] rawArguments,
+            Path workingDirectory,
+            PrintStream output,
+            PrintStream error) {
+        try {
+            Arguments arguments = Arguments.parse(rawArguments);
+            Path root = arguments.path("root", workingDirectory)
+                    .toAbsolutePath().normalize();
+            ReleasePlanValidator.Result result = ReleasePlanValidator.validate(
+                    root,
+                    arguments.required("current-version"),
+                    arguments.required("release-version"),
+                    arguments.required("next-development-version"),
+                    arguments.optionalOrDefault("state", "development"),
+                    arguments.booleanValue("require-clean", true));
+            output.println("Maven release check passed: "
+                    + result.currentVersion() + " -> " + result.releaseVersion()
+                    + " -> " + result.nextDevelopmentVersion() + " ("
+                    + result.state() + ", " + result.pomCount()
+                    + " reactor POMs).");
+            return 0;
+        } catch (IOException | IllegalArgumentException failure) {
+            error.println("Release check failed: " + failure.getMessage());
             return 1;
         }
     }
@@ -198,7 +228,8 @@ public final class TaxonomyTooling {
         String required(String name) {
             String value = values.get(name);
             if (value == null) {
-                throw new IllegalArgumentException("--" + name + " is required");
+                throw new IllegalArgumentException(
+                        "--" + name + " is required");
             }
             return value;
         }
@@ -207,9 +238,29 @@ public final class TaxonomyTooling {
             return values.get(name);
         }
 
+        String optionalOrDefault(String name, String fallback) {
+            String value = values.get(name);
+            return value == null ? fallback : value;
+        }
+
         Path path(String name, Path fallback) {
             String value = values.get(name);
             return value == null ? fallback : Path.of(value);
+        }
+
+        boolean booleanValue(String name, boolean fallback) {
+            String value = values.get(name);
+            if (value == null) {
+                return fallback;
+            }
+            if ("true".equalsIgnoreCase(value)) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(value)) {
+                return false;
+            }
+            throw new IllegalArgumentException(
+                    "--" + name + " must be true or false");
         }
 
         boolean flag(String name) {

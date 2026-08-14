@@ -181,6 +181,37 @@ class ReleaseParametersResolverTest {
     }
 
     @Test
+    void cliRejectsEscapingRequestPathBeforeReadingOutsideContent(
+            @TempDir Path temporaryDirectory) throws Exception {
+        Path root = temporaryDirectory.resolve("repository");
+        Files.createDirectories(root);
+        writePom(root, "1.2.9-SNAPSHOT");
+        Path outside = temporaryDirectory.resolve("outside.json");
+        Files.writeString(
+                outside,
+                "deliberately not JSON",
+                StandardCharsets.UTF_8);
+        Path output = root.resolve("github-output");
+        ByteArrayOutputStream errors = new ByteArrayOutputStream();
+
+        int exitCode = TaxonomyTooling.run(
+                new String[]{"resolve-release-parameters"},
+                Map.of(
+                        "EVENT_NAME", "push",
+                        "RELEASE_REQUEST_PATH", "../outside.json",
+                        "GITHUB_OUTPUT", output.toString()),
+                root,
+                new PrintStream(OutputStream.nullOutputStream()),
+                new PrintStream(errors));
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(errors.toString(StandardCharsets.UTF_8))
+                .contains("release request path must stay inside the repository")
+                .doesNotContain("JSON character");
+        assertThat(output).doesNotExist();
+    }
+
+    @Test
     void cliReportsMissingRequiredEnvironment(@TempDir Path root) {
         ByteArrayOutputStream errors = new ByteArrayOutputStream();
         int exitCode = TaxonomyTooling.run(

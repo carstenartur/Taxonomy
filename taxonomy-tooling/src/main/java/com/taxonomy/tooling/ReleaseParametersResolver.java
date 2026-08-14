@@ -99,23 +99,24 @@ public final class ReleaseParametersResolver {
     public static Parameters resolveFromEnvironment(
             Path root,
             Map<String, String> environment) throws IOException {
+        Path repository = root.toRealPath();
         String eventName = requireEnvironment(environment, "EVENT_NAME");
-        String currentVersion = XmlSupport.rootProjectVersion(root.resolve("pom.xml"));
+        String currentVersion = XmlSupport.rootProjectVersion(
+                repository.resolve("pom.xml"));
         Map<String, Object> request = null;
         if ("push".equals(eventName)) {
             Path configured = Path.of(environment.getOrDefault(
                     "RELEASE_REQUEST_PATH", ".github/release-request.json"));
-            Path requestPath = configured.isAbsolute()
-                    ? configured
-                    : root.resolve(configured);
+            Path requestPath = resolveRequestPath(repository, configured);
             request = FlatJson.parseObject(Files.readString(
                     requestPath, StandardCharsets.UTF_8));
-            validateReleaseRequestAnchor(root, requestPath, request);
+            validateReleaseRequestAnchor(repository, requestPath, request);
         }
 
         Parameters parameters = resolve(
                 eventName, environment, request, currentVersion);
-        validateStagedReleaseAncestry(root, parameters, currentVersion);
+        validateStagedReleaseAncestry(
+                repository, parameters, currentVersion);
         appendOutputs(
                 Path.of(requireEnvironment(environment, "GITHUB_OUTPUT")),
                 parameters);
@@ -347,6 +348,27 @@ public final class ReleaseParametersResolver {
 
     static Map<String, Object> readRequest(Path path) throws IOException {
         return FlatJson.parseObject(Files.readString(path, StandardCharsets.UTF_8));
+    }
+
+    private static Path resolveRequestPath(
+            Path repository,
+            Path configured) throws IOException {
+        Path candidate = (configured.isAbsolute()
+                ? configured
+                : repository.resolve(configured))
+                .toAbsolutePath()
+                .normalize();
+        if (!candidate.startsWith(repository)) {
+            throw new IllegalArgumentException(
+                    "release request path must stay inside the repository");
+        }
+        Path realPath = candidate.toRealPath();
+        if (!realPath.startsWith(repository) || !realPath.equals(candidate)) {
+            throw new IllegalArgumentException(
+                    "release request path must stay inside the repository "
+                            + "and must not traverse symbolic links");
+        }
+        return realPath;
     }
 
     private static String normalizeBoolean(Object value, String field) {
