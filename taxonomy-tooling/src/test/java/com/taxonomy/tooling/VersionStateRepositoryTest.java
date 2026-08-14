@@ -73,10 +73,13 @@ class VersionStateRepositoryTest {
                 .doesNotContain("check-version-state.py");
         assertThat(script)
                 .contains("java -jar \"$TOOLING_JAR\" check-version-state")
+                .contains("java -jar \"$TOOLING_JAR\" check-release-plan")
                 .contains("-DreleaseCheckCurrentState=\"$state\"")
                 .contains("-DreleaseVersion=\"$RELEASE_VERSION\"")
                 .contains("-DnextDevelopmentVersion=\"$NEXT_VERSION\"")
-                .doesNotContain("python3");
+                .doesNotContain("resolve-release-parameters.py")
+                .doesNotContain("check-version-state.py")
+                .doesNotContain("check-release-plan.py");
         assertThat(root.resolve(".github/scripts/resolve-release-parameters.py"))
                 .doesNotExist();
         assertThat(root.resolve(".github/scripts/check-version-state.py"))
