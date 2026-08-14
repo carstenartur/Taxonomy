@@ -43,6 +43,16 @@ public class RelationBranchProjectionReadinessService {
                 checkpointRepository, "checkpointRepository");
     }
 
+    /**
+     * Returns the current Git head commit for the selected branch without
+     * loading or validating any rebuildable projection rows.
+     */
+    public String readCurrentHead(RepositoryContext context) {
+        Objects.requireNonNull(context, "context");
+        DslGitRepository repository = gitRepositoryFactory.resolveRepository(context);
+        return readHead(repository, context.branch());
+    }
+
     @Transactional(readOnly = true)
     public Readiness inspect(RepositoryContext context) {
         Objects.requireNonNull(context, "context");
