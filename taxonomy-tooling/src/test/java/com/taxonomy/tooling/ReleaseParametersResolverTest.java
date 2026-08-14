@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -166,7 +167,7 @@ class ReleaseParametersResolverTest {
                         "INPUT_DRY_RUN", "false",
                         "GITHUB_OUTPUT", output.toString()),
                 root,
-                new PrintStream(ByteArrayOutputStream.nullOutputStream()),
+                new PrintStream(OutputStream.nullOutputStream()),
                 new PrintStream(errors));
 
         assertThat(exitCode).as(errors.toString(StandardCharsets.UTF_8)).isZero();
@@ -186,7 +187,7 @@ class ReleaseParametersResolverTest {
                 new String[]{"resolve-release-parameters"},
                 Map.of("GITHUB_OUTPUT", root.resolve("output").toString()),
                 root,
-                new PrintStream(ByteArrayOutputStream.nullOutputStream()),
+                new PrintStream(OutputStream.nullOutputStream()),
                 new PrintStream(errors));
 
         assertThat(exitCode).isEqualTo(1);
