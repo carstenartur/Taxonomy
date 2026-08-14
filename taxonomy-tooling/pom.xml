@@ -15,6 +15,14 @@
     <name>Taxonomy Build and Release Tooling</name>
     <description>Dependency-free Java command line tooling for release, version and repository policy operations.</description>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
     <build>
         <plugins>
             <plugin>
