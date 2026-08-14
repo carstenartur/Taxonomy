@@ -76,7 +76,7 @@
         <hibernate-search.version>8.4.0.Final</hibernate-search.version>
         <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
         <jgit.version>7.7.1.202607240634-r</jgit.version>
-        <jgit-storage-hibernate.version>0.1.18</jgit-storage-hibernate.version>
+        <jgit-storage-hibernate.version>0.10.0</jgit-storage-hibernate.version>
         <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
         <springdoc.version>3.1.0</springdoc.version>
         <postgresql.version>42.7.12</postgresql.version>
