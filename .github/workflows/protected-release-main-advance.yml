@@ -65,7 +65,10 @@ jobs:
             ! -name '*-sources.jar' \
             ! -name '*-javadoc.jar' \
             | head -n 1)
-          test -n "$tooling_jar"
+          if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
+            echo "::error::Java release tooling jar was not produced"
+            exit 1
+          fi
           cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
 
       - name: Validate immutable handoff
