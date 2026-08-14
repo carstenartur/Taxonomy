@@ -46,17 +46,22 @@ public final class ReleasePlanValidator {
                 false);
         String current = Objects.requireNonNull(
                 currentVersion, "currentVersion").strip();
-        if (!STATES.contains(state)) {
+        String normalizedState = Objects.requireNonNull(
+                state, "state").strip();
+        if (!STATES.contains(normalizedState)) {
             throw new IllegalArgumentException(
-                    "releaseCheckCurrentState must be one of " + STATES.stream().sorted().toList());
+                    "releaseCheckCurrentState must be one of "
+                            + STATES.stream().sorted().toList());
         }
         VersionNumbers.requireNewer(release, next);
 
-        String expected = expectedCurrentVersion(release, next, state);
+        String expected = expectedCurrentVersion(
+                release, next, normalizedState);
         if (!current.equals(expected)) {
             throw new IllegalArgumentException(
-                    "release state " + state + " expects project version "
-                            + expected + ", but Maven resolved " + current);
+                    "release state " + normalizedState
+                            + " expects project version " + expected
+                            + ", but Maven resolved " + current);
         }
 
         List<Path> paths = reactorPomPaths(repository);
@@ -115,7 +120,8 @@ public final class ReleasePlanValidator {
                         || "parent".equals(versioned.kind()))
                         && internalCoordinates.contains(versioned.coordinate())
                         && resolved.equals(current)
-                        && ("development".equals(state) || "advanced".equals(state));
+                        && ("development".equals(normalizedState)
+                                || "advanced".equals(normalizedState));
                 if (!internalSnapshot) {
                     failures.add(relative + ": external " + versioned.kind()
                             + coordinateText + " uses snapshot version '"
@@ -146,14 +152,17 @@ public final class ReleasePlanValidator {
         if (requireClean) {
             checkGitClean(repository);
         }
-        return new Result(current, release, next, state, models.size());
+        return new Result(
+                current, release, next, normalizedState, models.size());
     }
 
     public static String expectedCurrentVersion(
             String releaseVersion,
             String nextDevelopmentVersion,
             String state) {
-        return switch (state) {
+        String normalizedState = Objects.requireNonNull(
+                state, "state").strip();
+        return switch (normalizedState) {
             case "development" -> releaseVersion + "-SNAPSHOT";
             case "release" -> releaseVersion;
             case "advanced" -> nextDevelopmentVersion;
@@ -245,15 +254,13 @@ public final class ReleasePlanValidator {
         LinkedHashMap<String, String> properties = new LinkedHashMap<>();
         Element propertyRoot = XmlSupport.child(project, "properties");
         if (propertyRoot != null) {
-            for (Element property : XmlSupport.children(propertyRoot, propertyRoot.getLocalName())) {
-                // Unreachable for normal Maven properties; retained for defensive clarity.
-                properties.put(property.getLocalName(), XmlSupport.text(property));
-            }
             for (int index = 0;
                     index < propertyRoot.getChildNodes().getLength();
                     index++) {
-                if (propertyRoot.getChildNodes().item(index) instanceof Element property) {
-                    properties.put(property.getLocalName(), XmlSupport.text(property));
+                if (propertyRoot.getChildNodes().item(index)
+                        instanceof Element property) {
+                    properties.put(
+                            property.getLocalName(), XmlSupport.text(property));
                 }
             }
         }
