@@ -1,6 +1,6 @@
 # Taxonomy 1.4.0
 
-Taxonomy 1.4.0 is the first published release after 1.3.0. It combines the stabilization work that had been prepared for 1.3.1 with a substantially stronger project-portfolio workbench, deterministic architecture exports, local semantic-search readiness, deployment profiles, and a fail-closed release and quality pipeline.
+Taxonomy 1.4.0 is the first published release after 1.3.0. It combines the stabilization work that had been prepared for 1.3.1 with a substantially stronger project-portfolio workbench, an integrated multi-repository foundation, Git-authoritative architecture decisions, deterministic architecture exports, local semantic-search readiness, deployment profiles, and a fail-closed release and quality pipeline.
 
 ## Important release-line note
 
@@ -26,6 +26,19 @@ The project portfolio now supports a complete traceable workflow rather than a c
 - project and requirement reports in HTML, DOCX, Markdown, JSON, and CSV.
 
 The browser acceptance suite exercises this as one vertical process and treats serious accessibility findings as release failures. See the [Project Portfolio Guide](docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md) and [feature matrix](docs/en/PROJECT_PORTFOLIO_FEATURE_MATRIX.md).
+
+### Integrated multi-repository and Git-authoritative foundation
+
+The former multi-repository integration line is now part of the 1.4.0 source tree. The integrated foundation includes:
+
+- a repository catalogue and explicit repository, workspace, fork, branch, and commit context;
+- multiple logical JGit repositories in the shared Hibernate-backed storage layer;
+- repository/workspace-scoped relation and architecture-history projections;
+- Git-authoritative manual relation changes and proposal and hypothesis accept, reject, and revert operations;
+- expected-head preconditions, authoritative commit `ETag` values, idempotency, stale-head conflict handling, and recoverable projection states;
+- `jgit-storage-hibernate` 0.10.0 schema compatibility and startup ordering corrections.
+
+This is a real delivered foundation, not an isolated preview. It does **not** mean that the multi-repository completion epic #609 is finished. Remaining product-wide tenancy, readiness, cache/search isolation, organization visibility, ancestry-preserving clone/fork transfer, selector/context UX, and complete end-to-end evidence remain tracked by #741–#749.
 
 ### Server-authoritative architecture workbench
 
@@ -88,9 +101,9 @@ The publishing transaction keeps source and deployment evidence aligned:
 - the exact digest is vulnerability-scanned before the draft release becomes public;
 - Helm deployment evidence records that same image digest.
 
-### Maven/JUnit-owned quality contracts
+### Maven/JUnit-owned and Python-free quality contracts
 
-Deterministic repository policy is now owned by the normal Maven/JUnit lifecycle instead of parallel Python pass/fail implementations. Executable contracts cover:
+Deterministic repository policy is owned by the normal Maven/JUnit lifecycle rather than parallel scripting tests. Executable contracts cover:
 
 - workflow test authority;
 - repository documentation links;
@@ -101,13 +114,13 @@ Deterministic repository policy is now owned by the normal Maven/JUnit lifecycle
 - frontend API-boundary debt and direct-transport ratchets;
 - release version-state and request ancestry.
 
-Standalone Python remains only where it is useful as a bounded release adapter or evidence generator; JUnit owns the positive and negative contracts around those retained boundaries.
+The final 1.4.0 source tree must contain no Python files and no Python workflow, Maven, release, or documentation invocation. Remaining Python adapters and generators on the current development line are a release blocker tracked by #673 and must be replaced by Maven/JUnit, Java/Maven-native generation, or shell/GitHub Actions orchestration before the release candidate is frozen.
 
-## Compatibility and deliberate exclusions
+## Compatibility and deliberate limitations
 
-- The unfinished multi-repository and federated-authority implementation tracked by #609/#610 is **not included** in Taxonomy 1.4.0. It remains on its isolated integration line until its tenancy, recovery, authority, cache, UX, and end-to-end isolation boundaries are complete.
-- The federated authority and collaborative editing document included in this release is a planning baseline, not a claim that those future capabilities are already delivered.
-- The existing published primary-repository/workspace behavior remains the supported product boundary for 1.4.0.
+- The integrated multi-repository foundation is included in Taxonomy 1.4.0; it must no longer be described as an isolated or excluded branch.
+- Completion epic #609 remains open. Product-wide readiness-checked reads, complete requirements/portfolio/audit tenancy, cache/search/embedding isolation, organization visibility, ancestry-preserving clone/fork transfer, repository-selector UX, and one complete cross-database/browser end-to-end evidence package remain follow-up work.
+- The federated authority and collaborative editing document included in this release is a planning baseline, not a claim that all future federation and live-collaboration capabilities are already delivered.
 - No deployment should use the unpublished `v1.3.1` tag as a substitute for the 1.4.0 release assets.
 
 ## Upgrade notes
@@ -115,10 +128,11 @@ Standalone Python remains only where it is useful as a bounded release adapter o
 1. Back up the application database and persistent storage using the normal operational procedure.
 2. Upgrade directly from the published 1.3.0 assets to the 1.4.0 release.
 3. Use the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
-4. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
-5. Local semantic search can remain unavailable until its controlled model/index initialization completes; use the reported readiness state rather than assuming an empty result means a ready index.
-6. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle rather than invoking internal test selectors directly.
+4. Verify repository-catalog initialization and the selected repository/workspace context after the upgrade before making architecture changes.
+5. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
+6. Local semantic search can remain unavailable until its controlled model/index initialization completes; use the reported readiness state rather than assuming an empty result means a ready index.
+7. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle rather than invoking internal test selectors directly.
 
 ## Verification boundary
 
-Taxonomy 1.4.0 is published only after the release request, final source commit, Git tag, GitHub Release, Maven artifacts, SBOM/VEX evidence, OCI digest, image scan, Helm package, Kubernetes manifests, and post-release `1.4.1-SNAPSHOT` state agree with the release transaction.
+Taxonomy 1.4.0 is published only after the release request, final source commit, Git tag, GitHub Release, Maven artifacts, SBOM/VEX evidence, OCI digest, image scan, Helm package, Kubernetes manifests, and post-release `1.4.1-SNAPSHOT` state agree with the release transaction. The exact release source must also pass the repository-wide no-Python contract.
