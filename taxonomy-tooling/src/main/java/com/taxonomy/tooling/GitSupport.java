@@ -6,6 +6,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 final class GitSupport {
 
@@ -34,17 +38,27 @@ final class GitSupport {
             Process process = new ProcessBuilder(command)
                     .directory(root.toFile())
                     .start();
-            String stdout = new String(
-                    process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            String stderr = new String(
-                    process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-            return new Result(process.waitFor(), stdout, stderr);
+            try (ExecutorService readers =
+                    Executors.newVirtualThreadPerTaskExecutor()) {
+                Future<String> stdout = readers.submit(() -> new String(
+                        process.getInputStream().readAllBytes(),
+                        StandardCharsets.UTF_8));
+                Future<String> stderr = readers.submit(() -> new String(
+                        process.getErrorStream().readAllBytes(),
+                        StandardCharsets.UTF_8));
+                int exitCode = process.waitFor();
+                return new Result(exitCode, stdout.get(), stderr.get());
+            }
         } catch (IOException error) {
             throw new IllegalArgumentException(
                     "Cannot execute Git: " + error.getMessage(), error);
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new IllegalArgumentException("Git command was interrupted", error);
+        } catch (ExecutionException error) {
+            Throwable cause = error.getCause() == null ? error : error.getCause();
+            throw new IllegalArgumentException(
+                    "Cannot read Git process output: " + cause.getMessage(), cause);
         }
     }
 
