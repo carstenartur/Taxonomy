@@ -20,29 +20,21 @@ import org.junit.jupiter.api.Test;
 class JgitStorageSchema091CompatibilityTest {
 
     @Test
-    void acceptsKnown091ReflogShapeWhileRunningAgainstPinnedCore() throws Exception {
+    void acceptsReleased091ReflogShapeWhileRunningAgainstPinnedCore() throws Exception {
         DataSource dataSource = dataSource("reflog-091-shape");
         Flyway flyway = flyway(dataSource);
         flyway.migrate();
-
-        execute(dataSource, "alter table git_reflog add column ref_name_key varchar(128)");
-        execute(dataSource, "alter table git_reflog alter column ref_name_key set not null");
-        execute(dataSource, "drop index if exists idx_reflog_repo_ref_id");
-        execute(dataSource, "drop index if exists idx_reflog_repo_ref_key_id");
-        execute(
-                dataSource,
-                "create index idx_reflog_repo_ref_key_id "
-                        + "on git_reflog (repository_name, ref_name_key, id desc)");
 
         assertDoesNotThrow(
                 () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false));
     }
 
     @Test
-    void rejectsCurrentPre091ShapeWithoutReleasedIdOrderingColumn() throws Exception {
+    void rejectsPre091ShapeWithoutReleasedIdOrderingColumn() throws Exception {
         DataSource dataSource = dataSource("reflog-pre-091-short-index");
         Flyway flyway = flyway(dataSource);
         flyway.migrate();
+        revertReleased091Migration(dataSource);
         execute(dataSource, "drop index if exists idx_reflog_repo_ref_id");
         execute(
                 dataSource,
@@ -69,6 +61,16 @@ class JgitStorageSchema091CompatibilityTest {
 
         assertTrue(error.getMessage().contains("neither the exact pre-0.9.1 shape"));
         assertTrue(error.getMessage().contains("UNSUPPORTED_PROBE"));
+    }
+
+    private static void revertReleased091Migration(DataSource dataSource)
+            throws SQLException {
+        execute(dataSource, "drop index if exists idx_reflog_repo_ref_key_id");
+        execute(dataSource, "alter table git_reflog drop column ref_name_key");
+        execute(
+                dataSource,
+                "delete from " + CoreSchemaMigrations.SCHEMA_HISTORY_TABLE
+                        + " where version = '0.9.1'");
     }
 
     private static DataSource dataSource(String purpose) {
