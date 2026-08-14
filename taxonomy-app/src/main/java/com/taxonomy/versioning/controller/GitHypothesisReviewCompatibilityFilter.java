@@ -177,7 +177,10 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
                     : HttpServletResponse.SC_BAD_REQUEST;
             write(response, status, errorPayload(error));
         } catch (IllegalStateException error) {
-            write(response, HttpServletResponse.SC_CONFLICT,
+            // Preserve the long-standing compatibility response for attempts
+            // to re-review a terminal hypothesis. Git head conflicts are still
+            // mapped separately to the explicit 412 precondition response.
+            write(response, HttpServletResponse.SC_BAD_REQUEST,
                     errorPayload(error));
         } catch (IOException error) {
             write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
@@ -284,6 +287,7 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
         payload.put("status", "REVIEW_REJECTED");
         if (error.getMessage() != null && !error.getMessage().isBlank()) {
             payload.put("detail", error.getMessage());
+            payload.put("error", error.getMessage());
         }
         return payload;
     }
