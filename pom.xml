@@ -52,6 +52,8 @@
     </issueManagement>
 
     <modules>
+        <!-- Dependency-free build tooling is built first. -->
+        <module>taxonomy-tooling</module>
         <module>taxonomy-domain</module>
         <module>taxonomy-dsl</module>
         <module>taxonomy-export</module>
