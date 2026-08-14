@@ -3,6 +3,8 @@ package com.taxonomy.versioning.service;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
@@ -23,6 +25,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -34,6 +38,7 @@ import java.util.Objects;
 @Primary
 public class GitAuthoritativeHypothesisService extends HypothesisService {
 
+    private final RelationHypothesisRepository hypothesisRepository;
     private final GitAuthoritativeHypothesisReviewService reviewService;
     private final RelationBranchProjectionReadinessService readinessService;
     private final SystemRepositoryService systemRepositoryService;
@@ -57,6 +62,8 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
                 repositoryFactory,
                 systemRepositoryService,
                 userWorkspaceRepository);
+        this.hypothesisRepository = Objects.requireNonNull(
+                hypothesisRepository, "hypothesisRepository");
         this.systemRepositoryService = Objects.requireNonNull(
                 systemRepositoryService, "systemRepositoryService");
         this.userWorkspaceRepository = Objects.requireNonNull(
@@ -64,6 +71,36 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
         this.reviewService = Objects.requireNonNull(reviewService, "reviewService");
         this.readinessService = Objects.requireNonNull(
                 readinessService, "readinessService");
+    }
+
+    /**
+     * Preserve the historic return value (new rows only), while enriching every
+     * supplied DTO with the exact persisted review identity. For a stable
+     * analysis session this also resolves rows created by an earlier retry.
+     */
+    @Override
+    @Transactional
+    public List<RelationHypothesis> persistFromAnalysis(
+            List<RelationHypothesisDto> hypotheses,
+            String sessionId,
+            RepositoryContext context) {
+        RepositoryContext tenant = requireContext(context);
+        List<RelationHypothesis> persisted = super.persistFromAnalysis(
+                hypotheses, sessionId, tenant);
+        bindPersistedIds(hypotheses, sessionId, tenant, persisted);
+        return persisted;
+    }
+
+    @Override
+    @Transactional
+    public List<RelationHypothesis> persistFromAnalysis(
+            List<RelationHypothesisDto> hypotheses,
+            String sessionId,
+            WorkspaceContext workspaceContext) {
+        return persistFromAnalysis(
+                hypotheses,
+                sessionId,
+                resolveLegacyContext(workspaceContext));
     }
 
     @Override
@@ -139,6 +176,45 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
                 hypothesisId,
                 requireContext(context),
                 action);
+    }
+
+    private void bindPersistedIds(
+            List<RelationHypothesisDto> hypotheses,
+            String sessionId,
+            RepositoryContext context,
+            List<RelationHypothesis> newlyPersisted) {
+        if (hypotheses == null || hypotheses.isEmpty()) {
+            return;
+        }
+        String normalizedSession = normalizeOptional(sessionId);
+        List<RelationHypothesis> candidates = normalizedSession == null
+                ? newlyPersisted
+                : hypothesisRepository
+                        .findByAnalysisSessionIdInRepositoryWorkspace(
+                                context.repositoryId(),
+                                context.workspaceId(),
+                                normalizedSession);
+        for (RelationHypothesisDto dto : hypotheses) {
+            if (dto == null) {
+                continue;
+            }
+            RelationType type;
+            try {
+                type = RelationType.valueOf(
+                        requireText(dto.getRelationType(), "relationType")
+                                .toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException error) {
+                continue;
+            }
+            candidates.stream()
+                    .filter(entity -> entity.getRelationType() == type)
+                    .filter(entity -> Objects.equals(
+                            entity.getSourceNodeId(), dto.getSourceCode()))
+                    .filter(entity -> Objects.equals(
+                            entity.getTargetNodeId(), dto.getTargetCode()))
+                    .findFirst()
+                    .ifPresent(entity -> dto.setHypothesisId(entity.getId()));
+        }
     }
 
     private ReviewResult reviewUnchecked(
