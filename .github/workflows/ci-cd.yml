@@ -42,8 +42,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/test-resolve-release-parameters.py
-          python3 .github/scripts/test-check-release-plan.py
+          ./mvnw -B -pl taxonomy-tooling package -DskipTests
+          tooling_jar=$(find taxonomy-tooling/target -maxdepth 1 -type f \
+            -name 'taxonomy-tooling-*.jar' \
+            ! -name '*-sources.jar' \
+            ! -name '*-javadoc.jar' \
+            | head -n 1)
+          test -n "$tooling_jar"
+
           python3 .github/scripts/test-generate-quality-site.py
           python3 .github/scripts/test-verify-quality-publication.py
           python3 .github/scripts/test-verify-deployment.py
@@ -62,9 +68,13 @@ jobs:
             release_version=${current_version%-SNAPSHOT}
             IFS='.' read -r major minor patch <<< "$release_version"
             next_version="${major}.${minor}.$((patch + 1))-SNAPSHOT"
-            ./mvnw -B -Prelease-check validate \
-              -DreleaseVersion="$release_version" \
-              -DnextDevelopmentVersion="$next_version"
+            java -jar "$tooling_jar" check-release-plan \
+              --root . \
+              --current-version "$current_version" \
+              --release-version "$release_version" \
+              --next-development-version "$next_version" \
+              --state development \
+              --require-clean true
           fi
 
       - name: Install verified Helm 3.21.0
