@@ -1,11 +1,9 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.architecture.service.CommitIndexSearchLifecycle;
-import com.taxonomy.shared.config.SchemaContractMigration;
 import jakarta.annotation.PostConstruct;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.DefaultApplicationArguments;
-import org.springframework.core.annotation.Order;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
@@ -17,18 +15,23 @@ import static org.mockito.Mockito.verify;
 
 class SystemRepositoryCatalogInitializerTest {
 
-    private static final DefaultApplicationArguments NO_ARGS =
-            new DefaultApplicationArguments(new String[0]);
-
     @Test
     void delegatesStartupToTransactionalServiceBoundary() {
         SystemRepositoryService service = mock(SystemRepositoryService.class);
         SystemRepositoryCatalogInitializer initializer =
                 new SystemRepositoryCatalogInitializer(service);
 
-        initializer.run(NO_ARGS);
+        initializer.initialize();
 
         verify(service).ensureSystemRepository();
+    }
+
+    @Test
+    void initializerOwnsLifecycleCallback() throws Exception {
+        Method method = SystemRepositoryCatalogInitializer.class
+                .getDeclaredMethod("initialize");
+
+        assertThat(method.isAnnotationPresent(PostConstruct.class)).isTrue();
     }
 
     @Test
@@ -44,21 +47,19 @@ class SystemRepositoryCatalogInitializerTest {
     }
 
     @Test
-    void runnerOrderKeepsSchemaMigrationAheadAndSearchLifecycleBehind() {
-        int schemaMigrationOrder = orderOf(SchemaContractMigration.class);
-        int catalogInitializationOrder = orderOf(SystemRepositoryCatalogInitializer.class);
-        int searchLifecycleOrder = orderOf(CommitIndexSearchLifecycle.class);
+    void taxonomyBootstrapDependsOnCatalogInitialization() {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        RootBeanDefinition taxonomyService = new RootBeanDefinition(Object.class);
+        taxonomyService.setDependsOn("existingDependency");
+        beanFactory.registerBeanDefinition(
+                SystemRepositoryCatalogBootstrapOrder.TAXONOMY_SERVICE_BEAN,
+                taxonomyService);
 
-        assertThat(catalogInitializationOrder)
-                .isGreaterThan(schemaMigrationOrder)
-                .isLessThan(searchLifecycleOrder);
-    }
+        new SystemRepositoryCatalogBootstrapOrder()
+                .postProcessBeanFactory(beanFactory);
 
-    private static int orderOf(Class<?> type) {
-        Order annotation = type.getAnnotation(Order.class);
-        assertThat(annotation)
-                .as(type.getName() + " must declare an explicit startup order")
-                .isNotNull();
-        return annotation.value();
+        assertThat(taxonomyService.getDependsOn()).containsExactly(
+                "existingDependency",
+                SystemRepositoryCatalogBootstrapOrder.CATALOG_INITIALIZER_BEAN);
     }
 }
