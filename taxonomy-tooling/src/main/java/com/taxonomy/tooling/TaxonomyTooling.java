@@ -5,7 +5,9 @@ import org.w3c.dom.Element;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Entry point for dependency-free release and repository tooling. */
@@ -45,6 +47,8 @@ public final class TaxonomyTooling {
             case "check-version-state" -> checkVersionState(
                     commandArguments, workingDirectory, output, error);
             case "check-release-plan" -> checkReleasePlan(
+                    commandArguments, workingDirectory, output, error);
+            case "check-codeql-sarif" -> checkCodeQlSarif(
                     commandArguments, workingDirectory, output, error);
             case "compare-versions" -> compareVersions(commandArguments, error);
             case "read-pom-version" -> readPomVersion(
@@ -133,6 +137,46 @@ public final class TaxonomyTooling {
         }
     }
 
+    private static int checkCodeQlSarif(
+            String[] rawArguments,
+            Path workingDirectory,
+            PrintStream output,
+            PrintStream error) {
+        try {
+            Arguments arguments = Arguments.parse(rawArguments);
+            if (arguments.positionals().isEmpty()) {
+                throw new IllegalArgumentException("no SARIF files supplied");
+            }
+            List<Path> reports = arguments.positionals().stream()
+                    .map(Path::of)
+                    .map(path -> path.isAbsolute()
+                            ? path
+                            : workingDirectory.resolve(path))
+                    .toList();
+            CodeQlSarifGate.Result result = CodeQlSarifGate.inspect(
+                    reports,
+                    arguments.doubleValue("threshold", 7.0));
+            Path report = arguments.path(
+                    "report", workingDirectory.resolve("target/codeql-gate.json"));
+            if (!report.isAbsolute()) {
+                report = workingDirectory.resolve(report);
+            }
+            CodeQlSarifGate.writeReport(report, result);
+            output.println("CodeQL results: " + result.resultCount()
+                    + "; blocking: " + result.blocking().size());
+            for (CodeQlSarifGate.Finding finding : result.blocking()) {
+                error.println("- [" + finding.level()
+                        + "/security-severity="
+                        + finding.securitySeverity() + "] "
+                        + finding.ruleId() + ": " + finding.message());
+            }
+            return result.successful() ? 0 : 1;
+        } catch (IOException | IllegalArgumentException failure) {
+            error.println("CodeQL gate failed: " + failure.getMessage());
+            return 1;
+        }
+    }
+
     private static int compareVersions(
             String[] rawArguments,
             PrintStream error) {
@@ -182,22 +226,38 @@ public final class TaxonomyTooling {
     private static final class Arguments {
         private final Map<String, String> values;
         private final Map<String, Boolean> flags;
+        private final List<String> positionals;
 
         private Arguments(
                 Map<String, String> values,
-                Map<String, Boolean> flags) {
+                Map<String, Boolean> flags,
+                List<String> positionals) {
             this.values = values;
             this.flags = flags;
+            this.positionals = positionals;
         }
 
         static Arguments parse(String[] raw) {
             LinkedHashMap<String, String> values = new LinkedHashMap<>();
             LinkedHashMap<String, Boolean> flags = new LinkedHashMap<>();
+            ArrayList<String> positionals = new ArrayList<>();
+            boolean positionalOnly = false;
             for (int index = 0; index < raw.length; index++) {
                 String token = raw[index];
-                if (!token.startsWith("--") || token.length() == 2) {
-                    throw new IllegalArgumentException(
-                            "Expected --option, got " + token);
+                if (positionalOnly) {
+                    positionals.add(token);
+                    continue;
+                }
+                if ("--".equals(token)) {
+                    positionalOnly = true;
+                    continue;
+                }
+                if (!token.startsWith("--")) {
+                    positionals.add(token);
+                    continue;
+                }
+                if (token.length() == 2) {
+                    throw new IllegalArgumentException("Empty option name");
                 }
                 String name = token.substring(2);
                 if ("stdin".equals(name)) {
@@ -213,7 +273,10 @@ public final class TaxonomyTooling {
                             "Duplicate option --" + name);
                 }
             }
-            return new Arguments(values, flags);
+            return new Arguments(
+                    values,
+                    flags,
+                    List.copyOf(positionals));
         }
 
         String required(String name) {
@@ -254,8 +317,25 @@ public final class TaxonomyTooling {
                     "--" + name + " must be true or false");
         }
 
+        double doubleValue(String name, double fallback) {
+            String value = values.get(name);
+            if (value == null) {
+                return fallback;
+            }
+            try {
+                return Double.parseDouble(value);
+            } catch (NumberFormatException failure) {
+                throw new IllegalArgumentException(
+                        "--" + name + " must be a number", failure);
+            }
+        }
+
         boolean flag(String name) {
             return flags.getOrDefault(name, Boolean.FALSE);
+        }
+
+        List<String> positionals() {
+            return positionals;
         }
     }
 }
