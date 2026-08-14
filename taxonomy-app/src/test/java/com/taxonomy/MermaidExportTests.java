@@ -9,14 +9,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -79,7 +80,6 @@ class MermaidExportTests {
 
         String result = mermaidExportService.export(model);
 
-        // Should have subgraph for Capabilities and Business Processes
         assertThat(result).contains("subgraph Capabilities");
         assertThat(result).contains("subgraph Business_Processes");
         assertThat(result).contains("end");
@@ -128,20 +128,17 @@ class MermaidExportTests {
 
     @Test
     void sanitizeIdReplacesSpecialChars() {
-        // Test sanitization indirectly through export
         DiagramNode node = new DiagramNode("CP-001", "Cap", "Capabilities", 0.9, false, 1);
         DiagramModel model = new DiagramModel("Test",
                 List.of(node), List.of(),
                 new DiagramLayout("LR", true));
 
         String result = mermaidExportService.export(model);
-        // CP-001 should become CP_001 (hyphens replaced)
         assertThat(result).contains("CP_001");
     }
 
     @Test
     void escapeHandlesSpecialCharacters() {
-        // Test escape indirectly through export with special characters
         DiagramNode node = new DiagramNode("N1", "Test \"quoted\"", "Capabilities", 0.9, false, 1);
         DiagramModel model = new DiagramModel("Test",
                 List.of(node), List.of(),
@@ -208,7 +205,7 @@ class MermaidExportTests {
         mockMvc.perform(post("/api/proposals/bulk")
                         .contentType("application/json")
                         .content("{\"ids\":[99999],\"action\":\"ACCEPT\"}"))
-                .andExpect(status().isOk())
+                .andExpect(status().isMultiStatus())
                 .andExpect(jsonPath("$.failed").value(1))
                 .andExpect(jsonPath("$.success").value(0));
     }
