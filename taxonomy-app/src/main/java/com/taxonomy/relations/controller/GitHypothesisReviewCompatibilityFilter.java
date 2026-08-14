@@ -64,8 +64,7 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
             RelationBranchProjectionReadinessService readinessService,
             WorkspaceResolver workspaceResolver,
             SystemRepositoryService repositoryService,
-            RepositoryMembershipService membershipService,
-            ObjectMapper objectMapper) {
+            RepositoryMembershipService membershipService) {
         this.hypothesisService = Objects.requireNonNull(
                 hypothesisService, "hypothesisService");
         this.readinessService = Objects.requireNonNull(
@@ -76,7 +75,7 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
                 repositoryService, "repositoryService");
         this.membershipService = Objects.requireNonNull(
                 membershipService, "membershipService");
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.objectMapper = new ObjectMapper();
     }
 
     @Override
