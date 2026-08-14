@@ -1,9 +1,12 @@
 package com.taxonomy.tooling;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
-/** Minimal strict JSON reader for release metadata without a runtime dependency. */
+/** Strict dependency-free JSON reader for release and archive metadata. */
 final class FlatJson {
 
     private final String source;
@@ -49,17 +52,36 @@ final class FlatJson {
         }
     }
 
+    private List<Object> array() {
+        expect('[');
+        List<Object> result = new ArrayList<>();
+        whitespace();
+        if (consume(']')) {
+            return result;
+        }
+        while (true) {
+            whitespace();
+            result.add(value());
+            whitespace();
+            if (consume(']')) {
+                return result;
+            }
+            expect(',');
+        }
+    }
+
     private Object value() {
+        whitespace();
         if (end()) {
             throw error("Missing JSON value");
         }
         return switch (source.charAt(index)) {
             case '"' -> string();
+            case '{' -> object();
+            case '[' -> array();
             case 't' -> literal("true", Boolean.TRUE);
             case 'f' -> literal("false", Boolean.FALSE);
             case 'n' -> literal("null", null);
-            case '{', '[' -> throw error(
-                    "Release metadata must contain only scalar JSON values");
             default -> number();
         };
     }
@@ -72,31 +94,54 @@ final class FlatJson {
         return value;
     }
 
-    private Long number() {
+    private Number number() {
         int start = index;
-        if (consume('-')) {
-            if (end()) {
-                throw error("Invalid JSON number");
+        consume('-');
+        if (consume('0')) {
+            if (!end() && Character.isDigit(source.charAt(index))) {
+                throw error("JSON numbers may not contain leading zeroes");
+            }
+        } else {
+            int digits = consumeDigits();
+            if (digits == 0) {
+                throw error("Unsupported JSON value");
             }
         }
-        int digits = 0;
+
+        boolean decimal = false;
+        if (consume('.')) {
+            decimal = true;
+            if (consumeDigits() == 0) {
+                throw error("JSON fraction requires digits");
+            }
+        }
+        if (!end() && (source.charAt(index) == 'e'
+                || source.charAt(index) == 'E')) {
+            decimal = true;
+            index++;
+            if (!end() && (source.charAt(index) == '+'
+                    || source.charAt(index) == '-')) {
+                index++;
+            }
+            if (consumeDigits() == 0) {
+                throw error("JSON exponent requires digits");
+            }
+        }
+
+        String token = source.substring(start, index);
+        try {
+            return decimal ? new BigDecimal(token) : Long.valueOf(token);
+        } catch (NumberFormatException error) {
+            throw error("JSON number is out of range");
+        }
+    }
+
+    private int consumeDigits() {
+        int start = index;
         while (!end() && Character.isDigit(source.charAt(index))) {
             index++;
-            digits++;
         }
-        if (digits == 0) {
-            throw error("Unsupported JSON value");
-        }
-        if (!end() && (source.charAt(index) == '.'
-                || source.charAt(index) == 'e'
-                || source.charAt(index) == 'E')) {
-            throw error("Release metadata integers must not use fractions or exponents");
-        }
-        try {
-            return Long.valueOf(source.substring(start, index));
-        } catch (NumberFormatException error) {
-            throw error("JSON integer is out of range");
-        }
+        return index - start;
     }
 
     private String string() {
