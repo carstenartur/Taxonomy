@@ -2,7 +2,8 @@ package com.taxonomy.dto;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class RelationHypothesisDtoTest {
 
@@ -10,6 +11,7 @@ class RelationHypothesisDtoTest {
     void defaultConstructorSetsDefaults() {
         var dto = new RelationHypothesisDto();
 
+        assertNull(dto.getHypothesisId());
         assertNull(dto.getSourceCode());
         assertNull(dto.getSourceName());
         assertNull(dto.getTargetCode());
@@ -20,13 +22,14 @@ class RelationHypothesisDtoTest {
     }
 
     @Test
-    void fullConstructorSetsAllFields() {
+    void fullConstructorSetsAllFieldsExceptPersistedIdentity() {
         var dto = new RelationHypothesisDto(
                 "CP-1023", "Capability A",
                 "CR-1047", "Core Service B",
                 "REALIZES", 0.85,
                 "High relevance due to direct mapping");
 
+        assertNull(dto.getHypothesisId());
         assertEquals("CP-1023", dto.getSourceCode());
         assertEquals("Capability A", dto.getSourceName());
         assertEquals("CR-1047", dto.getTargetCode());
@@ -34,6 +37,15 @@ class RelationHypothesisDtoTest {
         assertEquals("REALIZES", dto.getRelationType());
         assertEquals(0.85, dto.getConfidence(), 0.001);
         assertEquals("High relevance due to direct mapping", dto.getReasoning());
+    }
+
+    @Test
+    void persistedIdentityCanBeAttachedAfterAnalysisPersistence() {
+        var dto = new RelationHypothesisDto();
+
+        dto.setHypothesisId(42L);
+
+        assertEquals(42L, dto.getHypothesisId());
     }
 
     @Test
@@ -56,10 +68,12 @@ class RelationHypothesisDtoTest {
                 "CP-1023", "Cap A", "CR-1047", "Core B",
                 "REALIZES", 0.5, "initial");
 
+        dto.setHypothesisId(77L);
         dto.setSourceCode("BP-2001");
         dto.setConfidence(0.95);
         dto.setReasoning("updated reasoning");
 
+        assertEquals(77L, dto.getHypothesisId());
         assertEquals("BP-2001", dto.getSourceCode());
         assertEquals(0.95, dto.getConfidence(), 0.001);
         assertEquals("updated reasoning", dto.getReasoning());
