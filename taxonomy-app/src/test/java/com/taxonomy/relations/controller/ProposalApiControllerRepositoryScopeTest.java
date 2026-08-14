@@ -11,8 +11,6 @@ import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.Revi
 import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.ReviewResult;
 import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.MutationResult;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
-import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
-import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionOutcome;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionResult;
 import com.taxonomy.relations.service.RelationProposalService;
@@ -171,7 +169,7 @@ class ProposalApiControllerRepositoryScopeTest {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-b", "workspace-b1", "feature/b1", "alice");
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(context);
-        when(readinessService.inspect(context)).thenReturn(ready(HEAD_A));
+        when(readinessService.readCurrentHead(context)).thenReturn(HEAD_A);
         when(reviewService.accept(
                 eq(42L), eq(context), eq(HEAD_A), any(CommandMetadata.class)))
                 .thenReturn(reviewResult(
@@ -224,7 +222,7 @@ class ProposalApiControllerRepositoryScopeTest {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a1", "draft", "alice");
         when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(context);
-        when(readinessService.inspect(context)).thenReturn(ready(HEAD_A));
+        when(readinessService.readCurrentHead(context)).thenReturn(HEAD_A);
         when(reviewService.accept(
                 eq(10L), eq(context), eq(HEAD_A), any(CommandMetadata.class)))
                 .thenReturn(reviewResult(
@@ -264,14 +262,6 @@ class ProposalApiControllerRepositoryScopeTest {
                 eq(10L), eq(context), eq(HEAD_A), any(CommandMetadata.class));
         verify(reviewService).accept(
                 eq(11L), eq(context), eq(HEAD_B), any(CommandMetadata.class));
-    }
-
-    private static Readiness ready(String head) {
-        return new Readiness(
-                ReadinessState.READY,
-                head,
-                head,
-                List.of());
     }
 
     private static ReviewResult reviewResult(
