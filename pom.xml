@@ -52,7 +52,7 @@
     </issueManagement>
 
     <modules>
-        <!-- Dependency-free release and repository tooling is built first. -->
+        <!-- Dependency-free build tooling is built first. -->
         <module>taxonomy-tooling</module>
         <module>taxonomy-domain</module>
         <module>taxonomy-dsl</module>
@@ -318,10 +318,42 @@
         </profile>
         <profile>
             <id>release-check</id>
-            <properties>
-                <!-- The dependency-free Java tooling performs the release-plan check. -->
-                <taxonomy.release.check>true</taxonomy.release.check>
-            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>${exec-maven-plugin.version}</version>
+                        <inherited>false</inherited>
+                        <executions>
+                            <execution>
+                                <id>validate-release-plan</id>
+                                <phase>validate</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                                    <executable>python3</executable>
+                                    <arguments>
+                                        <argument>.github/scripts/check-release-plan.py</argument>
+                                        <argument>--root</argument>
+                                        <argument>${maven.multiModuleProjectDirectory}</argument>
+                                        <argument>--current-version</argument>
+                                        <argument>${project.version}</argument>
+                                        <argument>--release-version</argument>
+                                        <argument>${releaseVersion}</argument>
+                                        <argument>--next-development-version</argument>
+                                        <argument>${nextDevelopmentVersion}</argument>
+                                        <argument>--state</argument>
+                                        <argument>${releaseCheckCurrentState}</argument>
+                                        <argument>--require-clean</argument>
+                                        <argument>${releaseCheckRequireClean}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
         <profile>
             <id>quality</id>
