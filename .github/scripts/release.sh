@@ -4,7 +4,7 @@ set -euo pipefail
 : "${RELEASE_VERSION:?RELEASE_VERSION is required}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 : "${METADATA_HELPER:?METADATA_HELPER is required}"
-: "${VERSION_STATE_HELPER:?VERSION_STATE_HELPER is required}"
+: "${TOOLING_JAR:?TOOLING_JAR is required}"
 : "${VEX_HELPER:?VEX_HELPER is required}"
 : "${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}"
 
@@ -34,6 +34,25 @@ run_maven_release_check() {
     -DreleaseVersion="$RELEASE_VERSION" \
     -DnextDevelopmentVersion="$NEXT_VERSION" \
     -DreleaseCheckCurrentState="$state"
+}
+
+run_release_plan_check() {
+  local state=$1
+  local require_clean=${2:-true}
+  local current_version
+  current_version=$(./mvnw -q -DforceStdout help:evaluate \
+    -Dexpression=project.version)
+  java -jar "$TOOLING_JAR" check-release-plan \
+    --root . \
+    --current-version "$current_version" \
+    --release-version "$RELEASE_VERSION" \
+    --next-development-version "$NEXT_VERSION" \
+    --state "$state" \
+    --require-clean "$require_clean"
+}
+
+check_version_state() {
+  java -jar "$TOOLING_JAR" check-version-state --root . "$@"
 }
 
 stage_version_metadata() {
@@ -75,16 +94,9 @@ fi
 if ! [[ "$NEXT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$ ]]; then
   fail "next_development_version must use X.Y.Z-SNAPSHOT"
 fi
-RELEASE_VERSION="$RELEASE_VERSION" NEXT_VERSION="$NEXT_VERSION" python3 - <<'PY'
-import os
-release = tuple(map(int, os.environ['RELEASE_VERSION'].split('.')))
-next_version = tuple(map(int, os.environ['NEXT_VERSION'].removesuffix('-SNAPSHOT').split('.')))
-if next_version <= release:
-    raise SystemExit(
-        f"next development version {os.environ['NEXT_VERSION']} must be newer than "
-        f"release {os.environ['RELEASE_VERSION']}"
-    )
-PY
+java -jar "$TOOLING_JAR" compare-versions \
+  --release-version "$RELEASE_VERSION" \
+  --next-development-version "$NEXT_VERSION"
 
 materialize_release_notes() {
   RELEASE_VERSION="$RELEASE_VERSION" \
@@ -120,6 +132,7 @@ collect_release_artifacts() {
     ! -name '*-sources.jar' \
     ! -name '*-javadoc.jar' \
     ! -name 'original-*' \
+    ! -name 'taxonomy-tooling-*.jar' \
     -exec cp {} target/release-artifacts/ \;
 
   for file in target/taxonomy-sbom.json target/taxonomy-sbom.xml target/taxonomy-vex.json; do
@@ -167,15 +180,8 @@ create_maintenance_branch_if_missing() {
 }
 
 remote_main_version() {
-  git show origin/main:pom.xml | python3 -c '
-import sys, xml.etree.ElementTree as ET
-root = ET.fromstring(sys.stdin.read())
-ns = {"m": "http://maven.apache.org/POM/4.0.0"}
-value = root.findtext("m:version", namespaces=ns)
-if not value:
-    raise SystemExit("origin/main pom.xml has no project version")
-print(value.strip())
-'
+  git show origin/main:pom.xml \
+    | java -jar "$TOOLING_JAR" read-pom-version --stdin
 }
 
 advance_main_via_protected_pr() {
@@ -254,9 +260,9 @@ RELEASE_CHECK_STATE=development
 if [[ "$CURRENT_VERSION" == "$NEXT_VERSION" && "$TAG_EXISTS" == "true" ]]; then
   MAIN_ALREADY_ADVANCED=true
   RELEASE_CHECK_STATE=advanced
-  python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
+  check_version_state --mode development --expected-version "$NEXT_VERSION"
 elif [[ "$CURRENT_VERSION" == "${RELEASE_VERSION}-SNAPSHOT" ]]; then
-  python3 "$VERSION_STATE_HELPER" --mode development \
+  check_version_state --mode development \
     --expected-version "${RELEASE_VERSION}-SNAPSHOT"
 else
   fail "Current version $CURRENT_VERSION is neither ${RELEASE_VERSION}-SNAPSHOT nor finalized $NEXT_VERSION"
@@ -270,24 +276,23 @@ echo "Main already advanced: $MAIN_ALREADY_ADVANCED"
 echo "Defer release publication: $DEFER_RELEASE_PUBLICATION"
 echo "Dry run: $DRY_RUN"
 
-run_maven_release_check "$RELEASE_CHECK_STATE" release-check validate
+run_release_plan_check "$RELEASE_CHECK_STATE" true
 
 if [[ "$STATE" == "new" ]]; then
   ./mvnw -B versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
   python3 "$METADATA_HELPER" "$RELEASE_VERSION" --release
-  python3 "$VERSION_STATE_HELPER" --mode release --expected-version "$RELEASE_VERSION"
+  check_version_state --mode release --expected-version "$RELEASE_VERSION"
   # Validate the actual release-state reactor before committing it. The clean-check
   # is disabled only for this deliberate, uncommitted transition; the subsequent
   # canonical release verification runs from the clean immutable commit.
-  run_maven_release_check release release-check validate \
-    -DreleaseCheckRequireClean=false
+  run_release_plan_check release false
   stage_version_metadata
   git commit -m "Release version $RELEASE_VERSION"
   RELEASE_COMMIT=$(git rev-parse HEAD)
 else
   RELEASE_COMMIT=$(git rev-parse "${TAG_NAME}^{commit}")
   git checkout --detach "$RELEASE_COMMIT"
-  python3 "$VERSION_STATE_HELPER" --mode release \
+  check_version_state --mode release \
     --expected-version "$RELEASE_VERSION" --tag "$TAG_NAME"
 fi
 
@@ -314,12 +319,12 @@ fi
 # the canonical Maven verification. The immutable release commit remains tagged.
 if [[ "$MAIN_ALREADY_ADVANCED" == "true" ]]; then
   git checkout --detach "$ORIGINAL_MAIN"
-  python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
+  check_version_state --mode development --expected-version "$NEXT_VERSION"
 else
   git checkout --detach "$RELEASE_COMMIT"
   ./mvnw -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
   python3 "$METADATA_HELPER" "$NEXT_VERSION"
-  python3 "$VERSION_STATE_HELPER" --mode development --expected-version "$NEXT_VERSION"
+  check_version_state --mode development --expected-version "$NEXT_VERSION"
   stage_version_metadata
   git commit -m "Prepare next development version $NEXT_VERSION"
   NEXT_COMMIT=$(git rev-parse HEAD)
