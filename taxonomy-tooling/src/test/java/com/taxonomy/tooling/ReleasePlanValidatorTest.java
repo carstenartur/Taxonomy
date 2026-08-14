@@ -115,6 +115,7 @@ class ReleasePlanValidatorTest {
         Files.createDirectories(missing);
         writeProject(missing, "1.3.0-SNAPSHOT", "1.0.0",
                 List.of("missing"), "", "");
+        Files.delete(missing.resolve("missing/pom.xml"));
         assertThatThrownBy(() -> validate(missing))
                 .hasMessageContaining("does not exist");
 
