@@ -44,8 +44,9 @@ public class RelationBranchProjectionReadinessService {
     }
 
     /**
-     * Returns the current Git head commit for the selected branch without
-     * loading or validating any rebuildable projection rows.
+     * Returns the current Git head commit for the given branch without loading
+     * or validating projection rows.  Use this when only the head SHA is needed
+     * (e.g. to seed the expected-head for a review command).
      */
     public String readCurrentHead(RepositoryContext context) {
         Objects.requireNonNull(context, "context");

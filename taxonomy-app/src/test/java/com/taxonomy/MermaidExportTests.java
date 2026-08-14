@@ -7,8 +7,8 @@ import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.export.MermaidExportService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -80,6 +80,7 @@ class MermaidExportTests {
 
         String result = mermaidExportService.export(model);
 
+        // Should have subgraph for Capabilities and Business Processes
         assertThat(result).contains("subgraph Capabilities");
         assertThat(result).contains("subgraph Business_Processes");
         assertThat(result).contains("end");
@@ -128,17 +129,20 @@ class MermaidExportTests {
 
     @Test
     void sanitizeIdReplacesSpecialChars() {
+        // Test sanitization indirectly through export
         DiagramNode node = new DiagramNode("CP-001", "Cap", "Capabilities", 0.9, false, 1);
         DiagramModel model = new DiagramModel("Test",
                 List.of(node), List.of(),
                 new DiagramLayout("LR", true));
 
         String result = mermaidExportService.export(model);
+        // CP-001 should become CP_001 (hyphens replaced)
         assertThat(result).contains("CP_001");
     }
 
     @Test
     void escapeHandlesSpecialCharacters() {
+        // Test escape indirectly through export with special characters
         DiagramNode node = new DiagramNode("N1", "Test \"quoted\"", "Capabilities", 0.9, false, 1);
         DiagramModel model = new DiagramModel("Test",
                 List.of(node), List.of(),
@@ -201,13 +205,19 @@ class MermaidExportTests {
     }
 
     @Test
-    void bulkEndpointHandlesNonexistentIds() throws Exception {
+    void bulkEndpointReportsNonexistentIdsAsExplicitPartialFailure() throws Exception {
         mockMvc.perform(post("/api/proposals/bulk")
                         .contentType("application/json")
                         .content("{\"ids\":[99999],\"action\":\"ACCEPT\"}"))
                 .andExpect(status().isMultiStatus())
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.processed").value(1))
+                .andExpect(jsonPath("$.projected").value(0))
                 .andExpect(jsonPath("$.failed").value(1))
-                .andExpect(jsonPath("$.projected").value(0));
+                .andExpect(jsonPath("$.complete").value(false))
+                .andExpect(jsonPath("$.items[0].proposalId").value(99999))
+                .andExpect(jsonPath("$.items[0].projectionStatus")
+                        .value("REVIEW_REJECTED"));
     }
 
     @Test

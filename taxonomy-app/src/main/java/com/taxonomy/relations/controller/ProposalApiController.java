@@ -138,7 +138,7 @@ public class ProposalApiController {
 
     /** Compatibility overload used by focused unit tests and in-process callers. */
     public ResponseEntity<Map<String, Object>> acceptProposal(Long id) {
-        return acceptProposal(id, null);
+        return acceptProposal(id, null, null);
     }
 
     @Operation(summary = "Accept proposal through an authoritative Git commit")
@@ -146,13 +146,15 @@ public class ProposalApiController {
     public ResponseEntity<Map<String, Object>> acceptProposal(
             @PathVariable Long id,
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
-            String ifMatch) {
-        return reviewProposal(id, ReviewAction.ACCEPT, ifMatch, null);
+            String ifMatch,
+            @RequestHeader(value = "Idempotency-Key", required = false)
+            String idempotencyKey) {
+        return reviewProposal(id, ReviewAction.ACCEPT, ifMatch, idempotencyKey);
     }
 
     /** Compatibility overload used by focused unit tests and in-process callers. */
     public ResponseEntity<Map<String, Object>> rejectProposal(Long id) {
-        return rejectProposal(id, null);
+        return rejectProposal(id, null, null);
     }
 
     @Operation(summary = "Reject proposal through an authoritative Git commit")
@@ -160,8 +162,10 @@ public class ProposalApiController {
     public ResponseEntity<Map<String, Object>> rejectProposal(
             @PathVariable Long id,
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
-            String ifMatch) {
-        return reviewProposal(id, ReviewAction.REJECT, ifMatch, null);
+            String ifMatch,
+            @RequestHeader(value = "Idempotency-Key", required = false)
+            String idempotencyKey) {
+        return reviewProposal(id, ReviewAction.REJECT, ifMatch, idempotencyKey);
     }
 
     @Operation(summary = "Create proposal from hypothesis")
@@ -221,7 +225,7 @@ public class ProposalApiController {
 
     /** Compatibility overload used by focused unit tests and in-process callers. */
     public ResponseEntity<Map<String, Object>> revertProposal(Long id) {
-        return revertProposal(id, null);
+        return revertProposal(id, null, null);
     }
 
     @Operation(summary = "Revert proposal through an authoritative Git commit")
@@ -229,8 +233,10 @@ public class ProposalApiController {
     public ResponseEntity<Map<String, Object>> revertProposal(
             @PathVariable Long id,
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
-            String ifMatch) {
-        return reviewProposal(id, ReviewAction.REVERT, ifMatch, null);
+            String ifMatch,
+            @RequestHeader(value = "Idempotency-Key", required = false)
+            String idempotencyKey) {
+        return reviewProposal(id, ReviewAction.REVERT, ifMatch, idempotencyKey);
     }
 
     /** Compatibility overload used by focused unit tests and in-process callers. */
@@ -347,6 +353,7 @@ public class ProposalApiController {
         result.put("total", ids.size());
         result.put("processed", itemResults.size());
         result.put("projected", projected);
+        result.put("success", projected); // legacy alias for "projected" — kept for browser UI compatibility
         result.put("pendingRecovery", pending);
         result.put("failed", failed);
         result.put("complete", itemResults.size() == ids.size()
@@ -463,8 +470,7 @@ public class ProposalApiController {
     }
 
     private String currentHead(RepositoryContext context) {
-        Readiness readiness = readinessService.inspect(context);
-        return readiness.currentHeadCommit();
+        return readinessService.readCurrentHead(context);
     }
 
     private static Map<String, Object> reviewPayload(
