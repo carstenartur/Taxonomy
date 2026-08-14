@@ -23,8 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
-import java.io.IOException;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -215,7 +213,7 @@ class GitAuthoritativeHypothesisReviewServiceTest {
     }
 
     @Test
-    void terminalStatusIsRejectedBeforeAnyGitMutation() {
+    void terminalStatusIsRejectedBeforeAnyGitMutation() throws Exception {
         when(stateStore.require(42L, context))
                 .thenReturn(snapshot(HypothesisStatus.ACCEPTED));
 
