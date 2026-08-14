@@ -1,6 +1,5 @@
 package com.taxonomy.relations.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationType;
@@ -59,8 +58,7 @@ class GitHypothesisReviewCompatibilityFilterTest {
                 readinessService,
                 workspaceResolver,
                 mock(SystemRepositoryService.class),
-                mock(RepositoryMembershipService.class),
-                new ObjectMapper());
+                mock(RepositoryMembershipService.class));
         context = RepositoryContext.workspace(
                 "repo-a", "workspace-a1", "draft", "alice");
     }
