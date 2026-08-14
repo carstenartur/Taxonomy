@@ -25,7 +25,7 @@ public final class ReleaseMetadataUpdater {
             "(?m)^date-released: .*\\R?");
     private static final Pattern CITATION_PREFERRED = Pattern.compile(
             "(Carsten Hammer\\. \\*\\*Taxonomy Architecture Analyzer\\*\\*\\. "
-                    + "Version )[0-9A-Za-z.-]+(\\. 2026\\.)");
+                    + "Version )[0-9A-Za-z.-]+(\\. [0-9]{4}\\.)");
     private static final Pattern CITATION_BIBTEX_VERSION = Pattern.compile(
             "(?m)^(  version\\s+= \\{)[^}]+(},)$");
     private static final Pattern CITATION_BIBTEX_DATE = Pattern.compile(
@@ -72,10 +72,8 @@ public final class ReleaseMetadataUpdater {
                 "datePublished"));
         planned.put(citationMarkdown, transformCitationMarkdown(
                 readRequired(citationMarkdown), version, effectiveDate));
-        if (Files.isRegularFile(chart)) {
-            planned.put(chart, transformChart(
-                    readRequired(chart), version, chart));
-        }
+        planned.put(chart, transformChart(
+                readRequired(chart), version, chart));
 
         for (Map.Entry<Path, String> entry : planned.entrySet()) {
             writeAtomically(entry.getKey(), entry.getValue());

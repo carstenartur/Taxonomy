@@ -5,6 +5,7 @@ import org.w3c.dom.Element;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
@@ -222,7 +223,7 @@ public final class TaxonomyTooling {
                             : "development")
                     + ", " + result.updatedFiles().size() + " files).");
             return 0;
-        } catch (IOException | IllegalArgumentException failure) {
+        } catch (IOException | IllegalArgumentException | DateTimeException failure) {
             error.println("::error::" + failure.getMessage());
             return 1;
         }
