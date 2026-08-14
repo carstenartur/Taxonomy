@@ -78,6 +78,18 @@ public class GitAuthoritativeHypothesisReviewService {
                 ReviewAction.REVERT);
     }
 
+    /**
+     * Fails closed on the exact tenant and lifecycle state before a caller reads
+     * branch metadata. This prevents cross-workspace identifiers or terminal
+     * states from being masked as a missing Git branch.
+     */
+    public void requireReviewable(
+            Long hypothesisId,
+            RepositoryContext context,
+            ReviewAction action) {
+        requireReviewableSnapshot(hypothesisId, context, action);
+    }
+
     private ReviewResult review(
             Long hypothesisId,
             RepositoryContext context,
@@ -87,8 +99,8 @@ public class GitAuthoritativeHypothesisReviewService {
         RepositoryContext tenant = HypothesisReviewStateStore
                 .requireWritableContext(context);
         Objects.requireNonNull(metadata, "metadata");
-        HypothesisSnapshot hypothesis = stateStore.require(hypothesisId, tenant);
-        action.requireCurrentStatus(hypothesis.id(), hypothesis.status());
+        HypothesisSnapshot hypothesis = requireReviewableSnapshot(
+                hypothesisId, tenant, action);
 
         MutationResult mutation;
         try {
@@ -123,6 +135,19 @@ public class GitAuthoritativeHypothesisReviewService {
                     mutation.authority(),
                     bookkeepingFailure);
         }
+    }
+
+    private HypothesisSnapshot requireReviewableSnapshot(
+            Long hypothesisId,
+            RepositoryContext context,
+            ReviewAction action) {
+        RepositoryContext tenant = HypothesisReviewStateStore
+                .requireWritableContext(context);
+        ReviewAction reviewAction = Objects.requireNonNull(action, "action");
+        HypothesisSnapshot hypothesis = stateStore.require(hypothesisId, tenant);
+        reviewAction.requireCurrentStatus(
+                hypothesis.id(), hypothesis.status());
+        return hypothesis;
     }
 
     private MutationResult mutate(
