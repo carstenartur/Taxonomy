@@ -70,7 +70,8 @@ class VersionStateRepositoryTest {
                 .contains("taxonomy-tooling.jar")
                 .contains("resolve-release-parameters")
                 .doesNotContain("resolve-release-parameters.py")
-                .doesNotContain("check-version-state.py");
+                .doesNotContain("check-version-state.py")
+                .doesNotContain("check-release-plan.py");
         assertThat(script)
                 .contains("java -jar \"$TOOLING_JAR\" check-version-state")
                 .contains("java -jar \"$TOOLING_JAR\" check-release-plan")
