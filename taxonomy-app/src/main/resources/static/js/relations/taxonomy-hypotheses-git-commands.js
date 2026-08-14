@@ -58,6 +58,7 @@
         var operationKey = commandKey(
             'hypothesis-' + action.toLowerCase());
         var state = {
+            commands: commands,
             etag: null,
             projected: [],
             failed: [],
@@ -192,18 +193,16 @@
 
     function finish(state, action, offerUndo) {
         busy = false;
-        setBusy(state.projected, false);
+        setBusy(state.commands, false);
 
         state.projected.forEach(function (command) {
             renderCompleted(command, action, offerUndo);
         });
         state.failed.forEach(function (outcome) {
-            setRowBusy(outcome.command, false);
             renderFailed(outcome.command, outcome.status);
         });
 
         if (state.pending) {
-            setRowBusy(state.pending.command, false);
             renderPending(state.pending.command, state.pending.body);
             showStatus(
                 'warning',
@@ -252,6 +251,7 @@
                 if (!response.ok) {
                     throw new Error('HTTP ' + response.status);
                 }
+                setRowBusy(command, false);
                 hypothesis.appliedInCurrentAnalysis = true;
                 var row = rowFor(command);
                 if (row) row.classList.add('table-info');
@@ -272,9 +272,14 @@
         var row = rowFor(command);
         if (row) {
             row.style.opacity = '1';
-            row.classList.remove('table-danger', 'table-warning');
+            row.classList.remove(
+                'table-danger', 'table-warning',
+                'table-success', 'table-secondary');
             row.classList.add(action === 'REJECT'
-                ? 'table-danger' : 'table-success');
+                ? 'table-danger'
+                : action === 'REVERT'
+                    ? 'table-secondary'
+                    : 'table-success');
         }
         var label = action === 'REJECT' ? 'Rejected'
             : action === 'REVERT' ? 'Provisional' : 'Accepted';
