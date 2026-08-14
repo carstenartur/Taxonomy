@@ -36,6 +36,20 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
+          cache: maven
+
+      - name: Preserve Java version tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-tooling -am package -DskipTests
+          tooling_jar=$(find taxonomy-tooling/target -maxdepth 1 -type f \
+            -name 'taxonomy-tooling-*.jar' \
+            ! -name '*-sources.jar' \
+            ! -name '*-javadoc.jar' \
+            | head -n 1)
+          test -n "$tooling_jar"
+          cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
 
       - name: Validate and prepare exact development version
         id: version
@@ -64,21 +78,9 @@ jobs:
             echo "::error::Current project version is not a canonical development version: $current_version"
             exit 1
           fi
-
-          CURRENT_VERSION="$current_version" NEXT_VERSION="$next_version" python3 - <<'PY'
-          import os
-
-          def version_tuple(value: str) -> tuple[int, int, int]:
-              return tuple(map(int, value.removesuffix("-SNAPSHOT").split(".")))
-
-          current = version_tuple(os.environ["CURRENT_VERSION"])
-          target = version_tuple(os.environ["NEXT_VERSION"])
-          if target <= current:
-              raise SystemExit(
-                  f"next development version {os.environ['NEXT_VERSION']} must be newer than "
-                  f"current {os.environ['CURRENT_VERSION']}"
-              )
-          PY
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" compare-versions \
+            --release-version "${current_version%-SNAPSHOT}" \
+            --next-development-version "$next_version"
 
           branch="prepare-development-${next_version%-SNAPSHOT}"
           branch=${branch//./-}
@@ -108,14 +110,15 @@ jobs:
             -DnewVersion="$NEXT_VERSION" \
             -DgenerateBackupPoms=false
           python3 .github/scripts/update-release-metadata.py "$NEXT_VERSION"
-          python3 .github/scripts/check-version-state.py \
-            --mode development \
-            --expected-version "$NEXT_VERSION"
-          ./mvnw -B -Prelease-check validate \
-            -DreleaseVersion="$CURRENT_RELEASE" \
-            -DnextDevelopmentVersion="$NEXT_VERSION" \
-            -DreleaseCheckCurrentState=advanced \
-            -DreleaseCheckRequireClean=false
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
+            --root . --mode development --expected-version "$NEXT_VERSION"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-plan \
+            --root . \
+            --current-version "$NEXT_VERSION" \
+            --release-version "$CURRENT_RELEASE" \
+            --next-development-version "$NEXT_VERSION" \
+            --state advanced \
+            --require-clean false
 
           mapfile -d '' tracked_poms < <(
             git ls-files -z -- 'pom.xml' ':(glob)**/pom.xml'
