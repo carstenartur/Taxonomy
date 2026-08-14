@@ -5,8 +5,11 @@ import org.w3c.dom.Element;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /** Entry point for dependency-free release and repository tooling. */
 public final class TaxonomyTooling {
@@ -56,6 +59,8 @@ public final class TaxonomyTooling {
                     commandArguments, workingDirectory, output, error);
             case "compare-versions" -> compareVersions(commandArguments, error);
             case "read-pom-version" -> readPomVersion(
+                    commandArguments, workingDirectory, output, error);
+            case "update-release-metadata" -> updateReleaseMetadata(
                     commandArguments, workingDirectory, output, error);
             default -> {
                 error.println("Unknown taxonomy-tooling command: " + command);
@@ -188,7 +193,44 @@ public final class TaxonomyTooling {
         }
     }
 
+    private static int updateReleaseMetadata(
+            String[] rawArguments,
+            Path workingDirectory,
+            PrintStream output,
+            PrintStream error) {
+        try {
+            Arguments arguments = Arguments.parse(rawArguments);
+            boolean release = arguments.flag("release");
+            String dateText = arguments.optional("date");
+            if (!release && dateText != null) {
+                throw new IllegalArgumentException(
+                        "--date is valid only together with --release");
+            }
+            LocalDate releaseDate = release
+                    ? dateText == null
+                            ? LocalDate.now(ZoneOffset.UTC)
+                            : LocalDate.parse(dateText)
+                    : null;
+            ReleaseMetadataUpdater.Result result = ReleaseMetadataUpdater.update(
+                    arguments.path("root", workingDirectory),
+                    arguments.required("version"),
+                    release,
+                    releaseDate);
+            output.println("Release metadata updated: "
+                    + result.version() + " ("
+                    + (result.release() ? "release " + result.releaseDate()
+                            : "development")
+                    + ", " + result.updatedFiles().size() + " files).");
+            return 0;
+        } catch (IOException | IllegalArgumentException failure) {
+            error.println("::error::" + failure.getMessage());
+            return 1;
+        }
+    }
+
     private static final class Arguments {
+        private static final Set<String> FLAGS = Set.of("stdin", "release");
+
         private final Map<String, String> values;
         private final Map<String, Boolean> flags;
 
@@ -209,8 +251,11 @@ public final class TaxonomyTooling {
                             "Expected --option, got " + token);
                 }
                 String name = token.substring(2);
-                if ("stdin".equals(name)) {
-                    flags.put(name, Boolean.TRUE);
+                if (FLAGS.contains(name)) {
+                    if (flags.putIfAbsent(name, Boolean.TRUE) != null) {
+                        throw new IllegalArgumentException(
+                                "Duplicate flag --" + name);
+                    }
                     continue;
                 }
                 if (index + 1 >= raw.length || raw[index + 1].startsWith("--")) {
