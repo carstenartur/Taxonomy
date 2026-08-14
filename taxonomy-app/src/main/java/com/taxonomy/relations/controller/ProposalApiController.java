@@ -138,7 +138,7 @@ public class ProposalApiController {
 
     /** Compatibility overload used by focused unit tests and in-process callers. */
     public ResponseEntity<Map<String, Object>> acceptProposal(Long id) {
-        return acceptProposal(id, null);
+        return acceptProposal(id, null, null);
     }
 
     @Operation(summary = "Accept proposal through an authoritative Git commit")
@@ -154,7 +154,7 @@ public class ProposalApiController {
 
     /** Compatibility overload used by focused unit tests and in-process callers. */
     public ResponseEntity<Map<String, Object>> rejectProposal(Long id) {
-        return rejectProposal(id, null);
+        return rejectProposal(id, null, null);
     }
 
     @Operation(summary = "Reject proposal through an authoritative Git commit")
@@ -225,7 +225,7 @@ public class ProposalApiController {
 
     /** Compatibility overload used by focused unit tests and in-process callers. */
     public ResponseEntity<Map<String, Object>> revertProposal(Long id) {
-        return revertProposal(id, null);
+        return revertProposal(id, null, null);
     }
 
     @Operation(summary = "Revert proposal through an authoritative Git commit")
