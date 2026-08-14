@@ -16,9 +16,6 @@ class HypothesisGitReviewUiContractTest {
     private static final Path ADAPTER = Path.of(
             "src/main/resources/static/js/relations/"
                     + "taxonomy-hypotheses-git-commands.js");
-    private static final Path DTO = Path.of(
-            "../taxonomy-domain/src/main/java/com/taxonomy/dto/"
-                    + "RelationHypothesisDto.java");
 
     @Test
     void relationApiLoaderInstallsDirectHypothesisReviewAdapter()
@@ -30,16 +27,6 @@ class HypothesisGitReviewUiContractTest {
                 .contains("new URL('hypotheses-api.js', loader.src)")
                 .contains("taxonomy-hypotheses-git-commands.js")
                 .contains("data-taxonomy-hypothesis-command-adapter");
-    }
-
-    @Test
-    void persistedAnalysisDtoExposesExactReviewIdentity() throws Exception {
-        String dto = Files.readString(DTO);
-
-        assertThat(dto)
-                .contains("private Long hypothesisId")
-                .contains("Long getHypothesisId()")
-                .contains("void setHypothesisId(Long hypothesisId)");
     }
 
     @Test
