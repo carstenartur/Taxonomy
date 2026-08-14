@@ -8,21 +8,27 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Entry point for dependency-free version-state tooling. */
+/** Entry point for dependency-free release parameter and version tooling. */
 public final class TaxonomyTooling {
 
     private TaxonomyTooling() {
     }
 
     public static void main(String[] arguments) {
-        int exitCode = run(arguments, Path.of("."), System.out, System.err);
+        int exitCode = run(
+                arguments,
+                System.getenv(),
+                Path.of("."),
+                System.out,
+                System.err);
         if (exitCode != 0) {
             System.exit(exitCode);
         }
     }
 
-    static int run(
+    public static int run(
             String[] arguments,
+            Map<String, String> environment,
             Path workingDirectory,
             PrintStream output,
             PrintStream error) {
@@ -34,8 +40,11 @@ public final class TaxonomyTooling {
         String[] commandArguments = java.util.Arrays.copyOfRange(
                 arguments, 1, arguments.length);
         return switch (command) {
+            case "resolve-release-parameters" -> resolveReleaseParameters(
+                    commandArguments, environment, workingDirectory, error);
             case "check-version-state" -> checkVersionState(
                     commandArguments, workingDirectory, output, error);
+            case "compare-versions" -> compareVersions(commandArguments, error);
             case "read-pom-version" -> readPomVersion(
                     commandArguments, workingDirectory, output, error);
             default -> {
@@ -43,6 +52,23 @@ public final class TaxonomyTooling {
                 yield 2;
             }
         };
+    }
+
+    private static int resolveReleaseParameters(
+            String[] rawArguments,
+            Map<String, String> environment,
+            Path workingDirectory,
+            PrintStream error) {
+        try {
+            Arguments arguments = Arguments.parse(rawArguments);
+            Path root = arguments.path("root", workingDirectory)
+                    .toAbsolutePath().normalize();
+            ReleaseParametersResolver.resolveFromEnvironment(root, environment);
+            return 0;
+        } catch (IOException | IllegalArgumentException failure) {
+            error.println("::error::" + failure.getMessage());
+            return 1;
+        }
     }
 
     private static int checkVersionState(
@@ -72,6 +98,25 @@ public final class TaxonomyTooling {
             return 0;
         } catch (IOException | IllegalArgumentException failure) {
             error.println("Version-state check failed: " + failure.getMessage());
+            return 1;
+        }
+    }
+
+    private static int compareVersions(
+            String[] rawArguments,
+            PrintStream error) {
+        try {
+            Arguments arguments = Arguments.parse(rawArguments);
+            String release = VersionNumbers.normalizeRelease(
+                    arguments.required("release-version"), "release_version");
+            String next = VersionNumbers.normalizeDevelopment(
+                    arguments.required("next-development-version"),
+                    "next_development_version",
+                    false);
+            VersionNumbers.requireNewer(release, next);
+            return 0;
+        } catch (IllegalArgumentException failure) {
+            error.println("::error::" + failure.getMessage());
             return 1;
         }
     }
