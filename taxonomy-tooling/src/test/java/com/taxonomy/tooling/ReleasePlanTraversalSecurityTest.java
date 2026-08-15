@@ -44,8 +44,12 @@ class ReleasePlanTraversalSecurityTest {
         assertThatThrownBy(() -> validate(root))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("outside the repository")
-                .satisfies(error -> assertThat(error.getCause())
-                        .isNotInstanceOf(NullPointerException.class));
+                .satisfies(error -> {
+                    if (error.getCause() != null) {
+                        assertThat(error.getCause())
+                                .isNotInstanceOf(NullPointerException.class);
+                    }
+                });
     }
 
     @Test
