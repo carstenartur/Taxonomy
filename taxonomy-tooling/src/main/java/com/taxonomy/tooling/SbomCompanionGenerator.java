@@ -307,7 +307,9 @@ public final class SbomCompanionGenerator {
 
     private static void deleteStaleOutput(Path output, Throwable failure) {
         try {
-            Files.deleteIfExists(output);
+            if (Files.isRegularFile(output) || Files.isSymbolicLink(output)) {
+                Files.deleteIfExists(output);
+            }
         } catch (IOException cleanupFailure) {
             failure.addSuppressed(cleanupFailure);
         }
