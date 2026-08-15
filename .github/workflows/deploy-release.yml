@@ -70,7 +70,6 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       - name: Build Java release tooling
-        id: release_tooling
         shell: bash
         run: |
           set -euo pipefail
@@ -85,7 +84,6 @@ jobs:
             exit 1
           fi
           cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
-          echo "jar=$RUNNER_TEMP/taxonomy-tooling.jar" >> "$GITHUB_OUTPUT"
 
       - name: Resolve release parameters
         id: release_parameters

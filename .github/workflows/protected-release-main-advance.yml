@@ -28,6 +28,7 @@ on:
 
 permissions:
   actions: write
+  checks: read
   contents: write
   pull-requests: write
 
