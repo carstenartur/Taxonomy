@@ -150,6 +150,7 @@ def main() -> int:
         'java -jar "$TOOLING_JAR" read-pom-version --stdin',
         'run_release_plan_check "$RELEASE_CHECK_STATE" true',
         "run_release_plan_check release false",
+        "run_release_plan_check release true",
         "run_maven_release_check release release-check,ci clean verify",
         "! -name 'taxonomy-tooling-*.jar'",
         'if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then',
