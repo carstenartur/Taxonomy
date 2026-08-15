@@ -120,7 +120,9 @@ class PythonSourceRatchetRepositoryTest {
                 ":(glob)**/*.py");
         if (tracked.exitCode() == 0) {
             LinkedHashSet<String> result = new LinkedHashSet<>();
-            for (String path : tracked.stdout().split("\\u0000", -1)) {
+            String separator = String.valueOf((char) 0);
+            for (String path : tracked.stdout().split(
+                    Pattern.quote(separator), -1)) {
                 if (!path.isBlank()) {
                     result.add(path.replace('\\', '/'));
                 }
