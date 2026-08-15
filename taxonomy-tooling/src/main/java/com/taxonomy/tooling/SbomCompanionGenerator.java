@@ -90,7 +90,7 @@ public final class SbomCompanionGenerator {
             CompanionWriter writer) throws IOException {
         Path sbom = sbomPath.toAbsolutePath().normalize();
         Path output = outputPath.toAbsolutePath().normalize();
-        if (sbom.equals(output)) {
+        if (aliasesSource(sbom, output)) {
             throw new IllegalArgumentException(
                     "SBOM companion output must differ from the source SBOM");
         }
@@ -133,6 +133,16 @@ public final class SbomCompanionGenerator {
             deleteStaleOutput(output, failure);
             throw failure;
         }
+    }
+
+    private static boolean aliasesSource(Path sbom, Path output)
+            throws IOException {
+        if (sbom.equals(output)) {
+            return true;
+        }
+        return Files.exists(sbom)
+                && Files.exists(output)
+                && Files.isSameFile(sbom, output);
     }
 
     private static SourceData readSource(Path sbom) throws IOException {
