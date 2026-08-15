@@ -3,7 +3,6 @@ set -euo pipefail
 
 : "${RELEASE_VERSION:?RELEASE_VERSION is required}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
-: "${METADATA_HELPER:?METADATA_HELPER is required}"
 : "${TOOLING_JAR:?TOOLING_JAR is required}"
 : "${VEX_HELPER:?VEX_HELPER is required}"
 : "${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}"
@@ -53,6 +52,15 @@ run_release_plan_check() {
 
 check_version_state() {
   java -jar "$TOOLING_JAR" check-version-state --root . "$@"
+}
+
+update_release_metadata() {
+  local version=$1
+  shift
+  java -jar "$TOOLING_JAR" update-release-metadata \
+    --root . \
+    --version "$version" \
+    "$@"
 }
 
 stage_version_metadata() {
@@ -280,7 +288,7 @@ run_release_plan_check "$RELEASE_CHECK_STATE" true
 
 if [[ "$STATE" == "new" ]]; then
   ./mvnw -B versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false
-  python3 "$METADATA_HELPER" "$RELEASE_VERSION" --release
+  update_release_metadata "$RELEASE_VERSION" --release
   check_version_state --mode release --expected-version "$RELEASE_VERSION"
   # Validate the actual release-state reactor before committing it. The clean-check
   # is disabled only for this deliberate, uncommitted transition; the committed
@@ -324,7 +332,7 @@ if [[ "$MAIN_ALREADY_ADVANCED" == "true" ]]; then
 else
   git checkout --detach "$RELEASE_COMMIT"
   ./mvnw -B versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
-  python3 "$METADATA_HELPER" "$NEXT_VERSION"
+  update_release_metadata "$NEXT_VERSION"
   check_version_state --mode development --expected-version "$NEXT_VERSION"
   stage_version_metadata
   git commit -m "Prepare next development version $NEXT_VERSION"
