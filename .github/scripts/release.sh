@@ -283,8 +283,8 @@ if [[ "$STATE" == "new" ]]; then
   python3 "$METADATA_HELPER" "$RELEASE_VERSION" --release
   check_version_state --mode release --expected-version "$RELEASE_VERSION"
   # Validate the actual release-state reactor before committing it. The clean-check
-  # is disabled only for this deliberate, uncommitted transition; the subsequent
-  # canonical release verification runs from the clean immutable commit.
+  # is disabled only for this deliberate, uncommitted transition; the committed
+  # immutable source is validated again below with a clean-check requirement.
   run_release_plan_check release false
   stage_version_metadata
   git commit -m "Release version $RELEASE_VERSION"
@@ -296,6 +296,7 @@ else
     --expected-version "$RELEASE_VERSION" --tag "$TAG_NAME"
 fi
 
+run_release_plan_check release true
 validate_release_notes
 
 if [[ "$SKIP_TESTS" == "true" ]]; then
