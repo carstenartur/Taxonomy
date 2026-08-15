@@ -44,19 +44,29 @@ class JavaToolingWorkflowRepositoryTest {
         String canonical = "- name: Run canonical verification on exact snapshot";
         String completeGates =
                 "- name: Wait for complete protected-main pull-request gates";
+        String registration = "required_count=0";
+        String watch =
+                "gh pr checks \"$PR_NUMBER\" --required --watch --fail-fast";
         String merge = "- name: Merge through protected main";
 
         assertThat(workflow)
                 .contains(canonical)
                 .contains(completeGates)
+                .contains(registration)
+                .contains("--json name,bucket,state")
+                .contains("checks_exit=$?")
+                .contains("checks_exit\" -eq 8")
+                .contains("No required PR checks were registered for #$PR_NUMBER")
+                .contains(watch)
                 .contains(merge)
-                .contains("gh pr checks \"$PR_NUMBER\" --required --watch --fail-fast")
                 .contains("head_before=$(gh pr view \"$PR_NUMBER\" --json headRefOid")
                 .contains("head_after=$(gh pr view \"$PR_NUMBER\" --json headRefOid")
                 .contains("gh pr merge \"$PR_NUMBER\" --merge --match-head-commit \"$EXPECTED_SHA\"");
         assertThat(workflow.indexOf(canonical))
                 .isLessThan(workflow.indexOf(completeGates));
-        assertThat(workflow.indexOf(completeGates))
+        assertThat(workflow.indexOf(registration))
+                .isLessThan(workflow.indexOf(watch));
+        assertThat(workflow.indexOf(watch))
                 .isLessThan(workflow.indexOf(merge));
     }
 
