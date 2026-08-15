@@ -42,6 +42,7 @@ removed. It is not an allow-list for permanent exceptions.
 | Release parameters and request anchoring | #757 |
 | Declared-reactor release-plan validation | #767 |
 | Productive release/version workflow routing | #769 |
+| Release metadata transformation and routing | #771 / #774 |
 
 ## Completed Java release-core migration
 
@@ -53,7 +54,8 @@ The release-core migration replaces and removes:
 
 - `resolve-release-parameters.py` and its Python test suite;
 - `check-release-plan.py` and its Python test suite;
-- `check-version-state.py`.
+- `check-version-state.py`;
+- `update-release-metadata.py`.
 
 The Java implementation and JUnit contracts cover:
 
@@ -67,7 +69,11 @@ The Java implementation and JUnit contracts cover:
 - Maven, citation, CodeMeta, Zenodo and Helm version-state agreement;
 - release, development and advanced lifecycle states;
 - clean immutable release/tag validation, staged resume and protected-main handoff;
-- stable GitHub output ordering and user-facing failure diagnostics.
+- stable GitHub output ordering and user-facing failure diagnostics;
+- deterministic JSON output with Unicode, arbitrary-precision integer and
+  exponent-preserving decimal semantics;
+- transactional CFF, citation, Zenodo, CodeMeta and Helm metadata updates with
+  validation-before-write, rollback, idempotency and release-date handling.
 
 Release, protected-main and manual development-version workflows call the same
 Java JAR rather than reconstructing these rules in YAML or shell. Historical
@@ -97,11 +103,10 @@ history they were deliberately not given.
 The following programs are still present only until their Java/Maven-native or
 bounded shell replacements have equivalent JUnit contracts:
 
-### Artifact and metadata generation
+### Artifact generation
 
 - `generate-vex.py`
 - `generate-quality-site.py`
-- `update-release-metadata.py`
 
 ### Release, delivery and external-format verification
 
@@ -124,7 +129,7 @@ No remaining item is an accepted permanent exception.
 ## Migration order
 
 1. Release parameter, plan and version-state core in `taxonomy-tooling` — complete.
-2. Release metadata transformation and productive routing.
+2. Release metadata transformation, productive routing and helper removal — complete.
 3. CycloneDX SBOM companion generation and productive routing.
 4. Release/delivery, CodeQL and observability policy checks under JUnit authority.
 5. Quality-site generation and publication verification in Java/Maven-native code.

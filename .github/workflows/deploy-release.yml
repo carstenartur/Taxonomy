@@ -109,15 +109,12 @@ jobs:
       - name: Preserve release scripts
         run: |
           cp .github/scripts/release.sh "$RUNNER_TEMP/release.sh"
-          cp .github/scripts/update-release-metadata.py \
-            "$RUNNER_TEMP/update-release-metadata.py"
           cp .github/scripts/generate-vex.py "$RUNNER_TEMP/generate-vex.py"
           cp .github/scripts/verify-exact-release-gates.sh \
             "$RUNNER_TEMP/verify-exact-release-gates.sh"
           cp .github/scripts/validate-reviewed-release-notes.sh \
             "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
           chmod +x "$RUNNER_TEMP/release.sh" \
-            "$RUNNER_TEMP/update-release-metadata.py" \
             "$RUNNER_TEMP/generate-vex.py" \
             "$RUNNER_TEMP/verify-exact-release-gates.sh" \
             "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
@@ -145,7 +142,6 @@ jobs:
           DRY_RUN: ${{ steps.release_parameters.outputs.dry_run }}
           DEFER_RELEASE_PUBLICATION: 'true'
           SOURCE_BRANCH: ${{ github.ref_name }}
-          METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
           TOOLING_JAR: ${{ runner.temp }}/taxonomy-tooling.jar
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
           RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
