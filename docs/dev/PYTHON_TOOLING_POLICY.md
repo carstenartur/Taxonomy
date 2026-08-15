@@ -1,23 +1,31 @@
-# Python tooling policy
+# No-Python build tooling policy
 
 Taxonomy uses Maven as the canonical verification entry point and JUnit/Failsafe
-as the authority for executable tests and repository pass/fail policies. Python
-is not a default build language and may not be introduced merely because a
-one-file checker is convenient.
+as the authority for executable tests and repository pass/fail policies. The
+repository owner decided on 14 August 2026 that the final Taxonomy source and
+release toolchain must contain **no Python files and no Python invocation**.
+
+This document records the migration boundary until the remaining files are
+removed. It is not an allow-list for permanent exceptions.
 
 ## Permanent rules
 
 1. A deterministic repository policy belongs in JUnit, Maven Enforcer, another
    Maven-native plugin, or the frontend toolchain that owns the source format.
-2. Canonical verification must not execute Python `unittest` programs.
-3. A workflow must not contain a second implementation of a Maven/JUnit policy.
-4. Retained Python must have an explicit non-test role, deterministic input and
-   output contracts, and contract coverage owned by JUnit or Maven-native tests.
-5. A retained adapter is not a permanent exemption from simplification. It must
-   remain only while its workflow boundary makes a Java/Maven replacement less
-   reliable or materially more complex.
+2. Structured artifact generation belongs in Java/Maven-native tooling when a
+   real program is required.
+3. Shell and GitHub Actions may orchestrate external command-line tools, Git,
+   Helm, containers and publication, but must not become a second test or policy
+   implementation.
+4. No `.py` file, `python`, `python3`, `pytest`, `pip` or `unittest` invocation
+   may remain in the final release candidate.
+5. A productive adapter is removed only after its positive, negative, failure,
+   retry and output contracts are preserved at the real boundary.
+6. New Python is prohibited while the migration is in progress.
+7. Every protected integration must remain green; adapter deletion and the
+   relocation of tests that execute it are one atomic transition.
 
-## Policies migrated to JUnit/Failsafe
+## Policies already owned by Maven/JUnit
 
 | Concern | Integration |
 |---|---|
@@ -28,37 +36,75 @@ one-file checker is convenient.
 | Action and production-image pinning | #683 |
 | Packaged CycloneDX dependency hygiene | #685 |
 | Frontend API transport boundaries | #687 |
-| Release version-state adapter contract | #689 |
+| Release request ancestry and revision | #716 / #757 |
+| Exact release-gate behavior | #737 |
+| Version-state implementation | #756 |
+| Release parameters and request anchoring | #757 |
+| Declared-reactor release-plan validation | #767 |
+| Productive release/version workflow routing | #769 |
 
-The entries after #680 remain subject to exact-head verification and ordered
-integration. Python policy implementations are removed in their corresponding
-slice. A retained adapter may remain only where the workflow boundary is the
-reason for its existence.
+## Completed Java release-core migration
 
-## Retained artifact generators and format transformers
+The `taxonomy-tooling` reactor module is a dependency-free executable Java JAR.
+It owns the release boundary before and after immutable checkout changes and is
+preserved in `$RUNNER_TEMP` by workflows that change checkout state.
 
-These programs produce artifacts; they do not decide whether application code
-is correct:
+The release-core migration replaces and removes:
 
-- `generate-vex.py` — transforms the packaged CycloneDX SBOM into the published
-  VEX companion artifact.
-- `generate-quality-site.py` — transforms already verified JUnit, coverage and
-  evidence inputs into the static quality publication.
-- `update-release-metadata.py` — applies one release/development version state to
-  citation, archive and package metadata during the release transaction.
+- `resolve-release-parameters.py` and its Python test suite;
+- `check-release-plan.py` and its Python test suite;
+- `check-version-state.py`.
 
-Their output schemas and deterministic transformations must be covered from
-JUnit/Maven-native contract tests. Their existing Python `unittest` suites are
-migration work, not accepted permanent exceptions.
+The Java implementation and JUnit contracts cover:
 
-## Retained release and external-tool adapters
+- workflow-dispatch derivation and freely selected major/minor/patch advances;
+- reviewed push requests, exact-first-parent anchoring, one-file request commits
+  and exact `request_revision` increments;
+- staged-release tag ancestry and repaired history;
+- declared Maven reactor traversal, inherited properties, duplicate coordinates,
+  internal versus external snapshots and nested modules;
+- ordinary and linked-worktree cleanliness;
+- Maven, citation, CodeMeta, Zenodo and Helm version-state agreement;
+- release, development and advanced lifecycle states;
+- clean immutable release/tag validation, staged resume and protected-main handoff;
+- stable GitHub output ordering and user-facing failure diagnostics.
 
-The following scripts currently bridge Git/GitHub workflow state, detached tags,
-release staging, deployment targets or external report formats:
+Release, protected-main and manual development-version workflows call the same
+Java JAR rather than reconstructing these rules in YAML or shell. Historical
+`taxonomy-build` fixtures that executed the removed scripts have been deleted;
+their behavior remains covered beside the Java implementation in
+`taxonomy-tooling`.
 
-- `resolve-release-parameters.py`
-- `check-version-state.py`
-- `check-release-plan.py`
+## Removal-only source ratchet
+
+The remaining Python inventory is an upper bound. Later slices may delete an
+allowed path but cannot introduce another `.py` file. Productive XML, workflow
+YAML, shell, Java main source, JavaScript build scripts, properties, Dockerfiles,
+Makefiles and package metadata are diffed against the immutable green
+release-core-removal baseline. New executable `python`, `python3`, `pytest`,
+`pip` or `actions/setup-python` references fail the Maven/JUnit build.
+
+The exact file-inventory check runs in every checkout, including source archives
+and intentionally shallow specialized jobs. The ancestry and productive-diff
+checks require the immutable baseline object and therefore run in complete-history
+checkouts. Canonical CI uses `fetch-depth: 0` and is the merge authority for those
+history-sensitive assertions. A missing baseline in any non-shallow Git checkout
+remains a hard failure; shallow database or security jobs do not pretend to own a
+history they were deliberately not given.
+
+## Remaining migration inventory
+
+The following programs are still present only until their Java/Maven-native or
+bounded shell replacements have equivalent JUnit contracts:
+
+### Artifact and metadata generation
+
+- `generate-vex.py`
+- `generate-quality-site.py`
+- `update-release-metadata.py`
+
+### Release, delivery and external-format verification
+
 - `check-release-delivery-contract.py`
 - `check-release-image-gate.py`
 - `check-delivery-hardening.py`
@@ -67,56 +113,56 @@ release staging, deployment targets or external report formats:
 - `check-codeql-sarif.py`
 - `check-observability-performance-scope.py`
 
-`resolve-release-parameters.py` remains the small adapter between GitHub event
-inputs, reviewed JSON and stable workflow outputs. For push-triggered releases it
-also verifies that the request commit names its exact first parent, increments
-`request_revision` exactly once, and changes no path except
-`.github/release-request.json`. `ReleaseRequestAnchorContractTest` owns positive
-and negative Git fixtures for this boundary; no Python `unittest` is added for
-the new policy.
+### Duplicate Python test programs to remove with their productive boundary
 
-`check-version-state.py` is retained because `release.sh` copies it to a temporary
-location and invokes it while switching between a detached immutable release tag
-and the next-development `main`. `VersionStateAdapterContractTest` owns its
-positive and negative fixture contract, while `VersionStateRepositoryTest` owns
-the canonical checkout decision, publishes `target/version-state-report.txt`,
-and prevents the release workflow from reintroducing a Python `unittest` guard.
-The obsolete `test-check-version-state.py` implementation and its direct release
-workflow invocation have been removed; productive workflow calls use only the
-retained adapter.
+- `test-generate-quality-site.py`
+- `test-verify-deployment.py`
+- `test-verify-quality-publication.py`
 
-This list is a temporary classification, not an allow-list for new Python.
-Core validation logic should move to JUnit/Maven-native contracts where the same
-rule can be executed reliably from the reactor. Small adapters may remain to
-translate workflow environment, GitHub output files, detached Git state, SARIF,
-or deployment responses into those contracts.
+No remaining item is an accepted permanent exception.
 
-## Shell and JavaScript tools
+## Migration order
+
+1. Release parameter, plan and version-state core in `taxonomy-tooling` — complete.
+2. Release metadata transformation and productive routing.
+3. CycloneDX SBOM companion generation and productive routing.
+4. Release/delivery, CodeQL and observability policy checks under JUnit authority.
+5. Quality-site generation and publication verification in Java/Maven-native code.
+6. Deployment verification at its real HTTP/Helm boundary.
+7. Repository-wide absolute source contract rejecting every Python path and
+   invocation.
+
+Each slice must remain bounded, preserve the real behavior before deleting the
+old implementation, and pass the exact-head CI, database, CodeQL and security
+matrix required by its scope.
+
+## Shell and JavaScript boundaries
 
 Shell remains appropriate for invoking external command-line tools, rendering
-Helm, installing pinned binaries and orchestrating the release transaction.
+Helm, installing pinned binaries and orchestrating release state transitions.
 JavaScript remains appropriate for browser/accessibility verification and the
-frontend build. Those tools are governed by the same rule: workflows invoke a
-catalogued Maven profile or a single documented adapter, not a duplicated test
-implementation.
+frontend build. Neither is a fallback location for policy logic migrated out of
+Python.
 
 ## Prohibited patterns
 
-- new `test-*.py` or Python `unittest` execution in canonical CI;
-- direct workflow invocation of a migrated checker;
+- any new `.py` file or Python setup/install step;
+- translating Python unit tests into shell tests;
+- duplicating a Java/JUnit rule in workflow YAML;
 - silent JSON/YAML allow-lists without owner, rationale and expiry semantics;
-- converting an artifact generator into a JUnit test merely to eliminate a file
-  extension;
-- keeping both Java and Python implementations of the same policy as fallback.
+- deleting a productive adapter before its exact behavior is covered;
+- merging a deletion before tests that execute the deleted adapter are relocated;
+- keeping Java and Python implementations of the same policy as fallback.
 
 ## Completion criteria
 
 Issue #673 can close only when:
 
-- canonical `./mvnw -B verify -Pci` invokes no Python `unittest` program;
-- every retained Python file appears in one of the bounded categories above;
-- every retained generator/adapter has JUnit or Maven-native contract coverage;
-- workflows contain no direct selector or duplicate implementation for migrated
-  policies; and
-- CI, database compatibility, CodeQL, security and relevant consumer contracts
-  remain green after the final cleanup.
+- GitHub code search for `extension:py repo:carstenartur/Taxonomy` returns zero;
+- repository-wide search finds no executable Python reference;
+- `./mvnw -B verify -Pci` remains the canonical verification command;
+- every migrated generator and adapter has positive and negative JUnit coverage;
+- the final non-publishing 1.4.0 release dry run succeeds without Python;
+- an absolute source contract prevents Python from returning; and
+- CI/CD, PostgreSQL, Oracle, SQL Server, CodeQL, Security Scan and relevant
+  consumer contracts are green on one unchanged exact head.
