@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "description": "Release-critical package and changed-source coverage ratchets. Thresholds may only move upward unless a reviewed, owned and unexpired exception is present.",
+  "requiredCounters": [
+    "LINE",
+    "BRANCH"
+  ],
+  "changedSourceMinimums": {
+    "LINE": 0.75,
+    "BRANCH": 0.60
+  },
+  "changedSourcePrefixes": [
+    "taxonomy-app/src/main/java/com/taxonomy/security/",
+    "taxonomy-app/src/main/java/com/taxonomy/provenance/",
+    "taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/",
+    "taxonomy-app/src/main/java/com/taxonomy/dsl/storage/",
+    "taxonomy-app/src/main/java/com/taxonomy/versioning/",
+    "taxonomy-app/src/main/java/com/taxonomy/workspace/",
+    "taxonomy-app/src/main/java/com/taxonomy/portfolio/"
+  ],
+  "criticalPackages": [
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/security/config",
+      "minimums": { "LINE": 0.79, "BRANCH": 0.66 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/security/service",
+      "minimums": { "LINE": 0.89, "BRANCH": 0.66 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/security/controller",
+      "minimums": { "LINE": 0.64, "BRANCH": 0.60 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/security/keycloak",
+      "minimums": { "LINE": 0.75, "BRANCH": 0.67 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/provenance/service",
+      "minimums": { "LINE": 0.86, "BRANCH": 0.69 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/provenance/controller",
+      "minimums": { "LINE": 0.37, "BRANCH": 0.37 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/catalog/service/importer",
+      "minimums": { "LINE": 0.84, "BRANCH": 0.58 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/dsl/storage",
+      "minimums": { "LINE": 0.87, "BRANCH": 0.71 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/versioning/controller",
+      "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/versioning/service",
+      "minimums": { "LINE": 0.77, "BRANCH": 0.59 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/workspace/controller",
+      "minimums": { "LINE": 0.77, "BRANCH": 0.70 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/workspace/service",
+      "minimums": { "LINE": 0.82, "BRANCH": 0.58 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/portfolio/controller",
+      "minimums": { "LINE": 0.45, "BRANCH": 0.52 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/portfolio/service",
+      "minimums": { "LINE": 0.74, "BRANCH": 0.52 }
+    }
+  ],
+  "temporaryExceptions": []
+}
