@@ -81,9 +81,17 @@ jobs:
             echo "::error::Current project version is not a canonical development version: $current_version"
             exit 1
           fi
+          current_release=${current_version%-SNAPSHOT}
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" compare-versions \
-            --release-version "${current_version%-SNAPSHOT}" \
+            --release-version "$current_release" \
             --next-development-version "$next_version"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-plan \
+            --root . \
+            --current-version "$current_version" \
+            --release-version "$current_release" \
+            --next-development-version "$next_version" \
+            --state development \
+            --require-clean true
 
           branch="prepare-development-${next_version%-SNAPSHOT}"
           branch=${branch//./-}
@@ -93,7 +101,7 @@ jobs:
           fi
 
           echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
-          echo "current_release=${current_version%-SNAPSHOT}" >> "$GITHUB_OUTPUT"
+          echo "current_release=$current_release" >> "$GITHUB_OUTPUT"
           echo "next_version=$next_version" >> "$GITHUB_OUTPUT"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
@@ -137,6 +145,13 @@ jobs:
             exit 1
           fi
           git commit -m "Prepare development version $NEXT_VERSION"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-plan \
+            --root . \
+            --current-version "$NEXT_VERSION" \
+            --release-version "$CURRENT_RELEASE" \
+            --next-development-version "$NEXT_VERSION" \
+            --state advanced \
+            --require-clean true
           git push origin "$BRANCH"
 
       - name: Open protected main pull request
