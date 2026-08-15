@@ -201,6 +201,30 @@ jobs:
             exit 1
           }
 
+          required_count=0
+          checks_json='[]'
+          for _ in $(seq 1 60); do
+            set +e
+            checks_json=$(gh pr checks "$PR_NUMBER" \
+              --required \
+              --json name,bucket,state 2>/dev/null)
+            checks_exit=$?
+            set -e
+            if [[ "$checks_exit" -eq 0 || "$checks_exit" -eq 8 ]]; then
+              required_count=$(jq 'length' <<< "$checks_json")
+              if [[ "$required_count" -gt 0 ]]; then
+                break
+              fi
+            fi
+            sleep 5
+          done
+          if [[ "$required_count" -eq 0 ]]; then
+            echo "::error::No required PR checks were registered for #$PR_NUMBER"
+            exit 1
+          fi
+          jq -r '.[] | "Required check registered: \(.name) [\(.bucket)]"' \
+            <<< "$checks_json"
+
           gh pr checks "$PR_NUMBER" --required --watch --fail-fast
 
           head_after=$(gh pr view "$PR_NUMBER" --json headRefOid --jq '.headRefOid')
