@@ -12,7 +12,10 @@ import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Executes the retained version-state release adapter against the real checkout. */
+/**
+ * Executes the retained version-state adapter against the real checkout while
+ * verifying that productive release paths use the Java tooling boundary.
+ */
 class VersionStateRepositoryTest {
 
     @Test
@@ -88,7 +91,7 @@ class VersionStateRepositoryTest {
     }
 
     @Test
-    void releaseWorkflowUsesTheJUnitOwnedContractWithoutPythonUnittestDuplication()
+    void releaseWorkflowUsesJavaRuntimeToolingWithoutPythonUnittestDuplication()
             throws Exception {
         Path root = findRepositoryRoot();
         Path releaseWorkflow = root.resolve(".github/workflows/deploy-release.yml");
@@ -99,16 +102,22 @@ class VersionStateRepositoryTest {
         String script = Files.readString(releaseScript, StandardCharsets.UTF_8);
 
         assertThat(workflow)
-                .as("release workflow must retain the runtime version-state adapter")
-                .contains("check-version-state.py");
+                .as("release workflow must build and retain the Java version-state runtime")
+                .contains("- name: Build Java release tooling")
+                .contains("cp \"$tooling_jar\" \"$RUNNER_TEMP/taxonomy-tooling.jar\"")
+                .contains("java -jar \"$RUNNER_TEMP/taxonomy-tooling.jar\" check-version-state")
+                .doesNotContain("check-version-state.py");
         assertThat(workflow)
-                .as("JUnit owns the adapter contract; workflows must not run Python unittest")
+                .as("JUnit owns the runtime contract; workflows must not run Python unittest")
                 .doesNotContain("test-check-version-state.py");
         assertThat(script)
                 .as("release Maven invocations must expose their exact lifecycle state")
+                .contains("${TOOLING_JAR:?TOOLING_JAR is required}")
+                .contains("java -jar \"$TOOLING_JAR\" check-version-state")
                 .contains("-DreleaseCheckCurrentState=\"$state\"")
                 .contains("-DreleaseVersion=\"$RELEASE_VERSION\"")
-                .contains("-DnextDevelopmentVersion=\"$NEXT_VERSION\"");
+                .contains("-DnextDevelopmentVersion=\"$NEXT_VERSION\"")
+                .doesNotContain("check-version-state.py");
         assertThat(obsoletePythonTest)
                 .as("duplicate Python unittest implementation must be removed")
                 .doesNotExist();
