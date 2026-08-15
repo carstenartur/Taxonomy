@@ -246,19 +246,25 @@ public final class TaxonomyTooling {
                     "output", workingDirectory.resolve("target/taxonomy-vex.json"));
             String timestampText = arguments.optional("timestamp");
             String serialText = arguments.optional("serial-number");
-            Instant timestamp = timestampText == null
-                    ? Instant.now()
-                    : Instant.parse(timestampText);
-            UUID serialNumber = serialText == null
-                    ? UUID.randomUUID()
-                    : UUID.fromString(serialText);
+            if ((timestampText == null) != (serialText == null)) {
+                throw new IllegalArgumentException(
+                        "--timestamp and --serial-number must be supplied together");
+            }
 
-            SbomCompanionGenerator.Result result =
-                    SbomCompanionGenerator.generate(
-                            sbom, destination, timestamp, serialNumber);
+            SbomCompanionGenerator.Result result;
+            if (timestampText == null) {
+                result = SbomCompanionGenerator.generate(sbom, destination);
+            } else {
+                result = SbomCompanionGenerator.generate(
+                        sbom,
+                        destination,
+                        Instant.parse(timestampText),
+                        UUID.fromString(serialText));
+            }
             output.println("SBOM companion document generated: " + result.output());
             output.println("  Vulnerability assessment: not-assessed");
             output.println("  SBOM serial: " + result.sourceSerialNumber());
+            output.println("  SBOM SHA-256: " + result.sourceSha256());
             output.println("  Components in SBOM: " + result.componentCount());
             return 0;
         } catch (IOException | IllegalArgumentException | DateTimeException failure) {
