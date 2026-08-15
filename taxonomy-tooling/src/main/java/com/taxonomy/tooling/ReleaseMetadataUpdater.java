@@ -10,9 +10,11 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -119,7 +121,7 @@ public final class ReleaseMetadataUpdater {
         LinkedHashMap<Path, Path> staged = new LinkedHashMap<>();
         LinkedHashMap<Path, Path> backups = new LinkedHashMap<>();
         List<Path> replaced = new ArrayList<>();
-        boolean committed = false;
+        Set<Path> retainedBackups = new LinkedHashSet<>();
         try {
             for (Map.Entry<Path, String> entry : planned.entrySet()) {
                 Path target = entry.getKey();
@@ -132,17 +134,12 @@ public final class ReleaseMetadataUpdater {
                 replacer.replace(staged.get(target), target);
                 replaced.add(target);
             }
-            committed = true;
         } catch (IOException | RuntimeException failure) {
-            rollback(replaced, backups, failure);
+            rollback(replaced, backups, retainedBackups, failure);
             throw failure;
         } finally {
-            cleanup(staged.values());
-            if (committed) {
-                cleanup(backups.values());
-            } else {
-                cleanup(backups.values());
-            }
+            cleanup(staged.values(), Set.of());
+            cleanup(backups.values(), retainedBackups);
         }
     }
 
@@ -170,6 +167,7 @@ public final class ReleaseMetadataUpdater {
     private static void rollback(
             List<Path> replaced,
             Map<Path, Path> backups,
+            Set<Path> retainedBackups,
             Throwable failure) {
         List<Path> reverse = new ArrayList<>(replaced);
         Collections.reverse(reverse);
@@ -178,13 +176,19 @@ public final class ReleaseMetadataUpdater {
             try {
                 moveReplacing(backup, target);
             } catch (IOException | RuntimeException rollbackFailure) {
+                retainedBackups.add(backup);
                 failure.addSuppressed(rollbackFailure);
             }
         }
     }
 
-    private static void cleanup(Iterable<Path> paths) {
+    private static void cleanup(
+            Iterable<Path> paths,
+            Set<Path> retained) {
         for (Path path : paths) {
+            if (retained.contains(path)) {
+                continue;
+            }
             try {
                 Files.deleteIfExists(path);
             } catch (IOException ignored) {
