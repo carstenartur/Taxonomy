@@ -62,7 +62,7 @@ jobs:
           curl -fsSLo "$RUNNER_TEMP/kind" "${base}/${asset}"
           curl -fsSLo "$RUNNER_TEMP/kind.sha256sum" \
             "${base}/${asset}.sha256sum"
-          expected=$(tr -d '[:space:]' < "$RUNNER_TEMP/kind.sha256sum")
+          expected=$(awk 'NF {print $1; exit}' "$RUNNER_TEMP/kind.sha256sum")
           test "${#expected}" -eq 64
           printf '%s  %s\n' "$expected" "$RUNNER_TEMP/kind" \
             | sha256sum -c -
@@ -78,7 +78,7 @@ jobs:
           base="https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64"
           curl -fsSLo "$RUNNER_TEMP/kubectl" "${base}/kubectl"
           curl -fsSLo "$RUNNER_TEMP/kubectl.sha256" "${base}/kubectl.sha256"
-          expected=$(tr -d '[:space:]' < "$RUNNER_TEMP/kubectl.sha256")
+          expected=$(awk 'NF {print $1; exit}' "$RUNNER_TEMP/kubectl.sha256")
           test "${#expected}" -eq 64
           printf '%s  %s\n' "$expected" "$RUNNER_TEMP/kubectl" \
             | sha256sum -c -
