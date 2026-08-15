@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.controller;
 
+import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -62,10 +63,9 @@ class WorkspaceAccessWebMvcConfiguration implements WebMvcConfigurer {
 
             String workspaceId = pathVariable(request, "id");
             boolean visible = workspaceId != null
-                    && (workspaceRepository.existsByWorkspaceIdAndUsername(
-                            workspaceId, principal.getName())
-                    || workspaceRepository.existsByWorkspaceIdAndSharedTrue(
-                            workspaceId));
+                    && workspaceRepository.findByWorkspaceId(workspaceId)
+                            .filter(workspace -> isVisibleTo(workspace, principal.getName()))
+                            .isPresent();
             if (visible) {
                 return true;
             }
@@ -74,7 +74,10 @@ class WorkspaceAccessWebMvcConfiguration implements WebMvcConfigurer {
             return false;
         }
 
-        @SuppressWarnings("unchecked")
+        private static boolean isVisibleTo(UserWorkspace workspace, String username) {
+            return workspace.isShared() || username.equals(workspace.getUsername());
+        }
+
         private static String pathVariable(HttpServletRequest request, String name) {
             Object value = request.getAttribute(
                     HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
