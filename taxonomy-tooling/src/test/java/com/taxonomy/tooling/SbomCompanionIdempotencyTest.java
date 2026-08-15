@@ -8,6 +8,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -75,33 +76,42 @@ class SbomCompanionIdempotencyTest {
                 "--sbom", sbom.toString(),
                 "--output", output.toString()};
         ByteArrayOutputStream firstOutput = new ByteArrayOutputStream();
+        ByteArrayOutputStream errors = new ByteArrayOutputStream();
 
         int firstExit = TaxonomyTooling.run(
                 arguments,
                 root,
                 new PrintStream(firstOutput, true, StandardCharsets.UTF_8),
-                System.err);
+                new PrintStream(errors, true, StandardCharsets.UTF_8));
         byte[] first = Files.readAllBytes(output);
-        long firstModified = Files.getLastModifiedTime(output).toMillis();
-        Thread.sleep(5L);
+        Map<String, Object> firstCompanion = FlatJson.parseObject(
+                Files.readString(output, StandardCharsets.UTF_8));
+        String firstSerial = String.valueOf(firstCompanion.get("serialNumber"));
+        FileTime retainedTimestamp = FileTime.from(
+                Instant.parse("2020-01-02T03:04:05Z"));
+        Files.setLastModifiedTime(output, retainedTimestamp);
+
         int secondExit = TaxonomyTooling.run(
                 arguments,
                 root,
                 new PrintStream(new ByteArrayOutputStream()),
-                System.err);
+                new PrintStream(errors, true, StandardCharsets.UTF_8));
 
         assertThat(firstExit).isZero();
         assertThat(secondExit).isZero();
+        assertThat(errors.toString(StandardCharsets.UTF_8)).isEmpty();
         assertThat(Files.readAllBytes(output)).isEqualTo(first);
-        assertThat(Files.getLastModifiedTime(output).toMillis())
-                .isEqualTo(firstModified);
+        assertThat(Files.getLastModifiedTime(output))
+                .isEqualTo(retainedTimestamp);
         assertThat(firstOutput.toString(StandardCharsets.UTF_8))
                 .contains("SBOM SHA-256:");
+        assertThat(firstSerial)
+                .matches("urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-"
+                        + "[89ab][0-9a-f]{3}-[0-9a-f]{12}");
 
         Map<String, Object> companion = FlatJson.parseObject(
                 Files.readString(output, StandardCharsets.UTF_8));
-        assertThat(companion.get("serialNumber"))
-                .isEqualTo("urn:uuid:4818a299-2100-30a0-81b5-3b863999ea01");
+        assertThat(companion.get("serialNumber")).isEqualTo(firstSerial);
         @SuppressWarnings("unchecked")
         Map<String, Object> metadata =
                 (Map<String, Object>) companion.get("metadata");
