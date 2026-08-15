@@ -63,22 +63,17 @@ final class CriticalCoveragePolicy {
         }
 
         List<String> requiredCounters = readRequiredCounters(root);
-        Map<String, Double> changedMinimums = readMinimums(
-                root.path("changedSourceMinimums"),
-                "changedSourceMinimums",
-                requiredCounters);
-        List<String> prefixes = readPrefixes(root.path("changedSourcePrefixes"));
-        List<PackageBudget> packages = readPackageBudgets(
-                root.path("criticalPackages"), requiredCounters);
-        List<TemporaryException> exceptions = readExceptions(
-                root.path("temporaryExceptions"), today);
-
         return new CoveragePolicy(
                 requiredCounters,
-                Collections.unmodifiableMap(changedMinimums),
-                List.copyOf(prefixes),
-                List.copyOf(packages),
-                List.copyOf(exceptions));
+                Collections.unmodifiableMap(readMinimums(
+                        root.path("changedSourceMinimums"),
+                        "changedSourceMinimums",
+                        requiredCounters)),
+                List.copyOf(readPrefixes(root.path("changedSourcePrefixes"))),
+                List.copyOf(readPackageBudgets(
+                        root.path("criticalPackages"), requiredCounters)),
+                List.copyOf(readExceptions(
+                        root.path("temporaryExceptions"), today)));
     }
 
     CoverageReport parseReport(Path path, List<String> requiredCounters) {
@@ -111,8 +106,11 @@ final class CriticalCoveragePolicy {
                 PackageKey packageKey = new PackageKey(module, packageName);
                 if (packages.putIfAbsent(
                         packageKey,
-                        parseCounterSet(packageElement, requiredCounters, packageKey.scope()))
-                        != null) {
+                        parseCounterSet(
+                                packageElement,
+                                requiredCounters,
+                                packageKey.scope(),
+                                false)) != null) {
                     throw new IllegalArgumentException(
                             "Duplicate JaCoCo package " + packageKey.scope());
                 }
@@ -126,7 +124,8 @@ final class CriticalCoveragePolicy {
                             parseCounterSet(
                                     sourceFile,
                                     requiredCounters,
-                                    "source:" + repositoryPath)) != null) {
+                                    "source:" + repositoryPath,
+                                    true)) != null) {
                         throw new IllegalArgumentException(
                                 "Duplicate JaCoCo source file " + repositoryPath);
                     }
@@ -168,25 +167,15 @@ final class CriticalCoveragePolicy {
                 text.append("  - MISSING\n");
                 continue;
             }
-            for (String counterType : policy.requiredCounters()) {
-                Counter counter = counters.get(counterType);
-                double minimum = budget.minimums().get(counterType);
-                boolean passed = counter.total() > 0 && counter.ratio() >= minimum;
-                text.append("  - ").append(counterType).append(": ")
-                        .append(formatCounter(counter))
-                        .append("; required ").append(formatPercent(minimum))
-                        .append("; ").append(passed ? "PASS" : "FAIL")
-                        .append('\n');
-                if (!passed) {
-                    recordViolation(
-                            scope,
-                            counterType + " coverage " + formatPercent(counter.ratio())
-                                    + " is below " + formatPercent(minimum),
-                            exceptionByScope,
-                            appliedExceptions,
-                            violations);
-                }
-            }
+            evaluateCounters(
+                    scope,
+                    counters,
+                    budget.minimums(),
+                    false,
+                    text,
+                    exceptionByScope,
+                    appliedExceptions,
+                    violations);
         }
 
         text.append("\nChanged critical source coverage:\n")
@@ -208,29 +197,15 @@ final class CriticalCoveragePolicy {
                 text.append("  - MISSING\n");
                 continue;
             }
-            for (String counterType : policy.requiredCounters()) {
-                Counter counter = counters.get(counterType);
-                double minimum = policy.changedSourceMinimums().get(counterType);
-                if ("BRANCH".equals(counterType) && counter.total() == 0) {
-                    text.append("  - BRANCH: N/A (source has no branch counter total)\n");
-                    continue;
-                }
-                boolean passed = counter.total() > 0 && counter.ratio() >= minimum;
-                text.append("  - ").append(counterType).append(": ")
-                        .append(formatCounter(counter))
-                        .append("; required ").append(formatPercent(minimum))
-                        .append("; ").append(passed ? "PASS" : "FAIL")
-                        .append('\n');
-                if (!passed) {
-                    recordViolation(
-                            scope,
-                            counterType + " coverage " + formatPercent(counter.ratio())
-                                    + " is below " + formatPercent(minimum),
-                            exceptionByScope,
-                            appliedExceptions,
-                            violations);
-                }
-            }
+            evaluateCounters(
+                    scope,
+                    counters,
+                    policy.changedSourceMinimums(),
+                    true,
+                    text,
+                    exceptionByScope,
+                    appliedExceptions,
+                    violations);
         }
 
         if (!policy.temporaryExceptions().isEmpty()) {
@@ -322,13 +297,48 @@ final class CriticalCoveragePolicy {
     ChangedSources selectCriticalSources(
             ChangedSources discovered,
             List<String> prefixes) {
-        Set<String> selected = discovered.paths().stream()
+        Set<String> selected = new LinkedHashSet<>();
+        discovered.paths().stream()
                 .filter(path -> prefixes.stream().anyMatch(path::startsWith))
-                .collect(LinkedHashSet::new, Set::add, Set::addAll);
+                .forEach(selected::add);
         return new ChangedSources(
                 Collections.unmodifiableSet(selected),
                 discovered.description() + "; " + selected.size()
                         + " file(s) are release-critical");
+    }
+
+    private void evaluateCounters(
+            String scope,
+            Map<String, Counter> counters,
+            Map<String, Double> minimums,
+            boolean branchMayBeAbsent,
+            StringBuilder text,
+            Map<String, TemporaryException> exceptionByScope,
+            Set<String> appliedExceptions,
+            List<String> violations) {
+        for (String counterType : COUNTER_TYPES) {
+            Counter counter = counters.get(counterType);
+            double minimum = minimums.get(counterType);
+            if (branchMayBeAbsent && "BRANCH".equals(counterType) && counter.total() == 0) {
+                text.append("  - BRANCH: N/A (source has no branch counter total)\n");
+                continue;
+            }
+            boolean passed = counter.total() > 0 && counter.ratio() >= minimum;
+            text.append("  - ").append(counterType).append(": ")
+                    .append(formatCounter(counter))
+                    .append("; required ").append(formatPercent(minimum))
+                    .append("; ").append(passed ? "PASS" : "FAIL")
+                    .append('\n');
+            if (!passed) {
+                recordViolation(
+                        scope,
+                        counterType + " coverage " + formatPercent(counter.ratio())
+                                + " is below " + formatPercent(minimum),
+                        exceptionByScope,
+                        appliedExceptions,
+                        violations);
+            }
+        }
     }
 
     private List<String> readRequiredCounters(JsonNode root) {
@@ -418,10 +428,9 @@ final class CriticalCoveragePolicy {
                 throw new IllegalArgumentException(
                         "criticalPackages entries must be objects");
             }
-            String module = requiredText(value, "module");
-            String packageName = requiredText(value, "package").replace('.', '/');
             PackageKey key = new PackageKey(
-                    ReactorCoveragePolicy.normalizeGroupName(module), packageName);
+                    ReactorCoveragePolicy.normalizeGroupName(requiredText(value, "module")),
+                    requiredText(value, "package").replace('.', '/'));
             if (!unique.add(key)) {
                 throw new IllegalArgumentException(
                         "criticalPackages contains duplicate " + key.scope());
@@ -480,7 +489,8 @@ final class CriticalCoveragePolicy {
     private Map<String, Counter> parseCounterSet(
             Element element,
             List<String> requiredCounters,
-            String scope) {
+            String scope,
+            boolean allowMissingBranch) {
         Map<String, Counter> counters = new LinkedHashMap<>();
         for (Element counter : directChildren(element, "counter")) {
             String type = counter.getAttribute("type");
@@ -494,6 +504,9 @@ final class CriticalCoveragePolicy {
             counters.put(type, new Counter(
                     parseNonNegative(counter, "covered", type, scope),
                     parseNonNegative(counter, "missed", type, scope)));
+        }
+        if (allowMissingBranch && !counters.containsKey("BRANCH")) {
+            counters.put("BRANCH", new Counter(0, 0));
         }
         List<String> missing = requiredCounters.stream()
                 .filter(counter -> !counters.containsKey(counter))
