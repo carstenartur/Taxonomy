@@ -28,9 +28,15 @@ ingress:
 # RKE2 normally runs ingress-nginx in kube-system. A separately installed
 # controller commonly runs in ingress-nginx. Retain only the selector that
 # matches the target cluster.
+#
+# Egress stays in the chart's restricted mode. Same-namespace traffic and DNS
+# are generated centrally; add reviewed database/LLM/OIDC/OTLP ipBlock or
+# namespace/pod-selector rules under networkPolicy.egress for the real cluster.
 networkPolicy:
   enabled: true
   allowSameNamespace: true
+  egressMode: restricted
+  allowSameNamespaceEgress: true
   ingressFrom:
     - namespaceSelector:
         matchLabels:
@@ -46,5 +52,4 @@ networkPolicy:
       podSelector:
         matchLabels:
           app.kubernetes.io/name: ingress-nginx
-  egress:
-    - {}
+  egress: []
