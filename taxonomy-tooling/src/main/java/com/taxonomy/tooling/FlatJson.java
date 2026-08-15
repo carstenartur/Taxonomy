@@ -44,7 +44,7 @@ final class FlatJson {
         } else if (value instanceof Boolean bool) {
             output.append(bool);
         } else if (value instanceof BigDecimal decimal) {
-            output.append(decimal.toPlainString());
+            output.append(decimal);
         } else if (value instanceof Number number) {
             output.append(number);
         } else if (value instanceof Map<?, ?> map) {
