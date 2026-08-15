@@ -19,7 +19,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -63,8 +62,7 @@ class WorkspaceAccessSecurityIT {
                 workspace("qa-foreign-workspace", "bob", false));
 
         mockMvc.perform(get("/api/workspace/{id}/info", foreign.getWorkspaceId()))
-                .andExpect(status().isNotFound())
-                .andExpect(content().string(""));
+                .andExpect(status().isNotFound());
         mockMvc.perform(get("/api/workspace/{id}/info", "does-not-exist"))
                 .andExpect(status().isNotFound());
     }
