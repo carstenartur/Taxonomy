@@ -6,11 +6,13 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.time.DateTimeException;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /** Entry point for dependency-free release and repository tooling. */
 public final class TaxonomyTooling {
@@ -62,6 +64,8 @@ public final class TaxonomyTooling {
             case "read-pom-version" -> readPomVersion(
                     commandArguments, workingDirectory, output, error);
             case "update-release-metadata" -> updateReleaseMetadata(
+                    commandArguments, workingDirectory, output, error);
+            case "generate-sbom-companion" -> generateSbomCompanion(
                     commandArguments, workingDirectory, output, error);
             default -> {
                 error.println("Unknown taxonomy-tooling command: " + command);
@@ -222,6 +226,46 @@ public final class TaxonomyTooling {
                     + (result.release() ? "release " + result.releaseDate()
                             : "development")
                     + ", " + result.updatedFiles().size() + " files).");
+            return 0;
+        } catch (IOException | IllegalArgumentException | DateTimeException failure) {
+            error.println("::error::" + failure.getMessage());
+            return 1;
+        }
+    }
+
+    private static int generateSbomCompanion(
+            String[] rawArguments,
+            Path workingDirectory,
+            PrintStream output,
+            PrintStream error) {
+        try {
+            Arguments arguments = Arguments.parse(rawArguments);
+            Path sbom = arguments.path(
+                    "sbom", workingDirectory.resolve("target/taxonomy-sbom.json"));
+            Path destination = arguments.path(
+                    "output", workingDirectory.resolve("target/taxonomy-vex.json"));
+            String timestampText = arguments.optional("timestamp");
+            String serialText = arguments.optional("serial-number");
+            if ((timestampText == null) != (serialText == null)) {
+                throw new IllegalArgumentException(
+                        "--timestamp and --serial-number must be supplied together");
+            }
+
+            SbomCompanionGenerator.Result result;
+            if (timestampText == null) {
+                result = SbomCompanionGenerator.generate(sbom, destination);
+            } else {
+                result = SbomCompanionGenerator.generate(
+                        sbom,
+                        destination,
+                        Instant.parse(timestampText),
+                        UUID.fromString(serialText));
+            }
+            output.println("SBOM companion document generated: " + result.output());
+            output.println("  Vulnerability assessment: not-assessed");
+            output.println("  SBOM serial: " + result.sourceSerialNumber());
+            output.println("  SBOM SHA-256: " + result.sourceSha256());
+            output.println("  Components in SBOM: " + result.componentCount());
             return 0;
         } catch (IOException | IllegalArgumentException | DateTimeException failure) {
             error.println("::error::" + failure.getMessage());
