@@ -277,7 +277,7 @@ def main() -> int:
             )
 
     for needle in (
-        "./mvnw -B -pl taxonomy-tooling package -DskipTests",
+        "./mvnw -B -pl taxonomy-tooling -am package -DskipTests",
         'java -jar "$tooling_jar" check-release-plan',
         '--state development',
         '--require-clean true',
