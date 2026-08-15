@@ -1,7 +1,6 @@
 package com.taxonomy.workspace.controller;
 
-import com.taxonomy.workspace.model.UserWorkspace;
-import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.WorkspaceAccessService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +15,6 @@ import org.springframework.web.servlet.HandlerMapping;
 import java.lang.reflect.Method;
 import java.security.Principal;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -28,7 +26,7 @@ import static org.mockito.Mockito.when;
 class WorkspaceAccessWebMvcConfigurationTest {
 
     @Mock
-    private UserWorkspaceRepository workspaceRepository;
+    private WorkspaceAccessService workspaceAccessService;
 
     @Mock
     private HttpServletRequest request;
@@ -45,7 +43,7 @@ class WorkspaceAccessWebMvcConfigurationTest {
     @BeforeEach
     void setUp() throws Exception {
         interceptor = new WorkspaceAccessWebMvcConfiguration
-                .WorkspaceInfoAccessInterceptor(workspaceRepository);
+                .WorkspaceInfoAccessInterceptor(workspaceAccessService);
         Method method = WorkspaceController.class.getMethod(
                 "getWorkspaceInfo", String.class);
         workspaceInfoHandler = new HandlerMethod(workspaceController, method);
@@ -57,7 +55,8 @@ class WorkspaceAccessWebMvcConfigurationTest {
                 new Object(), Object.class.getMethod("toString"));
 
         assertThat(interceptor.preHandle(request, response, unrelated)).isTrue();
-        verify(workspaceRepository, never()).findByWorkspaceId(anyString());
+        verify(workspaceAccessService, never())
+                .canReadWorkspaceMetadata(anyString(), anyString());
     }
 
     @Test
@@ -87,51 +86,29 @@ class WorkspaceAccessWebMvcConfigurationTest {
     }
 
     @Test
-    void ownerAndSharedWorkspaceAreAllowed() throws Exception {
+    void visibleWorkspaceIsAllowed() throws Exception {
         Principal principal = () -> "alice";
         when(request.getUserPrincipal()).thenReturn(principal);
         when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
                 .thenReturn(Map.of("id", "workspace-1"));
-        when(workspaceRepository.findByWorkspaceId("workspace-1"))
-                .thenReturn(Optional.of(workspace("alice", false)));
-
-        assertThat(interceptor.preHandle(
-                request, response, workspaceInfoHandler)).isTrue();
-
-        when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
-                .thenReturn(Map.of("id", "workspace-2"));
-        when(workspaceRepository.findByWorkspaceId("workspace-2"))
-                .thenReturn(Optional.of(workspace("system", true)));
+        when(workspaceAccessService.canReadWorkspaceMetadata(
+                "workspace-1", "alice")).thenReturn(true);
 
         assertThat(interceptor.preHandle(
                 request, response, workspaceInfoHandler)).isTrue();
     }
 
     @Test
-    void privateForeignAndMissingWorkspacesAreHidden() throws Exception {
+    void foreignOrMissingWorkspaceIsHidden() throws Exception {
         Principal principal = () -> "alice";
         when(request.getUserPrincipal()).thenReturn(principal);
         when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
                 .thenReturn(Map.of("id", "workspace-bob"));
-        when(workspaceRepository.findByWorkspaceId("workspace-bob"))
-                .thenReturn(Optional.of(workspace("bob", false)));
+        when(workspaceAccessService.canReadWorkspaceMetadata(
+                "workspace-bob", "alice")).thenReturn(false);
 
         assertThat(interceptor.preHandle(
                 request, response, workspaceInfoHandler)).isFalse();
         verify(response).sendError(HttpStatus.NOT_FOUND.value());
-
-        when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
-                .thenReturn(Map.of("id", "missing"));
-        when(workspaceRepository.findByWorkspaceId("missing"))
-                .thenReturn(Optional.empty());
-        assertThat(interceptor.preHandle(
-                request, response, workspaceInfoHandler)).isFalse();
-    }
-
-    private static UserWorkspace workspace(String username, boolean shared) {
-        UserWorkspace workspace = new UserWorkspace();
-        workspace.setUsername(username);
-        workspace.setShared(shared);
-        return workspace;
     }
 }
