@@ -243,8 +243,31 @@ spec:
   {{- else }}
   ingress: []
   {{- end }}
+  {{- $egressMode := .Values.networkPolicy.egressMode | default "restricted" }}
+  {{- if eq $egressMode "open" }}
   egress:
-    {{- toYaml .Values.networkPolicy.egress | nindent 4 }}
+    - {}
+  {{- else if or .Values.networkPolicy.allowSameNamespaceEgress .Values.networkPolicy.dns.enabled (gt (len .Values.networkPolicy.egress) 0) }}
+  egress:
+    {{- if .Values.networkPolicy.allowSameNamespaceEgress }}
+    - to:
+        - podSelector: {}
+    {{- end }}
+    {{- if .Values.networkPolicy.dns.enabled }}
+    - to:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.dns.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml .Values.networkPolicy.dns.podSelector | nindent 12 }}
+      ports:
+        {{- toYaml .Values.networkPolicy.dns.ports | nindent 8 }}
+    {{- end }}
+    {{- with .Values.networkPolicy.egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- else }}
+  egress: []
+  {{- end }}
 {{- end }}
 {{- if .Values.ingress.enabled }}
 ---
