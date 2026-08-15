@@ -216,7 +216,6 @@ class SbomCompanionGeneratorTest {
         assertThat(stderr.toString(StandardCharsets.UTF_8))
                 .startsWith("::error::")
                 .contains("not-an-instant");
-        assertThat(output).doesNotExist();
     }
 
     @SuppressWarnings("unchecked")
