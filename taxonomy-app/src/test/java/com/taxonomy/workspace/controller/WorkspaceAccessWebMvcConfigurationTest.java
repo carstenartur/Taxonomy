@@ -1,5 +1,6 @@
 package com.taxonomy.workspace.controller;
 
+import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -15,8 +16,10 @@ import org.springframework.web.servlet.HandlerMapping;
 import java.lang.reflect.Method;
 import java.security.Principal;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,9 +57,7 @@ class WorkspaceAccessWebMvcConfigurationTest {
                 new Object(), Object.class.getMethod("toString"));
 
         assertThat(interceptor.preHandle(request, response, unrelated)).isTrue();
-        verify(workspaceRepository, never())
-                .existsByWorkspaceIdAndUsername(org.mockito.ArgumentMatchers.anyString(),
-                        org.mockito.ArgumentMatchers.anyString());
+        verify(workspaceRepository, never()).findByWorkspaceId(anyString());
     }
 
     @Test
@@ -91,36 +92,46 @@ class WorkspaceAccessWebMvcConfigurationTest {
         when(request.getUserPrincipal()).thenReturn(principal);
         when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
                 .thenReturn(Map.of("id", "workspace-1"));
-        when(workspaceRepository.existsByWorkspaceIdAndUsername(
-                "workspace-1", "alice")).thenReturn(true);
+        when(workspaceRepository.findByWorkspaceId("workspace-1"))
+                .thenReturn(Optional.of(workspace("alice", false)));
 
         assertThat(interceptor.preHandle(
                 request, response, workspaceInfoHandler)).isTrue();
 
         when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
                 .thenReturn(Map.of("id", "workspace-2"));
-        when(workspaceRepository.existsByWorkspaceIdAndUsername(
-                "workspace-2", "alice")).thenReturn(false);
-        when(workspaceRepository.existsByWorkspaceIdAndSharedTrue("workspace-2"))
-                .thenReturn(true);
+        when(workspaceRepository.findByWorkspaceId("workspace-2"))
+                .thenReturn(Optional.of(workspace("system", true)));
 
         assertThat(interceptor.preHandle(
                 request, response, workspaceInfoHandler)).isTrue();
     }
 
     @Test
-    void privateForeignWorkspaceIsHidden() throws Exception {
+    void privateForeignAndMissingWorkspacesAreHidden() throws Exception {
         Principal principal = () -> "alice";
         when(request.getUserPrincipal()).thenReturn(principal);
         when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
                 .thenReturn(Map.of("id", "workspace-bob"));
-        when(workspaceRepository.existsByWorkspaceIdAndUsername(
-                "workspace-bob", "alice")).thenReturn(false);
-        when(workspaceRepository.existsByWorkspaceIdAndSharedTrue("workspace-bob"))
-                .thenReturn(false);
+        when(workspaceRepository.findByWorkspaceId("workspace-bob"))
+                .thenReturn(Optional.of(workspace("bob", false)));
 
         assertThat(interceptor.preHandle(
                 request, response, workspaceInfoHandler)).isFalse();
         verify(response).sendError(HttpStatus.NOT_FOUND.value());
+
+        when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
+                .thenReturn(Map.of("id", "missing"));
+        when(workspaceRepository.findByWorkspaceId("missing"))
+                .thenReturn(Optional.empty());
+        assertThat(interceptor.preHandle(
+                request, response, workspaceInfoHandler)).isFalse();
+    }
+
+    private static UserWorkspace workspace(String username, boolean shared) {
+        UserWorkspace workspace = new UserWorkspace();
+        workspace.setUsername(username);
+        workspace.setShared(shared);
+        return workspace;
     }
 }
