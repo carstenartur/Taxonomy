@@ -1,7 +1,10 @@
 package com.taxonomy.tooling;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,6 +56,28 @@ class VersionStateRepositoryTest {
         assertThat(resolveBuildState(Map.of(), advanced))
                 .extracting(BuildState::mode, BuildState::expectedVersion, BuildState::tag)
                 .containsExactly("development", "1.4.1-SNAPSHOT", null);
+    }
+
+    @Test
+    void javaCliPreservesControlledSuccessAndFailureResults(
+            @TempDir Path root) throws Exception {
+        writeDevelopmentFixture(root, "1.2.9-SNAPSHOT");
+
+        CliResult success = runVersionStateCli(
+                root, "development", "1.2.9-SNAPSHOT");
+        CliResult invalidRelease = runVersionStateCli(root, "release", null);
+
+        assertThat(success.exitCode()).isZero();
+        assertThat(success.output()).contains(
+                "Repository version state is consistent: "
+                        + "1.2.9-SNAPSHOT (development).");
+        assertThat(success.error()).isEmpty();
+
+        assertThat(invalidRelease.exitCode()).isEqualTo(1);
+        assertThat(invalidRelease.output()).isEmpty();
+        assertThat(invalidRelease.error())
+                .contains("Inconsistent repository version state:")
+                .contains("not a valid release version");
     }
 
     @Test
@@ -112,6 +137,65 @@ class VersionStateRepositoryTest {
                 normalize(environment.get("VERSION_STATE_TAG")));
     }
 
+    private static CliResult runVersionStateCli(
+            Path root,
+            String mode,
+            String expectedVersion) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ByteArrayOutputStream error = new ByteArrayOutputStream();
+        String[] arguments = expectedVersion == null
+                ? new String[]{
+                        "check-version-state",
+                        "--root", root.toString(),
+                        "--mode", mode}
+                : new String[]{
+                        "check-version-state",
+                        "--root", root.toString(),
+                        "--mode", mode,
+                        "--expected-version", expectedVersion};
+        int exitCode = TaxonomyTooling.run(
+                arguments,
+                root,
+                new PrintStream(output, true, StandardCharsets.UTF_8),
+                new PrintStream(error, true, StandardCharsets.UTF_8));
+        return new CliResult(
+                exitCode,
+                output.toString(StandardCharsets.UTF_8),
+                error.toString(StandardCharsets.UTF_8));
+    }
+
+    private static void writeDevelopmentFixture(Path root, String version)
+            throws Exception {
+        write(root.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.taxonomy</groupId>
+                  <artifactId>taxonomy</artifactId>
+                  <version>%s</version>
+                </project>
+                """.formatted(version));
+        write(root.resolve("CITATION.cff"),
+                "version: \"" + version + "\"\n");
+        write(root.resolve("CITATION.md"),
+                "Carsten Hammer. **Taxonomy Architecture Analyzer**. Version "
+                        + version + ". 2026.\n"
+                        + "  version      = {" + version + "},\n");
+        write(root.resolve(".zenodo.json"),
+                "{\"version\":\"" + version + "\"}\n");
+        write(root.resolve("codemeta.json"),
+                "{\"version\":\"" + version + "\"}\n");
+        write(root.resolve("deploy/helm/taxonomy/Chart.yaml"), """
+                apiVersion: v2
+                name: taxonomy
+                appVersion: "%s"
+                """.formatted(version));
+    }
+
+    private static void write(Path path, String content) throws Exception {
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, content, StandardCharsets.UTF_8);
+    }
+
     private static String expectedVersionFor(
             String mode,
             String releaseState,
@@ -150,5 +234,8 @@ class VersionStateRepositoryTest {
     }
 
     record BuildState(String mode, String expectedVersion, String tag) {
+    }
+
+    private record CliResult(int exitCode, String output, String error) {
     }
 }
