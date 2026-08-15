@@ -63,6 +63,22 @@ class PythonSourceRatchetRepositoryTest {
             return;
         }
 
+        GitSupport.Result shallow = GitSupport.run(
+                root, "rev-parse", "--is-shallow-repository");
+        assertThat(shallow.exitCode())
+                .as("cannot determine whether the checkout has complete history: %s",
+                        shallow.stderr().strip())
+                .isZero();
+        assertThat(shallow.stdout().strip())
+                .as("git rev-parse --is-shallow-repository result")
+                .isIn("true", "false");
+        if ("true".equals(shallow.stdout().strip())) {
+            // Specialized database/security jobs intentionally use shallow clones.
+            // They still enforce the exact file inventory above; canonical CI uses
+            // fetch-depth: 0 and remains the authority for ancestry/diff checks.
+            return;
+        }
+
         GitSupport.Result ancestry = GitSupport.run(
                 root,
                 "merge-base",
