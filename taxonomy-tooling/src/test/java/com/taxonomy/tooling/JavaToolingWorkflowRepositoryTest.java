@@ -39,6 +39,32 @@ class JavaToolingWorkflowRepositoryTest {
     }
 
     @Test
+    void releaseScriptRevalidatesTheCommittedReleaseSourceAsClean()
+            throws Exception {
+        Path root = findRepositoryRoot();
+        String script = read(root.resolve(".github/scripts/release.sh"));
+
+        String dirtyTransition = "run_release_plan_check release false";
+        String releaseCommit =
+                "git commit -m \"Release version $RELEASE_VERSION\"";
+        String cleanImmutableSource = "run_release_plan_check release true";
+        String canonicalVerification =
+                "run_maven_release_check release release-check,ci clean verify";
+
+        assertThat(script)
+                .contains(dirtyTransition)
+                .contains(releaseCommit)
+                .contains(cleanImmutableSource)
+                .contains(canonicalVerification);
+        assertThat(script.indexOf(dirtyTransition))
+                .isLessThan(script.indexOf(releaseCommit));
+        assertThat(script.indexOf(releaseCommit))
+                .isLessThan(script.indexOf(cleanImmutableSource));
+        assertThat(script.indexOf(cleanImmutableSource))
+                .isLessThan(script.indexOf(canonicalVerification));
+    }
+
+    @Test
     void protectedMainAdvanceWaitsForEveryRequiredCheckOnTheExactHead()
             throws Exception {
         Path root = findRepositoryRoot();
