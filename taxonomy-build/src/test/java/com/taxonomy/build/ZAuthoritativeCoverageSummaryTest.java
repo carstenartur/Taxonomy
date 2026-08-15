@@ -2,6 +2,7 @@ package com.taxonomy.build;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -47,7 +48,7 @@ class ZAuthoritativeCoverageSummaryTest {
         Map<String, Counter> counters = readReportCounters(aggregateReport);
         assertThat(counters.keySet())
                 .as("top-level JaCoCo counter dimensions")
-                .containsExactlyInAnyOrderElementsOf(REQUIRED_COUNTERS);
+                .containsAll(REQUIRED_COUNTERS);
         REQUIRED_COUNTERS.forEach(type -> {
             Counter counter = counters.get(type);
             assertThat(counter.total())
@@ -79,6 +80,41 @@ class ZAuthoritativeCoverageSummaryTest {
                 .contains("\"branch\"")
                 .contains("\"method\"")
                 .contains("\"class\"");
+    }
+
+    @Test
+    void acceptsStandardAdditionalCountersWithoutMixingNestedCounters(
+            @TempDir Path temporaryDirectory) throws Exception {
+        Path report = temporaryDirectory.resolve("jacoco.xml");
+        Files.writeString(
+                report,
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <report name="synthetic">
+                  <package name="nested">
+                    <counter type="BRANCH" missed="999" covered="1"/>
+                  </package>
+                  <counter type="INSTRUCTION" missed="1" covered="9"/>
+                  <counter type="BRANCH" missed="6" covered="14"/>
+                  <counter type="LINE" missed="2" covered="8"/>
+                  <counter type="COMPLEXITY" missed="3" covered="7"/>
+                  <counter type="METHOD" missed="4" covered="6"/>
+                  <counter type="CLASS" missed="5" covered="5"/>
+                </report>
+                """,
+                StandardCharsets.UTF_8);
+
+        Map<String, Counter> counters = readReportCounters(report);
+
+        assertThat(counters.keySet())
+                .containsAll(REQUIRED_COUNTERS)
+                .contains("COMPLEXITY");
+        assertThat(counters.get("BRANCH"))
+                .isEqualTo(new Counter(6, 14));
+        assertThat(toJson(counters))
+                .contains("\"branch\": {\"missed\": 6, \"covered\": 14, "
+                        + "\"total\": 20")
+                .doesNotContain("complexity");
     }
 
     private static Map<String, Counter> readReportCounters(Path report)
