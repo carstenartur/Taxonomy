@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -114,6 +115,44 @@ class SbomCompanionGeneratorTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("components must be an array");
         assertThat(output).doesNotExist();
+    }
+
+    @Test
+    void removesStaleOutputWhenFinalWriteFails(@TempDir Path root)
+            throws Exception {
+        Path sbom = root.resolve("taxonomy-sbom.json");
+        Path output = root.resolve("taxonomy-vex.json");
+        Files.writeString(sbom, "{\"components\": []}\n", StandardCharsets.UTF_8);
+        Files.writeString(output, "stale", StandardCharsets.UTF_8);
+        IOException writeFailure = new IOException("simulated write failure");
+
+        assertThatThrownBy(() -> SbomCompanionGenerator.generate(
+                sbom,
+                output,
+                TIMESTAMP,
+                SERIAL,
+                (ignoredPath, ignoredContent) -> {
+                    throw writeFailure;
+                }))
+                .isSameAs(writeFailure);
+
+        assertThat(output).doesNotExist();
+    }
+
+    @Test
+    void supportsSingleCharacterOutputFileNames(@TempDir Path root)
+            throws Exception {
+        Path sbom = root.resolve("taxonomy-sbom.json");
+        Path output = root.resolve("a");
+        Files.writeString(sbom, "{}\n", StandardCharsets.UTF_8);
+
+        SbomCompanionGenerator.Result result =
+                SbomCompanionGenerator.generate(
+                        sbom, output, TIMESTAMP, SERIAL);
+
+        assertThat(result.output())
+                .isEqualTo(output.toAbsolutePath().normalize());
+        assertThat(output).isRegularFile();
     }
 
     @Test
