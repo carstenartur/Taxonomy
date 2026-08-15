@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,6 +51,39 @@ class ReleaseMetadataEdgeCaseTest {
         assertThat(read(root.resolve("CITATION.md")))
                 .contains("Version 1.4.0. 2031.")
                 .doesNotContain("Version old.");
+    }
+
+    @Test
+    void preservesUnknownArbitraryPrecisionJsonValues(@TempDir Path root)
+            throws Exception {
+        writeRequiredMetadata(root, "2031");
+        write(root.resolve("deploy/helm/taxonomy/Chart.yaml"), """
+                apiVersion: v2
+                name: taxonomy
+                version: 1.4.0
+                appVersion: "old"
+                """);
+        String identifier = "1234567890123456789012345678901234567890";
+        write(root.resolve(".zenodo.json"), """
+                {
+                  "title": "Taxonomy",
+                  "version": "old",
+                  "external": {
+                    "identifier": %s
+                  }
+                }
+                """.formatted(identifier));
+
+        ReleaseMetadataUpdater.update(
+                root, "1.4.1-SNAPSHOT", false, null);
+
+        Map<String, Object> zenodo = FlatJson.parseObject(
+                read(root.resolve(".zenodo.json")));
+        assertThat(zenodo).containsEntry("version", "1.4.1-SNAPSHOT");
+        assertThat(zenodo.get("external")).isInstanceOfSatisfying(
+                Map.class,
+                external -> assertThat(external.get("identifier"))
+                        .isEqualTo(new BigInteger(identifier)));
     }
 
     @Test

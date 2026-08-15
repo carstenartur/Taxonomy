@@ -1,6 +1,7 @@
 package com.taxonomy.tooling;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -238,7 +239,14 @@ final class FlatJson {
 
         String token = source.substring(start, index);
         try {
-            return decimal ? new BigDecimal(token) : Long.valueOf(token);
+            if (decimal) {
+                return new BigDecimal(token);
+            }
+            try {
+                return Long.valueOf(token);
+            } catch (NumberFormatException outsideLongRange) {
+                return new BigInteger(token);
+            }
         } catch (NumberFormatException error) {
             throw error("JSON number is out of range");
         }
