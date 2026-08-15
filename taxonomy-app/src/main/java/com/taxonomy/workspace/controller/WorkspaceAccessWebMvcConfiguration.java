@@ -1,7 +1,6 @@
 package com.taxonomy.workspace.controller;
 
-import com.taxonomy.workspace.model.UserWorkspace;
-import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.WorkspaceAccessService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Configuration;
@@ -24,24 +23,24 @@ import java.util.Map;
 @Configuration(proxyBeanMethods = false)
 class WorkspaceAccessWebMvcConfiguration implements WebMvcConfigurer {
 
-    private final UserWorkspaceRepository workspaceRepository;
+    private final WorkspaceAccessService workspaceAccessService;
 
-    WorkspaceAccessWebMvcConfiguration(UserWorkspaceRepository workspaceRepository) {
-        this.workspaceRepository = workspaceRepository;
+    WorkspaceAccessWebMvcConfiguration(WorkspaceAccessService workspaceAccessService) {
+        this.workspaceAccessService = workspaceAccessService;
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new WorkspaceInfoAccessInterceptor(workspaceRepository))
+        registry.addInterceptor(new WorkspaceInfoAccessInterceptor(workspaceAccessService))
                 .addPathPatterns("/api/workspace/*/info");
     }
 
     static final class WorkspaceInfoAccessInterceptor implements HandlerInterceptor {
 
-        private final UserWorkspaceRepository workspaceRepository;
+        private final WorkspaceAccessService workspaceAccessService;
 
-        WorkspaceInfoAccessInterceptor(UserWorkspaceRepository workspaceRepository) {
-            this.workspaceRepository = workspaceRepository;
+        WorkspaceInfoAccessInterceptor(WorkspaceAccessService workspaceAccessService) {
+            this.workspaceAccessService = workspaceAccessService;
         }
 
         @Override
@@ -62,20 +61,13 @@ class WorkspaceAccessWebMvcConfiguration implements WebMvcConfigurer {
             }
 
             String workspaceId = pathVariable(request, "id");
-            boolean visible = workspaceId != null
-                    && workspaceRepository.findByWorkspaceId(workspaceId)
-                            .filter(workspace -> isVisibleTo(workspace, principal.getName()))
-                            .isPresent();
-            if (visible) {
+            if (workspaceAccessService.canReadWorkspaceMetadata(
+                    workspaceId, principal.getName())) {
                 return true;
             }
 
             response.sendError(HttpStatus.NOT_FOUND.value());
             return false;
-        }
-
-        private static boolean isVisibleTo(UserWorkspace workspace, String username) {
-            return workspace.isShared() || username.equals(workspace.getUsername());
         }
 
         private static String pathVariable(HttpServletRequest request, String name) {
