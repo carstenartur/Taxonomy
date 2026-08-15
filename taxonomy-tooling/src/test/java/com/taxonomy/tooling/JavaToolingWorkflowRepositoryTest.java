@@ -17,16 +17,20 @@ class JavaToolingWorkflowRepositoryTest {
 
         assertWorkflowBuild(
                 root.resolve(".github/workflows/ci-cd.yml"),
-                "Java release tooling jar was not produced");
+                "Java release tooling jar was not produced",
+                false);
         assertWorkflowBuild(
                 root.resolve(".github/workflows/deploy-release.yml"),
-                "Java release tooling jar was not produced");
+                "Java release tooling jar was not produced",
+                true);
         assertWorkflowBuild(
                 root.resolve(".github/workflows/protected-release-main-advance.yml"),
-                "Java release tooling jar was not produced");
+                "Java release tooling jar was not produced",
+                true);
         assertWorkflowBuild(
                 root.resolve(".github/workflows/prepare-development-version.yml"),
-                "Java version tooling jar was not produced");
+                "Java version tooling jar was not produced",
+                true);
 
         String releaseScript = read(root.resolve(".github/scripts/release.sh"));
         assertThat(releaseScript)
@@ -70,15 +74,20 @@ class JavaToolingWorkflowRepositoryTest {
                 .isLessThan(workflow.indexOf(merge));
     }
 
-    private static void assertWorkflowBuild(Path workflow, String diagnostic)
-            throws Exception {
+    private static void assertWorkflowBuild(
+            Path workflow,
+            String diagnostic,
+            boolean requiresPreservedCopy) throws Exception {
         String text = read(workflow);
         assertThat(text)
                 .contains("./mvnw -B -pl taxonomy-tooling -am package -DskipTests")
                 .contains("-name 'taxonomy-tooling-*.jar'")
                 .contains("if [[ -z \"$tooling_jar\" || ! -f \"$tooling_jar\" ]]")
-                .contains("::error::" + diagnostic)
-                .contains("$RUNNER_TEMP/taxonomy-tooling.jar");
+                .contains("::error::" + diagnostic);
+        if (requiresPreservedCopy) {
+            assertThat(text).contains(
+                    "cp \"$tooling_jar\" \"$RUNNER_TEMP/taxonomy-tooling.jar\"");
+        }
     }
 
     private static String read(Path path) throws Exception {
