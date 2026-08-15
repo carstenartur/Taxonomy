@@ -86,6 +86,19 @@ class PythonSourceRatchetRepositoryTest {
                 ":(glob)**/*.yaml",
                 "*.sh",
                 ":(glob)**/*.sh",
+                ":(glob)**/src/main/**/*.java",
+                ":(glob).github/scripts/**/*.js",
+                ":(glob).github/scripts/**/*.mjs",
+                "*.properties",
+                ":(glob)**/*.properties",
+                "*.toml",
+                ":(glob)**/*.toml",
+                "Makefile",
+                ":(glob)**/Makefile",
+                ".env",
+                ".env.example",
+                ":(glob)**/.env",
+                ":(glob)**/.env.example",
                 "Dockerfile",
                 ":(glob)**/Dockerfile",
                 "package.json",
@@ -104,7 +117,8 @@ class PythonSourceRatchetRepositoryTest {
             String added = line.substring(1).stripLeading();
             if (added.startsWith("#")
                     || added.startsWith("<!--")
-                    || added.startsWith("//")) {
+                    || added.startsWith("//")
+                    || added.startsWith("*")) {
                 continue;
             }
             if (EXECUTABLE_PYTHON_REFERENCE.matcher(added).find()) {
