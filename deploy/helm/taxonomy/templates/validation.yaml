@@ -29,6 +29,30 @@
 {{- if and .Values.ingress.enabled .Values.networkPolicy.enabled (eq (len .Values.networkPolicy.ingressFrom) 0) -}}
 {{- fail "ingress.enabled with NetworkPolicy requires networkPolicy.ingressFrom rules for the ingress controller" -}}
 {{- end -}}
+{{- if .Values.networkPolicy.enabled -}}
+{{- $egressMode := .Values.networkPolicy.egressMode | default "restricted" -}}
+{{- if not (has $egressMode (list "restricted" "open")) -}}
+{{- fail "networkPolicy.egressMode must be restricted or open" -}}
+{{- end -}}
+{{- if and (eq $egressMode "restricted") .Values.networkPolicy.dns.enabled -}}
+{{- if empty .Values.networkPolicy.dns.namespaceSelector -}}
+{{- fail "restricted DNS egress requires networkPolicy.dns.namespaceSelector" -}}
+{{- end -}}
+{{- if empty .Values.networkPolicy.dns.podSelector -}}
+{{- fail "restricted DNS egress requires networkPolicy.dns.podSelector" -}}
+{{- end -}}
+{{- if eq (len .Values.networkPolicy.dns.ports) 0 -}}
+{{- fail "restricted DNS egress requires networkPolicy.dns.ports" -}}
+{{- end -}}
+{{- end -}}
+{{- if eq $egressMode "restricted" -}}
+{{- range $index, $rule := .Values.networkPolicy.egress -}}
+{{- if eq (toJson $rule) "{}" -}}
+{{- fail (printf "networkPolicy.egress[%d] must not be an unrestricted empty rule in restricted mode" $index) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- if and .Values.serviceMonitor.enabled .Values.serviceMonitor.authorization.enabled -}}
 {{- $metricsSecret := include "taxonomy.metricsSecretName" . | trim -}}
 {{- if empty $metricsSecret -}}
