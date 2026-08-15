@@ -65,6 +65,41 @@ class JavaToolingWorkflowRepositoryTest {
     }
 
     @Test
+    void stagedResumeValidatesBothImmutableReleaseAndAdvancedMainPlans()
+            throws Exception {
+        Path root = findRepositoryRoot();
+        String workflow = read(root.resolve(
+                ".github/workflows/deploy-release.yml"));
+
+        int resumeStart = workflow.indexOf(
+                "- name: Validate staged release for resume");
+        int resumeEnd = workflow.indexOf(
+                "- name: Record exact final main snapshot");
+        assertThat(resumeStart).isGreaterThanOrEqualTo(0);
+        assertThat(resumeEnd).isGreaterThan(resumeStart);
+        String resume = workflow.substring(resumeStart, resumeEnd);
+
+        String releaseCheckout = "git checkout --detach \"$tag\"";
+        String releasePlan = "--state release \\";
+        String advancedCheckout = "git checkout --detach origin/main";
+        String advancedPlan = "--state advanced \\";
+
+        assertThat(resume)
+                .contains("read-pom-version")
+                .contains("check-release-plan")
+                .contains(releasePlan)
+                .contains(advancedPlan)
+                .contains("--require-clean true");
+        assertThat(count(resume, "check-release-plan")).isEqualTo(2);
+        assertThat(resume.indexOf(releaseCheckout))
+                .isLessThan(resume.indexOf(releasePlan));
+        assertThat(resume.indexOf(releasePlan))
+                .isLessThan(resume.indexOf(advancedCheckout));
+        assertThat(resume.indexOf(advancedCheckout))
+                .isLessThan(resume.indexOf(advancedPlan));
+    }
+
+    @Test
     void protectedMainAdvanceWaitsForEveryRequiredCheckOnTheExactHead()
             throws Exception {
         Path root = findRepositoryRoot();
@@ -98,6 +133,10 @@ class JavaToolingWorkflowRepositoryTest {
                 .isLessThan(workflow.indexOf(watch));
         assertThat(workflow.indexOf(watch))
                 .isLessThan(workflow.indexOf(merge));
+    }
+
+    private static int count(String text, String needle) {
+        return text.split(java.util.regex.Pattern.quote(needle), -1).length - 1;
     }
 
     private static void assertWorkflowBuild(
