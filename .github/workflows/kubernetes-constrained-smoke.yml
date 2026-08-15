@@ -1,0 +1,132 @@
+name: Kubernetes Constrained Smoke
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'pom.xml'
+      - 'taxonomy-tooling/**'
+      - 'taxonomy-domain/**'
+      - 'taxonomy-dsl/**'
+      - 'taxonomy-export/**'
+      - 'taxonomy-extension-api/**'
+      - 'taxonomy-app/**'
+      - 'deploy/helm/taxonomy/**'
+      - '.github/workflows/kubernetes-constrained-smoke.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'pom.xml'
+      - 'taxonomy-tooling/**'
+      - 'taxonomy-domain/**'
+      - 'taxonomy-dsl/**'
+      - 'taxonomy-export/**'
+      - 'taxonomy-extension-api/**'
+      - 'taxonomy-app/**'
+      - 'deploy/helm/taxonomy/**'
+      - '.github/workflows/kubernetes-constrained-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-kubernetes-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  constrained-smoke:
+    name: ResourceQuota, readiness and restricted egress
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Install verified kind 0.31.0
+        env:
+          KIND_VERSION: v0.31.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="kind-linux-amd64"
+          base="https://kind.sigs.k8s.io/dl/${KIND_VERSION}"
+          curl -fsSLo "$RUNNER_TEMP/kind" "${base}/${asset}"
+          curl -fsSLo "$RUNNER_TEMP/kind.sha256sum" \
+            "${base}/${asset}.sha256sum"
+          expected=$(tr -d '[:space:]' < "$RUNNER_TEMP/kind.sha256sum")
+          test "${#expected}" -eq 64
+          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/kind" \
+            | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/kind" /usr/local/bin/kind
+          kind version
+
+      - name: Install verified kubectl 1.35.0
+        env:
+          KUBECTL_VERSION: v1.35.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64"
+          curl -fsSLo "$RUNNER_TEMP/kubectl" "${base}/kubectl"
+          curl -fsSLo "$RUNNER_TEMP/kubectl.sha256" "${base}/kubectl.sha256"
+          expected=$(tr -d '[:space:]' < "$RUNNER_TEMP/kubectl.sha256")
+          test "${#expected}" -eq 64
+          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/kubectl" \
+            | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/kubectl" /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Install verified Helm 3.21.0
+        env:
+          HELM_VERSION: v3.21.0
+        shell: bash
+        run: bash .github/scripts/install-helm.sh
+
+      - name: Create constrained kind cluster
+        shell: bash
+        run: kind create cluster --name taxonomy-smoke --wait 180s
+
+      - name: Build, install and verify Taxonomy under quota
+        env:
+          KIND_CLUSTER_NAME: taxonomy-smoke
+          SOURCE_SHA: ${{ github.sha }}
+          KEEP_RESOURCES: 'true'
+        shell: bash
+        run: bash deploy/helm/taxonomy/constrained-smoke.sh
+
+      - name: Collect cluster diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p target/kubernetes-smoke
+          kubectl cluster-info dump --all-namespaces \
+            --output-directory=target/kubernetes-smoke/cluster-dump \
+            >/dev/null 2>&1 || true
+          kubectl get nodes -o wide \
+            > target/kubernetes-smoke/nodes.txt 2>&1 || true
+          kubectl get events --all-namespaces --sort-by=.lastTimestamp \
+            > target/kubernetes-smoke/events.txt 2>&1 || true
+
+      - name: Upload constrained-cluster evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kubernetes-constrained-smoke
+          path: target/kubernetes-smoke/**
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 90
+
+      - name: Delete kind cluster
+        if: always()
+        shell: bash
+        run: kind delete cluster --name taxonomy-smoke || true
