@@ -53,15 +53,23 @@ class PythonSourceRatchetRepositoryTest {
     @Test
     void productiveRuntimeReferencesCanOnlyBeRemoved() throws Exception {
         Path root = findRepositoryRoot();
+        GitSupport.Result worktree = GitSupport.run(
+                root, "rev-parse", "--is-inside-work-tree");
+        if (worktree.exitCode() != 0) {
+            return;
+        }
+
         GitSupport.Result ancestry = GitSupport.run(
                 root,
                 "merge-base",
                 "--is-ancestor",
                 RELEASE_CORE_REMOVAL_BASELINE,
                 "HEAD");
-        if (ancestry.exitCode() != 0) {
-            return;
-        }
+        assertThat(ancestry.exitCode())
+                .as("#761 Python-removal baseline %s must remain in history: %s",
+                        RELEASE_CORE_REMOVAL_BASELINE,
+                        ancestry.stderr().strip())
+                .isZero();
 
         String diff = GitSupport.require(
                 root,
