@@ -30,6 +30,28 @@ expect_failure() {
   fi
 }
 
+assert_restricted_egress() {
+  local manifest=$1
+  local profile=$2
+  if grep -Fq -- '- {}' "${manifest}"; then
+    echo "${profile} must not render unrestricted NetworkPolicy egress" >&2
+    exit 1
+  fi
+  for required in \
+    'kubernetes.io/metadata.name: kube-system' \
+    'operator: In' \
+    'kube-dns' \
+    'coredns' \
+    'port: 53' \
+    'protocol: UDP' \
+    'protocol: TCP'; do
+    if ! grep -Fq "${required}" "${manifest}"; then
+      echo "${profile} is missing restricted DNS egress contract: ${required}" >&2
+      exit 1
+    fi
+  done
+}
+
 helm lint "${CHART_DIR}" "${COMMON_VALUES[@]}"
 helm template taxonomy "${CHART_DIR}" \
   "${COMMON_VALUES[@]}" \
@@ -55,6 +77,7 @@ for required in \
     exit 1
   fi
 done
+assert_restricted_egress "${OUTPUT_FILE}" 'default profile'
 
 PRERELEASE_OUTPUT="${TMP_DIR}/prerelease.yaml"
 helm template taxonomy "${CHART_DIR}" \
@@ -111,6 +134,7 @@ if grep -Fq 'cpu: "2"' "${SMALL_OUTPUT}"; then
   echo "Small profile must not inherit the universal two-CPU limit" >&2
   exit 1
 fi
+assert_restricted_egress "${SMALL_OUTPUT}" 'small profile'
 
 RANCHER_OUTPUT="${TMP_DIR}/rancher.yaml"
 RANCHER_EVIDENCE="${ROOT_DIR}/target/taxonomy-helm-rancher-rke2-rendered.yaml"
@@ -136,6 +160,57 @@ for required in \
     exit 1
   fi
 done
+assert_restricted_egress "${RANCHER_OUTPUT}" 'Rancher profile'
+
+CONSTRAINED_OUTPUT="${TMP_DIR}/constrained.yaml"
+helm lint "${CHART_DIR}" \
+  --values "${CHART_DIR}/values-constrained-smoke.yaml" \
+  --set "image.tag=${VALID_TAG}" \
+  --set-json secretEnv='{}'
+helm template taxonomy "${CHART_DIR}" \
+  --namespace taxonomy-smoke \
+  --values "${CHART_DIR}/values-constrained-smoke.yaml" \
+  --set "image.tag=${VALID_TAG}" \
+  --set-json secretEnv='{}' \
+  >"${CONSTRAINED_OUTPUT}"
+for required in \
+  'imagePullPolicy: Never' \
+  'cpu: 100m' \
+  'cpu: 500m' \
+  'memory: 512Mi' \
+  'memory: 1Gi' \
+  'name: SPRING_PROFILES_ACTIVE' \
+  'value: "hsqldb,kubernetes"'; do
+  if ! grep -Fq "${required}" "${CONSTRAINED_OUTPUT}"; then
+    echo "Rendered constrained profile is missing required contract: ${required}" >&2
+    exit 1
+  fi
+done
+if grep -Fq 'secretKeyRef:' "${CONSTRAINED_OUTPUT}"; then
+  echo "Constrained HSQLDB smoke profile must not render credential Secret references" >&2
+  exit 1
+fi
+assert_restricted_egress "${CONSTRAINED_OUTPUT}" 'constrained smoke profile'
+for prerequisite in 'kind: Namespace' 'kind: ResourceQuota' 'kind: LimitRange'; do
+  grep -Fq "${prerequisite}" \
+    "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
+done
+
+EXPLICIT_EGRESS_OUTPUT="${TMP_DIR}/explicit-egress.yaml"
+helm template taxonomy "${CHART_DIR}" \
+  "${COMMON_VALUES[@]}" \
+  --set-json networkPolicy.egress='[{"to":[{"ipBlock":{"cidr":"10.40.0.0/16"}}],"ports":[{"protocol":"TCP","port":5432}]}]' \
+  >"${EXPLICIT_EGRESS_OUTPUT}"
+grep -Fq 'cidr: 10.40.0.0/16' "${EXPLICIT_EGRESS_OUTPUT}"
+grep -Fq 'port: 5432' "${EXPLICIT_EGRESS_OUTPUT}"
+assert_restricted_egress "${EXPLICIT_EGRESS_OUTPUT}" 'explicit database egress profile'
+
+OPEN_EGRESS_OUTPUT="${TMP_DIR}/open-egress.yaml"
+helm template taxonomy "${CHART_DIR}" \
+  "${COMMON_VALUES[@]}" \
+  --set networkPolicy.egressMode=open \
+  >"${OPEN_EGRESS_OUTPUT}"
+grep -Fq -- '- {}' "${OPEN_EGRESS_OUTPUT}"
 
 PERSISTENCE_OUTPUT="${TMP_DIR}/persistence.yaml"
 helm template taxonomy "${CHART_DIR}" \
@@ -196,5 +271,14 @@ expect_failure 'ServiceMonitor authorization without a Secret' \
     --set "image.tag=${VALID_TAG}" \
     --set-json secretEnv='{}' \
     --set serviceMonitor.enabled=true
+expect_failure 'unknown egress mode' \
+  helm template taxonomy "${CHART_DIR}" \
+    "${COMMON_VALUES[@]}" --set networkPolicy.egressMode=automatic
+expect_failure 'unrestricted rule hidden inside restricted egress list' \
+  helm template taxonomy "${CHART_DIR}" \
+    "${COMMON_VALUES[@]}" --set-json networkPolicy.egress='[{}]'
+expect_failure 'restricted DNS without a namespace selector' \
+  helm template taxonomy "${CHART_DIR}" \
+    "${COMMON_VALUES[@]}" --set-json networkPolicy.dns.namespaceSelector='{}'
 
 printf 'Helm chart verification passed. Rendered evidence: %s\n' "${OUTPUT_FILE}"
