@@ -22,7 +22,9 @@ resources:
     cpu: "500m"
     memory: 1Gi
 
-secretEnv: {}
+# Helm deep-merges maps. Null is deliberate here: it replaces the chart's
+# credential map rather than leaving inherited database/API keys behind.
+secretEnv: null
 existingSecret: ""
 
 networkPolicy:
