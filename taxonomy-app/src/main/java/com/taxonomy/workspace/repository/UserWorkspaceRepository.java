@@ -17,6 +17,10 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
 
     Optional<UserWorkspace> findByWorkspaceId(String workspaceId);
 
+    boolean existsByWorkspaceIdAndUsername(String workspaceId, String username);
+
+    boolean existsByWorkspaceIdAndSharedTrue(String workspaceId);
+
     Optional<UserWorkspace> findByUsernameAndSharedFalse(String username);
 
     Optional<UserWorkspace> findBySharedTrue();
