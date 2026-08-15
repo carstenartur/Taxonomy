@@ -118,6 +118,15 @@ jobs:
           git checkout --detach "$EXPECTED_SHA"
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
             --root . --mode development --expected-version "$NEXT_VERSION"
+          current_version=$(java -jar \
+            "$RUNNER_TEMP/taxonomy-tooling.jar" read-pom-version)
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-plan \
+            --root . \
+            --current-version "$current_version" \
+            --release-version "$RELEASE_VERSION" \
+            --next-development-version "$NEXT_VERSION" \
+            --state advanced \
+            --require-clean true
 
       - name: Create protected-main pull request
         id: pr
