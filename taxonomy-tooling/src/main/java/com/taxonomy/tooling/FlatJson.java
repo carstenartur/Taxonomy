@@ -1,12 +1,13 @@
 package com.taxonomy.tooling;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Strict dependency-free JSON reader for release and archive metadata. */
+/** Strict dependency-free JSON reader and deterministic pretty writer. */
 final class FlatJson {
 
     private final String source;
@@ -24,6 +25,114 @@ final class FlatJson {
             throw parser.error("Unexpected content after JSON object");
         }
         return result;
+    }
+
+    static String pretty(Object value) {
+        StringBuilder output = new StringBuilder();
+        writeValue(value, output, 0);
+        return output.toString();
+    }
+
+    private static void writeValue(
+            Object value,
+            StringBuilder output,
+            int depth) {
+        if (value == null) {
+            output.append("null");
+        } else if (value instanceof String text) {
+            writeString(text, output);
+        } else if (value instanceof Boolean bool) {
+            output.append(bool);
+        } else if (value instanceof BigDecimal decimal) {
+            output.append(decimal);
+        } else if (value instanceof Number number) {
+            output.append(number);
+        } else if (value instanceof Map<?, ?> map) {
+            writeObject(map, output, depth);
+        } else if (value instanceof Iterable<?> iterable) {
+            writeArray(iterable, output, depth);
+        } else {
+            throw new IllegalArgumentException(
+                    "Unsupported JSON value type: " + value.getClass().getName());
+        }
+    }
+
+    private static void writeObject(
+            Map<?, ?> map,
+            StringBuilder output,
+            int depth) {
+        output.append('{');
+        if (!map.isEmpty()) {
+            output.append('\n');
+            int index = 0;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!(entry.getKey() instanceof String key)) {
+                    throw new IllegalArgumentException(
+                            "JSON object keys must be strings");
+                }
+                indent(output, depth + 1);
+                writeString(key, output);
+                output.append(": ");
+                writeValue(entry.getValue(), output, depth + 1);
+                if (++index < map.size()) {
+                    output.append(',');
+                }
+                output.append('\n');
+            }
+            indent(output, depth);
+        }
+        output.append('}');
+    }
+
+    private static void writeArray(
+            Iterable<?> iterable,
+            StringBuilder output,
+            int depth) {
+        List<Object> values = new ArrayList<>();
+        iterable.forEach(values::add);
+        output.append('[');
+        if (!values.isEmpty()) {
+            output.append('\n');
+            for (int index = 0; index < values.size(); index++) {
+                indent(output, depth + 1);
+                writeValue(values.get(index), output, depth + 1);
+                if (index + 1 < values.size()) {
+                    output.append(',');
+                }
+                output.append('\n');
+            }
+            indent(output, depth);
+        }
+        output.append(']');
+    }
+
+    private static void writeString(String value, StringBuilder output) {
+        output.append('"');
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            switch (character) {
+                case '"' -> output.append("\\\"");
+                case '\\' -> output.append("\\\\");
+                case '\b' -> output.append("\\b");
+                case '\f' -> output.append("\\f");
+                case '\n' -> output.append("\\n");
+                case '\r' -> output.append("\\r");
+                case '\t' -> output.append("\\t");
+                default -> {
+                    if (character < 0x20) {
+                        output.append("\\u")
+                                .append(String.format("%04x", (int) character));
+                    } else {
+                        output.append(character);
+                    }
+                }
+            }
+        }
+        output.append('"');
+    }
+
+    private static void indent(StringBuilder output, int depth) {
+        output.append("  ".repeat(depth));
     }
 
     private Map<String, Object> object() {
@@ -130,7 +239,14 @@ final class FlatJson {
 
         String token = source.substring(start, index);
         try {
-            return decimal ? new BigDecimal(token) : Long.valueOf(token);
+            if (decimal) {
+                return new BigDecimal(token);
+            }
+            try {
+                return Long.valueOf(token);
+            } catch (NumberFormatException outsideLongRange) {
+                return new BigInteger(token);
+            }
         } catch (NumberFormatException error) {
             throw error("JSON number is out of range");
         }
