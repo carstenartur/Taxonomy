@@ -7,7 +7,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
@@ -45,6 +48,20 @@ public final class ReleaseMetadataUpdater {
             String requestedVersion,
             boolean release,
             LocalDate releaseDate) throws IOException {
+        return update(
+                root,
+                requestedVersion,
+                release,
+                releaseDate,
+                ReleaseMetadataUpdater::moveReplacing);
+    }
+
+    static Result update(
+            Path root,
+            String requestedVersion,
+            boolean release,
+            LocalDate releaseDate,
+            FileReplacer replacer) throws IOException {
         Path repository = root.toRealPath();
         String version = release
                 ? VersionNumbers.normalizeRelease(requestedVersion, "version")
@@ -54,30 +71,37 @@ public final class ReleaseMetadataUpdater {
                 ? Objects.requireNonNull(releaseDate,
                         "releaseDate is required in release mode")
                 : null;
+        FileReplacer effectiveReplacer = Objects.requireNonNull(
+                replacer, "replacer");
 
-        LinkedHashMap<Path, String> planned = new LinkedHashMap<>();
         Path citationCff = repository.resolve("CITATION.cff");
         Path citationMarkdown = repository.resolve("CITATION.md");
         Path zenodo = repository.resolve(".zenodo.json");
         Path codemeta = repository.resolve("codemeta.json");
         Path chart = repository.resolve("deploy/helm/taxonomy/Chart.yaml");
 
+        LinkedHashMap<Path, String> originals = new LinkedHashMap<>();
+        originals.put(citationCff, readRequired(citationCff));
+        originals.put(zenodo, readRequired(zenodo));
+        originals.put(codemeta, readRequired(codemeta));
+        originals.put(citationMarkdown, readRequired(citationMarkdown));
+        originals.put(chart, readRequired(chart));
+
+        LinkedHashMap<Path, String> planned = new LinkedHashMap<>();
         planned.put(citationCff, transformCitationCff(
-                readRequired(citationCff), version, effectiveDate));
+                originals.get(citationCff), version, effectiveDate));
         planned.put(zenodo, transformJsonMetadata(
-                readRequired(zenodo), version, effectiveDate,
+                originals.get(zenodo), version, effectiveDate,
                 "publication_date"));
         planned.put(codemeta, transformJsonMetadata(
-                readRequired(codemeta), version, effectiveDate,
+                originals.get(codemeta), version, effectiveDate,
                 "datePublished"));
         planned.put(citationMarkdown, transformCitationMarkdown(
-                readRequired(citationMarkdown), version, effectiveDate));
+                originals.get(citationMarkdown), version, effectiveDate));
         planned.put(chart, transformChart(
-                readRequired(chart), version, chart));
+                originals.get(chart), version, chart));
 
-        for (Map.Entry<Path, String> entry : planned.entrySet()) {
-            writeAtomically(entry.getKey(), entry.getValue());
-        }
+        replaceTransactionally(originals, planned, effectiveReplacer);
         return new Result(
                 version,
                 release,
@@ -86,6 +110,103 @@ public final class ReleaseMetadataUpdater {
                         .map(repository::relativize)
                         .map(path -> path.toString().replace('\\', '/'))
                         .toList());
+    }
+
+    private static void replaceTransactionally(
+            Map<Path, String> originals,
+            Map<Path, String> planned,
+            FileReplacer replacer) throws IOException {
+        LinkedHashMap<Path, Path> staged = new LinkedHashMap<>();
+        LinkedHashMap<Path, Path> backups = new LinkedHashMap<>();
+        List<Path> replaced = new ArrayList<>();
+        boolean committed = false;
+        try {
+            for (Map.Entry<Path, String> entry : planned.entrySet()) {
+                Path target = entry.getKey();
+                staged.put(target, stage(target, entry.getValue(), ".new"));
+                backups.put(target, stage(
+                        target, originals.get(target), ".backup"));
+            }
+
+            for (Path target : planned.keySet()) {
+                replacer.replace(staged.get(target), target);
+                replaced.add(target);
+            }
+            committed = true;
+        } catch (IOException | RuntimeException failure) {
+            rollback(replaced, backups, failure);
+            throw failure;
+        } finally {
+            cleanup(staged.values());
+            if (committed) {
+                cleanup(backups.values());
+            } else {
+                cleanup(backups.values());
+            }
+        }
+    }
+
+    private static Path stage(Path target, String content, String suffix)
+            throws IOException {
+        Path parent = target.toAbsolutePath().normalize().getParent();
+        if (parent == null) {
+            throw new IllegalArgumentException(
+                    "Release metadata path has no parent: " + target);
+        }
+        Path temporary = Files.createTempFile(
+                parent, ".taxonomy-metadata-", suffix);
+        boolean written = false;
+        try {
+            Files.writeString(temporary, content, StandardCharsets.UTF_8);
+            written = true;
+            return temporary;
+        } finally {
+            if (!written) {
+                Files.deleteIfExists(temporary);
+            }
+        }
+    }
+
+    private static void rollback(
+            List<Path> replaced,
+            Map<Path, Path> backups,
+            Throwable failure) {
+        List<Path> reverse = new ArrayList<>(replaced);
+        Collections.reverse(reverse);
+        for (Path target : reverse) {
+            Path backup = backups.get(target);
+            try {
+                moveReplacing(backup, target);
+            } catch (IOException | RuntimeException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+        }
+    }
+
+    private static void cleanup(Iterable<Path> paths) {
+        for (Path path : paths) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException ignored) {
+                // Cleanup failure must not hide the original transactional result.
+            }
+        }
+    }
+
+    private static void moveReplacing(Path source, Path target)
+            throws IOException {
+        try {
+            Files.move(
+                    source,
+                    target,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            Files.move(
+                    source,
+                    target,
+                    StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     private static String transformCitationCff(
@@ -201,42 +322,15 @@ public final class ReleaseMetadataUpdater {
         return Files.readString(path, StandardCharsets.UTF_8);
     }
 
-    private static void writeAtomically(Path path, String content)
-            throws IOException {
-        Path parent = path.toAbsolutePath().normalize().getParent();
-        if (parent == null) {
-            throw new IllegalArgumentException(
-                    "Release metadata path has no parent: " + path);
-        }
-        Path temporary = Files.createTempFile(
-                parent, "." + path.getFileName(), ".tmp");
-        boolean moved = false;
-        try {
-            Files.writeString(temporary, content, StandardCharsets.UTF_8);
-            try {
-                Files.move(
-                        temporary,
-                        path,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException unsupported) {
-                Files.move(
-                        temporary,
-                        path,
-                        StandardCopyOption.REPLACE_EXISTING);
-            }
-            moved = true;
-        } finally {
-            if (!moved) {
-                Files.deleteIfExists(temporary);
-            }
-        }
+    @FunctionalInterface
+    interface FileReplacer {
+        void replace(Path staged, Path target) throws IOException;
     }
 
     public record Result(
             String version,
             boolean release,
             LocalDate releaseDate,
-            java.util.List<String> updatedFiles) {
+            List<String> updatedFiles) {
     }
 }
