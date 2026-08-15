@@ -218,8 +218,14 @@ public final class ReleasePlanValidator {
                 }
                 Path modulePath = pom.getParent().resolve(module)
                         .toAbsolutePath().normalize();
-                Path modulePom = "pom.xml".equals(
-                        modulePath.getFileName().toString())
+                if (!modulePath.startsWith(repository)) {
+                    throw new IllegalArgumentException(relative(repository, pom)
+                            + " declares module '" + module
+                            + "' outside the repository");
+                }
+                Path moduleFileName = modulePath.getFileName();
+                Path modulePom = moduleFileName != null
+                        && "pom.xml".equals(moduleFileName.toString())
                                 ? modulePath
                                 : modulePath.resolve("pom.xml")
                                         .toAbsolutePath().normalize();
