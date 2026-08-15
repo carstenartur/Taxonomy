@@ -12,6 +12,7 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -29,6 +30,11 @@ import java.util.List;
 import java.util.Map;
 
 /** REST catalog for central architecture repositories and their working copies/forks. */
+@ConditionalOnProperty(
+        prefix = "taxonomy.features.multi-repository-api",
+        name = "enabled",
+        havingValue = "true",
+        matchIfMissing = false)
 @RestController
 @RequestMapping("/api/repositories")
 @Tag(name = "Architecture Repositories")
