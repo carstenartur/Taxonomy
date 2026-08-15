@@ -34,6 +34,32 @@ class JavaToolingWorkflowRepositoryTest {
                 .contains("! -name 'taxonomy-tooling-*.jar'");
     }
 
+    @Test
+    void protectedMainAdvanceWaitsForEveryRequiredCheckOnTheExactHead()
+            throws Exception {
+        Path root = findRepositoryRoot();
+        String workflow = read(root.resolve(
+                ".github/workflows/protected-release-main-advance.yml"));
+
+        String canonical = "- name: Run canonical verification on exact snapshot";
+        String completeGates =
+                "- name: Wait for complete protected-main pull-request gates";
+        String merge = "- name: Merge through protected main";
+
+        assertThat(workflow)
+                .contains(canonical)
+                .contains(completeGates)
+                .contains(merge)
+                .contains("gh pr checks \"$PR_NUMBER\" --required --watch --fail-fast")
+                .contains("head_before=$(gh pr view \"$PR_NUMBER\" --json headRefOid")
+                .contains("head_after=$(gh pr view \"$PR_NUMBER\" --json headRefOid")
+                .contains("gh pr merge \"$PR_NUMBER\" --merge --match-head-commit \"$EXPECTED_SHA\"");
+        assertThat(workflow.indexOf(canonical))
+                .isLessThan(workflow.indexOf(completeGates));
+        assertThat(workflow.indexOf(completeGates))
+                .isLessThan(workflow.indexOf(merge));
+    }
+
     private static void assertWorkflowBuild(Path workflow, String diagnostic)
             throws Exception {
         String text = read(workflow);
