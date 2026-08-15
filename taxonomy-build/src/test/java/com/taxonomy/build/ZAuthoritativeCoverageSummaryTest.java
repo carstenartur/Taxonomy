@@ -83,13 +83,14 @@ class ZAuthoritativeCoverageSummaryTest {
     }
 
     @Test
-    void acceptsStandardAdditionalCountersWithoutMixingNestedCounters(
+    void acceptsJacocoDoctypeAndAdditionalCountersWithoutLoadingTheDtd(
             @TempDir Path temporaryDirectory) throws Exception {
         Path report = temporaryDirectory.resolve("jacoco.xml");
         Files.writeString(
                 report,
                 """
                 <?xml version="1.0" encoding="UTF-8"?>
+                <!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.1//EN" "missing-report.dtd">
                 <report name="synthetic">
                   <package name="nested">
                     <counter type="BRANCH" missed="999" covered="1"/>
@@ -121,8 +122,13 @@ class ZAuthoritativeCoverageSummaryTest {
             throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
         factory.setFeature(
-                "http://apache.org/xml/features/disallow-doctype-decl", true);
+                "http://apache.org/xml/features/disallow-doctype-decl", false);
+        factory.setFeature(
+                "http://apache.org/xml/features/nonvalidating/load-external-dtd",
+                false);
         factory.setFeature(
                 "http://xml.org/sax/features/external-general-entities", false);
         factory.setFeature(
