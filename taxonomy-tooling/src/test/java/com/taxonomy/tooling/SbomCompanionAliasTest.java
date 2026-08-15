@@ -55,4 +55,19 @@ class SbomCompanionAliasTest {
                 .hasMessageContaining("metadata.timestamp");
         assertThat(output).doesNotExist();
     }
+
+    @Test
+    void failureNeverDeletesAnOutputDirectory(@TempDir Path root)
+            throws Exception {
+        Path missingSbom = root.resolve("missing-sbom.json");
+        Path outputDirectory = root.resolve("taxonomy-vex.json");
+        Files.createDirectories(outputDirectory);
+
+        assertThatThrownBy(() -> SbomCompanionGenerator.generate(
+                missingSbom,
+                outputDirectory))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("SBOM file is missing");
+        assertThat(outputDirectory).isDirectory();
+    }
 }
