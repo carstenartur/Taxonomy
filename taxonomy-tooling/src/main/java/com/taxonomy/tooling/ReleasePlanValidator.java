@@ -3,8 +3,11 @@ package com.taxonomy.tooling;
 import org.w3c.dom.Element;
 
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -18,7 +21,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /** Validates the declared Maven reactor and release transition without SCM writes. */
 public final class ReleasePlanValidator {
@@ -37,7 +39,7 @@ public final class ReleasePlanValidator {
             String nextDevelopmentVersion,
             String state,
             boolean requireClean) throws IOException {
-        Path repository = root.toAbsolutePath().normalize();
+        Path repository = root.toRealPath();
         String release = VersionNumbers.normalizeRelease(
                 releaseVersion, "releaseVersion");
         String next = VersionNumbers.normalizeDevelopment(
@@ -100,12 +102,23 @@ public final class ReleasePlanValidator {
                             + ": maven-release-plugin would create a second SCM release authority");
                     continue;
                 }
+                Coordinate coordinate = resolveCoordinate(
+                        versioned.coordinate(), properties);
+                String coordinateText = coordinate == null
+                        ? ""
+                        : " " + coordinate.groupId() + ":"
+                                + coordinate.artifactId();
+                if (coordinate != null
+                        && (PROPERTY.matcher(coordinate.groupId()).find()
+                                || PROPERTY.matcher(coordinate.artifactId()).find())) {
+                    failures.add(relative + ": " + versioned.kind()
+                            + coordinateText
+                            + " uses unresolved coordinate property");
+                    continue;
+                }
+
                 String resolved = resolveProperties(
                         versioned.rawVersion(), properties);
-                String coordinateText = versioned.coordinate() == null
-                        ? ""
-                        : " " + versioned.coordinate().groupId() + ":"
-                                + versioned.coordinate().artifactId();
                 if (PROPERTY.matcher(resolved).find()) {
                     failures.add(relative + ": " + versioned.kind()
                             + coordinateText + " uses unresolved version property '"
@@ -118,7 +131,7 @@ public final class ReleasePlanValidator {
                 }
                 boolean internalSnapshot = ("dependency".equals(versioned.kind())
                         || "parent".equals(versioned.kind()))
-                        && internalCoordinates.contains(versioned.coordinate())
+                        && internalCoordinates.contains(coordinate)
                         && resolved.equals(current)
                         && ("development".equals(normalizedState)
                                 || "advanced".equals(normalizedState));
@@ -135,14 +148,7 @@ public final class ReleasePlanValidator {
             failures.add(
                     "release.properties: stale Maven Release Plugin state is present");
         }
-        try (Stream<Path> files = Files.walk(repository)) {
-            files.filter(Files::isRegularFile)
-                    .filter(path -> "pom.xml.releaseBackup".equals(
-                            path.getFileName().toString()))
-                    .filter(path -> !contains(path, "target"))
-                    .forEach(path -> failures.add(relative(repository, path)
-                            + ": stale Maven Release Plugin backup is present"));
-        }
+        collectReleaseBackups(repository, failures);
 
         if (!failures.isEmpty()) {
             throw new IllegalArgumentException(
@@ -173,29 +179,45 @@ public final class ReleasePlanValidator {
     }
 
     static List<Path> reactorPomPaths(Path root) throws IOException {
-        Path repository = root.toAbsolutePath().normalize();
-        Path rootPom = repository.resolve("pom.xml");
+        Path repository = root.toRealPath();
+        Path rootPom = repository.resolve("pom.xml").toAbsolutePath().normalize();
         if (!Files.isRegularFile(rootPom)) {
             throw new IllegalArgumentException(
                     "root pom.xml does not exist below " + repository);
         }
+        Path realRootPom = rootPom.toRealPath();
+        if (!realRootPom.equals(rootPom) || !realRootPom.startsWith(repository)) {
+            throw new IllegalArgumentException(
+                    "root pom.xml must be a real file inside " + repository);
+        }
+
         Deque<Path> pending = new ArrayDeque<>();
-        pending.add(rootPom);
+        pending.add(realRootPom);
         List<Path> discovered = new ArrayList<>();
         Set<Path> seen = new LinkedHashSet<>();
         while (!pending.isEmpty()) {
-            Path pom = pending.removeFirst().toAbsolutePath().normalize();
+            Path declaredPom = pending.removeFirst()
+                    .toAbsolutePath().normalize();
+            if (!declaredPom.startsWith(repository)) {
+                throw new IllegalArgumentException(
+                        "declared Maven module escapes repository root: "
+                                + declaredPom);
+            }
+            if (!Files.isRegularFile(declaredPom)) {
+                throw new IllegalArgumentException(
+                        "declared Maven module POM does not exist: "
+                                + declaredPom);
+            }
+            Path pom = declaredPom.toRealPath();
+            if (!pom.startsWith(repository) || !pom.equals(declaredPom)) {
+                throw new IllegalArgumentException(
+                        "declared Maven module must not traverse a symbolic link "
+                                + "or escape the repository: " + declaredPom);
+            }
             if (!seen.add(pom)) {
                 continue;
             }
-            if (!Files.isRegularFile(pom)) {
-                throw new IllegalArgumentException(
-                        "declared Maven module POM does not exist: " + pom);
-            }
-            if (!pom.startsWith(repository)) {
-                throw new IllegalArgumentException(
-                        "declared Maven module escapes repository root: " + pom);
-            }
+
             Element project = XmlSupport.parse(pom).getDocumentElement();
             discovered.add(pom);
             Element modules = XmlSupport.child(project, "modules");
@@ -207,10 +229,17 @@ public final class ReleasePlanValidator {
                 }
                 Path modulePath = pom.getParent().resolve(module)
                         .toAbsolutePath().normalize();
-                Path modulePom = "pom.xml".equals(
-                        modulePath.getFileName().toString())
+                if (!modulePath.startsWith(repository)) {
+                    throw new IllegalArgumentException(relative(repository, pom)
+                            + " declares module '" + module
+                            + "' outside the repository");
+                }
+                Path moduleFileName = modulePath.getFileName();
+                Path modulePom = moduleFileName != null
+                        && "pom.xml".equals(moduleFileName.toString())
                                 ? modulePath
-                                : modulePath.resolve("pom.xml");
+                                : modulePath.resolve("pom.xml")
+                                        .toAbsolutePath().normalize();
                 if (!modulePom.startsWith(repository)) {
                     throw new IllegalArgumentException(relative(repository, pom)
                             + " declares module '" + module
@@ -221,7 +250,14 @@ public final class ReleasePlanValidator {
                             + " declares module '" + module + "', but "
                             + relative(repository, modulePom) + " does not exist");
                 }
-                pending.add(modulePom);
+                Path realModulePom = modulePom.toRealPath();
+                if (!realModulePom.startsWith(repository)
+                        || !realModulePom.equals(modulePom)) {
+                    throw new IllegalArgumentException(relative(repository, pom)
+                            + " declares module '" + module
+                            + "' through a symbolic link or outside the repository");
+                }
+                pending.add(realModulePom);
             }
         }
         return discovered;
@@ -354,6 +390,17 @@ public final class ReleasePlanValidator {
         return result;
     }
 
+    private static Coordinate resolveCoordinate(
+            Coordinate coordinate,
+            Map<String, String> properties) {
+        if (coordinate == null) {
+            return null;
+        }
+        return new Coordinate(
+                resolveProperties(coordinate.groupId(), properties),
+                resolveProperties(coordinate.artifactId(), properties));
+    }
+
     private static List<VersionedElement> versionedElements(PomModel model) {
         List<VersionedElement> result = new ArrayList<>();
         Element parent = XmlSupport.child(model.project(), "parent");
@@ -410,6 +457,45 @@ public final class ReleasePlanValidator {
         return result;
     }
 
+    private static void collectReleaseBackups(
+            Path repository,
+            List<String> failures) throws IOException {
+        Files.walkFileTree(repository, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(
+                    Path directory,
+                    BasicFileAttributes attributes) {
+                if (!directory.equals(repository)
+                        && ignoredDirectory(directory)) {
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(
+                    Path file,
+                    BasicFileAttributes attributes) {
+                if (attributes.isRegularFile()
+                        && "pom.xml.releaseBackup".equals(
+                                file.getFileName().toString())) {
+                    failures.add(relative(repository, file)
+                            + ": stale Maven Release Plugin backup is present");
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private static boolean ignoredDirectory(Path directory) {
+        Path fileName = directory.getFileName();
+        if (fileName == null) {
+            return false;
+        }
+        String name = fileName.toString();
+        return ".git".equals(name) || "target".equals(name);
+    }
+
     private static void checkGitClean(Path root) {
         if (!Files.exists(root.resolve(".git"))) {
             return;
@@ -424,15 +510,6 @@ public final class ReleasePlanValidator {
                     "release verification requires a clean checkout; "
                             + "commit or stash local changes");
         }
-    }
-
-    private static boolean contains(Path path, String component) {
-        for (Path part : path) {
-            if (component.equals(part.toString())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static String relative(Path root, Path path) {
