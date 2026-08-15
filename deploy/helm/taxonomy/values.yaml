@@ -96,16 +96,42 @@ podDisruptionBudget:
   enabled: false
   minAvailable: 1
 
-# The default policy permits application access only from the same namespace.
-# When ingress is enabled, add the ingress-controller namespace/pod selectors to
-# ingressFrom. Egress remains open because PostgreSQL, LLM and optional model
-# endpoints are deployment-specific; replace it with explicit rules as required.
+# Default-deny ingress/egress with explicit, composable exceptions.
+#
+# restricted: permit only the generated same-namespace and DNS rules plus the
+#             deployment-specific entries supplied in `egress`.
+# open:       render one unrestricted egress rule. This is an explicit legacy or
+#             diagnostic opt-in and is rejected by the supported small/Rancher
+#             verification profiles.
+#
+# Kubernetes NetworkPolicy does not resolve FQDNs. External database, LLM, OIDC,
+# OTLP or model-download destinations must therefore be represented by reviewed
+# ipBlock, namespaceSelector and/or podSelector rules. CNI-specific FQDN policies
+# belong in separately managed resources, not in this portable chart.
 networkPolicy:
   enabled: true
   allowSameNamespace: true
   ingressFrom: []
-  egress:
-    - {}
+  egressMode: restricted
+  allowSameNamespaceEgress: true
+  dns:
+    enabled: true
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+    podSelector:
+      matchExpressions:
+        - key: k8s-app
+          operator: In
+          values: [kube-dns, coredns]
+    ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+  # Additional explicit Kubernetes NetworkPolicy egress rules. Examples and
+  # operational guidance are documented in README.md and RANCHER.md.
+  egress: []
 
 # Existing Secret containing the keys referenced by secretEnv. Required while
 # secretEnv is non-empty; credentials are never rendered into chart values.
