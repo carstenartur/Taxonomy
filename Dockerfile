@@ -22,6 +22,7 @@ RUN chmod +x mvnw
 
 # Copy the reactor descriptors first so dependency downloads remain cacheable.
 COPY pom.xml .
+COPY taxonomy-tooling/pom.xml taxonomy-tooling/pom.xml
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
 COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
@@ -30,8 +31,10 @@ COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
 COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml
 COPY taxonomy-build/pom.xml taxonomy-build/pom.xml
 
-# Copy all inputs required by the packaged application. In particular, the app
-# Maven module embeds Markdown help, screenshots and legal notices in the JAR.
+# Copy all inputs required by the packaged application and every main-source
+# reactor module. In particular, the app Maven module embeds Markdown help,
+# screenshots and legal notices in the JAR.
+COPY taxonomy-tooling/src taxonomy-tooling/src
 COPY taxonomy-domain/src taxonomy-domain/src
 COPY taxonomy-dsl/src taxonomy-dsl/src
 COPY taxonomy-export/src taxonomy-export/src
