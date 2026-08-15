@@ -206,7 +206,7 @@ public class GitAuthoritativeHypothesisReviewService {
                     && current != HypothesisStatus.PROPOSED) {
                 throw new IllegalStateException(
                         "Hypothesis " + hypothesisId
-                                + " cannot be " + name().toLowerCase()
+                                + " cannot be " + dslStatus
                                 + " from " + current);
             }
         }

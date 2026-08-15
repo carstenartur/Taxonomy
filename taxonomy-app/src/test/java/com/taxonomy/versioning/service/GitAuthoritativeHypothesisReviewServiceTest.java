@@ -220,7 +220,7 @@ class GitAuthoritativeHypothesisReviewServiceTest {
         assertThatThrownBy(() -> service.reject(
                 42L, context, HEAD_A, metadata))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("cannot be reject");
+                .hasMessageContaining("cannot be rejected");
         verify(mutationService, never()).upsert(any(), any(), any(), any());
         verify(mutationService, never()).remove(any(), any(), any(), any());
     }
