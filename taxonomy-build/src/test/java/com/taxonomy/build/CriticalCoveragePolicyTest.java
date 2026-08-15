@@ -90,11 +90,21 @@ class CriticalCoveragePolicyTest {
     }
 
     @Test
-    void changedSourceWithoutBranchesUsesLineCoverageAndReportsBranchAsNotApplicable(
+    void changedSourceWithoutABranchCounterUsesLineCoverageAndReportsNotApplicable(
             @TempDir Path root) throws Exception {
-        Path xml = write(root.resolve("jacoco.xml"), reportXml(
-                90, 10, 80, 20,
-                80, 20, 0, 0));
+        Path xml = write(root.resolve("jacoco.xml"), """
+                <report name="critical">
+                  <group name="taxonomy-app">
+                    <package name="com/taxonomy/security">
+                      <sourcefile name="Foo.java">
+                        <counter type="LINE" missed="20" covered="80"/>
+                      </sourcefile>
+                      <counter type="LINE" missed="10" covered="90"/>
+                      <counter type="BRANCH" missed="20" covered="80"/>
+                    </package>
+                  </group>
+                </report>
+                """);
 
         CriticalCoveragePolicy.Evaluation evaluation = evaluator.evaluate(
                 xml,
@@ -153,8 +163,13 @@ class CriticalCoveragePolicyTest {
         runGit(root, "add", ".");
         runGit(root, "commit", "-m", "base");
         String baseCommit = runGit(root, "rev-parse", "HEAD").strip();
-        write(critical, "package com.taxonomy.security; class Foo { boolean secure() { return true; } }\n");
-        write(unrelated, "package com.taxonomy.ui; class Bar { int value() { return 1; } }\n");
+
+        write(critical,
+                "package com.taxonomy.security; class Foo { boolean secure() { return true; } }\n");
+        write(unrelated,
+                "package com.taxonomy.ui; class Bar { int value() { return 1; } }\n");
+        runGit(root, "add", ".");
+        runGit(root, "commit", "-m", "changed");
 
         CriticalCoveragePolicy.ChangedSources discovered =
                 evaluator.discoverChangedSources(root, baseCommit);
