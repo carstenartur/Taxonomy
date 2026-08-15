@@ -36,56 +36,69 @@ public final class SbomCompanionGenerator {
             Path outputPath,
             Instant timestamp,
             UUID serialNumber) throws IOException {
+        return generate(
+                sbomPath,
+                outputPath,
+                timestamp,
+                serialNumber,
+                SbomCompanionGenerator::writeAtomically);
+    }
+
+    static Result generate(
+            Path sbomPath,
+            Path outputPath,
+            Instant timestamp,
+            UUID serialNumber,
+            CompanionWriter writer) throws IOException {
         Path sbom = sbomPath.toAbsolutePath().normalize();
         Path output = outputPath.toAbsolutePath().normalize();
-        Instant generatedAt = Objects.requireNonNull(
-                timestamp, "timestamp").truncatedTo(ChronoUnit.SECONDS);
-        UUID companionId = Objects.requireNonNull(
-                serialNumber, "serialNumber");
         if (sbom.equals(output)) {
             throw new IllegalArgumentException(
                     "SBOM companion output must differ from the source SBOM");
         }
-        if (!Files.isRegularFile(sbom)) {
-            Files.deleteIfExists(output);
-            throw new IllegalArgumentException(
-                    "CycloneDX SBOM file is missing: " + sbom);
-        }
 
-        final Map<String, Object> source;
-        final String sourceSerial;
-        final String sourceVersion;
-        final int componentCount;
         try {
-            source = FlatJson.parseObject(
+            Instant generatedAt = Objects.requireNonNull(
+                    timestamp, "timestamp").truncatedTo(ChronoUnit.SECONDS);
+            UUID companionId = Objects.requireNonNull(
+                    serialNumber, "serialNumber");
+            CompanionWriter effectiveWriter = Objects.requireNonNull(
+                    writer, "writer");
+            if (!Files.isRegularFile(sbom)) {
+                throw new IllegalArgumentException(
+                        "CycloneDX SBOM file is missing: " + sbom);
+            }
+
+            Map<String, Object> source = FlatJson.parseObject(
                     Files.readString(sbom, StandardCharsets.UTF_8));
-            sourceSerial = scalarText(
+            String sourceSerial = scalarText(
                     source.get("serialNumber"), "unknown", "serialNumber");
-            sourceVersion = scalarText(
+            String sourceVersion = scalarText(
                     source.get("version"), "1", "version");
-            componentCount = componentCount(source.get("components"));
-        } catch (IOException | IllegalArgumentException failure) {
-            Files.deleteIfExists(output);
+            int componentCount = componentCount(source.get("components"));
+
+            LinkedHashMap<String, Object> companion = new LinkedHashMap<>();
+            companion.put("bomFormat", "CycloneDX");
+            companion.put("specVersion", "1.6");
+            companion.put("version", 1L);
+            companion.put("serialNumber", "urn:uuid:" + companionId);
+            companion.put("metadata", metadata(
+                    generatedAt, sourceSerial, sourceVersion));
+            companion.put("vulnerabilities", List.of());
+
+            effectiveWriter.write(
+                    output, FlatJson.pretty(companion) + "\n");
+            return new Result(
+                    output,
+                    generatedAt,
+                    companionId,
+                    sourceSerial,
+                    sourceVersion,
+                    componentCount);
+        } catch (IOException | RuntimeException failure) {
+            deleteStaleOutput(output, failure);
             throw failure;
         }
-
-        LinkedHashMap<String, Object> companion = new LinkedHashMap<>();
-        companion.put("bomFormat", "CycloneDX");
-        companion.put("specVersion", "1.6");
-        companion.put("version", 1L);
-        companion.put("serialNumber", "urn:uuid:" + companionId);
-        companion.put("metadata", metadata(
-                generatedAt, sourceSerial, sourceVersion));
-        companion.put("vulnerabilities", List.of());
-
-        writeAtomically(output, FlatJson.pretty(companion) + "\n");
-        return new Result(
-                output,
-                generatedAt,
-                companionId,
-                sourceSerial,
-                sourceVersion,
-                componentCount);
     }
 
     private static Map<String, Object> metadata(
@@ -167,6 +180,14 @@ public final class SbomCompanionGenerator {
                 "CycloneDX SBOM components must be an array");
     }
 
+    private static void deleteStaleOutput(Path output, Throwable failure) {
+        try {
+            Files.deleteIfExists(output);
+        } catch (IOException cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+        }
+    }
+
     private static void writeAtomically(Path output, String content)
             throws IOException {
         Path parent = output.getParent();
@@ -176,7 +197,7 @@ public final class SbomCompanionGenerator {
         }
         Files.createDirectories(parent);
         Path temporary = Files.createTempFile(
-                parent, "." + output.getFileName(), ".tmp");
+                parent, ".taxonomy-sbom-", ".tmp");
         boolean moved = false;
         try {
             Files.writeString(temporary, content, StandardCharsets.UTF_8);
@@ -198,6 +219,11 @@ public final class SbomCompanionGenerator {
                 Files.deleteIfExists(temporary);
             }
         }
+    }
+
+    @FunctionalInterface
+    interface CompanionWriter {
+        void write(Path output, String content) throws IOException;
     }
 
     public record Result(
