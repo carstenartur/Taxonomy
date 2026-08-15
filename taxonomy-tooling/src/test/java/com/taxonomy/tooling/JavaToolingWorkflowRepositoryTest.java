@@ -39,6 +39,25 @@ class JavaToolingWorkflowRepositoryTest {
     }
 
     @Test
+    void workflowPermissionsAndOutputsMatchTheirConsumers() throws Exception {
+        Path root = findRepositoryRoot();
+        String protectedAdvance = read(root.resolve(
+                ".github/workflows/protected-release-main-advance.yml"));
+        String releaseWorkflow = read(root.resolve(
+                ".github/workflows/deploy-release.yml"));
+
+        assertThat(protectedAdvance).contains(
+                "permissions:\n"
+                        + "  actions: write\n"
+                        + "  checks: read\n"
+                        + "  contents: write\n"
+                        + "  pull-requests: write");
+        assertThat(releaseWorkflow)
+                .doesNotContain("id: release_tooling")
+                .doesNotContain("jar=$RUNNER_TEMP/taxonomy-tooling.jar");
+    }
+
+    @Test
     void releaseScriptRevalidatesTheCommittedReleaseSourceAsClean()
             throws Exception {
         Path root = findRepositoryRoot();
