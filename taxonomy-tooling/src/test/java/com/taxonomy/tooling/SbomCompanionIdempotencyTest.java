@@ -37,18 +37,23 @@ class SbomCompanionIdempotencyTest {
                 }
                 """, StandardCharsets.UTF_8);
 
-        SbomCompanionGenerator.generate(
-                sbom, output, timestamp, serial);
+        SbomCompanionGenerator.Result result =
+                SbomCompanionGenerator.generate(
+                        sbom, output, timestamp, serial);
         byte[] first = Files.readAllBytes(output);
         SbomCompanionGenerator.generate(
                 sbom, output, timestamp, serial);
 
+        String rendered = Files.readString(output, StandardCharsets.UTF_8);
         assertThat(Files.readAllBytes(output)).isEqualTo(first);
-        assertThat(Files.readString(output, StandardCharsets.UTF_8))
+        assertThat(result.componentCount()).isEqualTo(1);
+        assertThat(result.sourceSha256()).matches("[0-9a-f]{64}");
+        assertThat(rendered)
                 .contains("2031-08-15T10:11:12Z")
                 .contains("urn:uuid:" + serial)
+                .contains(result.sourceSha256())
                 .contains("taxonomy:sbom-sha256")
-                .contains("Größe");
+                .doesNotContain("Größe");
     }
 
     @Test
