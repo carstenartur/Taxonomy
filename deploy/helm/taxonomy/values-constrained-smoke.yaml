@@ -1,0 +1,60 @@
+# Live constrained-cluster smoke profile.
+#
+# This profile is not a production database recommendation. It uses the packaged
+# HSQLDB default so scheduling, probes, security contexts, NetworkPolicy and a
+# minimal HTTP workflow can be proven without introducing a second database pod
+# into the namespace quota. Production profiles continue to require the reviewed
+# external database Secret and explicit egress rule.
+
+replicaCount: 1
+
+image:
+  repository: taxonomy-smoke
+  tag: ""
+  digest: ""
+  pullPolicy: Never
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: "500m"
+    memory: 1Gi
+
+secretEnv: {}
+existingSecret: ""
+
+networkPolicy:
+  enabled: true
+  allowSameNamespace: true
+  egressMode: restricted
+  allowSameNamespaceEgress: true
+  egress: []
+
+config:
+  SPRING_PROFILES_ACTIVE: hsqldb,kubernetes
+  TAXONOMY_INIT_ASYNC: "true"
+  TAXONOMY_INIT_RELOAD_EXISTING: "false"
+  TAXONOMY_DDL_AUTO: create
+  TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap
+  TAXONOMY_SEARCH_SYNC_STRATEGY: sync
+  TAXONOMY_SPRINGDOC_ENABLED: "false"
+  TAXONOMY_FORWARD_HEADERS_STRATEGY: framework
+  TAXONOMY_EMBEDDING_ENABLED: "false"
+  TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
+  TAXONOMY_THYMELEAF_CACHE: "true"
+  JAVA_OPTS: -XX:+UseSerialGC -XX:MaxRAMPercentage=60.0 -XX:InitialRAMPercentage=15.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp
+
+startupProbe:
+  failureThreshold: 90
+  periodSeconds: 5
+  timeoutSeconds: 3
+readinessProbe:
+  failureThreshold: 9
+  periodSeconds: 5
+  timeoutSeconds: 3
+livenessProbe:
+  failureThreshold: 3
+  periodSeconds: 20
+  timeoutSeconds: 3
