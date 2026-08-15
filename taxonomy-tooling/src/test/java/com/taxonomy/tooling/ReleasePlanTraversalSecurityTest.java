@@ -24,13 +24,27 @@ class ReleasePlanTraversalSecurityTest {
         try {
             Files.createSymbolicLink(root.resolve("linked-module"), outside);
         } catch (UnsupportedOperationException | IOException failure) {
-            Assumptions.abort("Symbolic links are unavailable: " + failure);
+            Assumptions.assumeTrue(
+                    false,
+                    () -> "Symbolic links are unavailable: " + failure);
+            return;
         }
 
         assertThatThrownBy(() -> validate(root))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("symbolic link")
                 .hasMessageContaining("linked-module");
+    }
+
+    @Test
+    void rejectsAbsoluteModulePathWithAnActionableDiagnostic(
+            @TempDir Path root) throws Exception {
+        writeRootPom(root, root.getRoot().toString());
+
+        assertThatThrownBy(() -> validate(root))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("outside the repository")
+                .doesNotHaveCauseInstanceOf(NullPointerException.class);
     }
 
     @Test
