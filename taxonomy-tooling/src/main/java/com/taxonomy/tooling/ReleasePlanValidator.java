@@ -102,12 +102,23 @@ public final class ReleasePlanValidator {
                             + ": maven-release-plugin would create a second SCM release authority");
                     continue;
                 }
+                Coordinate coordinate = resolveCoordinate(
+                        versioned.coordinate(), properties);
+                String coordinateText = coordinate == null
+                        ? ""
+                        : " " + coordinate.groupId() + ":"
+                                + coordinate.artifactId();
+                if (coordinate != null
+                        && (PROPERTY.matcher(coordinate.groupId()).find()
+                                || PROPERTY.matcher(coordinate.artifactId()).find())) {
+                    failures.add(relative + ": " + versioned.kind()
+                            + coordinateText
+                            + " uses unresolved coordinate property");
+                    continue;
+                }
+
                 String resolved = resolveProperties(
                         versioned.rawVersion(), properties);
-                String coordinateText = versioned.coordinate() == null
-                        ? ""
-                        : " " + versioned.coordinate().groupId() + ":"
-                                + versioned.coordinate().artifactId();
                 if (PROPERTY.matcher(resolved).find()) {
                     failures.add(relative + ": " + versioned.kind()
                             + coordinateText + " uses unresolved version property '"
@@ -120,7 +131,7 @@ public final class ReleasePlanValidator {
                 }
                 boolean internalSnapshot = ("dependency".equals(versioned.kind())
                         || "parent".equals(versioned.kind()))
-                        && internalCoordinates.contains(versioned.coordinate())
+                        && internalCoordinates.contains(coordinate)
                         && resolved.equals(current)
                         && ("development".equals(normalizedState)
                                 || "advanced".equals(normalizedState));
@@ -377,6 +388,17 @@ public final class ReleasePlanValidator {
             }
         }
         return result;
+    }
+
+    private static Coordinate resolveCoordinate(
+            Coordinate coordinate,
+            Map<String, String> properties) {
+        if (coordinate == null) {
+            return null;
+        }
+        return new Coordinate(
+                resolveProperties(coordinate.groupId(), properties),
+                resolveProperties(coordinate.artifactId(), properties));
     }
 
     private static List<VersionedElement> versionedElements(PomModel model) {
