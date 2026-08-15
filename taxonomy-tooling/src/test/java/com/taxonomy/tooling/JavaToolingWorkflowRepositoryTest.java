@@ -80,9 +80,9 @@ class JavaToolingWorkflowRepositoryTest {
         String resume = workflow.substring(resumeStart, resumeEnd);
 
         String releaseCheckout = "git checkout --detach \"$tag\"";
-        String releasePlan = "--state release \\";
+        String releasePlan = "--state release";
         String advancedCheckout = "git checkout --detach origin/main";
-        String advancedPlan = "--state advanced \\";
+        String advancedPlan = "--state advanced";
 
         assertThat(resume)
                 .contains("read-pom-version")
@@ -97,6 +97,85 @@ class JavaToolingWorkflowRepositoryTest {
                 .isLessThan(resume.indexOf(advancedCheckout));
         assertThat(resume.indexOf(advancedCheckout))
                 .isLessThan(resume.indexOf(advancedPlan));
+    }
+
+    @Test
+    void protectedAdvanceValidatesTheExactAdvancedPlanBeforeOpeningAPr()
+            throws Exception {
+        Path root = findRepositoryRoot();
+        String workflow = read(root.resolve(
+                ".github/workflows/protected-release-main-advance.yml"));
+
+        int handoffStart = workflow.indexOf("- name: Validate immutable handoff");
+        int createPrStart = workflow.indexOf(
+                "- name: Create protected-main pull request");
+        assertThat(handoffStart).isGreaterThanOrEqualTo(0);
+        assertThat(createPrStart).isGreaterThan(handoffStart);
+        String handoff = workflow.substring(handoffStart, createPrStart);
+
+        String checkout = "git checkout --detach \"$EXPECTED_SHA\"";
+        String versionState = "check-version-state";
+        String pomVersion = "read-pom-version";
+        String releasePlan = "check-release-plan";
+
+        assertThat(handoff)
+                .contains(checkout)
+                .contains(versionState)
+                .contains(pomVersion)
+                .contains(releasePlan)
+                .contains("--state advanced")
+                .contains("--require-clean true");
+        assertThat(handoff.indexOf(checkout))
+                .isLessThan(handoff.indexOf(versionState));
+        assertThat(handoff.indexOf(versionState))
+                .isLessThan(handoff.indexOf(pomVersion));
+        assertThat(handoff.indexOf(pomVersion))
+                .isLessThan(handoff.indexOf(releasePlan));
+    }
+
+    @Test
+    void manualDevelopmentAdvanceValidatesSourceDirtyAndCommittedPlans()
+            throws Exception {
+        Path root = findRepositoryRoot();
+        String workflow = read(root.resolve(
+                ".github/workflows/prepare-development-version.yml"));
+
+        int validationStart = workflow.indexOf(
+                "- name: Validate and prepare exact development version");
+        int transitionStart = workflow.indexOf(
+                "- name: Create coherent version transition");
+        int openPrStart = workflow.indexOf(
+                "- name: Open protected main pull request");
+        assertThat(validationStart).isGreaterThanOrEqualTo(0);
+        assertThat(transitionStart).isGreaterThan(validationStart);
+        assertThat(openPrStart).isGreaterThan(transitionStart);
+
+        String validation = workflow.substring(validationStart, transitionStart);
+        String transition = workflow.substring(transitionStart, openPrStart);
+        assertThat(validation)
+                .contains("compare-versions")
+                .contains("check-release-plan")
+                .contains("--state development")
+                .contains("--require-clean true");
+
+        String dirtyPlan = "--require-clean false";
+        String commit = "git commit -m \"Prepare development version $NEXT_VERSION\"";
+        String cleanPlan = "--require-clean true";
+        String push = "git push origin \"$BRANCH\"";
+        assertThat(transition)
+                .contains("--state advanced")
+                .contains(dirtyPlan)
+                .contains(commit)
+                .contains(cleanPlan)
+                .contains(push);
+        assertThat(count(transition, "check-release-plan")).isEqualTo(2);
+        assertThat(count(transition, "--state advanced")).isEqualTo(2);
+        assertThat(transition.indexOf(dirtyPlan))
+                .isLessThan(transition.indexOf(commit));
+        assertThat(transition.indexOf(commit))
+                .isLessThan(transition.indexOf(cleanPlan));
+        assertThat(transition.indexOf(cleanPlan))
+                .isLessThan(transition.indexOf(push));
     }
 
     @Test
