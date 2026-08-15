@@ -84,8 +84,13 @@ Makefiles and package metadata are diffed against the immutable green
 release-core-removal baseline. New executable `python`, `python3`, `pytest`,
 `pip` or `actions/setup-python` references fail the Maven/JUnit build.
 
-The baseline must remain in Git ancestry; source archives without `.git` retain
-the exact file-inventory fallback.
+The exact file-inventory check runs in every checkout, including source archives
+and intentionally shallow specialized jobs. The ancestry and productive-diff
+checks require the immutable baseline object and therefore run in complete-history
+checkouts. Canonical CI uses `fetch-depth: 0` and is the merge authority for those
+history-sensitive assertions. A missing baseline in any non-shallow Git checkout
+remains a hard failure; shallow database or security jobs do not pretend to own a
+history they were deliberately not given.
 
 ## Remaining migration inventory
 
