@@ -54,6 +54,8 @@ class SbomCompanionGeneratorTest {
         assertThat(result.sourceSerialNumber())
                 .isEqualTo("urn:uuid:source-bom");
         assertThat(result.sourceVersion()).isEqualTo("7");
+        assertThat(result.sourceSha256())
+                .matches("[0-9a-f]{64}");
         assertThat(result.componentCount()).isEqualTo(2);
 
         Map<String, Object> companion = FlatJson.parseObject(
@@ -73,6 +75,7 @@ class SbomCompanionGeneratorTest {
         assertThat(properties)
                 .containsEntry("taxonomy:sbom-ref", "urn:uuid:source-bom")
                 .containsEntry("taxonomy:sbom-version", "7")
+                .containsEntry("taxonomy:sbom-sha256", result.sourceSha256())
                 .containsEntry("vex:assessment-status", "not-assessed")
                 .containsEntry(
                         "vex:policy",
@@ -169,7 +172,7 @@ class SbomCompanionGeneratorTest {
     }
 
     @Test
-    void cliAcceptsDeterministicInputsAndReportsInvalidTimestamp(
+    void cliAcceptsExplicitIdentityAndReportsInvalidOrPartialIdentity(
             @TempDir Path root) throws Exception {
         Path sbom = root.resolve("source.json");
         Path output = root.resolve("companion.json");
@@ -199,6 +202,7 @@ class SbomCompanionGeneratorTest {
                 .contains("SBOM companion document generated")
                 .contains("Vulnerability assessment: not-assessed")
                 .contains("SBOM serial: urn:uuid:source")
+                .contains("SBOM SHA-256:")
                 .contains("Components in SBOM: 0");
         assertThat(stderr.toString(StandardCharsets.UTF_8)).isEmpty();
 
@@ -208,7 +212,8 @@ class SbomCompanionGeneratorTest {
                         "generate-sbom-companion",
                         "--sbom", sbom.toString(),
                         "--output", output.toString(),
-                        "--timestamp", "not-an-instant"},
+                        "--timestamp", "not-an-instant",
+                        "--serial-number", SERIAL.toString()},
                 root,
                 new PrintStream(OutputStream.nullOutputStream()),
                 new PrintStream(stderr, true, StandardCharsets.UTF_8));
@@ -216,6 +221,20 @@ class SbomCompanionGeneratorTest {
         assertThat(stderr.toString(StandardCharsets.UTF_8))
                 .startsWith("::error::")
                 .contains("not-an-instant");
+
+        stderr.reset();
+        int partial = TaxonomyTooling.run(
+                new String[]{
+                        "generate-sbom-companion",
+                        "--sbom", sbom.toString(),
+                        "--output", output.toString(),
+                        "--timestamp", "2026-08-15T01:02:03Z"},
+                root,
+                new PrintStream(OutputStream.nullOutputStream()),
+                new PrintStream(stderr, true, StandardCharsets.UTF_8));
+        assertThat(partial).isEqualTo(1);
+        assertThat(stderr.toString(StandardCharsets.UTF_8))
+                .contains("--timestamp and --serial-number must be supplied together");
     }
 
     @SuppressWarnings("unchecked")
