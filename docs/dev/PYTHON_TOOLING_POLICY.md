@@ -42,7 +42,7 @@ removed. It is not an allow-list for permanent exceptions.
 | Release parameters and request anchoring | #757 |
 | Declared-reactor release-plan validation | #767 |
 | Productive release/version workflow routing | #769 |
-| Release metadata transformation and routing | #771 / #773 / cleanup follow-up |
+| Release metadata transformation and routing | #771 / #774 |
 
 ## Completed Java release-core migration
 
