@@ -9,7 +9,23 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 ROOT_POM = ROOT / "pom.xml"
-RELEASE_PLAN_CHECK = ROOT / ".github" / "scripts" / "check-release-plan.py"
+TOOLING_POM = ROOT / "taxonomy-tooling" / "pom.xml"
+RELEASE_PLAN_CHECK = (
+    ROOT
+    / "taxonomy-tooling"
+    / "src"
+    / "main"
+    / "java"
+    / "com"
+    / "taxonomy"
+    / "tooling"
+    / "ReleasePlanValidator.java"
+)
+RELEASE_PARAMETER_RESOLVER = RELEASE_PLAN_CHECK.with_name(
+    "ReleaseParametersResolver.java"
+)
+VERSION_STATE_CHECK = RELEASE_PLAN_CHECK.with_name("VersionStateVerifier.java")
+TOOLING_CLI = RELEASE_PLAN_CHECK.with_name("TaxonomyTooling.java")
 RELEASE_SCRIPT = ROOT / ".github" / "scripts" / "release.sh"
 RELEASE_IMAGE_GATE = ROOT / ".github" / "scripts" / "check-release-image-gate.py"
 RELEASE_GATE_HELPER = ROOT / ".github" / "scripts" / "verify-exact-release-gates.sh"
@@ -22,9 +38,18 @@ def require(text: str, needle: str, source: Path, failures: list[str]) -> None:
         failures.append(f"{source.relative_to(ROOT)} is missing {needle!r}")
 
 
+def forbid(text: str, needle: str, source: Path, failures: list[str]) -> None:
+    if needle in text:
+        failures.append(f"{source.relative_to(ROOT)} still contains {needle!r}")
+
+
 def main() -> int:
     pom = ROOT_POM.read_text(encoding="utf-8")
+    tooling_pom = TOOLING_POM.read_text(encoding="utf-8")
     plan_check = RELEASE_PLAN_CHECK.read_text(encoding="utf-8")
+    parameter_resolver = RELEASE_PARAMETER_RESOLVER.read_text(encoding="utf-8")
+    version_state = VERSION_STATE_CHECK.read_text(encoding="utf-8")
+    tooling_cli = TOOLING_CLI.read_text(encoding="utf-8")
     script = RELEASE_SCRIPT.read_text(encoding="utf-8")
     gate_helper = RELEASE_GATE_HELPER.read_text(encoding="utf-8")
     workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
@@ -44,18 +69,27 @@ def main() -> int:
         if image_gate.stderr:
             print(image_gate.stderr, end="", file=sys.stderr)
         failures.append(
-            "Immutable OCI image verification contract failed; see check-release-image-gate.py output"
+            "Immutable OCI image verification contract failed; see "
+            "check-release-image-gate.py output"
         )
 
     for needle in (
+        "<module>taxonomy-tooling</module>",
         "<id>release-check</id>",
-        ".github/scripts/check-release-plan.py",
-        "<argument>${releaseVersion}</argument>",
-        "<argument>${nextDevelopmentVersion}</argument>",
-        "<argument>${releaseCheckCurrentState}</argument>",
-        "<argument>${releaseCheckRequireClean}</argument>",
+        "<taxonomy.release.check>true</taxonomy.release.check>",
     ):
         require(pom, needle, ROOT_POM, failures)
+    for needle in (
+        ".github/scripts/check-release-plan.py",
+        "<executable>python3</executable>",
+    ):
+        forbid(pom, needle, ROOT_POM, failures)
+
+    for needle in (
+        "<artifactId>taxonomy-tooling</artifactId>",
+        "<mainClass>com.taxonomy.tooling.TaxonomyTooling</mainClass>",
+    ):
+        require(tooling_pom, needle, TOOLING_POM, failures)
 
     if "<artifactId>maven-release-plugin</artifactId>" in pom:
         failures.append(
@@ -65,32 +99,73 @@ def main() -> int:
     for needle in (
         "release verification requires a clean checkout",
         "maven-release-plugin would create a second SCM release authority",
-        "external {kind}",
-        'state in {"development", "advanced"}',
-        'if state == "release"',
-        "def reactor_pom_paths",
-        "def reactor_models_by_coordinate",
-        "def effective_properties",
+        "reactorPomPaths",
+        "modelsByCoordinate",
+        "effectiveProperties",
         "unresolved version property",
-        'kind in {"dependency", "parent"}',
         "declares module",
+        "external ",
+        "requireNewer",
     ):
         require(plan_check, needle, RELEASE_PLAN_CHECK, failures)
 
     for needle in (
+        "validateReleaseRequestAnchor",
+        "request_revision must advance from",
+        "release request commit must change only",
+        "validateStagedReleaseAncestry",
+        "next_version_increment must be patch, minor or major",
+        "appendOutputs",
+    ):
+        require(parameter_resolver, needle, RELEASE_PARAMETER_RESOLVER, failures)
+
+    for needle in (
+        "CITATION.cff",
+        "codemeta.json",
+        "deploy/helm/taxonomy/Chart.yaml",
+        "rootProjectVersion",
+    ):
+        require(version_state, needle, VERSION_STATE_CHECK, failures)
+
+    for needle in (
+        'case "resolve-release-parameters"',
+        'case "check-version-state"',
+        'case "check-release-plan"',
+        'case "compare-versions"',
+        'case "read-pom-version"',
+    ):
+        require(tooling_cli, needle, TOOLING_CLI, failures)
+
+    for needle in (
         "DEFER_RELEASE_PUBLICATION=${DEFER_RELEASE_PUBLICATION:-false}",
+        '"${TOOLING_JAR:?TOOLING_JAR is required}"',
         "run_maven_release_check()",
+        "run_release_plan_check()",
+        "check_version_state()",
         "stage_version_metadata()",
         "git ls-files -z -- 'pom.xml' ':(glob)**/pom.xml'",
-        'run_maven_release_check "$RELEASE_CHECK_STATE" release-check validate',
-        "run_maven_release_check release release-check validate",
-        "-DreleaseCheckRequireClean=false",
+        'java -jar "$TOOLING_JAR" compare-versions',
+        'java -jar "$TOOLING_JAR" check-release-plan',
+        'java -jar "$TOOLING_JAR" check-version-state',
+        'java -jar "$TOOLING_JAR" read-pom-version --stdin',
+        'run_release_plan_check "$RELEASE_CHECK_STATE" true',
+        "run_release_plan_check release false",
         "run_maven_release_check release release-check,ci clean verify",
+        "! -name 'taxonomy-tooling-*.jar'",
         'if [[ "$DEFER_RELEASE_PUBLICATION" == "true" ]]; then',
         "remains a draft until downstream artifacts and final CI succeed",
         'test "$RELEASE_IS_DRAFT" = true',
     ):
         require(script, needle, RELEASE_SCRIPT, failures)
+
+    for forbidden in (
+        "VERSION_STATE_HELPER",
+        "resolve-release-parameters.py",
+        "check-version-state.py",
+        "check-release-plan.py",
+        "python3 - <<'PY'\nimport os\nrelease =",
+    ):
+        forbid(script, forbidden, RELEASE_SCRIPT, failures)
 
     if script.count("\n  stage_version_metadata\n") != 2:
         failures.append(
@@ -117,8 +192,11 @@ def main() -> int:
         "type: choice",
         "INPUT_NEXT_DEVELOPMENT_VERSION:",
         "INPUT_NEXT_VERSION_INCREMENT:",
-        "run: python3 .github/scripts/resolve-release-parameters.py",
-        "python3 .github/scripts/test-resolve-release-parameters.py",
+        "- name: Build Java release tooling",
+        "./mvnw -B -pl taxonomy-tooling -am package -DskipTests",
+        'run: java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" resolve-release-parameters --root .',
+        "./mvnw -B -pl taxonomy-tooling test",
+        "TOOLING_JAR: ${{ runner.temp }}/taxonomy-tooling.jar",
         "group: release-main",
         "ref: ${{ github.event_name == 'push' && github.sha || 'main' }}",
         "SOURCE_BRANCH: ${{ github.ref_name }}",
@@ -127,6 +205,7 @@ def main() -> int:
         "if: steps.release_parameters.outputs.resume_staged_release == 'true'",
         'git merge-base --is-ancestor "$tag" origin/main',
         "Release $tag must still be a draft before publication resumes",
+        'java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state',
         "DEFER_RELEASE_PUBLICATION: 'true'",
         "cp .github/scripts/verify-exact-release-gates.sh",
         "bash -n .github/scripts/verify-exact-release-gates.sh",
@@ -147,6 +226,14 @@ def main() -> int:
         "Render deployment triggered after complete release publication.",
     ):
         require(workflow, needle, RELEASE_WORKFLOW, failures)
+
+    for forbidden in (
+        "run: python3 .github/scripts/resolve-release-parameters.py",
+        "python3 .github/scripts/test-resolve-release-parameters.py",
+        "check-version-state.py",
+        "VERSION_STATE_HELPER:",
+    ):
+        forbid(workflow, forbidden, RELEASE_WORKFLOW, failures)
 
     for needle in (
         "EXPECTED_MAIN_SHA=${EXPECTED_MAIN_SHA:-}",
@@ -190,13 +277,18 @@ def main() -> int:
             )
 
     for needle in (
+        "./mvnw -B -pl taxonomy-tooling package -DskipTests",
+        'java -jar "$tooling_jar" check-release-plan',
+        '--state development',
+        '--require-clean true',
+    ):
+        require(ci_workflow, needle, CI_WORKFLOW, failures)
+    for forbidden in (
         "python3 .github/scripts/test-resolve-release-parameters.py",
         "python3 .github/scripts/test-check-release-plan.py",
         "./mvnw -B -Prelease-check validate",
-        '-DreleaseVersion="$release_version"',
-        '-DnextDevelopmentVersion="$next_version"',
     ):
-        require(ci_workflow, needle, CI_WORKFLOW, failures)
+        forbid(ci_workflow, forbidden, CI_WORKFLOW, failures)
 
     if "main_sha=$(git rev-parse origin/main)" in workflow:
         failures.append(
@@ -206,6 +298,8 @@ def main() -> int:
 
     try:
         checkout = workflow.index("- name: Checkout authoritative release source")
+        setup_java = workflow.index("- name: Set up JDK 21")
+        build_tooling = workflow.index("- name: Build Java release tooling")
         resolve = workflow.index("- name: Resolve release parameters")
         stage = workflow.index(
             "- name: Build and stage release, then prepare next development version"
@@ -226,15 +320,32 @@ def main() -> int:
         publish = workflow.index(
             "- name: Publish complete release and trigger deployment"
         )
-        if not checkout < resolve < stage < resume < record_main < final_gates < checkout_tag < package < image < scan < bind < archive < publish:
+        if not (
+            checkout
+            < setup_java
+            < build_tooling
+            < resolve
+            < stage
+            < resume
+            < record_main
+            < final_gates
+            < checkout_tag
+            < package
+            < image
+            < scan
+            < bind
+            < archive
+            < publish
+        ):
             failures.append(
                 "deploy-release.yml must bind checkout to the triggering source, "
-                "then either stage or validate a resumable draft, record the exact "
-                "main commit, verify its full gate matrix, then fetch and build the "
-                "immutable tag, scan and bind the pushed image digest, and publish last"
+                "build immutable Java tooling, then either stage or validate a "
+                "resumable draft, record the exact main commit, verify its full "
+                "gate matrix, then fetch and build the immutable tag, scan and "
+                "bind the pushed image digest, and publish last"
             )
 
-        checkout_block = workflow[checkout:resolve]
+        checkout_block = workflow[checkout:setup_java]
         exact_push_source = "ref: ${{ github.event_name == 'push' && github.sha || 'main' }}"
         if exact_push_source not in checkout_block:
             failures.append(
@@ -259,8 +370,10 @@ def main() -> int:
             'git fetch origin "refs/heads/main:refs/remotes/origin/main" --force',
             'git fetch origin "refs/tags/${tag}:refs/tags/${tag}"',
             'git merge-base --is-ancestor "$tag" origin/main',
-            '--mode release --expected-version "$RELEASE_VERSION" --tag "$tag"',
-            '--mode development --expected-version "$NEXT_VERSION_INPUT"',
+            '--mode release',
+            '--expected-version "$RELEASE_VERSION" --tag "$tag"',
+            '--mode development',
+            '--expected-version "$NEXT_VERSION_INPUT"',
             'if [[ "$is_draft" != "true" ]]; then',
         ):
             if needle not in resume_block:
@@ -289,9 +402,7 @@ def main() -> int:
             'run: bash "$RUNNER_TEMP/verify-exact-release-gates.sh"',
         ):
             if needle not in final_gate_block:
-                failures.append(
-                    f"Exact final gate step is missing {needle!r}"
-                )
+                failures.append(f"Exact final gate step is missing {needle!r}")
 
         publish_block = workflow[publish:]
         for needle in (
@@ -301,9 +412,7 @@ def main() -> int:
             "--latest",
         ):
             if needle not in publish_block:
-                failures.append(
-                    f"Final publication step is missing {needle!r}"
-                )
+                failures.append(f"Final publication step is missing {needle!r}")
         if "RENDER_DEPLOY_HOOK_URL" not in publish_block:
             failures.append("Only the final publication step may trigger deployment")
     except ValueError as error:
@@ -316,10 +425,12 @@ def main() -> int:
         return 1
 
     print(
-        "Release delivery contract is Maven-verifiable, atomic, freely versionable, "
-        "resumable and digest-bound: the local profile validates the release plan "
-        "without SCM mutation, immutable sources and images are verified explicitly, "
-        "the exact main snapshot passes CI, database, CodeQL and security gates before immutable artifact work, and publication remains the final operation."
+        "Release delivery contract is Maven/JUnit-verifiable, atomic, freely "
+        "versionable, resumable and digest-bound: dependency-free Java tooling "
+        "validates the release plan and version state without SCM mutation, "
+        "immutable sources and images are verified explicitly, the exact main "
+        "snapshot passes CI, database, CodeQL and security gates before immutable "
+        "artifact work, and publication remains the final operation."
     )
     return 0
 

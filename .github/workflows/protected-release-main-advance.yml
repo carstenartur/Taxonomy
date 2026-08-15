@@ -48,6 +48,29 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Preserve Java release tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-tooling -am package -DskipTests
+          tooling_jar=$(find taxonomy-tooling/target -maxdepth 1 -type f \
+            -name 'taxonomy-tooling-*.jar' \
+            ! -name '*-sources.jar' \
+            ! -name '*-javadoc.jar' \
+            | head -n 1)
+          if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
+            echo "::error::Java release tooling jar was not produced"
+            exit 1
+          fi
+          cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
+
       - name: Validate immutable handoff
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
@@ -93,8 +116,8 @@ jobs:
             exit 1
           }
           git checkout --detach "$EXPECTED_SHA"
-          python3 .github/scripts/check-version-state.py \
-            --mode development --expected-version "$NEXT_VERSION"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
+            --root . --mode development --expected-version "$NEXT_VERSION"
 
       - name: Create protected-main pull request
         id: pr
@@ -116,7 +139,7 @@ jobs:
               --base main \
               --head "$TEMP_BRANCH" \
               --title "Prepare next development version $NEXT_VERSION" \
-              --body "Release automation prepared this exact next-development snapshot. The branch is merged only after the canonical Maven verification succeeds on $EXPECTED_SHA."
+              --body "Release automation prepared this exact next-development snapshot. The branch is merged only after the complete required pull-request gate matrix succeeds on $EXPECTED_SHA."
             pr_number=$(gh pr list \
               --state open --base main --head "$TEMP_BRANCH" \
               --json number,headRefOid \
@@ -164,6 +187,52 @@ jobs:
           gh run watch "$run_id" --exit-status
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
 
+      - name: Wait for complete protected-main pull-request gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_before=$(gh pr view "$PR_NUMBER" --json headRefOid --jq '.headRefOid')
+          test "$head_before" = "$EXPECTED_SHA" || {
+            echo "::error::PR #$PR_NUMBER moved to $head_before before gate verification, expected $EXPECTED_SHA"
+            exit 1
+          }
+
+          required_count=0
+          checks_json='[]'
+          for _ in $(seq 1 60); do
+            set +e
+            checks_json=$(gh pr checks "$PR_NUMBER" \
+              --required \
+              --json name,bucket,state 2>/dev/null)
+            checks_exit=$?
+            set -e
+            if [[ "$checks_exit" -eq 0 || "$checks_exit" -eq 8 ]]; then
+              required_count=$(jq 'length' <<< "$checks_json")
+              if [[ "$required_count" -gt 0 ]]; then
+                break
+              fi
+            fi
+            sleep 5
+          done
+          if [[ "$required_count" -eq 0 ]]; then
+            echo "::error::No required PR checks were registered for #$PR_NUMBER"
+            exit 1
+          fi
+          jq -r '.[] | "Required check registered: \(.name) [\(.bucket)]"' \
+            <<< "$checks_json"
+
+          gh pr checks "$PR_NUMBER" --required --watch --fail-fast
+
+          head_after=$(gh pr view "$PR_NUMBER" --json headRefOid --jq '.headRefOid')
+          test "$head_after" = "$EXPECTED_SHA" || {
+            echo "::error::PR #$PR_NUMBER moved to $head_after while its gates were running, expected $EXPECTED_SHA"
+            exit 1
+          }
+
       - name: Merge through protected main
         env:
           GH_TOKEN: ${{ github.token }}
@@ -187,7 +256,7 @@ jobs:
             exit 1
           }
 
-          gh pr merge "$PR_NUMBER" --merge
+          gh pr merge "$PR_NUMBER" --merge --match-head-commit "$EXPECTED_SHA"
 
           git fetch origin "refs/heads/main:refs/remotes/origin/main" --force
           git merge-base --is-ancestor "$EXPECTED_SHA" origin/main || {
@@ -195,6 +264,6 @@ jobs:
             exit 1
           }
           git checkout --detach origin/main
-          python3 .github/scripts/check-version-state.py \
-            --mode development --expected-version "$NEXT_VERSION"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
+            --root . --mode development --expected-version "$NEXT_VERSION"
           git push origin ":refs/heads/${TEMP_BRANCH}" || true

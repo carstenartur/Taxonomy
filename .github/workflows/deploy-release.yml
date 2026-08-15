@@ -56,6 +56,37 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      - name: Build Java release tooling
+        id: release_tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-tooling -am package -DskipTests
+          tooling_jar=$(find taxonomy-tooling/target -maxdepth 1 -type f \
+            -name 'taxonomy-tooling-*.jar' \
+            ! -name '*-sources.jar' \
+            ! -name '*-javadoc.jar' \
+            | head -n 1)
+          if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
+            echo "::error::Java release tooling jar was not produced"
+            exit 1
+          fi
+          cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
+          echo "jar=$RUNNER_TEMP/taxonomy-tooling.jar" >> "$GITHUB_OUTPUT"
+
       - name: Resolve release parameters
         id: release_parameters
         env:
@@ -64,26 +95,13 @@ jobs:
           INPUT_NEXT_VERSION_INCREMENT: ${{ inputs.next_version_increment }}
           INPUT_SKIP_TESTS: ${{ inputs.skip_tests }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
-        run: python3 .github/scripts/resolve-release-parameters.py
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          java-version: '21'
-          distribution: 'temurin'
+        run: java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" resolve-release-parameters --root .
 
       - name: Install verified Helm 3.21.0
         env:
           HELM_VERSION: v3.21.0
         shell: bash
         run: bash .github/scripts/install-helm.sh
-
-      - name: Cache Maven dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
 
       - name: Verify release Helm chart before publication
         if: hashFiles('deploy/helm/taxonomy/Chart.yaml') != ''
@@ -95,8 +113,6 @@ jobs:
           cp .github/scripts/release.sh "$RUNNER_TEMP/release.sh"
           cp .github/scripts/update-release-metadata.py \
             "$RUNNER_TEMP/update-release-metadata.py"
-          cp .github/scripts/check-version-state.py \
-            "$RUNNER_TEMP/check-version-state.py"
           cp .github/scripts/generate-vex.py "$RUNNER_TEMP/generate-vex.py"
           cp .github/scripts/verify-exact-release-gates.sh \
             "$RUNNER_TEMP/verify-exact-release-gates.sh"
@@ -104,7 +120,6 @@ jobs:
             "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
           chmod +x "$RUNNER_TEMP/release.sh" \
             "$RUNNER_TEMP/update-release-metadata.py" \
-            "$RUNNER_TEMP/check-version-state.py" \
             "$RUNNER_TEMP/generate-vex.py" \
             "$RUNNER_TEMP/verify-exact-release-gates.sh" \
             "$RUNNER_TEMP/validate-reviewed-release-notes.sh"
@@ -113,7 +128,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/test-resolve-release-parameters.py
+          ./mvnw -B -pl taxonomy-tooling test
           bash -n .github/scripts/release.sh
           bash -n .github/scripts/verify-exact-release-gates.sh
           bash -n .github/scripts/validate-reviewed-release-notes.sh
@@ -133,7 +148,7 @@ jobs:
           DEFER_RELEASE_PUBLICATION: 'true'
           SOURCE_BRANCH: ${{ github.ref_name }}
           METADATA_HELPER: ${{ runner.temp }}/update-release-metadata.py
-          VERSION_STATE_HELPER: ${{ runner.temp }}/check-version-state.py
+          TOOLING_JAR: ${{ runner.temp }}/taxonomy-tooling.jar
           VEX_HELPER: ${{ runner.temp }}/generate-vex.py
           RELEASE_NOTES_VALIDATOR: ${{ runner.temp }}/validate-reviewed-release-notes.sh
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
@@ -161,8 +176,9 @@ jobs:
           fi
 
           git checkout --detach "$tag"
-          python3 "$RUNNER_TEMP/check-version-state.py" \
-            --mode release --expected-version "$RELEASE_VERSION" --tag "$tag"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
+            --root . --mode release \
+            --expected-version "$RELEASE_VERSION" --tag "$tag"
           RELEASE_NOTES_COMMIT="$tag" \
             RELEASE_NOTES_FILE=release_notes.md \
             "$RELEASE_NOTES_VALIDATOR"
@@ -179,8 +195,9 @@ jobs:
           fi
 
           git checkout --detach origin/main
-          python3 "$RUNNER_TEMP/check-version-state.py" \
-            --mode development --expected-version "$NEXT_VERSION_INPUT"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
+            --root . --mode development \
+            --expected-version "$NEXT_VERSION_INPUT"
 
       - name: Record exact final main snapshot
         id: final_main
@@ -226,8 +243,9 @@ jobs:
           artifact_dir="$RUNNER_TEMP/helm-release"
           mkdir -p "$artifact_dir"
 
-          python3 .github/scripts/check-version-state.py \
-            --mode release --expected-version "$RELEASE_VERSION" --tag "$tag"
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
+            --root . --mode release \
+            --expected-version "$RELEASE_VERSION" --tag "$tag"
           helm lint deploy/helm/taxonomy \
             --set "image.tag=${tag}" \
             --set existingSecret=taxonomy-secrets
