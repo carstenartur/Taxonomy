@@ -179,6 +179,15 @@ jobs:
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
             --root . --mode release \
             --expected-version "$RELEASE_VERSION" --tag "$tag"
+          release_current_version=$(java -jar \
+            "$RUNNER_TEMP/taxonomy-tooling.jar" read-pom-version)
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-plan \
+            --root . \
+            --current-version "$release_current_version" \
+            --release-version "$RELEASE_VERSION" \
+            --next-development-version "$NEXT_VERSION_INPUT" \
+            --state release \
+            --require-clean true
           RELEASE_NOTES_COMMIT="$tag" \
             RELEASE_NOTES_FILE=release_notes.md \
             "$RELEASE_NOTES_VALIDATOR"
@@ -198,6 +207,15 @@ jobs:
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-version-state \
             --root . --mode development \
             --expected-version "$NEXT_VERSION_INPUT"
+          advanced_current_version=$(java -jar \
+            "$RUNNER_TEMP/taxonomy-tooling.jar" read-pom-version)
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-release-plan \
+            --root . \
+            --current-version "$advanced_current_version" \
+            --release-version "$RELEASE_VERSION" \
+            --next-development-version "$NEXT_VERSION_INPUT" \
+            --state advanced \
+            --require-clean true
 
       - name: Record exact final main snapshot
         id: final_main
