@@ -36,7 +36,8 @@ class ReleaseMetadataRoutingRepositoryTest {
                 .doesNotContain("METADATA_HELPER")
                 .doesNotContain("update-release-metadata.py");
         assertThat(developmentWorkflow)
-                .contains("update-release-metadata")
+                .contains("java -jar \"$RUNNER_TEMP/taxonomy-tooling.jar\" update-release-metadata")
+                .contains("--root .")
                 .contains("--version \"$NEXT_VERSION\"")
                 .doesNotContain("update-release-metadata.py");
         assertThat(root.resolve(".github/scripts/update-release-metadata.py"))
