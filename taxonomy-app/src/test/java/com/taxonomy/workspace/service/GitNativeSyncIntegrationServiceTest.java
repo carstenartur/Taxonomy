@@ -313,7 +313,7 @@ class GitNativeSyncIntegrationServiceTest {
                 "alice", null, "draft", "repo-a");
         assertThat(commit).isEqualTo("central-head");
         verify(repositoryFactory).getCentralRepository("repo-a");
-        verify(repositoryFactory, never()).getSystemRepository();
+        verify(repositoryFactory, times(1)).getSystemRepository();
         verify(portfolioGitPort).commitPortfolio(
                 eq("draft"), any(String.class), eq("alice"), eq(context));
         verify(portfolioGitPort).materializePortfolioHead(
