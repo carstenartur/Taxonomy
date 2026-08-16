@@ -81,6 +81,7 @@ alter table project_req_version
     drop constraint if exists uq_reqver_number,
     drop constraint if exists uq_reqver_hash,
     drop constraint if exists uq_reqver_id_scope,
+    drop constraint if exists uq_reqver_id_req_scope,
     drop constraint if exists fk_reqver_requirement_scope;
 alter table project_req_version
     alter column scope_key set not null,
@@ -89,16 +90,18 @@ alter table project_req_version
     add constraint uq_reqver_hash
         unique (scope_key, requirement_id, content_hash),
     add constraint uq_reqver_id_scope unique (id, scope_key),
+    add constraint uq_reqver_id_req_scope
+        unique (id, requirement_id, scope_key),
     add constraint fk_reqver_requirement_scope
         foreign key (requirement_id, scope_key)
         references project_requirement (id, scope_key);
 
 -- The pointer is nullable while a requirement is first created. Once populated,
--- it may only address a version in the same exact repository/workspace/branch.
+-- it may only address a version belonging to that same requirement and tenant.
 alter table project_requirement
     add constraint fk_req_current_version_scope
-        foreign key (current_version_id, scope_key)
-        references project_req_version (id, scope_key)
+        foreign key (current_version_id, id, scope_key)
+        references project_req_version (id, requirement_id, scope_key)
         deferrable initially deferred;
 
 create index if not exists idx_req_scope
