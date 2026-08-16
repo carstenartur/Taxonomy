@@ -1,14 +1,11 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
@@ -34,39 +31,40 @@ class WorkspaceAccessServiceTest {
                 .isFalse();
         assertThat(workspaceAccessService.canReadWorkspaceMetadata("workspace", " "))
                 .isFalse();
+        verify(workspaceRepository, never())
+                .existsVisibleWorkspaceMetadata("workspace", "alice");
         verify(workspaceRepository, never()).findByWorkspaceId("workspace");
     }
 
     @Test
-    void ownerAndSharedWorkspaceAreVisible() {
-        when(workspaceRepository.findByWorkspaceId("owned"))
-                .thenReturn(Optional.of(workspace("alice", false)));
-        when(workspaceRepository.findByWorkspaceId("shared"))
-                .thenReturn(Optional.of(workspace("system", true)));
+    void ownerAndSharedWorkspaceAreVisibleWithoutMaterializingRows() {
+        when(workspaceRepository.existsVisibleWorkspaceMetadata("owned", "alice"))
+                .thenReturn(true);
+        when(workspaceRepository.existsVisibleWorkspaceMetadata("shared", "alice"))
+                .thenReturn(true);
 
         assertThat(workspaceAccessService.canReadWorkspaceMetadata(
-                "owned", "alice")).isTrue();
+                " owned ", " alice ")).isTrue();
         assertThat(workspaceAccessService.canReadWorkspaceMetadata(
                 "shared", "alice")).isTrue();
+
+        verify(workspaceRepository, never()).findByWorkspaceId("owned");
+        verify(workspaceRepository, never()).findByWorkspaceId("shared");
     }
 
     @Test
-    void foreignPrivateAndMissingWorkspaceAreHidden() {
-        when(workspaceRepository.findByWorkspaceId("foreign"))
-                .thenReturn(Optional.of(workspace("bob", false)));
-        when(workspaceRepository.findByWorkspaceId("missing"))
-                .thenReturn(Optional.empty());
+    void foreignPrivateAndMissingWorkspaceAreIndistinguishable() {
+        when(workspaceRepository.existsVisibleWorkspaceMetadata("foreign", "alice"))
+                .thenReturn(false);
+        when(workspaceRepository.existsVisibleWorkspaceMetadata("missing", "alice"))
+                .thenReturn(false);
 
         assertThat(workspaceAccessService.canReadWorkspaceMetadata(
                 "foreign", "alice")).isFalse();
         assertThat(workspaceAccessService.canReadWorkspaceMetadata(
                 "missing", "alice")).isFalse();
-    }
 
-    private static UserWorkspace workspace(String username, boolean shared) {
-        UserWorkspace workspace = new UserWorkspace();
-        workspace.setUsername(username);
-        workspace.setShared(shared);
-        return workspace;
+        verify(workspaceRepository, never()).findByWorkspaceId("foreign");
+        verify(workspaceRepository, never()).findByWorkspaceId("missing");
     }
 }
