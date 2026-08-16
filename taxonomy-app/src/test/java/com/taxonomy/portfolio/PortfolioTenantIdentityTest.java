@@ -57,16 +57,65 @@ class PortfolioTenantIdentityTest {
     }
 
     @Test
-    void missingRepositoryOrMalformedEncodingFailsClosed() {
+    void compatibilityHelpersNormalizeOptionalUserAndWorkspaceValues() {
+        WorkspaceContext contextualUser = new WorkspaceContext(
+                " Alice ", "  ", " main ", " repo-a ");
+
+        assertThat(PortfolioScope.username(null, contextualUser)).isEqualTo("alice");
+        assertThat(PortfolioScope.username(" BOB ", contextualUser)).isEqualTo("bob");
+        assertThat(PortfolioScope.username(null, null)).isEqualTo("anonymous");
+        assertThat(PortfolioScope.workspaceId(contextualUser)).isNull();
+        assertThat(PortfolioScope.repositoryId(contextualUser)).isEqualTo("repo-a");
+        assertThat(PortfolioScope.branch(contextualUser)).isEqualTo("main");
+    }
+
+    @Test
+    void missingContextRepositoryOrBranchFailsClosed() {
+        assertThatThrownBy(() -> PortfolioScope.identity("alice", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("workspace context");
+        assertThatThrownBy(() -> PortfolioScope.repositoryId(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("workspace context");
         assertThatThrownBy(() -> PortfolioScope.key(
                 "alice", new WorkspaceContext("alice", "ws", "main", " ")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("repositoryId");
+        assertThatThrownBy(() -> PortfolioScope.branch(
+                new WorkspaceContext("alice", "ws", " ", "repo-a")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("currentBranch");
+    }
+
+    @Test
+    void malformedTenantComponentsAndEncodingsFailClosed() {
+        assertThatThrownBy(() -> new PortfolioTenantIdentity(
+                "repo-a", "WORKSPACE:", "main"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("workspaceScope");
+        assertThatThrownBy(() -> new PortfolioTenantIdentity(
+                "repo-a", "OTHER", "main"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("workspaceScope");
         assertThatThrownBy(() -> PortfolioTenantIdentity.parse("workspace:ws"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("v2");
-        assertThatThrownBy(() -> PortfolioTenantIdentity.parse("v2|r6:repo-a|s2:x"))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> PortfolioTenantIdentity.parse("v2|x6:repo-a|s7:CENTRAL|b4:main"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("component r");
+        assertThatThrownBy(() -> PortfolioTenantIdentity.parse("v2|rX:repo-a|s7:CENTRAL|b4:main"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("invalid length");
+        assertThatThrownBy(() -> PortfolioTenantIdentity.parse("v2|r0:|s7:CENTRAL|b4:main"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("empty");
+        assertThatThrownBy(() -> PortfolioTenantIdentity.parse("v2|r6:repo-a|s7:CENTRAL|b9:main"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("truncated");
+        assertThatThrownBy(() -> PortfolioTenantIdentity.parse(
+                "v2|r6:repo-a|s7:CENTRAL|b4:main-extra"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("trailing data");
     }
 
     private static WorkspaceContext context(
