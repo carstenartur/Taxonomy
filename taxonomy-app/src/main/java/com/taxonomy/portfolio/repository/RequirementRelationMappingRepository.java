@@ -9,7 +9,18 @@ import java.util.Optional;
 public interface RequirementRelationMappingRepository
         extends JpaRepository<RequirementRelationMapping, Long> {
 
-    List<RequirementRelationMapping> findBySnapshotIdOrderBySourceCodeAscTargetCodeAsc(String snapshotId);
+    List<RequirementRelationMapping>
+            findBySnapshotIdAndScopeKeyOrderBySourceCodeAscTargetCodeAsc(
+                    String snapshotId, String scopeKey);
 
+    Optional<RequirementRelationMapping> findByIdAndScopeKeyAndSnapshotProjectId(
+            Long id, String scopeKey, Long projectId);
+
+    /** Compatibility signatures retained while all callers migrate. */
+    @Deprecated(forRemoval = false)
+    List<RequirementRelationMapping> findBySnapshotIdOrderBySourceCodeAscTargetCodeAsc(
+            String snapshotId);
+
+    @Deprecated(forRemoval = false)
     Optional<RequirementRelationMapping> findByIdAndSnapshotProjectId(Long id, Long projectId);
 }
