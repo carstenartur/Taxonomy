@@ -20,7 +20,6 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,7 +29,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** End-to-end evidence that asynchronous analysis identities cannot cross tenants. */
 @SpringBootTest
-@Transactional
 class AnalysisArtifactTenantIsolationTest {
 
     @Autowired
