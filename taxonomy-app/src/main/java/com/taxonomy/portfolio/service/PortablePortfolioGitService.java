@@ -147,11 +147,14 @@ public class PortablePortfolioGitService extends PortfolioGitService {
         String scopeKey = PortfolioScope.key(username, context);
         for (ArchitectureProject project :
                 projectRepository.findByScopeKeyOrderByUpdatedAtDesc(scopeKey)) {
-            for (ProjectRequirement requirement :
-                    requirementRepository.findByProjectIdOrderByRequirementKeyAsc(project.getId())) {
+            for (ProjectRequirement requirement : requirementRepository
+                    .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(
+                            project.getId(), scopeKey)) {
                 if (requirement.getCurrentVersionId() == null) continue;
-                versionRepository.findByIdAndRequirementId(
-                                requirement.getCurrentVersionId(), requirement.getId())
+                versionRepository.findByIdAndRequirementIdAndScopeKey(
+                                requirement.getCurrentVersionId(),
+                                requirement.getId(),
+                                scopeKey)
                         .ifPresent(version -> result.put(
                                 composite(project.getProjectKey(), requirement.getRequirementKey()),
                                 version.getVersionNumber()));
@@ -177,11 +180,13 @@ public class PortablePortfolioGitService extends PortfolioGitService {
                     .orElse(null);
             if (project == null) continue;
             ProjectRequirement requirement = requirementRepository
-                    .findByProjectIdAndRequirementKeyIgnoreCase(project.getId(), requirementKey)
+                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(
+                            project.getId(), scopeKey, requirementKey)
                     .orElse(null);
             if (requirement == null) continue;
             ProjectRequirementVersion version = versionRepository
-                    .findByRequirementIdAndVersionNumber(requirement.getId(), versionNumber)
+                    .findByRequirementIdAndScopeKeyAndVersionNumber(
+                            requirement.getId(), scopeKey, versionNumber)
                     .orElse(null);
             if (version != null
                     && !Objects.equals(requirement.getCurrentVersionId(), version.getId())) {
