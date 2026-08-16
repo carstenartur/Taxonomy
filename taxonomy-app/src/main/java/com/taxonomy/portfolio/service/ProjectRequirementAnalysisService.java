@@ -260,17 +260,19 @@ public class ProjectRequirementAnalysisService {
                                                 Long projectId,
                                                 String username,
                                                 WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
         String taxonomyFingerprint = fingerprintService.taxonomyFingerprint();
         String promptFingerprint = fingerprintService.promptFingerprint();
         String effectiveProvider = job.provider() != null
                 ? job.provider() : llmService.getActiveProviderName();
 
-        List<PortfolioAnalysisWorkQueue.WorkItem> workItems = workQueue.pending(jobId, projectId);
+        List<PortfolioAnalysisWorkQueue.WorkItem> workItems =
+                workQueue.pending(jobId, projectId, scopeKey);
         if (workItems.isEmpty()) {
-            return persistenceService.completeJob(jobId, projectId);
+            return persistenceService.completeJob(jobId, projectId, scopeKey);
         }
-        persistenceService.markJobRunning(jobId, projectId);
+        persistenceService.markJobRunning(jobId, projectId, scopeKey);
 
         for (PortfolioAnalysisWorkQueue.WorkItem workItem : workItems) {
             String snapshotId = UUID.randomUUID().toString();
@@ -304,6 +306,9 @@ public class ProjectRequirementAnalysisService {
                 long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
                 persistenceService.persistSnapshot(
                         workItem.itemId(),
+                        workItem.jobId(),
+                        workItem.projectId(),
+                        workItem.scopeKey(),
                         snapshotId,
                         analysisSessionId,
                         analysis,
@@ -318,10 +323,15 @@ public class ProjectRequirementAnalysisService {
                         context,
                         durationMs);
             } catch (Exception failure) {
-                persistenceService.failItem(workItem.itemId(), failure);
+                persistenceService.failItem(
+                        workItem.itemId(),
+                        workItem.jobId(),
+                        workItem.projectId(),
+                        workItem.scopeKey(),
+                        failure);
             }
         }
-        return persistenceService.completeJob(jobId, projectId);
+        return persistenceService.completeJob(jobId, projectId, scopeKey);
     }
 
     private GapAnalysisView safeGapAnalysis(AnalysisResult analysis, String requirementText) {
