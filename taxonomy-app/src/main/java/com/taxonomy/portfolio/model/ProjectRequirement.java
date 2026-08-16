@@ -86,12 +86,16 @@ public class ProjectRequirement {
     private Long currentVersionId;
 
     /**
-     * Read-only tenant-bound association used by portfolio list queries to fetch
-     * the current immutable version in the same SQL statement as the requirement.
+     * Read-only tenant- and requirement-bound association used by portfolio list
+     * queries to fetch the current immutable version in the same SQL statement.
+     * The requirement's own ID participates in the join, so a version from a
+     * sibling requirement in the same tenant cannot be selected.
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumns({
             @JoinColumn(name = "current_version_id", referencedColumnName = "id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "id", referencedColumnName = "requirement_id",
                     insertable = false, updatable = false),
             @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
                     insertable = false, updatable = false)
