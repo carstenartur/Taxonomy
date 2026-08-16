@@ -10,6 +10,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
+import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
@@ -74,13 +75,19 @@ class PortfolioAnalysisWorkQueueClaimTest {
                 "claim-" + suffix,
                 context.username(),
                 context);
+        String scopeKey = PortfolioScope.key(context.username(), context);
 
-        var firstClaim = workQueue.pending(job.id(), project.id());
-        var prematureCompletion = persistenceService.completeJob(job.id(), project.id());
-        var secondClaim = workQueue.pending(job.id(), project.id());
+        var firstClaim = workQueue.pending(job.id(), project.id(), scopeKey);
+        var prematureCompletion = persistenceService.completeJob(
+                job.id(), project.id(), scopeKey);
+        var secondClaim = workQueue.pending(job.id(), project.id(), scopeKey);
 
         assertThat(firstClaim).singleElement()
-                .satisfies(item -> assertThat(item.requirementId()).isEqualTo(requirement.id()));
+                .satisfies(item -> {
+                    assertThat(item.requirementId()).isEqualTo(requirement.id());
+                    assertThat(item.projectId()).isEqualTo(project.id());
+                    assertThat(item.scopeKey()).isEqualTo(scopeKey);
+                });
         assertThat(secondClaim).isEmpty();
         assertThat(prematureCompletion.status()).isEqualTo(AnalysisStatus.RUNNING);
         assertThat(prematureCompletion.completedAt()).isNull();
