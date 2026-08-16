@@ -1,6 +1,5 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -8,7 +7,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Resolves whether workspace metadata may be disclosed to an authenticated
  * principal. The lookup deliberately returns only a boolean so callers cannot
- * accidentally expose a foreign workspace after an authorization decision.
+ * accidentally expose or materialize a foreign workspace after an authorization
+ * decision.
  */
 @Service
 public class WorkspaceAccessService {
@@ -25,12 +25,7 @@ public class WorkspaceAccessService {
                 || username == null || username.isBlank()) {
             return false;
         }
-        return workspaceRepository.findByWorkspaceId(workspaceId)
-                .filter(workspace -> isVisibleTo(workspace, username))
-                .isPresent();
-    }
-
-    private static boolean isVisibleTo(UserWorkspace workspace, String username) {
-        return workspace.isShared() || username.equals(workspace.getUsername());
+        return workspaceRepository.existsVisibleWorkspaceMetadata(
+                workspaceId.strip(), username.strip());
     }
 }
