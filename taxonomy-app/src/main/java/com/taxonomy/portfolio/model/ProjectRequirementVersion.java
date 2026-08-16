@@ -29,7 +29,9 @@ import java.time.Instant;
                 columnNames = {"scope_key", "requirement_id", "version_number"}),
         @UniqueConstraint(name = "uq_reqver_hash",
                 columnNames = {"scope_key", "requirement_id", "content_hash"}),
-        @UniqueConstraint(name = "uq_reqver_id_scope", columnNames = {"id", "scope_key"})
+        @UniqueConstraint(name = "uq_reqver_id_scope", columnNames = {"id", "scope_key"}),
+        @UniqueConstraint(name = "uq_reqver_id_req_scope",
+                columnNames = {"id", "requirement_id", "scope_key"})
 })
 public class ProjectRequirementVersion {
 
