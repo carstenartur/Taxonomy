@@ -14,7 +14,7 @@ class PortfolioTenantMigrationContractTest {
                     + "V12__scope_portfolio_by_repository_branch.sql");
 
     @Test
-    void migrationBackfillsEveryPortfolioRootAndFailsClosedOnUnknownWorkspaces()
+    void migrationBackfillsEveryPortfolioRootAndFailsClosedOnAmbiguousProvenance()
             throws Exception {
         String sql = Files.readString(MIGRATION);
 
@@ -25,6 +25,9 @@ class PortfolioTenantMigrationContractTest {
                 .contains("repository_id varchar(255)")
                 .contains("workspace_scope varchar(320)")
                 .contains("branch_name varchar(255)")
+                .contains("primary_repository_count > 1")
+                .contains("primary_repository_count = 0")
+                .contains("requires exactly one primary repository for existing central portfolio rows")
                 .contains("Portfolio tenancy migration found an unknown workspace_id")
                 .contains("Portfolio tenancy migration found incomplete workspace repository provenance")
                 .contains("Portfolio tenancy migration found ambiguous central project keys")
