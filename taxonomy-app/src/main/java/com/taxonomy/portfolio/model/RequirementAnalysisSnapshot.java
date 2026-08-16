@@ -9,11 +9,16 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
+import java.util.Objects;
 
 /**
  * Immutable, reproducible result of analyzing one exact requirement version.
@@ -21,13 +26,21 @@ import java.time.Instant;
  * <p>The complete typed analysis result and its derived intelligence views are
  * serialized as JSON so old snapshots remain displayable after the live
  * taxonomy, prompt templates or relation graph have changed. Queryable element
- * and relation mappings are stored in dedicated tables.</p>
+ * and relation mappings are stored in dedicated tenant-bound tables.</p>
  */
 @Entity
 @Table(name = "req_analysis_snapshot", indexes = {
-        @Index(name = "idx_snap_project", columnList = "project_id,created_at"),
-        @Index(name = "idx_snap_req", columnList = "requirement_id,created_at"),
-        @Index(name = "idx_snap_job", columnList = "job_id")
+        @Index(name = "idx_snap_project", columnList = "scope_key,project_id,created_at"),
+        @Index(name = "idx_snap_req", columnList = "scope_key,requirement_id,created_at"),
+        @Index(name = "idx_snap_job", columnList = "scope_key,project_id,job_id"),
+        @Index(name = "idx_snap_scope", columnList = "scope_key")
+}, uniqueConstraints = {
+        @UniqueConstraint(name = "uq_snap_id_scope", columnNames = {"id", "scope_key"}),
+        @UniqueConstraint(name = "uq_snap_req_proj_scope",
+                columnNames = {"id", "requirement_id", "project_id", "scope_key"}),
+        @UniqueConstraint(name = "uq_snap_item_scope",
+                columnNames = {"id", "job_id", "requirement_id",
+                        "requirement_version_id", "project_id", "scope_key"})
 })
 public class RequirementAnalysisSnapshot {
 
@@ -35,20 +48,59 @@ public class RequirementAnalysisSnapshot {
     @Column(length = 36)
     private String id;
 
+    @Column(name = "scope_key", nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    @Column(name = "project_id", nullable = false, insertable = false, updatable = false)
+    private Long projectId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_id", nullable = false)
+    @JoinColumns({
+            @JoinColumn(name = "project_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    nullable = false, insertable = false, updatable = false)
+    })
     private ArchitectureProject project;
 
+    @Column(name = "requirement_id", nullable = false, insertable = false, updatable = false)
+    private Long requirementId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "requirement_id", nullable = false)
+    @JoinColumns({
+            @JoinColumn(name = "requirement_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "project_id", referencedColumnName = "project_id",
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    nullable = false, insertable = false, updatable = false)
+    })
     private ProjectRequirement requirement;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "requirement_version_id", nullable = false)
-    private ProjectRequirementVersion requirementVersion;
+    @Column(name = "requirement_version_id", nullable = false,
+            insertable = false, updatable = false)
+    private Long requirementVersionId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "job_id", nullable = false)
+    @JoinColumns({
+            @JoinColumn(name = "requirement_version_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "requirement_id", referencedColumnName = "requirement_id",
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    nullable = false, insertable = false, updatable = false)
+    })
+    private ProjectRequirementVersion requirementVersion;
+
+    @Column(name = "job_id", nullable = false, insertable = false, updatable = false)
+    private String jobId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumns({
+            @JoinColumn(name = "job_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "project_id", referencedColumnName = "project_id",
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    nullable = false, insertable = false, updatable = false)
+    })
     private RequirementAnalysisJob job;
 
     @Enumerated(EnumType.STRING)
@@ -70,9 +122,11 @@ public class RequirementAnalysisSnapshot {
     @Column(name = "taxonomy_fingerprint", length = 64)
     private String taxonomyFingerprint;
 
+    /** Retained as immutable provenance; {@link #scopeKey} is the tenant authority. */
     @Column(name = "workspace_id", length = 120)
     private String workspaceId;
 
+    /** Retained as immutable provenance and included in the encoded tenant scope. */
     @Column(name = "branch_name", length = 240)
     private String branchName;
 
@@ -162,12 +216,84 @@ public class RequirementAnalysisSnapshot {
         this.gapAnalysisPayload = gapAnalysisPayload;
         this.patternDetectionPayload = patternDetectionPayload;
         this.recommendationPayload = recommendationPayload;
+        synchronizeTenantAuthority(false);
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+        synchronizeTenantAuthority(true);
+    }
+
+    private void synchronizeTenantAuthority(boolean requirePersistentParents) {
+        if (project == null || requirement == null || requirementVersion == null || job == null) {
+            throw new IllegalArgumentException(
+                    "Analysis snapshot must reference project, requirement, version and job");
+        }
+        String projectScope = exactScope(project.getScopeKey(), "Snapshot project");
+        String requirementScope = exactScope(requirement.getScopeKey(), "Snapshot requirement");
+        String versionScope = exactScope(
+                requirementVersion.getScopeKey(), "Snapshot requirement version");
+        String jobScope = exactScope(job.getScopeKey(), "Snapshot analysis job");
+        if (!projectScope.equals(requirementScope)
+                || !projectScope.equals(versionScope)
+                || !projectScope.equals(jobScope)) {
+            throw new IllegalArgumentException(
+                    "Analysis snapshot parents do not belong to the same tenant scope");
+        }
+        if (scopeKey != null && !scopeKey.isBlank()
+                && !projectScope.equals(scopeKey.strip())) {
+            throw new IllegalArgumentException(
+                    "Analysis snapshot tenant scope does not match its parents");
+        }
+        scopeKey = projectScope;
+
+        Long persistentProjectId = project.getId();
+        Long requirementProjectId = requirement.getProjectId();
+        Long jobProjectId = job.getProjectId();
+        Long persistentRequirementId = requirement.getId();
+        Long versionRequirementId = requirementVersion.getRequirementId();
+        if (persistentProjectId == null || requirementProjectId == null
+                || jobProjectId == null || persistentRequirementId == null
+                || versionRequirementId == null || requirementVersion.getId() == null
+                || job.getId() == null) {
+            if (requirePersistentParents) {
+                throw new IllegalArgumentException(
+                        "Analysis snapshot parents must be persisted before the snapshot");
+            }
+            return;
+        }
+        if (!Objects.equals(persistentProjectId, requirementProjectId)
+                || !Objects.equals(persistentProjectId, jobProjectId)) {
+            throw new IllegalArgumentException(
+                    "Analysis snapshot project, requirement and job do not match");
+        }
+        if (!Objects.equals(persistentRequirementId, versionRequirementId)) {
+            throw new IllegalArgumentException(
+                    "Analysis snapshot version belongs to another requirement");
+        }
+        projectId = persistentProjectId;
+        requirementId = persistentRequirementId;
+        requirementVersionId = requirementVersion.getId();
+        jobId = job.getId();
+    }
+
+    private static String exactScope(String scope, String parent) {
+        if (scope == null || scope.isBlank()) {
+            throw new IllegalArgumentException(parent + " must expose an exact tenant scope");
+        }
+        return scope.strip();
     }
 
     public String getId() { return id; }
+    public String getScopeKey() { return scopeKey; }
+    public Long getProjectId() { return projectId; }
     public ArchitectureProject getProject() { return project; }
+    public Long getRequirementId() { return requirementId; }
     public ProjectRequirement getRequirement() { return requirement; }
+    public Long getRequirementVersionId() { return requirementVersionId; }
     public ProjectRequirementVersion getRequirementVersion() { return requirementVersion; }
+    public String getJobId() { return jobId; }
     public RequirementAnalysisJob getJob() { return job; }
     public AnalysisStatus getStatus() { return status; }
     public String getAnalysisSessionId() { return analysisSessionId; }
