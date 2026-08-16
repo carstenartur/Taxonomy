@@ -23,6 +23,7 @@ import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
 import java.time.Instant;
+import java.util.Objects;
 
 /** Stable requirement identity within one exact project tenant. Text changes create versions. */
 @Entity
@@ -45,9 +46,14 @@ public class ProjectRequirement {
             length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
     private String scopeKey;
 
+    /** Writable parent identity; the composite association below is deliberately read-only. */
+    @Column(name = "project_id", nullable = false)
+    private Long projectId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumns({
-            @JoinColumn(name = "project_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "project_id", referencedColumnName = "id",
+                    nullable = false, insertable = false, updatable = false),
             @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
                     nullable = false, insertable = false, updatable = false)
     })
@@ -140,7 +146,7 @@ public class ProjectRequirement {
         this.ownerUsername = ownerUsername;
         this.createdAt = now;
         this.updatedAt = now;
-        synchronizeTenantAuthority();
+        synchronizeTenantAuthority(false);
     }
 
     public void updateMetadata(String title,
@@ -175,6 +181,10 @@ public class ProjectRequirement {
     @PrePersist
     @PreUpdate
     private void synchronizeTenantAuthority() {
+        synchronizeTenantAuthority(true);
+    }
+
+    private void synchronizeTenantAuthority(boolean requirePersistentParent) {
         if (project == null || project.getScopeKey() == null
                 || project.getScopeKey().isBlank()) {
             throw new IllegalArgumentException(
@@ -187,10 +197,25 @@ public class ProjectRequirement {
                     "Requirement tenant scope does not match its project");
         }
         scopeKey = projectScope;
+
+        Long persistentProjectId = project.getId();
+        if (persistentProjectId == null) {
+            if (requirePersistentParent) {
+                throw new IllegalArgumentException(
+                        "Requirement project must be persisted before the requirement");
+            }
+            return;
+        }
+        if (projectId != null && !Objects.equals(projectId, persistentProjectId)) {
+            throw new IllegalArgumentException(
+                    "Requirement project ID does not match its association");
+        }
+        projectId = persistentProjectId;
     }
 
     public Long getId() { return id; }
     public String getScopeKey() { return scopeKey; }
+    public Long getProjectId() { return projectId; }
     public ArchitectureProject getProject() { return project; }
     public String getRequirementKey() { return requirementKey; }
     public String getTitle() { return title; }
