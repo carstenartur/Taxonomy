@@ -86,8 +86,9 @@ class GitNativeSyncIntegrationServiceTest {
                 .thenReturn(Optional.of(workspace));
         when(workspaceRepository.save(any(UserWorkspace.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(contextResolver.resolveForUser("alice"))
-                .thenReturn(new WorkspaceContext("alice", "workspace-a", "feature/alice"));
+        when(contextResolver.resolveRepositoryContextForUser("alice"))
+                .thenReturn(RepositoryContext.workspace(
+                        "repo-a", "workspace-a", "feature/alice", "alice"));
         when(systemRepositoryService.getRepository("repo-a")).thenReturn(sourceMetadata);
         when(repositoryFactory.getCentralRepository("repo-a")).thenReturn(sourceRepository);
         when(repositoryFactory.openWorkspaceRepository("workspace-a"))
@@ -119,6 +120,8 @@ class GitNativeSyncIntegrationServiceTest {
 
         String commit = service.syncFromShared("alice", "feature/alice");
 
+        WorkspaceContext exactContext = new WorkspaceContext(
+                "alice", "workspace-a", "feature/alice", "repo-a");
         assertThat(commit).isEqualTo("local-merge-commit");
         verify(repositoryFactory).getCentralRepository("repo-a");
         verify(sourceRepository).getDslAtHead("draft");
@@ -126,6 +129,9 @@ class GitNativeSyncIntegrationServiceTest {
         verify(isolatedWorkspaceRepository, times(2)).getDslAtHead("feature/alice");
         verify(semanticMergeService).mergeContent(base, ours, theirs);
         verify(semanticMergeService, never()).mergeBranches(any(), any(), any(), any());
+        verify(portfolioGitPort).commitPortfolio(
+                eq("feature/alice"), any(String.class), eq("alice"), eq(exactContext));
+        verify(portfolioGitPort).materializePortfolio(merged, "alice", exactContext);
         assertThat(state.getLastSyncedCommitId()).isEqualTo("source-head");
         assertThat(workspace.getLastFetchedCommit()).isEqualTo("source-head");
         assertThat(workspace.getLastIntegratedCommit()).isEqualTo("source-head");
@@ -135,8 +141,9 @@ class GitNativeSyncIntegrationServiceTest {
     void staleDraftFromVolatileUiStateIsReplacedByPersistentMainBranch()
             throws Exception {
         workspace.setCurrentBranch("main");
-        when(contextResolver.resolveForUser("alice"))
-                .thenReturn(new WorkspaceContext("alice", "workspace-a", "main"));
+        when(contextResolver.resolveRepositoryContextForUser("alice"))
+                .thenReturn(RepositoryContext.workspace(
+                        "repo-a", "workspace-a", "main", "alice"));
         String base = "requirement REQ-BASE {\n  text: \"base\";\n}\n";
         String ours = base + "requirement REQ-LOCAL {\n  text: \"local\";\n}\n";
         String theirs = base + "requirement REQ-SHARED {\n  text: \"shared\";\n}\n";
@@ -162,11 +169,12 @@ class GitNativeSyncIntegrationServiceTest {
         verify(isolatedWorkspaceRepository, never()).getDslAtHead("draft");
         verify(portfolioGitPort).commitPortfolio(
                 eq("main"), any(String.class), eq("alice"),
-                eq(new WorkspaceContext("alice", "workspace-a", "main")));
+                eq(new WorkspaceContext(
+                        "alice", "workspace-a", "main", "repo-a")));
     }
 
     @Test
-    void normalPublishEndpointWritesToRecordedSourceRepository()
+    void normalPublishEndpointWritesAndMaterializesTheRecordedSourceRepository()
             throws Exception {
         String base = "requirement P-1.REQ-0 {\n  text: \"base\";\n}\n";
         String shared = base + "requirement P-1.REQ-B {\n  text: \"Bob\";\n}\n";
@@ -197,16 +205,18 @@ class GitNativeSyncIntegrationServiceTest {
                 eq("draft"), eq(merged), eq("alice"), any(String.class));
         verify(primaryRepository, never()).commitDsl(any(), any(), any(), any());
         verify(portfolioGitPort).materializePortfolio(
-                eq(merged), eq("shared"), eq(WorkspaceContext.SHARED));
+                eq(merged), eq("shared"),
+                eq(new WorkspaceContext("shared", null, "draft", "repo-a")));
         verify(portfolioGitPort).materializePortfolio(
                 eq(merged), eq("alice"),
-                eq(new WorkspaceContext("alice", "workspace-a", "feature/alice")));
+                eq(new WorkspaceContext(
+                        "alice", "workspace-a", "feature/alice", "repo-a")));
         assertThat(state.getLastPublishedCommitId()).isEqualTo("source-merge-commit");
         assertThat(workspace.getCurrentCommit()).isEqualTo("workspace-sync-commit");
     }
 
     @Test
-    void nonPrimaryRepositoryDoesNotProjectIntoLegacyGlobalSharedScope()
+    void nonPrimaryRepositoryProjectsIntoItsOwnCentralScope()
             throws Exception {
         sourceMetadata.setPrimaryRepo(false);
         sourceMetadata.setDefaultBranch("main");
@@ -230,8 +240,83 @@ class GitNativeSyncIntegrationServiceTest {
 
         service.publishToShared("alice", "feature/alice");
 
+        verify(portfolioGitPort).materializePortfolio(
+                local,
+                "shared",
+                new WorkspaceContext("shared", null, "main", "repo-a"));
         verify(portfolioGitPort, never()).materializePortfolio(
                 any(), eq("shared"), eq(WorkspaceContext.SHARED));
+    }
+
+    @Test
+    void explicitlyAddressedWorkspaceCarriesPersistedRepositoryIdentity()
+            throws Exception {
+        String base = "requirement R0 { text: \"base\"; }\n";
+        String local = base + "requirement R1 { text: \"local\"; }\n";
+        String shared = base + "requirement R2 { text: \"shared\"; }\n";
+        String merged = local + "requirement R2 { text: \"shared\"; }\n";
+
+        when(isolatedWorkspaceRepository.getDslAtHead("sync-base")).thenReturn(base);
+        when(isolatedWorkspaceRepository.getDslAtHead("main")).thenReturn(local);
+        when(sourceRepository.getDslAtHead("draft")).thenReturn(shared);
+        when(semanticMergeService.mergeContent(base, local, shared))
+                .thenReturn(new TaxDslMergeResult(merged, List.of()));
+        when(isolatedWorkspaceRepository.commitDsl(
+                eq("main"), eq(merged), eq("alice"), any(String.class)))
+                .thenReturn("local-head");
+        when(isolatedWorkspaceRepository.commitDsl(
+                eq("sync-base"), eq(merged), eq("alice"), any(String.class)))
+                .thenReturn("tracking-head");
+        when(sourceRepository.getHeadCommit("draft")).thenReturn("source-head");
+
+        service.syncFromSharedToWorkspace("alice", "workspace-a");
+
+        verify(portfolioGitPort).commitPortfolio(
+                eq("main"), any(String.class), eq("alice"),
+                eq(new WorkspaceContext(
+                        "alice", "workspace-a", "main", "repo-a")));
+        verify(contextResolver, never()).resolveForUser(any());
+    }
+
+    @Test
+    void contextRepositoryMismatchFailsBeforeGitOrPortfolioMutation() {
+        when(contextResolver.resolveRepositoryContextForUser("alice"))
+                .thenReturn(RepositoryContext.workspace(
+                        "repo-b", "workspace-a", "feature/alice", "alice"));
+
+        assertThatThrownBy(() -> service.syncFromShared("alice", "feature/alice"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("does not match persisted source provenance");
+
+        verify(repositoryFactory, never()).getCentralRepository(any());
+        verify(portfolioGitPort, never()).commitPortfolio(
+                any(), any(), any(), any());
+    }
+
+    @Test
+    void centralSynchronizationUsesExactRepositoryInsteadOfLegacyPrimarySentinel()
+            throws Exception {
+        when(contextResolver.resolveRepositoryContextForUser("alice"))
+                .thenReturn(RepositoryContext.centralRead(
+                        "repo-a", "draft", "alice"));
+        when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
+        when(semanticMergeService.mergeBranches(
+                sourceRepository, "draft", "draft", "alice"))
+                .thenReturn(new SemanticGitMergeService.MergeOutcome(
+                        true, "central-head", false, List.of(), null));
+        when(sourceRepository.getHeadCommit("draft")).thenReturn("central-head");
+
+        String commit = service.syncFromShared("alice", null);
+
+        WorkspaceContext context = new WorkspaceContext(
+                "alice", null, "draft", "repo-a");
+        assertThat(commit).isEqualTo("central-head");
+        verify(repositoryFactory).getCentralRepository("repo-a");
+        verify(repositoryFactory, never()).getSystemRepository();
+        verify(portfolioGitPort).commitPortfolio(
+                eq("draft"), any(String.class), eq("alice"), eq(context));
+        verify(portfolioGitPort).materializePortfolioHead(
+                "draft", "alice", context);
     }
 
     @Test
