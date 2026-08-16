@@ -9,20 +9,29 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
 import java.time.Instant;
+import java.util.Objects;
 
-/** Persisted batch job for independently analyzing project requirements. */
+/** Persisted batch job for independently analyzing project requirements in one exact tenant. */
 @Entity
 @Table(name = "req_analysis_job", indexes = {
-        @Index(name = "idx_job_project", columnList = "project_id,created_at"),
-        @Index(name = "idx_job_status", columnList = "project_id,status")
+        @Index(name = "idx_job_project", columnList = "scope_key,project_id,created_at"),
+        @Index(name = "idx_job_status", columnList = "scope_key,project_id,status"),
+        @Index(name = "idx_job_scope", columnList = "scope_key")
 }, uniqueConstraints = {
-        @UniqueConstraint(name = "uq_job_idempotency", columnNames = {"project_id", "idempotency_key"})
+        @UniqueConstraint(name = "uq_job_idempotency",
+                columnNames = {"scope_key", "project_id", "idempotency_key"}),
+        @UniqueConstraint(name = "uq_job_id_scope", columnNames = {"id", "scope_key"}),
+        @UniqueConstraint(name = "uq_job_id_proj_scope",
+                columnNames = {"id", "project_id", "scope_key"})
 })
 public class RequirementAnalysisJob {
 
@@ -30,8 +39,20 @@ public class RequirementAnalysisJob {
     @Column(length = 36)
     private String id;
 
+    @Column(name = "scope_key", nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    /** Read-only scalar parent identity for exact worker and repository predicates. */
+    @Column(name = "project_id", nullable = false, insertable = false, updatable = false)
+    private Long projectId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_id", nullable = false)
+    @JoinColumns({
+            @JoinColumn(name = "project_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    nullable = false, insertable = false, updatable = false)
+    })
     private ArchitectureProject project;
 
     @Enumerated(EnumType.STRING)
@@ -51,6 +72,7 @@ public class RequirementAnalysisJob {
     @Column(name = "requested_by", nullable = false, length = 160)
     private String requestedBy;
 
+    /** Retained as display provenance; {@link #scopeKey} is the persistence authority. */
     @Column(name = "workspace_id", length = 120)
     private String workspaceId;
 
@@ -103,6 +125,7 @@ public class RequirementAnalysisJob {
         this.workspaceId = workspaceId;
         this.totalItems = totalItems;
         this.createdAt = createdAt;
+        synchronizeTenantAuthority(false);
     }
 
     public void markPending() {
@@ -158,7 +181,44 @@ public class RequirementAnalysisJob {
         this.completedAt = now;
     }
 
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+        synchronizeTenantAuthority(true);
+    }
+
+    private void synchronizeTenantAuthority(boolean requirePersistentParent) {
+        if (project == null || project.getScopeKey() == null
+                || project.getScopeKey().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Analysis job project must expose an exact tenant scope");
+        }
+        String projectScope = project.getScopeKey().strip();
+        if (scopeKey != null && !scopeKey.isBlank()
+                && !projectScope.equals(scopeKey.strip())) {
+            throw new IllegalArgumentException(
+                    "Analysis job tenant scope does not match its project");
+        }
+        scopeKey = projectScope;
+
+        Long persistentProjectId = project.getId();
+        if (persistentProjectId == null) {
+            if (requirePersistentParent) {
+                throw new IllegalArgumentException(
+                        "Analysis job project must be persisted before the job");
+            }
+            return;
+        }
+        if (projectId != null && !Objects.equals(projectId, persistentProjectId)) {
+            throw new IllegalArgumentException(
+                    "Analysis job project ID does not match its association");
+        }
+        projectId = persistentProjectId;
+    }
+
     public String getId() { return id; }
+    public String getScopeKey() { return scopeKey; }
+    public Long getProjectId() { return projectId; }
     public ArchitectureProject getProject() { return project; }
     public AnalysisStatus getStatus() { return status; }
     public String getIdempotencyKey() { return idempotencyKey; }
