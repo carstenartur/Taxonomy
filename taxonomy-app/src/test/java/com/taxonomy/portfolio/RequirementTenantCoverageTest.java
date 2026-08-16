@@ -16,6 +16,7 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -71,8 +72,7 @@ class RequirementTenantCoverageTest {
     }
 
     @Test
-    @SuppressWarnings("deprecation")
-    void repositoryIdentityGuardsRejectIncompleteKeysBeforeDatabaseLookup() {
+    void repositoryIdentityGuardsRejectIncompleteKeysBeforePersistenceAccess() {
         ProjectRequirementVersionRepository repository = mock(
                 ProjectRequirementVersionRepository.class,
                 Answers.CALLS_REAL_METHODS);
@@ -85,9 +85,9 @@ class RequirementTenantCoverageTest {
                 1L, 2L, null)).isEmpty();
         assertThat(repository.findByIdAndRequirementIdAndScopeKey(
                 1L, 2L, "  ")).isEmpty();
-        assertThat(repository.findByIdAndRequirementId(null, 1L)).isEmpty();
-        assertThat(repository.findByIdAndRequirementId(1L, null)).isEmpty();
 
-        verify(repository, never()).findById(anyLong());
+        verify(repository, never()).getReferenceById(anyLong());
+        verify(repository, never()).findExactTenantVersion(
+                anyLong(), anyLong(), anyString());
     }
 }
