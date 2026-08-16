@@ -20,9 +20,28 @@ alter table product_catalog
     add column branch_name varchar(255);
 
 do $$
+declare
+    primary_repository_count integer;
 begin
-    if (select count(*) from system_repository where primary_repo) <> 1 then
-        raise exception 'Portfolio tenancy migration requires exactly one primary repository';
+    select count(*)
+    into primary_repository_count
+    from system_repository
+    where primary_repo;
+
+    if primary_repository_count > 1 then
+        raise exception 'Portfolio tenancy migration found more than one primary repository';
+    end if;
+
+    -- A fresh installation legitimately has no repository catalogue row yet: the
+    -- catalogue initializer creates it after Flyway has established the schema.
+    -- Existing central portfolio rows, however, need one unambiguous repository
+    -- and branch for deterministic backfill.
+    if primary_repository_count = 0 and (
+        exists (select 1 from arch_project where workspace_id is null)
+        or exists (select 1 from solution_definition where workspace_id is null)
+        or exists (select 1 from product_catalog where workspace_id is null)
+    ) then
+        raise exception 'Portfolio tenancy migration requires exactly one primary repository for existing central portfolio rows';
     end if;
 
     if exists (
