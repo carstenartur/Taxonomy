@@ -13,6 +13,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisRecoveryService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -77,8 +78,9 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                 "recover-" + UUID.randomUUID(),
                 context.username(),
                 context);
+        String scopeKey = PortfolioScope.key(context.username(), context);
 
-        assertThat(workQueue.pending(job.id(), project.id())).hasSize(1);
+        assertThat(workQueue.pending(job.id(), project.id(), scopeKey)).hasSize(1);
         assertThatThrownBy(() -> recoveryService.prepareRetryableItems(
                 job.id(),
                 project.id(),
