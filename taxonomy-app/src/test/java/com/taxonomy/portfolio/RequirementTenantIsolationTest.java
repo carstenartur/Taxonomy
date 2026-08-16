@@ -77,8 +77,8 @@ class RequirementTenantIsolationTest {
         String scopeADraft = PortfolioScope.key("architect", aDraft);
         String scopeBMain = PortfolioScope.key("architect", bMain);
 
-        // Force the first scoped version lookup down the exact-query path. The
-        // following wrong-scope lookup then exercises the already-loaded fast path.
+        // Force scoped version resolution through exact SQL before exercising
+        // the already-loaded constant-work path used by list projections.
         entityManager.flush();
         entityManager.clear();
 
@@ -88,6 +88,13 @@ class RequirementTenantIsolationTest {
                 requirementAMain.id(), projectAMain.id(), scopeADraft)).isEmpty();
         assertThat(requirementRepository.findByIdAndProjectIdAndScopeKey(
                 requirementAMain.id(), projectAMain.id(), scopeBMain)).isEmpty();
+
+        assertThat(versionRepository.findByIdAndRequirementIdAndScopeKey(
+                requirementAMain.currentVersion().id(), requirementAMain.id(), scopeADraft))
+                .isEmpty();
+        assertThat(versionRepository.findByIdAndRequirementIdAndScopeKey(
+                requirementAMain.currentVersion().id(), requirementADraft.id(), scopeAMain))
+                .isEmpty();
         assertThat(versionRepository.findByIdAndRequirementIdAndScopeKey(
                 requirementAMain.currentVersion().id(), requirementAMain.id(), scopeAMain))
                 .isPresent();
