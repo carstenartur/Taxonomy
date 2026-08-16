@@ -279,7 +279,8 @@ class GitNativeSyncIntegrationServiceTest {
     }
 
     @Test
-    void contextRepositoryMismatchFailsBeforeGitOrPortfolioMutation() {
+    void contextRepositoryMismatchFailsBeforeGitOrPortfolioMutation()
+            throws Exception {
         when(contextResolver.resolveRepositoryContextForUser("alice"))
                 .thenReturn(RepositoryContext.workspace(
                         "repo-b", "workspace-a", "feature/alice", "alice"));
