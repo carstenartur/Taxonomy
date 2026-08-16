@@ -34,13 +34,9 @@ The branch threshold is an explicit non-regression ratchet based on verified rea
 
 For each configured package the policy records separate line and branch minimums. The values are floors measured from a successful authoritative aggregate report; future changes may retain or raise them but may not silently reduce them.
 
-In a complete-history pull-request checkout, the same policy also identifies changed production Java files under configured critical source prefixes. Each selected source must:
+In a complete-history pull-request checkout, the same policy also identifies changed production Java files under configured critical source prefixes. Every selected source must appear as a `sourcefile` in the authoritative JaCoCo XML. A selected source with executable bytecode must meet the changed-source line minimum and, where measurable branches exist, the branch minimum.
 
-- appear in the authoritative JaCoCo XML;
-- meet the changed-source line minimum;
-- meet the changed-source branch minimum when the source contains measurable branches.
-
-JaCoCo omits the `BRANCH` counter for a source file with no branches. That case is reported as not applicable rather than as zero coverage. Package-level branch counters remain mandatory.
+JaCoCo legitimately emits a `sourcefile` without line or branch counters for source-only declarations such as Spring Data repository interfaces. That explicitly present but unmeasured source is reported as not applicable. It is distinct from a changed source that is absent from the aggregate report, which remains a hard failure. A source with executable lines but no branches receives a line decision and an `N/A` branch decision. Package-level line and branch counters remain mandatory for every configured critical package.
 
 Canonical CI checks out complete history and is the authority for changed-source coverage. Shallow database or security jobs still enforce aggregate and package coverage where the complete reactor report is available, but they do not pretend to own a Git diff they cannot establish.
 
@@ -92,7 +88,7 @@ The deterministic policy regression tests can be run after Maven has built the r
 
 ```bash
 ./mvnw -B -pl taxonomy-build -am test \
-  -Dtest=ReactorCoveragePolicyTest,CriticalCoveragePolicyTest \
+  -Dtest=ReactorCoveragePolicyTest,CriticalCoveragePolicyTest,CriticalCoverageSparseReportTest \
   -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
