@@ -33,7 +33,8 @@ import java.time.LocalDate;
         @Index(name = "idx_proj_status", columnList = "scope_key,status"),
         @Index(name = "idx_proj_tenant", columnList = "repository_id,workspace_scope,branch_name")
 }, uniqueConstraints = {
-        @UniqueConstraint(name = "uq_proj_scope_key", columnNames = {"scope_key", "project_key"})
+        @UniqueConstraint(name = "uq_proj_scope_key", columnNames = {"scope_key", "project_key"}),
+        @UniqueConstraint(name = "uq_proj_id_scope", columnNames = {"id", "scope_key"})
 })
 public class ArchitectureProject {
 
