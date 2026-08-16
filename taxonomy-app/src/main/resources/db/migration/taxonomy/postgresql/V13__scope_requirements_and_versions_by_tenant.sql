@@ -28,11 +28,18 @@ begin
         raise exception 'Requirement tenancy migration found a requirement/project scope mismatch';
     end if;
 
+    -- project_requirement.scope_key was introduced immediately above and has not
+    -- been backfilled yet. Existing versions therefore derive their pre-migration
+    -- authority through requirement -> project, not through the new child column.
     if exists (
         select 1
         from project_req_version version
-        left join project_requirement requirement on requirement.id = version.requirement_id
-        where requirement.id is null or nullif(btrim(requirement.scope_key), '') is null
+        left join project_requirement requirement
+            on requirement.id = version.requirement_id
+        left join arch_project project on project.id = requirement.project_id
+        where requirement.id is null
+           or project.id is null
+           or nullif(btrim(project.scope_key), '') is null
     ) then
         raise exception 'Requirement tenancy migration found a version without an exact requirement tenant';
     end if;
@@ -40,9 +47,11 @@ begin
     if exists (
         select 1
         from project_req_version version
-        join project_requirement requirement on requirement.id = version.requirement_id
+        join project_requirement requirement
+            on requirement.id = version.requirement_id
+        join arch_project project on project.id = requirement.project_id
         where version.scope_key is not null
-          and btrim(version.scope_key) <> btrim(requirement.scope_key)
+          and btrim(version.scope_key) <> btrim(project.scope_key)
     ) then
         raise exception 'Requirement tenancy migration found a version/requirement scope mismatch';
     end if;
