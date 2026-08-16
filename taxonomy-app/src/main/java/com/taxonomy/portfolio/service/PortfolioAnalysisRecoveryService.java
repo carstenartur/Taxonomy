@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 
-/** Recovers failed items and expired worker claims without duplicating active work. */
+/** Recovers failed items and expired worker claims without crossing exact tenants. */
 @Service
 public class PortfolioAnalysisRecoveryService {
 
@@ -32,9 +32,9 @@ public class PortfolioAnalysisRecoveryService {
     /**
      * Resets failed items and RUNNING items whose claim is older than the supplied
      * cutoff. Active claims remain untouched. Every successful compare-and-set
-     * increments the attempt and binds the retry to the requirement's current
-     * immutable text version. The job remains PENDING until a worker actually
-     * claims its prepared items, so a lost or rejected dispatch can be retried.
+     * includes job, project and exact tenant identity, increments the attempt and
+     * binds the retry to the requirement's current immutable text version. The
+     * job remains PENDING until a worker actually claims its prepared items.
      *
      * @return number of items atomically prepared for another attempt
      */
@@ -48,16 +48,18 @@ public class PortfolioAnalysisRecoveryService {
             throw PortfolioException.validation("staleBefore is required");
         }
         projectService.requireProject(projectId, username, context);
-        RequirementAnalysisJob job = jobRepository.findByIdAndProjectId(jobId, projectId)
+        String scopeKey = PortfolioScope.key(username, context);
+        RequirementAnalysisJob job = jobRepository
+                .findByIdAndProjectIdAndScopeKey(jobId, projectId, scopeKey)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Analysis job not found: " + jobId));
 
-        List<RequirementAnalysisJobItem> failed =
-                itemRepository.findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
-                        jobId, AnalysisStatus.FAILED);
+        List<RequirementAnalysisJobItem> failed = itemRepository
+                .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, scopeKey, AnalysisStatus.FAILED);
         List<RequirementAnalysisJobItem> stale = itemRepository
-                .findByJobIdAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
-                        jobId, AnalysisStatus.RUNNING, staleBefore);
+                .findByJobIdAndProjectIdAndScopeKeyAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, scopeKey, AnalysisStatus.RUNNING, staleBefore);
 
         int prepared = 0;
         for (RequirementAnalysisJobItem item : failed) {
@@ -65,6 +67,9 @@ public class PortfolioAnalysisRecoveryService {
                     projectService.currentVersion(item.getRequirement());
             prepared += itemRepository.resetFailed(
                     item.getId(),
+                    jobId,
+                    projectId,
+                    scopeKey,
                     AnalysisStatus.FAILED,
                     AnalysisStatus.PENDING,
                     version);
@@ -74,6 +79,9 @@ public class PortfolioAnalysisRecoveryService {
                     projectService.currentVersion(item.getRequirement());
             prepared += itemRepository.resetExpiredRunning(
                     item.getId(),
+                    jobId,
+                    projectId,
+                    scopeKey,
                     AnalysisStatus.RUNNING,
                     AnalysisStatus.PENDING,
                     staleBefore,
