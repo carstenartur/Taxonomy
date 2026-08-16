@@ -80,8 +80,9 @@ public class ProjectConflictService {
                                      String username,
                                      WorkspaceContext context) {
         ArchitectureProject project = projectService.requireProject(projectId, username, context);
-        List<ProjectRequirement> requirements =
-                requirementRepository.findByProjectIdOrderByRequirementKeyAsc(projectId);
+        List<ProjectRequirement> requirements = requirementRepository
+                .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(
+                        projectId, project.getScopeKey());
         Instant now = Instant.now();
 
         for (int leftIndex = 0; leftIndex < requirements.size(); leftIndex++) {
