@@ -2,6 +2,8 @@ package com.taxonomy.workspace.repository;
 
 import com.taxonomy.workspace.model.UserWorkspace;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -30,4 +32,18 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
     Optional<UserWorkspace> findByUsernameAndDisplayName(String username, String displayName);
 
     long countByUsernameAndArchivedFalse(String username);
+
+    /**
+     * Check disclosure permission without materializing a foreign workspace row.
+     * Missing and unauthorized identifiers intentionally produce the same result.
+     */
+    @Query("""
+            select case when count(workspace) > 0 then true else false end
+            from UserWorkspace workspace
+            where workspace.workspaceId = :workspaceId
+              and (workspace.username = :username or workspace.shared = true)
+            """)
+    boolean existsVisibleWorkspaceMetadata(
+            @Param("workspaceId") String workspaceId,
+            @Param("username") String username);
 }
