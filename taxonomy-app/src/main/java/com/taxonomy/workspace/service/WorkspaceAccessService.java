@@ -6,9 +6,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Resolves whether workspace metadata may be disclosed to an authenticated
- * principal. The lookup deliberately returns only a boolean so callers cannot
- * accidentally expose or materialize a foreign workspace after an authorization
- * decision.
+ * principal. The lookup deliberately returns only a scalar count so callers
+ * cannot accidentally expose or materialize a foreign workspace after an
+ * authorization decision.
  */
 @Service
 public class WorkspaceAccessService {
@@ -25,7 +25,7 @@ public class WorkspaceAccessService {
                 || username == null || username.isBlank()) {
             return false;
         }
-        return workspaceRepository.existsVisibleWorkspaceMetadata(
-                workspaceId.strip(), username.strip());
+        return workspaceRepository.countVisibleWorkspaceMetadata(
+                workspaceId.strip(), username.strip()) > 0L;
     }
 }
