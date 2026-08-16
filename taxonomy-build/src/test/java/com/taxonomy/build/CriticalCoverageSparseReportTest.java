@@ -16,7 +16,8 @@ class CriticalCoverageSparseReportTest {
     private final CriticalCoveragePolicy evaluator = new CriticalCoveragePolicy();
 
     @Test
-    void ignoresUnmeasuredUnrelatedPackagesAndSources(@TempDir Path root) throws Exception {
+    void unmeasuredSourceIsNotConfusedWithAFileMissingFromTheReport(@TempDir Path root)
+            throws Exception {
         Path xml = root.resolve("jacoco.xml");
         Files.writeString(xml, """
                 <report name="critical">
@@ -41,10 +42,15 @@ class CriticalCoverageSparseReportTest {
         CriticalCoveragePolicy.Evaluation evaluation = evaluator.evaluate(
                 xml,
                 policy(),
-                new CriticalCoveragePolicy.ChangedSources(Set.of(), "none"));
+                new CriticalCoveragePolicy.ChangedSources(
+                        Set.of("taxonomy-domain/src/main/java/com/taxonomy/pipeline/PipelineMarker.java"),
+                        "one unmeasured source"));
 
         assertThat(evaluation.passed()).isTrue();
-        assertThat(evaluation.text()).contains("Result: PASS");
+        assertThat(evaluation.text())
+                .contains("LINE: N/A (source has no executable line counter total)")
+                .contains("BRANCH: N/A (source has no executable branch counter total)")
+                .contains("Result: PASS");
     }
 
     @Test
