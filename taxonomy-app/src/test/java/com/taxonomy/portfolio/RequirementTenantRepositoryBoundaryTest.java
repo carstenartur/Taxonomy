@@ -25,6 +25,7 @@ class RequirementTenantRepositoryBoundaryTest {
             "requirementRepository.findByIdAndProjectIdForUpdate(",
             "requirementRepository.findByProjectIdAndRequirementKeyIgnoreCase(",
             "requirementRepository.countByProjectId(",
+            "versionRepository.findById(",
             "versionRepository.findByRequirementIdOrderByVersionNumberDesc(",
             "versionRepository.findFirstByRequirementIdOrderByVersionNumberDesc(",
             "versionRepository.findByRequirementIdAndVersionNumber(",
