@@ -38,6 +38,34 @@ class DockerfileReactorContractTest {
         }
     }
 
+    @Test
+    void pullRequestCiBuildsChangedProductionImagesBeforeCanonicalVerification()
+            throws Exception {
+        Path root = findRepositoryRoot();
+        String workflow = Files.readString(
+                root.resolve(".github/workflows/ci-cd.yml"),
+                StandardCharsets.UTF_8);
+
+        assertThat(workflow)
+                .contains("- name: Detect production-image changes")
+                .contains("id: production-image-scope")
+                .contains("Dockerfile \\")
+                .contains("'taxonomy-*/pom.xml' \\")
+                .contains("- name: Verify production Docker image build")
+                .contains("if: steps.production-image-scope.outputs.run == 'true'")
+                .contains("docker build \\")
+                .contains("--build-arg VCS_REF=\"$GITHUB_SHA\" \\")
+                .contains("org.opencontainers.image.revision")
+                .contains("10001:10001");
+
+        int imageBuild = workflow.indexOf(
+                "- name: Verify production Docker image build");
+        int canonicalVerification = workflow.indexOf(
+                "- name: Run the canonical Maven verification suite");
+        assertThat(imageBuild).isGreaterThanOrEqualTo(0);
+        assertThat(canonicalVerification).isGreaterThan(imageBuild);
+    }
+
     private static List<String> readReactorModules(Path pom) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature(
