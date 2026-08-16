@@ -104,13 +104,13 @@ final class CriticalCoveragePolicy {
                 String packageName = requiredAttribute(
                         packageElement, "name", "JaCoCo package");
                 PackageKey packageKey = new PackageKey(module, packageName);
-                if (packages.putIfAbsent(
-                        packageKey,
-                        parseCounterSet(
-                                packageElement,
-                                requiredCounters,
-                                packageKey.scope(),
-                                false)) != null) {
+                Map<String, Counter> packageCounters = parseCounterSet(
+                        packageElement,
+                        requiredCounters,
+                        packageKey.scope(),
+                        true);
+                if (!packageCounters.isEmpty()
+                        && packages.putIfAbsent(packageKey, packageCounters) != null) {
                     throw new IllegalArgumentException(
                             "Duplicate JaCoCo package " + packageKey.scope());
                 }
@@ -119,13 +119,15 @@ final class CriticalCoveragePolicy {
                             sourceFile, "name", "JaCoCo sourcefile");
                     String repositoryPath = module + "/src/main/java/"
                             + packageName + "/" + sourceName;
-                    if (sourceFiles.putIfAbsent(
-                            repositoryPath,
-                            parseCounterSet(
-                                    sourceFile,
-                                    requiredCounters,
-                                    "source:" + repositoryPath,
-                                    true)) != null) {
+                    Map<String, Counter> sourceCounters = parseCounterSet(
+                            sourceFile,
+                            requiredCounters,
+                            "source:" + repositoryPath,
+                            true);
+                    if (sourceCounters.isEmpty()) {
+                        continue;
+                    }
+                    if (sourceFiles.putIfAbsent(repositoryPath, sourceCounters) != null) {
                         throw new IllegalArgumentException(
                                 "Duplicate JaCoCo source file " + repositoryPath);
                     }
@@ -504,6 +506,9 @@ final class CriticalCoveragePolicy {
             counters.put(type, new Counter(
                     parseNonNegative(counter, "covered", type, scope),
                     parseNonNegative(counter, "missed", type, scope)));
+        }
+        if (counters.isEmpty()) {
+            return Map.of();
         }
         if (allowMissingBranch && !counters.containsKey("BRANCH")) {
             counters.put("BRANCH", new Counter(0, 0));
