@@ -28,24 +28,33 @@ begin
         raise exception 'Analysis tenancy migration found a job without its exact project tenant';
     end if;
 
+    -- The newly added job/item columns are not authoritative before backfill.
+    -- Derive the expected tenant through job -> project and compare every other
+    -- parent directly with that already-scoped project.
     if exists (
         select 1
         from req_analysis_item item
         left join req_analysis_job job on job.id = item.job_id
+        left join arch_project project on project.id = job.project_id
         left join project_requirement requirement
             on requirement.id = item.requirement_id
         left join project_req_version version
             on version.id = item.requirement_version_id
         where job.id is null
+           or project.id is null
            or requirement.id is null
            or version.id is null
+           or nullif(btrim(project.scope_key), '') is null
            or job.project_id <> requirement.project_id
            or version.requirement_id <> requirement.id
-           or btrim(job.scope_key) <> btrim(requirement.scope_key)
-           or btrim(job.scope_key) <> btrim(version.scope_key)
-           or (item.project_id is not null and item.project_id <> job.project_id)
+           or btrim(requirement.scope_key) <> btrim(project.scope_key)
+           or btrim(version.scope_key) <> btrim(project.scope_key)
+           or (job.scope_key is not null
+               and btrim(job.scope_key) <> btrim(project.scope_key))
+           or (item.project_id is not null
+               and item.project_id <> project.id)
            or (item.scope_key is not null
-               and btrim(item.scope_key) <> btrim(job.scope_key))
+               and btrim(item.scope_key) <> btrim(project.scope_key))
     ) then
         raise exception 'Analysis tenancy migration found an item with inconsistent job/requirement/version authority';
     end if;
@@ -63,12 +72,14 @@ begin
            or requirement.id is null
            or version.id is null
            or job.id is null
+           or nullif(btrim(project.scope_key), '') is null
            or requirement.project_id <> project.id
            or job.project_id <> project.id
            or version.requirement_id <> requirement.id
            or btrim(requirement.scope_key) <> btrim(project.scope_key)
            or btrim(version.scope_key) <> btrim(project.scope_key)
-           or btrim(job.scope_key) <> btrim(project.scope_key)
+           or (job.scope_key is not null
+               and btrim(job.scope_key) <> btrim(project.scope_key))
            or (snapshot.scope_key is not null
                and btrim(snapshot.scope_key) <> btrim(project.scope_key))
     ) then
@@ -79,9 +90,14 @@ begin
         select 1
         from req_element_mapping mapping
         left join req_analysis_snapshot snapshot on snapshot.id = mapping.snapshot_id
+        left join arch_project project on project.id = snapshot.project_id
         where snapshot.id is null
+           or project.id is null
+           or nullif(btrim(project.scope_key), '') is null
+           or (snapshot.scope_key is not null
+               and btrim(snapshot.scope_key) <> btrim(project.scope_key))
            or (mapping.scope_key is not null
-               and btrim(mapping.scope_key) <> btrim(snapshot.scope_key))
+               and btrim(mapping.scope_key) <> btrim(project.scope_key))
     ) then
         raise exception 'Analysis tenancy migration found an element mapping without its exact snapshot tenant';
     end if;
@@ -90,9 +106,14 @@ begin
         select 1
         from req_relation_mapping mapping
         left join req_analysis_snapshot snapshot on snapshot.id = mapping.snapshot_id
+        left join arch_project project on project.id = snapshot.project_id
         where snapshot.id is null
+           or project.id is null
+           or nullif(btrim(project.scope_key), '') is null
+           or (snapshot.scope_key is not null
+               and btrim(snapshot.scope_key) <> btrim(project.scope_key))
            or (mapping.scope_key is not null
-               and btrim(mapping.scope_key) <> btrim(snapshot.scope_key))
+               and btrim(mapping.scope_key) <> btrim(project.scope_key))
     ) then
         raise exception 'Analysis tenancy migration found a relation mapping without its exact snapshot tenant';
     end if;
@@ -102,11 +123,15 @@ begin
         from project_requirement requirement
         left join req_analysis_snapshot snapshot
             on snapshot.id = requirement.current_snapshot_id
+        left join arch_project project on project.id = snapshot.project_id
         where requirement.current_snapshot_id is not null
           and (snapshot.id is null
+               or project.id is null
                or snapshot.requirement_id <> requirement.id
                or snapshot.project_id <> requirement.project_id
-               or btrim(snapshot.scope_key) <> btrim(requirement.scope_key))
+               or btrim(requirement.scope_key) <> btrim(project.scope_key)
+               or (snapshot.scope_key is not null
+                   and btrim(snapshot.scope_key) <> btrim(project.scope_key)))
     ) then
         raise exception 'Analysis tenancy migration found a current snapshot outside its requirement tenant';
     end if;
@@ -114,14 +139,23 @@ begin
     if exists (
         select 1
         from req_analysis_item item
+        left join req_analysis_job job on job.id = item.job_id
         left join req_analysis_snapshot snapshot on snapshot.id = item.snapshot_id
+        left join arch_project project on project.id = job.project_id
         where item.snapshot_id is not null
-          and (snapshot.id is null
+          and (job.id is null
+               or snapshot.id is null
+               or project.id is null
                or snapshot.job_id <> item.job_id
                or snapshot.requirement_id <> item.requirement_id
                or snapshot.requirement_version_id <> item.requirement_version_id
-               or snapshot.project_id <> item.project_id
-               or btrim(snapshot.scope_key) <> btrim(item.scope_key))
+               or snapshot.project_id <> job.project_id
+               or (item.project_id is not null
+                   and item.project_id <> job.project_id)
+               or (snapshot.scope_key is not null
+                   and btrim(snapshot.scope_key) <> btrim(project.scope_key))
+               or (item.scope_key is not null
+                   and btrim(item.scope_key) <> btrim(project.scope_key)))
     ) then
         raise exception 'Analysis tenancy migration found an item snapshot pointer outside its exact work identity';
     end if;
