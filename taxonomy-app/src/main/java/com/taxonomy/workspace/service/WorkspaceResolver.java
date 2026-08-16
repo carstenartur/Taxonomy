@@ -38,8 +38,12 @@ public class WorkspaceResolver {
     }
 
     /**
-     * Resolve the legacy workspace context for the current request.
-     * Resolver failures propagate; this method never manufactures a fallback.
+     * Resolve the compatibility workspace context for the current request.
+     *
+     * <p>The returned value is enriched from the same request-stable
+     * {@link RepositoryContext}. Legacy callers therefore cannot lose the logical
+     * repository identity or continue with a branch that differs from the
+     * canonical repository selection.</p>
      */
     public WorkspaceContext resolveCurrentContext() {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
@@ -51,10 +55,12 @@ public class WorkspaceResolver {
             }
         }
 
-        WorkspaceContext resolved = contextResolver.resolveCurrentContext();
-        if (resolved == null) {
-            throw new IllegalStateException("Workspace context resolver returned null");
-        }
+        RepositoryContext repository = resolveCurrentRepositoryContext();
+        WorkspaceContext resolved = new WorkspaceContext(
+                repository.username(),
+                repository.workspaceId(),
+                repository.branch(),
+                repository.repositoryId());
         cache(attributes, REQUEST_CONTEXT_ATTRIBUTE, resolved);
         return resolved;
     }

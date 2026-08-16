@@ -11,6 +11,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
@@ -18,11 +20,12 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 
-/** Reusable, workspace-scoped solution definition independent of a project. */
+/** Reusable solution definition isolated by repository, workspace scope and branch. */
 @Entity
 @Table(name = "solution_definition", indexes = {
         @Index(name = "idx_sol_scope", columnList = "scope_key"),
-        @Index(name = "idx_sol_lifecycle", columnList = "scope_key,lifecycle_status")
+        @Index(name = "idx_sol_lifecycle", columnList = "scope_key,lifecycle_status"),
+        @Index(name = "idx_sol_tenant", columnList = "repository_id,workspace_scope,branch_name")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uq_sol_scope_key", columnNames = {"scope_key", "solution_key"})
 })
@@ -32,8 +35,17 @@ public class SolutionDefinition {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "scope_key", nullable = false, length = 160)
+    @Column(name = "scope_key", nullable = false, length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
     private String scopeKey;
+
+    @Column(name = "repository_id", nullable = false, length = 255)
+    private String repositoryId;
+
+    @Column(name = "workspace_scope", nullable = false, length = 320)
+    private String workspaceScope;
+
+    @Column(name = "branch_name", nullable = false, length = 255)
+    private String branchName;
 
     @Column(name = "workspace_id", length = 120)
     private String workspaceId;
@@ -121,6 +133,7 @@ public class SolutionDefinition {
         this.responsibleOrganization = responsibleOrganization;
         this.createdAt = now;
         this.updatedAt = now;
+        synchronizeTenantIdentityIfEncoded();
     }
 
     public void update(String title,
@@ -153,8 +166,33 @@ public class SolutionDefinition {
         this.updatedAt = now;
     }
 
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantIdentity() {
+        PortfolioTenantIdentity identity = PortfolioTenantIdentity.parse(scopeKey);
+        String expectedWorkspaceScope = workspaceId == null || workspaceId.isBlank()
+                ? PortfolioTenantIdentity.CENTRAL_SCOPE
+                : PortfolioTenantIdentity.WORKSPACE_SCOPE_PREFIX + workspaceId.strip();
+        if (!expectedWorkspaceScope.equals(identity.workspaceScope())) {
+            throw new IllegalArgumentException(
+                    "Portfolio scope key does not match workspaceId");
+        }
+        repositoryId = identity.repositoryId();
+        workspaceScope = identity.workspaceScope();
+        branchName = identity.branch();
+    }
+
+    private void synchronizeTenantIdentityIfEncoded() {
+        if (PortfolioTenantIdentity.isEncoded(scopeKey)) {
+            synchronizeTenantIdentity();
+        }
+    }
+
     public Long getId() { return id; }
     public String getScopeKey() { return scopeKey; }
+    public String getRepositoryId() { return repositoryId; }
+    public String getWorkspaceScope() { return workspaceScope; }
+    public String getBranchName() { return branchName; }
     public String getWorkspaceId() { return workspaceId; }
     public String getSolutionKey() { return solutionKey; }
     public String getTitle() { return title; }

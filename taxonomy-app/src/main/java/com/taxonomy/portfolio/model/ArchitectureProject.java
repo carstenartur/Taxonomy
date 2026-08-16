@@ -9,6 +9,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
@@ -20,14 +22,16 @@ import java.time.LocalDate;
 /**
  * Project boundary for requirements, analyses, solution decisions and products.
  *
- * <p>{@code scopeKey} is a normalized workspace/user scope populated by the
- * application service. It avoids database-specific NULL uniqueness semantics
- * and is the authoritative isolation discriminator.</p>
+ * <p>{@code scopeKey} is the reversible repository/workspace/branch identity.
+ * Explicit tenant columns are synchronized from it before every write so
+ * operational queries and database evidence never have to infer tenancy from a
+ * user name or nullable workspace alone.</p>
  */
 @Entity
 @Table(name = "arch_project", indexes = {
         @Index(name = "idx_proj_scope", columnList = "scope_key"),
-        @Index(name = "idx_proj_status", columnList = "scope_key,status")
+        @Index(name = "idx_proj_status", columnList = "scope_key,status"),
+        @Index(name = "idx_proj_tenant", columnList = "repository_id,workspace_scope,branch_name")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uq_proj_scope_key", columnNames = {"scope_key", "project_key"})
 })
@@ -37,8 +41,17 @@ public class ArchitectureProject {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "scope_key", nullable = false, length = 160)
+    @Column(name = "scope_key", nullable = false, length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
     private String scopeKey;
+
+    @Column(name = "repository_id", nullable = false, length = 255)
+    private String repositoryId;
+
+    @Column(name = "workspace_scope", nullable = false, length = 320)
+    private String workspaceScope;
+
+    @Column(name = "branch_name", nullable = false, length = 255)
+    private String branchName;
 
     @Column(name = "workspace_id", length = 120)
     private String workspaceId;
@@ -101,6 +114,7 @@ public class ArchitectureProject {
         this.status = status != null ? status : ProjectStatus.PLANNING;
         this.createdAt = now;
         this.updatedAt = now;
+        synchronizeTenantIdentityIfEncoded();
     }
 
     public void update(String title,
@@ -121,8 +135,33 @@ public class ArchitectureProject {
         this.updatedAt = now;
     }
 
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantIdentity() {
+        PortfolioTenantIdentity identity = PortfolioTenantIdentity.parse(scopeKey);
+        String expectedWorkspaceScope = workspaceId == null || workspaceId.isBlank()
+                ? PortfolioTenantIdentity.CENTRAL_SCOPE
+                : PortfolioTenantIdentity.WORKSPACE_SCOPE_PREFIX + workspaceId.strip();
+        if (!expectedWorkspaceScope.equals(identity.workspaceScope())) {
+            throw new IllegalArgumentException(
+                    "Portfolio scope key does not match workspaceId");
+        }
+        repositoryId = identity.repositoryId();
+        workspaceScope = identity.workspaceScope();
+        branchName = identity.branch();
+    }
+
+    private void synchronizeTenantIdentityIfEncoded() {
+        if (PortfolioTenantIdentity.isEncoded(scopeKey)) {
+            synchronizeTenantIdentity();
+        }
+    }
+
     public Long getId() { return id; }
     public String getScopeKey() { return scopeKey; }
+    public String getRepositoryId() { return repositoryId; }
+    public String getWorkspaceScope() { return workspaceScope; }
+    public String getBranchName() { return branchName; }
     public String getWorkspaceId() { return workspaceId; }
     public String getOwnerUsername() { return ownerUsername; }
     public String getProjectKey() { return projectKey; }

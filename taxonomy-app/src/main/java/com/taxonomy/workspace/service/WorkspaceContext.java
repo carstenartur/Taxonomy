@@ -1,37 +1,43 @@
 package com.taxonomy.workspace.service;
 
 /**
- * Immutable value object representing the current workspace context for a user.
+ * Immutable compatibility view of the current workspace context for a user.
  *
- * <p>Carries the {@code username}, {@code workspaceId}, and {@code currentBranch}
- * needed to scope data operations (relations, hypotheses, proposals, commit search)
- * to the active workspace.
- *
- * <p>A special {@link #SHARED} instance represents the system-wide / legacy scope
- * where no per-user isolation applies. Its {@code workspaceId} is {@code null},
- * which maps directly to the {@code workspace_id IS NULL} condition in OR-null
- * queries — ensuring that SHARED callers see all legacy/shared data without
- * accidental workspace filtering.
+ * <p>Productive request handling enriches this value with the exact logical
+ * {@code repositoryId} through {@link WorkspaceResolver}. Repository-sensitive
+ * code should prefer {@link RepositoryContext}; this record remains for callers
+ * whose public service signatures have not yet been migrated.</p>
  *
  * @param username      the authenticated user's username
- * @param workspaceId   the unique workspace identifier (from {@link com.taxonomy.workspace.model.UserWorkspace}),
- *                      or {@code null} for the shared / legacy scope
- * @param currentBranch the Git branch the user is currently working on
+ * @param workspaceId   the selected workspace identifier, or {@code null} for a central scope
+ * @param currentBranch the exact selected Git branch
+ * @param repositoryId  the exact selected logical repository
  */
 public record WorkspaceContext(
         String username,
         String workspaceId,
-        String currentBranch
+        String currentBranch,
+        String repositoryId
 ) {
     /**
-     * Shared / legacy context — used when no per-user workspace is active.
-     *
-     * <p>{@code workspaceId} is {@code null} so that downstream services skip
-     * workspace filtering and return all data (shared + legacy). The
-     * {@code currentBranch} is set to the conventional default; callers that
-     * need the configurable shared branch should resolve it via
-     * {@link SystemRepositoryService#getSharedBranch()}.
+     * Stable compatibility identity used only by direct legacy constructors,
+     * predominantly focused tests outside a request. Productive HTTP requests
+     * replace it with the catalog repository ID in {@link WorkspaceResolver}.
      */
+    public static final String LEGACY_REPOSITORY_ID = "legacy-primary";
+
+    /** Source-compatible constructor retained while legacy signatures are migrated. */
+    public WorkspaceContext(String username, String workspaceId, String currentBranch) {
+        this(username, workspaceId, currentBranch, LEGACY_REPOSITORY_ID);
+    }
+
+    public WorkspaceContext {
+        if (repositoryId == null || repositoryId.isBlank()) {
+            throw new IllegalArgumentException("repositoryId must not be blank");
+        }
+    }
+
+    /** Shared compatibility context for non-request callers. */
     public static final WorkspaceContext SHARED =
-            new WorkspaceContext("system", null, "draft");
+            new WorkspaceContext("system", null, "draft", LEGACY_REPOSITORY_ID);
 }

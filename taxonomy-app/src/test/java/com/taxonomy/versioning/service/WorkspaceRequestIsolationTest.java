@@ -32,16 +32,22 @@ class WorkspaceRequestIsolationTest {
     }
 
     @Test
-    void workspaceContextIsResolvedOnlyOncePerRequest() {
+    void workspaceAndRepositoryContextAreResolvedOnlyOncePerRequest() {
         WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
-        WorkspaceContext expected = new WorkspaceContext("architect", "workspace-1", "draft");
-        when(contextResolver.resolveCurrentContext()).thenReturn(expected);
+        when(contextResolver.resolveRepositoryContextForUser("anonymous"))
+                .thenReturn(RepositoryContext.workspace(
+                        "repository-a", "workspace-1", "draft", "architect"));
         WorkspaceResolver resolver = new WorkspaceResolver(contextResolver);
         bindRequest();
 
-        assertThat(resolver.resolveCurrentContext()).isSameAs(expected);
-        assertThat(resolver.resolveCurrentContext()).isSameAs(expected);
-        verify(contextResolver, times(1)).resolveCurrentContext();
+        WorkspaceContext first = resolver.resolveCurrentContext();
+        WorkspaceContext second = resolver.resolveCurrentContext();
+
+        assertThat(first).isSameAs(second);
+        assertThat(first.repositoryId()).isEqualTo("repository-a");
+        assertThat(first.currentBranch()).isEqualTo("draft");
+        verify(contextResolver, times(0)).resolveCurrentContext();
+        verify(contextResolver, times(1)).resolveRepositoryContextForUser("anonymous");
     }
 
     @Test

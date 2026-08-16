@@ -21,9 +21,9 @@ import java.time.Instant;
  * <p>Before pull or push, durable project decisions are projected into the
  * branch DSL through a workspace-owned port. Isolated repositories use a
  * tracked three-way semantic base instead of replacing the complete
- * architecture file. Every isolated workspace resolves its central source from
- * persistent provenance; synchronization never falls back to the global primary
- * repository once a workspace ID is known.</p>
+ * architecture file. Every synchronization path carries the exact logical
+ * repository, workspace/central scope and branch into both Git and portfolio
+ * materialisation.</p>
  */
 @Service
 @Primary
@@ -62,7 +62,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     public String syncFromShared(String username, String userBranch) throws IOException {
         WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
         if (context.workspaceId() == null) {
-            return mergeWithinRepository(username, context.currentBranch(), true);
+            return mergeWithinRepository(
+                    username, context, context.currentBranch(), true);
         }
         return pullAcrossRepositories(username, context, context.currentBranch());
     }
@@ -71,25 +72,26 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     public String publishToShared(String username, String userBranch) throws IOException {
         WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
         if (context.workspaceId() == null) {
-            return mergeWithinRepository(username, context.currentBranch(), false);
+            return mergeWithinRepository(
+                    username, context, context.currentBranch(), false);
         }
         return publishAcrossRepositories(username, context, context.currentBranch());
     }
 
     @Override
-    public String syncFromSharedToWorkspace(String username, String workspaceId) throws IOException {
-        return pullAcrossRepositories(
-                username,
-                new WorkspaceContext(username, workspaceId, WORKSPACE_BRANCH),
-                WORKSPACE_BRANCH);
+    public String syncFromSharedToWorkspace(String username, String workspaceId)
+            throws IOException {
+        WorkspaceContext context = resolveExplicitWorkspaceContext(
+                username, workspaceId, WORKSPACE_BRANCH);
+        return pullAcrossRepositories(username, context, WORKSPACE_BRANCH);
     }
 
     @Override
-    public String publishFromWorkspaceToShared(String username, String workspaceId) throws IOException {
-        return publishAcrossRepositories(
-                username,
-                new WorkspaceContext(username, workspaceId, WORKSPACE_BRANCH),
-                WORKSPACE_BRANCH);
+    public String publishFromWorkspaceToShared(String username, String workspaceId)
+            throws IOException {
+        WorkspaceContext context = resolveExplicitWorkspaceContext(
+                username, workspaceId, WORKSPACE_BRANCH);
+        return publishAcrossRepositories(username, context, WORKSPACE_BRANCH);
     }
 
     @Override
@@ -108,6 +110,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                           String userBranch) throws IOException {
         UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
+        requireMatchingRepository(context, sourceMetadata);
         String sourceBranch = sourceBranch(workspaceMetadata, sourceMetadata);
         DslGitRepository sourceRepository =
                 repositoryFactory.getCentralRepository(sourceMetadata.getRepositoryId());
@@ -152,6 +155,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                              String userBranch) throws IOException {
         UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
+        requireMatchingRepository(context, sourceMetadata);
         String sourceBranch = sourceBranch(workspaceMetadata, sourceMetadata);
         DslGitRepository sourceRepository =
                 repositoryFactory.getCentralRepository(sourceMetadata.getRepositoryId());
@@ -187,13 +191,13 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                 "Integrate source changes after publish");
         trackBase(workspaceGit, merge.mergedText(), username);
 
-        // Central relational projection is still represented by the legacy primary
-        // context until repository_id is added to those projection entities. The
-        // JGit target itself is already explicit and tenant-safe here.
-        if (sourceMetadata.isPrimaryRepo()) {
-            portfolioGitPort.materializePortfolio(
-                    merge.mergedText(), "shared", WorkspaceContext.SHARED);
-        }
+        WorkspaceContext centralContext = new WorkspaceContext(
+                "shared",
+                null,
+                sourceBranch,
+                requireRepositoryId(sourceMetadata));
+        portfolioGitPort.materializePortfolio(
+                merge.mergedText(), "shared", centralContext);
         portfolioGitPort.materializePortfolio(
                 merge.mergedText(), username, context);
 
@@ -209,10 +213,15 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     }
 
     private String mergeWithinRepository(String username,
+                                         WorkspaceContext context,
                                          String userBranch,
                                          boolean pull) throws IOException {
-        WorkspaceContext context = WorkspaceContext.SHARED;
-        DslGitRepository repository = repositoryFactory.getSystemRepository();
+        if (context.workspaceId() != null) {
+            throw new IllegalArgumentException(
+                    "Central synchronization must not carry a workspaceId");
+        }
+        DslGitRepository repository =
+                repositoryFactory.getCentralRepository(context.repositoryId());
         portfolioGitPort.commitPortfolio(userBranch,
                 pull ? "Project requirements before sync from shared"
                         : "Project requirements before publish",
@@ -271,31 +280,50 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         return new WorkspaceMergeState(commonBase);
     }
 
-    /** Resolve the persistent active branch for the current user's workspace. */
+    /** Resolve the exact persistent repository and active branch for one user. */
     private WorkspaceContext resolveWorkspaceContext(String username, String requestedBranch) {
-        WorkspaceContext persistent = contextResolver.resolveForUser(username);
+        RepositoryContext persistent =
+                contextResolver.resolveRepositoryContextForUser(username);
         if (persistent.workspaceId() == null) {
-            return WorkspaceContext.SHARED;
+            return new WorkspaceContext(
+                    persistent.username(),
+                    null,
+                    persistent.branch(),
+                    persistent.repositoryId());
         }
         String branch = requestedBranch;
         if (branch == null || branch.isBlank()
                 || (SEEDED_BRANCH.equals(branch)
-                && persistent.currentBranch() != null
-                && !persistent.currentBranch().isBlank()
-                && !SEEDED_BRANCH.equals(persistent.currentBranch()))) {
-            branch = persistent.currentBranch();
+                && !SEEDED_BRANCH.equals(persistent.branch()))) {
+            branch = persistent.branch();
         }
         if (branch == null || branch.isBlank()) {
             branch = WORKSPACE_BRANCH;
         }
-        return new WorkspaceContext(username, persistent.workspaceId(), branch);
+        return new WorkspaceContext(
+                persistent.username(),
+                persistent.workspaceId(),
+                branch,
+                persistent.repositoryId());
+    }
+
+    /** Resolve an explicitly addressed workspace without inventing repository provenance. */
+    private WorkspaceContext resolveExplicitWorkspaceContext(
+            String username, String workspaceId, String branch) {
+        UserWorkspace workspace = requireWorkspace(workspaceId);
+        SystemRepository source = requireSourceRepository(workspace);
+        return new WorkspaceContext(
+                username,
+                workspace.getWorkspaceId(),
+                branch,
+                requireRepositoryId(source));
     }
 
     private UserWorkspace requireWorkspace(String workspaceId) {
         if (workspaceId == null || workspaceId.isBlank()) {
             throw new IllegalArgumentException("workspaceId must not be blank");
         }
-        return workspaceRepository.findByWorkspaceId(workspaceId)
+        return workspaceRepository.findByWorkspaceId(workspaceId.strip())
                 .orElseThrow(() -> new IllegalStateException(
                         "Workspace metadata not found: " + workspaceId));
     }
@@ -306,7 +334,24 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             throw new IllegalStateException(
                     "Workspace has no sourceRepositoryId: " + workspace.getWorkspaceId());
         }
-        return systemRepositoryService.getRepository(repositoryId);
+        return systemRepositoryService.getRepository(repositoryId.strip());
+    }
+
+    private static void requireMatchingRepository(
+            WorkspaceContext context, SystemRepository sourceRepository) {
+        String sourceRepositoryId = requireRepositoryId(sourceRepository);
+        if (!sourceRepositoryId.equals(context.repositoryId())) {
+            throw new IllegalStateException(
+                    "Workspace repository context does not match persisted source provenance");
+        }
+    }
+
+    private static String requireRepositoryId(SystemRepository repository) {
+        if (repository == null || repository.getRepositoryId() == null
+                || repository.getRepositoryId().isBlank()) {
+            throw new IllegalStateException("Source repository has no repositoryId");
+        }
+        return repository.getRepositoryId().strip();
     }
 
     private static String sourceBranch(
@@ -385,7 +430,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     }
 
     private static void requireSuccess(String operation,
-                                       SemanticGitMergeService.MergeOutcome outcome) throws IOException {
+                                       SemanticGitMergeService.MergeOutcome outcome)
+            throws IOException {
         if (!outcome.success()) {
             throw new IOException(operation + " has semantic conflicts: "
                     + String.join(", ", outcome.conflicts()));
