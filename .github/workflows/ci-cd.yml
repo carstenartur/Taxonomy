@@ -89,6 +89,62 @@ jobs:
       - name: Verify Docker availability
         run: docker info
 
+      - name: Detect production-image changes
+        id: production-image-scope
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
+            Dockerfile \
+            .dockerignore \
+            pom.xml \
+            mvnw \
+            .mvn/wrapper \
+            'taxonomy-*/pom.xml' \
+            docs \
+            LICENSE \
+            NOTICE \
+            THIRD-PARTY-NOTICES.md \
+            observability/javaagent.properties; then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify production Docker image build
+        if: steps.production-image-scope.outputs.run == 'true'
+        env:
+          IMAGE_TAG: taxonomy-ci:${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build \
+            --progress=plain \
+            --build-arg BUILD_DATE=1970-01-01T00:00:00Z \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --build-arg VERSION="ci-${GITHUB_SHA}" \
+            --tag "$IMAGE_TAG" \
+            .
+
+          revision=$(docker image inspect \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            "$IMAGE_TAG")
+          image_user=$(docker image inspect \
+            --format '{{ .Config.User }}' \
+            "$IMAGE_TAG")
+          if [[ "$revision" != "$GITHUB_SHA" ]]; then
+            echo "::error::Production image revision label does not match the tested commit"
+            exit 1
+          fi
+          if [[ "$image_user" != "10001:10001" ]]; then
+            echo "::error::Production image must retain the non-root 10001:10001 identity"
+            exit 1
+          fi
+
       - name: Validate production and Rancher Helm profiles
         shell: bash
         run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
