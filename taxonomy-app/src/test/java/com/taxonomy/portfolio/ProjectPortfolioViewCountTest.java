@@ -62,13 +62,15 @@ class ProjectPortfolioViewCountTest {
     void createsProjectSummaryFromAggregateCountsWithoutLoadingChildEntities() {
         ArchitectureProject project = org.mockito.Mockito.mock(ArchitectureProject.class);
         when(project.getId()).thenReturn(42L);
+        when(project.getScopeKey()).thenReturn("scope-load-test");
         when(project.getProjectKey()).thenReturn("LOAD-TEST");
         when(project.getTitle()).thenReturn("Large portfolio");
         when(project.getStatus()).thenReturn(ProjectStatus.ACTIVE);
         when(project.getOwnerUsername()).thenReturn("load-user");
         when(project.getCreatedAt()).thenReturn(Instant.EPOCH);
         when(project.getUpdatedAt()).thenReturn(Instant.EPOCH);
-        when(requirementRepository.countByProjectId(42L)).thenReturn(10_000L);
+        when(requirementRepository.countByProjectIdAndScopeKey(
+                42L, "scope-load-test")).thenReturn(10_000L);
         when(solutionRepository.countByProjectId(42L)).thenReturn(1_000L);
         when(conflictRepository.countByProjectIdAndStatusNotIn(eq(42L), argThat(statuses ->
                 statuses.size() == 2
@@ -81,6 +83,8 @@ class ProjectPortfolioViewCountTest {
         assertThat(view.requirementCount()).isEqualTo(10_000);
         assertThat(view.solutionCount()).isEqualTo(1_000);
         assertThat(view.openConflictCount()).isEqualTo(250);
+        verify(requirementRepository).countByProjectIdAndScopeKey(
+                42L, "scope-load-test");
         verify(solutionRepository).countByProjectId(42L);
         verify(conflictRepository).countByProjectIdAndStatusNotIn(eq(42L), argThat(statuses ->
                 statuses.contains(ConflictStatus.REJECTED)

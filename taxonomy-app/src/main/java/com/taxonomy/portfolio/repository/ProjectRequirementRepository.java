@@ -22,7 +22,7 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select requirement from ProjectRequirement requirement "
-            + "where requirement.id = :id and requirement.project.id = :projectId "
+            + "where requirement.id = :id and requirement.projectId = :projectId "
             + "and requirement.scopeKey = :scopeKey")
     Optional<ProjectRequirement> findByIdAndProjectIdAndScopeKeyForUpdate(
             @Param("id") Long id,
@@ -49,7 +49,7 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
     @Deprecated(forRemoval = false)
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select requirement from ProjectRequirement requirement "
-            + "where requirement.id = :id and requirement.project.id = :projectId")
+            + "where requirement.id = :id and requirement.projectId = :projectId")
     Optional<ProjectRequirement> findByIdAndProjectIdForUpdate(
             @Param("id") Long id,
             @Param("projectId") Long projectId);

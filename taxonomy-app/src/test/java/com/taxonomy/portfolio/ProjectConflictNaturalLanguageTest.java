@@ -57,7 +57,8 @@ class ProjectConflictNaturalLanguageTest {
                 "local-hash", now);
 
         when(projects.requireProject(1L, "architect", context)).thenReturn(project);
-        when(requirements.findByProjectIdOrderByRequirementKeyAsc(1L))
+        when(requirements.findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(
+                1L, project.getScopeKey()))
                 .thenReturn(List.of(cloud, local));
         when(projects.currentVersion(cloud)).thenReturn(cloudVersion);
         when(projects.currentVersion(local)).thenReturn(localVersion);

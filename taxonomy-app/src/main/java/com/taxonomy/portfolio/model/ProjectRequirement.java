@@ -46,17 +46,12 @@ public class ProjectRequirement {
             length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
     private String scopeKey;
 
-    /** Writable parent identity; the composite association below is deliberately read-only. */
-    @Column(name = "project_id", nullable = false)
+    /** Read-only scalar parent identity for scoped queries without initializing the association. */
+    @Column(name = "project_id", nullable = false, insertable = false, updatable = false)
     private Long projectId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumns({
-            @JoinColumn(name = "project_id", referencedColumnName = "id",
-                    nullable = false, insertable = false, updatable = false),
-            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
-                    nullable = false, insertable = false, updatable = false)
-    })
+    @JoinColumn(name = "project_id", nullable = false)
     private ArchitectureProject project;
 
     @Column(name = "requirement_key", nullable = false, length = 64)
