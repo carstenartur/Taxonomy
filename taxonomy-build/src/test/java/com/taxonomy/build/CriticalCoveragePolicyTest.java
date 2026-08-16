@@ -186,6 +186,8 @@ class CriticalCoveragePolicyTest {
                   <group name="taxonomy-app">
                     <package name="com/taxonomy/security">
                       <counter type="LINE" missed="10" covered="90"/>
+                      <counter type="LINE" missed="20" covered="80"/>
+                      <counter type="BRANCH" missed="20" covered="80"/>
                     </package>
                   </group>
                 </report>
@@ -204,7 +206,7 @@ class CriticalCoveragePolicyTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> evaluator.parseReport(
                         malformedReport, CriticalCoveragePolicy.COUNTER_TYPES))
-                .withMessageContaining("Missing required counters");
+                .withMessageContaining("Duplicate LINE counter");
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> evaluator.parseReport(
                         externalEntity, CriticalCoveragePolicy.COUNTER_TYPES))
