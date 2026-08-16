@@ -8,21 +8,28 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
 
-/** Immutable text/provenance version of a project requirement. */
+/** Immutable text/provenance version of a project requirement in one exact tenant. */
 @Entity
 @Table(name = "project_req_version", indexes = {
-        @Index(name = "idx_reqver_req", columnList = "requirement_id"),
-        @Index(name = "idx_reqver_hash", columnList = "requirement_id,content_hash")
+        @Index(name = "idx_reqver_req", columnList = "scope_key,requirement_id"),
+        @Index(name = "idx_reqver_hash", columnList = "scope_key,requirement_id,content_hash"),
+        @Index(name = "idx_reqver_scope", columnList = "scope_key")
 }, uniqueConstraints = {
-        @UniqueConstraint(name = "uq_reqver_number", columnNames = {"requirement_id", "version_number"}),
-        @UniqueConstraint(name = "uq_reqver_hash", columnNames = {"requirement_id", "content_hash"})
+        @UniqueConstraint(name = "uq_reqver_number",
+                columnNames = {"scope_key", "requirement_id", "version_number"}),
+        @UniqueConstraint(name = "uq_reqver_hash",
+                columnNames = {"scope_key", "requirement_id", "content_hash"}),
+        @UniqueConstraint(name = "uq_reqver_id_scope", columnNames = {"id", "scope_key"})
 })
 public class ProjectRequirementVersion {
 
@@ -30,8 +37,16 @@ public class ProjectRequirementVersion {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "scope_key", nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "requirement_id", nullable = false)
+    @JoinColumns({
+            @JoinColumn(name = "requirement_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    nullable = false, insertable = false, updatable = false)
+    })
     private ProjectRequirement requirement;
 
     @Column(name = "version_number", nullable = false)
@@ -103,9 +118,28 @@ public class ProjectRequirementVersion {
         this.sectionReference = sectionReference;
         this.pageNumber = pageNumber;
         this.originalText = originalText;
+        synchronizeTenantAuthority();
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+        if (requirement == null || requirement.getScopeKey() == null
+                || requirement.getScopeKey().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Requirement version must reference an exact requirement tenant");
+        }
+        String requirementScope = requirement.getScopeKey().strip();
+        if (scopeKey != null && !scopeKey.isBlank()
+                && !requirementScope.equals(scopeKey.strip())) {
+            throw new IllegalArgumentException(
+                    "Requirement version tenant scope does not match its requirement");
+        }
+        scopeKey = requirementScope;
     }
 
     public Long getId() { return id; }
+    public String getScopeKey() { return scopeKey; }
     public ProjectRequirement getRequirement() { return requirement; }
     public int getVersionNumber() { return versionNumber; }
     public String getText() { return text; }
