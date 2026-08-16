@@ -32,16 +32,16 @@ class WorkspaceAccessServiceTest {
         assertThat(workspaceAccessService.canReadWorkspaceMetadata("workspace", " "))
                 .isFalse();
         verify(workspaceRepository, never())
-                .existsVisibleWorkspaceMetadata("workspace", "alice");
+                .countVisibleWorkspaceMetadata("workspace", "alice");
         verify(workspaceRepository, never()).findByWorkspaceId("workspace");
     }
 
     @Test
     void ownerAndSharedWorkspaceAreVisibleWithoutMaterializingRows() {
-        when(workspaceRepository.existsVisibleWorkspaceMetadata("owned", "alice"))
-                .thenReturn(true);
-        when(workspaceRepository.existsVisibleWorkspaceMetadata("shared", "alice"))
-                .thenReturn(true);
+        when(workspaceRepository.countVisibleWorkspaceMetadata("owned", "alice"))
+                .thenReturn(1L);
+        when(workspaceRepository.countVisibleWorkspaceMetadata("shared", "alice"))
+                .thenReturn(1L);
 
         assertThat(workspaceAccessService.canReadWorkspaceMetadata(
                 " owned ", " alice ")).isTrue();
@@ -54,10 +54,10 @@ class WorkspaceAccessServiceTest {
 
     @Test
     void foreignPrivateAndMissingWorkspaceAreIndistinguishable() {
-        when(workspaceRepository.existsVisibleWorkspaceMetadata("foreign", "alice"))
-                .thenReturn(false);
-        when(workspaceRepository.existsVisibleWorkspaceMetadata("missing", "alice"))
-                .thenReturn(false);
+        when(workspaceRepository.countVisibleWorkspaceMetadata("foreign", "alice"))
+                .thenReturn(0L);
+        when(workspaceRepository.countVisibleWorkspaceMetadata("missing", "alice"))
+                .thenReturn(0L);
 
         assertThat(workspaceAccessService.canReadWorkspaceMetadata(
                 "foreign", "alice")).isFalse();
