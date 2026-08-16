@@ -14,20 +14,26 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
 import java.time.Instant;
 
-/** Stable requirement identity within a project. Text changes create versions. */
+/** Stable requirement identity within one exact project tenant. Text changes create versions. */
 @Entity
 @Table(name = "project_requirement", indexes = {
         @Index(name = "idx_req_project", columnList = "project_id"),
-        @Index(name = "idx_req_status", columnList = "project_id,status")
+        @Index(name = "idx_req_status", columnList = "scope_key,project_id,status"),
+        @Index(name = "idx_req_scope", columnList = "scope_key")
 }, uniqueConstraints = {
-        @UniqueConstraint(name = "uq_req_project_key", columnNames = {"project_id", "requirement_key"})
+        @UniqueConstraint(name = "uq_req_project_key",
+                columnNames = {"scope_key", "project_id", "requirement_key"}),
+        @UniqueConstraint(name = "uq_req_id_scope", columnNames = {"id", "scope_key"})
 })
 public class ProjectRequirement {
 
@@ -35,8 +41,16 @@ public class ProjectRequirement {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "scope_key", nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "project_id", nullable = false)
+    @JoinColumns({
+            @JoinColumn(name = "project_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    nullable = false, insertable = false, updatable = false)
+    })
     private ArchitectureProject project;
 
     @Column(name = "requirement_key", nullable = false, length = 64)
@@ -72,11 +86,16 @@ public class ProjectRequirement {
     private Long currentVersionId;
 
     /**
-     * Read-only association used by portfolio list queries to fetch the current
-     * immutable version in the same SQL statement as the requirement identity.
+     * Read-only tenant-bound association used by portfolio list queries to fetch
+     * the current immutable version in the same SQL statement as the requirement.
      */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "current_version_id", insertable = false, updatable = false)
+    @JoinColumns({
+            @JoinColumn(name = "current_version_id", referencedColumnName = "id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    insertable = false, updatable = false)
+    })
     private ProjectRequirementVersion currentVersion;
 
     /** Points at the immutable current analysis snapshot. */
@@ -117,6 +136,7 @@ public class ProjectRequirement {
         this.ownerUsername = ownerUsername;
         this.createdAt = now;
         this.updatedAt = now;
+        synchronizeTenantAuthority();
     }
 
     public void updateMetadata(String title,
@@ -148,7 +168,25 @@ public class ProjectRequirement {
         this.updatedAt = now;
     }
 
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+        if (project == null || project.getScopeKey() == null
+                || project.getScopeKey().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Requirement project must expose an exact tenant scope");
+        }
+        String projectScope = project.getScopeKey().strip();
+        if (scopeKey != null && !scopeKey.isBlank()
+                && !projectScope.equals(scopeKey.strip())) {
+            throw new IllegalArgumentException(
+                    "Requirement tenant scope does not match its project");
+        }
+        scopeKey = projectScope;
+    }
+
     public Long getId() { return id; }
+    public String getScopeKey() { return scopeKey; }
     public ArchitectureProject getProject() { return project; }
     public String getRequirementKey() { return requirementKey; }
     public String getTitle() { return title; }
