@@ -138,7 +138,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11");
+                        "6", "7", "8", "9", "10", "11", "12");
     }
 
     @Test
@@ -169,14 +169,10 @@ class TaxonomySchemaPostgresMigrationIT {
                 .isTrue();
         assertThat(columnExists(dataSource, "user_workspace", "source_repository_id"))
                 .isTrue();
-        assertThat(columnExists(dataSource, "user_workspace", "source_branch"))
-                .isTrue();
-        assertThat(columnExists(dataSource, "taxonomy_relation", "repository_id"))
-                .isTrue();
-        assertThat(columnExists(dataSource, "relation_proposal", "repository_id"))
-                .isTrue();
-        assertThat(columnExists(dataSource, "relation_hypothesis", "repository_id"))
-                .isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_branch")).isTrue();
+        assertThat(columnExists(dataSource, "taxonomy_relation", "repository_id")).isTrue();
+        assertThat(columnExists(dataSource, "relation_proposal", "repository_id")).isTrue();
+        assertThat(columnExists(dataSource, "relation_hypothesis", "repository_id")).isTrue();
         assertThat(columnExists(
                 dataSource, "architecture_commit_index", "repository_id"))
                 .isTrue();
@@ -213,7 +209,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11");
+                        "6", "7", "8", "9", "10", "11", "12");
     }
 
     @Test
