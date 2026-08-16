@@ -125,7 +125,7 @@ final class CriticalCoveragePolicy {
                             "source:" + repositoryPath,
                             true);
                     if (sourceCounters.isEmpty()) {
-                        continue;
+                        sourceCounters = zeroCounters(requiredCounters);
                     }
                     if (sourceFiles.putIfAbsent(repositoryPath, sourceCounters) != null) {
                         throw new IllegalArgumentException(
@@ -313,7 +313,7 @@ final class CriticalCoveragePolicy {
             String scope,
             Map<String, Counter> counters,
             Map<String, Double> minimums,
-            boolean branchMayBeAbsent,
+            boolean sourceFileScope,
             StringBuilder text,
             Map<String, TemporaryException> exceptionByScope,
             Set<String> appliedExceptions,
@@ -321,8 +321,11 @@ final class CriticalCoveragePolicy {
         for (String counterType : COUNTER_TYPES) {
             Counter counter = counters.get(counterType);
             double minimum = minimums.get(counterType);
-            if (branchMayBeAbsent && "BRANCH".equals(counterType) && counter.total() == 0) {
-                text.append("  - BRANCH: N/A (source has no branch counter total)\n");
+            if (sourceFileScope && counter.total() == 0) {
+                text.append("  - ").append(counterType)
+                        .append(": N/A (source has no executable ")
+                        .append(counterType.toLowerCase(Locale.ROOT))
+                        .append(" counter total)\n");
                 continue;
             }
             boolean passed = counter.total() > 0 && counter.ratio() >= minimum;
@@ -521,6 +524,12 @@ final class CriticalCoveragePolicy {
                     "Missing required counters " + String.join(", ", missing)
                             + " on " + scope);
         }
+        return Collections.unmodifiableMap(counters);
+    }
+
+    private static Map<String, Counter> zeroCounters(List<String> requiredCounters) {
+        Map<String, Counter> counters = new LinkedHashMap<>();
+        requiredCounters.forEach(type -> counters.put(type, new Counter(0, 0)));
         return Collections.unmodifiableMap(counters);
     }
 
