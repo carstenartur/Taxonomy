@@ -93,6 +93,28 @@ public class RequirementAnalysisJobItem {
     @Column(name = "snapshot_id", length = 36)
     private String snapshotId;
 
+    /**
+     * Read-only full work-identity association. A result can only point to a
+     * snapshot produced for this same job, project, requirement, version and tenant.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumns({
+            @JoinColumn(name = "snapshot_id", referencedColumnName = "id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "job_id", referencedColumnName = "job_id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "requirement_id", referencedColumnName = "requirement_id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "requirement_version_id",
+                    referencedColumnName = "requirement_version_id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "project_id", referencedColumnName = "project_id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    insertable = false, updatable = false)
+    })
+    private RequirementAnalysisSnapshot snapshot;
+
     @Column(nullable = false)
     private int attempt = 1;
 
@@ -134,6 +156,7 @@ public class RequirementAnalysisJobItem {
         }
         this.status = status;
         this.snapshotId = snapshotId;
+        this.snapshot = null;
         this.completedAt = now;
         this.errorMessage = null;
     }
@@ -149,6 +172,7 @@ public class RequirementAnalysisJobItem {
         synchronizeTenantAuthority(true);
         this.status = AnalysisStatus.PENDING;
         this.snapshotId = null;
+        this.snapshot = null;
         this.errorMessage = null;
         this.startedAt = null;
         this.completedAt = null;
@@ -231,6 +255,7 @@ public class RequirementAnalysisJobItem {
     public ProjectRequirementVersion getRequirementVersion() { return requirementVersion; }
     public AnalysisStatus getStatus() { return status; }
     public String getSnapshotId() { return snapshotId; }
+    public RequirementAnalysisSnapshot getSnapshot() { return snapshot; }
     public int getAttempt() { return attempt; }
     public Instant getStartedAt() { return startedAt; }
     public Instant getCompletedAt() { return completedAt; }
