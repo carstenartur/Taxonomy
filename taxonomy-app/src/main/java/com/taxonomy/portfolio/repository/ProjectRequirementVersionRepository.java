@@ -22,21 +22,8 @@ public interface ProjectRequirementVersionRepository
     Optional<ProjectRequirementVersion> findByRequirementIdAndScopeKeyAndContentHash(
             Long requirementId, String scopeKey, String contentHash);
 
-    /**
-     * Uses the persistence-context identity lookup first. Portfolio list queries
-     * already join-fetch the exact current version, so this remains constant-work
-     * while still rejecting a version from another requirement or tenant.
-     */
-    default Optional<ProjectRequirementVersion> findByIdAndRequirementIdAndScopeKey(
-            Long id, Long requirementId, String scopeKey) {
-        if (id == null || requirementId == null
-                || scopeKey == null || scopeKey.isBlank()) {
-            return Optional.empty();
-        }
-        return findById(id)
-                .filter(version -> requirementId.equals(version.getRequirementId()))
-                .filter(version -> scopeKey.equals(version.getScopeKey()));
-    }
+    Optional<ProjectRequirementVersion> findByIdAndRequirementIdAndScopeKey(
+            Long id, Long requirementId, String scopeKey);
 
     /** Compatibility methods retained while all callers migrate to exact scope. */
     @Deprecated(forRemoval = false)
@@ -56,12 +43,6 @@ public interface ProjectRequirementVersionRepository
             Long requirementId, String contentHash);
 
     @Deprecated(forRemoval = false)
-    default Optional<ProjectRequirementVersion> findByIdAndRequirementId(
-            Long id, Long requirementId) {
-        if (id == null || requirementId == null) {
-            return Optional.empty();
-        }
-        return findById(id)
-                .filter(version -> requirementId.equals(version.getRequirementId()));
-    }
+    Optional<ProjectRequirementVersion> findByIdAndRequirementId(
+            Long id, Long requirementId);
 }
