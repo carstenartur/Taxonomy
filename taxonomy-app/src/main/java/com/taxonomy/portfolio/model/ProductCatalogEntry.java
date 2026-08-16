@@ -11,6 +11,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Lob;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
@@ -23,14 +25,15 @@ import java.time.LocalDate;
  * Sourced and dated catalogue entry for a concrete product/version.
  *
  * <p>A product claim is deliberately incomplete until {@code sourceReference}
- * and {@code verifiedAt} are populated. Consumers must expose that provenance
- * rather than presenting stale product metadata as current fact.</p>
+ * and {@code verifiedAt} are populated. Tenant identity is explicit for the
+ * selected repository, workspace scope and branch.</p>
  */
 @Entity
 @Table(name = "product_catalog", indexes = {
         @Index(name = "idx_prod_scope", columnList = "scope_key"),
         @Index(name = "idx_prod_status", columnList = "scope_key,product_status"),
-        @Index(name = "idx_prod_eos", columnList = "end_of_support")
+        @Index(name = "idx_prod_eos", columnList = "end_of_support"),
+        @Index(name = "idx_prod_tenant", columnList = "repository_id,workspace_scope,branch_name")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uq_prod_scope_key", columnNames = {"scope_key", "product_key"})
 })
@@ -40,8 +43,17 @@ public class ProductCatalogEntry {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "scope_key", nullable = false, length = 160)
+    @Column(name = "scope_key", nullable = false, length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
     private String scopeKey;
+
+    @Column(name = "repository_id", nullable = false, length = 255)
+    private String repositoryId;
+
+    @Column(name = "workspace_scope", nullable = false, length = 320)
+    private String workspaceScope;
+
+    @Column(name = "branch_name", nullable = false, length = 255)
+    private String branchName;
 
     @Column(name = "workspace_id", length = 120)
     private String workspaceId;
@@ -159,6 +171,7 @@ public class ProductCatalogEntry {
         this.createdBy = createdBy;
         this.createdAt = now;
         this.updatedAt = now;
+        synchronizeTenantIdentityIfEncoded();
     }
 
     public void update(String manufacturer,
@@ -197,8 +210,33 @@ public class ProductCatalogEntry {
         this.updatedAt = now;
     }
 
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantIdentity() {
+        PortfolioTenantIdentity identity = PortfolioTenantIdentity.parse(scopeKey);
+        String expectedWorkspaceScope = workspaceId == null || workspaceId.isBlank()
+                ? PortfolioTenantIdentity.CENTRAL_SCOPE
+                : PortfolioTenantIdentity.WORKSPACE_SCOPE_PREFIX + workspaceId.strip();
+        if (!expectedWorkspaceScope.equals(identity.workspaceScope())) {
+            throw new IllegalArgumentException(
+                    "Portfolio scope key does not match workspaceId");
+        }
+        repositoryId = identity.repositoryId();
+        workspaceScope = identity.workspaceScope();
+        branchName = identity.branch();
+    }
+
+    private void synchronizeTenantIdentityIfEncoded() {
+        if (PortfolioTenantIdentity.isEncoded(scopeKey)) {
+            synchronizeTenantIdentity();
+        }
+    }
+
     public Long getId() { return id; }
     public String getScopeKey() { return scopeKey; }
+    public String getRepositoryId() { return repositoryId; }
+    public String getWorkspaceScope() { return workspaceScope; }
+    public String getBranchName() { return branchName; }
     public String getWorkspaceId() { return workspaceId; }
     public String getProductKey() { return productKey; }
     public String getManufacturer() { return manufacturer; }

@@ -136,14 +136,28 @@ public class DslGitRepositoryFactory implements AutoCloseable {
     }
 
     /**
-     * Resolve the legacy workspace context.
+     * Resolve the compatibility workspace context.
+     *
+     * <p>Request-bound compatibility contexts carry an exact repository ID and
+     * are routed with the same fail-closed semantics as {@link RepositoryContext}.
+     * Only direct legacy callers using {@link WorkspaceContext#LEGACY_REPOSITORY_ID}
+     * retain the historic primary-repository fallback.</p>
      *
      * @deprecated use {@link #resolveRepository(RepositoryContext)} when repository
      *             identity is available.
      */
     @Deprecated(forRemoval = false)
     public DslGitRepository resolveRepository(WorkspaceContext context) {
-        if (context == null || context.workspaceId() == null) {
+        if (context == null) {
+            return getSystemRepository();
+        }
+        if (!WorkspaceContext.LEGACY_REPOSITORY_ID.equals(context.repositoryId())) {
+            if (context.workspaceId() != null) {
+                return openWorkspaceRepository(context.workspaceId());
+            }
+            return getCentralRepository(context.repositoryId());
+        }
+        if (context.workspaceId() == null) {
             return getSystemRepository();
         }
         return getWorkspaceRepository(context.workspaceId());
