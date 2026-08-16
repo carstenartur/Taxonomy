@@ -229,7 +229,8 @@ public class PortfolioGitService {
             }
 
             ProjectRequirement existingRequirement = requirementRepository
-                    .findByProjectIdAndRequirementKeyIgnoreCase(project.id(), requirementKey)
+                    .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(
+                            project.id(), scopeKey, requirementKey)
                     .orElse(null);
             RequirementView requirementView;
             BlockAst firstVersion = versionsForRequirement.getFirst();
@@ -306,7 +307,8 @@ public class PortfolioGitService {
                     MANAGED_PROPERTY, "true")));
 
             List<ProjectRequirement> requirements = requirementRepository
-                    .findByProjectIdOrderByRequirementKeyAsc(project.getId());
+                    .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(
+                            project.getId(), scopeKey);
             Map<Long, List<RequirementElementMapping>> mappingsByRequirement =
                     mappingsByRequirement(project.getId());
             for (ProjectRequirement requirement : requirements) {
@@ -324,7 +326,8 @@ public class PortfolioGitService {
                                 MANAGED_PROPERTY, "true")));
 
                 List<ProjectRequirementVersion> versions = versionRepository
-                        .findByRequirementIdOrderByVersionNumberDesc(requirement.getId()).stream()
+                        .findByRequirementIdAndScopeKeyOrderByVersionNumberDesc(
+                                requirement.getId(), scopeKey).stream()
                         .sorted(Comparator.comparingInt(ProjectRequirementVersion::getVersionNumber))
                         .toList();
                 for (ProjectRequirementVersion version : versions) {
