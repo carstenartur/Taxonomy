@@ -18,6 +18,8 @@ import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,6 +47,9 @@ class RequirementTenantIsolationTest {
     @Autowired
     private SystemRepositoryService systemRepositoryService;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     @Test
     void identicalRequirementKeysAndContentRemainRepositoryAndBranchLocal() {
         String repositoryA = repository("Requirement tenant A");
@@ -71,6 +76,11 @@ class RequirementTenantIsolationTest {
         String scopeAMain = PortfolioScope.key("architect", aMain);
         String scopeADraft = PortfolioScope.key("architect", aDraft);
         String scopeBMain = PortfolioScope.key("architect", bMain);
+
+        // Force the first scoped version lookup down the exact-query path. The
+        // following wrong-scope lookup then exercises the already-loaded fast path.
+        entityManager.flush();
+        entityManager.clear();
 
         assertThat(requirementRepository.findByIdAndProjectIdAndScopeKey(
                 requirementAMain.id(), projectAMain.id(), scopeAMain)).isPresent();
