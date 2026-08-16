@@ -34,16 +34,16 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
     long countByUsernameAndArchivedFalse(String username);
 
     /**
-     * Check disclosure permission without materializing a foreign workspace row.
-     * Missing and unauthorized identifiers intentionally produce the same result.
+     * Count disclosure-authorized rows without materializing workspace metadata.
+     * Missing and unauthorized identifiers intentionally both return zero.
      */
     @Query("""
-            select case when count(workspace) > 0 then true else false end
+            select count(workspace)
             from UserWorkspace workspace
             where workspace.workspaceId = :workspaceId
               and (workspace.username = :username or workspace.shared = true)
             """)
-    boolean existsVisibleWorkspaceMetadata(
+    long countVisibleWorkspaceMetadata(
             @Param("workspaceId") String workspaceId,
             @Param("username") String username);
 }
