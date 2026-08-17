@@ -199,7 +199,39 @@ class RelationDecisionProjectionServiceTest {
 
         assertThatThrownBy(() -> service.project(context, forged, command))
                 .isInstanceOf(ProjectionContextMismatchException.class)
-                .hasMessageContaining("full Git object ID");
+                .hasMessageContaining(
+                        "authoritativeCommitId must be a full Git object ID");
+        verifyNoInteractions(gitFactory, writer);
+    }
+
+    @Test
+    void invalidPreviousHeadTokenNamesTheCorrectFieldBeforeGitAccess() {
+        RelationDecisionProjectionWriter writer =
+                mock(RelationDecisionProjectionWriter.class);
+        DslGitRepositoryFactory gitFactory =
+                mock(DslGitRepositoryFactory.class);
+        RelationDecisionProjectionService service =
+                new RelationDecisionProjectionService(writer, gitFactory);
+        RepositoryContext context = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "draft", "alice");
+        UpsertRelation command = upsert(
+                "proposal-previous", "accepted", 0.9, "manual");
+        CommandResult forged = new CommandResult(
+                context.repositoryId(),
+                context.workspaceId(),
+                context.branch(),
+                context.scope(),
+                "not-a-commit",
+                "a".repeat(40),
+                ChangeKind.ADDED,
+                true,
+                "proposal-previous");
+
+        assertThatThrownBy(() -> service.project(context, forged, command))
+                .isInstanceOf(ProjectionContextMismatchException.class)
+                .hasMessageContaining(
+                        "previousHeadCommit must be a full Git object ID")
+                .hasMessageNotContaining("authoritativeCommitId");
         verifyNoInteractions(gitFactory, writer);
     }
 
