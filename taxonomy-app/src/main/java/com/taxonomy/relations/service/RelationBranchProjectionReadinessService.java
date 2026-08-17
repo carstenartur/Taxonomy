@@ -19,10 +19,8 @@ import java.util.Objects;
 /**
  * Proves whether one branch projection is complete for the current Git head.
  *
- * <p>This service is intentionally not wired into user-facing relation reads yet.
- * It establishes the fail-closed boundary required for that later switch: missing,
- * stale, partial, tombstone-contaminated or concurrently advanced projections are
- * never returned as ready.</p>
+ * <p>Missing, stale, partial, tombstone-contaminated or concurrently advanced
+ * projections are never returned as ready.</p>
  */
 @Service
 public class RelationBranchProjectionReadinessService {
@@ -45,8 +43,7 @@ public class RelationBranchProjectionReadinessService {
 
     /**
      * Returns the current Git head commit for the given branch without loading
-     * or validating projection rows.  Use this when only the head SHA is needed
-     * (e.g. to seed the expected-head for a review command).
+     * or validating projection rows. Use this when only the head SHA is needed.
      */
     public String readCurrentHead(RepositoryContext context) {
         Objects.requireNonNull(context, "context");
@@ -91,7 +88,7 @@ public class RelationBranchProjectionReadinessService {
         }
 
         List<RelationDecisionProjection> rows = projectionRepository
-                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscTargetCodeAsc(
+                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscRelationTypeAscTargetCodeAsc(
                         context.repositoryId(),
                         workspaceScopeKey,
                         context.branch());
@@ -124,9 +121,13 @@ public class RelationBranchProjectionReadinessService {
     public List<RelationDecisionProjection> requireReady(RepositoryContext context) {
         Readiness readiness = inspect(context);
         if (readiness.state() != ReadinessState.READY) {
+            String workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(
+                    context.workspaceId());
             throw new RelationProjectionNotReadyException(
-                    "Relation projection is not ready for "
-                            + context.repositoryId() + "/" + context.branch()
+                    "Relation projection is not ready for repository "
+                            + context.repositoryId()
+                            + ", workspace scope " + workspaceScopeKey
+                            + ", branch " + context.branch()
                             + ": " + readiness.state());
         }
         return readiness.rows();
