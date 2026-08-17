@@ -11,6 +11,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.Test;
@@ -54,13 +55,15 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
     private PortfolioAnalysisClaimPersistenceService service;
 
     private final WorkspaceContext context = new WorkspaceContext(
-            "architect", "ws-architect", "draft");
+            "architect", null, "main", "repo-a");
 
     @Test
-    void activeClaimRegistersHypothesesForCommitBeforeItsSnapshot() {
+    void activeCentralClaimRoutesHypothesesToExactRepositoryBeforeSnapshot() {
         PortfolioAnalysisWorkQueue.WorkItem claim = claim(1);
         stubActiveClaim(claim, 1);
         AnalysisResult analysis = analysisWithHypothesis();
+        RepositoryContext repositoryContext = RepositoryContext.centralWrite(
+                "repo-a", "main", "architect");
 
         service.persistSnapshot(
                 claim,
@@ -84,7 +87,7 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
         order.verify(hypothesisService).persistFromAnalysisAfterCommit(
                 analysis.getProvisionalRelations(),
                 "portfolio:snapshot-1",
-                context);
+                repositoryContext);
         order.verify(persistenceService).persistSnapshot(
                 claim.itemId(),
                 claim.jobId(),
@@ -164,7 +167,7 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
                 11L,
                 "job-1",
                 41L,
-                "repo|ws|draft",
+                "repo|central|main",
                 7L,
                 "REQ-001",
                 9L,
