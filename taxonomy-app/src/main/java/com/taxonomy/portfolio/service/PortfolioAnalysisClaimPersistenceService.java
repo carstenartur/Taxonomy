@@ -24,6 +24,11 @@ import java.util.Objects;
  * loaded in this outer transaction before delegating to the normal persistence
  * service, so its optimistic row version also closes a recovery race occurring
  * after validation but before flush.</p>
+ *
+ * <p>The item is the claim authority. The job status is only an aggregate and
+ * may temporarily return to {@code PENDING} when another item is recovered. A
+ * valid RUNNING item must remain completable in that state, while terminal or
+ * cancelled jobs reject further worker writes.</p>
  */
 @Service
 public class PortfolioAnalysisClaimPersistenceService {
@@ -111,8 +116,11 @@ public class PortfolioAnalysisClaimPersistenceService {
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Analysis job item not found: " + workItem.itemId()));
 
+        AnalysisStatus jobStatus = item.getJob().getStatus();
+        boolean jobAcceptsWorkerResult = jobStatus == AnalysisStatus.RUNNING
+                || jobStatus == AnalysisStatus.PENDING;
         boolean active = item.getStatus() == AnalysisStatus.RUNNING
-                && item.getJob().getStatus() == AnalysisStatus.RUNNING
+                && jobAcceptsWorkerResult
                 && item.getAttempt() == workItem.attempt()
                 && Objects.equals(item.getRequirementId(), workItem.requirementId())
                 && Objects.equals(
