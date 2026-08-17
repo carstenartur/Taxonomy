@@ -1,7 +1,6 @@
 package com.taxonomy.portfolio.repository;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
-import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -67,7 +66,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
     @Modifying
     @Query("""
             update RequirementAnalysisJobItem item
-               set item.requirementVersion = :requirementVersion,
+               set item.requirementVersionId = :requirementVersionId,
                    item.status = :pendingStatus,
                    item.snapshotId = null,
                    item.errorMessage = null,
@@ -87,7 +86,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
                     @Param("scopeKey") String scopeKey,
                     @Param("failedStatus") AnalysisStatus failedStatus,
                     @Param("pendingStatus") AnalysisStatus pendingStatus,
-                    @Param("requirementVersion") ProjectRequirementVersion requirementVersion);
+                    @Param("requirementVersionId") Long requirementVersionId);
 
     /**
      * Atomically recovers a RUNNING item only when its exact-tenant claim is
@@ -96,7 +95,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
     @Modifying
     @Query("""
             update RequirementAnalysisJobItem item
-               set item.requirementVersion = :requirementVersion,
+               set item.requirementVersionId = :requirementVersionId,
                    item.status = :pendingStatus,
                    item.snapshotId = null,
                    item.errorMessage = null,
@@ -118,7 +117,7 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
                             @Param("runningStatus") AnalysisStatus runningStatus,
                             @Param("pendingStatus") AnalysisStatus pendingStatus,
                             @Param("staleBefore") Instant staleBefore,
-                            @Param("requirementVersion") ProjectRequirementVersion requirementVersion);
+                            @Param("requirementVersionId") Long requirementVersionId);
 
     /** Compatibility signatures retained while all callers migrate. */
     @Deprecated(forRemoval = false)
