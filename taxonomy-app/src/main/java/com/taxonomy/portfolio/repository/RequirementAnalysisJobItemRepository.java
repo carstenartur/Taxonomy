@@ -2,7 +2,9 @@ package com.taxonomy.portfolio.repository;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -31,6 +33,27 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
 
     Optional<RequirementAnalysisJobItem> findByIdAndJobIdAndProjectIdAndScopeKey(
             Long id, String jobId, Long projectId, String scopeKey);
+
+    /**
+     * Serializes claim finalization against exact-tenant recovery updates. The
+     * row lock is held while deferred hypotheses and the immutable snapshot are
+     * persisted, so an expired-worker reset cannot race between validation and
+     * externally visible hypothesis persistence.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select item
+              from RequirementAnalysisJobItem item
+             where item.id = :itemId
+               and item.jobId = :jobId
+               and item.projectId = :projectId
+               and item.scopeKey = :scopeKey
+            """)
+    Optional<RequirementAnalysisJobItem> findClaimForUpdate(
+            @Param("itemId") Long itemId,
+            @Param("jobId") String jobId,
+            @Param("projectId") Long projectId,
+            @Param("scopeKey") String scopeKey);
 
     Optional<RequirementAnalysisJobItem>
             findByJobIdAndProjectIdAndScopeKeyAndRequirementId(
