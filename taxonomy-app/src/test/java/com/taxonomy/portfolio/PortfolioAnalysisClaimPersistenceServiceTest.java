@@ -10,6 +10,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
 import com.taxonomy.portfolio.service.PortfolioAnalysisClaimPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisRecoveryService;
@@ -48,6 +49,9 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
 
     @Autowired
     private PortfolioAnalysisRecoveryService recoveryService;
+
+    @Autowired
+    private RequirementAnalysisJobRepository jobRepository;
 
     @Test
     void expiredWorkerCannotFailOrPersistOverTheNewRetryGeneration() {
@@ -162,6 +166,48 @@ class PortfolioAnalysisClaimPersistenceServiceTest {
             assertThat(item.status()).isEqualTo(AnalysisStatus.SUCCESS);
             assertThat(item.attempt()).isEqualTo(2);
             assertThat(item.snapshotId()).isEqualTo(currentSnapshotId);
+        });
+    }
+
+    @Test
+    void aggregatePendingStateDoesNotInvalidateAnUnchangedRunningItemClaim() {
+        WorkspaceContext context = context();
+        var project = createProject(context);
+        var requirement = createRequirement(project.id(), context);
+        var job = persistenceService.createOrReuseJob(
+                project.id(),
+                List.of(requirement.id()),
+                "MOCK",
+                25,
+                "aggregate-state-" + UUID.randomUUID(),
+                context.username(),
+                context);
+        String scopeKey = PortfolioScope.key(context.username(), context);
+
+        PortfolioAnalysisWorkQueue.WorkItem activeClaim = workQueue
+                .pending(job.id(), project.id(), scopeKey)
+                .getFirst();
+        persistenceService.markJobRunning(job.id(), project.id(), scopeKey);
+
+        var aggregate = jobRepository.findByIdAndProjectIdAndScopeKey(
+                        job.id(), project.id(), scopeKey)
+                .orElseThrow();
+        aggregate.markPending();
+        jobRepository.save(aggregate);
+
+        claimPersistenceService.failItem(
+                activeClaim,
+                new IllegalStateException("active worker failure"));
+
+        var current = persistenceService.getJob(
+                job.id(), project.id(), context.username(), context);
+        assertThat(current.status()).isEqualTo(AnalysisStatus.PENDING);
+        assertThat(current.items()).singleElement().satisfies(item -> {
+            assertThat(item.status()).isEqualTo(AnalysisStatus.FAILED);
+            assertThat(item.attempt()).isEqualTo(1);
+            assertThat(item.requirementVersionId())
+                    .isEqualTo(activeClaim.requirementVersionId());
+            assertThat(item.errorMessage()).contains("active worker failure");
         });
     }
 
