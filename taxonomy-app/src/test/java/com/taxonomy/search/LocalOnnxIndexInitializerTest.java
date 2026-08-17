@@ -66,7 +66,7 @@ class LocalOnnxIndexInitializerTest {
     }
 
     @Test
-    void nodeIndexBecomesReadyBeforeRelationIndexCompletes() throws Exception {
+    void successfulNodeAndRelationBuildFinishesReadyInOrder() throws Exception {
         configureReadyTaxonomyAndSearchableNodes(309);
 
         initializer.initializeLocalOnnxIndex();
