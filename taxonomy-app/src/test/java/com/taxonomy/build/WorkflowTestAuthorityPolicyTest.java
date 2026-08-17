@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -184,22 +185,28 @@ class WorkflowTestAuthorityPolicyTest {
     }
 
     @Test
-    void acceptsCanonicalCommandAfterShellSeparator(@TempDir Path root) throws Exception {
+    void acceptsCanonicalCommandAfterSupportedShellSeparators(
+            @TempDir Path root) throws Exception {
         writeCatalog(root, Map.of(
                 "ci-cd.yml", "canonical verification",
                 "database-compatibility.yml", "database matrix"));
         writeCanonicalWorkflows(root);
-        writeWorkflow(root, "ci-cd.yml", """
-                name: CI
-                jobs:
-                  verify:
-                    steps:
-                      - run: echo preparing && ./mvnw -B verify -Pci
-                """);
 
-        WorkflowTestAuthorityPolicy.Inspection inspection = policy.inspect(root);
+        for (String separator : List.of("&&", "||", ";", "|")) {
+            writeWorkflow(root, "ci-cd.yml", """
+                    name: CI
+                    jobs:
+                      verify:
+                        steps:
+                          - run: echo preparing %s ./mvnw -B verify -Pci
+                    """.formatted(separator));
 
-        assertThat(inspection.errors()).isEmpty();
+            WorkflowTestAuthorityPolicy.Inspection inspection = policy.inspect(root);
+
+            assertThat(inspection.errors())
+                    .as("canonical command after shell separator %s", separator)
+                    .isEmpty();
+        }
     }
 
     private void writeCatalog(Path root, Map<String, String> responsibilities)
