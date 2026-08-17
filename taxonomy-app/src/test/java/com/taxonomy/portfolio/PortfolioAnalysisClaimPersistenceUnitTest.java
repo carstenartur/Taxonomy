@@ -28,6 +28,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -153,8 +154,9 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
         when(job.getStatus()).thenReturn(AnalysisStatus.RUNNING);
         when(item.getStatus()).thenReturn(AnalysisStatus.RUNNING);
         when(item.getAttempt()).thenReturn(persistedAttempt);
-        when(item.getRequirementId()).thenReturn(claim.requirementId());
-        when(item.getRequirementVersionId()).thenReturn(claim.requirementVersionId());
+        lenient().when(item.getRequirementId()).thenReturn(claim.requirementId());
+        lenient().when(item.getRequirementVersionId())
+                .thenReturn(claim.requirementVersionId());
     }
 
     private static PortfolioAnalysisWorkQueue.WorkItem claim(int attempt) {
