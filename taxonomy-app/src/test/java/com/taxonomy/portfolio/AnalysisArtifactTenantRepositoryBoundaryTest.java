@@ -55,6 +55,18 @@ class AnalysisArtifactTenantRepositoryBoundaryTest {
     }
 
     @Test
+    void gitProjectionLoadsCurrentMappingsInsideTheExactTenant() throws IOException {
+        String source = Files.readString(repositoryRoot().resolve(
+                        "taxonomy-app/src/main/java/com/taxonomy/portfolio/service/"
+                                + "PortfolioGitService.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(source)
+                .contains("findCurrentMappingsForProject(projectId, scopeKey)")
+                .doesNotContain("findCurrentMappingsForProject(projectId)");
+    }
+
+    @Test
     void migrationContainsCompleteAnalysisTenantForeignKeys() throws IOException {
         String migration = Files.readString(repositoryRoot().resolve(
                         "taxonomy-app/src/main/resources/db/migration/taxonomy/postgresql/"
