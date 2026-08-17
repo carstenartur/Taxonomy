@@ -142,6 +142,17 @@ jobs:
             git add -- deploy/helm/taxonomy/Chart.yaml
           fi
 
+          if ! git diff --quiet --; then
+            echo "::error::Version transition left unstaged tracked changes outside the reviewed metadata set"
+            git diff --name-only -- >&2
+            exit 1
+          fi
+          untracked=$(git ls-files --others --exclude-standard)
+          if [[ -n "$untracked" ]]; then
+            echo "::error::Version transition produced untracked files outside the reviewed metadata set"
+            printf '%s\n' "$untracked" >&2
+            exit 1
+          fi
           if git diff --cached --quiet; then
             echo "::error::Version transition produced no tracked metadata changes"
             exit 1
