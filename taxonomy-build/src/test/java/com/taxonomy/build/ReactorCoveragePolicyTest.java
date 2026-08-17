@@ -129,6 +129,39 @@ class ReactorCoveragePolicyTest {
     }
 
     @Test
+    void rejectsDistinctGroupNamesThatNormalizeToTheSamePolicyIdentity(
+            @TempDir Path root) throws Exception {
+        String counters = countersXml(values(90, 10));
+        Path xml = write(root.resolve("jacoco.xml"), """
+                <report name="normalized-collision">
+                  <group name="Taxonomy Domain">%s</group>
+                  <group name="Taxonomy DSL">%s</group>
+                  <group name="taxonomy_dsl">%s</group>
+                  %s
+                </report>
+                """.formatted(counters, counters, counters, counters));
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> policy.evaluate(
+                        xml, policy(0.81, 0.80, 0.64, 0.80, 0.80)))
+                .withMessageContaining("Taxonomy DSL")
+                .withMessageContaining("taxonomy_dsl")
+                .withMessageContaining("share normalized key 'taxonomy-dsl'");
+    }
+
+    @Test
+    void rendersEvidenceSourceRelativeToTheMavenReactorRoot(@TempDir Path root)
+            throws Exception {
+        Path xml = write(root.resolve("target/site/jacoco/jacoco.xml"), "<report/>");
+
+        assertThat(ReactorCoveragePolicy.evidencePath(xml, root.toString()))
+                .isEqualTo("target/site/jacoco/jacoco.xml");
+        assertThat(ReactorCoveragePolicy.evidencePath(
+                xml, root.resolve("other-root").toString()))
+                .isEqualTo(xml.normalize().toString().replace('\\', '/'));
+    }
+
+    @Test
     void policyRequiresEveryCounterAndAPositiveBranchMinimum(@TempDir Path root)
             throws Exception {
         Path zeroBranch = write(root.resolve("zero-branch.json"), policyJson(
@@ -188,6 +221,23 @@ class ReactorCoveragePolicyTest {
                 .withMessageContaining("Unsupported DOCTYPE in JaCoCo report")
                 .satisfies(error -> assertThat(error.getMessage())
                         .doesNotContain("root:"));
+    }
+
+    @Test
+    void failsClosedWhenTheReportRootIsBeyondTheBoundedHeadScan(
+            @TempDir Path root) throws Exception {
+        String delayed = " ".repeat(64 * 1024) + reportXml(
+                Map.of(
+                        "taxonomy-domain", values(90, 10),
+                        "taxonomy-dsl", values(90, 10)),
+                values(180, 20));
+        Path xml = write(root.resolve("delayed-root.xml"), delayed);
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> policy.parseReport(
+                        xml, ReactorCoveragePolicy.COUNTER_TYPES))
+                .withMessageContaining("root was not found within the bounded")
+                .withMessageContaining("65536-character XML head scan");
     }
 
     private static ReactorCoveragePolicy.CoveragePolicy policy(
