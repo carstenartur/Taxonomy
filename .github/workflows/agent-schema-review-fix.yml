@@ -1,0 +1,163 @@
+name: Agent schema review fix
+
+on:
+  push:
+    branches:
+      - agent/10-day-review-cleanup
+    paths:
+      - .github/workflows/agent-schema-review-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out cleanup branch
+        uses: actions/checkout@v5
+        with:
+          ref: agent/10-day-review-cleanup
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Apply fail-closed schema and history guards
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("taxonomy-app/src/main/java/com/taxonomy/dsl/storage/JgitStorageSchemaMigrationConfig.java")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(label: str, old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "managed schema/history validation",
+              '''            requireMigratableCoreShape(schema);
+              log.info("Migrating managed JGit Core schema for {}", family.displayName());
+              flyway.migrate();
+              requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
+              return;
+          ''',
+              '''            requireMigratableCoreShape(schema);
+              requireManagedReflogHistoryConsistency(flyway, schema);
+              log.info("Migrating managed JGit Core schema for {}", family.displayName());
+              flyway.migrate();
+              SchemaSnapshot migratedSchema = SchemaSnapshot.inspect(dataSource);
+              requireCurrentCoreShape(migratedSchema);
+              requireManagedReflogHistoryConsistency(flyway, migratedSchema);
+              return;
+          ''')
+
+          replace_once(
+              "history consistency helper insertion",
+              '''    private static void configureNormalMigration(
+                  FluentConfiguration configuration, DatabaseFamily family) {
+              configuration
+                      .locations(family.normalLocation())
+                      .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+          }
+
+          /** Accept only exact released shapes that Flyway can safely advance to the pinned release. */
+          ''',
+              '''    private static void configureNormalMigration(
+                  FluentConfiguration configuration, DatabaseFamily family) {
+              configuration
+                      .locations(family.normalLocation())
+                      .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+          }
+
+          private static void requireManagedReflogHistoryConsistency(
+                  Flyway flyway, SchemaSnapshot schema) {
+              boolean migrationApplied =
+                      isCoreMigrationApplied(flyway, LATEST_CORE_SCHEMA_VERSION);
+              boolean referenceKeyPresent = hasReflogReferenceKey(schema);
+              if (migrationApplied == referenceKeyPresent) {
+                  return;
+              }
+              throw unsafeSchema(
+                      "Core migration " + LATEST_CORE_SCHEMA_VERSION
+                              + " and git_reflog.REF_NAME_KEY must appear together; "
+                              + "migration applied=" + migrationApplied
+                              + ", reflog columns=" + schema.reflogColumns()
+                              + ", reflog indexes=" + schema.reflogIndexes());
+          }
+
+          private static boolean isCoreMigrationApplied(Flyway flyway, String version) {
+              for (var migration : flyway.info().applied()) {
+                  if (migration.getVersion() != null
+                          && version.equals(migration.getVersion().toString())) {
+                      return true;
+                  }
+              }
+              return false;
+          }
+
+          /** Accept only exact released shapes that Flyway can safely advance to the pinned release. */
+          ''')
+
+          replace_once(
+              "reflog-to-pack shape coupling",
+              '''    private static void requireSupportedReflogColumns(SchemaSnapshot schema) {
+              if (schema.reflogColumns().equals(PRE_REFLOG_KEY_COLUMNS)
+                      || schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS)) {
+                  return;
+              }
+              throw unsafeSchema(
+                      "git_reflog is neither the exact pre-0.9.1 shape nor the exact 0.9.1 "
+                              + "shape; actual=" + schema.reflogColumns());
+          }
+          ''',
+              '''    private static void requireSupportedReflogColumns(SchemaSnapshot schema) {
+              if (schema.reflogColumns().equals(PRE_REFLOG_KEY_COLUMNS)) {
+                  return;
+              }
+              if (schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS)) {
+                  if (!schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
+                      throw unsafeSchema(
+                              "git_reflog carries the 0.9.1 REF_NAME_KEY shape, but git_packs "
+                                      + "does not match the current Core pack schema; expected "
+                                      + "git_packs columns=" + CURRENT_PACK_COLUMNS
+                                      + ", actual git_packs columns=" + schema.packColumns());
+                  }
+                  return;
+              }
+              throw unsafeSchema(
+                      "git_reflog is neither the exact pre-0.9.1 shape nor the exact 0.9.1 "
+                              + "shape; actual=" + schema.reflogColumns());
+          }
+          ''')
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Run focused migration regression tests
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am
+          -DskipITs
+          -Dtest=JgitStorageSchema091CompatibilityTest,JgitStorageSchemaIndexValidationTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          test
+
+      - name: Commit verified production fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add taxonomy-app/src/main/java/com/taxonomy/dsl/storage/JgitStorageSchemaMigrationConfig.java
+          git diff --cached --check
+          git commit -m "fix(migration): reject reflog schema history drift"
+          git push origin HEAD:agent/10-day-review-cleanup
