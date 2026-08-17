@@ -48,10 +48,7 @@ public class PortfolioAnalysisRecoveryService {
         }
         projectService.requireProject(projectId, username, context);
         String scopeKey = PortfolioScope.key(username, context);
-        RequirementAnalysisJob job = jobRepository
-                .findByIdAndProjectIdAndScopeKey(jobId, projectId, scopeKey)
-                .orElseThrow(() -> PortfolioException.notFound(
-                        "Analysis job not found: " + jobId));
+        RequirementAnalysisJob job = requireJob(jobId, projectId, scopeKey);
 
         List<RequirementAnalysisJobItem> failed = itemRepository
                 .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(
@@ -91,5 +88,49 @@ public class PortfolioAnalysisRecoveryService {
         }
         job.markPending();
         return prepared;
+    }
+
+    /**
+     * Restores the aggregate job to PENDING only when prepared work exists and no
+     * item in the exact tenant currently owns a RUNNING claim. This transactional
+     * re-check prevents a completing worker from leaving an undispatched retry in
+     * a misleading RUNNING job state.
+     *
+     * @return {@code true} when the job was reconciled to PENDING
+     */
+    @Transactional
+    public boolean markPendingWhenOnlyPreparedItemsRemain(String jobId,
+                                                          Long projectId,
+                                                          String scopeKey) {
+        String exactScope = requireScope(scopeKey);
+        RequirementAnalysisJob job = requireJob(jobId, projectId, exactScope);
+        List<RequirementAnalysisJobItem> items = itemRepository
+                .findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, exactScope);
+        boolean pending = items.stream()
+                .anyMatch(item -> item.getStatus() == AnalysisStatus.PENDING);
+        boolean running = items.stream()
+                .anyMatch(item -> item.getStatus() == AnalysisStatus.RUNNING);
+        if (pending && !running) {
+            job.markPending();
+            return true;
+        }
+        return false;
+    }
+
+    private RequirementAnalysisJob requireJob(String jobId,
+                                              Long projectId,
+                                              String scopeKey) {
+        return jobRepository.findByIdAndProjectIdAndScopeKey(
+                        jobId, projectId, requireScope(scopeKey))
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Analysis job not found: " + jobId));
+    }
+
+    private static String requireScope(String scopeKey) {
+        if (scopeKey == null || scopeKey.isBlank()) {
+            throw PortfolioException.validation("Exact analysis tenant scope is required");
+        }
+        return scopeKey.strip();
     }
 }
