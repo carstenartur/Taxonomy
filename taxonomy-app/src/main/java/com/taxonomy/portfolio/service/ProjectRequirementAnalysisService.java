@@ -29,7 +29,6 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 
 /** Orchestrates independent analyses while keeping LLM calls outside persistence transactions. */
@@ -350,12 +349,9 @@ public class ProjectRequirementAnalysisService {
         if (isTerminal(current.status())) {
             return current;
         }
-        boolean pending = current.items().stream()
-                .anyMatch(item -> item.status() == AnalysisStatus.PENDING);
-        boolean running = current.items().stream()
-                .anyMatch(item -> item.status() == AnalysisStatus.RUNNING);
-        if (pending && !running) {
-            return current;
+        if (recoveryService.markPendingWhenOnlyPreparedItemsRemain(
+                jobId, projectId, scopeKey)) {
+            return persistenceService.getJob(jobId, projectId, username, context);
         }
         return persistenceService.completeJob(jobId, projectId, scopeKey);
     }
