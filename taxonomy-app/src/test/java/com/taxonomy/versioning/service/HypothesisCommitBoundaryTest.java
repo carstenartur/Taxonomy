@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -117,6 +118,17 @@ class HypothesisCommitBoundaryTest {
 
         synchronizations.forEach(synchronization -> synchronization.afterCompletion(
                 TransactionSynchronization.STATUS_ROLLED_BACK));
+
+        verifyNoInteractions(workspaceRepository);
+        verifyNoInteractions(repositoryFactory);
+    }
+
+    @Test
+    void commitBoundPublicationFailsClosedWithoutTransactionSynchronization() {
+        assertThatThrownBy(() -> service.persistFromAnalysisAfterCommit(
+                List.of(hypothesis), "analysis-no-transaction", context))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("requires active transaction synchronization");
 
         verifyNoInteractions(workspaceRepository);
         verifyNoInteractions(repositoryFactory);
