@@ -9,6 +9,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
 import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +25,12 @@ import java.util.Objects;
  * newer requirement version, overwrite a retry, or mark it failed.</p>
  *
  * <p>Finalization takes a pessimistic row lock before validating the generation.
- * Provisional relation hypotheses are persisted only after that lock is held;
- * their Git projection is registered for {@code afterCommit}. The immutable
- * snapshot and its hypothesis links therefore commit first, while a rollback
- * leaves neither a snapshot nor a canonical hypothesis Git commit. The
- * exact-tenant recovery update must wait on the same item row.</p>
+ * Provisional relation hypotheses are persisted only after that lock is held and
+ * through the exact selected repository/workspace/branch context; their Git
+ * projection is registered for {@code afterCommit}. The immutable snapshot and
+ * its hypothesis links therefore commit first, while a rollback leaves neither a
+ * snapshot nor a canonical hypothesis Git commit. The exact-tenant recovery
+ * update must wait on the same item row.</p>
  *
  * <p>The item is the claim authority. The job status is only an aggregate and
  * may temporarily return to {@code PENDING} when another item is recovered. A
@@ -68,7 +70,8 @@ public class PortfolioAnalysisClaimPersistenceService {
             WorkspaceContext context,
             long durationMs) {
         requireActiveClaim(workItem);
-        persistDeferredHypotheses(analysis, analysisSessionId, context);
+        persistDeferredHypotheses(
+                analysis, analysisSessionId, username, context);
         return persistenceService.persistSnapshot(
                 workItem.itemId(),
                 workItem.jobId(),
@@ -103,6 +106,7 @@ public class PortfolioAnalysisClaimPersistenceService {
 
     private void persistDeferredHypotheses(AnalysisResult analysis,
                                            String analysisSessionId,
+                                           String username,
                                            WorkspaceContext context) {
         if (analysis == null
                 || analysis.getProvisionalRelations() == null
@@ -116,7 +120,21 @@ public class PortfolioAnalysisClaimPersistenceService {
         hypothesisService.persistFromAnalysisAfterCommit(
                 analysis.getProvisionalRelations(),
                 analysisSessionId.strip(),
-                context);
+                exactRepositoryContext(username, context));
+    }
+
+    private static RepositoryContext exactRepositoryContext(
+            String username,
+            WorkspaceContext context) {
+        String repositoryId = PortfolioScope.repositoryId(context);
+        String branch = PortfolioScope.branch(context);
+        String effectiveUsername = PortfolioScope.username(username, context);
+        String workspaceId = PortfolioScope.workspaceId(context);
+        return workspaceId == null
+                ? RepositoryContext.centralWrite(
+                        repositoryId, branch, effectiveUsername)
+                : RepositoryContext.workspace(
+                        repositoryId, workspaceId, branch, effectiveUsername);
     }
 
     private RequirementAnalysisJobItem requireActiveClaim(
