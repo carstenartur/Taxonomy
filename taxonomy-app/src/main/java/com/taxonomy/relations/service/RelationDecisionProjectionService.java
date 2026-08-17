@@ -129,7 +129,7 @@ public class RelationDecisionProjectionService {
         }
 
         String authoritativeCommitId = requireCommitId(
-                result.authoritativeCommitId());
+                result.authoritativeCommitId(), "authoritativeCommitId");
         boolean changed = result.changeKind() != ChangeKind.UNCHANGED;
         if (result.commitCreated() != changed) {
             throw new ProjectionContextMismatchException(
@@ -137,7 +137,8 @@ public class RelationDecisionProjectionService {
         }
         String previousHeadCommit = result.previousHeadCommit();
         if (previousHeadCommit != null) {
-            previousHeadCommit = requireCommitId(previousHeadCommit);
+            previousHeadCommit = requireCommitId(
+                    previousHeadCommit, "previousHeadCommit");
         }
         if (!changed
                 && !authoritativeCommitId.equals(previousHeadCommit)) {
@@ -368,16 +369,16 @@ public class RelationDecisionProjectionService {
         }
     }
 
-    private static String requireCommitId(String value) {
+    private static String requireCommitId(String value, String field) {
         if (value == null) {
             throw new ProjectionContextMismatchException(
-                    "authoritativeCommitId must not be null");
+                    field + " must not be null");
         }
         try {
             return ObjectId.fromString(value).name();
         } catch (IllegalArgumentException error) {
             throw new ProjectionContextMismatchException(
-                    "authoritativeCommitId must be a full Git object ID",
+                    field + " must be a full Git object ID",
                     error);
         }
     }
