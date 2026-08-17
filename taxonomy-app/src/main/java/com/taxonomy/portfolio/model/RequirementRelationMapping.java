@@ -45,12 +45,13 @@ public class RequirementRelationMapping {
             length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
     private String scopeKey;
 
-    @Column(name = "snapshot_id", nullable = false, insertable = false, updatable = false)
+    @Column(name = "snapshot_id", nullable = false)
     private String snapshotId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumns({
-            @JoinColumn(name = "snapshot_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "snapshot_id", referencedColumnName = "id",
+                    nullable = false, insertable = false, updatable = false),
             @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
                     nullable = false, insertable = false, updatable = false)
     })
