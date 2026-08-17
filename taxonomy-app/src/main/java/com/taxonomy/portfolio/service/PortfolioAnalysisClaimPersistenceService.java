@@ -8,6 +8,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
+import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +21,14 @@ import java.util.Objects;
  * <p>The short claim transaction returns both the immutable requirement version
  * and the retry attempt. A recovery increments the attempt before another worker
  * can claim the row. Late workers therefore cannot attach an old analysis to a
- * newer requirement version, overwrite a retry, or mark it failed. The item is
- * loaded in this outer transaction before delegating to the normal persistence
- * service, so its optimistic row version also closes a recovery race occurring
- * after validation but before flush.</p>
+ * newer requirement version, overwrite a retry, or mark it failed.</p>
+ *
+ * <p>Finalization takes a pessimistic row lock before validating the generation.
+ * Provisional relation hypotheses are intentionally persisted only after that
+ * lock is held and immediately before the immutable snapshot is written. The
+ * exact-tenant recovery update must therefore wait; after a successful commit its
+ * {@code RUNNING} predicate no longer matches, while a rolled-back finalization
+ * leaves the original claim recoverable.</p>
  *
  * <p>The item is the claim authority. The job status is only an aggregate and
  * may temporarily return to {@code PENDING} when another item is recovered. A
@@ -35,12 +40,15 @@ public class PortfolioAnalysisClaimPersistenceService {
 
     private final RequirementAnalysisJobItemRepository itemRepository;
     private final PortfolioAnalysisPersistenceService persistenceService;
+    private final HypothesisService hypothesisService;
 
     public PortfolioAnalysisClaimPersistenceService(
             RequirementAnalysisJobItemRepository itemRepository,
-            PortfolioAnalysisPersistenceService persistenceService) {
+            PortfolioAnalysisPersistenceService persistenceService,
+            HypothesisService hypothesisService) {
         this.itemRepository = itemRepository;
         this.persistenceService = persistenceService;
+        this.hypothesisService = hypothesisService;
     }
 
     @Transactional
@@ -60,6 +68,7 @@ public class PortfolioAnalysisClaimPersistenceService {
             WorkspaceContext context,
             long durationMs) {
         requireActiveClaim(workItem);
+        persistDeferredHypotheses(analysis, analysisSessionId, context);
         return persistenceService.persistSnapshot(
                 workItem.itemId(),
                 workItem.jobId(),
@@ -92,6 +101,24 @@ public class PortfolioAnalysisClaimPersistenceService {
                 failure);
     }
 
+    private void persistDeferredHypotheses(AnalysisResult analysis,
+                                           String analysisSessionId,
+                                           WorkspaceContext context) {
+        if (analysis == null
+                || analysis.getProvisionalRelations() == null
+                || analysis.getProvisionalRelations().isEmpty()) {
+            return;
+        }
+        if (analysisSessionId == null || analysisSessionId.isBlank()) {
+            throw PortfolioException.validation(
+                    "Analysis session ID is required for deferred hypotheses");
+        }
+        hypothesisService.persistFromAnalysis(
+                analysis.getProvisionalRelations(),
+                analysisSessionId.strip(),
+                context);
+    }
+
     private RequirementAnalysisJobItem requireActiveClaim(
             PortfolioAnalysisWorkQueue.WorkItem workItem) {
         if (workItem == null
@@ -108,7 +135,7 @@ public class PortfolioAnalysisClaimPersistenceService {
         }
 
         RequirementAnalysisJobItem item = itemRepository
-                .findByIdAndJobIdAndProjectIdAndScopeKey(
+                .findClaimForUpdate(
                         workItem.itemId(),
                         workItem.jobId(),
                         workItem.projectId(),
