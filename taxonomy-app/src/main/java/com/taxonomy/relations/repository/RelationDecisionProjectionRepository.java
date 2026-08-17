@@ -38,7 +38,7 @@ public interface RelationDecisionProjectionRepository
             @Param("targetCode") String targetCode);
 
     List<RelationDecisionProjection>
-            findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscTargetCodeAsc(
+            findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscRelationTypeAscTargetCodeAsc(
                     String repositoryId,
                     String workspaceScopeKey,
                     String branch);
