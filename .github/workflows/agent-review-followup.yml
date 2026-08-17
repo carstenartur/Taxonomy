@@ -30,6 +30,11 @@ jobs:
       - name: Apply final review follow-up
         run: python .github/scripts/agent_review_followup.py
 
+      - name: Remove one-off helpers before repository policy tests
+        run: |
+          rm .github/scripts/agent_review_followup.py
+          rm .github/workflows/agent-review-followup.yml
+
       - name: Run focused policy regression tests
         run: >-
           ./mvnw -B
@@ -39,12 +44,14 @@ jobs:
           -Dsurefire.failIfNoSpecifiedTests=false
           test
 
-      - name: Commit verified fixes
+      - name: Commit verified fixes and helper cleanup
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
+          git add -A \
+            .github/scripts/agent_review_followup.py \
+            .github/workflows/agent-review-followup.yml \
             taxonomy-app/src/test/java/com/taxonomy/build/WorkflowTestAuthorityPolicy.java \
             taxonomy-app/src/test/java/com/taxonomy/build/WorkflowTestAuthorityPolicyTest.java \
             taxonomy-build/src/test/java/com/taxonomy/build/ReactorCoveragePolicy.java \
