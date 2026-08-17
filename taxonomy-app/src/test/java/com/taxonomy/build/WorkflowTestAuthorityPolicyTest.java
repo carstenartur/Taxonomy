@@ -36,6 +36,7 @@ class WorkflowTestAuthorityPolicyTest {
                 "database-compatibility.yml", "database matrix"));
         writeWorkflow(root, "ci-cd.yml", """
                 name: CI
+                # Documentation only: ./mvnw -B verify -Pci
                 jobs:
                   verify:
                     steps:
@@ -55,7 +56,7 @@ class WorkflowTestAuthorityPolicyTest {
                 .anyMatch(error -> error.contains("direct Maven executable"))
                 .anyMatch(error -> error.contains("workflow-owned Java test selection"))
                 .anyMatch(error -> error.contains(
-                        "ci-cd.yml must invoke the canonical Maven command unchanged"))
+                        "canonical Maven command in a run step"))
                 .anyMatch(error -> error.contains("database-mssql"))
                 .anyMatch(error -> error.contains("database-oracle"));
     }
@@ -133,7 +134,8 @@ class WorkflowTestAuthorityPolicyTest {
                   verify:
                     steps:
                       - run: |
-                          ./mvnw -B verify -Pci
+                          ./mvnw -B verify -Pci -DrunOnnxTests=true \\
+                            -DfrontendApiBaseRef=abc123
                 """);
         writeWorkflow(root, "database-compatibility.yml", """
                 name: Database
