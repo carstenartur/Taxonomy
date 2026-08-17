@@ -4,6 +4,7 @@ import com.taxonomy.analysis.service.AnalysisRelationGenerator;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.dto.AnalysisProvenance;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.RequirementArchitectureView;
@@ -93,6 +94,47 @@ class AnalyzeRequirementUseCaseTest {
         verify(llmService).setRequestProvider(LlmProvider.GEMINI);
         verify(hypothesisService).persistFromAnalysis(
                 provisionalRelations, null, command.workspaceContext());
+        verify(llmService).clearRequestProvider();
+    }
+
+    @Test
+    void projectAnalysisKeepsRelationsButDefersEveryHypothesisSideEffect() {
+        WorkspaceContext workspace = new WorkspaceContext("alice", "alice-ws", "draft");
+        AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
+                "Need secure voice comms",
+                false,
+                20,
+                null,
+                "alice",
+                workspace,
+                new AnalysisProvenance(
+                        41L,
+                        7L,
+                        "snapshot-1",
+                        "portfolio:snapshot-1"));
+        AnalysisResult analysisResult = new AnalysisResult();
+        analysisResult.setScores(Map.of("CP", 80, "CR", 70));
+        List<RelationHypothesisDto> provisionalRelations = List.of(
+                new RelationHypothesisDto("CP", "Capabilities", "CR", "Communications",
+                        "REALIZES", 0.56, "compatibility matrix"));
+        ViewContext viewContext = new ViewContext(
+                "abc123", "draft", Instant.now(), true, false, false);
+
+        when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);
+        when(analysisRelationGenerator.generate(analysisResult.getScores()))
+                .thenReturn(provisionalRelations);
+        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
+        when(repositoryStateService.getViewContext("alice", "draft", workspace))
+                .thenReturn(viewContext);
+
+        AnalyzeRequirementResult result = useCase.analyze(command);
+
+        assertThat(result.analysisResult().getProvisionalRelations())
+                .isEqualTo(provisionalRelations);
+        assertThat(result.analysisResult().getViewContext()).isSameAs(viewContext);
+        verify(hypothesisService, never()).persistFromAnalysis(
+                any(), any(), any(WorkspaceContext.class));
+        verifyNoInteractions(architectureViewService, preferencesService);
         verify(llmService).clearRequestProvider();
     }
 
