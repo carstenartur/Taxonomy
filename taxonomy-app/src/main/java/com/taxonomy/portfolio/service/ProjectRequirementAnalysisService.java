@@ -42,6 +42,7 @@ public class ProjectRequirementAnalysisService {
 
     private final ProjectPortfolioService projectService;
     private final PortfolioAnalysisPersistenceService persistenceService;
+    private final PortfolioAnalysisClaimPersistenceService claimPersistenceService;
     private final PortfolioAnalysisWorkQueue workQueue;
     private final PortfolioAnalysisRecoveryService recoveryService;
     private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
@@ -55,26 +56,29 @@ public class ProjectRequirementAnalysisService {
     private final int maximumBatchRequirements;
     private final long claimTimeoutSeconds;
 
-    public ProjectRequirementAnalysisService(ProjectPortfolioService projectService,
-                                             PortfolioAnalysisPersistenceService persistenceService,
-                                             PortfolioAnalysisWorkQueue workQueue,
-                                             PortfolioAnalysisRecoveryService recoveryService,
-                                             AnalyzeRequirementUseCase analyzeRequirementUseCase,
-                                             ArchitectureGapService gapService,
-                                             ArchitecturePatternService patternService,
-                                             ArchitectureRecommendationService recommendationService,
-                                             PortfolioFingerprintService fingerprintService,
-                                             LlmService llmService,
-                                             @Qualifier("portfolioAnalysisExecutor")
-                                             AsyncTaskExecutor analysisExecutor,
-                                             @Value("${taxonomy.limits.max-architecture-nodes:100}")
-                                             int maximumArchitectureNodes,
-                                             @Value("${taxonomy.portfolio.max-analysis-batch:100}")
-                                             int maximumBatchRequirements,
-                                             @Value("${taxonomy.portfolio.analysis-claim-timeout-seconds:900}")
-                                             long claimTimeoutSeconds) {
+    public ProjectRequirementAnalysisService(
+            ProjectPortfolioService projectService,
+            PortfolioAnalysisPersistenceService persistenceService,
+            PortfolioAnalysisClaimPersistenceService claimPersistenceService,
+            PortfolioAnalysisWorkQueue workQueue,
+            PortfolioAnalysisRecoveryService recoveryService,
+            AnalyzeRequirementUseCase analyzeRequirementUseCase,
+            ArchitectureGapService gapService,
+            ArchitecturePatternService patternService,
+            ArchitectureRecommendationService recommendationService,
+            PortfolioFingerprintService fingerprintService,
+            LlmService llmService,
+            @Qualifier("portfolioAnalysisExecutor")
+            AsyncTaskExecutor analysisExecutor,
+            @Value("${taxonomy.limits.max-architecture-nodes:100}")
+            int maximumArchitectureNodes,
+            @Value("${taxonomy.portfolio.max-analysis-batch:100}")
+            int maximumBatchRequirements,
+            @Value("${taxonomy.portfolio.analysis-claim-timeout-seconds:900}")
+            long claimTimeoutSeconds) {
         this.projectService = projectService;
         this.persistenceService = persistenceService;
+        this.claimPersistenceService = claimPersistenceService;
         this.workQueue = workQueue;
         this.recoveryService = recoveryService;
         this.analyzeRequirementUseCase = analyzeRequirementUseCase;
@@ -270,7 +274,7 @@ public class ProjectRequirementAnalysisService {
         List<PortfolioAnalysisWorkQueue.WorkItem> workItems =
                 workQueue.pending(jobId, projectId, scopeKey);
         if (workItems.isEmpty()) {
-            return persistenceService.completeJob(jobId, projectId, scopeKey);
+            return reconcileJobState(jobId, projectId, username, context, scopeKey);
         }
         persistenceService.markJobRunning(jobId, projectId, scopeKey);
 
@@ -304,11 +308,8 @@ public class ProjectRequirementAnalysisService {
                 ArchitectureRecommendation recommendation = safeRecommendation(
                         analysis, workItem.requirementText());
                 long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
-                persistenceService.persistSnapshot(
-                        workItem.itemId(),
-                        workItem.jobId(),
-                        workItem.projectId(),
-                        workItem.scopeKey(),
+                claimPersistenceService.persistSnapshot(
+                        workItem,
                         snapshotId,
                         analysisSessionId,
                         analysis,
@@ -323,15 +324,47 @@ public class ProjectRequirementAnalysisService {
                         context,
                         durationMs);
             } catch (Exception failure) {
-                persistenceService.failItem(
-                        workItem.itemId(),
-                        workItem.jobId(),
-                        workItem.projectId(),
-                        workItem.scopeKey(),
-                        failure);
+                try {
+                    claimPersistenceService.failItem(workItem, failure);
+                } catch (PortfolioException claimFailure) {
+                    if (claimFailure.getKind() != PortfolioException.Kind.CONFLICT) {
+                        throw claimFailure;
+                    }
+                    LOGGER.info(
+                            "Discarded late result for analysis item {} attempt {} because its claim is no longer active",
+                            workItem.itemId(),
+                            workItem.attempt());
+                }
             }
         }
+        return reconcileJobState(jobId, projectId, username, context, scopeKey);
+    }
+
+    private AnalysisJobView reconcileJobState(String jobId,
+                                              Long projectId,
+                                              String username,
+                                              WorkspaceContext context,
+                                              String scopeKey) {
+        AnalysisJobView current = persistenceService.getJob(
+                jobId, projectId, username, context);
+        if (isTerminal(current.status())) {
+            return current;
+        }
+        boolean pending = current.items().stream()
+                .anyMatch(item -> item.status() == AnalysisStatus.PENDING);
+        boolean running = current.items().stream()
+                .anyMatch(item -> item.status() == AnalysisStatus.RUNNING);
+        if (pending && !running) {
+            return current;
+        }
         return persistenceService.completeJob(jobId, projectId, scopeKey);
+    }
+
+    private static boolean isTerminal(AnalysisStatus status) {
+        return status == AnalysisStatus.SUCCESS
+                || status == AnalysisStatus.PARTIAL
+                || status == AnalysisStatus.FAILED
+                || status == AnalysisStatus.CANCELLED;
     }
 
     private GapAnalysisView safeGapAnalysis(AnalysisResult analysis, String requirementText) {
