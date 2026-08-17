@@ -15,6 +15,7 @@ class AnalysisArtifactTenantRepositoryBoundaryTest {
 
     private static final List<String> MIGRATED_SERVICES = List.of(
             "PortfolioAnalysisPersistenceService.java",
+            "PortfolioAnalysisClaimPersistenceService.java",
             "PortfolioAnalysisRecoveryService.java",
             "PortfolioAnalysisWorkQueue.java",
             "ProjectRequirementAnalysisService.java");
