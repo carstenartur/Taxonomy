@@ -29,6 +29,8 @@ final class WorkflowTestAuthorityPolicy {
 
     static final String CANONICAL_COMMAND = "./mvnw -B verify -Pci";
 
+    private static final Pattern CANONICAL_INVOCATION = Pattern.compile(
+            "(?m)(?:^|[\\s;&|])\\./mvnw\\s+-B\\s+verify\\s+-Pci(?:\\s|$)");
     private static final Set<String> BLOCK_MARKERS = Set.of("|", ">", "|-", ">-");
     private static final Set<String> REMOVED_WORKFLOWS = Set.of(
             "accessibility.yml",
@@ -173,8 +175,10 @@ final class WorkflowTestAuthorityPolicy {
             errors.add("ci-cd.yml is missing");
             return;
         }
-        if (!Files.readString(ci).contains(CANONICAL_COMMAND)) {
-            errors.add("ci-cd.yml must invoke the canonical Maven command unchanged");
+        String executableRunBlocks = runBlocks(Files.readString(ci));
+        if (!CANONICAL_INVOCATION.matcher(executableRunBlocks).find()) {
+            errors.add("ci-cd.yml must invoke the canonical Maven command in a run step; "
+                    + "additional Maven arguments are allowed");
         }
     }
 
