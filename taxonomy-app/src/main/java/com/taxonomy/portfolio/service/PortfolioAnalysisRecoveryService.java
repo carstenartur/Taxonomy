@@ -1,7 +1,6 @@
 package com.taxonomy.portfolio.service;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
-import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.model.RequirementAnalysisJob;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
@@ -63,8 +62,7 @@ public class PortfolioAnalysisRecoveryService {
 
         int prepared = 0;
         for (RequirementAnalysisJobItem item : failed) {
-            ProjectRequirementVersion version =
-                    projectService.currentVersion(item.getRequirement());
+            Long versionId = projectService.currentVersion(item.getRequirement()).getId();
             prepared += itemRepository.resetFailed(
                     item.getId(),
                     jobId,
@@ -72,11 +70,10 @@ public class PortfolioAnalysisRecoveryService {
                     scopeKey,
                     AnalysisStatus.FAILED,
                     AnalysisStatus.PENDING,
-                    version);
+                    versionId);
         }
         for (RequirementAnalysisJobItem item : stale) {
-            ProjectRequirementVersion version =
-                    projectService.currentVersion(item.getRequirement());
+            Long versionId = projectService.currentVersion(item.getRequirement()).getId();
             prepared += itemRepository.resetExpiredRunning(
                     item.getId(),
                     jobId,
@@ -85,7 +82,7 @@ public class PortfolioAnalysisRecoveryService {
                     AnalysisStatus.RUNNING,
                     AnalysisStatus.PENDING,
                     staleBefore,
-                    version);
+                    versionId);
         }
 
         if (prepared == 0) {
