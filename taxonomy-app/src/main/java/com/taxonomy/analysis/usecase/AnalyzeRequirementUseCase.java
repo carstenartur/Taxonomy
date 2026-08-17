@@ -49,15 +49,6 @@ public class AnalyzeRequirementUseCase {
         return analyze(command, command.provenance() == null);
     }
 
-    /**
-     * Explicit deferred variant for durable callers that do not yet have their
-     * final provenance at command construction time.
-     */
-    public AnalyzeRequirementResult analyzeWithDeferredHypothesisPersistence(
-            AnalyzeRequirementCommand command) {
-        return analyze(command, false);
-    }
-
     private AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command,
                                              boolean persistHypotheses) {
         try {
@@ -92,11 +83,9 @@ public class AnalyzeRequirementUseCase {
         }
         result.setProvisionalRelations(analysisRelationGenerator.generate(result.getScores()));
         if (persistHypotheses && !result.getProvisionalRelations().isEmpty()) {
-            String stableSessionId = command.provenance() != null
-                    ? command.provenance().analysisSessionId() : null;
             hypothesisService.persistFromAnalysis(
                     result.getProvisionalRelations(),
-                    stableSessionId,
+                    null,
                     command.workspaceContext());
         }
     }
