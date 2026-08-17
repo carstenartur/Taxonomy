@@ -162,6 +162,46 @@ class WorkflowTestAuthorityPolicyTest {
                 .isEqualTo("./mvnw -B verify -Pci");
     }
 
+    @Test
+    void rejectsCanonicalCommandThatIsOnlyEchoed(@TempDir Path root) throws Exception {
+        writeCatalog(root, Map.of(
+                "ci-cd.yml", "canonical verification",
+                "database-compatibility.yml", "database matrix"));
+        writeCanonicalWorkflows(root);
+        writeWorkflow(root, "ci-cd.yml", """
+                name: CI
+                jobs:
+                  verify:
+                    steps:
+                      - run: echo ./mvnw -B verify -Pci
+                """);
+
+        WorkflowTestAuthorityPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.errors())
+                .anyMatch(error -> error.contains(
+                        "canonical Maven command in a run step"));
+    }
+
+    @Test
+    void acceptsCanonicalCommandAfterShellSeparator(@TempDir Path root) throws Exception {
+        writeCatalog(root, Map.of(
+                "ci-cd.yml", "canonical verification",
+                "database-compatibility.yml", "database matrix"));
+        writeCanonicalWorkflows(root);
+        writeWorkflow(root, "ci-cd.yml", """
+                name: CI
+                jobs:
+                  verify:
+                    steps:
+                      - run: echo preparing && ./mvnw -B verify -Pci
+                """);
+
+        WorkflowTestAuthorityPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.errors()).isEmpty();
+    }
+
     private void writeCatalog(Path root, Map<String, String> responsibilities)
             throws IOException {
         Path catalog = root.resolve(".mvn/verification-suites.json");

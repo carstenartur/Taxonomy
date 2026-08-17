@@ -30,7 +30,8 @@ final class WorkflowTestAuthorityPolicy {
     static final String CANONICAL_COMMAND = "./mvnw -B verify -Pci";
 
     private static final Pattern CANONICAL_INVOCATION = Pattern.compile(
-            "(?m)(?:^|[\\s;&|])\\./mvnw\\s+-B\\s+verify\\s+-Pci(?:\\s|$)");
+            "(?m)(?:^|(?:&&|\\|\\||[;|])\\s*)"
+                    + "\\./mvnw\\s+-B\\s+verify\\s+-Pci(?:\\s|$)");
     private static final Set<String> BLOCK_MARKERS = Set.of("|", ">", "|-", ">-");
     private static final Set<String> REMOVED_WORKFLOWS = Set.of(
             "accessibility.yml",

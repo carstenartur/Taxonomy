@@ -159,6 +159,12 @@ class ReactorCoveragePolicyTest {
         assertThat(ReactorCoveragePolicy.evidencePath(
                 xml, root.resolve("other-root").toString()))
                 .isEqualTo(xml.normalize().toString().replace('\\', '/'));
+
+        Path relativeExternalReport = Path.of("target/external/jacoco.xml");
+        assertThat(ReactorCoveragePolicy.evidencePath(
+                relativeExternalReport, root.resolve("other-root").toString()))
+                .isEqualTo(relativeExternalReport.toAbsolutePath().normalize()
+                        .toString().replace('\\', '/'));
     }
 
     @Test

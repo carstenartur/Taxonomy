@@ -260,7 +260,7 @@ final class ReactorCoveragePolicy {
                 return root.relativize(absolute).toString().replace('\\', '/');
             }
         }
-        return xmlPath.normalize().toString().replace('\\', '/');
+        return absolute.toString().replace('\\', '/');
     }
 
     private static String evidencePath(Path xmlPath) {
