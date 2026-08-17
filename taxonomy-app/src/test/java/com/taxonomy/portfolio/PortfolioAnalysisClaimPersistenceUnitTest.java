@@ -57,7 +57,7 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
             "architect", "ws-architect", "draft");
 
     @Test
-    void activeClaimPersistsDeferredHypothesesBeforeItsSnapshot() {
+    void activeClaimRegistersHypothesesForCommitBeforeItsSnapshot() {
         PortfolioAnalysisWorkQueue.WorkItem claim = claim(1);
         stubActiveClaim(claim, 1);
         AnalysisResult analysis = analysisWithHypothesis();
@@ -81,7 +81,7 @@ class PortfolioAnalysisClaimPersistenceUnitTest {
         InOrder order = inOrder(itemRepository, hypothesisService, persistenceService);
         order.verify(itemRepository).findClaimForUpdate(
                 claim.itemId(), claim.jobId(), claim.projectId(), claim.scopeKey());
-        order.verify(hypothesisService).persistFromAnalysis(
+        order.verify(hypothesisService).persistFromAnalysisAfterCommit(
                 analysis.getProvisionalRelations(),
                 "portfolio:snapshot-1",
                 context);
