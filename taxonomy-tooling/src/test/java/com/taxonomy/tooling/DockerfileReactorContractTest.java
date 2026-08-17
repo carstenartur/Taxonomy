@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,16 +27,42 @@ class DockerfileReactorContractTest {
 
         assertThat(modules).isNotEmpty();
         for (String module : modules) {
-            assertThat(dockerfile)
+            assertThat(containsCopyInstruction(
+                    dockerfile,
+                    module + "/pom.xml",
+                    module + "/pom.xml"))
                     .as("Dockerfile must copy the Maven descriptor for reactor module %s", module)
-                    .contains("COPY " + module + "/pom.xml " + module + "/pom.xml");
+                    .isTrue();
 
             if (Files.isDirectory(root.resolve(module).resolve("src/main"))) {
-                assertThat(dockerfile)
+                assertThat(containsCopyInstruction(
+                        dockerfile,
+                        module + "/src",
+                        module + "/src"))
                         .as("Dockerfile must copy productive sources for reactor module %s", module)
-                        .contains("COPY " + module + "/src " + module + "/src");
+                        .isTrue();
             }
         }
+    }
+
+    @Test
+    void copyInstructionMatchingAcceptsFlagsFlexibleWhitespaceAndJsonForm() {
+        String dockerfile = """
+                # A commented instruction must not satisfy the contract.
+                # COPY missing/pom.xml missing/pom.xml
+                COPY --link --chown=10001:0   module/pom.xml\tmodule/pom.xml
+                copy --chmod=0644 ["module/src", "module/src"]
+                """;
+
+        assertThat(containsCopyInstruction(
+                dockerfile, "module/pom.xml", "module/pom.xml"))
+                .isTrue();
+        assertThat(containsCopyInstruction(
+                dockerfile, "module/src", "module/src"))
+                .isTrue();
+        assertThat(containsCopyInstruction(
+                dockerfile, "missing/pom.xml", "missing/pom.xml"))
+                .isFalse();
     }
 
     @Test
@@ -64,6 +91,22 @@ class DockerfileReactorContractTest {
                 "- name: Run the canonical Maven verification suite");
         assertThat(imageBuild).isGreaterThanOrEqualTo(0);
         assertThat(canonicalVerification).isGreaterThan(imageBuild);
+    }
+
+    private static boolean containsCopyInstruction(
+            String dockerfile, String source, String destination) {
+        String optionalFlags = "(?:\\s+--\\S+)*";
+        String shellForm = "\\s+" + Pattern.quote(source)
+                + "\\s+" + Pattern.quote(destination);
+        String jsonForm = "\\s*\\[\\s*\"" + Pattern.quote(source)
+                + "\"\\s*,\\s*\"" + Pattern.quote(destination)
+                + "\"\\s*\\]";
+        Pattern copyInstruction = Pattern.compile(
+                "^\\s*COPY" + optionalFlags
+                        + "(?:" + shellForm + "|" + jsonForm + ")"
+                        + "\\s*(?:#.*)?$",
+                Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
+        return copyInstruction.matcher(dockerfile).find();
     }
 
     private static List<String> readReactorModules(Path pom) throws Exception {
