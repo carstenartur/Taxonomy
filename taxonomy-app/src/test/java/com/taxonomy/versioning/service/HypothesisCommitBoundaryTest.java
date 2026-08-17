@@ -24,6 +24,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -68,9 +69,10 @@ class HypothesisCommitBoundaryTest {
                 .thenReturn(false);
         when(hypothesisRepository.save(any(RelationHypothesis.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(nodeRepository.findByCode(anyString())).thenReturn(Optional.empty());
-        when(repositoryFactory.resolveRepository(context)).thenReturn(workspaceRepository);
-        when(workspaceRepository.commitDsl(anyString(), anyString(), anyString(), anyString()))
+        lenient().when(nodeRepository.findByCode(anyString())).thenReturn(Optional.empty());
+        lenient().when(repositoryFactory.resolveRepository(context)).thenReturn(workspaceRepository);
+        lenient().when(workspaceRepository.commitDsl(
+                        anyString(), anyString(), anyString(), anyString()))
                 .thenReturn("commit-1");
     }
 
