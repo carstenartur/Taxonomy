@@ -211,7 +211,8 @@ public final class ArchitectureRelationDslTransformer {
         List<String> tokens = block.getHeaderTokens();
         return tokens.size() >= 3
                 && identity.sourceId().equals(tokens.get(0))
-                && identity.relationType().equals(tokens.get(1))
+                && identity.relationType().equals(
+                        tokens.get(1).toUpperCase(Locale.ROOT))
                 && identity.targetId().equals(tokens.get(2));
     }
 
