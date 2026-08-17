@@ -24,11 +24,11 @@ import java.util.Objects;
  * newer requirement version, overwrite a retry, or mark it failed.</p>
  *
  * <p>Finalization takes a pessimistic row lock before validating the generation.
- * Provisional relation hypotheses are intentionally persisted only after that
- * lock is held and immediately before the immutable snapshot is written. The
- * exact-tenant recovery update must therefore wait; after a successful commit its
- * {@code RUNNING} predicate no longer matches, while a rolled-back finalization
- * leaves the original claim recoverable.</p>
+ * Provisional relation hypotheses are persisted only after that lock is held;
+ * their Git projection is registered for {@code afterCommit}. The immutable
+ * snapshot and its hypothesis links therefore commit first, while a rollback
+ * leaves neither a snapshot nor a canonical hypothesis Git commit. The
+ * exact-tenant recovery update must wait on the same item row.</p>
  *
  * <p>The item is the claim authority. The job status is only an aggregate and
  * may temporarily return to {@code PENDING} when another item is recovered. A
@@ -113,7 +113,7 @@ public class PortfolioAnalysisClaimPersistenceService {
             throw PortfolioException.validation(
                     "Analysis session ID is required for deferred hypotheses");
         }
-        hypothesisService.persistFromAnalysis(
+        hypothesisService.persistFromAnalysisAfterCommit(
                 analysis.getProvisionalRelations(),
                 analysisSessionId.strip(),
                 context);
