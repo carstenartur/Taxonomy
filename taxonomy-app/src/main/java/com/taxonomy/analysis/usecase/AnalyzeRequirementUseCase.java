@@ -39,12 +39,29 @@ public class AnalyzeRequirementUseCase {
         this.preferencesService = preferencesService;
     }
 
+    /** Analyze an ad-hoc request and persist generated hypotheses immediately. */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
+        return analyze(command, true);
+    }
+
+    /**
+     * Analyze a durable worker request while deferring every hypothesis side
+     * effect until the caller has revalidated and locked its claim generation.
+     * Provisional relations remain part of the returned analysis and can still
+     * feed the architecture view and immutable snapshot.
+     */
+    public AnalyzeRequirementResult analyzeWithDeferredHypothesisPersistence(
+            AnalyzeRequirementCommand command) {
+        return analyze(command, false);
+    }
+
+    private AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command,
+                                             boolean persistHypotheses) {
         try {
             applyProviderOverride(command.provider());
 
             AnalysisResult result = llmService.analyzeWithBudget(command.businessText());
-            enrichWithRelationHypotheses(command, result);
+            enrichWithRelationHypotheses(command, result, persistHypotheses);
             enrichWithArchitectureView(command, result);
             populateViewContext(command, result);
             return new AnalyzeRequirementResult(result);
@@ -65,12 +82,13 @@ public class AnalyzeRequirementUseCase {
     }
 
     private void enrichWithRelationHypotheses(AnalyzeRequirementCommand command,
-                                               AnalysisResult result) {
+                                               AnalysisResult result,
+                                               boolean persistHypotheses) {
         if (result.getScores() == null) {
             return;
         }
         result.setProvisionalRelations(analysisRelationGenerator.generate(result.getScores()));
-        if (!result.getProvisionalRelations().isEmpty()) {
+        if (persistHypotheses && !result.getProvisionalRelations().isEmpty()) {
             String stableSessionId = command.provenance() != null
                     ? command.provenance().analysisSessionId() : null;
             hypothesisService.persistFromAnalysis(
