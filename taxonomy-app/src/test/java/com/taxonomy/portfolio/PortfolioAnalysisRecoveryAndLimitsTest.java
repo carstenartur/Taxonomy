@@ -3,6 +3,7 @@ package com.taxonomy.portfolio;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
 import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
@@ -90,6 +91,16 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("no failed or expired running items");
 
+        var retryVersion = projectService.addRequirementVersion(
+                project.id(),
+                requirement.id(),
+                new CreateRequirementVersionRequest(
+                        "Updated requirement text for the recovered attempt",
+                        "Rebind the retry to the current immutable version",
+                        null),
+                context.username(),
+                context);
+
         int recovered = recoveryService.prepareRetryableItems(
                 job.id(),
                 project.id(),
@@ -113,6 +124,9 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                     assertThat(item.status()).isEqualTo(AnalysisStatus.PENDING);
                     assertThat(item.attempt()).isEqualTo(2);
                     assertThat(item.startedAt()).isNull();
+                    assertThat(item.requirementVersionId()).isEqualTo(retryVersion.id());
+                    assertThat(item.requirementVersionNumber())
+                            .isEqualTo(retryVersion.versionNumber());
                 });
     }
 
