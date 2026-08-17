@@ -8,6 +8,7 @@ import com.taxonomy.architecture.service.ArchitectureRecommendationService;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.service.PortfolioAnalysisClaimPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisRecoveryService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
@@ -46,6 +47,7 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
 
     @Mock private ProjectPortfolioService projectService;
     @Mock private PortfolioAnalysisPersistenceService persistenceService;
+    @Mock private PortfolioAnalysisClaimPersistenceService claimPersistenceService;
     @Mock private PortfolioAnalysisWorkQueue workQueue;
     @Mock private PortfolioAnalysisRecoveryService recoveryService;
     @Mock private AnalyzeRequirementUseCase analyzeRequirementUseCase;
@@ -64,6 +66,7 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
         service = new ProjectRequirementAnalysisService(
                 projectService,
                 persistenceService,
+                claimPersistenceService,
                 workQueue,
                 recoveryService,
                 analyzeRequirementUseCase,
@@ -91,7 +94,7 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
 
         assertThat(job.status()).isEqualTo(AnalysisStatus.PENDING);
         verify(analysisExecutor).execute(any(Runnable.class));
-        verifyNoInteractions(analyzeRequirementUseCase);
+        verifyNoInteractions(analyzeRequirementUseCase, claimPersistenceService);
     }
 
     @Test
@@ -109,7 +112,7 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
                         .isEqualTo(PortfolioException.Kind.UNAVAILABLE))
                 .hasMessageContaining("persisted job job-1");
 
-        verifyNoInteractions(analyzeRequirementUseCase);
+        verifyNoInteractions(analyzeRequirementUseCase, claimPersistenceService);
     }
 
     @Test
@@ -134,7 +137,7 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
         verify(recoveryService, times(1)).prepareRetryableItems(
                 anyString(), anyLong(), anyString(), any(), any());
         verify(analysisExecutor, times(2)).execute(any(Runnable.class));
-        verifyNoInteractions(analyzeRequirementUseCase);
+        verifyNoInteractions(analyzeRequirementUseCase, claimPersistenceService);
     }
 
     private AnalysisJobView job(AnalysisStatus status) {
