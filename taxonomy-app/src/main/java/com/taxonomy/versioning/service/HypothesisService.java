@@ -34,6 +34,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -98,12 +100,36 @@ public class HypothesisService {
                 repositoryFactory, null, null);
     }
 
-    /** Persist provisional hypotheses and version their canonical DSL in one tenant. */
+    /** Persist provisional hypotheses and version their canonical DSL immediately. */
     @Transactional
     public List<RelationHypothesis> persistFromAnalysis(
             List<RelationHypothesisDto> hypotheses,
             String sessionId,
             RepositoryContext context) {
+        return persistFromAnalysis(hypotheses, sessionId, context, false);
+    }
+
+    /**
+     * Persist provisional hypotheses in the surrounding transaction and publish
+     * their canonical Git DSL only after that transaction has committed.
+     *
+     * <p>This variant is the durable worker boundary: a snapshot or claim
+     * finalization rollback must never leave a Git commit for database state that
+     * was not committed.</p>
+     */
+    @Transactional
+    public List<RelationHypothesis> persistFromAnalysisAfterCommit(
+            List<RelationHypothesisDto> hypotheses,
+            String sessionId,
+            RepositoryContext context) {
+        return persistFromAnalysis(hypotheses, sessionId, context, true);
+    }
+
+    private List<RelationHypothesis> persistFromAnalysis(
+            List<RelationHypothesisDto> hypotheses,
+            String sessionId,
+            RepositoryContext context,
+            boolean publishAfterCommit) {
         if (hypotheses == null || hypotheses.isEmpty()) {
             return List.of();
         }
@@ -151,7 +177,13 @@ public class HypothesisService {
         }
 
         if (!persisted.isEmpty()) {
-            commitHypothesesAsDsl(persisted, effectiveSessionId, tenant);
+            if (publishAfterCommit) {
+                publishHypothesesAfterCommit(
+                        persisted, effectiveSessionId, tenant);
+            } else {
+                commitHypothesesAsDsl(
+                        persisted, effectiveSessionId, tenant);
+            }
         }
         log.info("Persisted {} hypotheses for session {} in repository {} workspace {}",
                 persisted.size(), effectiveSessionId,
@@ -166,6 +198,16 @@ public class HypothesisService {
             String sessionId,
             WorkspaceContext workspaceContext) {
         return persistFromAnalysis(
+                hypotheses, sessionId, resolveLegacyContext(workspaceContext));
+    }
+
+    /** Historic workspace-only overload with commit-bound Git publication. */
+    @Transactional
+    public List<RelationHypothesis> persistFromAnalysisAfterCommit(
+            List<RelationHypothesisDto> hypotheses,
+            String sessionId,
+            WorkspaceContext workspaceContext) {
+        return persistFromAnalysisAfterCommit(
                 hypotheses, sessionId, resolveLegacyContext(workspaceContext));
     }
 
@@ -307,6 +349,37 @@ public class HypothesisService {
 
     private IllegalArgumentException hypothesisNotFound(Long hypothesisId) {
         return new IllegalArgumentException("Hypothesis not found: " + hypothesisId);
+    }
+
+    private void publishHypothesesAfterCommit(
+            List<RelationHypothesis> hypotheses,
+            String sessionId,
+            RepositoryContext context) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new IllegalStateException(
+                    "Commit-bound hypothesis publication requires active transaction synchronization");
+        }
+        List<RelationHypothesis> committedHypotheses = List.copyOf(hypotheses);
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            commitHypothesesAsDsl(
+                                    committedHypotheses, sessionId, context);
+                        } catch (RuntimeException failure) {
+                            // The database is already authoritative and committed.
+                            // Keep the snapshot valid, but make the projection gap
+                            // operationally visible for reconciliation.
+                            log.error("Failed to publish committed hypotheses for session {} "
+                                            + "in repository {} workspace {}",
+                                    sessionId,
+                                    context.repositoryId(),
+                                    context.workspaceId(),
+                                    failure);
+                        }
+                    }
+                });
     }
 
     private void commitHypothesesAsDsl(
