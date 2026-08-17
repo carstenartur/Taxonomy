@@ -26,9 +26,9 @@ import java.util.Objects;
  *
  * <p>Finalization takes a pessimistic row lock before validating the generation.
  * Provisional relation hypotheses are persisted only after that lock is held and
- * through the exact selected repository/workspace/branch context; their Git
- * projection is registered for {@code afterCommit}. The immutable snapshot and
- * its hypothesis links therefore commit first, while a rollback leaves neither a
+ * through the exact selected repository/workspace context; their Git projection
+ * is registered for {@code afterCommit}. The immutable snapshot and its
+ * hypothesis links therefore commit first, while a rollback leaves neither a
  * snapshot nor a canonical hypothesis Git commit. The exact-tenant recovery
  * update must wait on the same item row.</p>
  *
