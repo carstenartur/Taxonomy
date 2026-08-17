@@ -43,13 +43,14 @@ public class RequirementAnalysisJob {
             length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
     private String scopeKey;
 
-    /** Read-only scalar parent identity for exact worker and repository predicates. */
-    @Column(name = "project_id", nullable = false, insertable = false, updatable = false)
+    /** Scalar parent identity is the write authority for the tenant-bound foreign key. */
+    @Column(name = "project_id", nullable = false)
     private Long projectId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumns({
-            @JoinColumn(name = "project_id", referencedColumnName = "id", nullable = false),
+            @JoinColumn(name = "project_id", referencedColumnName = "id",
+                    nullable = false, insertable = false, updatable = false),
             @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
                     nullable = false, insertable = false, updatable = false)
     })
