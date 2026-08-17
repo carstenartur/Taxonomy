@@ -109,7 +109,7 @@ class HypothesisCommitBoundaryTest {
     }
 
     @Test
-    void rolledBackDatabaseTransactionPublishesNoGitCommit() {
+    void rolledBackDatabaseTransactionPublishesNoGitCommit() throws Exception {
         TransactionSynchronizationManager.initSynchronization();
 
         service.persistFromAnalysisAfterCommit(
@@ -127,7 +127,7 @@ class HypothesisCommitBoundaryTest {
     }
 
     @Test
-    void commitBoundPublicationFailsClosedWithoutTransactionSynchronization() {
+    void commitBoundPublicationFailsClosedWithoutTransactionSynchronization() throws Exception {
         assertThatThrownBy(() -> service.persistFromAnalysisAfterCommit(
                 List.of(hypothesis), "analysis-no-transaction", context))
                 .isInstanceOf(IllegalStateException.class)
