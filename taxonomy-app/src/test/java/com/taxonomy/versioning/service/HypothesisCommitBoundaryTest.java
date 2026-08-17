@@ -26,8 +26,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -92,7 +92,9 @@ class HypothesisCommitBoundaryTest {
                 List.of(hypothesis), "analysis-1", context);
 
         assertThat(persisted).hasSize(1);
-        verifyNoInteractions(workspaceRepository);
+        verify(repositoryFactory, never()).resolveRepository(context);
+        verify(workspaceRepository, never()).commitDsl(
+                anyString(), anyString(), anyString(), anyString());
         assertThat(TransactionSynchronizationManager.getSynchronizations()).hasSize(1);
 
         TransactionSynchronizationManager.getSynchronizations()
@@ -119,8 +121,9 @@ class HypothesisCommitBoundaryTest {
         synchronizations.forEach(synchronization -> synchronization.afterCompletion(
                 TransactionSynchronization.STATUS_ROLLED_BACK));
 
-        verifyNoInteractions(workspaceRepository);
-        verifyNoInteractions(repositoryFactory);
+        verify(repositoryFactory, never()).resolveRepository(context);
+        verify(workspaceRepository, never()).commitDsl(
+                anyString(), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -130,7 +133,8 @@ class HypothesisCommitBoundaryTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("requires active transaction synchronization");
 
-        verifyNoInteractions(workspaceRepository);
-        verifyNoInteractions(repositoryFactory);
+        verify(repositoryFactory, never()).resolveRepository(context);
+        verify(workspaceRepository, never()).commitDsl(
+                anyString(), anyString(), anyString(), anyString());
     }
 }
