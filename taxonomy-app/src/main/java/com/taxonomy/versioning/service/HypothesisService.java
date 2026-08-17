@@ -49,9 +49,9 @@ import java.util.UUID;
  * Manages the lifecycle of repository/workspace-scoped relation hypotheses.
  *
  * <p>Explicit {@link RepositoryContext} methods are authoritative. Historic
- * {@link WorkspaceContext} overloads resolve workspace provenance through the
- * repository catalog and fail closed when a workspace cannot be bound to one
- * source repository.</p>
+ * {@link WorkspaceContext} overloads retain the exact selected repository and
+ * resolve workspace provenance through the repository catalog. Only the explicit
+ * legacy repository sentinel may fall back to the configured primary repository.</p>
  */
 @Service
 public class HypothesisService {
@@ -485,21 +485,32 @@ public class HypothesisService {
         String username = normalizeUsername(legacy.username());
         String branch = normalizeBranch(legacy.currentBranch());
         String workspaceId = normalizeOptional(legacy.workspaceId());
+        String requestedRepositoryId = requireText(
+                legacy.repositoryId(), "workspaceContext.repositoryId");
+        boolean legacyRepositorySelection = WorkspaceContext.LEGACY_REPOSITORY_ID
+                .equals(requestedRepositoryId);
 
-        // Isolated mapper tests use the five-argument constructor. Productive
-        // Spring wiring always supplies the catalog services below.
+        // Isolated mapper tests use the five-argument constructor. Preserve the
+        // historic fixture repository only for the explicit legacy sentinel.
         if (systemRepositoryService == null || userWorkspaceRepository == null) {
+            String repositoryId = legacyRepositorySelection
+                    ? TEST_REPOSITORY_ID : requestedRepositoryId;
+            String effectiveBranch = branch != null ? branch : "draft";
             return workspaceId == null
-                    ? RepositoryContext.centralRead(TEST_REPOSITORY_ID, branch, username)
+                    ? RepositoryContext.centralRead(
+                            repositoryId, effectiveBranch, username)
                     : RepositoryContext.workspace(
-                            TEST_REPOSITORY_ID, workspaceId, branch, username);
+                            repositoryId, workspaceId, effectiveBranch, username);
         }
 
         if (workspaceId == null) {
-            SystemRepository primary = systemRepositoryService.getPrimaryRepository();
+            SystemRepository selectedRepository = legacyRepositorySelection
+                    ? systemRepositoryService.getPrimaryRepository()
+                    : systemRepositoryService.getRepository(requestedRepositoryId);
             return RepositoryContext.centralRead(
-                    primary.getRepositoryId(),
-                    branch != null ? branch : primary.getDefaultBranch(),
+                    selectedRepository.getRepositoryId(),
+                    branch != null
+                            ? branch : selectedRepository.getDefaultBranch(),
                     username);
         }
 
@@ -514,6 +525,12 @@ public class HypothesisService {
         }
         String repositoryId = requireText(
                 workspace.getSourceRepositoryId(), "workspace.sourceRepositoryId");
+        if (!legacyRepositorySelection
+                && !repositoryId.equals(requestedRepositoryId)) {
+            throw new IllegalArgumentException(
+                    "Workspace repository does not match the selected repository: "
+                            + workspaceId);
+        }
         String workspaceBranch = branch != null
                 ? branch : normalizeBranch(workspace.getCurrentBranch());
         return RepositoryContext.workspace(
