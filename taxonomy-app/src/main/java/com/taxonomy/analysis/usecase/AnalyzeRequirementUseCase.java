@@ -39,16 +39,19 @@ public class AnalyzeRequirementUseCase {
         this.preferencesService = preferencesService;
     }
 
-    /** Analyze an ad-hoc request and persist generated hypotheses immediately. */
+    /**
+     * Analyze a request. Ad-hoc requests persist generated hypotheses immediately.
+     * Project analyses carry immutable snapshot provenance; their caller owns a
+     * durable claim boundary and therefore persists hypotheses only after that
+     * claim has been revalidated and locked.
+     */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
-        return analyze(command, true);
+        return analyze(command, command.provenance() == null);
     }
 
     /**
-     * Analyze a durable worker request while deferring every hypothesis side
-     * effect until the caller has revalidated and locked its claim generation.
-     * Provisional relations remain part of the returned analysis and can still
-     * feed the architecture view and immutable snapshot.
+     * Explicit deferred variant for durable callers that do not yet have their
+     * final provenance at command construction time.
      */
     public AnalyzeRequirementResult analyzeWithDeferredHypothesisPersistence(
             AnalyzeRequirementCommand command) {
