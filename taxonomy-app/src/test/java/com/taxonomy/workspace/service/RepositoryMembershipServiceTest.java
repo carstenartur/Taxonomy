@@ -7,10 +7,15 @@ import com.taxonomy.workspace.model.RepositoryRole;
 import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.RepositoryMembershipRepository;
+import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -149,8 +155,8 @@ class RepositoryMembershipServiceTest {
     void ownerCanAssignContributorRole() {
         SystemRepository repository = repository(
                 RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
-        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "bob"))
-                .thenReturn(Optional.empty());
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a"))
+                .thenReturn(List.of());
 
         RepositoryMembership assigned = service.assignRole(
                 repository, "bob", RepositoryRole.CONTRIBUTOR, "owner");
@@ -165,9 +171,10 @@ class RepositoryMembershipServiceTest {
     void nonOwnerCannotAssignRepositoryRoles() {
         SystemRepository repository = repository(
                 RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
-        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "reader"))
-                .thenReturn(Optional.of(membership(
-                        "repo-a", "reader", RepositoryRole.READER)));
+        RepositoryMembership reader = membership(
+                "repo-a", "reader", RepositoryRole.READER);
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a"))
+                .thenReturn(List.of(reader));
 
         assertThrows(AccessDeniedException.class, () -> service.assignRole(
                 repository, "bob", RepositoryRole.CONTRIBUTOR, "reader"));
@@ -178,6 +185,8 @@ class RepositoryMembershipServiceTest {
     void userCatalogOwnerCannotBeDemotedOrRemoved() {
         SystemRepository repository = repository(
                 RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a"))
+                .thenReturn(List.of());
 
         assertThrows(IllegalArgumentException.class, () -> service.assignRole(
                 repository, "owner", RepositoryRole.MAINTAINER, "owner"));
@@ -193,15 +202,46 @@ class RepositoryMembershipServiceTest {
         repository.setOwnerType(RepositoryOwnerType.ORGANIZATION);
         repository.setOwnerId("architecture-team");
         RepositoryMembership owner = membership("repo-a", "alice", RepositoryRole.OWNER);
-        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "alice"))
-                .thenReturn(Optional.of(owner));
-        when(membershipRepository.countByRepositoryIdAndRole(
-                        "repo-a", RepositoryRole.OWNER))
-                .thenReturn(1L);
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a"))
+                .thenReturn(List.of(owner));
 
         assertThrows(IllegalStateException.class, () -> service.removeMembership(
                 repository, "alice", "alice"));
         verify(membershipRepository, never()).delete(any());
+        verify(membershipRepository, never()).countByRepositoryIdAndRole(any(), any());
+    }
+
+    @Test
+    void organizationOwnerDemotionUsesTheLockedMembershipSnapshot() {
+        SystemRepository repository = repository(
+                RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
+        repository.setOwnerType(RepositoryOwnerType.ORGANIZATION);
+        repository.setOwnerId("architecture-team");
+        RepositoryMembership alice = membership("repo-a", "alice", RepositoryRole.OWNER);
+        RepositoryMembership bob = membership("repo-a", "bob", RepositoryRole.OWNER);
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a"))
+                .thenReturn(List.of(alice, bob));
+
+        RepositoryMembership result = service.assignRole(
+                repository, "bob", RepositoryRole.MAINTAINER, "alice");
+
+        assertEquals(RepositoryRole.MAINTAINER, result.getRole());
+        InOrder order = inOrder(membershipRepository);
+        order.verify(membershipRepository).findByRepositoryIdForUpdate("repo-a");
+        order.verify(membershipRepository).save(bob);
+        verify(membershipRepository, never()).countByRepositoryIdAndRole(any(), any());
+        verify(membershipRepository, never())
+                .findByRepositoryIdAndUsername(any(), any());
+    }
+
+    @Test
+    void membershipSnapshotQueryUsesPessimisticWriteLock() throws Exception {
+        Method method = RepositoryMembershipRepository.class.getMethod(
+                "findByRepositoryIdForUpdate", String.class);
+
+        Lock lock = method.getAnnotation(Lock.class);
+        assertNotNull(lock);
+        assertEquals(LockModeType.PESSIMISTIC_WRITE, lock.value());
     }
 
     @Test
@@ -209,8 +249,8 @@ class RepositoryMembershipServiceTest {
         SystemRepository repository = repository(
                 RepositoryVisibility.PRIVATE, RepositoryLifecycleState.ACTIVE, false);
         RepositoryMembership reader = membership("repo-a", "reader", RepositoryRole.READER);
-        when(membershipRepository.findByRepositoryIdAndUsername("repo-a", "reader"))
-                .thenReturn(Optional.of(reader));
+        when(membershipRepository.findByRepositoryIdForUpdate("repo-a"))
+                .thenReturn(List.of(reader));
 
         service.removeMembership(repository, "reader", "owner");
 
