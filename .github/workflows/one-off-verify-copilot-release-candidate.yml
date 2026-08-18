@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "c9ef02a5cc8fbdc97b1b6d0be39c5970a745a701"
+          test "$(git rev-parse HEAD^)" = "59abd89f66bbb8cf5f3468ea824b4d74758690d1"
           git diff --check HEAD^
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
