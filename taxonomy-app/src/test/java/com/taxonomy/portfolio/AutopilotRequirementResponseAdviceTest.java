@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -101,10 +102,9 @@ class AutopilotRequirementResponseAdviceTest {
     @Test
     void disabledSaveHookDoesNotDispatchEvenWhenExplicitAutopilotIsReady() {
         AutopilotRequirementResponseAdvice advice = advice(true, false);
-        HttpHeaders headers = requestAndResponse("/api/projects/41/requirements");
 
         RequirementView body = requirement(7L);
-        advice.beforeBodyWrite(
+        Object returned = advice.beforeBodyWrite(
                 body,
                 returnType,
                 MediaType.APPLICATION_JSON,
@@ -112,9 +112,10 @@ class AutopilotRequirementResponseAdviceTest {
                 request,
                 response);
 
+        assertThat(returned).isSameAs(body);
         verify(automationService, never()).tryAutopilot(
                 41L, 7L, context.username(), context);
-        assertThat(headers).isEmpty();
+        verify(response, never()).getHeaders();
     }
 
     private AutopilotRequirementResponseAdvice advice(
@@ -124,8 +125,10 @@ class AutopilotRequirementResponseAdviceTest {
         when(status.autopilotReady()).thenReturn(autopilotReady);
         when(status.runAfterRequirementSave()).thenReturn(runAfterSave);
         when(automationService.status()).thenReturn(status);
-        when(workspaceResolver.resolveCurrentUsername()).thenReturn(context.username());
-        when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
+        lenient().when(workspaceResolver.resolveCurrentUsername())
+                .thenReturn(context.username());
+        lenient().when(workspaceResolver.resolveCurrentContext())
+                .thenReturn(context);
         return new AutopilotRequirementResponseAdvice(
                 automationService, workspaceResolver);
     }
