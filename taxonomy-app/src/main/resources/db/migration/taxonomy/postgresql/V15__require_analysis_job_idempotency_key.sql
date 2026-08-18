@@ -1,7 +1,7 @@
--- Every analysis job needs a stable idempotency identity so scoped uniqueness
--- remains portable across PostgreSQL, Oracle and SQL Server. Existing jobs that
--- predate the mandatory key receive a deterministic value derived from their
--- immutable UUID; API projections continue to hide these automatic keys.
+-- Every supported database schema needs a stable idempotency identity so scoped
+-- uniqueness has equivalent semantics. This PostgreSQL migration assigns legacy
+-- jobs a deterministic value derived from their immutable UUID before making the
+-- key mandatory; API projections continue to hide these automatic keys.
 
 update req_analysis_job
 set idempotency_key = 'auto:' || id
