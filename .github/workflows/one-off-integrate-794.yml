@@ -1,0 +1,117 @@
+name: One-off integrate review cleanup
+
+on:
+  push:
+    branches:
+      - agent/10-day-review-cleanup
+    paths:
+      - .github/workflows/one-off-integrate-794.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: taxonomy-one-off-integrate-794
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge exact main and repair the Helm release boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected_parent=4b6a05444513bb348a8b54c1e20eadd33283ec91
+          expected_main=2000902c3c579feff7c147e4dea469fb5f46028b
+          integration_workflow=.github/workflows/one-off-integrate-794.yml
+          migration_test=taxonomy-app/src/test/java/com/taxonomy/dsl/storage/TaxonomySchemaPostgresMigrationIT.java
+          helpers=deploy/helm/taxonomy/templates/_helpers.tpl
+          verifier=deploy/helm/taxonomy/verify.sh
+
+          actual_parent=$(git rev-parse HEAD^)
+          if [[ "$actual_parent" != "$expected_parent" ]]; then
+            echo "::error::Unexpected review-cleanup parent: $actual_parent" >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin main
+          actual_main=$(git rev-parse origin/main)
+          if [[ "$actual_main" != "$expected_main" ]]; then
+            echo "::error::Protected main moved from $expected_main to $actual_main" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          set +e
+          git merge --no-ff --no-edit origin/main
+          merge_status=$?
+          set -e
+          if [[ $merge_status -ne 0 ]]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            if [[ ${#conflicts[@]} -ne 1 || "${conflicts[0]}" != "$migration_test" ]]; then
+              printf '::error::Unexpected merge conflicts:\n' >&2
+              printf '%s\n' "${conflicts[@]}" >&2
+              exit 1
+            fi
+            git checkout --theirs -- "$migration_test"
+            perl -0pi -e 's/\Q+ " where success = true order by installed_rank")) {\E/+ " where success = true and version is not null"\n                             + " order by installed_rank")) {/g' "$migration_test"
+            grep -Fq 'where success = true and version is not null' "$migration_test"
+            grep -Fq '"12", "13"' "$migration_test"
+            git add "$migration_test"
+            git commit --no-edit
+          fi
+
+          if grep -Fq '{{- $snapshotAppVersion :=' "$helpers"; then
+            echo "::error::SNAPSHOT helper guard already exists unexpectedly" >&2
+            exit 1
+          fi
+          sed -i '/{{- \$releaseAppVersion := regexMatch/a {{- $snapshotAppVersion := contains "SNAPSHOT" (upper $appVersion) -}}' "$helpers"
+          sed -i 's/{{- $deriveReleaseTag := and (empty $configuredTag) (empty $digest) $releaseAppVersion -}}/{{- $deriveReleaseTag := and (empty $configuredTag) (empty $digest) $releaseAppVersion (not $snapshotAppVersion) -}}/' "$helpers"
+          sed -i '/{{- \$releaseTag := regexMatch/a {{- $snapshotTag := contains "SNAPSHOT" (upper $requiredTag) -}}' "$helpers"
+          sed -i 's/{{- if not (or $releaseTag $commitTag) -}}/{{- if or $snapshotTag (not (or $releaseTag $commitTag)) -}}/' "$helpers"
+          grep -Fq '{{- $deriveReleaseTag := and (empty $configuredTag) (empty $digest) $releaseAppVersion (not $snapshotAppVersion) -}}' "$helpers"
+          grep -Fq '{{- if or $snapshotTag (not (or $releaseTag $commitTag)) -}}' "$helpers"
+
+          awk '
+            BEGIN { replacing = 0 }
+            $0 == "expect_failure() {" {
+              replacing = 1
+              print "expect_failure() {"
+              print "  local description=$1"
+              print "  shift"
+              print "  local log_file=\"${TMP_DIR}/failure.log\""
+              print "  if \"$@\" >\"${log_file}\" 2>&1; then"
+              print "    echo \"Expected failure was not observed: ${description}\" >&2"
+              print "    cat \"${log_file}\" >&2"
+              print "    return 1"
+              print "  fi"
+              print "  echo \"Expected failure observed: ${description}\""
+              next
+            }
+            replacing && $0 == "}" {
+              print "}"
+              replacing = 0
+              next
+            }
+            !replacing { print }
+          ' "$verifier" > "${verifier}.tmp"
+          mv "${verifier}.tmp" "$verifier"
+          chmod +x "$verifier"
+          grep -Fq 'Expected failure was not observed' "$verifier"
+          grep -Fq 'Expected failure observed' "$verifier"
+
+          git rm "$integration_workflow"
+          git add "$helpers" "$verifier"
+          git diff --check --cached
+          git commit -m "Integrate requirement tenancy and fix immutable Helm image gate"
+          git push origin HEAD:agent/10-day-review-cleanup
