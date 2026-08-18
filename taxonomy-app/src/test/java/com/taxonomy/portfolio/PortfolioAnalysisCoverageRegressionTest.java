@@ -155,10 +155,10 @@ class PortfolioAnalysisCoverageRegressionTest {
         assertThat(diff.scoreChanges().get("AP-2020").newScore()).isEqualTo(65);
         assertThat(diff.addedElements()).containsExactly("AP-2020");
         assertThat(diff.removedElements()).containsExactly("CP-1010");
-        assertThat(diff.addedRelations()).singleElement()
-                .asString().contains("AP-2020", "TP-3000");
-        assertThat(diff.removedRelations()).singleElement()
-                .asString().contains("CP-1010", "BP-1000");
+        assertThat(diff.addedRelations()).singleElement().satisfies(
+                relation -> assertThat(relation).contains("AP-2020", "TP-3000"));
+        assertThat(diff.removedRelations()).singleElement().satisfies(
+                relation -> assertThat(relation).contains("CP-1010", "BP-1000"));
         assertThat(diff.taxonomyFingerprintChanged()).isTrue();
         assertThat(diff.promptFingerprintChanged()).isTrue();
         assertThat(diff.providerChanged()).isTrue();
@@ -374,7 +374,6 @@ class PortfolioAnalysisCoverageRegressionTest {
         relationship.setPropagatedRelevance(score / 100.0);
         relationship.setConfidence(structuredRelation ? 0.85 : 0.55);
         relationship.setOrigin(structuredRelation ? RelationOrigin.LLM_SUPPORTED : null);
-        relationship.setPresenceReason(structuredRelation ? "LLM-supported relation" : null);
         relationship.setDerivationReason("Derived from requirement context");
 
         RequirementArchitectureView architecture = new RequirementArchitectureView();
@@ -433,7 +432,8 @@ class PortfolioAnalysisCoverageRegressionTest {
         return new WorkspaceContext(
                 username + "-" + shortId(),
                 "ws-" + username + "-" + shortId(),
-                "draft");
+                "draft",
+                "repo-" + username + "-" + shortId());
     }
 
     private String shortId() {
