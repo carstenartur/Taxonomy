@@ -27,6 +27,28 @@ public final class CopilotDtos {
         }
     }
 
+    public record ProjectAutopilotRunRequest(
+            List<Long> requirementIds,
+            Integer maxRequirements) {
+    }
+
+    public record ProjectAutopilotStatus(
+            Long projectId,
+            boolean autopilotReady,
+            boolean runAfterRequirementSave,
+            int requirementCount,
+            int maximumBatchRequirements,
+            String reason) {
+    }
+
+    public record ProjectAutopilotRunView(
+            Long projectId,
+            int selectedRequirements,
+            int operationsStarted,
+            List<String> operationIds,
+            String message) {
+    }
+
     public record AiAutomationStatus(
             AiCostPolicy costPolicy,
             boolean manualCopilotReady,
