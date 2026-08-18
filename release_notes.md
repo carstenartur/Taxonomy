@@ -1,6 +1,6 @@
 # Taxonomy 1.4.0
 
-Taxonomy 1.4.0 is the first published release after 1.3.0. It combines the stabilization work that had been prepared for 1.3.1 with a substantially stronger project-portfolio workbench, deterministic architecture exports, local semantic-search readiness, deployment profiles, and a fail-closed release and quality pipeline.
+Taxonomy 1.4.0 is the first published release after 1.3.0. It combines the stabilization work that had been prepared for 1.3.1 with a substantially stronger project-portfolio workbench, exact tenant authority for persisted requirement analysis, a durable and governed requirement Copilot, deterministic architecture exports, local semantic-search readiness, deployment profiles, and a fail-closed release and quality pipeline.
 
 ## Important release-line note
 
@@ -17,7 +17,9 @@ The project portfolio now supports a complete traceable workflow rather than a c
 - project creation, selection, and independent requirements;
 - reviewed PDF and DOCX import with an atomic apply step;
 - immutable requirement versions, snapshots, history, and diffs;
-- persisted asynchronous analysis jobs, reload recovery, retry, and job status;
+- persisted asynchronous analysis jobs, reload recovery, retry, cancellation, and job status;
+- exact repository/workspace/branch scope for analysis jobs, worker claims, immutable snapshots, and queryable mappings;
+- stale-generation protection that prevents an expired worker from publishing hypotheses, Git commits, or snapshots after a retry has taken ownership;
 - evidence-backed taxonomy mapping review;
 - solution and product catalogues with requirement links and comparisons;
 - conflict detection with guided decisions;
@@ -26,6 +28,23 @@ The project portfolio now supports a complete traceable workflow rather than a c
 - project and requirement reports in HTML, DOCX, Markdown, JSON, and CSV.
 
 The browser acceptance suite exercises this as one vertical process and treats serious accessibility findings as release failures. See the [Project Portfolio Guide](docs/en/PROJECT_REQUIREMENT_PORTFOLIO.md) and [feature matrix](docs/en/PROJECT_PORTFOLIO_FEATURE_MATRIX.md).
+
+### Durable requirement Copilot and governed Autopilot
+
+The former browser-local Copilot macro has been replaced with a persisted full-analysis operation:
+
+- one standard pass performs taxonomy scoring, architecture-view construction, relation hypotheses, gap analysis, pattern detection, and an architecture recommendation;
+- bounded independent verification passes are available through the exhaustive profile;
+- operation identity includes the exact tenant, project, immutable requirement version, provider, prompt fingerprint, taxonomy fingerprint, profile, and pass count;
+- unchanged inputs reuse durable jobs, while an explicit force request creates a new operation;
+- page navigation, reloads, and application restarts do not lose operation status;
+- progress reflects known pass counts rather than a fabricated timeout percentage;
+- pending or running work can be cancelled without deleting completed immutable snapshots;
+- deterministic post-processing selects the strongest successful or partial snapshot.
+
+Autopilot is deliberately fail-closed. It requires an explicitly configured provider, `TAXONOMY_AI_COST_POLICY=UNMETERED`, `TAXONOMY_AI_AUTOPILOT_ENABLED=true`, and `TAXONOMY_AI_AUTOPILOT_PROVIDER=CUSTOM_OPENAI`. Generated solutions and products remain review-only `PROPOSED` or `CANDIDATE` records. Taxonomy does not automatically confirm relations, approve an architecture, select a product, authorize procurement, or merge a central branch.
+
+See the [Copilot and Autopilot guide](docs/en/COPILOT_AUTOPILOT.md) for configuration, operational limits, and the human-review boundary.
 
 ### Server-authoritative architecture workbench
 
@@ -64,7 +83,7 @@ See the [Rancher/RKE2 deployment guide](deploy/helm/taxonomy/RANCHER.md). The sm
 
 ### One exact release candidate
 
-A publishing request is now bound to one exact reviewed `main` parent and may change only `.github/release-request.json`. The request revision must advance exactly once, preventing a stale or fabricated release request from borrowing evidence from another commit.
+A publishing request is bound to one exact reviewed `main` parent and may change only `.github/release-request.json`. The request revision must advance exactly once, preventing a stale or fabricated release request from borrowing evidence from another commit.
 
 Before immutable artifacts are built, the release workflow requires the same unchanged final `main` SHA to pass:
 
@@ -72,10 +91,11 @@ Before immutable artifacts are built, the release workflow requires the same unc
 - PostgreSQL compatibility;
 - Oracle compatibility;
 - Microsoft SQL Server compatibility;
+- JGit storage consumer compatibility;
 - CodeQL source analysis;
 - Security Scan.
 
-Missing exact-SHA evidence is dispatched explicitly on `main`; failed, cancelled, skipped, timed-out, mismatched, or unreliable workflow results stop publication. The already completed non-publishing `1.4.0 -> 1.4.1-SNAPSHOT` dry run proved the version transition without creating a tag, public release, image, or deployment side effect.
+Missing exact-SHA evidence is dispatched explicitly on `main`; failed, cancelled, skipped, timed-out, mismatched, or unreliable workflow results stop publication. A completed non-publishing `1.4.0 -> 1.4.1-SNAPSHOT` dry run proved the version transition without creating a tag, public release, image, or deployment side effect. Any later source change requires a newly anchored request and fresh exact-head evidence.
 
 ### Immutable, digest-bound delivery
 
@@ -90,7 +110,7 @@ The publishing transaction keeps source and deployment evidence aligned:
 
 ### Maven/JUnit-owned quality contracts
 
-Deterministic repository policy is now owned by the normal Maven/JUnit lifecycle instead of parallel Python pass/fail implementations. Executable contracts cover:
+Deterministic repository policy is owned by the normal Maven/JUnit lifecycle rather than parallel ad-hoc pass/fail logic. Executable contracts cover:
 
 - workflow test authority;
 - repository documentation links;
@@ -99,25 +119,30 @@ Deterministic repository policy is now owned by the normal Maven/JUnit lifecycle
 - immutable GitHub Action and production-image pins;
 - packaged dependency hygiene and reviewed exceptions;
 - frontend API-boundary debt and direct-transport ratchets;
-- release version-state and request ancestry.
+- release version-state and request ancestry;
+- tenant-scoped persistence and stale-claim boundaries for analysis artifacts.
 
 Standalone Python remains only where it is useful as a bounded release adapter or evidence generator; JUnit owns the positive and negative contracts around those retained boundaries.
 
 ## Compatibility and deliberate exclusions
 
-- The unfinished multi-repository and federated-authority implementation tracked by #609/#610 is **not included** in Taxonomy 1.4.0. It remains on its isolated integration line until its tenancy, recovery, authority, cache, UX, and end-to-end isolation boundaries are complete.
+- Taxonomy 1.4.0 includes tenant-scoped persistence foundations for requirements, immutable versions, analysis jobs, claims, snapshots, and mappings. These foundations remove globally meaningful analysis identities and are required for safe future multi-repository operation.
+- The unfinished public multi-repository and federated-authority product tracked by #609/#610 is **not exposed as a supported Taxonomy 1.4.0 capability**. Remaining repository-wide authority, cache/index isolation, organization membership, recovery, UX, and end-to-end isolation work stays outside the supported boundary.
 - The federated authority and collaborative editing document included in this release is a planning baseline, not a claim that those future capabilities are already delivered.
+- Copilot and Autopilot prepare reviewable evidence and proposals; they do not replace accountable architecture, organization, security, product-selection, or procurement decisions.
 - The existing published primary-repository/workspace behavior remains the supported product boundary for 1.4.0.
 - No deployment should use the unpublished `v1.3.1` tag as a substitute for the 1.4.0 release assets.
 
 ## Upgrade notes
 
 1. Back up the application database and persistent storage using the normal operational procedure.
-2. Upgrade directly from the published 1.3.0 assets to the 1.4.0 release.
-3. Use the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
-4. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
-5. Local semantic search can remain unavailable until its controlled model/index initialization completes; use the reported readiness state rather than assuming an empty result means a ready index.
-6. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle rather than invoking internal test selectors directly.
+2. The PostgreSQL schema upgrade adds tenant-scoped constraints for requirements, immutable versions, analysis jobs, items, snapshots, and mappings, and assigns deterministic hidden idempotency keys to legacy analysis jobs. The migration validates existing parent chains and fails closed instead of silently accepting inconsistent cross-scope data.
+3. Upgrade directly from the published 1.3.0 assets to the 1.4.0 release.
+4. Use the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
+5. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
+6. Local semantic search can remain unavailable until its controlled model/index initialization completes; use the reported readiness state rather than assuming an empty result means a ready index.
+7. Autopilot remains disabled under the safe defaults. Enable it only after configuring the custom provider, classifying its cost policy as `UNMETERED`, setting the explicit Autopilot flag, and accepting the documented bounded-operation and human-review responsibilities.
+8. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle rather than invoking internal test selectors directly.
 
 ## Verification boundary
 
