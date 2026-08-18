@@ -72,7 +72,7 @@ class AutopilotRequirementResponseAdviceTest {
         assertThat(returned).isSameAs(body);
         assertThat(headers.getFirst("X-Taxonomy-Autopilot-Operation-Count"))
                 .isEqualTo("2");
-        assertThat(headers.containsKey("X-Taxonomy-Autopilot-Operation")).isFalse();
+        assertThat(headers.containsHeader("X-Taxonomy-Autopilot-Operation")).isFalse();
     }
 
     @Test
