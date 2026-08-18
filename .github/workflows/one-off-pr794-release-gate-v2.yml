@@ -1,0 +1,108 @@
+name: One-off guarded merge of PR 794 v2
+
+on:
+  push:
+    branches:
+      - automation/pr794-release-gate-v2-20260818
+    paths:
+      - .github/workflows/one-off-pr794-release-gate-v2.yml
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: taxonomy-one-off-pr794-release-gate
+  cancel-in-progress: false
+
+jobs:
+  merge-or-diagnose:
+    if: github.event.head_commit.message == 'chore(agent): stage guarded PR 794 merge v2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Merge only the unchanged fully green head or publish exact failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: '794'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+          if [[ -n "$(jq -r '.merged_at // empty' <<<"$pr")" ]]; then
+            echo 'PR 794 is already merged; no action required.'
+            exit 0
+          fi
+          test "$(jq -r '.state' <<<"$pr")" = open
+          test "$(jq -r '.draft' <<<"$pr")" = false
+          test "$(jq -r '.head.ref' <<<"$pr")" = agent/10-day-review-cleanup
+          head_sha=$(jq -r '.head.sha' <<<"$pr")
+
+          required=(
+            'CI / CD'
+            'Database Compatibility'
+            'CodeQL Source Analysis'
+            'Security Scan'
+            'JGit Storage Consumer Contract'
+          )
+          runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${head_sha}&event=pull_request&per_page=100")
+          all_green=true
+          failure_body=''
+          for workflow in "${required[@]}"; do
+            row=$(jq -r --arg workflow "$workflow" '
+              [.workflow_runs[] | select(.name == $workflow)
+                | {id,status,conclusion,html_url}] | sort_by(.id) | last
+              | if . == null then "missing|missing|missing|"
+                else "\(.id)|\(.status)|\(.conclusion // "pending")|\(.html_url)" end
+            ' <<<"$runs")
+            IFS='|' read -r run_id status conclusion url <<<"$row"
+            if [[ "$status" != completed || "$conclusion" != success ]]; then
+              all_green=false
+              failure_body+="- **${workflow}**: \`${status}/${conclusion}\` — run ${run_id} ${url}\n"
+              if [[ "$status" == completed && "$conclusion" != success && "$run_id" != missing ]]; then
+                log=$(gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log-failed 2>&1 || true)
+                if [[ -n "$log" ]]; then
+                  excerpt=$(tail -n 80 <<<"$log" | head -c 12000)
+                  failure_body+=$'\n```text\n'
+                  failure_body+="$excerpt"
+                  failure_body+=$'\n```\n'
+                fi
+              fi
+            fi
+          done
+
+          if [[ "$all_green" != true ]]; then
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              -f body="$(printf 'Guarded release integration remains stopped for exact head `%s`:\n\n%b\nNo merge was attempted and no threshold was lowered.' "$head_sha" "$failure_body")"
+            exit 1
+          fi
+
+          owner=${GITHUB_REPOSITORY_OWNER}
+          name=${GITHUB_REPOSITORY#*/}
+          unresolved=$(gh api graphql \
+            -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}' \
+            -F owner="$owner" -F name="$name" -F number="$PR_NUMBER" \
+            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')
+          test "$unresolved" = 0
+
+          current=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+          test "$(jq -r '.head.sha' <<<"$current")" = "$head_sha"
+          test "$(jq -r '.mergeable' <<<"$current")" = true
+          merge=$(gh api --method PUT "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/merge" \
+            -f sha="$head_sha" \
+            -f merge_method=squash \
+            -f commit_title='Resolve extended review backlog and harden schema consistency (#794)' \
+            -f commit_message='The unchanged exact head passed CI/CD, database compatibility, CodeQL, security, JGit consumer and review-thread gates.')
+          jq -e '.merged == true' <<<"$merge" >/dev/null
+          jq -r '"Merged as " + .sha' <<<"$merge"
+
+      - name: Delete the temporary automation branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/pr794-release-gate-v2-20260818" \
+            || true
