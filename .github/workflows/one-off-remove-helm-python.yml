@@ -1,0 +1,381 @@
+name: One-off remove Helm publication Python
+
+on:
+  push:
+    branches:
+      - agent/10-day-review-cleanup
+    paths:
+      - .github/workflows/one-off-remove-helm-python.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: taxonomy-one-off-remove-helm-python
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Replace Helm evidence generation with Java tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected_parent=4aba2409ad3a6dd0b809195c2e40079d9f7ee01a
+          if [[ "$(git rev-parse HEAD^)" != "$expected_parent" ]]; then
+            echo "::error::Unexpected branch parent; refusing to rewrite a moved branch" >&2
+            exit 1
+          fi
+
+          tooling=taxonomy-tooling/src/main/java/com/taxonomy/tooling/TaxonomyTooling.java
+          generator=taxonomy-tooling/src/main/java/com/taxonomy/tooling/HelmOciEvidenceGenerator.java
+          test_file=taxonomy-tooling/src/test/java/com/taxonomy/tooling/HelmOciEvidenceGeneratorTest.java
+          workflow=.github/workflows/publish-helm-oci.yml
+
+          cat > "$generator" <<'JAVA'
+          package com.taxonomy.tooling;
+
+          import java.io.IOException;
+          import java.nio.charset.StandardCharsets;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.util.LinkedHashMap;
+          import java.util.Map;
+          import java.util.Set;
+          import java.util.regex.Pattern;
+
+          /** Deterministically writes the immutable Helm OCI publication evidence. */
+          final class HelmOciEvidenceGenerator {
+
+              private static final Pattern VERSION = Pattern.compile(
+                      "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$");
+              private static final Pattern SOURCE_COMMIT = Pattern.compile("^[0-9a-f]{40}$");
+              private static final Pattern SHA_256 = Pattern.compile("^[0-9a-f]{64}$");
+              private static final Pattern OCI_CHART = Pattern.compile(
+                      "^oci://ghcr\\.io/[a-z0-9._-]+(?:/[a-z0-9._-]+)+$");
+              private static final Set<String> PUBLICATION_STATUSES =
+                      Set.of("published", "reused");
+
+              private HelmOciEvidenceGenerator() {
+              }
+
+              static Result generate(
+                      Path output,
+                      String chart,
+                      String version,
+                      String releaseTag,
+                      String sourceCommit,
+                      String publicationStatus,
+                      String archiveSha256,
+                      String renderedManifestSha256) throws IOException {
+                  Path destination = output.toAbsolutePath().normalize();
+                  Files.deleteIfExists(destination);
+                  try {
+                      String exactChart = requirePattern(chart, "chart", OCI_CHART);
+                      String exactVersion = requirePattern(version, "version", VERSION);
+                      if (exactVersion.toUpperCase(java.util.Locale.ROOT).contains("SNAPSHOT")) {
+                          throw new IllegalArgumentException(
+                                  "version must identify an immutable non-SNAPSHOT release");
+                      }
+                      String exactTag = require(releaseTag, "releaseTag");
+                      if (!exactTag.equals("v" + exactVersion)) {
+                          throw new IllegalArgumentException(
+                                  "releaseTag must equal v<version>, got '" + exactTag + "'");
+                      }
+                      String exactSourceCommit = requirePattern(
+                              sourceCommit, "sourceCommit", SOURCE_COMMIT);
+                      String exactStatus = require(publicationStatus, "publicationStatus");
+                      if (!PUBLICATION_STATUSES.contains(exactStatus)) {
+                          throw new IllegalArgumentException(
+                                  "publicationStatus must be published or reused");
+                      }
+                      String exactArchiveSha = requirePattern(
+                              archiveSha256, "archiveSha256", SHA_256);
+                      String exactManifestSha = requirePattern(
+                              renderedManifestSha256,
+                              "renderedManifestSha256",
+                              SHA_256);
+
+                      Map<String, Object> evidence = new LinkedHashMap<>();
+                      evidence.put("appVersion", exactVersion);
+                      evidence.put("archiveSha256", exactArchiveSha);
+                      evidence.put("chart", exactChart);
+                      evidence.put(
+                              "image",
+                              "ghcr.io/carstenartur/taxonomy:" + exactTag);
+                      evidence.put("publicationStatus", exactStatus);
+                      evidence.put("renderedManifestSha256", exactManifestSha);
+                      evidence.put("schemaVersion", 1);
+                      evidence.put("sourceCommit", exactSourceCommit);
+                      evidence.put("upgradeStrategy", "Recreate");
+                      evidence.put(
+                              "verification",
+                              "pulled-back-and-rendered-identically");
+                      evidence.put("version", exactVersion);
+
+                      Files.createDirectories(destination.getParent());
+                      Files.writeString(
+                              destination,
+                              FlatJson.pretty(evidence) + "\n",
+                              StandardCharsets.UTF_8);
+                      return new Result(destination, exactVersion, exactTag);
+                  } catch (IOException | RuntimeException failure) {
+                      Files.deleteIfExists(destination);
+                      throw failure;
+                  }
+              }
+
+              private static String requirePattern(
+                      String value, String field, Pattern pattern) {
+                  String normalized = require(value, field);
+                  if (!pattern.matcher(normalized).matches()) {
+                      throw new IllegalArgumentException(
+                              field + " has an invalid immutable evidence value: '"
+                                      + normalized + "'");
+                  }
+                  return normalized;
+              }
+
+              private static String require(String value, String field) {
+                  if (value == null || value.isBlank()) {
+                      throw new IllegalArgumentException(field + " must not be blank");
+                  }
+                  return value.strip();
+              }
+
+              record Result(Path output, String version, String releaseTag) {
+              }
+          }
+          JAVA
+
+          cat > "$test_file" <<'JAVA'
+          package com.taxonomy.tooling;
+
+          import org.junit.jupiter.api.Test;
+          import org.junit.jupiter.api.io.TempDir;
+
+          import java.io.ByteArrayOutputStream;
+          import java.io.OutputStream;
+          import java.io.PrintStream;
+          import java.nio.charset.StandardCharsets;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.util.Map;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+          import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+          class HelmOciEvidenceGeneratorTest {
+
+              private static final String SOURCE_COMMIT = "a".repeat(40);
+              private static final String ARCHIVE_SHA = "b".repeat(64);
+              private static final String MANIFEST_SHA = "c".repeat(64);
+
+              @Test
+              void writesDeterministicPulledBackPublicationEvidence(@TempDir Path root)
+                      throws Exception {
+                  Path output = root.resolve("nested/evidence.json");
+
+                  HelmOciEvidenceGenerator.Result result =
+                          HelmOciEvidenceGenerator.generate(
+                                  output,
+                                  "oci://ghcr.io/carstenartur/charts/taxonomy",
+                                  "1.4.0",
+                                  "v1.4.0",
+                                  SOURCE_COMMIT,
+                                  "published",
+                                  ARCHIVE_SHA,
+                                  MANIFEST_SHA);
+
+                  assertThat(result.output()).isEqualTo(output.toAbsolutePath());
+                  assertThat(result.version()).isEqualTo("1.4.0");
+                  assertThat(result.releaseTag()).isEqualTo("v1.4.0");
+
+                  String rendered = Files.readString(output, StandardCharsets.UTF_8);
+                  Map<String, Object> evidence = FlatJson.parseObject(rendered);
+                  assertThat(evidence)
+                          .containsEntry("schemaVersion", 1L)
+                          .containsEntry(
+                                  "chart",
+                                  "oci://ghcr.io/carstenartur/charts/taxonomy")
+                          .containsEntry("version", "1.4.0")
+                          .containsEntry("appVersion", "1.4.0")
+                          .containsEntry("sourceCommit", SOURCE_COMMIT)
+                          .containsEntry(
+                                  "image",
+                                  "ghcr.io/carstenartur/taxonomy:v1.4.0")
+                          .containsEntry("upgradeStrategy", "Recreate")
+                          .containsEntry("publicationStatus", "published")
+                          .containsEntry("archiveSha256", ARCHIVE_SHA)
+                          .containsEntry(
+                                  "renderedManifestSha256", MANIFEST_SHA)
+                          .containsEntry(
+                                  "verification",
+                                  "pulled-back-and-rendered-identically");
+                  assertThat(rendered).isEqualTo(FlatJson.pretty(evidence) + "\n");
+              }
+
+              @Test
+              void rejectsMutableOrContradictoryEvidenceAndRemovesStaleOutput(
+                      @TempDir Path root) throws Exception {
+                  Path output = root.resolve("evidence.json");
+                  Files.writeString(output, "stale", StandardCharsets.UTF_8);
+
+                  assertThatThrownBy(() -> HelmOciEvidenceGenerator.generate(
+                          output,
+                          "oci://ghcr.io/carstenartur/charts/taxonomy",
+                          "1.4.0-SNAPSHOT",
+                          "v1.4.0-SNAPSHOT",
+                          SOURCE_COMMIT,
+                          "published",
+                          ARCHIVE_SHA,
+                          MANIFEST_SHA))
+                          .isInstanceOf(IllegalArgumentException.class)
+                          .hasMessageContaining("non-SNAPSHOT");
+                  assertThat(output).doesNotExist();
+
+                  assertThatThrownBy(() -> HelmOciEvidenceGenerator.generate(
+                          output,
+                          "oci://ghcr.io/carstenartur/charts/taxonomy",
+                          "1.4.0",
+                          "v1.4.1",
+                          SOURCE_COMMIT,
+                          "published",
+                          ARCHIVE_SHA,
+                          MANIFEST_SHA))
+                          .isInstanceOf(IllegalArgumentException.class)
+                          .hasMessageContaining("must equal v<version>");
+                  assertThat(output).doesNotExist();
+              }
+
+              @Test
+              void cliGeneratesEvidenceAndReportsInvalidDigest(@TempDir Path root)
+                      throws Exception {
+                  Path output = root.resolve("evidence.json");
+                  ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+                  ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+
+                  int success = TaxonomyTooling.run(
+                          command(output, ARCHIVE_SHA),
+                          root,
+                          new PrintStream(stdout, true, StandardCharsets.UTF_8),
+                          new PrintStream(stderr, true, StandardCharsets.UTF_8));
+
+                  assertThat(success).isZero();
+                  assertThat(stdout.toString(StandardCharsets.UTF_8))
+                          .contains("Helm OCI evidence generated")
+                          .contains("1.4.0")
+                          .contains("v1.4.0");
+                  assertThat(stderr.toString(StandardCharsets.UTF_8)).isEmpty();
+                  assertThat(output).isRegularFile();
+
+                  stderr.reset();
+                  int failure = TaxonomyTooling.run(
+                          command(output, "not-a-sha"),
+                          root,
+                          new PrintStream(OutputStream.nullOutputStream()),
+                          new PrintStream(stderr, true, StandardCharsets.UTF_8));
+                  assertThat(failure).isEqualTo(1);
+                  assertThat(stderr.toString(StandardCharsets.UTF_8))
+                          .startsWith("::error::")
+                          .contains("archiveSha256");
+                  assertThat(output).doesNotExist();
+              }
+
+              @Test
+              void publicationWorkflowUsesJavaEvidenceAuthority() throws Exception {
+                  Path root = findRepositoryRoot();
+                  String workflow = Files.readString(
+                          root.resolve(".github/workflows/publish-helm-oci.yml"),
+                          StandardCharsets.UTF_8);
+
+                  assertThat(workflow)
+                          .contains("Build Java release evidence tooling")
+                          .contains("generate-helm-oci-evidence")
+                          .contains("taxonomy-tooling-${RELEASE_VERSION}.jar")
+                          .contains("--archive-sha256 \"$archive_sha\"")
+                          .contains("--manifest-sha256 \"$manifest_sha\"")
+                          .doesNotContain("python3")
+                          .doesNotContain("import json");
+              }
+
+              private static String[] command(Path output, String archiveSha) {
+                  return new String[]{
+                          "generate-helm-oci-evidence",
+                          "--output", output.toString(),
+                          "--chart", "oci://ghcr.io/carstenartur/charts/taxonomy",
+                          "--version", "1.4.0",
+                          "--release-tag", "v1.4.0",
+                          "--source-commit", SOURCE_COMMIT,
+                          "--publication-status", "published",
+                          "--archive-sha256", archiveSha,
+                          "--manifest-sha256", MANIFEST_SHA};
+              }
+
+              private static Path findRepositoryRoot() {
+                  Path current = Path.of("").toAbsolutePath().normalize();
+                  while (current != null) {
+                      if (Files.isRegularFile(current.resolve("pom.xml"))
+                              && Files.isDirectory(current.resolve(".github"))
+                              && Files.isDirectory(current.resolve("taxonomy-tooling"))) {
+                          return current;
+                      }
+                      current = current.getParent();
+                  }
+                  throw new IllegalStateException("Repository root not found");
+              }
+          }
+          JAVA
+
+          perl -0pi -e 's/(case "generate-sbom-companion" -> generateSbomCompanion\(\n\s+commandArguments, workingDirectory, output, error\);)/$1\n            case "generate-helm-oci-evidence" -> generateHelmOciEvidence(\n                    commandArguments, workingDirectory, output, error);/' "$tooling"
+          grep -Fq 'case "generate-helm-oci-evidence"' "$tooling"
+
+          perl -0pi -e 's/\n    private static final class Arguments \{/\n    private static int generateHelmOciEvidence(\n            String[] rawArguments,\n            Path workingDirectory,\n            PrintStream output,\n            PrintStream error) {\n        try {\n            Arguments arguments = Arguments.parse(rawArguments);\n            HelmOciEvidenceGenerator.Result result =\n                    HelmOciEvidenceGenerator.generate(\n                            arguments.path(\n                                    "output",\n                                    workingDirectory.resolve(\n                                            "target\/helm-oci-evidence.json")),\n                            arguments.required("chart"),\n                            arguments.required("version"),\n                            arguments.required("release-tag"),\n                            arguments.required("source-commit"),\n                            arguments.required("publication-status"),\n                            arguments.required("archive-sha256"),\n                            arguments.required("manifest-sha256"));\n            output.println("Helm OCI evidence generated: " + result.output());\n            output.println("  Version: " + result.version());\n            output.println("  Release tag: " + result.releaseTag());\n            return 0;\n        } catch (IOException | IllegalArgumentException failure) {\n            error.println("::error::" + failure.getMessage());\n            return 1;\n        }\n    }\n\n    private static final class Arguments {/' "$tooling"
+          grep -Fq 'private static int generateHelmOciEvidence' "$tooling"
+
+          perl -0pi -e 's/(      - name: Package, publish and pull back exact OCI chart)/      - name: Build Java release evidence tooling\n        if: steps.release.outputs.publish == '\''true'\''\n        shell: bash\n        run: .\/mvnw -B -pl taxonomy-tooling -am -DskipTests package\n\n$1/' "$workflow"
+
+          perl -0pi -e 's@          evidence="\$output_dir/taxonomy-\$\{RELEASE_VERSION\}-helm-oci-evidence\.json"\n          export RELEASE_VERSION RELEASE_TAG source_commit archive_sha manifest_sha \\\n            publication_status evidence oci_chart\n          python3 - <<'\''PY'\''\n.*?          PY@          evidence="$output_dir/taxonomy-${RELEASE_VERSION}-helm-oci-evidence.json"\n          tooling_jar="taxonomy-tooling/target/taxonomy-tooling-${RELEASE_VERSION}.jar"\n          test -f "$tooling_jar"\n          java -jar "$tooling_jar" generate-helm-oci-evidence \\\n            --output "$evidence" \\\n            --chart "$oci_chart" \\\n            --version "$RELEASE_VERSION" \\\n            --release-tag "$RELEASE_TAG" \\\n            --source-commit "$source_commit" \\\n            --publication-status "$publication_status" \\\n            --archive-sha256 "$archive_sha" \\\n            --manifest-sha256 "$manifest_sha"@s' "$workflow"
+          grep -Fq 'generate-helm-oci-evidence' "$workflow"
+          if grep -Fq 'python3' "$workflow"; then
+            echo "::error::Executable Python remains in Helm publication workflow" >&2
+            exit 1
+          fi
+
+          rm -f .github/workflows/one-off-remove-helm-python.yml
+
+      - name: Verify focused Java and repository contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-tooling -am \
+            -DskipITs \
+            -Dtest=HelmOciEvidenceGeneratorTest,PythonSourceRatchetRepositoryTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+          bash deploy/helm/taxonomy/verify.sh "$RUNNER_TEMP/helm-evidence-migration.yaml"
+          git diff --check
+
+      - name: Commit verified migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Replace Helm publication Python with Java evidence tooling"
+          git push origin HEAD:agent/10-day-review-cleanup
