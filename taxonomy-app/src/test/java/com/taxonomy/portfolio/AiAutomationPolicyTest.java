@@ -3,7 +3,6 @@ package com.taxonomy.portfolio;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
-import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 import com.taxonomy.portfolio.service.AiAutomationPolicy;
 import org.junit.jupiter.api.Test;
@@ -18,7 +17,8 @@ class AiAutomationPolicyTest {
     @Test
     void meteredProviderAllowsExplicitCopilotButNeverUnattendedAutopilot() {
         LlmProviderConfig providers = readyCustomProvider();
-        AiAutomationPolicy policy = policy(providers, "METERED", true);
+        AiAutomationPolicy policy = policy(
+                providers, "METERED", true, true, "CUSTOM_OPENAI");
 
         var manual = policy.manual(new CopilotRunRequest(
                 "CUSTOM_OPENAI", 40, AnalysisAutomationProfile.FULL,
@@ -27,19 +27,51 @@ class AiAutomationPolicyTest {
         assertThat(manual.autopilot()).isFalse();
         assertThat(manual.provider()).isEqualTo("CUSTOM_OPENAI");
         assertThat(policy.autopilotReady()).isFalse();
+        assertThat(policy.automaticAfterRequirementSaveReady()).isFalse();
         assertThat(policy.status().reason()).contains("UNMETERED");
         assertThatThrownBy(policy::autopilot)
                 .hasMessageContaining("UNMETERED");
     }
 
     @Test
-    void autopilotRequiresBothExplicitFlagsAndAConfiguredProvider() {
+    void autopilotRequiresAnExplicitProviderEvenWhenTheActiveProviderIsReady() {
         LlmProviderConfig providers = readyCustomProvider();
-        AiAutomationPolicy policy = policy(providers, "UNMETERED", true);
+        AiAutomationPolicy policy = policy(
+                providers, "UNMETERED", true, true, " ");
+
+        assertThat(policy.autopilotReady()).isFalse();
+        assertThat(policy.status().autopilotProvider()).isNull();
+        assertThat(policy.status().reason()).contains("explicit");
+        assertThatThrownBy(policy::autopilot)
+                .hasMessageContaining("explicit");
+    }
+
+    @Test
+    void autopilotReadinessIsIndependentFromTheOptionalSaveHook() {
+        LlmProviderConfig providers = readyCustomProvider();
+        AiAutomationPolicy policy = policy(
+                providers, "UNMETERED", true, false, "CUSTOM_OPENAI");
 
         var automatic = policy.autopilot();
 
         assertThat(policy.autopilotReady()).isTrue();
+        assertThat(policy.automaticAfterRequirementSaveReady()).isFalse();
+        assertThat(policy.status().runAfterRequirementSave()).isFalse();
+        assertThat(policy.status().reason()).contains("after requirement saves is disabled");
+        assertThat(automatic.autopilot()).isTrue();
+        assertThat(automatic.provider()).isEqualTo("CUSTOM_OPENAI");
+    }
+
+    @Test
+    void autopilotRequiresBothExplicitFlagsAndAConfiguredProvider() {
+        LlmProviderConfig providers = readyCustomProvider();
+        AiAutomationPolicy policy = policy(
+                providers, "UNMETERED", true, true, "CUSTOM_OPENAI");
+
+        var automatic = policy.autopilot();
+
+        assertThat(policy.autopilotReady()).isTrue();
+        assertThat(policy.automaticAfterRequirementSaveReady()).isTrue();
         assertThat(automatic.autopilot()).isTrue();
         assertThat(automatic.profile()).isEqualTo(AnalysisAutomationProfile.EXHAUSTIVE);
         assertThat(automatic.verificationPasses()).isEqualTo(2);
@@ -48,9 +80,22 @@ class AiAutomationPolicyTest {
     }
 
     @Test
+    void manualCopilotCannotExceedTheOperatorArchitectureLimit() {
+        LlmProviderConfig providers = readyCustomProvider();
+        AiAutomationPolicy policy = policy(
+                providers, "METERED", false, false, null);
+
+        assertThatThrownBy(() -> policy.manual(new CopilotRunRequest(
+                "CUSTOM_OPENAI", 51, AnalysisAutomationProfile.FULL,
+                1, false, true, true)))
+                .hasMessageContaining("configured limit of 50");
+    }
+
+    @Test
     void exhaustiveManualProfileUsesAtLeastTwoIndependentPasses() {
         LlmProviderConfig providers = readyCustomProvider();
-        AiAutomationPolicy policy = policy(providers, "METERED", false);
+        AiAutomationPolicy policy = policy(
+                providers, "METERED", false, false, null);
 
         var manual = policy.manual(new CopilotRunRequest(
                 null, null, AnalysisAutomationProfile.EXHAUSTIVE,
@@ -71,7 +116,9 @@ class AiAutomationPolicyTest {
     private static AiAutomationPolicy policy(
             LlmProviderConfig providers,
             String costPolicy,
-            boolean enabled) {
+            boolean enabled,
+            boolean onSave,
+            String autopilotProvider) {
         return new AiAutomationPolicy(
                 providers,
                 costPolicy,
@@ -81,8 +128,8 @@ class AiAutomationPolicyTest {
                 2,
                 50,
                 enabled,
-                true,
-                "CUSTOM_OPENAI",
+                onSave,
+                autopilotProvider,
                 true,
                 true,
                 1800);
