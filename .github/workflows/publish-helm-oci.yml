@@ -113,6 +113,11 @@ jobs:
         shell: bash
         run: bash deploy/helm/taxonomy/verify.sh "$RUNNER_TEMP/taxonomy-helm-oci-preflight.yaml"
 
+      - name: Build Java release evidence tooling
+        if: steps.release.outputs.publish == 'true'
+        shell: bash
+        run: ./mvnw -B -pl taxonomy-tooling -am -DskipTests package
+
       - name: Package, publish and pull back exact OCI chart
         id: publish_chart
         if: steps.release.outputs.publish == 'true'
@@ -207,31 +212,17 @@ jobs:
           archive_sha=$(sha256sum "$verified_archive" | awk '{print $1}')
           manifest_sha=$(sha256sum "$verified_manifest" | awk '{print $1}')
           evidence="$output_dir/taxonomy-${RELEASE_VERSION}-helm-oci-evidence.json"
-          export RELEASE_VERSION RELEASE_TAG source_commit archive_sha manifest_sha \
-            publication_status evidence oci_chart
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          payload = {
-              "schemaVersion": 1,
-              "chart": os.environ["oci_chart"],
-              "version": os.environ["RELEASE_VERSION"],
-              "appVersion": os.environ["RELEASE_VERSION"],
-              "sourceCommit": os.environ["source_commit"],
-              "image": f"ghcr.io/carstenartur/taxonomy:{os.environ['RELEASE_TAG']}",
-              "upgradeStrategy": "Recreate",
-              "publicationStatus": os.environ["publication_status"],
-              "archiveSha256": os.environ["archive_sha"],
-              "renderedManifestSha256": os.environ["manifest_sha"],
-              "verification": "pulled-back-and-rendered-identically",
-          }
-          Path(os.environ["evidence"]).write_text(
-              json.dumps(payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
+          tooling_jar="taxonomy-tooling/target/taxonomy-tooling-${RELEASE_VERSION}.jar"
+          test -f "$tooling_jar"
+          java -cp "$tooling_jar" com.taxonomy.tooling.HelmOciEvidenceTool \
+            --output "$evidence" \
+            --chart "$oci_chart" \
+            --version "$RELEASE_VERSION" \
+            --release-tag "$RELEASE_TAG" \
+            --source-commit "$source_commit" \
+            --publication-status "$publication_status" \
+            --archive-sha256 "$archive_sha" \
+            --manifest-sha256 "$manifest_sha"
 
           cp "$verified_archive" "$output_dir/"
           (
