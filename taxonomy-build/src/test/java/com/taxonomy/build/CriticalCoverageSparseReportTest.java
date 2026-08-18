@@ -54,6 +54,37 @@ class CriticalCoverageSparseReportTest {
     }
 
     @Test
+    void unmeasuredPackageIsPresentWithZeroCoverageRatherThanMissing(@TempDir Path root)
+            throws Exception {
+        Path xml = root.resolve("jacoco.xml");
+        Files.writeString(xml, """
+                <report name="critical">
+                  <group name="taxonomy-app">
+                    <package name="com/taxonomy/security">
+                      <sourcefile name="SecurityMarker.java"/>
+                    </package>
+                  </group>
+                </report>
+                """);
+
+        CriticalCoveragePolicy.Evaluation evaluation = evaluator.evaluate(
+                xml,
+                policy(),
+                new CriticalCoveragePolicy.ChangedSources(Set.of(), "none"));
+
+        assertThat(evaluation.passed()).isFalse();
+        assertThat(evaluation.text())
+                .contains("package:taxonomy-app:com/taxonomy/security")
+                .contains("LINE: N/A (0/0)")
+                .contains("BRANCH: N/A (0/0)")
+                .contains("LINE coverage 0.00% is below 80.00%")
+                .contains("BRANCH coverage 0.00% is below 60.00%")
+                .doesNotContain("package is absent")
+                .doesNotContain("  - MISSING")
+                .contains("Result: FAIL");
+    }
+
+    @Test
     void branchlessCriticalPackageFailsAsCoverageNotAsMalformedXml(@TempDir Path root)
             throws Exception {
         Path xml = root.resolve("jacoco.xml");

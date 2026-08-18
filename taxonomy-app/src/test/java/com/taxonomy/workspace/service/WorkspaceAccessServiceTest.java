@@ -10,6 +10,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,9 +32,7 @@ class WorkspaceAccessServiceTest {
                 .isFalse();
         assertThat(workspaceAccessService.canReadWorkspaceMetadata("workspace", " "))
                 .isFalse();
-        verify(workspaceRepository, never())
-                .countVisibleWorkspaceMetadata("workspace", "alice");
-        verify(workspaceRepository, never()).findByWorkspaceId("workspace");
+        verifyNoInteractions(workspaceRepository);
     }
 
     @Test

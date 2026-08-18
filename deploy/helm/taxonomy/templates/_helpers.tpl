@@ -32,22 +32,29 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{- define "taxonomy.image" -}}
-{{- $tag := .Values.image.tag | default "" -}}
+{{- $configuredTag := .Values.image.tag | default "" -}}
 {{- $digest := .Values.image.digest | default "" -}}
-{{- if and $tag $digest -}}
+{{- if and $configuredTag $digest -}}
 {{- fail "configure exactly one of image.tag or image.digest, not both" -}}
 {{- end -}}
+{{- $appVersion := .Chart.AppVersion | default "" -}}
+{{- $releaseAppVersion := regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$" $appVersion -}}
+{{- $snapshotAppVersion := contains "SNAPSHOT" (upper $appVersion) -}}
+{{- $deriveReleaseTag := and (empty $configuredTag) (empty $digest) $releaseAppVersion (not $snapshotAppVersion) -}}
+{{- $derivedTag := ternary (printf "v%s" $appVersion) "" $deriveReleaseTag -}}
+{{- $tag := default $derivedTag $configuredTag -}}
 {{- if $digest -}}
 {{- if not (regexMatch "^sha256:[0-9a-f]{64}$" $digest) -}}
 {{- fail "image.digest must use sha256:<64 lowercase hex characters>" -}}
 {{- end -}}
 {{- printf "%s@%s" .Values.image.repository $digest -}}
 {{- else -}}
-{{- $requiredTag := required "image.tag or image.digest is required" $tag -}}
+{{- $requiredTag := required "image.tag or image.digest is required; only packaged non-SNAPSHOT releases derive v<appVersion> automatically" $tag -}}
 {{- $releaseTag := regexMatch "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$" $requiredTag -}}
+{{- $snapshotTag := contains "SNAPSHOT" (upper $requiredTag) -}}
 {{- $commitTag := regexMatch "^sha-[0-9a-f]{7,40}$" $requiredTag -}}
-{{- if not (or $releaseTag $commitTag) -}}
-{{- fail "image.tag must be an immutable release tag (vX.Y.Z with optional Docker-safe prerelease suffix) or sha-<7-40 lowercase hex commit>" -}}
+{{- if or $snapshotTag (not (or $releaseTag $commitTag)) -}}
+{{- fail "image.tag must be an immutable release tag (vX.Y.Z with an optional Docker-safe non-SNAPSHOT prerelease suffix) or sha-<7-40 lowercase hex commit>" -}}
 {{- end -}}
 {{- printf "%s:%s" .Values.image.repository $requiredTag -}}
 {{- end -}}

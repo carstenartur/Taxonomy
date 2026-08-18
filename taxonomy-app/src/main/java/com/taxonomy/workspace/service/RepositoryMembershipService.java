@@ -48,20 +48,10 @@ public class RepositoryMembershipService {
             throw new IllegalArgumentException("role must not be null");
         }
 
-        Instant now = Instant.now();
         RepositoryMembership membership = membershipRepository
                 .findByRepositoryIdAndUsername(repository, member)
-                .orElseGet(() -> {
-                    RepositoryMembership created = new RepositoryMembership();
-                    created.setRepositoryId(repository);
-                    created.setUsername(member);
-                    created.setCreatedAt(now);
-                    created.setCreatedBy(changedBy);
-                    return created;
-                });
-        membership.setRole(role);
-        membership.setUpdatedAt(now);
-        return membershipRepository.save(membership);
+                .orElse(null);
+        return saveRole(repository, member, role, changedBy, membership);
     }
 
     /** Assign or change a membership after enforcing repository-owner authority. */
@@ -71,23 +61,30 @@ public class RepositoryMembershipService {
             String username,
             RepositoryRole role,
             String actor) {
-        requireOwner(repository, actor);
+        String repositoryId = requireRepositoryId(repository);
         String member = requireText(username, "username");
+        String changedBy = requireText(actor, "actor");
+        if (role == null) {
+            throw new IllegalArgumentException("role must not be null");
+        }
+
+        List<RepositoryMembership> lockedMemberships = membershipRepository
+                .findByRepositoryIdForUpdate(repositoryId);
+        requireOwner(repository, changedBy, lockedMemberships);
         if (isUserCatalogOwner(repository, member) && role != RepositoryRole.OWNER) {
             throw new IllegalArgumentException(
                     "The repository catalog owner must retain the OWNER role");
         }
-        Optional<RepositoryMembership> existing = membershipRepository
-                .findByRepositoryIdAndUsername(repository.getRepositoryId(), member);
-        if (existing.map(RepositoryMembership::getRole)
-                        .filter(existingRole -> existingRole == RepositoryRole.OWNER)
-                        .isPresent()
+        RepositoryMembership existing = findMembership(lockedMemberships, member)
+                .orElse(null);
+        if (existing != null
+                && existing.getRole() == RepositoryRole.OWNER
                 && role != RepositoryRole.OWNER
                 && !hasImplicitUserOwner(repository)
-                && countOwners(repository.getRepositoryId()) <= 1) {
+                && ownerCount(lockedMemberships) <= 1) {
             throw new IllegalStateException("A repository must retain at least one OWNER");
         }
-        return assignRole(repository.getRepositoryId(), member, role, actor);
+        return saveRole(repositoryId, member, role, changedBy, existing);
     }
 
     /** Remove a membership after enforcing repository-owner authority and owner retention. */
@@ -96,19 +93,23 @@ public class RepositoryMembershipService {
             SystemRepository repository,
             String username,
             String actor) {
-        requireOwner(repository, actor);
+        String repositoryId = requireRepositoryId(repository);
         String member = requireText(username, "username");
+        String changedBy = requireText(actor, "actor");
+
+        List<RepositoryMembership> lockedMemberships = membershipRepository
+                .findByRepositoryIdForUpdate(repositoryId);
+        requireOwner(repository, changedBy, lockedMemberships);
         if (isUserCatalogOwner(repository, member)) {
             throw new IllegalArgumentException(
                     "The repository catalog owner membership cannot be removed");
         }
-        RepositoryMembership membership = membershipRepository
-                .findByRepositoryIdAndUsername(repository.getRepositoryId(), member)
+        RepositoryMembership membership = findMembership(lockedMemberships, member)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Repository membership does not exist: " + member));
         if (membership.getRole() == RepositoryRole.OWNER
                 && !hasImplicitUserOwner(repository)
-                && countOwners(repository.getRepositoryId()) <= 1) {
+                && ownerCount(lockedMemberships) <= 1) {
             throw new IllegalStateException("A repository must retain at least one OWNER");
         }
         membershipRepository.delete(membership);
@@ -193,10 +194,70 @@ public class RepositoryMembershipService {
                 requireText(repositoryId, "repositoryId"), RepositoryRole.OWNER);
     }
 
+    private RepositoryMembership saveRole(
+            String repositoryId,
+            String username,
+            RepositoryRole role,
+            String actor,
+            RepositoryMembership existing) {
+        Instant now = Instant.now();
+        RepositoryMembership membership = existing;
+        if (membership == null) {
+            membership = new RepositoryMembership();
+            membership.setRepositoryId(repositoryId);
+            membership.setUsername(username);
+            membership.setCreatedAt(now);
+            membership.setCreatedBy(actor);
+        }
+        membership.setRole(role);
+        membership.setUpdatedAt(now);
+        return membershipRepository.save(membership);
+    }
+
+    private void requireOwner(
+            SystemRepository repository,
+            String actor,
+            List<RepositoryMembership> lockedMemberships) {
+        if (!isActive(repository)) {
+            throw new AccessDeniedException("Repository OWNER role required");
+        }
+        String username = requireText(actor, "actor");
+        boolean owner = isUserCatalogOwner(repository, username)
+                || findMembership(lockedMemberships, username)
+                        .map(RepositoryMembership::getRole)
+                        .filter(role -> role.grants(RepositoryRole.OWNER))
+                        .isPresent();
+        if (!owner) {
+            throw new AccessDeniedException("Repository OWNER role required");
+        }
+    }
+
     private void requireOwner(SystemRepository repository, String actor) {
         if (!isOwner(repository, actor)) {
             throw new AccessDeniedException("Repository OWNER role required");
         }
+    }
+
+    private static Optional<RepositoryMembership> findMembership(
+            List<RepositoryMembership> memberships,
+            String username) {
+        return memberships.stream()
+                .filter(membership -> username.equals(membership.getUsername()))
+                .findFirst();
+    }
+
+    private static long ownerCount(List<RepositoryMembership> memberships) {
+        return memberships.stream()
+                .map(RepositoryMembership::getRole)
+                .filter(RepositoryRole.OWNER::equals)
+                .count();
+    }
+
+    private static String requireRepositoryId(SystemRepository repository) {
+        if (repository == null) {
+            throw new IllegalArgumentException("repository must not be null");
+        }
+        return requireText(repository.getRepositoryId(), "repositoryId");
     }
 
     private static boolean isUserCatalogOwner(

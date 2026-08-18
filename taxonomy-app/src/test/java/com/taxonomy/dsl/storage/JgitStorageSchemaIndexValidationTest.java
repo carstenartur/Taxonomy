@@ -69,6 +69,24 @@ class JgitStorageSchemaIndexValidationTest {
     }
 
     @Test
+    void rejectsReferenceKeyWithNonCurrentPackSchemaAndReportsActualPackColumns()
+            throws Exception {
+        DataSource dataSource = dataSource("reference-key-old-pack-shape");
+        Flyway flyway = flyway(dataSource);
+        flyway.migrate();
+        execute(dataSource, "alter table git_packs drop column max_update_index");
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false));
+
+        assertTrue(error.getMessage().contains("REF_NAME_KEY"));
+        assertTrue(error.getMessage().contains("current Core pack schema"));
+        assertTrue(error.getMessage().contains("actual git_packs columns="));
+        assertTrue(error.getMessage().contains("PACK_SOURCE"));
+    }
+
+    @Test
     void rejectsLegacySchemaWithoutRequiredIndexesBeforeDdl() throws Exception {
         DataSource dataSource = dataSource("missing-legacy-indexes");
         installLegacyTablesWithoutIndexes(dataSource);

@@ -133,7 +133,7 @@ public class HypothesisService {
         if (hypotheses == null || hypotheses.isEmpty()) {
             return List.of();
         }
-        RepositoryContext tenant = requireContext(context);
+        RepositoryContext tenant = requireWritableContext(context);
         String effectiveSessionId = normalizeSessionId(sessionId);
 
         List<RelationHypothesis> persisted = new ArrayList<>();

@@ -185,9 +185,12 @@ public class JgitStorageSchemaMigrationConfig {
             }
 
             requireMigratableCoreShape(schema);
+            requireManagedReflogHistoryConsistency(flyway, schema);
             log.info("Migrating managed JGit Core schema for {}", family.displayName());
             flyway.migrate();
-            requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));
+            SchemaSnapshot migratedSchema = SchemaSnapshot.inspect(dataSource);
+            requireCurrentCoreShape(migratedSchema);
+            requireManagedReflogHistoryConsistency(flyway, migratedSchema);
             return;
         }
 
@@ -451,6 +454,32 @@ public class JgitStorageSchemaMigrationConfig {
                 .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
     }
 
+    private static void requireManagedReflogHistoryConsistency(
+            Flyway flyway, SchemaSnapshot schema) {
+        boolean migrationApplied =
+                isCoreMigrationApplied(flyway, LATEST_CORE_SCHEMA_VERSION);
+        boolean referenceKeyPresent = hasReflogReferenceKey(schema);
+        if (migrationApplied == referenceKeyPresent) {
+            return;
+        }
+        throw unsafeSchema(
+                "Core migration " + LATEST_CORE_SCHEMA_VERSION
+                        + " and git_reflog.REF_NAME_KEY must appear together; "
+                        + "migration applied=" + migrationApplied
+                        + ", reflog columns=" + schema.reflogColumns()
+                        + ", reflog indexes=" + schema.reflogIndexes());
+    }
+
+    private static boolean isCoreMigrationApplied(Flyway flyway, String version) {
+        for (var migration : flyway.info().applied()) {
+            if (migration.getVersion() != null
+                    && version.equals(migration.getVersion().toString())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Accept only exact released shapes that Flyway can safely advance to the pinned release. */
     private static void requireMigratableCoreShape(SchemaSnapshot schema) {
         requireMigratableCoreContract(schema);
@@ -683,8 +712,17 @@ public class JgitStorageSchemaMigrationConfig {
     }
 
     private static void requireSupportedReflogColumns(SchemaSnapshot schema) {
-        if (schema.reflogColumns().equals(PRE_REFLOG_KEY_COLUMNS)
-                || schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS)) {
+        if (schema.reflogColumns().equals(PRE_REFLOG_KEY_COLUMNS)) {
+            return;
+        }
+        if (schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS)) {
+            if (!schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
+                throw unsafeSchema(
+                        "git_reflog carries the 0.9.1 REF_NAME_KEY shape, but git_packs "
+                                + "does not match the current Core pack schema; expected "
+                                + "git_packs columns=" + CURRENT_PACK_COLUMNS
+                                + ", actual git_packs columns=" + schema.packColumns());
+            }
             return;
         }
         throw unsafeSchema(

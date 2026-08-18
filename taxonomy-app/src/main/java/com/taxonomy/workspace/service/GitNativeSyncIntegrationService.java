@@ -340,9 +340,12 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private static void requireMatchingRepository(
             WorkspaceContext context, SystemRepository sourceRepository) {
         String sourceRepositoryId = requireRepositoryId(sourceRepository);
-        if (!sourceRepositoryId.equals(context.repositoryId())) {
+        String requestRepositoryId = context.repositoryId();
+        if (!sourceRepositoryId.equals(requestRepositoryId)) {
             throw new IllegalStateException(
-                    "Workspace repository context does not match persisted source provenance");
+                    "Workspace repository context does not match persisted source provenance: "
+                            + "request repositoryId=" + requestRepositoryId
+                            + ", persisted sourceRepositoryId=" + sourceRepositoryId);
         }
     }
 

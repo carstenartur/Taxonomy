@@ -287,7 +287,9 @@ class GitNativeSyncIntegrationServiceTest {
 
         assertThatThrownBy(() -> service.syncFromShared("alice", "feature/alice"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("does not match persisted source provenance");
+                .hasMessageContaining("does not match persisted source provenance")
+                .hasMessageContaining("request repositoryId=repo-b")
+                .hasMessageContaining("persisted sourceRepositoryId=repo-a");
 
         verify(repositoryFactory, never()).getCentralRepository(any());
         verify(portfolioGitPort, never()).commitPortfolio(

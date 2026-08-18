@@ -13,6 +13,16 @@
 {{- if and .Values.podDisruptionBudget.enabled (lt $replicas 2) -}}
 {{- fail "podDisruptionBudget.enabled requires at least two replicas" -}}
 {{- end -}}
+{{- $upgradeStrategy := .Values.upgrade.strategy | default "" -}}
+{{- if not (or (eq $upgradeStrategy "Recreate") (eq $upgradeStrategy "RollingUpdate")) -}}
+{{- fail "upgrade.strategy must be Recreate or RollingUpdate" -}}
+{{- end -}}
+{{- if and (eq $upgradeStrategy "RollingUpdate") (not .Values.upgrade.allowConcurrentApplicationVersions) -}}
+{{- fail "upgrade.strategy=RollingUpdate can overlap old and new application versions while PostgreSQL is migrated; set upgrade.allowConcurrentApplicationVersions=true only after release-specific backward-compatibility validation" -}}
+{{- end -}}
+{{- if and .Values.persistence.enabled (eq $upgradeStrategy "RollingUpdate") -}}
+{{- fail "persistence.enabled requires upgrade.strategy=Recreate to avoid ReadWriteOnce multi-attach" -}}
+{{- end -}}
 {{- if and (gt (len .Values.secretEnv) 0) (empty .Values.existingSecret) -}}
 {{- fail "existingSecret is required while secretEnv contains credential mappings" -}}
 {{- end -}}

@@ -196,8 +196,8 @@ public final class ReleaseParametersResolver {
         } else {
             context = "release request publishes " + releaseVersion;
             guidance = "Set next_development_version to a higher "
-                    + "X.Y.Z-SNAPSHOT version, or leave it empty when no "
-                    + "post-release version advance is required.";
+                    + "X.Y.Z-SNAPSHOT version, or leave it empty to let the "
+                    + "release workflow derive the next patch snapshot automatically.";
         }
         throw new IllegalArgumentException(
                 context + "; next development version " + nextVersion

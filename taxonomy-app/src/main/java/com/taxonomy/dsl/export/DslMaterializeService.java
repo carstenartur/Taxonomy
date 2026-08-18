@@ -18,6 +18,7 @@ import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -208,6 +209,7 @@ public class DslMaterializeService {
         for (ArchitectureRelation relation : diff.addedRelations()) {
             String status = relation.getStatus() != null
                     ? relation.getStatus().toLowerCase() : "accepted";
+
             if ("accepted".equals(status)) {
                 try {
                     RelationType type = RelationType.valueOf(relation.getRelationType());
@@ -290,26 +292,32 @@ public class DslMaterializeService {
     }
 
     private RepositoryContext currentRepositoryContext() {
+        RepositoryContext context;
         if (workspaceResolver != null) {
-            return workspaceResolver.resolveCurrentRepositoryContext();
+            context = workspaceResolver.resolveCurrentRepositoryContext();
+        } else {
+            // Isolated unit tests may construct this service without the request
+            // resolver. Keep that compatibility explicitly test-local rather than
+            // silently using the catalog primary in production.
+            WorkspaceContext legacy = contextResolver != null
+                    ? contextResolver.resolveCurrentContext() : WorkspaceContext.SHARED;
+            String username = legacy.username() == null || legacy.username().isBlank()
+                    ? "system" : legacy.username().strip();
+            String branch = legacy.currentBranch() == null || legacy.currentBranch().isBlank()
+                    ? "draft" : legacy.currentBranch().strip();
+            context = legacy.workspaceId() == null
+                    ? RepositoryContext.centralWrite(TEST_REPOSITORY_ID, branch, username)
+                    : RepositoryContext.workspace(
+                            TEST_REPOSITORY_ID,
+                            legacy.workspaceId(),
+                            branch,
+                            username);
         }
-
-        // Isolated unit tests may construct this service without the request
-        // resolver. Keep that compatibility explicitly test-local rather than
-        // silently using the catalog primary in production.
-        WorkspaceContext legacy = contextResolver != null
-                ? contextResolver.resolveCurrentContext() : WorkspaceContext.SHARED;
-        String username = legacy.username() == null || legacy.username().isBlank()
-                ? "system" : legacy.username().strip();
-        String branch = legacy.currentBranch() == null || legacy.currentBranch().isBlank()
-                ? "draft" : legacy.currentBranch().strip();
-        return legacy.workspaceId() == null
-                ? RepositoryContext.centralWrite(TEST_REPOSITORY_ID, branch, username)
-                : RepositoryContext.workspace(
-                        TEST_REPOSITORY_ID,
-                        legacy.workspaceId(),
-                        branch,
-                        username);
+        if (context.scope() == RepositoryScope.CENTRAL_READ) {
+            throw new IllegalStateException(
+                    "DSL materialization requires a workspace or explicit central write context");
+        }
+        return context;
     }
 
     private CanonicalArchitectureModel parseToModel(String dslText, String path) {

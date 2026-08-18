@@ -51,6 +51,58 @@ class JgitStorageSchema091CompatibilityTest {
     }
 
     @Test
+    void rejectsApplied091HistoryWithoutReferenceKeyColumn() throws Exception {
+        DataSource dataSource = dataSource("reflog-091-history-without-column");
+        Flyway flyway = flyway(dataSource);
+        flyway.migrate();
+        execute(dataSource, "drop index if exists idx_reflog_repo_ref_key_id");
+        execute(dataSource, "alter table git_reflog drop column ref_name_key");
+        execute(dataSource, "drop index if exists idx_reflog_repo_ref_id");
+        execute(
+                dataSource,
+                "create index idx_reflog_repo_ref_id "
+                        + "on git_reflog (repository_name, ref_name, id desc)");
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false));
+
+        assertTrue(error.getMessage().contains("Core migration 0.9.1"));
+        assertTrue(error.getMessage().contains("migration applied=true"));
+        assertTrue(error.getMessage().contains("REF_NAME_KEY"));
+    }
+
+    @Test
+    void rejectsCurrentPhysicalShapeWithout091History() throws Exception {
+        DataSource dataSource = dataSource("reflog-091-column-without-history");
+        Flyway flyway = flyway(dataSource);
+        flyway.migrate();
+        deleteCoreHistoryVersion(dataSource, "0.9.1");
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false));
+
+        assertTrue(error.getMessage().contains("Core migration 0.9.1"));
+        assertTrue(error.getMessage().contains("migration applied=false"));
+        assertTrue(error.getMessage().contains("REF_NAME_KEY"));
+    }
+
+    @Test
+    void rejectsApplied091HistoryWithoutReleasedReferenceKeyIndex() throws Exception {
+        DataSource dataSource = dataSource("reflog-091-history-without-index");
+        Flyway flyway = flyway(dataSource);
+        flyway.migrate();
+        execute(dataSource, "drop index if exists idx_reflog_repo_ref_key_id");
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false));
+
+        assertTrue(error.getMessage().contains("REPOSITORY_NAME, REF_NAME_KEY, ID"));
+    }
+
+    @Test
     void stillRejectsUnknownReflogColumns() throws Exception {
         DataSource dataSource = dataSource("reflog-unknown-shape");
         Flyway flyway = flyway(dataSource);
@@ -69,6 +121,11 @@ class JgitStorageSchema091CompatibilityTest {
             throws SQLException {
         execute(dataSource, "drop index if exists idx_reflog_repo_ref_key_id");
         execute(dataSource, "alter table git_reflog drop column ref_name_key");
+        deleteCoreHistoryVersion(dataSource, "0.9.1");
+    }
+
+    private static void deleteCoreHistoryVersion(DataSource dataSource, String version)
+            throws SQLException {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
             String historyTable = quoteExistingTable(
@@ -77,7 +134,7 @@ class JgitStorageSchema091CompatibilityTest {
                     connection, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE, "version");
             statement.execute(
                     "delete from " + historyTable
-                            + " where " + versionColumn + " = '0.9.1'");
+                            + " where " + versionColumn + " = '" + version + "'");
         }
     }
 

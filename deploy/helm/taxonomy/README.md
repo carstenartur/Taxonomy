@@ -1,15 +1,15 @@
 # Taxonomy Helm chart
 
-This chart deploys the same Taxonomy image on Rancher/RKE2, K3s, OpenShift and generic Kubernetes. It deliberately contains no Rancher-specific application code.
+This chart deploys the same Taxonomy image on Rancher/RKE2, K3s, OpenShift and generic Kubernetes. It deliberately contains no Rancher-specific application code. Published releases are also distributed as versioned OCI Helm artifacts for installation and upgrade through Rancher.
 
 ## Prerequisites
 
 - Kubernetes 1.27 or newer
-- Helm 3 for chart rendering, either on an administrator workstation or in CI
-- An externally managed PostgreSQL database
-- An existing Kubernetes Secret for credentials
-- An ingress controller when ingress is enabled
-- The Prometheus Operator CRDs only when `serviceMonitor.enabled=true`
+- Helm 3 for command-line rendering, either on an administrator workstation or in CI
+- an externally managed PostgreSQL database
+- an existing Kubernetes Secret for credentials
+- an ingress controller when ingress is enabled
+- the Prometheus Operator CRDs only when `serviceMonitor.enabled=true`
 
 ## Secure installation
 
@@ -26,7 +26,7 @@ kubectl -n taxonomy create secret generic taxonomy-secrets \
 
 Optional LLM keys may be added to the same Secret. Their mappings are marked optional; database and admin credentials are not.
 
-Install or upgrade with an immutable image reference:
+Install or upgrade a source-tree chart with an immutable image reference:
 
 ```bash
 helm upgrade --install taxonomy deploy/helm/taxonomy \
@@ -35,32 +35,119 @@ helm upgrade --install taxonomy deploy/helm/taxonomy \
   --set image.tag=v1.2.8
 ```
 
-Replace the example release tag with the intended published version. Supported image references are:
+Supported explicit image references are:
 
 - `image.tag=vX.Y.Z` or a prerelease such as `v1.3.0-rc.1`;
 - `image.tag=sha-<7-40 lowercase hexadecimal commit characters>`;
 - `image.digest=sha256:<64 lowercase hexadecimal characters>`.
 
-The chart rejects an empty image reference, `latest`, arbitrary mutable tags, Docker-invalid SemVer build metadata and simultaneous tag/digest configuration.
+The source/SNAPSHOT chart rejects an empty image reference, `latest`, arbitrary mutable tags, Docker-invalid SemVer build metadata and simultaneous tag/digest configuration. A packaged release chart has an exact stable `appVersion` and derives `image.tag=v<appVersion>` when neither a tag nor a digest is supplied. An explicit digest remains supported for environments that pin the deployment to the image manifest rather than the release tag.
+
+## Upgrade safety and database migrations
+
+Taxonomy runs Flyway migrations during application startup and then lets Hibernate validate the resulting schema. The default Deployment strategy is therefore:
+
+```yaml
+upgrade:
+  strategy: Recreate
+```
+
+`Recreate` stops the old application pod before Kubernetes starts the new application version. This prevents the normal Helm upgrade path from leaving an old Taxonomy process active while the new process changes PostgreSQL. The controlled restart window is deliberate.
+
+A rolling deployment is fail-closed. It is accepted only when an operator records release-specific proof that both application versions are compatible with every intermediate and final database state:
+
+```yaml
+upgrade:
+  strategy: RollingUpdate
+  allowConcurrentApplicationVersions: true
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+```
+
+This acknowledgement is not a generic compatibility claim. Persistence still rejects `RollingUpdate` because a single ReadWriteOnce volume cannot safely participate in a surge rollout.
+
+Before every production upgrade:
+
+1. create and verify a restorable PostgreSQL backup;
+2. use an immutable chart version and image reference;
+3. retain `upgrade.strategy=Recreate` unless the selected release explicitly documents rolling compatibility;
+4. wait for the Deployment and readiness endpoint;
+5. treat a database restore, not a Helm rollback alone, as the recovery boundary for an irreversible migration.
+
+## Fresh installation
+
+A fresh installation means a new Taxonomy release connected to an empty PostgreSQL database or empty dedicated schema. Deleting only the Pod, Deployment, namespace or Helm release while reusing the same database is an upgrade or redeployment, not a fresh installation.
+
+A parallel clean installation can use a separate namespace, database and host:
+
+```bash
+kubectl create namespace taxonomy-fresh
+kubectl -n taxonomy-fresh create secret generic taxonomy-secrets \
+  --from-literal=SPRING_DATASOURCE_URL='jdbc:postgresql://postgres.example:5432/taxonomy_fresh' \
+  --from-literal=SPRING_DATASOURCE_USERNAME='taxonomy_fresh' \
+  --from-literal=SPRING_DATASOURCE_PASSWORD='replace-me' \
+  --from-literal=ADMIN_PASSWORD='replace-with-a-long-random-value'
+
+helm upgrade --install taxonomy-fresh deploy/helm/taxonomy \
+  --namespace taxonomy-fresh \
+  --values deploy/helm/taxonomy/values-rancher-rke2.yaml \
+  --set existingSecret=taxonomy-secrets \
+  --set image.tag=v1.2.8 \
+  --set ingress.hosts[0].host=taxonomy-fresh.example.org
+```
+
+On an empty PostgreSQL database the released JGit storage migrations and Taxonomy application migrations construct their complete schemas automatically. Unknown partial or contradictory legacy schemas remain fail-closed.
+
+## Rancher installation from the OCI chart
+
+Every successful non-dry-run release is followed by an independent workflow that:
+
+1. resolves the exact release from the successful release workflow evidence;
+2. packages the chart with matching chart and application versions;
+3. verifies that the packaged chart derives the matching immutable Taxonomy image and defaults to `Recreate`;
+4. publishes or safely reuses the OCI version;
+5. pulls the chart back from the registry and proves that it renders identically to the release source;
+6. archives checksums and JSON evidence.
+
+Add this single-chart OCI repository in Rancher:
+
+```text
+oci://ghcr.io/carstenartur/charts/taxonomy
+```
+
+In Rancher select **Apps → Repositories → Create**, choose **OCI Repository**, and enter the URL above. A private GHCR package requires BasicAuth or an authentication Secret with a GitHub user and token that can read packages. A public package needs no registry credential. Select the repository under **Apps → Charts**, choose the immutable version, and install it into the intended namespace.
+
+The OCI package includes `questions.yaml` for the required credential Secret and safety-sensitive storage/upgrade choices. Rancher-specific ingress, quota and NetworkPolicy values remain in `values-rancher-rke2.yaml`; review and paste those values in Rancher's values editor, replacing the example host and controller selectors with the actual cluster configuration.
+
+The Rancher/RKE2 profile publishes:
+
+```text
+https://<host>/taxonomy/
+```
+
+Ingress-nginx strips `/taxonomy` before forwarding the request and supplies `X-Forwarded-Prefix: /taxonomy`. The application preserves that public prefix for generated links, redirects and legacy root-relative browser API calls.
 
 ## Rancher without a visible Helm command
 
-Rancher does not need application-specific code. There are two equivalent deployment paths:
+There are three supported deployment paths:
 
-1. Render or install the chart from an administrator workstation that has cluster access.
-2. Render the manifests in CI or locally and import the resulting YAML through Rancher's **Import YAML** action.
+1. install the published OCI chart through Rancher's Apps UI;
+2. run `helm upgrade --install` from an administrator workstation or CI runner with cluster access;
+3. render the manifests and import the resulting YAML through Rancher's **Import YAML** action.
 
 Example rendering:
 
 ```bash
 helm template taxonomy deploy/helm/taxonomy \
   --namespace taxonomy \
+  --values deploy/helm/taxonomy/values-rancher-rke2.yaml \
   --set existingSecret=taxonomy-secrets \
   --set image.tag=v1.2.8 \
   > taxonomy-rendered.yaml
 ```
 
-Create the Secret separately before importing the rendered YAML. Never insert real credentials into the rendered file or ordinary Rancher chart values.
+Create the Secret separately before importing rendered YAML. Never insert real credentials into a rendered file or ordinary Rancher chart values. Importing YAML creates Kubernetes resources, but it does not create a Helm release with Rancher's normal chart-upgrade history; prefer the OCI App path for managed lifecycle operations.
 
 ## OpenShift restricted security context
 
@@ -124,7 +211,7 @@ The chart uses:
 - a configurable pre-stop delay, default 5 seconds;
 - Spring Boot graceful shutdown, default 30 seconds;
 - a 45-second pod termination grace period;
-- `maxUnavailable: 0` and `maxSurge: 1` for the default stateless rollout;
+- migration-safe `Recreate` upgrades by default;
 - `ExitOnOutOfMemoryError`, allowing Kubernetes to restart a failed JVM.
 
 The startup probe permits up to five minutes for initialization. Increase it for unusually large catalogues or model loading.
@@ -139,7 +226,7 @@ The portable Kubernetes default runs as numeric user/group `10001:10001`, drops 
 
 PostgreSQL is the authoritative persistent store. The default in-memory Lucene directory is rebuilt per pod. When `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`, the chart requires a PVC and restricts the deployment to one replica.
 
-A ReadWriteOnce PVC cannot safely participate in the default surge rollout. For that reason the chart automatically selects the `Recreate` deployment strategy when persistence is enabled. This avoids multi-attach failures but introduces a controlled restart window. Use database-authoritative state and the default local-heap search configuration when zero-downtime rolling updates are required.
+The same `Recreate` strategy that prevents mixed-version schema access also avoids ReadWriteOnce multi-attach failures. Enabling persistence does not change the strategy because the safe strategy is already the default.
 
 ## Scaling and disruption budgets
 
@@ -196,7 +283,7 @@ When enabling ingress, add the ingress-controller selectors as shown above. The 
 
 ## Resource tuning
 
-The defaults reserve 768 MiB and limit the pod to 2 GiB. `JAVA_OPTS` sizes heap as a percentage so native memory remains available for Lucene, ONNX, thread stacks and metaspace. Validate limits with production-sized imports and embedding models.
+The generic defaults reserve 768 MiB and limit the pod to 2 GiB. The Rancher/RKE2 profile requests `100m` CPU and `512Mi` memory and limits the pod to `500m` CPU and `1536Mi` memory. `JAVA_OPTS` sizes heap as a percentage so native memory remains available for Lucene, ONNX, thread stacks and metaspace. Validate limits with production-sized imports and embedding models.
 
 ## Reproducible validation
 
@@ -206,7 +293,7 @@ Run the same chart checks as CI:
 bash deploy/helm/taxonomy/verify.sh
 ```
 
-The script performs linting, renders Kubernetes and OpenShift variants with monitoring evidence, and proves that unsafe configurations are rejected.
+The script performs linting, renders Kubernetes, Rancher and OpenShift variants, packages a simulated release, verifies automatic release-image selection, proves the default `Recreate` strategy, exercises the guarded rolling override, and demonstrates that unsafe configurations are rejected.
 
 After deployment:
 

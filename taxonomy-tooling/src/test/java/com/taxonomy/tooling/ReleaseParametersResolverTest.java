@@ -148,6 +148,7 @@ class ReleaseParametersResolverTest {
                         "next_development_version", "1.2.9-SNAPSHOT"),
                 null))
                 .hasMessageContaining("release request publishes 1.2.9")
+                .hasMessageContaining("derive the next patch snapshot automatically")
                 .hasMessageContaining("must be newer");
     }
 
