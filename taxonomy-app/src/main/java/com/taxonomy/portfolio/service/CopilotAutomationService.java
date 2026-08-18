@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -33,6 +34,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Server-side, persisted orchestration for one requirement Copilot operation.
@@ -158,12 +160,13 @@ public class CopilotAutomationService {
         if (jobs.isEmpty()) {
             throw PortfolioException.notFound("Copilot operation not found: " + operationId);
         }
+        OperationDefinition definition = definition(jobs);
         for (JobWithKey entry : jobs) {
             if (!isTerminal(entry.job().status())) {
                 jobControlService.cancel(entry.job().id(), projectId, username, context);
             }
         }
-        return view(definition(jobs), jobsForOperation(
+        return view(definition, jobsForOperation(
                 projectId, operationId, username, context), username, context);
     }
 
@@ -206,26 +209,32 @@ public class CopilotAutomationService {
             WorkspaceContext context) {
         String executionKey = PortfolioScope.key(username, context)
                 + "|" + definition.operationId();
-        running.computeIfAbsent(executionKey, ignored -> {
-            CompletableFuture<Void> future = new CompletableFuture<>();
-            coordinator.execute(() -> {
-                try {
-                    execute(definition, username, context);
-                    future.complete(null);
-                } catch (Throwable failure) {
-                    LOGGER.error(
-                            "Copilot operation {} for project {} requirement {} stopped unexpectedly",
-                            definition.operationId(),
-                            definition.projectId(),
-                            definition.requirementId(),
-                            failure);
-                    future.completeExceptionally(failure);
-                } finally {
-                    running.remove(executionKey, future);
-                }
+        try {
+            running.computeIfAbsent(executionKey, ignored -> {
+                CompletableFuture<Void> future = new CompletableFuture<>();
+                coordinator.execute(() -> {
+                    try {
+                        execute(definition, username, context);
+                        future.complete(null);
+                    } catch (Throwable failure) {
+                        LOGGER.error(
+                                "Copilot operation {} for project {} requirement {} stopped unexpectedly",
+                                definition.operationId(),
+                                definition.projectId(),
+                                definition.requirementId(),
+                                failure);
+                        future.completeExceptionally(failure);
+                    } finally {
+                        running.remove(executionKey, future);
+                    }
+                });
+                return future;
             });
-            return future;
-        });
+        } catch (RejectedExecutionException rejected) {
+            throw PortfolioException.unavailable(
+                    "Copilot coordinator capacity is exhausted; the persisted operation can be resumed later",
+                    rejected);
+        }
     }
 
     private void execute(
@@ -289,6 +298,11 @@ public class CopilotAutomationService {
             List<JobWithKey> jobs,
             String username,
             WorkspaceContext context) {
+        OperationDefinition persistedDefinition = definition(jobs);
+        if (!persistedDefinition.equals(definition)) {
+            throw PortfolioException.conflict(
+                    "Copilot operation identity changed while the operation was running");
+        }
         if (!operationTerminal(jobs, definition.totalPasses())) return;
         if (jobs.stream().anyMatch(entry ->
                 entry.job().status() == AnalysisStatus.CANCELLED)) {
@@ -299,7 +313,6 @@ public class CopilotAutomationService {
         }
         List<SnapshotDetail> snapshots = new ArrayList<>();
         for (JobWithKey entry : jobs) {
-            if (entry.job().items() == null) continue;
             for (AnalysisJobItemView item : entry.job().items()) {
                 if (item.snapshotId() != null) {
                     snapshots.add(analysisService.getSnapshot(
@@ -328,6 +341,11 @@ public class CopilotAutomationService {
             List<JobWithKey> entries,
             String username,
             WorkspaceContext context) {
+        OperationDefinition persistedDefinition = definition(entries);
+        if (!persistedDefinition.equals(definition)) {
+            throw PortfolioException.conflict(
+                    "Copilot operation identity changed while rendering its status");
+        }
         List<JobWithKey> ordered = entries.stream()
                 .sorted(Comparator.comparingInt(entry -> entry.key().pass()))
                 .toList();
@@ -336,7 +354,6 @@ public class CopilotAutomationService {
         int completed = (int) jobs.stream().filter(job -> isTerminal(job.status())).count();
         Set<String> snapshots = new LinkedHashSet<>();
         for (AnalysisJobView job : jobs) {
-            if (job.items() == null) continue;
             job.items().stream().map(AnalysisJobItemView::snapshotId)
                     .filter(Objects::nonNull).forEach(snapshots::add);
         }
@@ -380,34 +397,63 @@ public class CopilotAutomationService {
     }
 
     private static OperationDefinition definition(List<JobWithKey> jobs) {
-        JobWithKey first = jobs.get(0);
-        AnalysisJobItemView item = first.job().items() != null
-                ? first.job().items().stream().findFirst().orElse(null) : null;
-        if (item == null) {
+        if (jobs == null || jobs.isEmpty()) {
             throw PortfolioException.conflict(
-                    "Copilot analysis job contains no requirement item");
+                    "Copilot operation contains no persisted analysis job");
         }
+        JobWithKey first = jobs.getFirst();
+        AnalysisJobItemView firstItem = onlyItem(first.job());
         CopilotOperationKey key = first.key();
-        for (JobWithKey entry : jobs) {
-            if (!entry.key().operationId().equals(key.operationId())
-                    || entry.key().totalPasses() != key.totalPasses()
-                    || entry.key().profile() != key.profile()
-                    || entry.key().autopilot() != key.autopilot()) {
-                throw PortfolioException.conflict(
-                        "Copilot operation metadata is inconsistent across analysis jobs");
-            }
-        }
-        return new OperationDefinition(
+        OperationDefinition expected = new OperationDefinition(
                 key.autopilot(),
                 key.operationId(),
                 first.job().projectId(),
-                item.requirementId(),
+                firstItem.requirementId(),
                 key.profile(),
                 first.job().provider(),
                 first.job().maxArchitectureNodes(),
                 key.totalPasses(),
                 key.proposeSolutions(),
                 key.proposeProducts());
+        Set<Integer> passes = new HashSet<>();
+
+        for (JobWithKey entry : jobs) {
+            AnalysisJobView job = entry.job();
+            AnalysisJobItemView item = onlyItem(job);
+            CopilotOperationKey candidate = entry.key();
+            boolean consistent = candidate.operationId().equals(expected.operationId())
+                    && candidate.totalPasses() == expected.totalPasses()
+                    && candidate.profile() == expected.profile()
+                    && candidate.autopilot() == expected.autopilot()
+                    && candidate.proposeSolutions() == expected.proposeSolutions()
+                    && candidate.proposeProducts() == expected.proposeProducts()
+                    && Objects.equals(job.projectId(), expected.projectId())
+                    && Objects.equals(item.requirementId(), expected.requirementId())
+                    && Objects.equals(job.provider(), expected.provider())
+                    && job.maxArchitectureNodes() == expected.maxArchitectureNodes();
+            if (!consistent) {
+                throw PortfolioException.conflict(
+                        "Copilot operation metadata is inconsistent across analysis jobs");
+            }
+            if (!passes.add(candidate.pass())) {
+                throw PortfolioException.conflict(
+                        "Copilot operation contains duplicate pass " + candidate.pass());
+            }
+        }
+        return expected;
+    }
+
+    private static AnalysisJobItemView onlyItem(AnalysisJobView job) {
+        if (job.items() == null || job.items().size() != 1) {
+            throw PortfolioException.conflict(
+                    "Every Copilot analysis pass must contain exactly one requirement item");
+        }
+        AnalysisJobItemView item = job.items().getFirst();
+        if (item == null || item.requirementId() == null) {
+            throw PortfolioException.conflict(
+                    "Copilot analysis job contains no requirement identity");
+        }
+        return item;
     }
 
     private String operationId(
