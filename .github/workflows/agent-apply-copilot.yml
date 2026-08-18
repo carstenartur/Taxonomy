@@ -16,12 +16,29 @@ jobs:
   apply:
     if: github.event.head_commit.message == 'chore(agent): stage persisted copilot implementation'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: agent/792-copilot-autopilot-full-analysis
           fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact staged payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_parent=735be439cd235592d4e0eff44a4b4dccac0cb06d
+          actual_parent=$(git rev-parse HEAD^)
+          if [[ "$actual_parent" != "$expected_parent" ]]; then
+            echo "::error::Unexpected staged payload parent: $actual_parent" >&2
+            exit 1
+          fi
+          mapfile -t parts < <(find .github/agent/copilot-payload -maxdepth 1 -type f -name 'part-*' | sort)
+          if [[ ${#parts[@]} -ne 5 ]]; then
+            echo "::error::Expected exactly five persisted payload parts, found ${#parts[@]}" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
@@ -35,6 +52,7 @@ jobs:
           set -euo pipefail
           cat .github/agent/copilot-payload/part-* > "$RUNNER_TEMP/copilot.tar.gz.b64"
           base64 --decode "$RUNNER_TEMP/copilot.tar.gz.b64" > "$RUNNER_TEMP/copilot.tar.gz"
+          gzip --test "$RUNNER_TEMP/copilot.tar.gz"
           tar --extract --gzip --file "$RUNNER_TEMP/copilot.tar.gz" --directory .
           rm -rf .github/agent/copilot-payload
           rm -f .github/workflows/agent-apply-copilot.yml
