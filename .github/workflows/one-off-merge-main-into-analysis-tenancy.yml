@@ -1,22 +1,24 @@
 name: One-off merge current main into analysis tenancy
 
 on:
-  push:
-    branches:
-      - agent/743-analysis-artifact-tenancy
+  pull_request:
+    types: [synchronize]
     paths:
       - .github/workflows/one-off-merge-main-into-analysis-tenancy.yml
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
-  group: taxonomy-analysis-tenancy-main-integration
+  group: taxonomy-analysis-tenancy-main-integration-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   integrate:
-    if: github.event.head_commit.message == 'Prepare guarded main integration for analysis tenancy'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/743-analysis-artifact-tenancy'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -30,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "da9f682ef783a07dba78e1ee4ddc524f7376eddb"
+          test "$(git rev-parse HEAD^)" = "53d918175ef0432ddda6234e0aad4052f45a18e6"
           git fetch --no-tags origin main
           test "$(git rev-parse origin/main)" = "11b8559fa842db0ba9152552b9c7d8bb0bee3eb7"
 
@@ -87,6 +89,13 @@ jobs:
           rm -f .github/workflows/one-off-merge-main-into-analysis-tenancy.yml
           git add -A
           git diff --cached --check
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
 
       - name: Run focused merged contracts
         shell: bash
