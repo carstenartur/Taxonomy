@@ -83,26 +83,41 @@ public class ProjectAutopilotService {
         }
 
         List<String> operationIds = new ArrayList<>(selected.size());
+        boolean complete = true;
         for (RequirementView requirement : selected) {
             Optional<CopilotOperationView> operation = automationService.tryAutopilot(
                     projectId,
                     requirement.id(),
                     username,
                     context);
-            operation.map(CopilotOperationView::operationId)
-                    .ifPresentOrElse(
-                            operationIds::add,
-                            () -> {
-                                throw PortfolioException.conflict(
-                                        "Autopilot became unavailable during project dispatch");
-                            });
+            String operationId = operation
+                    .map(CopilotOperationView::operationId)
+                    .orElse(null);
+            if (operationId == null) {
+                complete = false;
+                break;
+            }
+            operationIds.add(operationId);
+        }
+
+        String message;
+        if (complete) {
+            message = "Autopilot operations were persisted; every generated decision remains subject to human review.";
+        } else {
+            message = "Autopilot became unavailable after "
+                    + operationIds.size()
+                    + " of "
+                    + selected.size()
+                    + " operations were persisted; already-started operations remain active, "
+                    + "and the remaining requirements can be submitted again. Every generated "
+                    + "decision remains subject to human review.";
         }
         return new ProjectAutopilotRunView(
                 projectId,
                 selected.size(),
                 operationIds.size(),
                 List.copyOf(operationIds),
-                "Autopilot operations were persisted; every generated decision remains subject to human review.");
+                message);
     }
 
     private List<RequirementView> selectRequirements(
