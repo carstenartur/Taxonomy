@@ -1,0 +1,392 @@
+name: One-off harden PR 795 operation consistency
+
+on:
+  push:
+    branches:
+      - automation/harden-pr795-operation-consistency-20260818
+    paths:
+      - .github/workflows/one-off-harden-pr795-operation-consistency.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: taxonomy-one-off-pr795-operation-consistency
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    if: github.event.head_commit.message == 'chore(agent): stage PR 795 operation-consistency hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Wait for PR 795 to be rebased and retargeted to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 270); do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/795")
+            if [[ "$(jq -r '.state' <<<"$pr")" != open ]]; then
+              echo "::error::PR 795 is no longer open" >&2
+              exit 1
+            fi
+            if [[ "$(jq -r '.base.ref' <<<"$pr")" == main ]]; then
+              head_sha=$(jq -r '.head.sha' <<<"$pr")
+              compare=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${head_sha}")
+              if [[ "$(jq -r '.behind_by' <<<"$compare")" == 0 ]]; then
+                ready=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          test "$ready" = true
+
+      - name: Check out exact PR 795 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/792-copilot-autopilot-full-analysis
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Enforce exact operation membership invariants
+        id: patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          original_head=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/795" --jq '.head.sha')
+          test "$(git rev-parse HEAD)" = "$original_head"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service = Path("taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java")
+          source = service.read_text(encoding="utf-8")
+          old = '''    private static OperationDefinition definition(List<JobWithKey> jobs) {
+                  JobWithKey first = jobs.get(0);
+                  AnalysisJobItemView item = first.job().items() != null
+                          ? first.job().items().stream().findFirst().orElse(null) : null;
+                  if (item == null) {
+                      throw PortfolioException.conflict(
+                              "Copilot analysis job contains no requirement item");
+                  }
+                  CopilotOperationKey key = first.key();
+                  for (JobWithKey entry : jobs) {
+                      if (!entry.key().operationId().equals(key.operationId())
+                              || entry.key().totalPasses() != key.totalPasses()
+                              || entry.key().profile() != key.profile()
+                              || entry.key().autopilot() != key.autopilot()) {
+                          throw PortfolioException.conflict(
+                                  "Copilot operation metadata is inconsistent across analysis jobs");
+                      }
+                  }
+                  return new OperationDefinition(
+                          key.autopilot(),
+                          key.operationId(),
+                          first.job().projectId(),
+                          item.requirementId(),
+                          key.profile(),
+                          first.job().provider(),
+                          first.job().maxArchitectureNodes(),
+                          key.totalPasses(),
+                          key.proposeSolutions(),
+                          key.proposeProducts());
+              }
+          '''
+          new = '''    private static OperationDefinition definition(List<JobWithKey> jobs) {
+                  JobWithKey first = jobs.getFirst();
+                  List<AnalysisJobItemView> firstItems = first.job().items();
+                  if (firstItems == null || firstItems.size() != 1) {
+                      throw PortfolioException.conflict(
+                              "Each Copilot pass must contain exactly one requirement item");
+                  }
+                  AnalysisJobItemView item = firstItems.getFirst();
+                  CopilotOperationKey key = first.key();
+                  Set<Integer> passes = new LinkedHashSet<>();
+                  for (JobWithKey entry : jobs) {
+                      List<AnalysisJobItemView> items = entry.job().items();
+                      if (items == null || items.size() != 1) {
+                          throw PortfolioException.conflict(
+                                  "Each Copilot pass must contain exactly one requirement item");
+                      }
+                      AnalysisJobItemView currentItem = items.getFirst();
+                      if (!entry.key().operationId().equals(key.operationId())
+                              || entry.key().totalPasses() != key.totalPasses()
+                              || entry.key().profile() != key.profile()
+                              || entry.key().autopilot() != key.autopilot()
+                              || entry.key().proposeSolutions() != key.proposeSolutions()
+                              || entry.key().proposeProducts() != key.proposeProducts()
+                              || !Objects.equals(
+                                      entry.job().projectId(), first.job().projectId())
+                              || !Objects.equals(
+                                      currentItem.requirementId(), item.requirementId())
+                              || !Objects.equals(
+                                      entry.job().provider(), first.job().provider())
+                              || entry.job().maxArchitectureNodes()
+                                      != first.job().maxArchitectureNodes()) {
+                          throw PortfolioException.conflict(
+                                  "Copilot operation metadata is inconsistent across analysis jobs");
+                      }
+                      if (!passes.add(entry.key().pass())) {
+                          throw PortfolioException.conflict(
+                                  "Copilot operation contains duplicate pass "
+                                          + entry.key().pass());
+                      }
+                  }
+                  return new OperationDefinition(
+                          key.autopilot(),
+                          key.operationId(),
+                          first.job().projectId(),
+                          item.requirementId(),
+                          key.profile(),
+                          first.job().provider(),
+                          first.job().maxArchitectureNodes(),
+                          key.totalPasses(),
+                          key.proposeSolutions(),
+                          key.proposeProducts());
+              }
+          '''
+          if old not in source:
+              raise SystemExit("Expected Copilot definition block was not found")
+          service.write_text(source.replace(old, new), encoding="utf-8")
+
+          test = Path("taxonomy-app/src/test/java/com/taxonomy/portfolio/CopilotOperationConsistencyTest.java")
+          test.write_text('''package com.taxonomy.portfolio;
+
+          import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
+          import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+          import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
+          import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+          import com.taxonomy.portfolio.service.AiAutomationPolicy;
+          import com.taxonomy.portfolio.service.CopilotAutomationService;
+          import com.taxonomy.portfolio.service.CopilotCompletionService;
+          import com.taxonomy.portfolio.service.CopilotJobControlService;
+          import com.taxonomy.portfolio.service.CopilotOperationKey;
+          import com.taxonomy.portfolio.service.CopilotResultPersistenceService;
+          import com.taxonomy.portfolio.service.CopilotResultSelector;
+          import com.taxonomy.portfolio.service.PortfolioException;
+          import com.taxonomy.portfolio.service.PortfolioFingerprintService;
+          import com.taxonomy.portfolio.service.ProjectPortfolioService;
+          import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+          import com.taxonomy.workspace.service.WorkspaceContext;
+          import org.junit.jupiter.api.Test;
+          import org.junit.jupiter.api.extension.ExtendWith;
+          import org.mockito.InjectMocks;
+          import org.mockito.Mock;
+          import org.mockito.junit.jupiter.MockitoExtension;
+
+          import java.time.Instant;
+          import java.util.List;
+          import java.util.concurrent.ExecutorService;
+
+          import static org.assertj.core.api.Assertions.assertThatThrownBy;
+          import static org.mockito.Mockito.verifyNoInteractions;
+          import static org.mockito.Mockito.when;
+
+          @ExtendWith(MockitoExtension.class)
+          class CopilotOperationConsistencyTest {
+
+              @Mock private ProjectRequirementAnalysisService analysisService;
+              @Mock private ProjectPortfolioService projectService;
+              @Mock private PortfolioFingerprintService fingerprintService;
+              @Mock private AiAutomationPolicy policy;
+              @Mock private CopilotResultSelector resultSelector;
+              @Mock private CopilotResultPersistenceService resultPersistenceService;
+              @Mock private CopilotCompletionService completionService;
+              @Mock private CopilotJobControlService jobControlService;
+              @Mock private ExecutorService coordinator;
+
+              @InjectMocks private CopilotAutomationService service;
+
+              private final WorkspaceContext context = new WorkspaceContext(
+                      "architect", "ws-architect", "draft");
+
+              @Test
+              void rejectsDifferentRequirementsInsideOneOperation() {
+                  String operationId = "a".repeat(64);
+                  when(analysisService.listJobs(41L, context.username(), context))
+                          .thenReturn(List.of(
+                                  job("job-1", key(operationId, 1, true, true), 7L, 50),
+                                  job("job-2", key(operationId, 2, true, true), 8L, 50)));
+
+                  assertInconsistent(operationId);
+              }
+
+              @Test
+              void rejectsContradictoryProposalFlagsAndNodeLimits() {
+                  String operationId = "b".repeat(64);
+                  when(analysisService.listJobs(41L, context.username(), context))
+                          .thenReturn(List.of(
+                                  job("job-1", key(operationId, 1, true, true), 7L, 50),
+                                  job("job-2", key(operationId, 2, false, true), 7L, 51)));
+
+                  assertInconsistent(operationId);
+              }
+
+              @Test
+              void rejectsDuplicatePassNumbers() {
+                  String operationId = "c".repeat(64);
+                  CopilotOperationKey firstPass = key(operationId, 1, true, true);
+                  when(analysisService.listJobs(41L, context.username(), context))
+                          .thenReturn(List.of(
+                                  job("job-1", firstPass, 7L, 50),
+                                  job("job-2", firstPass, 7L, 50)));
+
+                  assertThatThrownBy(() -> service.getOperation(
+                          41L, operationId, context.username(), context))
+                          .isInstanceOf(PortfolioException.class)
+                          .hasMessageContaining("duplicate pass 1");
+                  verifyNoSideEffects();
+              }
+
+              @Test
+              void rejectsPassWithMoreThanOneRequirementItem() {
+                  String operationId = "d".repeat(64);
+                  AnalysisJobView malformed = job(
+                          "job-1", key(operationId, 1, true, true), 7L, 50);
+                  malformed = new AnalysisJobView(
+                          malformed.id(), malformed.projectId(), malformed.status(),
+                          malformed.idempotencyKey(), malformed.provider(),
+                          malformed.maxArchitectureNodes(), malformed.requestedBy(),
+                          malformed.workspaceId(), malformed.createdAt(),
+                          malformed.startedAt(), malformed.completedAt(),
+                          malformed.totalItems(), malformed.successfulItems(),
+                          malformed.partialItems(), malformed.failedItems(),
+                          malformed.errorMessage(),
+                          List.of(item(7L), item(8L)));
+                  when(analysisService.listJobs(41L, context.username(), context))
+                          .thenReturn(List.of(malformed));
+
+                  assertThatThrownBy(() -> service.getOperation(
+                          41L, operationId, context.username(), context))
+                          .isInstanceOf(PortfolioException.class)
+                          .hasMessageContaining("exactly one requirement item");
+                  verifyNoSideEffects();
+              }
+
+              private void assertInconsistent(String operationId) {
+                  assertThatThrownBy(() -> service.getOperation(
+                          41L, operationId, context.username(), context))
+                          .isInstanceOf(PortfolioException.class)
+                          .hasMessageContaining("inconsistent across analysis jobs");
+                  verifyNoSideEffects();
+              }
+
+              private void verifyNoSideEffects() {
+                  verifyNoInteractions(
+                          projectService,
+                          resultSelector,
+                          resultPersistenceService,
+                          completionService,
+                          jobControlService,
+                          coordinator);
+              }
+
+              private static CopilotOperationKey key(
+                      String operationId,
+                      int pass,
+                      boolean proposeSolutions,
+                      boolean proposeProducts) {
+                  return new CopilotOperationKey(
+                          false,
+                          operationId,
+                          pass,
+                          2,
+                          AnalysisAutomationProfile.FULL,
+                          proposeSolutions,
+                          proposeProducts);
+              }
+
+              private static AnalysisJobView job(
+                      String id,
+                      CopilotOperationKey key,
+                      Long requirementId,
+                      int maxNodes) {
+                  Instant now = Instant.parse("2026-08-18T10:00:00Z");
+                  return new AnalysisJobView(
+                          id,
+                          41L,
+                          AnalysisStatus.SUCCESS,
+                          key.value(),
+                          "CUSTOM_OPENAI",
+                          maxNodes,
+                          "architect",
+                          "ws-architect",
+                          now,
+                          now,
+                          now,
+                          1,
+                          1,
+                          0,
+                          0,
+                          null,
+                          List.of(item(requirementId)));
+              }
+
+              private static AnalysisJobItemView item(Long requirementId) {
+                  Instant now = Instant.parse("2026-08-18T10:00:00Z");
+                  return new AnalysisJobItemView(
+                          requirementId + 100,
+                          requirementId,
+                          "REQ-" + requirementId,
+                          requirementId + 200,
+                          1,
+                          AnalysisStatus.SUCCESS,
+                          "snapshot-" + requirementId,
+                          1,
+                          now,
+                          now,
+                          null);
+              }
+          }
+          ''', encoding="utf-8")
+          PY
+
+          git diff --check
+          git config user.name 'ChatGPT Release Integration'
+          git config user.email 'chatgpt-release-integration@users.noreply.github.com'
+          git add taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java \
+                  taxonomy-app/src/test/java/com/taxonomy/portfolio/CopilotOperationConsistencyTest.java
+          git commit -m 'Harden persisted Copilot operation membership'
+          echo "original_head=$original_head" >> "$GITHUB_OUTPUT"
+          echo "patched_head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run focused consistency and cancellation tests
+        shell: bash
+        run: |
+          ./mvnw -B -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=CopilotOperationConsistencyTest,CopilotAutomationCancellationTest,CopilotOperationKeyTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+      - name: Push only if the reviewed PR head stayed unchanged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_HEAD: ${{ steps.patch.outputs.original_head }}
+          PATCHED_HEAD: ${{ steps.patch.outputs.patched_head }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PATCHED_HEAD"
+          remote_head=$(git ls-remote origin refs/heads/agent/792-copilot-autopilot-full-analysis | awk '{print $1}')
+          test "$remote_head" = "$ORIGINAL_HEAD"
+          git push origin HEAD:agent/792-copilot-autopilot-full-analysis
+          gh api "repos/${GITHUB_REPOSITORY}/issues/795/comments" \
+            -f body="Operation grouping is now fail-closed at \`${PATCHED_HEAD}\`: every pass must contain exactly one requirement, pass numbers must be unique, and project, requirement, provider, node limit, profile, mode and proposal flags must agree before resume, cancellation or result promotion. Focused consistency, key and cancellation tests passed before push."
+
+      - name: Delete the temporary automation branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/harden-pr795-operation-consistency-20260818" \
+            || true
