@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.repository;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -19,6 +20,8 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
             findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
                     String jobId, Long projectId, String scopeKey);
 
+    /** Loads the complete self-contained worker payload without per-item lazy selects. */
+    @EntityGraph(attributePaths = {"requirement", "requirementVersion"})
     List<RequirementAnalysisJobItem>
             findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(
                     String jobId, Long projectId, String scopeKey, AnalysisStatus status);
