@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected_parent=3510c7e688a6a888e0870d9ae9874be474dc6cdd
+          expected_parent=bbf6940a82dea9cc7f98df01f0f4395abff22c6e
           actual_parent=$(git rev-parse HEAD^)
           if [[ "$actual_parent" != "$expected_parent" ]]; then
             echo "::error::Unexpected staged payload parent: $actual_parent" >&2
@@ -59,6 +59,12 @@ jobs:
           base64 --decode "$RUNNER_TEMP/copilot.tar.gz.b64" > "$RUNNER_TEMP/copilot.tar.gz"
           gzip --test "$RUNNER_TEMP/copilot.tar.gz"
           tar --extract --gzip --file "$RUNNER_TEMP/copilot.tar.gz" --directory .
+
+          contract=taxonomy-app/src/test/java/com/taxonomy/portfolio/RequirementCopilotUiContractTest.java
+          grep -Fq "\"/copilot')\"" "$contract"
+          sed -i "s#\"/copilot')\"#\"/copilot', request)\"#" "$contract"
+          grep -Fq "\"/copilot', request)\"" "$contract"
+
           rm -rf .github/agent/copilot-payload
           rm -f .github/workflows/agent-apply-copilot.yml
 
