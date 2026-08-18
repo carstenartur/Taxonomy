@@ -1,0 +1,134 @@
+name: One-off guarded refresh of PR 792 after PR 794
+
+on:
+  push:
+    branches:
+      - automation/refresh-pr792-after-794-20260818
+    paths:
+      - .github/workflows/one-off-refresh-pr792-after-794.yml
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: taxonomy-one-off-refresh-pr792-after-pr794
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: github.event.head_commit.message == 'chore(agent): stage guarded PR 792 refresh'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Wait for the guarded PR 794 merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          merged=false
+          for attempt in $(seq 1 150); do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/794")
+            state=$(jq -r '.state' <<<"$pr")
+            merged_at=$(jq -r '.merged_at // empty' <<<"$pr")
+            if [[ -n "$merged_at" ]]; then
+              merged=true
+              break
+            fi
+            if [[ "$state" == closed ]]; then
+              echo "::error::PR 794 closed without merging" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          test "$merged" = true
+
+      - name: Check out the exact PR 792 branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/743-analysis-artifact-tenancy
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge protected main without hiding conflicts
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/792")
+          expected=$(jq -r '.head.sha' <<<"$current")
+          test "$(git rev-parse HEAD)" = "$expected"
+          test "$(jq -r '.head.ref' <<<"$current")" = agent/743-analysis-artifact-tenancy
+          test "$(jq -r '.state' <<<"$current")" = open
+
+          git config user.name 'ChatGPT Release Integration'
+          git config user.email 'chatgpt-release-integration@users.noreply.github.com'
+          git fetch origin main
+
+          set +e
+          git merge --no-ff origin/main \
+            -m 'Merge protected main after release-hardening PR 794'
+          merge_exit=$?
+          set -e
+          if [[ $merge_exit -ne 0 ]]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            printf 'Merge conflicts while refreshing PR 792:\n%s\n' "${conflicts[*]}" >&2
+            body=$(printf 'The guarded refresh from current `main` stopped without pushing because these conflicts require an explicit resolution:\n\n```text\n%s\n```' "$(printf '%s\n' "${conflicts[@]}")")
+            gh api "repos/${GITHUB_REPOSITORY}/issues/792/comments" -f body="$body"
+            git merge --abort || true
+            exit 1
+          fi
+
+          while IFS= read -r workflow; do
+            [[ -n "$workflow" ]] || continue
+            if grep -Eqi 'one-off.*(792|analysis artifact)|agent/743-analysis-artifact-tenancy' "$workflow"; then
+              git rm "$workflow"
+            fi
+          done < <(git ls-files '.github/workflows/one-off-*')
+          if ! git diff --cached --quiet; then
+            git commit -m 'Remove one-off PR 792 verification workflows'
+          fi
+
+          git diff --check HEAD^..HEAD
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the newly covered tenant model invariants
+        shell: bash
+        run: |
+          ./mvnw -B -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=RequirementRelationMappingTest,RequirementElementMappingTest,RequirementAnalysisSnapshotTest,RequirementAnalysisJobItemTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+      - name: Push the verified refresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REFRESHED_HEAD: ${{ steps.merge.outputs.head }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REFRESHED_HEAD"
+          remote_head=$(git ls-remote origin refs/heads/agent/743-analysis-artifact-tenancy | awk '{print $1}')
+          parent_head=$(git rev-parse HEAD^1)
+          if [[ "$remote_head" != "$parent_head" ]]; then
+            echo "::error::PR 792 moved during guarded verification" >&2
+            exit 1
+          fi
+          git push origin HEAD:agent/743-analysis-artifact-tenancy
+          gh api "repos/${GITHUB_REPOSITORY}/issues/792/comments" \
+            -f body="Guarded refresh completed: current protected \`main\` was merged into PR #792 as \`${REFRESHED_HEAD}\`; the focused tenant mapping, snapshot and worker-item model suite passed before push. The PR remains draft until its complete exact-head matrix is green."
+
+      - name: Delete the temporary automation branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/refresh-pr792-after-794-20260818" \
+            || true
