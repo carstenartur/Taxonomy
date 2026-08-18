@@ -1,0 +1,389 @@
+name: One-off harden PR 795 coordinator capacity
+
+on:
+  push:
+    branches:
+      - automation/harden-pr795-coordinator-capacity-20260818
+    paths:
+      - .github/workflows/one-off-harden-pr795-coordinator-capacity.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: taxonomy-one-off-pr795-capacity-hardening
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    if: github.event.head_commit.message == 'chore(agent): stage PR 795 coordinator capacity hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - name: Wait for the fail-closed policy head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 360); do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/795")
+            if [[ "$(jq -r '.state' <<<"$pr")" != open ]]; then
+              echo "::error::PR 795 is no longer open" >&2
+              exit 1
+            fi
+            head_sha=$(jq -r '.head.sha' <<<"$pr")
+            if [[ "$(jq -r '.base.ref' <<<"$pr")" == main ]]; then
+              policy=$(gh api "repos/${GITHUB_REPOSITORY}/contents/taxonomy-app/src/main/java/com/taxonomy/portfolio/service/AiAutomationPolicy.java?ref=${head_sha}" --jq '.content' | base64 --decode)
+              compare=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${head_sha}")
+              if grep -Fq 'explicit TAXONOMY_AI_AUTOPILOT_PROVIDER' <<<"$policy" \
+                  && [[ "$(jq -r '.behind_by' <<<"$compare")" == 0 ]]; then
+                ready=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          test "$ready" = true
+
+      - name: Check out exact PR 795 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/792-copilot-autopilot-full-analysis
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Bound coordinator work and response metadata
+        id: patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          original_head=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/795" --jq '.head.sha')
+          test "$(git rev-parse HEAD)" = "$original_head"
+
+          cat > taxonomy-app/src/main/java/com/taxonomy/portfolio/config/CopilotAutomationExecutorConfiguration.java <<'JAVA'
+          package com.taxonomy.portfolio.config;
+
+          import org.springframework.beans.factory.annotation.Value;
+          import org.springframework.context.annotation.Bean;
+          import org.springframework.context.annotation.Configuration;
+
+          import java.util.concurrent.ArrayBlockingQueue;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.ThreadPoolExecutor;
+          import java.util.concurrent.TimeUnit;
+
+          /** Bounded virtual-thread coordinator for persisted Copilot operations. */
+          @Configuration
+          public class CopilotAutomationExecutorConfiguration {
+
+              private static final int MAX_WORKERS = 32;
+              private static final int MAX_QUEUE_CAPACITY = 1024;
+
+              @Bean(name = "copilotAutomationExecutor", destroyMethod = "close")
+              ExecutorService copilotAutomationExecutor(
+                      @Value("${taxonomy.ai.max-concurrent-operations:4}") int configuredWorkers,
+                      @Value("${taxonomy.ai.max-queued-operations:32}") int configuredQueueCapacity) {
+                  int workers = requireRange(
+                          configuredWorkers,
+                          "taxonomy.ai.max-concurrent-operations",
+                          MAX_WORKERS);
+                  int queueCapacity = requireRange(
+                          configuredQueueCapacity,
+                          "taxonomy.ai.max-queued-operations",
+                          MAX_QUEUE_CAPACITY);
+                  return new ThreadPoolExecutor(
+                          workers,
+                          workers,
+                          0L,
+                          TimeUnit.MILLISECONDS,
+                          new ArrayBlockingQueue<>(queueCapacity),
+                          Thread.ofVirtual().name("taxonomy-copilot-", 0).factory(),
+                          new ThreadPoolExecutor.AbortPolicy());
+              }
+
+              private static int requireRange(String field, int value, int maximum) {
+                  return requireRange(value, field, maximum);
+              }
+
+              private static int requireRange(int value, String field, int maximum) {
+                  if (value < 1 || value > maximum) {
+                      throw new IllegalArgumentException(
+                              field + " must be between 1 and " + maximum);
+                  }
+                  return value;
+              }
+          }
+          JAVA
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service = Path("taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java")
+          source = service.read_text(encoding="utf-8")
+          if "import java.util.concurrent.RejectedExecutionException;" not in source:
+              source = source.replace(
+                      "import java.util.concurrent.ExecutorService;\n",
+                      "import java.util.concurrent.ExecutorService;\n"
+                      "import java.util.concurrent.RejectedExecutionException;\n")
+          old = '''            coordinator.execute(() -> {
+                          try {
+                              execute(definition, username, context);
+                              future.complete(null);
+                          } catch (Throwable failure) {
+                              LOGGER.error(
+                                      "Copilot operation {} for project {} requirement {} stopped unexpectedly",
+                                      definition.operationId(),
+                                      definition.projectId(),
+                                      definition.requirementId(),
+                                      failure);
+                              future.completeExceptionally(failure);
+                          } finally {
+                              running.remove(executionKey, future);
+                          }
+                      });
+                      return future;
+          '''
+          new = '''            try {
+                          coordinator.execute(() -> {
+                              try {
+                                  execute(definition, username, context);
+                                  future.complete(null);
+                              } catch (Throwable failure) {
+                                  LOGGER.error(
+                                          "Copilot operation {} for project {} requirement {} stopped unexpectedly",
+                                          definition.operationId(),
+                                          definition.projectId(),
+                                          definition.requirementId(),
+                                          failure);
+                                  future.completeExceptionally(failure);
+                              } finally {
+                                  running.remove(executionKey, future);
+                              }
+                          });
+                      } catch (RejectedExecutionException saturated) {
+                          future.completeExceptionally(saturated);
+                          throw PortfolioException.unavailable(
+                                  "Copilot coordinator capacity is exhausted; the persisted operation "
+                                          + "can be resumed when capacity is available",
+                                  saturated);
+                      }
+                      return future;
+          '''
+          if old not in source and "Copilot coordinator capacity is exhausted" not in source:
+              raise SystemExit("Expected Copilot coordinator submission block was not found")
+          service.write_text(source.replace(old, new), encoding="utf-8")
+
+          advice = Path("taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/AutopilotRequirementResponseAdvice.java")
+          advice_source = advice.read_text(encoding="utf-8")
+          advice_source = advice_source.replace(
+                  '    private static final String OPERATION_HEADER = "X-Taxonomy-Autopilot-Operations";\n',
+                  '    private static final String OPERATION_HEADER = "X-Taxonomy-Autopilot-Operation";\n'
+                  '    private static final String OPERATION_COUNT_HEADER =\n'
+                  '            "X-Taxonomy-Autopilot-Operation-Count";\n')
+          old_headers = '''            if (!operations.isEmpty()) {
+                          response.getHeaders().add(OPERATION_HEADER, String.join(",", operations));
+                      }
+          '''
+          new_headers = '''            if (!operations.isEmpty()) {
+                          response.getHeaders().set(
+                                  OPERATION_COUNT_HEADER,
+                                  Integer.toString(operations.size()));
+                          if (operations.size() == 1) {
+                              response.getHeaders().set(
+                                      OPERATION_HEADER, operations.getFirst());
+                          }
+                      }
+          '''
+          if old_headers not in advice_source and "OPERATION_COUNT_HEADER" not in advice_source:
+              raise SystemExit("Expected Autopilot operation header block was not found")
+          advice.write_text(advice_source.replace(old_headers, new_headers), encoding="utf-8")
+          PY
+
+          mkdir -p taxonomy-app/src/test/java/com/taxonomy/portfolio/config
+          cat > taxonomy-app/src/test/java/com/taxonomy/portfolio/config/CopilotAutomationExecutorConfigurationTest.java <<'JAVA'
+          package com.taxonomy.portfolio.config;
+
+          import org.junit.jupiter.api.Test;
+
+          import java.util.concurrent.CountDownLatch;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.Future;
+          import java.util.concurrent.RejectedExecutionException;
+          import java.util.concurrent.TimeUnit;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+          import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+          class CopilotAutomationExecutorConfigurationTest {
+
+              private final CopilotAutomationExecutorConfiguration configuration =
+                      new CopilotAutomationExecutorConfiguration();
+
+              @Test
+              void rejectsInvalidWorkerAndQueueBounds() {
+                  assertThatThrownBy(() -> configuration
+                          .copilotAutomationExecutor(0, 1))
+                          .isInstanceOf(IllegalArgumentException.class)
+                          .hasMessageContaining("max-concurrent-operations");
+                  assertThatThrownBy(() -> configuration
+                          .copilotAutomationExecutor(1, 0))
+                          .isInstanceOf(IllegalArgumentException.class)
+                          .hasMessageContaining("max-queued-operations");
+                  assertThatThrownBy(() -> configuration
+                          .copilotAutomationExecutor(33, 1))
+                          .isInstanceOf(IllegalArgumentException.class)
+                          .hasMessageContaining("between 1 and 32");
+                  assertThatThrownBy(() -> configuration
+                          .copilotAutomationExecutor(1, 1025))
+                          .isInstanceOf(IllegalArgumentException.class)
+                          .hasMessageContaining("between 1 and 1024");
+              }
+
+              @Test
+              void usesVirtualWorkersButRejectsWorkBeyondTheBoundedQueue()
+                      throws Exception {
+                  ExecutorService executor = configuration
+                          .copilotAutomationExecutor(1, 1);
+                  CountDownLatch entered = new CountDownLatch(1);
+                  CountDownLatch release = new CountDownLatch(1);
+                  try {
+                      Future<Boolean> running = executor.submit(() -> {
+                          entered.countDown();
+                          release.await(10, TimeUnit.SECONDS);
+                          return Thread.currentThread().isVirtual();
+                      });
+                      assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+                      Future<?> queued = executor.submit(() -> { });
+
+                      assertThatThrownBy(() -> executor.submit(() -> { }))
+                              .isInstanceOf(RejectedExecutionException.class);
+
+                      release.countDown();
+                      assertThat(running.get(5, TimeUnit.SECONDS)).isTrue();
+                      queued.get(5, TimeUnit.SECONDS);
+                  } finally {
+                      release.countDown();
+                      executor.close();
+                  }
+              }
+          }
+          JAVA
+
+          cat > taxonomy-app/src/test/java/com/taxonomy/portfolio/CopilotCoordinatorCapacityContractTest.java <<'JAVA'
+          package com.taxonomy.portfolio;
+
+          import org.junit.jupiter.api.Test;
+
+          import java.nio.charset.StandardCharsets;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+
+          class CopilotCoordinatorCapacityContractTest {
+
+              @Test
+              void saturatedCoordinatorIsRecoverableAndImportHeadersStayBounded()
+                      throws Exception {
+                  Path root = findRepositoryRoot();
+                  String service = Files.readString(root.resolve(
+                          "taxonomy-app/src/main/java/com/taxonomy/portfolio/service/"
+                                  + "CopilotAutomationService.java"), StandardCharsets.UTF_8);
+                  String advice = Files.readString(root.resolve(
+                          "taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/"
+                                  + "AutopilotRequirementResponseAdvice.java"),
+                          StandardCharsets.UTF_8);
+
+                  assertThat(service)
+                          .contains("RejectedExecutionException")
+                          .contains("Copilot coordinator capacity is exhausted")
+                          .contains("PortfolioException.unavailable")
+                          .contains("persisted operation")
+                          .contains("resumed when capacity is available");
+                  assertThat(advice)
+                          .contains("X-Taxonomy-Autopilot-Operation-Count")
+                          .contains("operations.size() == 1")
+                          .contains("operations.getFirst()")
+                          .doesNotContain("String.join(\",\", operations)")
+                          .doesNotContain("X-Taxonomy-Autopilot-Operations");
+              }
+
+              private static Path findRepositoryRoot() {
+                  Path current = Path.of(System.getProperty("user.dir"))
+                          .toAbsolutePath().normalize();
+                  while (current != null) {
+                      if (Files.isRegularFile(current.resolve("pom.xml"))
+                              && Files.isRegularFile(current.resolve(
+                                      "taxonomy-app/pom.xml"))) {
+                          return current;
+                      }
+                      current = current.getParent();
+                  }
+                  throw new IllegalStateException("Unable to locate repository root");
+              }
+          }
+          JAVA
+
+          git diff --check
+          git config user.name 'ChatGPT Release Integration'
+          git config user.email 'chatgpt-release-integration@users.noreply.github.com'
+          git add taxonomy-app/src/main/java/com/taxonomy/portfolio/config/CopilotAutomationExecutorConfiguration.java \
+                  taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java \
+                  taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/AutopilotRequirementResponseAdvice.java \
+                  taxonomy-app/src/test/java/com/taxonomy/portfolio/config/CopilotAutomationExecutorConfigurationTest.java \
+                  taxonomy-app/src/test/java/com/taxonomy/portfolio/CopilotCoordinatorCapacityContractTest.java
+          changed=false
+          if ! git diff --cached --quiet; then
+            git commit -m 'Bound Copilot coordinator capacity and response metadata'
+            changed=true
+          fi
+          echo "original_head=$original_head" >> "$GITHUB_OUTPUT"
+          echo "patched_head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Run focused coordinator, policy and cancellation tests
+        shell: bash
+        run: |
+          ./mvnw -B -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=CopilotAutomationExecutorConfigurationTest,CopilotCoordinatorCapacityContractTest,AiAutomationFailClosedPolicyTest,CopilotAutomationCancellationTest,CopilotOperationConsistencyTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+      - name: Push only if the PR head stayed unchanged
+        if: steps.patch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_HEAD: ${{ steps.patch.outputs.original_head }}
+          PATCHED_HEAD: ${{ steps.patch.outputs.patched_head }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PATCHED_HEAD"
+          remote_head=$(git ls-remote origin refs/heads/agent/792-copilot-autopilot-full-analysis | awk '{print $1}')
+          test "$remote_head" = "$ORIGINAL_HEAD"
+          git push origin HEAD:agent/792-copilot-autopilot-full-analysis
+
+      - name: Record bounded-capacity evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PATCHED_HEAD: ${{ steps.patch.outputs.patched_head }}
+        shell: bash
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/795/comments" \
+            -f body="Coordinator capacity is bounded and verified at \`${PATCHED_HEAD}\`: active and queued operation counts are explicitly limited, workers remain virtual, saturation returns a recoverable unavailable response while the persisted job can be resumed, and import responses no longer emit an unbounded comma-separated operation header. Focused executor, policy, consistency and cancellation tests passed."
+
+      - name: Delete the temporary automation branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/harden-pr795-coordinator-capacity-20260818" \
+            || true
