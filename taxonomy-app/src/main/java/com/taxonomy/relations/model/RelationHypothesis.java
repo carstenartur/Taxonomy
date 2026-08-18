@@ -24,29 +24,42 @@ import java.time.Instant;
  *
  * <p>Unlike {@link TaxonomyRelation} which represents confirmed relations,
  * a hypothesis is a candidate relation that can be accepted or rejected
- * through a review workflow. Every row belongs to exactly one repository
- * tenant and either its central scope or one personal workspace.</p>
+ * through a review workflow. Every row belongs to exactly one repository,
+ * branch and either its central scope or one personal workspace.</p>
  */
 @Entity
 @Table(name = "relation_hypothesis",
        indexes = {
            @Index(name = "idx_hyp_repository", columnList = "repository_id"),
-           @Index(name = "idx_hyp_repository_workspace",
-                   columnList = "repository_id, workspace_id"),
+           @Index(name = "idx_hyp_repository_branch",
+                   columnList = "repository_id, branch_name"),
+           @Index(name = "idx_hyp_repository_workspace_branch",
+                   columnList = "repository_id, workspace_scope_key, branch_name"),
            @Index(name = "idx_hyp_project", columnList = "project_id"),
            @Index(name = "idx_hyp_requirement", columnList = "requirement_id"),
            @Index(name = "idx_hyp_snapshot", columnList = "analysis_snapshot_id")
        },
-       uniqueConstraints = @UniqueConstraint(
-               name = "uq_hypothesis_repository_workspace_session_relation",
-               columnNames = {
-                       "repository_id",
-                       "workspace_scope_key",
-                       "source_node_id",
-                       "target_node_id",
-                       "relation_type",
-                       "analysis_session_scope_key"
-               }))
+       uniqueConstraints = {
+           @UniqueConstraint(
+                   name = "uq_hypothesis_repository_workspace_branch_session_relation",
+                   columnNames = {
+                           "repository_id",
+                           "workspace_scope_key",
+                           "branch_name",
+                           "source_node_id",
+                           "target_node_id",
+                           "relation_type",
+                           "analysis_session_scope_key"
+                   }),
+           @UniqueConstraint(
+                   name = "uq_hypothesis_id_tenant",
+                   columnNames = {
+                           "id",
+                           "repository_id",
+                           "workspace_scope_key",
+                           "branch_name"
+                   })
+       })
 public class RelationHypothesis {
 
     public static final String CENTRAL_SCOPE_KEY = "__shared__";
@@ -58,6 +71,9 @@ public class RelationHypothesis {
 
     @Column(name = "repository_id", nullable = false, length = 255)
     private String repositoryId;
+
+    @Column(name = "branch_name", nullable = false, length = 255)
+    private String branchName;
 
     @Nationalized
     @Column(name = "source_node_id", nullable = false)
@@ -126,6 +142,7 @@ public class RelationHypothesis {
 
     private void synchronizeTenantKeys() {
         repositoryId = requireText(repositoryId, "repositoryId");
+        branchName = requireText(branchName, "branchName");
         sourceNodeId = requireText(sourceNodeId, "sourceNodeId");
         targetNodeId = requireText(targetNodeId, "targetNodeId");
         workspaceId = normalizeOptional(workspaceId);
@@ -151,6 +168,11 @@ public class RelationHypothesis {
     public String getRepositoryId() { return repositoryId; }
     public void setRepositoryId(String repositoryId) {
         this.repositoryId = requireText(repositoryId, "repositoryId");
+    }
+
+    public String getBranchName() { return branchName; }
+    public void setBranchName(String branchName) {
+        this.branchName = requireText(branchName, "branchName");
     }
 
     public String getSourceNodeId() { return sourceNodeId; }
