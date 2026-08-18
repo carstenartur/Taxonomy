@@ -27,6 +27,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -71,6 +72,42 @@ class ProjectAutopilotServiceTest {
                 41L, 9L, context.username(), context);
         verify(automationService).tryAutopilot(
                 41L, 7L, context.username(), context);
+    }
+
+    @Test
+    void returnsPartialResultWhenAutopilotBecomesUnavailableDuringBatch() {
+        ProjectAutopilotService service = service(10);
+        RequirementView first = requirement(7L);
+        RequirementView second = requirement(8L);
+        RequirementView third = requirement(9L);
+        CopilotOperationView operationForSeven = operation("a".repeat(64));
+        when(automationService.status()).thenReturn(status(true, true, "ready"));
+        when(projectService.listRequirements(41L, context.username(), context))
+                .thenReturn(List.of(first, second, third));
+        when(automationService.tryAutopilot(
+                41L, 7L, context.username(), context))
+                .thenReturn(Optional.of(operationForSeven));
+        when(automationService.tryAutopilot(
+                41L, 8L, context.username(), context))
+                .thenReturn(Optional.empty());
+
+        var result = service.run(
+                41L,
+                new ProjectAutopilotRunRequest(List.of(7L, 8L, 9L), 3),
+                context.username(),
+                context);
+
+        assertThat(result.selectedRequirements()).isEqualTo(3);
+        assertThat(result.operationsStarted()).isEqualTo(1);
+        assertThat(result.operationIds()).containsExactly("a".repeat(64));
+        assertThat(result.message())
+                .contains("became unavailable", "1 of 3", "remaining requirements");
+        verify(automationService).tryAutopilot(
+                41L, 7L, context.username(), context);
+        verify(automationService).tryAutopilot(
+                41L, 8L, context.username(), context);
+        verify(automationService, never()).tryAutopilot(
+                41L, 9L, context.username(), context);
     }
 
     @Test
