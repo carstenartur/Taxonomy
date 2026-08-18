@@ -1,0 +1,221 @@
+name: One-off Copilot cancellation finalization guard
+
+on:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - .github/workflows/one-off-copilot-cancellation-guard.yml
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: one-off-copilot-cancellation-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/792-copilot-autopilot-full-analysis'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/792-copilot-autopilot-full-analysis
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact reviewed parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_parent=b9f7cc4cbae31e1b7e689085be7102e22067416d
+          actual_parent=$(git rev-parse HEAD^)
+          if [[ "$actual_parent" != "$expected_parent" ]]; then
+            echo "::error::Unexpected Copilot parent: $actual_parent" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Prevent cancelled operation promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          service=taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java
+          test_file=taxonomy-app/src/test/java/com/taxonomy/portfolio/CopilotAutomationCancellationTest.java
+
+          perl -0pi -e 's/        if \(!operationTerminal\(jobs, definition\.totalPasses\(\)\)\) return;\n/        if (!operationTerminal(jobs, definition.totalPasses())) return;\n        if (jobs.stream().anyMatch(entry ->\n                entry.job().status() == AnalysisStatus.CANCELLED)) {\n            LOGGER.info(\n                    "Copilot operation {} was cancelled; completed immutable snapshots remain archived without promotion",\n                    definition.operationId());\n            return;\n        }\n/' "$service"
+          grep -Fq 'completed immutable snapshots remain archived without promotion' "$service"
+
+          cat > "$test_file" <<'JAVA'
+          package com.taxonomy.portfolio;
+
+          import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
+          import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
+          import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+          import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+          import com.taxonomy.portfolio.model.AiCostPolicy;
+          import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
+          import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+          import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
+          import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
+          import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
+          import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+          import com.taxonomy.portfolio.service.AiAutomationPolicy;
+          import com.taxonomy.portfolio.service.CopilotAutomationService;
+          import com.taxonomy.portfolio.service.CopilotCompletionService;
+          import com.taxonomy.portfolio.service.CopilotJobControlService;
+          import com.taxonomy.portfolio.service.CopilotOperationKey;
+          import com.taxonomy.portfolio.service.CopilotResultPersistenceService;
+          import com.taxonomy.portfolio.service.CopilotResultSelector;
+          import com.taxonomy.portfolio.service.PortfolioFingerprintService;
+          import com.taxonomy.portfolio.service.ProjectPortfolioService;
+          import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+          import com.taxonomy.workspace.service.WorkspaceContext;
+          import org.junit.jupiter.api.Test;
+          import org.junit.jupiter.api.extension.ExtendWith;
+          import org.mockito.InjectMocks;
+          import org.mockito.Mock;
+          import org.mockito.junit.jupiter.MockitoExtension;
+
+          import java.time.Instant;
+          import java.util.List;
+          import java.util.concurrent.ExecutorService;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+          import static org.mockito.Mockito.never;
+          import static org.mockito.Mockito.verify;
+          import static org.mockito.Mockito.verifyNoInteractions;
+          import static org.mockito.Mockito.when;
+
+          @ExtendWith(MockitoExtension.class)
+          class CopilotAutomationCancellationTest {
+
+              @Mock private ProjectRequirementAnalysisService analysisService;
+              @Mock private ProjectPortfolioService projectService;
+              @Mock private PortfolioFingerprintService fingerprintService;
+              @Mock private AiAutomationPolicy policy;
+              @Mock private CopilotResultSelector resultSelector;
+              @Mock private CopilotResultPersistenceService resultPersistenceService;
+              @Mock private CopilotCompletionService completionService;
+              @Mock private CopilotJobControlService jobControlService;
+              @Mock private ExecutorService coordinator;
+
+              @InjectMocks private CopilotAutomationService service;
+
+              @Test
+              void cancelledOperationKeepsSnapshotsArchivedWithoutPromotionOrEnrichment() {
+                  String operationId = "a".repeat(64);
+                  Long projectId = 41L;
+                  Long requirementId = 7L;
+                  String snapshotId = "snapshot-1";
+                  WorkspaceContext context = new WorkspaceContext(
+                          "architect", "ws-architect", "draft");
+                  CopilotOperationKey key = new CopilotOperationKey(
+                          false,
+                          operationId,
+                          1,
+                          1,
+                          AnalysisAutomationProfile.FULL,
+                          true,
+                          true);
+                  AnalysisJobItemView item = new AnalysisJobItemView(
+                          11L,
+                          requirementId,
+                          "REQ-001",
+                          9L,
+                          1,
+                          AnalysisStatus.SUCCESS,
+                          snapshotId,
+                          1,
+                          Instant.now(),
+                          Instant.now(),
+                          null);
+                  AnalysisJobView job = new AnalysisJobView(
+                          "job-1",
+                          projectId,
+                          AnalysisStatus.CANCELLED,
+                          key.value(),
+                          "CUSTOM_OPENAI",
+                          50,
+                          context.username(),
+                          context.workspaceId(),
+                          Instant.now(),
+                          Instant.now(),
+                          Instant.now(),
+                          1,
+                          1,
+                          0,
+                          0,
+                          null,
+                          List.of(item));
+                  RequirementView requirement = new RequirementView(
+                          requirementId,
+                          projectId,
+                          "REQ-001",
+                          "Secure communication",
+                          RequirementStatus.DRAFT,
+                          50,
+                          Criticality.MEDIUM,
+                          RequirementType.FUNCTIONAL,
+                          ReviewStatus.PROPOSED,
+                          context.username(),
+                          9L,
+                          null,
+                          Instant.now(),
+                          Instant.now(),
+                          null);
+
+                  when(analysisService.listJobs(projectId, context.username(), context))
+                          .thenReturn(List.of(job));
+                  when(projectService.getRequirement(
+                          projectId, requirementId, context.username(), context))
+                          .thenReturn(requirement);
+                  when(policy.costPolicy()).thenReturn(AiCostPolicy.UNMETERED);
+
+                  CopilotOperationView result = service.getOperation(
+                          projectId, operationId, context.username(), context);
+
+                  assertThat(result.status()).isEqualTo(AnalysisStatus.CANCELLED);
+                  assertThat(result.selectedSnapshotId()).isNull();
+                  verify(analysisService, never()).getSnapshot(
+                          projectId, snapshotId, context.username(), context);
+                  verifyNoInteractions(
+                          resultSelector,
+                          resultPersistenceService,
+                          completionService,
+                          coordinator);
+              }
+          }
+          JAVA
+
+          rm -f .github/workflows/one-off-copilot-cancellation-guard.yml
+
+      - name: Run focused cancellation and Copilot contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=CopilotAutomationCancellationTest,CopilotAnalysisControllerTest,CopilotOperationKeyTest,CopilotResultSelectorTest,AiAutomationPolicyTest,RequirementCopilotUiContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+          git diff --check
+
+      - name: Commit verified guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'ChatGPT Codex Connector'
+          git config user.email 'chatgpt-codex-connector@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(ai): never promote cancelled Copilot results'
+          git push origin HEAD:agent/792-copilot-autopilot-full-analysis
