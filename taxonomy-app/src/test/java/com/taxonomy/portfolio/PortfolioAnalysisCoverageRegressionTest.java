@@ -48,6 +48,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -178,7 +179,7 @@ class PortfolioAnalysisCoverageRegressionTest {
                 context);
         assertThat(reviewedElement.reviewStatus()).isEqualTo(ReviewStatus.CONFIRMED);
         assertThat(reviewedElement.actionStatus()).isEqualTo(ActionStatus.REUSE);
-        assertThat(reviewedElement.decisionBy()).isEqualTo(context.username());
+        assertThat(reviewedElement.decisionBy()).isEqualTo(context.username().toLowerCase(Locale.ROOT));
 
         var relationMapping = detail.relationMappings().getFirst();
         var reviewedRelation = persistenceService.reviewRelationMapping(
@@ -190,7 +191,7 @@ class PortfolioAnalysisCoverageRegressionTest {
                 context.username(),
                 context);
         assertThat(reviewedRelation.reviewStatus()).isEqualTo(ReviewStatus.REJECTED);
-        assertThat(reviewedRelation.decisionBy()).isEqualTo(context.username());
+        assertThat(reviewedRelation.decisionBy()).isEqualTo(context.username().toLowerCase(Locale.ROOT));
 
         assertThatThrownBy(() -> persistenceService.reviewElementMapping(
                 project.id(), elementMapping.id(), null, context.username(), context))
