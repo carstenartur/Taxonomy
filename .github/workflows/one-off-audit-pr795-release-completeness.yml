@@ -1,0 +1,186 @@
+name: One-off audit PR 795 release completeness
+
+on:
+  push:
+    branches:
+      - automation/audit-pr795-release-completeness-20260818
+    paths:
+      - .github/workflows/one-off-audit-pr795-release-completeness.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: taxonomy-one-off-pr795-release-completeness
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.event.head_commit.message == 'chore(agent): stage PR 795 release-completeness audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Wait for rebased operation-consistency hardening
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 300); do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/795")
+            if [[ "$(jq -r '.state' <<<"$pr")" != open ]]; then
+              echo "::error::PR 795 is no longer open" >&2
+              exit 1
+            fi
+            head_sha=$(jq -r '.head.sha' <<<"$pr")
+            if [[ "$(jq -r '.base.ref' <<<"$pr")" == main ]]; then
+              source=$(gh api "repos/${GITHUB_REPOSITORY}/contents/taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java?ref=${head_sha}" --jq '.content' | base64 --decode)
+              if grep -Fq 'Copilot operation contains duplicate pass' <<<"$source"; then
+                ready=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          test "$ready" = true
+
+      - name: Check out exact PR 795 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/792-copilot-autopilot-full-analysis
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Audit API, UI, configuration, Helm and documentation contracts
+        id: audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target
+          report=target/pr795-release-completeness.md
+          failures=()
+          passes=()
+
+          check() {
+            local label=$1
+            shift
+            if "$@"; then
+              passes+=("$label")
+            else
+              failures+=("$label")
+            fi
+          }
+
+          check 'manual requirement Copilot start route exists' \
+            grep -R -Fq '@PostMapping("/requirements/{requirementId}/copilot")' \
+              taxonomy-app/src/main/java/com/taxonomy/portfolio/controller
+          check 'recoverable latest-operation route exists' \
+            grep -R -Fq '@GetMapping("/requirements/{requirementId}/copilot/latest")' \
+              taxonomy-app/src/main/java/com/taxonomy/portfolio/controller
+          check 'persisted operation read route exists' \
+            grep -R -Fq '@GetMapping("/copilot-operations/{operationId}")' \
+              taxonomy-app/src/main/java/com/taxonomy/portfolio/controller
+          check 'persisted operation cancellation route exists' \
+            grep -R -Fq '@PostMapping("/copilot-operations/{operationId}/cancel")' \
+              taxonomy-app/src/main/java/com/taxonomy/portfolio/controller
+          check 'project-wide Autopilot status route exists' \
+            grep -R -Eq '@GetMapping\("/autopilot"\)|@GetMapping\(path = "/autopilot"' \
+              taxonomy-app/src/main/java/com/taxonomy/portfolio/controller
+          check 'project-wide Autopilot run route exists' \
+            grep -R -Eq '@PostMapping\("/autopilot/run"\)|@PostMapping\(path = "/autopilot/run"' \
+              taxonomy-app/src/main/java/com/taxonomy/portfolio/controller
+
+          check 'Copilot browser API is referenced outside its own declaration' \
+            bash -c 'matches=$(grep -R -l -F "TaxonomyCopilotApi" taxonomy-app/src/main/resources/static taxonomy-app/src/main/resources/templates 2>/dev/null | grep -v "/api/copilot-api.js$" || true); [[ -n "$matches" ]]'
+          check 'requirement Copilot UI module is loaded by a page or bundle' \
+            bash -c 'matches=$(grep -R -l -F "requirement-copilot.js" taxonomy-app/src/main/resources/static taxonomy-app/src/main/resources/templates 2>/dev/null | grep -v "/portfolio/requirement-copilot.js$" || true); [[ -n "$matches" ]]'
+          check 'requirement detail UI exposes a dedicated full-analysis action' \
+            grep -R -Eq 'Copilot full analysis|copilot.*full.*analysis|requirementCopilot' \
+              taxonomy-app/src/main/resources/templates taxonomy-app/src/main/resources/static
+
+          properties=taxonomy-app/src/main/resources/application.properties
+          check 'application properties expose fail-closed AI cost policy' \
+            grep -Fq 'taxonomy.ai.cost-policy' "$properties"
+          check 'application properties expose explicit Autopilot enable switch' \
+            grep -Fq 'taxonomy.ai.autopilot.enabled' "$properties"
+          check 'application properties expose bounded verification passes' \
+            grep -Fq 'taxonomy.ai.autopilot.verification-passes' "$properties"
+          check 'application properties expose architecture-node ceiling' \
+            grep -Fq 'taxonomy.ai.max-architecture-nodes' "$properties"
+
+          check '.env.example documents the cost-policy opt-in' \
+            grep -Fq 'TAXONOMY_AI_COST_POLICY' .env.example
+          check '.env.example documents the Autopilot enable switch' \
+            grep -Fq 'TAXONOMY_AI_AUTOPILOT_ENABLED' .env.example
+          check '.env.example documents the explicit Autopilot provider' \
+            grep -Fq 'TAXONOMY_AI_AUTOPILOT_PROVIDER' .env.example
+          check '.env.example documents pass and node bounds' \
+            bash -c 'grep -Fq TAXONOMY_AI_AUTOPILOT_VERIFICATION_PASSES .env.example && grep -Fq TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES .env.example'
+
+          check 'Helm values expose AI cost policy and disabled Autopilot defaults' \
+            bash -c 'grep -R -Fq TAXONOMY_AI_COST_POLICY deploy/helm/taxonomy && grep -R -Fq TAXONOMY_AI_AUTOPILOT_ENABLED deploy/helm/taxonomy'
+          check 'Helm templates pass the explicit Autopilot provider' \
+            grep -R -Fq 'TAXONOMY_AI_AUTOPILOT_PROVIDER' deploy/helm/taxonomy/templates
+          check 'Helm templates pass pass-count and architecture-node bounds' \
+            bash -c 'grep -R -Fq TAXONOMY_AI_AUTOPILOT_VERIFICATION_PASSES deploy/helm/taxonomy/templates && grep -R -Fq TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES deploy/helm/taxonomy/templates'
+          check 'Helm verification locks metered and disabled defaults' \
+            bash -c 'grep -Fq TAXONOMY_AI_COST_POLICY deploy/helm/taxonomy/verify.sh && grep -Fq TAXONOMY_AI_AUTOPILOT_ENABLED deploy/helm/taxonomy/verify.sh'
+
+          check 'English documentation explains UNMETERED plus explicit enablement' \
+            bash -c 'grep -R -Eqi "UNMETERED.*AUTOPILOT|AUTOPILOT.*UNMETERED" docs README.md && grep -R -Fqi TAXONOMY_AI_AUTOPILOT_ENABLED docs README.md'
+          check 'German documentation explains the human-review boundary' \
+            bash -c 'grep -R -Eqi "menschliche.*prüfung|menschliche.*freigabe|mensch.*prüf" docs && grep -R -Eqi "beschaffung|produkt.*auswahl|architektur.*freigabe" docs'
+          check 'documentation does not describe custom endpoints as implicitly free' \
+            bash -c '! grep -R -Eqi "custom.{0,30}(free|kostenlos)|operator.{0,30}(free|kostenlos)" docs README.md'
+
+          {
+            echo '## PR #795 release-completeness audit'
+            echo
+            echo "Exact head: \`$(git rev-parse HEAD)\`"
+            echo
+            echo '### Passed contracts'
+            if ((${#passes[@]} == 0)); then
+              echo '- none'
+            else
+              printf -- '- %s\n' "${passes[@]}"
+            fi
+            echo
+            echo '### Missing or unproven contracts'
+            if ((${#failures[@]} == 0)); then
+              echo '- none'
+            else
+              printf -- '- %s\n' "${failures[@]}"
+            fi
+            echo
+            echo "Result: **$( ((${#failures[@]} == 0)) && echo PASS || echo FAIL )**"
+          } > "$report"
+
+          cat "$report"
+          echo "failure_count=${#failures[@]}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the exact audit on PR 795
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/795/comments" \
+            -f body="$(cat target/pr795-release-completeness.md)"
+
+      - name: Fail closed when release claims are incomplete
+        if: steps.audit.outputs.failure_count != '0'
+        shell: bash
+        run: |
+          echo "::error::PR 795 does not yet satisfy every advertised release contract" >&2
+          exit 1
+
+      - name: Delete the temporary automation branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/audit-pr795-release-completeness-20260818" \
+            || true
