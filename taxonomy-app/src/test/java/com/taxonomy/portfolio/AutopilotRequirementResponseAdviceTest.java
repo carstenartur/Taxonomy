@@ -80,9 +80,10 @@ class AutopilotRequirementResponseAdviceTest {
         AutopilotRequirementResponseAdvice advice = advice(true, true);
         HttpHeaders headers = requestAndResponse("/api/projects/41/requirements");
         String operationId = "c".repeat(64);
+        CopilotOperationView operation = operation(operationId);
         when(automationService.tryAutopilot(
                 41L, 7L, context.username(), context))
-                .thenReturn(Optional.of(operation(operationId)));
+                .thenReturn(Optional.of(operation));
 
         RequirementView body = requirement(7L);
         advice.beforeBodyWrite(
