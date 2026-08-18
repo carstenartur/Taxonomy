@@ -91,7 +91,6 @@ Before immutable artifacts are built, the release workflow requires the same unc
 - PostgreSQL compatibility;
 - Oracle compatibility;
 - Microsoft SQL Server compatibility;
-- JGit storage consumer compatibility;
 - CodeQL source analysis;
 - Security Scan.
 
