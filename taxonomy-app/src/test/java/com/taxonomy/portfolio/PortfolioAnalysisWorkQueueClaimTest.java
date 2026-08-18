@@ -8,6 +8,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioScope;
@@ -16,6 +17,7 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.jpa.repository.EntityGraph;
 
 import java.util.List;
 import java.util.UUID;
@@ -95,5 +97,21 @@ class PortfolioAnalysisWorkQueueClaimTest {
                 job.id(), project.id(), context.username(), context).items())
                 .singleElement()
                 .satisfies(item -> assertThat(item.status()).isEqualTo(AnalysisStatus.RUNNING));
+    }
+
+    @Test
+    void pendingCandidateQueryFetchesTheCompleteWorkerPayload() throws Exception {
+        var method = RequirementAnalysisJobItemRepository.class.getMethod(
+                "findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc",
+                String.class,
+                Long.class,
+                String.class,
+                AnalysisStatus.class);
+
+        EntityGraph graph = method.getAnnotation(EntityGraph.class);
+
+        assertThat(graph).isNotNull();
+        assertThat(graph.attributePaths())
+                .containsExactlyInAnyOrder("requirement", "requirementVersion");
     }
 }
