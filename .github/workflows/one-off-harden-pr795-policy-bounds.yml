@@ -1,0 +1,379 @@
+name: One-off harden PR 795 fail-closed policy bounds
+
+on:
+  push:
+    branches:
+      - automation/harden-pr795-policy-bounds-20260818
+    paths:
+      - .github/workflows/one-off-harden-pr795-policy-bounds.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: taxonomy-one-off-pr795-policy-hardening
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    if: github.event.head_commit.message == 'chore(agent): stage PR 795 fail-closed policy hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Wait for rebased operation-consistency hardening
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 330); do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/795")
+            if [[ "$(jq -r '.state' <<<"$pr")" != open ]]; then
+              echo "::error::PR 795 is no longer open" >&2
+              exit 1
+            fi
+            head_sha=$(jq -r '.head.sha' <<<"$pr")
+            if [[ "$(jq -r '.base.ref' <<<"$pr")" == main ]]; then
+              source=$(gh api "repos/${GITHUB_REPOSITORY}/contents/taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java?ref=${head_sha}" --jq '.content' | base64 --decode)
+              compare=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${head_sha}")
+              if grep -Fq 'Copilot operation contains duplicate pass' <<<"$source" \
+                  && [[ "$(jq -r '.behind_by' <<<"$compare")" == 0 ]]; then
+                ready=true
+                break
+              fi
+            fi
+            sleep 10
+          done
+          test "$ready" = true
+
+      - name: Check out exact PR 795 head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/792-copilot-autopilot-full-analysis
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Require an explicit Autopilot provider and enforce node ceilings
+        id: patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          original_head=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/795" --jq '.head.sha')
+          test "$(git rev-parse HEAD)" = "$original_head"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          policy = Path("taxonomy-app/src/main/java/com/taxonomy/portfolio/service/AiAutomationPolicy.java")
+          source = policy.read_text(encoding="utf-8")
+
+          source = source.replace(
+          '''        int nodes = effective.maxArchitectureNodes() != null
+                          ? positive(effective.maxArchitectureNodes(), "maxArchitectureNodes")
+                          : maximumArchitectureNodes;
+          ''',
+          '''        int nodes = effective.maxArchitectureNodes() != null
+                          ? boundedArchitectureNodes(
+                                  effective.maxArchitectureNodes(), "maxArchitectureNodes")
+                          : maximumArchitectureNodes;
+          ''')
+
+          source = source.replace(
+          '''                resolveProvider(autopilotProvider),
+          ''',
+          '''                autopilotProvider,
+          ''', 1)
+
+          old_status = '''        String autoProvider = resolveProvider(autopilotProvider);
+                  boolean autoReady = autopilotReady();
+                  String reason;
+                  if (autoReady) {
+                      reason = "Autopilot is explicitly enabled for an UNMETERED configured provider.";
+                  } else if (!autopilotEnabled) {
+                      reason = "Autopilot is disabled. Set TAXONOMY_AI_AUTOPILOT_ENABLED=true to opt in.";
+                  } else if (costPolicy != AiCostPolicy.UNMETERED) {
+                      reason = "Autopilot requires TAXONOMY_AI_COST_POLICY=UNMETERED.";
+                  } else if (!runAfterRequirementSave) {
+                      reason = "Automatic execution after requirement saves is disabled.";
+                  } else {
+                      reason = providerError(autoProvider);
+                  }
+          '''
+          new_status = '''        String autoProvider = autopilotProvider;
+                  boolean autoReady = autopilotReady();
+                  String reason;
+                  if (autoReady) {
+                      reason = "Autopilot is explicitly enabled for an UNMETERED configured provider; "
+                              + (runAfterRequirementSave
+                                      ? "automatic execution after requirement saves is enabled."
+                                      : "automatic execution after requirement saves is disabled.");
+                  } else if (!autopilotEnabled) {
+                      reason = "Autopilot is disabled. Set TAXONOMY_AI_AUTOPILOT_ENABLED=true to opt in.";
+                  } else if (costPolicy != AiCostPolicy.UNMETERED) {
+                      reason = "Autopilot requires TAXONOMY_AI_COST_POLICY=UNMETERED.";
+                  } else if (autoProvider == null) {
+                      reason = "Autopilot requires an explicit TAXONOMY_AI_AUTOPILOT_PROVIDER.";
+                  } else {
+                      reason = providerError(autoProvider);
+                  }
+          '''
+          if old_status not in source and new_status not in source:
+              raise SystemExit("Expected AiAutomationPolicy status block was not found")
+          source = source.replace(old_status, new_status)
+
+          old_ready = '''    public boolean autopilotReady() {
+                  return autopilotEnabled
+                          && runAfterRequirementSave
+                          && costPolicy == AiCostPolicy.UNMETERED
+                          && isProviderReady(resolveProvider(autopilotProvider));
+              }
+          '''
+          new_ready = '''    public boolean autopilotReady() {
+                  return autopilotEnabled
+                          && costPolicy == AiCostPolicy.UNMETERED
+                          && autopilotProvider != null
+                          && isProviderReady(autopilotProvider);
+              }
+          '''
+          if old_ready not in source and new_ready not in source:
+              raise SystemExit("Expected AiAutomationPolicy readiness block was not found")
+          source = source.replace(old_ready, new_ready)
+
+          old_positive = '''    private static int positive(int value, String field) {
+                  if (value < 1) {
+                      throw PortfolioException.validation(field + " must be at least 1");
+                  }
+                  return value;
+              }
+          '''
+          new_positive = '''    private int boundedArchitectureNodes(int value, String field) {
+                  if (value < 1) {
+                      throw PortfolioException.validation(field + " must be at least 1");
+                  }
+                  if (value > maximumArchitectureNodes) {
+                      throw PortfolioException.validation(
+                              field + " must not exceed the configured maximum of "
+                                      + maximumArchitectureNodes);
+                  }
+                  return value;
+              }
+          '''
+          if old_positive not in source and new_positive not in source:
+              raise SystemExit("Expected AiAutomationPolicy positive-node block was not found")
+          source = source.replace(old_positive, new_positive)
+          policy.write_text(source, encoding="utf-8")
+
+          advice = Path("taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/AutopilotRequirementResponseAdvice.java")
+          advice_source = advice.read_text(encoding="utf-8")
+          old_advice = '''        if (!automationService.status().autopilotReady()) return body;
+          '''
+          new_advice = '''        var automation = automationService.status();
+                  if (!automation.autopilotReady()
+                          || !automation.runAfterRequirementSave()) {
+                      return body;
+                  }
+          '''
+          if old_advice not in advice_source and new_advice not in advice_source:
+              raise SystemExit("Expected Autopilot response-advice policy guard was not found")
+          advice.write_text(advice_source.replace(old_advice, new_advice), encoding="utf-8")
+
+          test = Path("taxonomy-app/src/test/java/com/taxonomy/portfolio/AiAutomationFailClosedPolicyTest.java")
+          test.write_text('''package com.taxonomy.portfolio;
+
+          import com.taxonomy.analysis.service.LlmProvider;
+          import com.taxonomy.analysis.service.LlmProviderConfig;
+          import com.taxonomy.portfolio.controller.AutopilotRequirementResponseAdvice;
+          import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
+          import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
+          import com.taxonomy.portfolio.model.AiCostPolicy;
+          import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
+          import com.taxonomy.portfolio.service.AiAutomationPolicy;
+          import com.taxonomy.portfolio.service.CopilotAutomationService;
+          import com.taxonomy.portfolio.service.PortfolioException;
+          import com.taxonomy.workspace.service.WorkspaceResolver;
+          import org.junit.jupiter.api.Test;
+          import org.junit.jupiter.api.extension.ExtendWith;
+          import org.mockito.Mock;
+          import org.mockito.junit.jupiter.MockitoExtension;
+
+          import java.util.List;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+          import static org.assertj.core.api.Assertions.assertThatThrownBy;
+          import static org.mockito.Mockito.verifyNoInteractions;
+          import static org.mockito.Mockito.when;
+
+          @ExtendWith(MockitoExtension.class)
+          class AiAutomationFailClosedPolicyTest {
+
+              @Mock private LlmProviderConfig providerConfig;
+              @Mock private CopilotAutomationService automationService;
+              @Mock private WorkspaceResolver workspaceResolver;
+
+              @Test
+              void enabledUnmeteredAutopilotStillNeedsAnExplicitProvider() {
+                  readyActiveProvider();
+                  AiAutomationPolicy policy = policy(true, true, " ", 50);
+
+                  assertThat(policy.status().autopilotReady()).isFalse();
+                  assertThat(policy.status().autopilotProvider()).isNull();
+                  assertThat(policy.status().reason())
+                          .contains("TAXONOMY_AI_AUTOPILOT_PROVIDER");
+                  assertThatThrownBy(policy::autopilot)
+                          .isInstanceOf(PortfolioException.class)
+                          .hasMessageContaining("TAXONOMY_AI_AUTOPILOT_PROVIDER");
+              }
+
+              @Test
+              void disablingTheSaveHookDoesNotDisableExplicitAutopilotRuns() {
+                  readyActiveProvider();
+                  AiAutomationPolicy policy = policy(true, false, "CUSTOM_OPENAI", 50);
+
+                  assertThat(policy.status().autopilotReady()).isTrue();
+                  assertThat(policy.status().runAfterRequirementSave()).isFalse();
+                  assertThat(policy.autopilot().provider()).isEqualTo("CUSTOM_OPENAI");
+              }
+
+              @Test
+              void manualRunsCannotExceedTheConfiguredArchitectureNodeCeiling() {
+                  readyActiveProvider();
+                  AiAutomationPolicy policy = policy(false, false, null, 50);
+                  CopilotRunRequest request = new CopilotRunRequest(
+                          null, 51, null, null, null, null, null);
+
+                  assertThatThrownBy(() -> policy.manual(request))
+                          .isInstanceOf(PortfolioException.class)
+                          .hasMessageContaining("configured maximum of 50");
+              }
+
+              @Test
+              void manualRunsMayUseTheExactConfiguredCeiling() {
+                  readyActiveProvider();
+                  AiAutomationPolicy policy = policy(false, false, null, 50);
+                  CopilotRunRequest request = new CopilotRunRequest(
+                          null, 50, null, null, null, null, null);
+
+                  assertThat(policy.manual(request).maxArchitectureNodes()).isEqualTo(50);
+              }
+
+              @Test
+              void disabledSaveHookDoesNotResolveWorkspaceOrQueueAutopilot() {
+                  AiAutomationStatus status = new AiAutomationStatus(
+                          AiCostPolicy.UNMETERED,
+                          true,
+                          true,
+                          true,
+                          false,
+                          "CUSTOM_OPENAI",
+                          "CUSTOM_OPENAI",
+                          AnalysisAutomationProfile.FULL,
+                          AnalysisAutomationProfile.EXHAUSTIVE,
+                          1,
+                          2,
+                          50,
+                          "ready",
+                          List.of(),
+                          List.of());
+                  when(automationService.status()).thenReturn(status);
+                  AutopilotRequirementResponseAdvice advice =
+                          new AutopilotRequirementResponseAdvice(
+                                  automationService, workspaceResolver);
+                  Object body = new Object();
+
+                  assertThat(advice.beforeBodyWrite(
+                          body, null, null, null, null, null)).isSameAs(body);
+                  verifyNoInteractions(workspaceResolver);
+              }
+
+              private AiAutomationPolicy policy(
+                      boolean enabled,
+                      boolean runAfterSave,
+                      String provider,
+                      int maxNodes) {
+                  return new AiAutomationPolicy(
+                          providerConfig,
+                          "UNMETERED",
+                          "FULL",
+                          "EXHAUSTIVE",
+                          1,
+                          2,
+                          maxNodes,
+                          enabled,
+                          runAfterSave,
+                          provider,
+                          true,
+                          true,
+                          1800);
+              }
+
+              private void readyActiveProvider() {
+                  when(providerConfig.isMockMode()).thenReturn(false);
+                  when(providerConfig.getActiveProvider())
+                          .thenReturn(LlmProvider.CUSTOM_OPENAI);
+                  when(providerConfig.isProviderConfigured(LlmProvider.CUSTOM_OPENAI))
+                          .thenReturn(true);
+              }
+          }
+          ''', encoding="utf-8")
+          PY
+
+          git diff --check
+          git config user.name 'ChatGPT Release Integration'
+          git config user.email 'chatgpt-release-integration@users.noreply.github.com'
+          git add taxonomy-app/src/main/java/com/taxonomy/portfolio/service/AiAutomationPolicy.java \
+                  taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/AutopilotRequirementResponseAdvice.java \
+                  taxonomy-app/src/test/java/com/taxonomy/portfolio/AiAutomationFailClosedPolicyTest.java
+          changed=false
+          if ! git diff --cached --quiet; then
+            git commit -m 'Make Copilot and Autopilot policy fail closed'
+            changed=true
+          fi
+          echo "original_head=$original_head" >> "$GITHUB_OUTPUT"
+          echo "patched_head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Run focused AI policy and operation tests
+        shell: bash
+        run: |
+          ./mvnw -B -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=AiAutomationFailClosedPolicyTest,AiAutomationPolicyTest,CopilotOperationConsistencyTest,CopilotAutomationCancellationTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+      - name: Push only if the PR head stayed unchanged
+        if: steps.patch.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_HEAD: ${{ steps.patch.outputs.original_head }}
+          PATCHED_HEAD: ${{ steps.patch.outputs.patched_head }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PATCHED_HEAD"
+          remote_head=$(git ls-remote origin refs/heads/agent/792-copilot-autopilot-full-analysis | awk '{print $1}')
+          test "$remote_head" = "$ORIGINAL_HEAD"
+          git push origin HEAD:agent/792-copilot-autopilot-full-analysis
+
+      - name: Record fail-closed policy evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PATCHED_HEAD: ${{ steps.patch.outputs.patched_head }}
+        shell: bash
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/795/comments" \
+            -f body="Fail-closed AI policy verified at \`${PATCHED_HEAD}\`: Autopilot now requires an explicit configured provider even when the active provider is ready; disabling the save hook no longer disables explicit Autopilot; automatic save dispatch still honors that hook; and manual Copilot runs cannot exceed the configured architecture-node ceiling. Focused policy, operation and cancellation tests passed."
+
+      - name: Delete the temporary automation branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/harden-pr795-policy-bounds-20260818" \
+            || true
