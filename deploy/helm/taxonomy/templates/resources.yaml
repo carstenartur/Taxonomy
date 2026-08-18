@@ -23,16 +23,13 @@ spec:
   replicas: {{ .Values.replicaCount }}
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
   progressDeadlineSeconds: {{ .Values.progressDeadlineSeconds }}
-  {{- if .Values.persistence.enabled }}
   strategy:
-    type: Recreate
-  {{- else }}
-  strategy:
-    type: RollingUpdate
+    type: {{ .Values.upgrade.strategy }}
+    {{- if eq .Values.upgrade.strategy "RollingUpdate" }}
     rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
-  {{- end }}
+      maxUnavailable: {{ .Values.upgrade.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.upgrade.rollingUpdate.maxSurge }}
+    {{- end }}
   selector:
     matchLabels:
       {{- include "taxonomy.selectorLabels" . | nindent 6 }}
