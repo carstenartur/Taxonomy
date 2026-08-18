@@ -25,9 +25,11 @@ expect_failure() {
   shift
   local log_file="${TMP_DIR}/failure.log"
   if "$@" >"${log_file}" 2>&1; then
-    echo "Expected failure was accepted: ${description}" >&2
+    echo "Expected failure was not observed: ${description}" >&2
+    cat "${log_file}" >&2
     return 1
   fi
+  echo "Expected failure observed: ${description}"
 }
 
 helm lint "${CHART_DIR}" "${COMMON_VALUES[@]}"

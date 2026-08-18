@@ -39,7 +39,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- $appVersion := .Chart.AppVersion | default "" -}}
 {{- $releaseAppVersion := regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$" $appVersion -}}
-{{- $deriveReleaseTag := and (empty $configuredTag) (empty $digest) $releaseAppVersion -}}
+{{- $snapshotAppVersion := contains "SNAPSHOT" (upper $appVersion) -}}
+{{- $deriveReleaseTag := and (empty $configuredTag) (empty $digest) $releaseAppVersion (not $snapshotAppVersion) -}}
 {{- $derivedTag := ternary (printf "v%s" $appVersion) "" $deriveReleaseTag -}}
 {{- $tag := default $derivedTag $configuredTag -}}
 {{- if $digest -}}
@@ -50,8 +51,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- else -}}
 {{- $requiredTag := required "image.tag or image.digest is required; packaged releases derive v<appVersion> automatically" $tag -}}
 {{- $releaseTag := regexMatch "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$" $requiredTag -}}
+{{- $snapshotTag := contains "SNAPSHOT" (upper $requiredTag) -}}
 {{- $commitTag := regexMatch "^sha-[0-9a-f]{7,40}$" $requiredTag -}}
-{{- if not (or $releaseTag $commitTag) -}}
+{{- if or $snapshotTag (not (or $releaseTag $commitTag)) -}}
 {{- fail "image.tag must be an immutable release tag (vX.Y.Z with optional Docker-safe prerelease suffix) or sha-<7-40 lowercase hex commit>" -}}
 {{- end -}}
 {{- printf "%s:%s" .Values.image.repository $requiredTag -}}
