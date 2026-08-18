@@ -10,25 +10,41 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
+import java.util.Objects;
 
-/** Immutable text/provenance version of a project requirement. */
+/** Immutable text/provenance version of a project requirement in one exact tenant. */
 @Entity
 @Table(name = "project_req_version", indexes = {
-        @Index(name = "idx_reqver_req", columnList = "requirement_id"),
-        @Index(name = "idx_reqver_hash", columnList = "requirement_id,content_hash")
+        @Index(name = "idx_reqver_req", columnList = "scope_key,requirement_id"),
+        @Index(name = "idx_reqver_scope", columnList = "scope_key")
 }, uniqueConstraints = {
-        @UniqueConstraint(name = "uq_reqver_number", columnNames = {"requirement_id", "version_number"}),
-        @UniqueConstraint(name = "uq_reqver_hash", columnNames = {"requirement_id", "content_hash"})
+        @UniqueConstraint(name = "uq_reqver_number",
+                columnNames = {"scope_key", "requirement_id", "version_number"}),
+        @UniqueConstraint(name = "uq_reqver_hash",
+                columnNames = {"scope_key", "requirement_id", "content_hash"}),
+        @UniqueConstraint(name = "uq_reqver_id_scope", columnNames = {"id", "scope_key"}),
+        @UniqueConstraint(name = "uq_reqver_id_req_scope",
+                columnNames = {"id", "requirement_id", "scope_key"})
 })
 public class ProjectRequirementVersion {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "scope_key", nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    /** Read-only scalar parent identity for scoped queries without initializing the association. */
+    @Column(name = "requirement_id", nullable = false, insertable = false, updatable = false)
+    private Long requirementId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "requirement_id", nullable = false)
@@ -103,9 +119,47 @@ public class ProjectRequirementVersion {
         this.sectionReference = sectionReference;
         this.pageNumber = pageNumber;
         this.originalText = originalText;
+        synchronizeTenantAuthority(false);
+    }
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+        synchronizeTenantAuthority(true);
+    }
+
+    private void synchronizeTenantAuthority(boolean requirePersistentParent) {
+        if (requirement == null || requirement.getScopeKey() == null
+                || requirement.getScopeKey().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Requirement version must reference an exact requirement tenant");
+        }
+        String requirementScope = requirement.getScopeKey().strip();
+        if (scopeKey != null && !scopeKey.isBlank()
+                && !requirementScope.equals(scopeKey.strip())) {
+            throw new IllegalArgumentException(
+                    "Requirement version tenant scope does not match its requirement");
+        }
+        scopeKey = requirementScope;
+
+        Long persistentRequirementId = requirement.getId();
+        if (persistentRequirementId == null) {
+            if (requirePersistentParent) {
+                throw new IllegalArgumentException(
+                        "Requirement must be persisted before its version");
+            }
+            return;
+        }
+        if (requirementId != null && !Objects.equals(requirementId, persistentRequirementId)) {
+            throw new IllegalArgumentException(
+                    "Requirement version parent ID does not match its association");
+        }
+        requirementId = persistentRequirementId;
     }
 
     public Long getId() { return id; }
+    public String getScopeKey() { return scopeKey; }
+    public Long getRequirementId() { return requirementId; }
     public ProjectRequirement getRequirement() { return requirement; }
     public int getVersionNumber() { return versionNumber; }
     public String getText() { return text; }

@@ -35,7 +35,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Application service for workspace-isolated projects and immutable requirement versions. */
+/** Application service for exact-tenant projects and immutable requirement versions. */
 @Service
 public class ProjectPortfolioService {
 
@@ -155,8 +155,12 @@ public class ProjectPortfolioService {
                                              WorkspaceContext context) {
         requireNonNull(request, "requirement request");
         ArchitectureProject project = requireProject(projectId, username, context);
+        String scopeKey = project.getScopeKey();
         String requirementKey = normalizeBusinessKey(request.requirementKey(), "requirementKey");
-        if (requirementRepository.findByProjectIdAndRequirementKeyIgnoreCase(projectId, requirementKey).isPresent()) {
+        if (requirementRepository
+                .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(
+                        projectId, scopeKey, requirementKey)
+                .isPresent()) {
             throw PortfolioException.conflict(
                     "Requirement key already exists in project " + project.getProjectKey() + ": " + requirementKey);
         }
@@ -224,8 +228,11 @@ public class ProjectPortfolioService {
     public List<RequirementView> listRequirements(Long projectId,
                                                   String username,
                                                   WorkspaceContext context) {
-        requireProject(projectId, username, context);
-        return requirementRepository.findByProjectIdOrderByRequirementKeyAsc(projectId).stream()
+        ArchitectureProject project = requireProject(projectId, username, context);
+        return requirementRepository
+                .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(
+                        projectId, project.getScopeKey())
+                .stream()
                 .map(requirement -> toRequirementView(requirement, currentVersion(requirement)))
                 .toList();
     }
@@ -269,17 +276,21 @@ public class ProjectPortfolioService {
         requireNonNull(request, "requirement version request");
         ProjectRequirement requirement = requireRequirementForUpdate(
                 projectId, requirementId, username, context);
+        String scopeKey = requirement.getScopeKey();
         String text = requireText(request.text(), "text", 100_000);
         String contentHash = fingerprintService.contentFingerprint(text);
         ProjectRequirementVersion existing = versionRepository
-                .findByRequirementIdAndContentHash(requirementId, contentHash)
+                .findByRequirementIdAndScopeKeyAndContentHash(
+                        requirementId, scopeKey, contentHash)
                 .orElse(null);
         if (existing != null) {
             requirement.pointToVersion(existing.getId(), Instant.now());
             return toVersionView(existing);
         }
 
-        int nextVersion = versionRepository.findFirstByRequirementIdOrderByVersionNumberDesc(requirementId)
+        int nextVersion = versionRepository
+                .findFirstByRequirementIdAndScopeKeyOrderByVersionNumberDesc(
+                        requirementId, scopeKey)
                 .map(last -> last.getVersionNumber() + 1)
                 .orElse(1);
         Instant now = Instant.now();
@@ -301,8 +312,11 @@ public class ProjectPortfolioService {
                                                                Long requirementId,
                                                                String username,
                                                                WorkspaceContext context) {
-        requireRequirement(projectId, requirementId, username, context);
-        return versionRepository.findByRequirementIdOrderByVersionNumberDesc(requirementId)
+        ProjectRequirement requirement = requireRequirement(
+                projectId, requirementId, username, context);
+        return versionRepository
+                .findByRequirementIdAndScopeKeyOrderByVersionNumberDesc(
+                        requirementId, requirement.getScopeKey())
                 .stream().map(this::toVersionView).toList();
     }
 
@@ -320,9 +334,11 @@ public class ProjectPortfolioService {
                                                  Long requirementId,
                                                  String username,
                                                  WorkspaceContext context) {
-        requireProject(projectId, username, context);
+        ArchitectureProject project = requireProject(projectId, username, context);
         if (requirementId == null) throw PortfolioException.validation("requirementId is required");
-        return requirementRepository.findByIdAndProjectId(requirementId, projectId)
+        return requirementRepository
+                .findByIdAndProjectIdAndScopeKey(
+                        requirementId, projectId, project.getScopeKey())
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Requirement " + requirementId + " was not found in project " + projectId));
     }
@@ -331,9 +347,11 @@ public class ProjectPortfolioService {
                                                            Long requirementId,
                                                            String username,
                                                            WorkspaceContext context) {
-        requireProject(projectId, username, context);
+        ArchitectureProject project = requireProject(projectId, username, context);
         if (requirementId == null) throw PortfolioException.validation("requirementId is required");
-        return requirementRepository.findByIdAndProjectIdForUpdate(requirementId, projectId)
+        return requirementRepository
+                .findByIdAndProjectIdAndScopeKeyForUpdate(
+                        requirementId, projectId, project.getScopeKey())
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Requirement " + requirementId + " was not found in project " + projectId));
     }
@@ -341,20 +359,25 @@ public class ProjectPortfolioService {
     @Transactional(readOnly = true)
     public ProjectRequirementVersion currentVersion(ProjectRequirement requirement) {
         Objects.requireNonNull(requirement, "requirement");
+        String scopeKey = requirement.getScopeKey();
         if (requirement.getCurrentVersionId() != null) {
-            return versionRepository.findByIdAndRequirementId(
-                            requirement.getCurrentVersionId(), requirement.getId())
+            return versionRepository.findByIdAndRequirementIdAndScopeKey(
+                            requirement.getCurrentVersionId(), requirement.getId(), scopeKey)
                     .orElseThrow(() -> PortfolioException.notFound(
                             "Current requirement version not found: " + requirement.getCurrentVersionId()));
         }
-        return versionRepository.findFirstByRequirementIdOrderByVersionNumberDesc(requirement.getId())
+        return versionRepository
+                .findFirstByRequirementIdAndScopeKeyOrderByVersionNumberDesc(
+                        requirement.getId(), scopeKey)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Requirement has no text version: " + requirement.getRequirementKey()));
     }
 
     @Transactional(readOnly = true)
     public ProjectView toProjectView(ArchitectureProject project) {
-        int requirementCount = Math.toIntExact(requirementRepository.countByProjectId(project.getId()));
+        int requirementCount = Math.toIntExact(
+                requirementRepository.countByProjectIdAndScopeKey(
+                        project.getId(), project.getScopeKey()));
         int solutionCount = Math.toIntExact(projectSolutionRepository.countByProjectId(project.getId()));
         int openConflicts = Math.toIntExact(conflictRepository.countByProjectIdAndStatusNotIn(
                 project.getId(), CLOSED_CONFLICT_STATUSES));
