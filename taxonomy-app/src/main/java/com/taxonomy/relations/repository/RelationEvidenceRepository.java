@@ -9,5 +9,10 @@ import java.util.List;
 @Repository
 public interface RelationEvidenceRepository extends JpaRepository<RelationEvidence, Long> {
 
-    List<RelationEvidence> findByHypothesisId(Long hypothesisId);
+    List<RelationEvidence>
+            findByHypothesisIdAndRepositoryIdAndWorkspaceScopeKeyAndBranchNameOrderByIdAsc(
+                    Long hypothesisId,
+                    String repositoryId,
+                    String workspaceScopeKey,
+                    String branchName);
 }
