@@ -1,0 +1,137 @@
+name: One-off guarded rebase of PR 795 after PR 792
+
+on:
+  push:
+    branches:
+      - automation/rebase-pr795-after-792-20260818
+    paths:
+      - .github/workflows/one-off-rebase-pr795-after-792.yml
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: taxonomy-one-off-rebase-pr795-after-pr792
+  cancel-in-progress: false
+
+jobs:
+  rebase:
+    if: github.event.head_commit.message == 'chore(agent): stage guarded PR 795 rebase'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Wait for the guarded PR 792 merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          merged=false
+          for attempt in $(seq 1 240); do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/792")
+            merged_at=$(jq -r '.merged_at // empty' <<<"$pr")
+            if [[ -n "$merged_at" ]]; then
+              merged=true
+              break
+            fi
+            if [[ "$(jq -r '.state' <<<"$pr")" == closed ]]; then
+              echo "::error::PR 792 closed without merging" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          test "$merged" = true
+
+      - name: Check out the exact PR 795 branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/792-copilot-autopilot-full-analysis
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Rebase only the Copilot commits onto protected main
+        id: rebase
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_STACK_BASE: 31f0ea23491c19798a4175af44889be841d775ea
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/795")
+          original_head=$(jq -r '.head.sha' <<<"$pr")
+          test "$(git rev-parse HEAD)" = "$original_head"
+          test "$(jq -r '.head.ref' <<<"$pr")" = agent/792-copilot-autopilot-full-analysis
+          test "$(jq -r '.state' <<<"$pr")" = open
+          git merge-base --is-ancestor "$ORIGINAL_STACK_BASE" HEAD
+
+          git config user.name 'ChatGPT Release Integration'
+          git config user.email 'chatgpt-release-integration@users.noreply.github.com'
+          git fetch origin main
+
+          set +e
+          git rebase --onto origin/main "$ORIGINAL_STACK_BASE" HEAD
+          rebase_exit=$?
+          set -e
+          if [[ $rebase_exit -ne 0 ]]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            body=$(printf 'The guarded #795 rebase onto current `main` stopped without pushing because these conflicts require an explicit resolution:\n\n```text\n%s\n```' "$(printf '%s\n' "${conflicts[@]}")")
+            gh api "repos/${GITHUB_REPOSITORY}/issues/795/comments" -f body="$body"
+            git rebase --abort || true
+            exit 1
+          fi
+
+          while IFS= read -r workflow; do
+            [[ -n "$workflow" ]] || continue
+            if grep -Eqi 'one-off.*(copilot|795)|agent/792-copilot-autopilot-full-analysis' "$workflow"; then
+              git rm "$workflow"
+            fi
+          done < <(git ls-files '.github/workflows/one-off-*')
+          if ! git diff --cached --quiet; then
+            git commit -m 'Remove one-off Copilot verification workflows'
+          fi
+
+          git diff --check origin/main...HEAD
+          echo "original_head=$original_head" >> "$GITHUB_OUTPUT"
+          echo "rebased_head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify JavaScript and focused Copilot contracts
+        shell: bash
+        run: |
+          node --check taxonomy-app/src/main/resources/static/js/api/copilot-api.js
+          node --check taxonomy-app/src/main/resources/static/js/api/portfolio-api.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          ./mvnw -B -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=AiAutomationPolicyTest,CopilotOperationKeyTest,CopilotResultSelectorTest,CopilotAnalysisControllerTest,RequirementCopilotUiContractTest,CopilotAutomationCancellationTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+      - name: Push with an exact force-with-lease and retarget to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_HEAD: ${{ steps.rebase.outputs.original_head }}
+          REBASED_HEAD: ${{ steps.rebase.outputs.rebased_head }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$REBASED_HEAD"
+          remote_head=$(git ls-remote origin refs/heads/agent/792-copilot-autopilot-full-analysis | awk '{print $1}')
+          test "$remote_head" = "$ORIGINAL_HEAD"
+          git push \
+            --force-with-lease=refs/heads/agent/792-copilot-autopilot-full-analysis:"$ORIGINAL_HEAD" \
+            origin HEAD:agent/792-copilot-autopilot-full-analysis
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/795" -f base=main >/dev/null
+          gh api "repos/${GITHUB_REPOSITORY}/issues/795/comments" \
+            -f body="Guarded rebase completed: only the Copilot/Autopilot commits after \`31f0ea23491c19798a4175af44889be841d775ea\` were replayed onto current protected \`main\` as \`${REBASED_HEAD}\`. JavaScript syntax and the focused Copilot/cancellation suite passed. The PR remains draft for UI, configuration, documentation and complete exact-head review."
+
+      - name: Delete the temporary automation branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/rebase-pr795-after-792-20260818" \
+            || true
