@@ -1,0 +1,55 @@
+name: One-off analysis artifact model tests
+
+on:
+  push:
+    branches:
+      - agent/743-analysis-artifact-tenancy
+    paths:
+      - .github/workflows/one-off-analysis-artifact-model-tests.yml
+      - taxonomy-app/src/test/java/com/taxonomy/portfolio/model/RequirementRelationMappingTest.java
+      - taxonomy-app/src/test/java/com/taxonomy/portfolio/model/RequirementElementMappingTest.java
+      - taxonomy-app/src/test/java/com/taxonomy/portfolio/model/RequirementAnalysisSnapshotTest.java
+      - taxonomy-app/src/test/java/com/taxonomy/portfolio/model/RequirementAnalysisJobItemTest.java
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-analysis-artifact-model-tests
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.event.head_commit.message == 'Verify analysis artifact model invariants'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/743-analysis-artifact-tenancy
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact test commit parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "32e78d05199f3a6797f31f80c3ee262851b2eb5f"
+          git diff --check HEAD^
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Run exact-tenant model tests
+        shell: bash
+        run: |
+          ./mvnw -B -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtaxonomy.model.download.skip=true \
+            -Dtest=RequirementRelationMappingTest,RequirementElementMappingTest,RequirementAnalysisSnapshotTest,RequirementAnalysisJobItemTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
