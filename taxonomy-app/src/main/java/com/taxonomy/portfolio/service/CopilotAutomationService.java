@@ -290,6 +290,13 @@ public class CopilotAutomationService {
             String username,
             WorkspaceContext context) {
         if (!operationTerminal(jobs, definition.totalPasses())) return;
+        if (jobs.stream().anyMatch(entry ->
+                entry.job().status() == AnalysisStatus.CANCELLED)) {
+            LOGGER.info(
+                    "Copilot operation {} was cancelled; completed immutable snapshots remain archived without promotion",
+                    definition.operationId());
+            return;
+        }
         List<SnapshotDetail> snapshots = new ArrayList<>();
         for (JobWithKey entry : jobs) {
             if (entry.job().items() == null) continue;
