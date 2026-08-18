@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +37,7 @@ class WorkflowTestAuthorityPolicyTest {
                 "database-compatibility.yml", "database matrix"));
         writeWorkflow(root, "ci-cd.yml", """
                 name: CI
+                # Documentation only: ./mvnw -B verify -Pci
                 jobs:
                   verify:
                     steps:
@@ -55,7 +57,7 @@ class WorkflowTestAuthorityPolicyTest {
                 .anyMatch(error -> error.contains("direct Maven executable"))
                 .anyMatch(error -> error.contains("workflow-owned Java test selection"))
                 .anyMatch(error -> error.contains(
-                        "ci-cd.yml must invoke the canonical Maven command unchanged"))
+                        "canonical Maven command in a run step"))
                 .anyMatch(error -> error.contains("database-mssql"))
                 .anyMatch(error -> error.contains("database-oracle"));
     }
@@ -133,7 +135,8 @@ class WorkflowTestAuthorityPolicyTest {
                   verify:
                     steps:
                       - run: |
-                          ./mvnw -B verify -Pci
+                          ./mvnw -B verify -Pci -DrunOnnxTests=true \\
+                            -DfrontendApiBaseRef=abc123
                 """);
         writeWorkflow(root, "database-compatibility.yml", """
                 name: Database
@@ -158,6 +161,52 @@ class WorkflowTestAuthorityPolicyTest {
                       ./mvnw -B verify -Pci
                 """))
                 .isEqualTo("./mvnw -B verify -Pci");
+    }
+
+    @Test
+    void rejectsCanonicalCommandThatIsOnlyEchoed(@TempDir Path root) throws Exception {
+        writeCatalog(root, Map.of(
+                "ci-cd.yml", "canonical verification",
+                "database-compatibility.yml", "database matrix"));
+        writeCanonicalWorkflows(root);
+        writeWorkflow(root, "ci-cd.yml", """
+                name: CI
+                jobs:
+                  verify:
+                    steps:
+                      - run: echo ./mvnw -B verify -Pci
+                """);
+
+        WorkflowTestAuthorityPolicy.Inspection inspection = policy.inspect(root);
+
+        assertThat(inspection.errors())
+                .anyMatch(error -> error.contains(
+                        "canonical Maven command in a run step"));
+    }
+
+    @Test
+    void acceptsCanonicalCommandAfterSupportedShellSeparators(
+            @TempDir Path root) throws Exception {
+        writeCatalog(root, Map.of(
+                "ci-cd.yml", "canonical verification",
+                "database-compatibility.yml", "database matrix"));
+        writeCanonicalWorkflows(root);
+
+        for (String separator : List.of("&&", "||", ";", "|")) {
+            writeWorkflow(root, "ci-cd.yml", """
+                    name: CI
+                    jobs:
+                      verify:
+                        steps:
+                          - run: echo preparing %s ./mvnw -B verify -Pci
+                    """.formatted(separator));
+
+            WorkflowTestAuthorityPolicy.Inspection inspection = policy.inspect(root);
+
+            assertThat(inspection.errors())
+                    .as("canonical command after shell separator %s", separator)
+                    .isEmpty();
+        }
     }
 
     private void writeCatalog(Path root, Map<String, String> responsibilities)

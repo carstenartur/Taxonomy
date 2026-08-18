@@ -1,0 +1,61 @@
+questions:
+  - variable: existingSecret
+    label: Existing credential Secret
+    description: >-
+      Select a Secret in the target namespace containing SPRING_DATASOURCE_URL,
+      SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD and ADMIN_PASSWORD.
+    type: secret
+    required: true
+    group: Required configuration
+
+  - variable: upgrade.strategy
+    label: Upgrade strategy
+    description: >-
+      Recreate stops the old Taxonomy pod before the new version performs
+      PostgreSQL migrations and is the supported safe default.
+    type: enum
+    default: Recreate
+    options:
+      - Recreate
+      - RollingUpdate
+    required: true
+    group: Upgrade safety
+
+  - variable: upgrade.allowConcurrentApplicationVersions
+    label: Confirm concurrent-version database compatibility
+    description: >-
+      Enable only when the selected release explicitly proves that old and new
+      Taxonomy versions may run while the database schema is being migrated.
+    type: boolean
+    default: false
+    show_if: "upgrade.strategy=RollingUpdate"
+    group: Upgrade safety
+
+  - variable: persistence.enabled
+    label: Persist /app/data
+    description: >-
+      Enable a PVC only for local-filesystem indexes or other deliberate local
+      data. PostgreSQL remains the authoritative application data store.
+    type: boolean
+    default: false
+    group: Storage
+
+  - variable: persistence.storageClass
+    label: Storage class
+    type: storageclass
+    show_if: "persistence.enabled=true"
+    group: Storage
+
+  - variable: persistence.size
+    label: Persistent volume size
+    type: string
+    default: 10Gi
+    show_if: "persistence.enabled=true"
+    group: Storage
+
+  - variable: serviceMonitor.enabled
+    label: Create Prometheus ServiceMonitor
+    description: Requires Prometheus Operator CRDs in the cluster.
+    type: boolean
+    default: false
+    group: Observability

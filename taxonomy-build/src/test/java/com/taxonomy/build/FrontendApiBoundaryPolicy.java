@@ -238,6 +238,9 @@ final class FrontendApiBoundaryPolicy {
 
         Map<String, Integer> counts = new TreeMap<>();
         for (String relative : comparisonPaths) {
+            if (isTransportOwner(relative)) {
+                continue;
+            }
             Optional<String> text = reader.read(
                     baseRef, repositoryPath(relative));
             if (text.isEmpty()) {

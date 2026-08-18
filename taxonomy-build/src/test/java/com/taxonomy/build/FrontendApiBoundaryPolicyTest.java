@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -151,7 +152,7 @@ class FrontendApiBoundaryPolicyTest {
                         return Optional.of("fetch('/old'); fetch('/old-two');");
                     }
                     if (repositoryPath.endsWith("api/client.js")) {
-                        return Optional.of("");
+                        throw new AssertionError("transport owner baseline must not be read");
                     }
                     return Optional.empty();
                 });
@@ -159,6 +160,30 @@ class FrontendApiBoundaryPolicyTest {
         assertThat(inspection.passed()).isTrue();
         assertThat(inspection.currentDebt()).isEqualTo(1);
         assertThat(inspection.baselineDebt()).isEqualTo(2);
+    }
+
+    @Test
+    void skipsEveryTransportOwnerBaselineRead(@TempDir Path root) throws Exception {
+        writeJs(root, "api/client.js", "fetch('/api/owned');\n");
+        writeJs(root, "taxonomy-i18n.js", "fetch('/api/i18n');\n");
+        writeJs(root, "shared/existing.js", "fetch('/legacy');\n");
+        List<String> reads = new ArrayList<>();
+
+        FrontendApiBoundaryPolicy.Inspection inspection = policy.inspect(
+                root,
+                "baseline",
+                (revision, repositoryPath) -> {
+                    reads.add(repositoryPath);
+                    if (repositoryPath.endsWith("shared/existing.js")) {
+                        return Optional.of("fetch('/legacy');");
+                    }
+                    throw new AssertionError(
+                            "Unexpected transport-owner baseline read: " + repositoryPath);
+                });
+
+        assertThat(inspection.passed()).isTrue();
+        assertThat(reads).containsExactly(
+                "taxonomy-app/src/main/resources/static/js/shared/existing.js");
     }
 
     @Test

@@ -436,7 +436,8 @@ class TaxonomySchemaPostgresMigrationIT {
              Statement statement = connection.createStatement();
              ResultSet resultSet = statement.executeQuery(
                      "select version from " + TaxonomySchemaMigrationConfig.HISTORY_TABLE
-                             + " where success = true order by installed_rank")) {
+                             + " where success = true and version is not null"
+                             + " order by installed_rank")) {
             while (resultSet.next()) {
                 versions.add(resultSet.getString(1));
             }

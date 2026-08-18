@@ -7,3 +7,14 @@ appVersion: "1.4.0-SNAPSHOT"
 home: https://github.com/carstenartur/Taxonomy
 sources:
   - https://github.com/carstenartur/Taxonomy
+keywords:
+  - architecture
+  - requirements
+  - governance
+annotations:
+  catalog.cattle.io/display-name: Taxonomy
+  catalog.cattle.io/os: linux
+  catalog.cattle.io/requests-cpu: 250m
+  catalog.cattle.io/requests-memory: 768Mi
+  org.opencontainers.image.source: https://github.com/carstenartur/Taxonomy
+  org.opencontainers.image.description: Taxonomy Architecture Analyzer Helm chart

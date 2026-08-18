@@ -88,6 +88,32 @@ class ArchitectureRelationDslTransformerTest {
     }
 
     @Test
+    void matchesExistingRelationTypeCaseInsensitively() {
+        String input = """
+                relation APP-1 uses SVC-1 {
+                  status: proposed;
+                }
+                """;
+        RelationIdentity identity = new RelationIdentity(
+                "APP-1", "USES", "SVC-1");
+
+        var updated = transformer.upsert(
+                input,
+                new RelationDefinition(identity, "accepted", null, null));
+
+        assertThat(updated.kind()).isEqualTo(ChangeKind.UPDATED);
+        assertThat(parser.parse(updated.dsl()).blocksOfKind("relation"))
+                .singleElement()
+                .satisfies(relation -> {
+                    assertThat(relation.getHeaderTokens())
+                            .containsExactly("APP-1", "USES", "SVC-1");
+                    assertThat(relation.property("status")).isEqualTo("accepted");
+                });
+        assertThat(transformer.remove(input, identity).kind())
+                .isEqualTo(ChangeKind.REMOVED);
+    }
+
+    @Test
     void updatesSuppliedReviewFieldsAndPreservesOtherProperties() {
         String input = """
                 relation APP-1 USES SVC-1 {
@@ -178,9 +204,9 @@ class ArchitectureRelationDslTransformerTest {
     }
 
     @Test
-    void rejectsMalformedMatchingRelationHeader() {
+    void rejectsMalformedMatchingRelationHeaderRegardlessOfTypeCase() {
         String input = """
-                relation APP-1 USES SVC-1 unexpected-token {
+                relation APP-1 uses SVC-1 unexpected-token {
                   status: proposed;
                 }
                 """;

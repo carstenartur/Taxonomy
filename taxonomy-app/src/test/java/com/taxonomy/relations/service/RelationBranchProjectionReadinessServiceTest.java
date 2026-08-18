@@ -55,7 +55,7 @@ class RelationBranchProjectionReadinessServiceTest {
                 "repo-a", "workspace-a", "review"))
                 .thenReturn(Optional.of(checkpoint));
         when(projections
-                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscTargetCodeAsc(
+                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscRelationTypeAscTargetCodeAsc(
                         "repo-a", "workspace-a", "review"))
                 .thenReturn(List.of(row));
 
@@ -72,7 +72,7 @@ class RelationBranchProjectionReadinessServiceTest {
     }
 
     @Test
-    void staleCheckpointNeverExposesRows() throws Exception {
+    void staleCheckpointNeverExposesRowsAndNamesItsWorkspaceScope() throws Exception {
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "review", "alice");
         repositoryFactory = new DslGitRepositoryFactory(null);
@@ -102,6 +102,8 @@ class RelationBranchProjectionReadinessServiceTest {
         verifyNoInteractions(projections);
         assertThatThrownBy(() -> service.requireReady(context))
                 .isInstanceOf(RelationProjectionNotReadyException.class)
+                .hasMessageContaining("workspace scope workspace-a")
+                .hasMessageContaining("branch review")
                 .hasMessageContaining("STALE");
     }
 
@@ -120,11 +122,15 @@ class RelationBranchProjectionReadinessServiceTest {
         RelationDecisionProjectionRepository projections =
                 mock(RelationDecisionProjectionRepository.class);
         when(checkpoints.findByRepositoryIdAndWorkspaceScopeKeyAndBranch(
-                "repo-a", "__shared__", "accepted"))
+                "repo-a",
+                RelationDecisionProjection.CENTRAL_SCOPE_KEY,
+                "accepted"))
                 .thenReturn(Optional.of(checkpoint(context, head, 1)));
         when(projections
-                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscTargetCodeAsc(
-                        "repo-a", "__shared__", "accepted"))
+                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscRelationTypeAscTargetCodeAsc(
+                        "repo-a",
+                        RelationDecisionProjection.CENTRAL_SCOPE_KEY,
+                        "accepted"))
                 .thenReturn(List.of(projection(context, head, false)));
 
         var readiness = new RelationBranchProjectionReadinessService(

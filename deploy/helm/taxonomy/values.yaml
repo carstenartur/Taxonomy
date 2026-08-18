@@ -7,7 +7,8 @@ scaling:
 
 image:
   repository: ghcr.io/carstenartur/taxonomy
-  # Required: use vX.Y.Z, sha-<commit>, or set digest to sha256:<64 hex>.
+  # Source-tree rendering requires vX.Y.Z or sha-<commit>. A packaged release
+  # chart derives v<appVersion> when both tag and digest remain empty.
   tag: ""
   digest: ""
   pullPolicy: IfNotPresent
@@ -26,6 +27,17 @@ podLabels: {}
 priorityClassName: ""
 revisionHistoryLimit: 3
 progressDeadlineSeconds: 600
+
+# Taxonomy performs PostgreSQL/Flyway migrations during application startup.
+# Recreate is therefore the safe default: the old application version is stopped
+# before a new pod may alter the database schema. RollingUpdate is fail-closed and
+# requires an explicit release-specific backward-compatibility acknowledgement.
+upgrade:
+  strategy: Recreate
+  allowConcurrentApplicationVersions: false
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
 
 podSecurityContext:
   runAsNonRoot: true

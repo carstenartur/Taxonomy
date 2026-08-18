@@ -1,6 +1,7 @@
 package com.taxonomy.relations.service;
 
 import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationDecisionProjection;
 import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
 import com.taxonomy.relations.repository.RelationDecisionProjectionRepository;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionRequest;
@@ -85,7 +86,7 @@ class RelationDecisionProjectionCheckpointInvalidationTest {
                 "remove-3");
         when(projections.findExactForUpdate(
                 "repo-b",
-                "__shared__",
+                RelationDecisionProjection.CENTRAL_SCOPE_KEY,
                 "accepted",
                 "APP-1",
                 RelationType.USES,
@@ -96,6 +97,8 @@ class RelationDecisionProjectionCheckpointInvalidationTest {
                 projections, checkpoints).write(request);
 
         verify(checkpoints).deleteExact(
-                "repo-b", "__shared__", "accepted");
+                "repo-b",
+                RelationDecisionProjection.CENTRAL_SCOPE_KEY,
+                "accepted");
     }
 }

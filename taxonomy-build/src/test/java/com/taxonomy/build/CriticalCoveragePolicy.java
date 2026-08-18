@@ -109,8 +109,10 @@ final class CriticalCoveragePolicy {
                         requiredCounters,
                         packageKey.scope(),
                         true);
-                if (!packageCounters.isEmpty()
-                        && packages.putIfAbsent(packageKey, packageCounters) != null) {
+                if (packageCounters.isEmpty()) {
+                    packageCounters = zeroCounters(requiredCounters);
+                }
+                if (packages.putIfAbsent(packageKey, packageCounters) != null) {
                     throw new IllegalArgumentException(
                             "Duplicate JaCoCo package " + packageKey.scope());
                 }

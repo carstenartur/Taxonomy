@@ -12,6 +12,7 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ final class ReactorCoveragePolicy {
     private static final Pattern NON_KEY_CHARACTER = Pattern.compile("[^a-z0-9]+");
     private static final String JACOCO_REPORT_DTD =
             "<!DOCTYPE report PUBLIC \"-//JACOCO//DTD Report 1.1//EN\" \"report.dtd\">";
+    private static final int XML_HEAD_LIMIT = 64 * 1024;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -170,8 +172,15 @@ final class ReactorCoveragePolicy {
     Evaluation evaluate(Path xmlPath, CoveragePolicy policy) {
         CoverageReport report = parseReport(xmlPath, policy.requiredCounters());
         Map<String, String> actualByKey = new LinkedHashMap<>();
-        report.groups().keySet().forEach(
-                name -> actualByKey.put(normalizeGroupName(name), name));
+        for (String name : report.groups().keySet()) {
+            String key = normalizeGroupName(name);
+            String previous = actualByKey.putIfAbsent(key, name);
+            if (previous != null) {
+                throw new IllegalArgumentException(
+                        "JaCoCo report groups '" + previous + "' and '" + name
+                                + "' share normalized key '" + key + "'");
+            }
+        }
         Map<String, String> expectedByKey = new LinkedHashMap<>();
         policy.expectedGroups().forEach(
                 name -> expectedByKey.put(normalizeGroupName(name), name));
@@ -194,7 +203,7 @@ final class ReactorCoveragePolicy {
 
         StringBuilder text = new StringBuilder()
                 .append("Taxonomy reactor-wide JaCoCo coverage\n\n")
-                .append("Source: ").append(xmlPath).append('\n')
+                .append("Source: ").append(evidencePath(xmlPath)).append('\n')
                 .append("Policy: versioned multi-counter aggregate ratchet\n\n")
                 .append("Per-module coverage:\n");
         report.groups().keySet().stream().sorted().forEach(name -> {
@@ -241,6 +250,23 @@ final class ReactorCoveragePolicy {
         return normalized.startsWith("taxonomy-")
                 ? normalized
                 : "taxonomy-" + normalized;
+    }
+
+    static String evidencePath(Path xmlPath, String multiModuleDirectory) {
+        Path absolute = xmlPath.toAbsolutePath().normalize();
+        if (multiModuleDirectory != null && !multiModuleDirectory.isBlank()) {
+            Path root = Path.of(multiModuleDirectory).toAbsolutePath().normalize();
+            if (absolute.startsWith(root)) {
+                return root.relativize(absolute).toString().replace('\\', '/');
+            }
+        }
+        return absolute.toString().replace('\\', '/');
+    }
+
+    private static String evidencePath(Path xmlPath) {
+        return evidencePath(
+                xmlPath,
+                System.getProperty("maven.multiModuleProjectDirectory"));
     }
 
     private Map<String, Counter> parseCounterSet(
@@ -312,24 +338,74 @@ final class ReactorCoveragePolicy {
     }
 
     private static void validateDoctype(Path path) throws IOException {
-        String xml = Files.readString(path);
-        int start = xml.indexOf("<!DOCTYPE");
-        if (start < 0) {
-            return;
+        StringBuilder head = new StringBuilder();
+        try (var reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            char[] buffer = new char[4096];
+            while (head.length() < XML_HEAD_LIMIT) {
+                int remaining = XML_HEAD_LIMIT - head.length();
+                int read = reader.read(buffer, 0, Math.min(buffer.length, remaining));
+                if (read < 0) {
+                    break;
+                }
+                head.append(buffer, 0, read);
+
+                int reportStart = reportStart(head);
+                int doctypeStart = head.indexOf("<!DOCTYPE");
+                if (doctypeStart < 0) {
+                    if (reportStart >= 0) {
+                        return;
+                    }
+                    continue;
+                }
+
+                int doctypeEnd = head.indexOf(">", doctypeStart);
+                if (doctypeEnd < 0) {
+                    continue;
+                }
+                String declaration = head.substring(doctypeStart, doctypeEnd + 1)
+                        .replaceAll("\\s+", " ")
+                        .strip();
+                if (!JACOCO_REPORT_DTD.equals(declaration)
+                        || head.indexOf("<!DOCTYPE", doctypeEnd + 1) >= 0
+                        || (reportStart >= 0 && reportStart < doctypeStart)) {
+                    throw new IllegalArgumentException(
+                            "Unsupported DOCTYPE in JaCoCo report " + path);
+                }
+                if (reportStart >= 0) {
+                    return;
+                }
+            }
         }
-        int end = xml.indexOf('>', start);
-        if (end < 0) {
+
+        int doctypeStart = head.indexOf("<!DOCTYPE");
+        if (doctypeStart >= 0 && head.indexOf(">", doctypeStart) < 0) {
             throw new IllegalArgumentException(
                     "Unterminated DOCTYPE in JaCoCo report " + path);
         }
-        String declaration = xml.substring(start, end + 1)
-                .replaceAll("\\s+", " ")
-                .strip();
-        if (!JACOCO_REPORT_DTD.equals(declaration)
-                || xml.indexOf("<!DOCTYPE", end + 1) >= 0) {
-            throw new IllegalArgumentException(
-                    "Unsupported DOCTYPE in JaCoCo report " + path);
+        throw new IllegalArgumentException(
+                "JaCoCo report root was not found within the bounded "
+                        + XML_HEAD_LIMIT + "-character XML head scan: " + path);
+    }
+
+    private static int reportStart(CharSequence head) {
+        String text = head.toString();
+        int from = 0;
+        while (from < text.length()) {
+            int start = text.indexOf("<report", from);
+            if (start < 0) {
+                return -1;
+            }
+            int after = start + "<report".length();
+            if (after == text.length()) {
+                return start;
+            }
+            char delimiter = text.charAt(after);
+            if (delimiter == '>' || Character.isWhitespace(delimiter)) {
+                return start;
+            }
+            from = after;
         }
+        return -1;
     }
 
     private static DocumentBuilderFactory secureDocumentBuilderFactory()

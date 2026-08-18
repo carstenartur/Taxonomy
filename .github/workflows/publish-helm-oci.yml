@@ -1,0 +1,270 @@
+name: Publish Helm OCI Chart
+
+on:
+  workflow_run:
+    workflows: [Release Workflow]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published release tag, for example v1.4.0
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+concurrency:
+  group: taxonomy-helm-oci-${{ github.event.workflow_run.id || inputs.release_tag || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish and verify immutable Rancher chart
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Resolve exact published release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_RELEASE_TAG"
+          else
+            mapfile -t versions < <(
+              gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
+                --jq '.artifacts[] | select(.expired == false) | .name' \
+                | sed -n 's/^release-image-security-\(.*\)$/\1/p'
+            )
+            if (( ${#versions[@]} == 0 )); then
+              echo "::notice::The successful Release Workflow produced no release artifact; treating it as a dry run."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if (( ${#versions[@]} != 1 )); then
+              printf '::error::Expected exactly one release-image-security artifact, found %s: %s\n' \
+                "${#versions[@]}" "${versions[*]}"
+              exit 1
+            fi
+            tag="v${versions[0]}"
+          fi
+
+          if [[ ! "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?)$ ]]; then
+            echo "::error::Release tag must be vX.Y.Z with an optional Docker-safe prerelease suffix: $tag"
+            exit 1
+          fi
+          version=${tag#v}
+
+          release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}")
+          if [[ "$(jq -r '.draft' <<< "$release_json")" != "false" ]]; then
+            echo "::error::Release $tag is still a draft"
+            exit 1
+          fi
+          if [[ "$(jq -r '.tag_name' <<< "$release_json")" != "$tag" ]]; then
+            echo "::error::Release lookup did not return the requested tag $tag"
+            exit 1
+          fi
+
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout immutable release source
+        if: steps.release.outputs.publish == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify immutable release source
+        if: steps.release.outputs.publish == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git describe --tags --exact-match HEAD)" = "$RELEASE_TAG"
+          test "$(git status --porcelain)" = ""
+
+      - name: Install verified Helm 3.21.0
+        if: steps.release.outputs.publish == 'true'
+        env:
+          HELM_VERSION: v3.21.0
+        shell: bash
+        run: bash .github/scripts/install-helm.sh
+
+      - name: Verify chart contracts
+        if: steps.release.outputs.publish == 'true'
+        shell: bash
+        run: bash deploy/helm/taxonomy/verify.sh "$RUNNER_TEMP/taxonomy-helm-oci-preflight.yaml"
+
+      - name: Build Java release evidence tooling
+        if: steps.release.outputs.publish == 'true'
+        shell: bash
+        run: ./mvnw -B -pl taxonomy-tooling -am -DskipTests package
+
+      - name: Package, publish and pull back exact OCI chart
+        id: publish_chart
+        if: steps.release.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          output_dir="$GITHUB_WORKSPACE/target/helm-oci"
+          local_dir="$RUNNER_TEMP/helm-oci-local"
+          existing_dir="$RUNNER_TEMP/helm-oci-existing"
+          verified_dir="$RUNNER_TEMP/helm-oci-verified"
+          mkdir -p "$output_dir" "$local_dir" "$existing_dir" "$verified_dir"
+
+          helm package deploy/helm/taxonomy \
+            --destination "$local_dir" \
+            --version "$RELEASE_VERSION" \
+            --app-version "$RELEASE_VERSION"
+          chart_archive="$local_dir/taxonomy-${RELEASE_VERSION}.tgz"
+          test -f "$chart_archive"
+          tar -tzf "$chart_archive" > "$output_dir/chart-contents.txt"
+          grep -Fxq 'taxonomy/questions.yaml' "$output_dir/chart-contents.txt"
+
+          chart_version=$(helm show chart "$chart_archive" \
+            | awk '$1 == "version:" {print $2; exit}')
+          app_version=$(helm show chart "$chart_archive" \
+            | awk '$1 == "appVersion:" {gsub(/\"/, "", $2); print $2; exit}')
+          test "$chart_version" = "$RELEASE_VERSION"
+          test "$app_version" = "$RELEASE_VERSION"
+
+          local_manifest="$output_dir/taxonomy-${RELEASE_VERSION}-oci-local.yaml"
+          helm lint "$chart_archive" --set existingSecret=taxonomy-secrets
+          helm template taxonomy "$chart_archive" \
+            --namespace taxonomy \
+            --set existingSecret=taxonomy-secrets \
+            > "$local_manifest"
+          grep -Fq "image: \"ghcr.io/carstenartur/taxonomy:${RELEASE_TAG}\"" "$local_manifest"
+          grep -Fq 'type: Recreate' "$local_manifest"
+          if grep -Fq 'type: RollingUpdate' "$local_manifest"; then
+            echo "::error::Published chart must default to migration-safe Recreate upgrades"
+            exit 1
+          fi
+
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io \
+            --username "$GITHUB_ACTOR" \
+            --password-stdin
+
+          oci_repository="oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts"
+          oci_chart="${oci_repository}/taxonomy"
+          publication_status=published
+          if helm pull "$oci_chart" \
+              --version "$RELEASE_VERSION" \
+              --destination "$existing_dir" \
+              > "$output_dir/preexisting-pull.log" 2>&1; then
+            publication_status=reused
+            echo "::notice::OCI chart $oci_chart:$RELEASE_VERSION already exists; verifying it instead of overwriting it."
+          else
+            helm push "$chart_archive" "$oci_repository" \
+              | tee "$output_dir/push.log"
+          fi
+
+          rm -rf "$verified_dir"
+          mkdir -p "$verified_dir"
+          helm pull "$oci_chart" \
+            --version "$RELEASE_VERSION" \
+            --destination "$verified_dir"
+          verified_archive="$verified_dir/taxonomy-${RELEASE_VERSION}.tgz"
+          test -f "$verified_archive"
+
+          verified_version=$(helm show chart "$verified_archive" \
+            | awk '$1 == "version:" {print $2; exit}')
+          verified_app_version=$(helm show chart "$verified_archive" \
+            | awk '$1 == "appVersion:" {gsub(/\"/, "", $2); print $2; exit}')
+          test "$verified_version" = "$RELEASE_VERSION"
+          test "$verified_app_version" = "$RELEASE_VERSION"
+
+          verified_manifest="$output_dir/taxonomy-${RELEASE_VERSION}-oci-verified.yaml"
+          helm template taxonomy "$verified_archive" \
+            --namespace taxonomy \
+            --set existingSecret=taxonomy-secrets \
+            > "$verified_manifest"
+          cmp --silent "$local_manifest" "$verified_manifest" || {
+            echo "::error::The OCI chart does not render identically to the release source"
+            diff -u "$local_manifest" "$verified_manifest" || true
+            exit 1
+          }
+
+          source_commit=$(git rev-parse HEAD)
+          archive_sha=$(sha256sum "$verified_archive" | awk '{print $1}')
+          manifest_sha=$(sha256sum "$verified_manifest" | awk '{print $1}')
+          evidence="$output_dir/taxonomy-${RELEASE_VERSION}-helm-oci-evidence.json"
+          tooling_jar="taxonomy-tooling/target/taxonomy-tooling-${RELEASE_VERSION}.jar"
+          test -f "$tooling_jar"
+          java -cp "$tooling_jar" com.taxonomy.tooling.HelmOciEvidenceTool \
+            --output "$evidence" \
+            --chart "$oci_chart" \
+            --version "$RELEASE_VERSION" \
+            --release-tag "$RELEASE_TAG" \
+            --source-commit "$source_commit" \
+            --publication-status "$publication_status" \
+            --archive-sha256 "$archive_sha" \
+            --manifest-sha256 "$manifest_sha"
+
+          cp "$verified_archive" "$output_dir/"
+          (
+            cd "$output_dir"
+            sha256sum \
+              "taxonomy-${RELEASE_VERSION}.tgz" \
+              "taxonomy-${RELEASE_VERSION}-oci-local.yaml" \
+              "taxonomy-${RELEASE_VERSION}-oci-verified.yaml" \
+              "taxonomy-${RELEASE_VERSION}-helm-oci-evidence.json" \
+              > "taxonomy-${RELEASE_VERSION}-helm-oci.sha256"
+          )
+
+          echo "publication_status=$publication_status" >> "$GITHUB_OUTPUT"
+          echo "oci_chart=$oci_chart" >> "$GITHUB_OUTPUT"
+
+      - name: Archive OCI publication evidence
+        if: steps.release.outputs.publish == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: helm-oci-${{ steps.release.outputs.version }}
+          path: target/helm-oci/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summarize Rancher repository
+        if: steps.release.outputs.publish == 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          PUBLICATION_STATUS: ${{ steps.publish_chart.outputs.publication_status }}
+          OCI_CHART: ${{ steps.publish_chart.outputs.oci_chart }}
+        shell: bash
+        run: |
+          {
+            echo '## Helm OCI publication'
+            echo
+            echo "- Chart: \`${OCI_CHART}\`"
+            echo "- Version: \`${RELEASE_VERSION}\`"
+            echo "- Result: \`${PUBLICATION_STATUS}\`"
+            echo '- Rancher repository URL: `oci://ghcr.io/carstenartur/charts/taxonomy`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log out of OCI registry
+        if: always() && steps.release.outputs.publish == 'true'
+        shell: bash
+        run: helm registry logout ghcr.io || true
