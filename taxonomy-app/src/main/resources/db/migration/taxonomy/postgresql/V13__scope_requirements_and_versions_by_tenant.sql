@@ -119,5 +119,3 @@ create index if not exists idx_req_status_scope
     on project_requirement (scope_key, project_id, status);
 create index if not exists idx_reqver_scope
     on project_req_version (scope_key);
-create index if not exists idx_reqver_hash_scope
-    on project_req_version (scope_key, requirement_id, content_hash);
