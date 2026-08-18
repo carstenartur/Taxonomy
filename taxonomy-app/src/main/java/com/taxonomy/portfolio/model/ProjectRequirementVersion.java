@@ -22,7 +22,6 @@ import java.util.Objects;
 @Entity
 @Table(name = "project_req_version", indexes = {
         @Index(name = "idx_reqver_req", columnList = "scope_key,requirement_id"),
-        @Index(name = "idx_reqver_hash", columnList = "scope_key,requirement_id,content_hash"),
         @Index(name = "idx_reqver_scope", columnList = "scope_key")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uq_reqver_number",
