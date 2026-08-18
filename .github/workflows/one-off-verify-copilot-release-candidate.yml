@@ -1,0 +1,81 @@
+name: One-off verify Copilot release candidate
+
+on:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - .github/workflows/one-off-verify-copilot-release-candidate.yml
+      - taxonomy-app/src/main/java/com/taxonomy/portfolio/**
+      - taxonomy-app/src/main/resources/ai-automation-defaults.properties
+      - taxonomy-app/src/main/resources/static/js/api/copilot-api.js
+      - taxonomy-app/src/main/resources/static/js/api/portfolio-api.js
+      - taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+      - taxonomy-app/src/test/java/com/taxonomy/portfolio/**
+      - .env.example
+      - deploy/helm/taxonomy/values.yaml
+      - docs/en/COPILOT_AUTOPILOT.md
+      - docs/de/COPILOT_AUTOPILOT.md
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: taxonomy-copilot-release-verification-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/792-copilot-autopilot-full-analysis'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/792-copilot-autopilot-full-analysis
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact candidate parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "52d8a073b8350fbed89174bbe15ace4454a3f8c5"
+          git diff --check HEAD^
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify JavaScript syntax
+        shell: bash
+        run: |
+          node --check taxonomy-app/src/main/resources/static/js/api/copilot-api.js
+          node --check taxonomy-app/src/main/resources/static/js/api/portfolio-api.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+
+      - name: Run focused Copilot and Autopilot contracts
+        shell: bash
+        run: |
+          ./mvnw -B -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtaxonomy.model.download.skip=true \
+            -Dtest=AiAutomationPolicyTest,CopilotOperationKeyTest,CopilotResultSelectorTest,CopilotAnalysisControllerTest,CopilotAutomationCancellationTest,CopilotOperationConsistencyTest,AutopilotRequirementResponseAdviceTest,ProjectAutopilotServiceTest,CopilotAutomationExecutorConfigurationTest,AiAutomationDeploymentContractTest,RequirementCopilotUiContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+      - name: Remove temporary workflow and publish verified head
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/one-off-verify-copilot-release-candidate.yml
+          git diff --check
+          git config user.name 'ChatGPT Codex Connector'
+          git config user.email 'chatgpt-codex-connector@users.noreply.github.com'
+          git add -A
+          git commit -m 'Verify hardened Copilot and bounded Autopilot contracts'
+          git push origin HEAD:agent/792-copilot-autopilot-full-analysis
