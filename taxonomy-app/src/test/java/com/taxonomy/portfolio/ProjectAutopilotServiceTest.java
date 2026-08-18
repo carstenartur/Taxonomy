@@ -45,15 +45,17 @@ class ProjectAutopilotServiceTest {
         RequirementView first = requirement(7L);
         RequirementView second = requirement(8L);
         RequirementView third = requirement(9L);
+        CopilotOperationView operationForNine = operation("a".repeat(64));
+        CopilotOperationView operationForSeven = operation("b".repeat(64));
         when(automationService.status()).thenReturn(status(true, true, "ready"));
         when(projectService.listRequirements(41L, context.username(), context))
                 .thenReturn(List.of(first, second, third));
         when(automationService.tryAutopilot(
                 41L, 9L, context.username(), context))
-                .thenReturn(Optional.of(operation("a".repeat(64))));
+                .thenReturn(Optional.of(operationForNine));
         when(automationService.tryAutopilot(
                 41L, 7L, context.username(), context))
-                .thenReturn(Optional.of(operation("b".repeat(64))));
+                .thenReturn(Optional.of(operationForSeven));
 
         var result = service.run(
                 41L,
