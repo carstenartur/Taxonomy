@@ -70,6 +70,7 @@ public class HelpController {
         new String[]{"JGIT_STORAGE_HIBERNATE",    "🗃️", "help.toc.JGIT_STORAGE_HIBERNATE",        "help.audience.devops"},
         new String[]{"PREFERENCES",               "🎛️", "help.toc.PREFERENCES",                   "help.audience.admins"},
         new String[]{"AI_PROVIDERS",              "🤖", "help.toc.AI_PROVIDERS",                  "help.audience.everyone"},
+        new String[]{"COPILOT_AUTOPILOT",         "🚁", "help.toc.COPILOT_AUTOPILOT",             "help.audience.everyone"},
         new String[]{"CONFIGURATION_REFERENCE",   "⚙️", "help.toc.CONFIGURATION_REFERENCE",       "help.audience.admins"},
         new String[]{"API_REFERENCE",             "🔌", "help.toc.API_REFERENCE",                 "help.audience.integrators"},
         new String[]{"CURL_EXAMPLES",             "💻", "help.toc.CURL_EXAMPLES",                 "help.audience.integrators"},

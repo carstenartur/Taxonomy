@@ -33,6 +33,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioFingerprintService;
+import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -178,7 +179,8 @@ class PortfolioAnalysisCoverageRegressionTest {
                 context);
         assertThat(reviewedElement.reviewStatus()).isEqualTo(ReviewStatus.CONFIRMED);
         assertThat(reviewedElement.actionStatus()).isEqualTo(ActionStatus.REUSE);
-        assertThat(reviewedElement.decisionBy()).isEqualTo(context.username());
+        assertThat(reviewedElement.decisionBy())
+                .isEqualTo(PortfolioScope.username(context.username(), context));
 
         var relationMapping = detail.relationMappings().getFirst();
         var reviewedRelation = persistenceService.reviewRelationMapping(
@@ -190,7 +192,8 @@ class PortfolioAnalysisCoverageRegressionTest {
                 context.username(),
                 context);
         assertThat(reviewedRelation.reviewStatus()).isEqualTo(ReviewStatus.REJECTED);
-        assertThat(reviewedRelation.decisionBy()).isEqualTo(context.username());
+        assertThat(reviewedRelation.decisionBy())
+                .isEqualTo(PortfolioScope.username(context.username(), context));
 
         assertThatThrownBy(() -> persistenceService.reviewElementMapping(
                 project.id(), elementMapping.id(), null, context.username(), context))
