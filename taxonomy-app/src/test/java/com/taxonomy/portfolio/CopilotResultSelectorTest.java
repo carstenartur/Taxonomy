@@ -8,6 +8,7 @@ import com.taxonomy.portfolio.service.CopilotResultSelector;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -20,11 +21,14 @@ class CopilotResultSelectorTest {
     @Test
     void prefersSuccessfulBroadResultOverPartialOrSparsePasses() {
         SnapshotDetail partial = snapshot(
-                "partial", AnalysisStatus.PARTIAL, Map.of("CP", 90, "BP", 0), 0);
+                "partial", AnalysisStatus.PARTIAL, Map.of("CP", 90, "BP", 0),
+                0, 0, 0, 10L);
         SnapshotDetail sparse = snapshot(
-                "sparse", AnalysisStatus.SUCCESS, Map.of("CP", 95), 0);
+                "sparse", AnalysisStatus.SUCCESS, Map.of("CP", 95),
+                0, 0, 0, 10L);
         SnapshotDetail broad = snapshot(
-                "broad", AnalysisStatus.SUCCESS, Map.of("CP", 80, "BP", 60, "CR", 40), 1);
+                "broad", AnalysisStatus.SUCCESS, Map.of("CP", 80, "BP", 60, "CR", 40),
+                1, 0, 0, 10L);
 
         assertThat(selector.select(List.of(partial, sparse, broad)))
                 .get()
@@ -35,20 +39,69 @@ class CopilotResultSelectorTest {
     @Test
     void returnsEmptyWhenNoPassProducedUsableScores() {
         SnapshotDetail failed = snapshot(
-                "failed", AnalysisStatus.FAILED, Map.of(), 0);
+                "failed", AnalysisStatus.FAILED, Map.of(),
+                0, 0, 0, 10L);
 
         assertThat(selector.select(List.of(failed))).isEmpty();
+        assertThat(selector.select(null)).isEmpty();
+    }
+
+    @Test
+    void usesEveryDeterministicTieBreakerInOrder() {
+        assertPreferred(
+                snapshot("sum-low", AnalysisStatus.SUCCESS, Map.of("A", 3, "B", 1),
+                        0, 1, 1, 10L),
+                snapshot("sum-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        0, 1, 1, 10L),
+                "sum-high");
+        assertPreferred(
+                snapshot("elements-low", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        0, 1, 1, 10L),
+                snapshot("elements-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        0, 2, 1, 10L),
+                "elements-high");
+        assertPreferred(
+                snapshot("relations-low", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        0, 2, 1, 10L),
+                snapshot("relations-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        0, 2, 2, 10L),
+                "relations-high");
+        assertPreferred(
+                snapshot("warnings-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        2, 2, 2, 10L),
+                snapshot("warnings-low", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        1, 2, 2, 10L),
+                "warnings-low");
+        assertPreferred(
+                snapshot("duration-high", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        1, 2, 2, 20L),
+                snapshot("duration-low", AnalysisStatus.SUCCESS, Map.of("A", 4, "B", 1),
+                        1, 2, 2, 10L),
+                "duration-low");
+    }
+
+    private void assertPreferred(
+            SnapshotDetail first,
+            SnapshotDetail second,
+            String expectedId) {
+        assertThat(selector.select(List.of(first, second)))
+                .get()
+                .extracting(detail -> detail.summary().id())
+                .isEqualTo(expectedId);
     }
 
     private static SnapshotDetail snapshot(
             String id,
             AnalysisStatus status,
             Map<String, Integer> scores,
-            int warnings) {
+            int warnings,
+            int elements,
+            int relations,
+            long durationMs) {
         AnalysisResult analysis = new AnalysisResult();
         analysis.setScores(scores);
         analysis.setStatus(status.name());
-        analysis.setWarnings(java.util.Collections.nCopies(warnings, "warning"));
+        analysis.setWarnings(Collections.nCopies(warnings, "warning"));
         SnapshotSummary summary = new SnapshotSummary(
                 id,
                 41L,
@@ -66,7 +119,7 @@ class CopilotResultSelectorTest {
                 "draft",
                 "commit",
                 Instant.now(),
-                10L,
+                durationMs,
                 warnings,
                 null);
         return new SnapshotDetail(
@@ -75,7 +128,7 @@ class CopilotResultSelectorTest {
                 null,
                 null,
                 null,
-                List.of(),
-                List.of());
+                Collections.nCopies(elements, null),
+                Collections.nCopies(relations, null));
     }
 }
