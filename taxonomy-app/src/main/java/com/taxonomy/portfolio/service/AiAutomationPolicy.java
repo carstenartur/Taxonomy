@@ -16,9 +16,10 @@ import java.util.Locale;
 /**
  * Central, fail-closed policy for user-triggered Copilot and unattended Autopilot work.
  *
- * <p>A custom provider is never assumed to be free. Autopilot requires both an explicit
- * enable flag and the operator declaration {@code UNMETERED}. Manual Copilot remains
- * available for any configured provider because every run is explicitly requested.</p>
+ * <p>A custom provider is never assumed to be free. Autopilot requires an explicit
+ * provider, an explicit enable flag and the operator declaration {@code UNMETERED}.
+ * Manual Copilot remains available for any configured provider because every run is
+ * explicitly requested.</p>
  */
 @Component
 public class AiAutomationPolicy {
@@ -80,7 +81,8 @@ public class AiAutomationPolicy {
         this.copilotPasses = boundedPasses(copilotPasses, "taxonomy.ai.copilot.verification-passes");
         this.autopilotPasses = boundedPasses(
                 autopilotPasses, "taxonomy.ai.autopilot.verification-passes");
-        this.maximumArchitectureNodes = Math.max(1, maximumArchitectureNodes);
+        this.maximumArchitectureNodes = positive(
+                maximumArchitectureNodes, "taxonomy.ai.max-architecture-nodes");
         this.autopilotEnabled = autopilotEnabled;
         this.runAfterRequirementSave = runAfterRequirementSave;
         this.autopilotProvider = normalizeOptional(autopilotProvider);
@@ -102,6 +104,11 @@ public class AiAutomationPolicy {
         int nodes = effective.maxArchitectureNodes() != null
                 ? positive(effective.maxArchitectureNodes(), "maxArchitectureNodes")
                 : maximumArchitectureNodes;
+        if (nodes > maximumArchitectureNodes) {
+            throw PortfolioException.validation(
+                    "maxArchitectureNodes must not exceed the configured limit of "
+                            + maximumArchitectureNodes);
+        }
         boolean proposeSolutions = effective.proposeSolutions() != null
                 ? effective.proposeSolutions() : profile != AnalysisAutomationProfile.STANDARD;
         boolean proposeProducts = effective.proposeProducts() != null
@@ -125,7 +132,7 @@ public class AiAutomationPolicy {
         return new RunSettings(
                 true,
                 profile,
-                resolveProvider(autopilotProvider),
+                explicitAutopilotProvider(),
                 maximumArchitectureNodes,
                 defaultPasses(profile, autopilotPasses),
                 autopilotSolutions && profile != AnalysisAutomationProfile.STANDARD,
@@ -136,17 +143,19 @@ public class AiAutomationPolicy {
     public AiAutomationStatus status() {
         String active = resolveProvider(null);
         boolean manualReady = isProviderReady(active);
-        String autoProvider = resolveProvider(autopilotProvider);
+        String autoProvider = explicitAutopilotProviderOrNull();
         boolean autoReady = autopilotReady();
         String reason;
-        if (autoReady) {
+        if (autoReady && runAfterRequirementSave) {
             reason = "Autopilot is explicitly enabled for an UNMETERED configured provider.";
+        } else if (autoReady) {
+            reason = "Autopilot is ready, but automatic execution after requirement saves is disabled.";
         } else if (!autopilotEnabled) {
             reason = "Autopilot is disabled. Set TAXONOMY_AI_AUTOPILOT_ENABLED=true to opt in.";
         } else if (costPolicy != AiCostPolicy.UNMETERED) {
             reason = "Autopilot requires TAXONOMY_AI_COST_POLICY=UNMETERED.";
-        } else if (!runAfterRequirementSave) {
-            reason = "Automatic execution after requirement saves is disabled.";
+        } else if (autoProvider == null) {
+            reason = "Autopilot requires an explicit TAXONOMY_AI_AUTOPILOT_PROVIDER.";
         } else {
             reason = providerError(autoProvider);
         }
@@ -169,10 +178,15 @@ public class AiAutomationPolicy {
     }
 
     public boolean autopilotReady() {
+        String provider = explicitAutopilotProviderOrNull();
         return autopilotEnabled
-                && runAfterRequirementSave
                 && costPolicy == AiCostPolicy.UNMETERED
-                && isProviderReady(resolveProvider(autopilotProvider));
+                && provider != null
+                && isProviderReady(provider);
+    }
+
+    public boolean automaticAfterRequirementSaveReady() {
+        return runAfterRequirementSave && autopilotReady();
     }
 
     public String autopilotReason() {
@@ -198,7 +212,24 @@ public class AiAutomationPolicy {
         return providerConfig.getActiveProvider().name();
     }
 
+    private String explicitAutopilotProvider() {
+        String provider = explicitAutopilotProviderOrNull();
+        if (provider == null) {
+            throw PortfolioException.validation(
+                    "Autopilot requires an explicit TAXONOMY_AI_AUTOPILOT_PROVIDER.");
+        }
+        return provider;
+    }
+
+    private String explicitAutopilotProviderOrNull() {
+        return autopilotProvider != null
+                ? autopilotProvider.toUpperCase(Locale.ROOT) : null;
+    }
+
     private boolean isProviderReady(String provider) {
+        if (provider == null) {
+            return false;
+        }
         if ("MOCK".equals(provider)) {
             return providerConfig.isMockMode();
         }
@@ -216,6 +247,9 @@ public class AiAutomationPolicy {
     }
 
     private String providerError(String provider) {
+        if (provider == null) {
+            return "No AI provider was selected.";
+        }
         if ("MOCK".equals(provider)) {
             return "MOCK is available only when llm.mock=true.";
         }
