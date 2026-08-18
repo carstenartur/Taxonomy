@@ -1,20 +1,25 @@
 name: Apply persisted Copilot implementation
 
 on:
-  push:
-    branches:
-      - agent/792-copilot-autopilot-full-analysis
+  pull_request:
+    types: [synchronize]
+    paths:
+      - .github/agent/copilot-payload/**
+      - .github/workflows/agent-apply-copilot.yml
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
-  group: agent-copilot-apply
+  group: agent-copilot-apply-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'chore(agent): stage persisted copilot implementation'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/792-copilot-autopilot-full-analysis'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -28,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected_parent=735be439cd235592d4e0eff44a4b4dccac0cb06d
+          expected_parent=3510c7e688a6a888e0870d9ae9874be474dc6cdd
           actual_parent=$(git rev-parse HEAD^)
           if [[ "$actual_parent" != "$expected_parent" ]]; then
             echo "::error::Unexpected staged payload parent: $actual_parent" >&2
