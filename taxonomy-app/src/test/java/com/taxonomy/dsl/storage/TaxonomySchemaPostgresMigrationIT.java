@@ -47,6 +47,8 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "product_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "project_conflict")).isTrue();
         assertThat(tableExists(dataSource, "repository_membership")).isTrue();
+        assertThat(columnExists(dataSource, "project_requirement", "scope_key")).isTrue();
+        assertThat(columnExists(dataSource, "project_req_version", "scope_key")).isTrue();
         assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
                 .isTrue();
         assertThat(columnExists(dataSource, "system_repository", "slug")).isTrue();
@@ -138,7 +140,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12");
+                        "6", "7", "8", "9", "10", "11", "12", "13");
     }
 
     @Test
@@ -160,6 +162,8 @@ class TaxonomySchemaPostgresMigrationIT {
                 "select count(*) from app_user where username = 'existing-user'"))
                 .isEqualTo(1L);
         assertThat(tableExists(dataSource, "project_requirement")).isTrue();
+        assertThat(columnExists(dataSource, "project_requirement", "scope_key")).isTrue();
+        assertThat(columnExists(dataSource, "project_req_version", "scope_key")).isTrue();
         assertThat(tableExists(dataSource, "repository_membership")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "analysis_snapshot_id"))
                 .isTrue();
@@ -209,7 +213,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12");
+                        "6", "7", "8", "9", "10", "11", "12", "13");
     }
 
     @Test
