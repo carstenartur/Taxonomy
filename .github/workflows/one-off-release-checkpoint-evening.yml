@@ -1,0 +1,126 @@
+name: One-off exact release checkpoint
+
+on:
+  push:
+    branches:
+      - automation/release-checkpoint-20260818-evening
+    paths:
+      - .github/workflows/one-off-release-checkpoint-evening.yml
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: read
+  issues: write
+
+jobs:
+  checkpoint:
+    if: github.event.head_commit.message == 'chore(agent): publish exact release checkpoint'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Build exact repository checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')
+          request=$(gh api "repos/${GITHUB_REPOSITORY}/contents/.github/release-request.json?ref=main" --jq '.content' | base64 --decode)
+          runs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100")
+
+          report=$RUNNER_TEMP/release-checkpoint.md
+          {
+            echo '## Exact release checkpoint — 18 August 2026'
+            echo
+            echo "Protected main: \`${main_sha}\`"
+            echo
+            echo '### Release request on main'
+            echo '```json'
+            printf '%s\n' "$request"
+            echo '```'
+            echo
+            echo '### Integration chain'
+          } > "$report"
+
+          required=(
+            'CI / CD'
+            'Database Compatibility'
+            'CodeQL Source Analysis'
+            'Security Scan'
+            'JGit Storage Consumer Contract'
+          )
+
+          for number in 794 792 795; do
+            pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}")
+            head_sha=$(jq -r '.head.sha' <<<"$pr")
+            state=$(jq -r '.state' <<<"$pr")
+            draft=$(jq -r '.draft' <<<"$pr")
+            base=$(jq -r '.base.ref' <<<"$pr")
+            merged_at=$(jq -r '.merged_at // "not merged"' <<<"$pr")
+            mergeable=$(jq -r '.mergeable // "unknown"' <<<"$pr")
+            mergeable_state=$(jq -r '.mergeable_state // "unknown"' <<<"$pr")
+            {
+              echo
+              echo "#### PR #${number}"
+              echo
+              echo "- state: \`${state}\`; draft: \`${draft}\`; base: \`${base}\`"
+              echo "- head: \`${head_sha}\`; merged at: \`${merged_at}\`"
+              echo "- mergeable: \`${mergeable}\`; mergeable state: \`${mergeable_state}\`"
+              echo '- exact-head workflow groups:'
+            } >> "$report"
+            for workflow in "${required[@]}"; do
+              row=$(jq -r --arg workflow "$workflow" --arg sha "$head_sha" '
+                [.workflow_runs[]
+                  | select(.name == $workflow and .head_sha == $sha)
+                  | {id, status, conclusion, html_url}]
+                | sort_by(.id)
+                | last
+                | if . == null then "missing|missing|missing|"
+                  else "\(.id)|\(.status)|\(.conclusion // "pending")|\(.html_url)" end
+              ' <<<"$runs")
+              IFS='|' read -r run_id run_status conclusion url <<<"$row"
+              echo "  - ${workflow}: \`${run_status}/${conclusion}\` — run ${run_id} ${url}" >> "$report"
+            done
+          done
+
+          echo >> "$report"
+          echo '### Guarded automation runs' >> "$report"
+          automation=(
+            'One-off guarded merge of PR 794'
+            'One-off guarded refresh of PR 792 after PR 794 v2'
+            'One-off guarded integration of PR 792'
+            'One-off guarded rebase of PR 795 after PR 792'
+            'One-off harden PR 795 operation consistency v2'
+            'One-off harden PR 795 fail-closed policy bounds'
+            'One-off audit PR 795 release completeness'
+          )
+          for workflow in "${automation[@]}"; do
+            row=$(jq -r --arg workflow "$workflow" '
+              [.workflow_runs[]
+                | select(.name == $workflow)
+                | {id, status, conclusion, head_sha, html_url}]
+              | sort_by(.id)
+              | last
+              | if . == null then "missing|missing|missing|missing|"
+                else "\(.id)|\(.status)|\(.conclusion // "pending")|\(.head_sha)|\(.html_url)" end
+            ' <<<"$runs")
+            IFS='|' read -r run_id run_status conclusion run_sha url <<<"$row"
+            echo "- ${workflow}: \`${run_status}/${conclusion}\` at \`${run_sha}\` — run ${run_id} ${url}" >> "$report"
+          done
+
+          echo >> "$report"
+          echo '> No tag, GitHub Release, package publication or deployment is authorized by this checkpoint.' >> "$report"
+          cat "$report"
+          gh api "repos/${GITHUB_REPOSITORY}/issues/711/comments" \
+            -f body="$(cat "$report")"
+
+      - name: Delete temporary checkpoint branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/automation/release-checkpoint-20260818-evening" \
+            || true
