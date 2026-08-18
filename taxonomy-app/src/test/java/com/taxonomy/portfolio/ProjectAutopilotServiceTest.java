@@ -4,6 +4,8 @@ import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
 import com.taxonomy.portfolio.dto.CopilotDtos.ProjectAutopilotRunRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.model.AiCostPolicy;
+import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
@@ -145,10 +147,21 @@ class ProjectAutopilotServiceTest {
             boolean ready,
             boolean runAfterSave,
             String reason) {
-        AiAutomationStatus status = mock(AiAutomationStatus.class);
-        when(status.autopilotReady()).thenReturn(ready);
-        when(status.runAfterRequirementSave()).thenReturn(runAfterSave);
-        when(status.reason()).thenReturn(reason);
-        return status;
+        return new AiAutomationStatus(
+                AiCostPolicy.UNMETERED,
+                true,
+                true,
+                ready,
+                runAfterSave,
+                "CUSTOM_OPENAI",
+                "CUSTOM_OPENAI",
+                AnalysisAutomationProfile.FULL,
+                AnalysisAutomationProfile.EXHAUSTIVE,
+                1,
+                2,
+                50,
+                reason,
+                List.of(),
+                List.of());
     }
 }
