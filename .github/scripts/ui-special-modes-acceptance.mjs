@@ -146,56 +146,86 @@ async function screenshot(state, selector) {
 }
 
 async function testPartialAnalysis() {
-  await navigateToPage(page, 'analyze');
-  await waitForTaxonomyReady();
-  const interactive = page.locator('#interactiveMode');
-  if (await interactive.isChecked()) await interactive.uncheck();
-
-  // List and tabs intentionally use SSE. This scenario validates the synchronous
-  // POST response and then replaces exactly one POST with a PARTIAL response, so
-  // select a non-streaming view explicitly rather than relying on UI timing.
-  await selectSynchronousAnalysisView();
-
-  const successfulText = 'Provide traceable and resilient hospital communication services.';
-  await page.locator('#businessText').fill(successfulText);
-  const fixture = await submitAnalysisAndWaitForPublishedState(successfulText, 'SUCCESS');
-
-  await page.route('**/api/analyze', async route => {
+  const partialMarker = 'PARTIAL_FIXTURE_803';
+  const stableAiStatus = async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        status: 'PARTIAL',
-        errorMessage: 'One provider branch was unavailable',
-        warnings: ['Some architecture branches were not evaluated.'],
-        tree: fixture.tree,
-        scores: fixture.scores,
-        discrepancies: [],
-        provisionalRelations: []
+        level: 'FULL',
+        available: true,
+        limited: false,
+        provider: 'TEST',
+        availableProviders: ['TEST']
       })
     });
-  }, { times: 1 });
+  };
+  await page.route('**/api/ai-status', stableAiStatus);
 
-  const partialText = 'Provide traceable hospital communication services with a partial provider result.';
-  await page.locator('#businessText').fill(partialText);
-  await submitAnalysisAndWaitForPublishedState(partialText, 'PARTIAL', 30_000);
+  try {
+    await navigateToPage(page, 'analyze');
+    await waitForTaxonomyReady();
+    const interactive = page.locator('#interactiveMode');
+    if (await interactive.isChecked()) await interactive.uncheck();
 
-  const statusHandle = await page.waitForFunction(() => {
-    const text = (document.querySelector('#statusArea')?.textContent || '').trim();
-    const normalized = text.toLowerCase();
-    return text && (normalized.includes('unavailable')
-      || normalized.includes('incomplete')
-      || normalized.includes('partial')) ? text : false;
-  }, null, { timeout: 30_000 });
-  const statusText = await statusHandle.jsonValue();
-  assert(typeof statusText === 'string' && statusText.length > 0, 'Partial analysis status is empty');
-  await page.waitForFunction(() => {
-    const text = (document.querySelector('#a11yStatus')?.textContent || '').trim().toLowerCase();
-    return text.includes('unavailable') || text.includes('incomplete') || text.includes('partial');
-  }, null, { timeout: 10_000 });
-  checks.push('partial analysis status, warning detail, and live announcement');
-  await runAxe('analysis-partial', '#tab-analyze');
-  await screenshot('analysis-partial', '#tab-analyze');
+    // List and tabs intentionally use SSE. This scenario validates the synchronous
+    // POST response and then replaces exactly one POST with a PARTIAL response, so
+    // select a non-streaming view explicitly rather than relying on UI timing.
+    await selectSynchronousAnalysisView();
+
+    const successfulText = 'Provide traceable and resilient hospital communication services.';
+    await page.locator('#businessText').fill(successfulText);
+    const fixture = await submitAnalysisAndWaitForPublishedState(successfulText, 'SUCCESS');
+
+    await page.route('**/api/analyze', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'PARTIAL',
+          errorMessage: partialMarker,
+          warnings: [`${partialMarker}: Some architecture branches were not evaluated.`],
+          tree: fixture.tree,
+          scores: fixture.scores,
+          discrepancies: [],
+          provisionalRelations: []
+        })
+      });
+    }, { times: 1 });
+
+    const partialText = 'Provide traceable hospital communication services with a partial provider result.';
+    await page.locator('#businessText').fill(partialText);
+
+    // The editor deliberately debounces its stale-result warning. Let that
+    // input-owned status settle before starting the new analysis, otherwise its
+    // pending callback can clear a correctly published PARTIAL result afterward.
+    await page.waitForFunction(() =>
+      document.querySelector('#businessText')?.classList.contains('stale-results'),
+    null, { timeout: 5_000 });
+
+    const [statusHandle] = await Promise.all([
+      page.waitForFunction(marker => {
+        const warningText = (
+          document.querySelector('#statusArea .alert-warning')?.textContent || ''
+        ).trim();
+        const liveText = (document.querySelector('#a11yStatus')?.textContent || '').trim();
+        return warningText.includes(marker) && liveText.includes(marker)
+          ? { warningText, liveText }
+          : false;
+      }, partialMarker, { timeout: 30_000 }),
+      submitAnalysisAndWaitForPublishedState(partialText, 'PARTIAL', 30_000)
+    ]);
+    const partialUi = await statusHandle.jsonValue();
+    assert(partialUi?.warningText?.includes(partialMarker),
+      'Partial analysis warning was not published in the visible status area');
+    assert(partialUi?.liveText?.includes(partialMarker),
+      'Partial analysis warning was not announced in the accessibility live region');
+    checks.push('partial analysis status, warning detail, and live announcement');
+    await runAxe('analysis-partial', '#tab-analyze');
+    await screenshot('analysis-partial', '#tab-analyze');
+  } finally {
+    await page.unroute('**/api/ai-status', stableAiStatus).catch(() => undefined);
+  }
 }
 
 async function testTextSpacing() {
