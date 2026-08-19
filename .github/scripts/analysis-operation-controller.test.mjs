@@ -250,9 +250,9 @@ test('the installed EventSource guard blocks stale and out-of-order UI callbacks
     ['error', 1]
   ]);
   assert.equal(transportFailures, 0);
-  assert.equal(instances[1].closeCalls, 2);
-  assert.equal(instances[2].closeCalls, 2);
+  assert.equal(instances[1].closeCalls, 1);
+  assert.equal(instances[2].closeCalls, 1);
   assert.equal(sourceA.closeCalls, 1);
-  assert.equal(sourceB.closeCalls, 2);
-  assert.equal(sourceC.closeCalls, 2);
+  assert.equal(sourceB.closeCalls, 1);
+  assert.equal(sourceC.closeCalls, 1);
 });
