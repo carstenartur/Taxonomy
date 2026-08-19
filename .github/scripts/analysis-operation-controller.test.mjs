@@ -256,3 +256,55 @@ test('the installed EventSource guard blocks stale and out-of-order UI callbacks
   assert.equal(sourceB.closeCalls, 1);
   assert.equal(sourceC.closeCalls, 1);
 });
+
+test('guarded listeners preserve EventTarget identity and equivalent capture options', () => {
+  const instances = [];
+
+  class FakeEventSource {
+    constructor() {
+      this.listeners = new Map();
+      this.onerror = null;
+      instances.push(this);
+    }
+
+    addEventListener(type, listener) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(listener);
+    }
+
+    removeEventListener(type, listener) {
+      const listeners = this.listeners.get(type) || [];
+      this.listeners.set(type, listeners.filter(candidate => candidate !== listener));
+    }
+
+    close() {}
+
+    emit(type, envelope) {
+      const message = { type, data: JSON.stringify(envelope) };
+      for (const listener of this.listeners.get(type) || []) listener.call(this, message);
+    }
+  }
+
+  let callbackCount = 0;
+  const listener = () => { callbackCount += 1; };
+  const runtime = loadRuntime({ window: { EventSource: FakeEventSource } });
+  runtime.window.TaxonomyScoring = {
+    runStreamingAnalysis() {
+      const source = new runtime.window.EventSource('/api/analyze-stream');
+      source.addEventListener('phase', listener, false);
+      source.addEventListener('phase', listener, { passive: true });
+      source.addEventListener('phase', listener, { capture: false, once: true });
+      return source;
+    }
+  };
+  runtime.fireDomReady();
+
+  const source = runtime.window.TaxonomyScoring.runStreamingAnalysis();
+  assert.equal(instances[0].listeners.get('phase').length, 1);
+
+  source.removeEventListener('phase', listener, { capture: false });
+  assert.equal(instances[0].listeners.get('phase').length, 0);
+
+  instances[0].emit('phase', event('operation-a', 1));
+  assert.equal(callbackCount, 0);
+});
