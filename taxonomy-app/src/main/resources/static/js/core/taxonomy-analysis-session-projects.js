@@ -13,6 +13,7 @@
     var rememberedWorkspaceId = C.rememberedWorkspaceId;
     var rememberWorkspaceId = C.rememberWorkspaceId;
     var installWorkspaceFetchRouting = C.installWorkspaceFetchRouting;
+    var installWorkspaceEventSourceRouting = C.installWorkspaceEventSourceRouting;
     var currentPayload = C.currentPayload;
     var comparable = C.comparable;
     var isStale = C.isStale;
@@ -320,6 +321,7 @@
     function resolveWorkspaceAndLoad() {
         var remembered = rememberedWorkspaceId();
         installWorkspaceFetchRouting();
+        installWorkspaceEventSourceRouting();
 
         if (remembered) {
             runtime.workspaceId = remembered;
