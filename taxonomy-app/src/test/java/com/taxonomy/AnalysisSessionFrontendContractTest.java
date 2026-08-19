@@ -1,0 +1,85 @@
+package com.taxonomy;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class AnalysisSessionFrontendContractTest {
+
+    @Test
+    void invalidationClearsEveryRequirementDerivedStateWithoutTouchingPortfolioData()
+            throws IOException {
+        String script = resource("/static/js/core/taxonomy-analysis-session.js");
+
+        assertThat(script)
+                .contains("S.currentScores = null")
+                .contains("S.currentReasons = {}")
+                .contains("S.currentDiscrepancies = []")
+                .contains("S.currentArchView = null")
+                .contains("window._currentProvisionalRelations = []")
+                .contains("gapAnalysisContent")
+                .contains("patternDetectionContent")
+                .contains("recommendationContent")
+                .contains("requirementImpactResults")
+                .contains("copilotContent")
+                .contains("architectureViewPanel")
+                .contains("suggestedRelationsPanel")
+                .contains("taxonomy:analysis-invalidated")
+                .doesNotContain("/api/projects/**/delete")
+                .doesNotContain("/api/relations/**/delete");
+    }
+
+    @Test
+    void staleTextOffersDistinctBusinessActions() throws IOException {
+        String script = resource("/static/js/core/taxonomy-analysis-session.js");
+
+        assertThat(script)
+                .contains("discard-edit")
+                .contains("discard-analysis")
+                .contains("add-requirement")
+                .contains("new-project")
+                .contains("save-version")
+                .contains("/api/projects/")
+                .contains("/requirements")
+                .contains("/versions");
+    }
+
+    @Test
+    void workingDraftIsWorkspacePinnedAndOptimisticallyVersioned() throws IOException {
+        String session = resource("/static/js/core/taxonomy-analysis-session.js");
+        String state = resource("/static/js/core/taxonomy-state.js");
+
+        assertThat(session)
+                .contains("/api/analysis-drafts/")
+                .contains("expectedVersion: runtime.version")
+                .contains("error.status === 409")
+                .contains("X-Taxonomy-Workspace-Id")
+                .contains("sessionStorage")
+                .contains("window.location.reload()")
+                .contains("taxonomy:analysis-draft-restored");
+        assertThat(state).contains("taxonomy-analysis-session.js");
+    }
+
+    @Test
+    void postgresMigrationCarriesTheSameOptimisticLockContract() throws IOException {
+        String migration = resource(
+                "/db/migration/taxonomy/postgresql/V16__analysis_working_drafts.sql");
+
+        assertThat(migration)
+                .contains("create table if not exists analysis_working_draft")
+                .contains("scope_key varchar(1024) not null")
+                .contains("payload_json oid not null")
+                .contains("row_version bigint not null")
+                .contains("unique (scope_key, username)");
+    }
+
+    private static String resource(String path) throws IOException {
+        try (var stream = AnalysisSessionFrontendContractTest.class.getResourceAsStream(path)) {
+            if (stream == null) throw new IOException("Missing test resource: " + path);
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+}
