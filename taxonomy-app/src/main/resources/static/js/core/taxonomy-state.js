@@ -233,19 +233,49 @@
         var transportErrorListener = null;
         var proxy;
 
-        function wrappersFor(type) {
+        function captureFlag(options) {
+            return typeof options === 'boolean'
+                ? options
+                : Boolean(options && options.capture);
+        }
+
+        function wrappersFor(type, listener) {
             if (!listenerMaps.has(type)) listenerMaps.set(type, new Map());
-            return listenerMaps.get(type);
+            var listenersForType = listenerMaps.get(type);
+            if (!listenersForType.has(listener)) listenersForType.set(listener, new Map());
+            return listenersForType.get(listener);
+        }
+
+        function removeStoredWrapper(type, listener, capture) {
+            var listenersForType = listenerMaps.get(type);
+            if (!listenersForType) return null;
+            var wrappersForListener = listenersForType.get(listener);
+            if (!wrappersForListener) return null;
+            var wrapped = wrappersForListener.get(capture) || null;
+            if (!wrapped) return null;
+
+            wrappersForListener.delete(capture);
+            if (wrappersForListener.size === 0) listenersForType.delete(listener);
+            if (listenersForType.size === 0) listenerMaps.delete(type);
+            return wrapped;
         }
 
         proxy = new Proxy(nativeSource, {
             get: function (target, property) {
                 if (property === 'addEventListener') {
                     return function (type, listener, options) {
-                        if (!guardedTypes.has(type)) {
+                        if (!guardedTypes.has(type) || listener == null) {
                             target.addEventListener(type, listener, options);
                             return;
                         }
+
+                        // EventTarget identity is (type, listener, capture). Once,
+                        // passive and equivalent option objects do not create a
+                        // second registration for the same identity.
+                        var capture = captureFlag(options);
+                        var wrappersForListener = wrappersFor(type, listener);
+                        if (wrappersForListener.has(capture)) return;
+
                         var wrapped = function (event) {
                             var envelope = parseOperationEnvelope(event);
                             if (!session.accept(envelope, {
@@ -253,16 +283,24 @@
                             })) return;
                             invokeEventListener(listener, proxy, event);
                         };
-                        wrappersFor(type).set(listener, wrapped);
-                        target.addEventListener(type, wrapped, options);
+                        wrappersForListener.set(capture, wrapped);
+                        try {
+                            target.addEventListener(type, wrapped, options);
+                        } catch (error) {
+                            removeStoredWrapper(type, listener, capture);
+                            throw error;
+                        }
                     };
                 }
                 if (property === 'removeEventListener') {
                     return function (type, listener, options) {
-                        var wrapped = listenerMaps.has(type)
-                            ? listenerMaps.get(type).get(listener) : null;
+                        if (!guardedTypes.has(type) || listener == null) {
+                            target.removeEventListener(type, listener, options);
+                            return;
+                        }
+                        var wrapped = removeStoredWrapper(
+                            type, listener, captureFlag(options));
                         target.removeEventListener(type, wrapped || listener, options);
-                        if (wrapped) listenerMaps.get(type).delete(listener);
                     };
                 }
                 if (property === 'close') {
