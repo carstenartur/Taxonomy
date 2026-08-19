@@ -235,6 +235,38 @@
         window.fetch = routedFetch;
     }
 
+    function installWorkspaceEventSourceRouting() {
+        var NativeEventSource = window.EventSource;
+        if (typeof NativeEventSource !== 'function'
+                || NativeEventSource.__taxonomyWorkspaceRouting === true) return;
+
+        function RoutedEventSource(url, configuration) {
+            var resolved = requestUrl(url);
+            var target = url;
+            if (runtime.workspaceId && resolved
+                    && resolved.origin === window.location.origin
+                    && resolved.pathname.indexOf('/api/') === 0) {
+                resolved.searchParams.set('workspaceId', runtime.workspaceId);
+                target = resolved.href;
+            }
+            return new NativeEventSource(target, configuration);
+        }
+
+        RoutedEventSource.prototype = NativeEventSource.prototype;
+        ['CONNECTING', 'OPEN', 'CLOSED'].forEach(function (constant) {
+            if (constant in NativeEventSource) {
+                RoutedEventSource[constant] = NativeEventSource[constant];
+            }
+        });
+        Object.defineProperty(RoutedEventSource, '__taxonomyWorkspaceRouting', {
+            configurable: false,
+            enumerable: false,
+            value: true,
+            writable: false
+        });
+        window.EventSource = RoutedEventSource;
+    }
+
     function draftEndpoint() {
         return runtime.workspaceId
             ? '/api/analysis-drafts/' + encodeURIComponent(runtime.workspaceId)
@@ -403,6 +435,7 @@
         rememberWorkspaceId: rememberWorkspaceId,
         requestUrl: requestUrl,
         installWorkspaceFetchRouting: installWorkspaceFetchRouting,
+        installWorkspaceEventSourceRouting: installWorkspaceEventSourceRouting,
         draftEndpoint: draftEndpoint,
         hasScores: hasScores,
         hasDerivedAnalysis: hasDerivedAnalysis,
