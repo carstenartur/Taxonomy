@@ -28,11 +28,36 @@ function isAnalyzeResponseForText(response, expectedText) {
   }
 }
 
-async function waitForTaxonomyReady() {
+async function waitForTaxonomyReady(timeout = 180_000) {
+  try {
+    await page.waitForFunction(async () => {
+      try {
+        const response = await fetch('/api/status/startup', {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) return false;
+        const status = await response.json();
+        window.__taxonomyStartupStatus = status;
+        return status?.initialized === true;
+      } catch (error) {
+        window.__taxonomyStartupStatus = { error: String(error) };
+        return false;
+      }
+    }, null, { timeout, polling: 1_000 });
+  } catch (error) {
+    const status = await page.evaluate(() => window.__taxonomyStartupStatus || null);
+    throw new Error(
+      `Taxonomy server did not become ready: ${JSON.stringify(status)}`,
+      { cause: error }
+    );
+  }
+
+  await page.locator('#analyzeBtn').waitFor({ state: 'visible', timeout: 30_000 });
   await page.waitForFunction(() => {
-    const state = window.TaxonomyState;
-    return Array.isArray(state?.taxonomyData) && state.taxonomyData.length > 0;
-  }, null, { timeout: 60_000 });
+    const button = document.querySelector('#analyzeBtn');
+    return Boolean(button) && button.disabled === false;
+  }, null, { timeout: 30_000 });
 }
 
 async function selectSynchronousAnalysisView() {
