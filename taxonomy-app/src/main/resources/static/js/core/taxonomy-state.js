@@ -257,7 +257,6 @@
             if (!wrappersForListener) return null;
             var wrapped = wrappersForListener.get(capture) || null;
             if (!wrapped) return null;
-
             wrappersForListener.delete(capture);
             if (wrappersForListener.size === 0) listenersForType.delete(listener);
             if (listenersForType.size === 0) listenerMaps.delete(type);
@@ -394,10 +393,21 @@
         });
     }
 
+    function loadAnalysisSessionLifecycle() {
+        if (document.querySelector('script[data-taxonomy-analysis-session]')) return;
+        var script = document.createElement('script');
+        script.src = '/js/core/taxonomy-analysis-session.js';
+        script.async = false;
+        script.dataset.taxonomyAnalysisSession = 'true';
+        document.head.appendChild(script);
+    }
+
     window.TaxonomyState = state;
     window.TaxonomyAnalysisOperationController = Object.freeze({
         create: createAnalysisOperationController
     });
+
+    loadAnalysisSessionLifecycle();
 
     if (typeof document.addEventListener === 'function') {
         document.addEventListener('DOMContentLoaded', installAnalysisStreamGuard, { once: true });
