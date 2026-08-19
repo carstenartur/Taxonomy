@@ -7,6 +7,7 @@ const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const outputDir = path.resolve(process.env.TAXONOMY_UI_OUTPUT_DIR || 'target/ui-special-modes');
 const checks = [];
 const findings = [];
+const analyzePath = '/api/analyze';
 let auditError = null;
 let browser;
 let context;
@@ -14,6 +15,47 @@ let page;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function isAnalyzeResponse(response) {
+  const url = new URL(response.url());
+  return response.request().method() === 'POST' && url.pathname === analyzePath;
+}
+
+async function waitForTaxonomyReady() {
+  await page.waitForFunction(() => {
+    const state = window.TaxonomyState;
+    return Array.isArray(state?.taxonomyData) && state.taxonomyData.length > 0;
+  }, null, { timeout: 60_000 });
+}
+
+// Bind completion to this page's POST response and published state. The shared
+// status region is also used by background checks, and 'incomplete' contains 'complete'.
+async function submitAnalysisAndWaitForPublishedState(expectedStatus, timeout = 120_000) {
+  const responsePromise = page.waitForResponse(isAnalyzeResponse, { timeout });
+  await page.locator('#analyzeBtn').click();
+  const response = await responsePromise;
+  assert(response.ok(), `Analysis request failed with HTTP ${response.status()}`);
+
+  const payload = await response.json();
+  const actualStatus = String(payload.status || 'SUCCESS').toUpperCase();
+  assert(actualStatus === expectedStatus,
+    `Expected ${expectedStatus} analysis response but received ${actualStatus}`);
+  assert(Array.isArray(payload.tree) && payload.tree.length > 0,
+    `${expectedStatus} analysis response produced no reusable tree`);
+  assert(payload.scores && Object.values(payload.scores).some(value => Number(value) > 0),
+    `${expectedStatus} analysis response produced no reusable positive scores`);
+
+  await page.waitForFunction(({ treeCount, scores }) => {
+    const state = window.TaxonomyState;
+    return state?.analysisInProgress === false
+      && Array.isArray(state.taxonomyData)
+      && state.taxonomyData.length === treeCount
+      && Object.entries(scores).every(([key, value]) =>
+        Number(state.currentScores?.[key]) === Number(value));
+  }, { treeCount: payload.tree.length, scores: payload.scores }, { timeout });
+
+  return payload;
 }
 
 async function openDetails(selector) {
@@ -52,21 +94,11 @@ async function screenshot(state, selector) {
 
 async function testPartialAnalysis() {
   await navigateToPage(page, 'analyze');
+  await waitForTaxonomyReady();
   const interactive = page.locator('#interactiveMode');
   if (await interactive.isChecked()) await interactive.uncheck();
   await page.locator('#businessText').fill('Provide traceable and resilient hospital communication services.');
-  await page.locator('#analyzeBtn').click();
-  await page.waitForFunction(() => {
-    const text = document.querySelector('#statusArea')?.textContent?.toLowerCase() || '';
-    return text.includes('complete') || text.includes('completed');
-  }, null, { timeout: 120_000 });
-
-  const fixture = await page.evaluate(() => ({
-    tree: window.TaxonomyState.taxonomyData,
-    scores: window.TaxonomyState.currentScores
-  }));
-  assert(Array.isArray(fixture.tree) && fixture.tree.length > 0, 'Successful analysis produced no reusable tree');
-  assert(fixture.scores && Object.keys(fixture.scores).length > 0, 'Successful analysis produced no reusable scores');
+  const fixture = await submitAnalysisAndWaitForPublishedState('SUCCESS');
 
   await page.locator('#viewSunburst').click();
   await page.waitForFunction(() => window.TaxonomyState.currentView === 'sunburst');
@@ -87,7 +119,7 @@ async function testPartialAnalysis() {
     });
   }, { times: 1 });
   await page.locator('#businessText').fill('Provide traceable hospital communication services with a partial provider result.');
-  await page.locator('#analyzeBtn').click();
+  await submitAnalysisAndWaitForPublishedState('PARTIAL', 30_000);
   const statusHandle = await page.waitForFunction(() => {
     const text = (document.querySelector('#statusArea')?.textContent || '').trim();
     const normalized = text.toLowerCase();
