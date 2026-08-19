@@ -4,7 +4,6 @@ set -euo pipefail
 : "${RELEASE_VERSION:?RELEASE_VERSION is required}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 : "${TOOLING_JAR:?TOOLING_JAR is required}"
-: "${VEX_HELPER:?VEX_HELPER is required}"
 : "${RELEASE_NOTES_VALIDATOR:?RELEASE_NOTES_VALIDATOR is required}"
 
 NEXT_VERSION_INPUT=${NEXT_VERSION_INPUT:-}
@@ -312,7 +311,9 @@ if [[ "$SKIP_TESTS" == "true" ]]; then
 else
   run_maven_release_check release release-check,ci clean verify
 fi
-python3 "$VEX_HELPER"
+java -jar "$TOOLING_JAR" generate-sbom-companion \
+  --sbom target/taxonomy-sbom.json \
+  --output target/taxonomy-vex.json
 collect_release_artifacts
 
 PUBLISHED_THIS_RUN=false
