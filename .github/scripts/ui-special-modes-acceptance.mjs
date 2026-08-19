@@ -89,7 +89,7 @@ async function submitAnalysisAndWaitForPublishedState(
 async function openDetails(selector) {
   const details = page.locator(selector);
   await details.waitFor({ state: 'attached', timeout: 20_000 });
-  if (!(await details.getAttribute('open'))) {
+  if ((await details.getAttribute('open')) === null) {
     const summary = details.locator(':scope > summary');
     await summary.scrollIntoViewIfNeeded();
     await summary.click();
