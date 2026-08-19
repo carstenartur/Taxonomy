@@ -33,7 +33,9 @@ class SbomCompanionProductiveRoutingRepositoryTest {
                 .contains("java -jar \"$TOOLING_JAR\" generate-sbom-companion")
                 .contains("--sbom target/taxonomy-sbom.json")
                 .contains("--output target/taxonomy-vex.json")
-                .doesNotContain("python3 \"$VEX_HELPER\"");
+                .doesNotContain("generate-vex.py")
+                .doesNotContain("VEX_HELPER")
+                .doesNotContain("python3");
     }
 
     private static Path findRepositoryRoot() {
