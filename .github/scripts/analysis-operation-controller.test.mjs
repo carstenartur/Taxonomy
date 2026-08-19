@@ -238,13 +238,21 @@ test('the installed EventSource guard blocks stale and out-of-order UI callbacks
   instances[1].emit('scores', event('operation-b', 3));
   instances[1].failTransport();
 
+  const sourceC = runtime.window.TaxonomyScoring.runStreamingAnalysis();
+  instances[2].emit('error', event('operation-c', 1));
+  instances[2].emit('scores', event('operation-c', 2));
+  instances[2].failTransport();
+
   assert.deepEqual(accepted, [
     ['scores', 1],
     ['scores', 1],
-    ['complete', 2]
+    ['complete', 2],
+    ['error', 1]
   ]);
   assert.equal(transportFailures, 0);
   assert.equal(instances[1].closeCalls, 2);
+  assert.equal(instances[2].closeCalls, 2);
   assert.equal(sourceA.closeCalls, 1);
   assert.equal(sourceB.closeCalls, 2);
+  assert.equal(sourceC.closeCalls, 2);
 });
