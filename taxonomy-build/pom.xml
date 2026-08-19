@@ -163,6 +163,23 @@
 
     <profiles>
         <profile>
+            <id>github-actions-playwright-runtime</id>
+            <activation>
+                <property>
+                    <name>env.GITHUB_ACTIONS</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <!-- GitHub's Ubuntu runner image already provides browser runtime
+                     libraries and Xvfb. Re-running Playwright's apt installation
+                     makes the canonical build depend on mutable package mirrors
+                     and previously exhausted the two-hour job limit. Browser
+                     binaries remain installed and pinned by package-lock.json. -->
+                <taxonomy.playwright.install.arguments>exec -- playwright install chromium firefox webkit</taxonomy.playwright.install.arguments>
+            </properties>
+        </profile>
+        <profile>
             <id>supply-chain-policy</id>
             <build>
                 <plugins>
