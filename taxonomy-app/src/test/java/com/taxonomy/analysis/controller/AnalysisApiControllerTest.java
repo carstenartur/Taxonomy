@@ -314,6 +314,25 @@ class AnalysisApiControllerTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Unknown provider: nope")));
     }
 
+    @Test
+    void analyzeStreamMapsUnexpectedFailureToBoundedErrorEvent() throws Exception {
+        doAnswer(invocation -> {
+            throw new IllegalStateException("sensitive provider diagnostics");
+        }).when(streamRequirementAnalysisUseCase).stream(any(), any());
+
+        mockMvc.perform(get("/api/analyze-stream")
+                        .param("businessText", "Need secure voice comms")
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:error")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"operationId\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"sequence\":1")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "Analysis failed. Retry the operation or inspect administrator diagnostics.")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("sensitive provider diagnostics"))));
+    }
+
     private void assertValidOperationId(ResponseEntity<?> response) {
         String operationId = response.getHeaders()
                 .getFirst(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER);
