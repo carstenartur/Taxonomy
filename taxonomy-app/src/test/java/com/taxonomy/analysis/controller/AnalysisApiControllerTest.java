@@ -35,11 +35,13 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
@@ -121,6 +123,7 @@ class AnalysisApiControllerTest {
         ResponseEntity<AnalysisResult> response = controller.analyze(request);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isSameAs(analysisResult);
+        assertValidOperationId(response);
 
         ArgumentCaptor<com.taxonomy.analysis.usecase.AnalyzeRequirementCommand> captor =
                 ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
@@ -140,6 +143,7 @@ class AnalysisApiControllerTest {
 
         ResponseEntity<AnalysisResult> response = controller.analyze(request);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertValidOperationId(response);
         Map<?, ?> body = (Map<?, ?>) (Object) response.getBody();
         assertThat(body.get("error")).isEqualTo("Unknown provider: nope");
     }
@@ -219,6 +223,9 @@ class AnalysisApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM_VALUE))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("event:error")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id:")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"operationId\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"sequence\":1")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "businessText must not be blank")));
         verifyNoInteractions(streamRequirementAnalysisUseCase);
@@ -261,6 +268,38 @@ class AnalysisApiControllerTest {
     }
 
     @Test
+    void analyzeStreamEmitsOneOperationAndMonotonicSequences() throws Exception {
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Consumer<AnalysisStreamEvent> handler = invocation.getArgument(1);
+            handler.accept(new AnalysisStreamEvent.Phase("Working", 12));
+            handler.accept(new AnalysisStreamEvent.Complete(
+                    "SUCCESS", Map.of("CP", 80), List.of(), List.of()));
+            return null;
+        }).when(streamRequirementAnalysisUseCase).stream(any(), any());
+
+        String response = mockMvc.perform(get("/api/analyze-stream")
+                        .param("businessText", "Need secure voice comms")
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"sequence\":1")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"sequence\":2")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"emittedAt\"")))
+                .andReturn().getResponse().getContentAsString();
+
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("\\\"operationId\\\":\\\"([0-9a-f-]{36})\\\"")
+                .matcher(response);
+        assertThat(matcher.find()).isTrue();
+        String operationId = matcher.group(1);
+        assertThatCode(() -> UUID.fromString(operationId)).doesNotThrowAnyException();
+        assertThat(response).contains("id:" + operationId + ":1");
+        assertThat(response).contains("id:" + operationId + ":2");
+        assertThat(matcher.find()).isTrue();
+        assertThat(matcher.group(1)).isEqualTo(operationId);
+    }
+
+    @Test
     void analyzeStreamMapsUnknownProviderToErrorEvent() throws Exception {
         doAnswer(invocation -> {
             throw new UnknownAnalysisProviderException("nope");
@@ -272,6 +311,15 @@ class AnalysisApiControllerTest {
                         .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("event:error")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"operationId\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"sequence\":1")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Unknown provider: nope")));
+    }
+
+    private void assertValidOperationId(ResponseEntity<?> response) {
+        String operationId = response.getHeaders()
+                .getFirst(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER);
+        assertThat(operationId).isNotBlank();
+        assertThatCode(() -> UUID.fromString(operationId)).doesNotThrowAnyException();
     }
 }

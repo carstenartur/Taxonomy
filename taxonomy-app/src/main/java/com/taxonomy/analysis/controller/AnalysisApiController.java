@@ -42,9 +42,12 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.net.URI;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * HTTP/SSE transport adapter for requirement analysis. Business orchestration is
@@ -54,6 +57,8 @@ import java.util.concurrent.ExecutorService;
 @RequestMapping("/api")
 @Tag(name = "Analysis")
 public class AnalysisApiController {
+
+    static final String ANALYSIS_OPERATION_ID_HEADER = "X-Analysis-Operation-Id";
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisApiController.class);
 
@@ -106,6 +111,8 @@ public class AnalysisApiController {
                 || request.getBusinessText().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
+
+        String operationId = newOperationId();
         try {
             String username = workspaceResolver.resolveCurrentUsername();
             AnalyzeRequirementResult result = analyzeRequirementUseCase.analyze(
@@ -116,11 +123,15 @@ public class AnalysisApiController {
                             request.getProvider(),
                             username,
                             resolveWorkspaceContext(username)));
-            return ResponseEntity.ok(result.analysisResult());
+            return ResponseEntity.ok()
+                    .header(ANALYSIS_OPERATION_ID_HEADER, operationId)
+                    .body(result.analysisResult());
         } catch (UnknownAnalysisProviderException e) {
             @SuppressWarnings("unchecked")
             ResponseEntity<AnalysisResult> badProvider = (ResponseEntity<AnalysisResult>)
-                    (ResponseEntity<?>) ResponseEntity.badRequest().body(Map.of(
+                    (ResponseEntity<?>) ResponseEntity.badRequest()
+                    .header(ANALYSIS_OPERATION_ID_HEADER, operationId)
+                    .body(Map.of(
                             "error", "Unknown provider: " + e.getProvider(),
                             "validProviders", e.getValidProviders()));
             return badProvider;
@@ -128,7 +139,7 @@ public class AnalysisApiController {
     }
 
     @Operation(summary = "Streaming analysis (SSE)",
-            description = "Emits phase, scores, expanding, complete, and error events as the taxonomy is processed.",
+            description = "Emits phase, scores, expanding, complete, and error events as the taxonomy is processed. Every event carries one operation ID and a monotonic sequence.",
             tags = {"Analysis"})
     @GetMapping(value = "/analyze-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter analyzeStream(
@@ -137,9 +148,11 @@ public class AnalysisApiController {
             @Parameter(description = "LLM provider override")
             @RequestParam(required = false) String provider) {
         SseEmitter emitter = new SseEmitter(120_000L);
+        String operationId = newOperationId();
+        AtomicLong eventSequence = new AtomicLong();
 
         if (!taxonomyService.isInitialized()) {
-            sendEvent(emitter, "error", Map.of(
+            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
                     "status", "ERROR",
                     "errorMessage", messageSource.getMessage(
                             "error.loading", null,
@@ -150,7 +163,7 @@ public class AnalysisApiController {
             return emitter;
         }
         if (businessText == null || businessText.isBlank()) {
-            sendEvent(emitter, "error", Map.of(
+            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
                     "status", "ERROR",
                     "errorMessage", "businessText must not be blank"));
             emitter.complete();
@@ -163,20 +176,24 @@ public class AnalysisApiController {
             try {
                 streamRequirementAnalysisUseCase.stream(command, event -> {
                     AnalysisSseEventMapper.MappedEvent mapped = analysisSseEventMapper.map(event);
-                    sendEvent(emitter, mapped.name(), mapped.payload());
+                    sendEvent(emitter, operationId, eventSequence.incrementAndGet(),
+                            mapped.name(), mapped.payload());
                     if (event instanceof AnalysisStreamEvent.Complete
                             || event instanceof AnalysisStreamEvent.Error) {
                         emitter.complete();
                     }
                 });
             } catch (UnknownAnalysisProviderException e) {
-                sendEvent(emitter, "error", Map.of(
+                sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
                         "status", "ERROR",
                         "errorMessage", "Unknown provider: " + e.getProvider()));
                 emitter.complete();
             } catch (Exception e) {
                 log.error("Streaming analysis failed", e);
-                emitter.completeWithError(e);
+                sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
+                        "status", "ERROR",
+                        "errorMessage", "Analysis failed. Retry the operation or inspect administrator diagnostics."));
+                emitter.complete();
             }
         });
         return emitter;
@@ -239,16 +256,34 @@ public class AnalysisApiController {
         }
     }
 
-    private void sendEvent(SseEmitter emitter, String eventName, Object data) {
+    private void sendEvent(SseEmitter emitter,
+                           String operationId,
+                           long sequence,
+                           String eventName,
+                           Object data) {
         try {
+            Map<String, Object> envelope = new LinkedHashMap<>();
+            envelope.put("operationId", operationId);
+            envelope.put("sequence", sequence);
+            envelope.put("emittedAt", Instant.now().toString());
+            if (data instanceof Map<?, ?> dataMap) {
+                dataMap.forEach((key, value) -> envelope.put(String.valueOf(key), value));
+            } else {
+                envelope.put("data", data);
+            }
             emitter.send(SseEmitter.event()
+                    .id(operationId + ":" + sequence)
                     .name(eventName)
-                    .data(objectMapper.writeValueAsString(data)));
+                    .data(objectMapper.writeValueAsString(envelope)));
         } catch (IOException e) {
             emitter.complete();
         } catch (Exception e) {
             emitter.completeWithError(e);
         }
+    }
+
+    private String newOperationId() {
+        return UUID.randomUUID().toString();
     }
 
     private WorkspaceContext resolveWorkspaceContext(String username) {
