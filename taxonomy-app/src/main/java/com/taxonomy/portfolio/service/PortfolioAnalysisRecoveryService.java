@@ -1,7 +1,6 @@
 package com.taxonomy.portfolio.service;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
-import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.model.RequirementAnalysisJob;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
@@ -13,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 
-/** Recovers failed items and expired worker claims without duplicating active work. */
+/** Recovers failed items and expired worker claims without crossing exact tenants. */
 @Service
 public class PortfolioAnalysisRecoveryService {
 
@@ -32,9 +31,9 @@ public class PortfolioAnalysisRecoveryService {
     /**
      * Resets failed items and RUNNING items whose claim is older than the supplied
      * cutoff. Active claims remain untouched. Every successful compare-and-set
-     * increments the attempt and binds the retry to the requirement's current
-     * immutable text version. The job remains PENDING until a worker actually
-     * claims its prepared items, so a lost or rejected dispatch can be retried.
+     * includes job, project and exact tenant identity, increments the attempt and
+     * binds the retry to the requirement's current immutable text version. The
+     * job remains PENDING until a worker actually claims its prepared items.
      *
      * @return number of items atomically prepared for another attempt
      */
@@ -48,36 +47,39 @@ public class PortfolioAnalysisRecoveryService {
             throw PortfolioException.validation("staleBefore is required");
         }
         projectService.requireProject(projectId, username, context);
-        RequirementAnalysisJob job = jobRepository.findByIdAndProjectId(jobId, projectId)
-                .orElseThrow(() -> PortfolioException.notFound(
-                        "Analysis job not found: " + jobId));
+        String scopeKey = PortfolioScope.key(username, context);
+        RequirementAnalysisJob job = requireJob(jobId, projectId, scopeKey);
 
-        List<RequirementAnalysisJobItem> failed =
-                itemRepository.findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
-                        jobId, AnalysisStatus.FAILED);
+        List<RequirementAnalysisJobItem> failed = itemRepository
+                .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, scopeKey, AnalysisStatus.FAILED);
         List<RequirementAnalysisJobItem> stale = itemRepository
-                .findByJobIdAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
-                        jobId, AnalysisStatus.RUNNING, staleBefore);
+                .findByJobIdAndProjectIdAndScopeKeyAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, scopeKey, AnalysisStatus.RUNNING, staleBefore);
 
         int prepared = 0;
         for (RequirementAnalysisJobItem item : failed) {
-            ProjectRequirementVersion version =
-                    projectService.currentVersion(item.getRequirement());
+            Long versionId = projectService.currentVersion(item.getRequirement()).getId();
             prepared += itemRepository.resetFailed(
                     item.getId(),
+                    jobId,
+                    projectId,
+                    scopeKey,
                     AnalysisStatus.FAILED,
                     AnalysisStatus.PENDING,
-                    version);
+                    versionId);
         }
         for (RequirementAnalysisJobItem item : stale) {
-            ProjectRequirementVersion version =
-                    projectService.currentVersion(item.getRequirement());
+            Long versionId = projectService.currentVersion(item.getRequirement()).getId();
             prepared += itemRepository.resetExpiredRunning(
                     item.getId(),
+                    jobId,
+                    projectId,
+                    scopeKey,
                     AnalysisStatus.RUNNING,
                     AnalysisStatus.PENDING,
                     staleBefore,
-                    version);
+                    versionId);
         }
 
         if (prepared == 0) {
@@ -86,5 +88,49 @@ public class PortfolioAnalysisRecoveryService {
         }
         job.markPending();
         return prepared;
+    }
+
+    /**
+     * Restores the aggregate job to PENDING only when prepared work exists and no
+     * item in the exact tenant currently owns a RUNNING claim. This transactional
+     * re-check prevents a completing worker from leaving an undispatched retry in
+     * a misleading RUNNING job state.
+     *
+     * @return {@code true} when the job was reconciled to PENDING
+     */
+    @Transactional
+    public boolean markPendingWhenOnlyPreparedItemsRemain(String jobId,
+                                                          Long projectId,
+                                                          String scopeKey) {
+        String exactScope = requireScope(scopeKey);
+        RequirementAnalysisJob job = requireJob(jobId, projectId, exactScope);
+        List<RequirementAnalysisJobItem> items = itemRepository
+                .findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, exactScope);
+        boolean pending = items.stream()
+                .anyMatch(item -> item.getStatus() == AnalysisStatus.PENDING);
+        boolean running = items.stream()
+                .anyMatch(item -> item.getStatus() == AnalysisStatus.RUNNING);
+        if (pending && !running) {
+            job.markPending();
+            return true;
+        }
+        return false;
+    }
+
+    private RequirementAnalysisJob requireJob(String jobId,
+                                              Long projectId,
+                                              String scopeKey) {
+        return jobRepository.findByIdAndProjectIdAndScopeKey(
+                        jobId, projectId, requireScope(scopeKey))
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Analysis job not found: " + jobId));
+    }
+
+    private static String requireScope(String scopeKey) {
+        if (scopeKey == null || scopeKey.isBlank()) {
+            throw PortfolioException.validation("Exact analysis tenant scope is required");
+        }
+        return scopeKey.strip();
     }
 }

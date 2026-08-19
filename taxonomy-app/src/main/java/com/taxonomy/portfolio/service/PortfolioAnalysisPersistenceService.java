@@ -7,7 +7,6 @@ import com.taxonomy.dto.NodeOrigin;
 import com.taxonomy.dto.PatternDetectionView;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.RequirementElementView;
-import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
@@ -44,22 +43,21 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** Transactional persistence boundary for long-running project analysis orchestration. */
+/** Transactional exact-tenant persistence boundary for long-running project analysis. */
 @Service
 public class PortfolioAnalysisPersistenceService {
+
+    private static final String AUTOMATIC_IDEMPOTENCY_PREFIX = "auto:";
 
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
@@ -102,19 +100,22 @@ public class PortfolioAnalysisPersistenceService {
                                             String idempotencyKey,
                                             String username,
                                             WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
+        ArchitectureProject project = projectRepository
+                .findByIdAndScopeKey(projectId, scopeKey)
+                .orElseThrow(() -> PortfolioException.notFound("Project not found: " + projectId));
+
         String normalizedIdempotency = normalizeIdempotencyKey(idempotencyKey);
         if (normalizedIdempotency != null) {
             RequirementAnalysisJob existing = jobRepository
-                    .findByProjectIdAndIdempotencyKey(projectId, normalizedIdempotency)
+                    .findByProjectIdAndScopeKeyAndIdempotencyKey(
+                            projectId, scopeKey, normalizedIdempotency)
                     .orElse(null);
             if (existing != null) {
                 return toJobView(existing);
             }
         }
 
-        ArchitectureProject project = projectRepository
-                .findByIdAndScopeKey(projectId, PortfolioScope.key(username, context))
-                .orElseThrow(() -> PortfolioException.notFound("Project not found: " + projectId));
         if (requirementIds == null || requirementIds.isEmpty()) {
             throw PortfolioException.validation("At least one requirement is required for analysis");
         }
@@ -122,7 +123,8 @@ public class PortfolioAnalysisPersistenceService {
         List<ProjectRequirement> requirements = requirementIds.stream()
                 .filter(Objects::nonNull)
                 .distinct()
-                .map(id -> requirementRepository.findByIdAndProjectId(id, projectId)
+                .map(id -> requirementRepository
+                        .findByIdAndProjectIdAndScopeKey(id, projectId, scopeKey)
                         .orElseThrow(() -> PortfolioException.notFound(
                                 "Requirement " + id + " was not found in project " + projectId)))
                 .sorted(Comparator.comparing(ProjectRequirement::getRequirementKey))
@@ -153,20 +155,25 @@ public class PortfolioAnalysisPersistenceService {
     }
 
     @Transactional
-    public void markJobRunning(String jobId, Long projectId) {
-        requireJob(jobId, projectId).markRunning(Instant.now());
+    public void markJobRunning(String jobId, Long projectId, String scopeKey) {
+        requireJob(jobId, projectId, scopeKey).markRunning(Instant.now());
     }
 
     @Transactional
-    public RequirementAnalysisJobItem markItemRunning(Long itemId) {
-        RequirementAnalysisJobItem item = itemRepository.findById(itemId)
-                .orElseThrow(() -> PortfolioException.notFound("Analysis job item not found: " + itemId));
+    public RequirementAnalysisJobItem markItemRunning(Long itemId,
+                                                      String jobId,
+                                                      Long projectId,
+                                                      String scopeKey) {
+        RequirementAnalysisJobItem item = requireItem(itemId, jobId, projectId, scopeKey);
         item.markRunning(Instant.now());
         return item;
     }
 
     @Transactional
     public SnapshotSummary persistSnapshot(Long itemId,
+                                           String jobId,
+                                           Long projectId,
+                                           String scopeKey,
                                            String snapshotId,
                                            String analysisSessionId,
                                            AnalysisResult analysis,
@@ -180,8 +187,9 @@ public class PortfolioAnalysisPersistenceService {
                                            String username,
                                            WorkspaceContext context,
                                            long durationMs) {
-        RequirementAnalysisJobItem item = itemRepository.findById(itemId)
-                .orElseThrow(() -> PortfolioException.notFound("Analysis job item not found: " + itemId));
+        String exactScope = requireRequestScope(scopeKey, username, context);
+        RequirementAnalysisJobItem item = requireItem(
+                itemId, jobId, projectId, exactScope);
         RequirementAnalysisJob job = item.getJob();
         ProjectRequirement requirement = item.getRequirement();
         AnalysisStatus status = analysisStatus(analysis);
@@ -217,7 +225,12 @@ public class PortfolioAnalysisPersistenceService {
         snapshotRepository.save(snapshot);
         persistElementMappings(snapshot, analysis);
         persistRelationMappings(snapshot, analysis);
-        linkHypotheses(analysisSessionId, job.getProject().getId(), requirement.getId(), snapshotId);
+        linkHypotheses(
+                analysisSessionId,
+                job.getProjectId(),
+                requirement.getId(),
+                snapshotId,
+                context);
 
         requirement.pointToAnalysis(snapshotId, Instant.now());
         requirementRepository.save(requirement);
@@ -226,20 +239,34 @@ public class PortfolioAnalysisPersistenceService {
     }
 
     @Transactional
-    public void failItem(Long itemId, Throwable failure) {
-        RequirementAnalysisJobItem item = itemRepository.findById(itemId)
-                .orElseThrow(() -> PortfolioException.notFound("Analysis job item not found: " + itemId));
+    public void failItem(Long itemId,
+                         String jobId,
+                         Long projectId,
+                         String scopeKey,
+                         Throwable failure) {
+        RequirementAnalysisJobItem item = requireItem(
+                itemId, jobId, projectId, scopeKey);
         item.fail(safeFailureMessage(failure), Instant.now());
     }
 
     @Transactional
-    public AnalysisJobView completeJob(String jobId, Long projectId) {
-        RequirementAnalysisJob job = requireJob(jobId, projectId);
-        List<RequirementAnalysisJobItem> items =
-                itemRepository.findByJobIdOrderByRequirementRequirementKeyAsc(jobId);
-        int successful = (int) items.stream().filter(item -> item.getStatus() == AnalysisStatus.SUCCESS).count();
-        int partial = (int) items.stream().filter(item -> item.getStatus() == AnalysisStatus.PARTIAL).count();
-        int failed = (int) items.stream().filter(item -> item.getStatus() == AnalysisStatus.FAILED).count();
+    public AnalysisJobView completeJob(String jobId,
+                                       Long projectId,
+                                       String scopeKey) {
+        String exactScope = requireScope(scopeKey);
+        RequirementAnalysisJob job = requireJob(jobId, projectId, exactScope);
+        List<RequirementAnalysisJobItem> items = itemRepository
+                .findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, exactScope);
+        int successful = (int) items.stream()
+                .filter(item -> item.getStatus() == AnalysisStatus.SUCCESS)
+                .count();
+        int partial = (int) items.stream()
+                .filter(item -> item.getStatus() == AnalysisStatus.PARTIAL)
+                .count();
+        int failed = (int) items.stream()
+                .filter(item -> item.getStatus() == AnalysisStatus.FAILED)
+                .count();
         String errors = items.stream()
                 .filter(item -> item.getErrorMessage() != null && !item.getErrorMessage().isBlank())
                 .map(item -> item.getRequirement().getRequirementKey() + ": " + item.getErrorMessage())
@@ -254,10 +281,12 @@ public class PortfolioAnalysisPersistenceService {
                                                       Long projectId,
                                                       String username,
                                                       WorkspaceContext context) {
-        RequirementAnalysisJob job = requireScopedJob(jobId, projectId, username, context);
-        List<RequirementAnalysisJobItem> failedItems =
-                itemRepository.findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
-                        jobId, AnalysisStatus.FAILED);
+        String scopeKey = PortfolioScope.key(username, context);
+        RequirementAnalysisJob job = requireScopedJob(
+                jobId, projectId, username, context);
+        List<RequirementAnalysisJobItem> failedItems = itemRepository
+                .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, scopeKey, AnalysisStatus.FAILED);
         if (failedItems.isEmpty()) {
             throw PortfolioException.conflict("Analysis job has no failed items to retry: " + jobId);
         }
@@ -280,9 +309,13 @@ public class PortfolioAnalysisPersistenceService {
     public List<AnalysisJobView> listJobs(Long projectId,
                                          String username,
                                          WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
-        return jobRepository.findByProjectIdOrderByCreatedAtDesc(projectId).stream()
-                .map(this::toJobView).toList();
+        return jobRepository
+                .findByProjectIdAndScopeKeyOrderByCreatedAtDesc(projectId, scopeKey)
+                .stream()
+                .map(this::toJobView)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -290,9 +323,14 @@ public class PortfolioAnalysisPersistenceService {
                                                          Long requirementId,
                                                          String username,
                                                          WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         requireScopedRequirement(projectId, requirementId, username, context);
-        return snapshotRepository.findByRequirementIdOrderByCreatedAtDesc(requirementId)
-                .stream().map(this::toSnapshotSummary).toList();
+        return snapshotRepository
+                .findByRequirementIdAndProjectIdAndScopeKeyOrderByCreatedAtDesc(
+                        requirementId, projectId, scopeKey)
+                .stream()
+                .map(this::toSnapshotSummary)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -300,9 +338,12 @@ public class PortfolioAnalysisPersistenceService {
                                       String snapshotId,
                                       String username,
                                       WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
-        RequirementAnalysisSnapshot snapshot = snapshotRepository.findByIdAndProjectId(snapshotId, projectId)
-                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found: " + snapshotId));
+        RequirementAnalysisSnapshot snapshot = snapshotRepository
+                .findByIdAndProjectIdAndScopeKey(snapshotId, projectId, scopeKey)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Analysis snapshot not found: " + snapshotId));
         return toSnapshotDetail(snapshot);
     }
 
@@ -312,15 +353,20 @@ public class PortfolioAnalysisPersistenceService {
                                       String newerSnapshotId,
                                       String username,
                                       WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
         RequirementAnalysisSnapshot older = snapshotRepository
-                .findByIdAndProjectId(olderSnapshotId, projectId)
-                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found: " + olderSnapshotId));
+                .findByIdAndProjectIdAndScopeKey(olderSnapshotId, projectId, scopeKey)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Analysis snapshot not found: " + olderSnapshotId));
         RequirementAnalysisSnapshot newer = snapshotRepository
-                .findByIdAndProjectId(newerSnapshotId, projectId)
-                .orElseThrow(() -> PortfolioException.notFound("Analysis snapshot not found: " + newerSnapshotId));
-        AnalysisResult olderAnalysis = jsonCodec.read(older.getAnalysisPayload(), AnalysisResult.class);
-        AnalysisResult newerAnalysis = jsonCodec.read(newer.getAnalysisPayload(), AnalysisResult.class);
+                .findByIdAndProjectIdAndScopeKey(newerSnapshotId, projectId, scopeKey)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Analysis snapshot not found: " + newerSnapshotId));
+        AnalysisResult olderAnalysis = jsonCodec.read(
+                older.getAnalysisPayload(), AnalysisResult.class);
+        AnalysisResult newerAnalysis = jsonCodec.read(
+                newer.getAnalysisPayload(), AnalysisResult.class);
 
         Map<String, Integer> oldScores = olderAnalysis.getScores() != null
                 ? olderAnalysis.getScores() : Map.of();
@@ -339,13 +385,19 @@ public class PortfolioAnalysisPersistenceService {
         }
 
         Set<String> oldElements = elementRepository
-                .findBySnapshotIdOrderByTaxonomyRootAscNodeCodeAsc(olderSnapshotId).stream()
-                .map(RequirementElementMapping::getNodeCode).collect(Collectors.toCollection(TreeSet::new));
+                .findBySnapshotIdAndScopeKeyOrderByTaxonomyRootAscNodeCodeAsc(
+                        olderSnapshotId, scopeKey)
+                .stream()
+                .map(RequirementElementMapping::getNodeCode)
+                .collect(Collectors.toCollection(TreeSet::new));
         Set<String> newElements = elementRepository
-                .findBySnapshotIdOrderByTaxonomyRootAscNodeCodeAsc(newerSnapshotId).stream()
-                .map(RequirementElementMapping::getNodeCode).collect(Collectors.toCollection(TreeSet::new));
-        Set<String> oldRelations = relationSignatures(olderSnapshotId);
-        Set<String> newRelations = relationSignatures(newerSnapshotId);
+                .findBySnapshotIdAndScopeKeyOrderByTaxonomyRootAscNodeCodeAsc(
+                        newerSnapshotId, scopeKey)
+                .stream()
+                .map(RequirementElementMapping::getNodeCode)
+                .collect(Collectors.toCollection(TreeSet::new));
+        Set<String> oldRelations = relationSignatures(olderSnapshotId, scopeKey);
+        Set<String> newRelations = relationSignatures(newerSnapshotId, scopeKey);
 
         return new SnapshotDiff(
                 olderSnapshotId,
@@ -366,11 +418,15 @@ public class PortfolioAnalysisPersistenceService {
                                                    ReviewElementMappingRequest request,
                                                    String username,
                                                    WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
-        if (request == null) throw PortfolioException.validation("mapping review is required");
+        if (request == null) {
+            throw PortfolioException.validation("mapping review is required");
+        }
         RequirementElementMapping mapping = elementRepository
-                .findByIdAndSnapshotProjectId(mappingId, projectId)
-                .orElseThrow(() -> PortfolioException.notFound("Element mapping not found: " + mappingId));
+                .findByIdAndScopeKeyAndSnapshotProjectId(mappingId, scopeKey, projectId)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Element mapping not found: " + mappingId));
         mapping.review(
                 request.reviewStatus(),
                 request.actionStatus(),
@@ -387,11 +443,15 @@ public class PortfolioAnalysisPersistenceService {
                                                      ReviewRelationMappingRequest request,
                                                      String username,
                                                      WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
-        if (request == null) throw PortfolioException.validation("mapping review is required");
+        if (request == null) {
+            throw PortfolioException.validation("mapping review is required");
+        }
         RequirementRelationMapping mapping = relationRepository
-                .findByIdAndSnapshotProjectId(mappingId, projectId)
-                .orElseThrow(() -> PortfolioException.notFound("Relation mapping not found: " + mappingId));
+                .findByIdAndScopeKeyAndSnapshotProjectId(mappingId, scopeKey, projectId)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Relation mapping not found: " + mappingId));
         mapping.review(
                 request.reviewStatus(),
                 PortfolioScope.username(username, context),
@@ -401,15 +461,22 @@ public class PortfolioAnalysisPersistenceService {
     }
 
     @Transactional(readOnly = true)
-    public List<RequirementAnalysisJobItem> pendingItems(String jobId, Long projectId) {
-        requireJob(jobId, projectId);
-        return itemRepository.findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
-                jobId, AnalysisStatus.PENDING);
+    public List<RequirementAnalysisJobItem> pendingItems(String jobId,
+                                                         Long projectId,
+                                                         String scopeKey) {
+        String exactScope = requireScope(scopeKey);
+        requireJob(jobId, projectId, exactScope);
+        return itemRepository
+                .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(
+                        jobId, projectId, exactScope, AnalysisStatus.PENDING);
     }
 
-    private void persistElementMappings(RequirementAnalysisSnapshot snapshot, AnalysisResult analysis) {
+    private void persistElementMappings(RequirementAnalysisSnapshot snapshot,
+                                        AnalysisResult analysis) {
         RequirementArchitectureView architecture = analysis.getArchitectureView();
-        if (architecture == null || architecture.getIncludedElements() == null) return;
+        if (architecture == null || architecture.getIncludedElements() == null) {
+            return;
+        }
         List<RequirementElementMapping> mappings = architecture.getIncludedElements().stream()
                 .map(element -> new RequirementElementMapping(
                         snapshot,
@@ -428,30 +495,41 @@ public class PortfolioAnalysisPersistenceService {
         elementRepository.saveAll(mappings);
     }
 
-    private void persistRelationMappings(RequirementAnalysisSnapshot snapshot, AnalysisResult analysis) {
+    private void persistRelationMappings(RequirementAnalysisSnapshot snapshot,
+                                         AnalysisResult analysis) {
         RequirementArchitectureView architecture = analysis.getArchitectureView();
-        if (architecture == null || architecture.getIncludedRelationships() == null) return;
-        List<RequirementRelationMapping> mappings = architecture.getIncludedRelationships().stream()
-                .map(relation -> new RequirementRelationMapping(
-                        snapshot,
-                        relation.getSourceCode(),
-                        relation.getTargetCode(),
-                        relation.getRelationType(),
-                        relation.getOrigin() != null ? relation.getOrigin().name() : "UNKNOWN",
-                        relation.getRelationCategory(),
-                        relation.getPropagatedRelevance(),
-                        relation.getConfidence(),
-                        relation.getPresenceReason() != null
-                                ? relation.getPresenceReason() : relation.getDerivationReason()))
-                .toList();
+        if (architecture == null || architecture.getIncludedRelationships() == null) {
+            return;
+        }
+        List<RequirementRelationMapping> mappings =
+                architecture.getIncludedRelationships().stream()
+                        .map(relation -> new RequirementRelationMapping(
+                                snapshot,
+                                relation.getSourceCode(),
+                                relation.getTargetCode(),
+                                relation.getRelationType(),
+                                relation.getOrigin() != null
+                                        ? relation.getOrigin().name() : "UNKNOWN",
+                                relation.getRelationCategory(),
+                                relation.getPropagatedRelevance(),
+                                relation.getConfidence(),
+                                relation.getPresenceReason() != null
+                                        ? relation.getPresenceReason()
+                                        : relation.getDerivationReason()))
+                        .toList();
         relationRepository.saveAll(mappings);
     }
 
     private void linkHypotheses(String analysisSessionId,
                                 Long projectId,
                                 Long requirementId,
-                                String snapshotId) {
-        List<RelationHypothesis> hypotheses = hypothesisRepository.findByAnalysisSessionId(analysisSessionId);
+                                String snapshotId,
+                                WorkspaceContext context) {
+        List<RelationHypothesis> hypotheses = hypothesisRepository
+                .findByAnalysisSessionIdInRepositoryWorkspace(
+                        PortfolioScope.repositoryId(context),
+                        PortfolioScope.workspaceId(context),
+                        analysisSessionId);
         for (RelationHypothesis hypothesis : hypotheses) {
             hypothesis.setProjectId(projectId);
             hypothesis.setRequirementId(requirementId);
@@ -460,9 +538,25 @@ public class PortfolioAnalysisPersistenceService {
         hypothesisRepository.saveAll(hypotheses);
     }
 
-    private RequirementAnalysisJob requireJob(String jobId, Long projectId) {
-        return jobRepository.findByIdAndProjectId(jobId, projectId)
-                .orElseThrow(() -> PortfolioException.notFound("Analysis job not found: " + jobId));
+    private RequirementAnalysisJob requireJob(String jobId,
+                                              Long projectId,
+                                              String scopeKey) {
+        String exactScope = requireScope(scopeKey);
+        return jobRepository.findByIdAndProjectIdAndScopeKey(
+                        jobId, projectId, exactScope)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Analysis job not found: " + jobId));
+    }
+
+    private RequirementAnalysisJobItem requireItem(Long itemId,
+                                                   String jobId,
+                                                   Long projectId,
+                                                   String scopeKey) {
+        String exactScope = requireScope(scopeKey);
+        return itemRepository.findByIdAndJobIdAndProjectIdAndScopeKey(
+                        itemId, jobId, projectId, exactScope)
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Analysis job item not found: " + itemId));
     }
 
     private RequirementAnalysisJob requireScopedJob(String jobId,
@@ -470,46 +564,59 @@ public class PortfolioAnalysisPersistenceService {
                                                     String username,
                                                     WorkspaceContext context) {
         requireScopedProject(projectId, username, context);
-        return requireJob(jobId, projectId);
+        return requireJob(jobId, projectId, PortfolioScope.key(username, context));
     }
 
     private ArchitectureProject requireScopedProject(Long projectId,
                                                      String username,
                                                      WorkspaceContext context) {
-        return projectRepository.findByIdAndScopeKey(projectId, PortfolioScope.key(username, context))
-                .orElseThrow(() -> PortfolioException.notFound("Project not found: " + projectId));
+        return projectRepository
+                .findByIdAndScopeKey(projectId, PortfolioScope.key(username, context))
+                .orElseThrow(() -> PortfolioException.notFound(
+                        "Project not found: " + projectId));
     }
 
     private ProjectRequirement requireScopedRequirement(Long projectId,
                                                         Long requirementId,
                                                         String username,
                                                         WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         requireScopedProject(projectId, username, context);
-        return requirementRepository.findByIdAndProjectId(requirementId, projectId)
+        return requirementRepository
+                .findByIdAndProjectIdAndScopeKey(requirementId, projectId, scopeKey)
                 .orElseThrow(() -> PortfolioException.notFound(
-                        "Requirement " + requirementId + " was not found in project " + projectId));
+                        "Requirement " + requirementId
+                                + " was not found in project " + projectId));
     }
 
-    private ProjectRequirementVersion requireCurrentVersion(ProjectRequirement requirement) {
+    private ProjectRequirementVersion requireCurrentVersion(
+            ProjectRequirement requirement) {
         if (requirement.getCurrentVersionId() == null) {
             throw PortfolioException.conflict(
-                    "Requirement has no current text version: " + requirement.getRequirementKey());
+                    "Requirement has no current text version: "
+                            + requirement.getRequirementKey());
         }
-        return versionRepository.findByIdAndRequirementId(
-                        requirement.getCurrentVersionId(), requirement.getId())
+        return versionRepository.findByIdAndRequirementIdAndScopeKey(
+                        requirement.getCurrentVersionId(),
+                        requirement.getId(),
+                        requirement.getScopeKey())
                 .orElseThrow(() -> PortfolioException.notFound(
-                        "Current requirement version not found: " + requirement.getCurrentVersionId()));
+                        "Current requirement version not found: "
+                                + requirement.getCurrentVersionId()));
     }
 
     private AnalysisJobView toJobView(RequirementAnalysisJob job) {
         List<AnalysisJobItemView> items = itemRepository
-                .findByJobIdOrderByRequirementRequirementKeyAsc(job.getId()).stream()
-                .map(this::toItemView).toList();
+                .findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
+                        job.getId(), job.getProjectId(), job.getScopeKey())
+                .stream()
+                .map(this::toItemView)
+                .toList();
         return new AnalysisJobView(
                 job.getId(),
-                job.getProject().getId(),
+                job.getProjectId(),
                 job.getStatus(),
-                job.getIdempotencyKey(),
+                visibleIdempotencyKey(job),
                 job.getProvider(),
                 job.getMaxArchitectureNodes(),
                 job.getRequestedBy(),
@@ -528,9 +635,9 @@ public class PortfolioAnalysisPersistenceService {
     private AnalysisJobItemView toItemView(RequirementAnalysisJobItem item) {
         return new AnalysisJobItemView(
                 item.getId(),
-                item.getRequirement().getId(),
+                item.getRequirementId(),
                 item.getRequirement().getRequirementKey(),
-                item.getRequirementVersion().getId(),
+                item.getRequirementVersionId(),
                 item.getRequirementVersion().getVersionNumber(),
                 item.getStatus(),
                 item.getSnapshotId(),
@@ -541,27 +648,37 @@ public class PortfolioAnalysisPersistenceService {
     }
 
     private SnapshotDetail toSnapshotDetail(RequirementAnalysisSnapshot snapshot) {
+        String scopeKey = snapshot.getScopeKey();
         return new SnapshotDetail(
                 toSnapshotSummary(snapshot),
                 jsonCodec.read(snapshot.getAnalysisPayload(), AnalysisResult.class),
                 jsonCodec.read(snapshot.getGapAnalysisPayload(), GapAnalysisView.class),
                 jsonCodec.read(snapshot.getPatternDetectionPayload(), PatternDetectionView.class),
-                jsonCodec.read(snapshot.getRecommendationPayload(), ArchitectureRecommendation.class),
-                elementRepository.findBySnapshotIdOrderByTaxonomyRootAscNodeCodeAsc(snapshot.getId())
-                        .stream().map(this::toElementView).toList(),
-                relationRepository.findBySnapshotIdOrderBySourceCodeAscTargetCodeAsc(snapshot.getId())
-                        .stream().map(this::toRelationView).toList());
+                jsonCodec.read(
+                        snapshot.getRecommendationPayload(), ArchitectureRecommendation.class),
+                elementRepository
+                        .findBySnapshotIdAndScopeKeyOrderByTaxonomyRootAscNodeCodeAsc(
+                                snapshot.getId(), scopeKey)
+                        .stream()
+                        .map(this::toElementView)
+                        .toList(),
+                relationRepository
+                        .findBySnapshotIdAndScopeKeyOrderBySourceCodeAscTargetCodeAsc(
+                                snapshot.getId(), scopeKey)
+                        .stream()
+                        .map(this::toRelationView)
+                        .toList());
     }
 
     private SnapshotSummary toSnapshotSummary(RequirementAnalysisSnapshot snapshot) {
         return new SnapshotSummary(
                 snapshot.getId(),
-                snapshot.getProject().getId(),
-                snapshot.getRequirement().getId(),
+                snapshot.getProjectId(),
+                snapshot.getRequirementId(),
                 snapshot.getRequirement().getRequirementKey(),
-                snapshot.getRequirementVersion().getId(),
+                snapshot.getRequirementVersionId(),
                 snapshot.getRequirementVersion().getVersionNumber(),
-                snapshot.getJob().getId(),
+                snapshot.getJobId(),
                 snapshot.getStatus(),
                 snapshot.getProvider(),
                 snapshot.getModelName(),
@@ -579,7 +696,7 @@ public class PortfolioAnalysisPersistenceService {
     private ElementMappingView toElementView(RequirementElementMapping mapping) {
         return new ElementMappingView(
                 mapping.getId(),
-                mapping.getSnapshot().getId(),
+                mapping.getSnapshotId(),
                 mapping.getNodeCode(),
                 mapping.getNodeTitle(),
                 mapping.getTaxonomyRoot(),
@@ -601,7 +718,7 @@ public class PortfolioAnalysisPersistenceService {
     private RelationMappingView toRelationView(RequirementRelationMapping mapping) {
         return new RelationMappingView(
                 mapping.getId(),
-                mapping.getSnapshot().getId(),
+                mapping.getSnapshotId(),
                 mapping.getSourceCode(),
                 mapping.getTargetCode(),
                 mapping.getRelationType(),
@@ -616,10 +733,14 @@ public class PortfolioAnalysisPersistenceService {
                 mapping.getDecisionComment());
     }
 
-    private Set<String> relationSignatures(String snapshotId) {
-        return relationRepository.findBySnapshotIdOrderBySourceCodeAscTargetCodeAsc(snapshotId).stream()
+    private Set<String> relationSignatures(String snapshotId, String scopeKey) {
+        return relationRepository
+                .findBySnapshotIdAndScopeKeyOrderBySourceCodeAscTargetCodeAsc(
+                        snapshotId, requireScope(scopeKey))
+                .stream()
                 .map(mapping -> mapping.getSourceCode() + "|" + mapping.getRelationType()
-                        + "|" + mapping.getTargetCode() + "|" + mapping.getRelationOrigin())
+                        + "|" + mapping.getTargetCode() + "|"
+                        + mapping.getRelationOrigin())
                 .collect(Collectors.toCollection(TreeSet::new));
     }
 
@@ -648,7 +769,8 @@ public class PortfolioAnalysisPersistenceService {
     }
 
     private static String taxonomyRoot(RequirementElementView element) {
-        if (element.getTaxonomySheet() != null && !element.getTaxonomySheet().isBlank()) {
+        if (element.getTaxonomySheet() != null
+                && !element.getTaxonomySheet().isBlank()) {
             return element.getTaxonomySheet();
         }
         String code = element.getNodeCode();
@@ -658,7 +780,8 @@ public class PortfolioAnalysisPersistenceService {
 
     private static double confidence(RequirementElementView element) {
         if (element.getDirectLlmScore() > 0) {
-            return Math.min(1.0, Math.max(0.0, element.getDirectLlmScore() / 100.0));
+            return Math.min(1.0,
+                    Math.max(0.0, element.getDirectLlmScore() / 100.0));
         }
         return Math.min(1.0, Math.max(0.0, element.getRelevance()));
     }
@@ -667,20 +790,51 @@ public class PortfolioAnalysisPersistenceService {
         if (value == null || value.isBlank()) return null;
         String normalized = value.strip();
         if (normalized.length() > 160) {
-            throw PortfolioException.validation("idempotencyKey exceeds 160 characters");
+            throw PortfolioException.validation(
+                    "idempotencyKey exceeds 160 characters");
         }
         return normalized;
+    }
+
+    private static String visibleIdempotencyKey(RequirementAnalysisJob job) {
+        String value = job.getIdempotencyKey();
+        return value != null
+                && value.equals(AUTOMATIC_IDEMPOTENCY_PREFIX + job.getId())
+                ? null : value;
+    }
+
+    private static String requireScope(String scopeKey) {
+        if (scopeKey == null || scopeKey.isBlank()) {
+            throw PortfolioException.validation(
+                    "Exact analysis tenant scope is required");
+        }
+        return scopeKey.strip();
+    }
+
+    private static String requireRequestScope(String scopeKey,
+                                              String username,
+                                              WorkspaceContext context) {
+        String supplied = requireScope(scopeKey);
+        String requested = PortfolioScope.key(username, context);
+        if (!requested.equals(supplied)) {
+            throw PortfolioException.validation(
+                    "Analysis tenant scope does not match the request context");
+        }
+        return requested;
     }
 
     private static String safeFailureMessage(Throwable failure) {
         if (failure == null) return "Unknown analysis failure";
         String type = failure.getClass().getSimpleName();
         String message = failure.getMessage();
-        return truncate(type + (message != null && !message.isBlank() ? ": " + message : ""), 2000);
+        return truncate(type
+                + (message != null && !message.isBlank() ? ": " + message : ""),
+                2000);
     }
 
     private static String truncate(String value, int maximumLength) {
         if (value == null) return null;
-        return value.length() <= maximumLength ? value : value.substring(0, maximumLength);
+        return value.length() <= maximumLength
+                ? value : value.substring(0, maximumLength);
     }
 }

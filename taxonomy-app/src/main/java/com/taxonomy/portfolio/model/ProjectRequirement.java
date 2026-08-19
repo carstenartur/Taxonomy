@@ -34,7 +34,9 @@ import java.util.Objects;
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uq_req_project_key",
                 columnNames = {"scope_key", "project_id", "requirement_key"}),
-        @UniqueConstraint(name = "uq_req_id_scope", columnNames = {"id", "scope_key"})
+        @UniqueConstraint(name = "uq_req_id_scope", columnNames = {"id", "scope_key"}),
+        @UniqueConstraint(name = "uq_req_id_proj_scope",
+                columnNames = {"id", "project_id", "scope_key"})
 })
 public class ProjectRequirement {
 
@@ -107,6 +109,23 @@ public class ProjectRequirement {
     @Column(name = "current_snapshot_id", length = 36)
     private String currentAnalysisSnapshotId;
 
+    /**
+     * Read-only exact-tenant association. The four-column identity prevents a
+     * snapshot from a sibling requirement, project or branch being selected.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumns({
+            @JoinColumn(name = "current_snapshot_id", referencedColumnName = "id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "id", referencedColumnName = "requirement_id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "project_id", referencedColumnName = "project_id",
+                    insertable = false, updatable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    insertable = false, updatable = false)
+    })
+    private RequirementAnalysisSnapshot currentAnalysisSnapshot;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -170,6 +189,7 @@ public class ProjectRequirement {
 
     public void pointToAnalysis(String snapshotId, Instant now) {
         this.currentAnalysisSnapshotId = snapshotId;
+        this.currentAnalysisSnapshot = null;
         this.updatedAt = now;
     }
 
@@ -223,6 +243,9 @@ public class ProjectRequirement {
     public Long getCurrentVersionId() { return currentVersionId; }
     public ProjectRequirementVersion getCurrentVersion() { return currentVersion; }
     public String getCurrentAnalysisSnapshotId() { return currentAnalysisSnapshotId; }
+    public RequirementAnalysisSnapshot getCurrentAnalysisSnapshot() {
+        return currentAnalysisSnapshot;
+    }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getRowVersion() { return rowVersion; }

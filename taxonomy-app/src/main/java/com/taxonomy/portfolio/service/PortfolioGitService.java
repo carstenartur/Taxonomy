@@ -310,7 +310,7 @@ public class PortfolioGitService {
                     .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(
                             project.getId(), scopeKey);
             Map<Long, List<RequirementElementMapping>> mappingsByRequirement =
-                    mappingsByRequirement(project.getId());
+                    mappingsByRequirement(project.getId(), scopeKey);
             for (ProjectRequirement requirement : requirements) {
                 result.add(block(REQUIREMENT_BLOCK,
                         List.of(project.getProjectKey(), requirement.getRequirementKey()), properties(
@@ -388,10 +388,11 @@ public class PortfolioGitService {
         return result;
     }
 
-    private Map<Long, List<RequirementElementMapping>> mappingsByRequirement(Long projectId) {
+    private Map<Long, List<RequirementElementMapping>> mappingsByRequirement(
+            Long projectId, String scopeKey) {
         Map<Long, List<RequirementElementMapping>> result = new HashMap<>();
         for (RequirementElementMapping mapping : elementMappingRepository
-                .findCurrentMappingsForProject(projectId)) {
+                .findCurrentMappingsForProject(projectId, scopeKey)) {
             Long requirementId = mapping.getSnapshot().getRequirement().getId();
             result.computeIfAbsent(requirementId, ignored -> new ArrayList<>()).add(mapping);
         }

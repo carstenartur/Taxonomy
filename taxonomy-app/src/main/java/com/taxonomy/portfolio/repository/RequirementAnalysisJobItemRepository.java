@@ -1,9 +1,11 @@
 package com.taxonomy.portfolio.repository;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
-import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,21 +16,55 @@ import java.util.Optional;
 
 public interface RequirementAnalysisJobItemRepository extends JpaRepository<RequirementAnalysisJobItem, Long> {
 
-    List<RequirementAnalysisJobItem> findByJobIdOrderByRequirementRequirementKeyAsc(String jobId);
+    List<RequirementAnalysisJobItem>
+            findByJobIdAndProjectIdAndScopeKeyOrderByRequirementRequirementKeyAsc(
+                    String jobId, Long projectId, String scopeKey);
 
-    List<RequirementAnalysisJobItem> findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
-            String jobId, AnalysisStatus status);
+    /** Loads the complete self-contained worker payload without per-item lazy selects. */
+    @EntityGraph(attributePaths = {"requirement", "requirementVersion"})
+    List<RequirementAnalysisJobItem>
+            findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(
+                    String jobId, Long projectId, String scopeKey, AnalysisStatus status);
 
     List<RequirementAnalysisJobItem>
-            findByJobIdAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
-                    String jobId, AnalysisStatus status, Instant startedBefore);
+            findByJobIdAndProjectIdAndScopeKeyAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
+                    String jobId,
+                    Long projectId,
+                    String scopeKey,
+                    AnalysisStatus status,
+                    Instant startedBefore);
 
-    Optional<RequirementAnalysisJobItem> findByJobIdAndRequirementId(String jobId, Long requirementId);
+    Optional<RequirementAnalysisJobItem> findByIdAndJobIdAndProjectIdAndScopeKey(
+            Long id, String jobId, Long projectId, String scopeKey);
 
     /**
-     * Atomically claims one pending work item. The status predicate is the
-     * concurrency boundary: exactly one competing worker can change the row
-     * from PENDING to RUNNING and therefore start the external LLM call.
+     * Serializes claim finalization against exact-tenant recovery updates. The
+     * row lock is held while deferred hypotheses and the immutable snapshot are
+     * persisted, so an expired-worker reset cannot race between validation and
+     * externally visible hypothesis persistence.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select item
+              from RequirementAnalysisJobItem item
+             where item.id = :itemId
+               and item.jobId = :jobId
+               and item.projectId = :projectId
+               and item.scopeKey = :scopeKey
+            """)
+    Optional<RequirementAnalysisJobItem> findClaimForUpdate(
+            @Param("itemId") Long itemId,
+            @Param("jobId") String jobId,
+            @Param("projectId") Long projectId,
+            @Param("scopeKey") String scopeKey);
+
+    Optional<RequirementAnalysisJobItem>
+            findByJobIdAndProjectIdAndScopeKeyAndRequirementId(
+                    String jobId, Long projectId, String scopeKey, Long requirementId);
+
+    /**
+     * Atomically claims one pending work item inside the exact tenant. The full
+     * identity predicate is the concurrency and authorization boundary.
      */
     @Modifying
     @Query("""
@@ -39,18 +75,24 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
                    item.errorMessage = null,
                    item.rowVersion = item.rowVersion + 1
              where item.id = :itemId
+               and item.jobId = :jobId
+               and item.projectId = :projectId
+               and item.scopeKey = :scopeKey
                and item.status = :pendingStatus
             """)
     int claimPending(@Param("itemId") Long itemId,
+                     @Param("jobId") String jobId,
+                     @Param("projectId") Long projectId,
+                     @Param("scopeKey") String scopeKey,
                      @Param("pendingStatus") AnalysisStatus pendingStatus,
                      @Param("runningStatus") AnalysisStatus runningStatus,
                      @Param("startedAt") Instant startedAt);
 
-    /** Atomically prepares one failed item for another attempt. */
+    /** Atomically prepares one exact-tenant failed item for another attempt. */
     @Modifying
     @Query("""
             update RequirementAnalysisJobItem item
-               set item.requirementVersion = :requirementVersion,
+               set item.requirementVersionId = :requirementVersionId,
                    item.status = :pendingStatus,
                    item.snapshotId = null,
                    item.errorMessage = null,
@@ -59,21 +101,27 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
                    item.attempt = item.attempt + 1,
                    item.rowVersion = item.rowVersion + 1
              where item.id = :itemId
+               and item.jobId = :jobId
+               and item.projectId = :projectId
+               and item.scopeKey = :scopeKey
                and item.status = :failedStatus
             """)
     int resetFailed(@Param("itemId") Long itemId,
+                    @Param("jobId") String jobId,
+                    @Param("projectId") Long projectId,
+                    @Param("scopeKey") String scopeKey,
                     @Param("failedStatus") AnalysisStatus failedStatus,
                     @Param("pendingStatus") AnalysisStatus pendingStatus,
-                    @Param("requirementVersion") ProjectRequirementVersion requirementVersion);
+                    @Param("requirementVersionId") Long requirementVersionId);
 
     /**
-     * Atomically recovers a RUNNING item only when its claim is still expired at
-     * update time. Competing retry requests therefore cannot reset it twice.
+     * Atomically recovers a RUNNING item only when its exact-tenant claim is
+     * still expired at update time. Competing retry requests cannot reset it twice.
      */
     @Modifying
     @Query("""
             update RequirementAnalysisJobItem item
-               set item.requirementVersion = :requirementVersion,
+               set item.requirementVersionId = :requirementVersionId,
                    item.status = :pendingStatus,
                    item.snapshotId = null,
                    item.errorMessage = null,
@@ -82,12 +130,35 @@ public interface RequirementAnalysisJobItemRepository extends JpaRepository<Requ
                    item.attempt = item.attempt + 1,
                    item.rowVersion = item.rowVersion + 1
              where item.id = :itemId
+               and item.jobId = :jobId
+               and item.projectId = :projectId
+               and item.scopeKey = :scopeKey
                and item.status = :runningStatus
                and item.startedAt < :staleBefore
             """)
     int resetExpiredRunning(@Param("itemId") Long itemId,
+                            @Param("jobId") String jobId,
+                            @Param("projectId") Long projectId,
+                            @Param("scopeKey") String scopeKey,
                             @Param("runningStatus") AnalysisStatus runningStatus,
                             @Param("pendingStatus") AnalysisStatus pendingStatus,
                             @Param("staleBefore") Instant staleBefore,
-                            @Param("requirementVersion") ProjectRequirementVersion requirementVersion);
+                            @Param("requirementVersionId") Long requirementVersionId);
+
+    /** Compatibility signatures retained while all callers migrate. */
+    @Deprecated(forRemoval = false)
+    List<RequirementAnalysisJobItem> findByJobIdOrderByRequirementRequirementKeyAsc(String jobId);
+
+    @Deprecated(forRemoval = false)
+    List<RequirementAnalysisJobItem> findByJobIdAndStatusOrderByRequirementRequirementKeyAsc(
+            String jobId, AnalysisStatus status);
+
+    @Deprecated(forRemoval = false)
+    List<RequirementAnalysisJobItem>
+            findByJobIdAndStatusAndStartedAtBeforeOrderByRequirementRequirementKeyAsc(
+                    String jobId, AnalysisStatus status, Instant startedBefore);
+
+    @Deprecated(forRemoval = false)
+    Optional<RequirementAnalysisJobItem> findByJobIdAndRequirementId(
+            String jobId, Long requirementId);
 }

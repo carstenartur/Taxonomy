@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.model;
 
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -37,9 +38,18 @@ class RequirementAnalysisJobTest {
     }
 
     private static RequirementAnalysisJob job(Instant createdAt) {
+        ArchitectureProject project = new ArchitectureProject(
+                "v2|r18:primary-repository|s7:CENTRAL|b4:main",
+                null,
+                "architect",
+                "JOB-TEST",
+                "Job test project",
+                null,
+                ProjectStatus.ACTIVE,
+                createdAt);
         return new RequirementAnalysisJob(
                 "job-1",
-                null,
+                project,
                 "client-key",
                 "MOCK",
                 25,

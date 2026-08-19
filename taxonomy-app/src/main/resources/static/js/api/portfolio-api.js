@@ -192,3 +192,17 @@ window.TaxonomyPortfolioApi = (function () {
         }
     };
 }());
+
+/* Load the dedicated Copilot API and UI only on a saved requirement page. */
+(function loadRequirementCopilot() {
+    if (!/(?:^|\/)projects\/\d+\/requirements\/\d+$/.test(window.location.pathname)) return;
+    const loaderSource = document.currentScript?.src || window.location.href;
+    const apiScript = document.createElement('script');
+    apiScript.src = new URL('copilot-api.js', loaderSource).href;
+    apiScript.onload = function () {
+        const uiScript = document.createElement('script');
+        uiScript.src = new URL('../portfolio/requirement-copilot.js', loaderSource).href;
+        document.head.appendChild(uiScript);
+    };
+    document.head.appendChild(apiScript);
+}());

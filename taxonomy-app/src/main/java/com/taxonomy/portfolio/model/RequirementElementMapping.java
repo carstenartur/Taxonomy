@@ -13,21 +13,28 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 
 import java.time.Instant;
+import java.util.Objects;
 
-/** Queryable requirement-snapshot to taxonomy-element mapping. */
+/** Queryable exact-tenant requirement-snapshot to taxonomy-element mapping. */
 @Entity
 @Table(name = "req_element_mapping", indexes = {
-        @Index(name = "idx_elmap_snapshot", columnList = "snapshot_id"),
-        @Index(name = "idx_elmap_node", columnList = "node_code"),
-        @Index(name = "idx_elmap_action", columnList = "action_status")
+        @Index(name = "idx_elmap_snapshot", columnList = "scope_key,snapshot_id"),
+        @Index(name = "idx_elmap_node", columnList = "scope_key,node_code"),
+        @Index(name = "idx_elmap_action", columnList = "scope_key,action_status"),
+        @Index(name = "idx_elmap_scope", columnList = "scope_key")
 }, uniqueConstraints = {
-        @UniqueConstraint(name = "uq_elmap_snap_node", columnNames = {"snapshot_id", "node_code"})
+        @UniqueConstraint(name = "uq_elmap_snap_node",
+                columnNames = {"scope_key", "snapshot_id", "node_code"}),
+        @UniqueConstraint(name = "uq_elmap_id_scope", columnNames = {"id", "scope_key"})
 })
 public class RequirementElementMapping {
 
@@ -35,8 +42,20 @@ public class RequirementElementMapping {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "scope_key", nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    @Column(name = "snapshot_id", nullable = false)
+    private String snapshotId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "snapshot_id", nullable = false)
+    @JoinColumns({
+            @JoinColumn(name = "snapshot_id", referencedColumnName = "id",
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = "scope_key", referencedColumnName = "scope_key",
+                    nullable = false, insertable = false, updatable = false)
+    })
     private RequirementAnalysisSnapshot snapshot;
 
     @Column(name = "node_code", nullable = false, length = 80)
@@ -119,6 +138,7 @@ public class RequirementElementMapping {
         this.hierarchyPath = hierarchyPath;
         this.presenceReason = presenceReason;
         this.selectedForImpact = selectedForImpact;
+        synchronizeTenantAuthority(false);
     }
 
     public void review(ReviewStatus reviewStatus,
@@ -135,7 +155,42 @@ public class RequirementElementMapping {
         this.decisionAt = decisionAt;
     }
 
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+        synchronizeTenantAuthority(true);
+    }
+
+    private void synchronizeTenantAuthority(boolean requirePersistentParent) {
+        if (snapshot == null || snapshot.getScopeKey() == null
+                || snapshot.getScopeKey().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Element mapping snapshot must expose an exact tenant scope");
+        }
+        String snapshotScope = snapshot.getScopeKey().strip();
+        if (scopeKey != null && !scopeKey.isBlank()
+                && !snapshotScope.equals(scopeKey.strip())) {
+            throw new IllegalArgumentException(
+                    "Element mapping tenant scope does not match its snapshot");
+        }
+        scopeKey = snapshotScope;
+        if (snapshot.getId() == null) {
+            if (requirePersistentParent) {
+                throw new IllegalArgumentException(
+                        "Element mapping snapshot must be persisted before the mapping");
+            }
+            return;
+        }
+        if (snapshotId != null && !Objects.equals(snapshotId, snapshot.getId())) {
+            throw new IllegalArgumentException(
+                    "Element mapping snapshot ID does not match its association");
+        }
+        snapshotId = snapshot.getId();
+    }
+
     public Long getId() { return id; }
+    public String getScopeKey() { return scopeKey; }
+    public String getSnapshotId() { return snapshotId; }
     public RequirementAnalysisSnapshot getSnapshot() { return snapshot; }
     public String getNodeCode() { return nodeCode; }
     public String getNodeTitle() { return nodeTitle; }

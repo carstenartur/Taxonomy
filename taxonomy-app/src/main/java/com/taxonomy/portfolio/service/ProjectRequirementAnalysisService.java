@@ -29,7 +29,6 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 
 /** Orchestrates independent analyses while keeping LLM calls outside persistence transactions. */
@@ -42,6 +41,7 @@ public class ProjectRequirementAnalysisService {
 
     private final ProjectPortfolioService projectService;
     private final PortfolioAnalysisPersistenceService persistenceService;
+    private final PortfolioAnalysisClaimPersistenceService claimPersistenceService;
     private final PortfolioAnalysisWorkQueue workQueue;
     private final PortfolioAnalysisRecoveryService recoveryService;
     private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
@@ -55,26 +55,29 @@ public class ProjectRequirementAnalysisService {
     private final int maximumBatchRequirements;
     private final long claimTimeoutSeconds;
 
-    public ProjectRequirementAnalysisService(ProjectPortfolioService projectService,
-                                             PortfolioAnalysisPersistenceService persistenceService,
-                                             PortfolioAnalysisWorkQueue workQueue,
-                                             PortfolioAnalysisRecoveryService recoveryService,
-                                             AnalyzeRequirementUseCase analyzeRequirementUseCase,
-                                             ArchitectureGapService gapService,
-                                             ArchitecturePatternService patternService,
-                                             ArchitectureRecommendationService recommendationService,
-                                             PortfolioFingerprintService fingerprintService,
-                                             LlmService llmService,
-                                             @Qualifier("portfolioAnalysisExecutor")
-                                             AsyncTaskExecutor analysisExecutor,
-                                             @Value("${taxonomy.limits.max-architecture-nodes:100}")
-                                             int maximumArchitectureNodes,
-                                             @Value("${taxonomy.portfolio.max-analysis-batch:100}")
-                                             int maximumBatchRequirements,
-                                             @Value("${taxonomy.portfolio.analysis-claim-timeout-seconds:900}")
-                                             long claimTimeoutSeconds) {
+    public ProjectRequirementAnalysisService(
+            ProjectPortfolioService projectService,
+            PortfolioAnalysisPersistenceService persistenceService,
+            PortfolioAnalysisClaimPersistenceService claimPersistenceService,
+            PortfolioAnalysisWorkQueue workQueue,
+            PortfolioAnalysisRecoveryService recoveryService,
+            AnalyzeRequirementUseCase analyzeRequirementUseCase,
+            ArchitectureGapService gapService,
+            ArchitecturePatternService patternService,
+            ArchitectureRecommendationService recommendationService,
+            PortfolioFingerprintService fingerprintService,
+            LlmService llmService,
+            @Qualifier("portfolioAnalysisExecutor")
+            AsyncTaskExecutor analysisExecutor,
+            @Value("${taxonomy.limits.max-architecture-nodes:100}")
+            int maximumArchitectureNodes,
+            @Value("${taxonomy.portfolio.max-analysis-batch:100}")
+            int maximumBatchRequirements,
+            @Value("${taxonomy.portfolio.analysis-claim-timeout-seconds:900}")
+            long claimTimeoutSeconds) {
         this.projectService = projectService;
         this.persistenceService = persistenceService;
+        this.claimPersistenceService = claimPersistenceService;
         this.workQueue = workQueue;
         this.recoveryService = recoveryService;
         this.analyzeRequirementUseCase = analyzeRequirementUseCase;
@@ -260,17 +263,19 @@ public class ProjectRequirementAnalysisService {
                                                 Long projectId,
                                                 String username,
                                                 WorkspaceContext context) {
+        String scopeKey = PortfolioScope.key(username, context);
         AnalysisJobView job = persistenceService.getJob(jobId, projectId, username, context);
         String taxonomyFingerprint = fingerprintService.taxonomyFingerprint();
         String promptFingerprint = fingerprintService.promptFingerprint();
         String effectiveProvider = job.provider() != null
                 ? job.provider() : llmService.getActiveProviderName();
 
-        List<PortfolioAnalysisWorkQueue.WorkItem> workItems = workQueue.pending(jobId, projectId);
+        List<PortfolioAnalysisWorkQueue.WorkItem> workItems =
+                workQueue.pending(jobId, projectId, scopeKey);
         if (workItems.isEmpty()) {
-            return persistenceService.completeJob(jobId, projectId);
+            return reconcileJobState(jobId, projectId, username, context, scopeKey);
         }
-        persistenceService.markJobRunning(jobId, projectId);
+        persistenceService.markJobRunning(jobId, projectId, scopeKey);
 
         for (PortfolioAnalysisWorkQueue.WorkItem workItem : workItems) {
             String snapshotId = UUID.randomUUID().toString();
@@ -302,8 +307,8 @@ public class ProjectRequirementAnalysisService {
                 ArchitectureRecommendation recommendation = safeRecommendation(
                         analysis, workItem.requirementText());
                 long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
-                persistenceService.persistSnapshot(
-                        workItem.itemId(),
+                claimPersistenceService.persistSnapshot(
+                        workItem,
                         snapshotId,
                         analysisSessionId,
                         analysis,
@@ -318,10 +323,44 @@ public class ProjectRequirementAnalysisService {
                         context,
                         durationMs);
             } catch (Exception failure) {
-                persistenceService.failItem(workItem.itemId(), failure);
+                try {
+                    claimPersistenceService.failItem(workItem, failure);
+                } catch (PortfolioException claimFailure) {
+                    if (claimFailure.getKind() != PortfolioException.Kind.CONFLICT) {
+                        throw claimFailure;
+                    }
+                    LOGGER.info(
+                            "Discarded late result for analysis item {} attempt {} because its claim is no longer active",
+                            workItem.itemId(),
+                            workItem.attempt());
+                }
             }
         }
-        return persistenceService.completeJob(jobId, projectId);
+        return reconcileJobState(jobId, projectId, username, context, scopeKey);
+    }
+
+    private AnalysisJobView reconcileJobState(String jobId,
+                                              Long projectId,
+                                              String username,
+                                              WorkspaceContext context,
+                                              String scopeKey) {
+        AnalysisJobView current = persistenceService.getJob(
+                jobId, projectId, username, context);
+        if (isTerminal(current.status())) {
+            return current;
+        }
+        if (recoveryService.markPendingWhenOnlyPreparedItemsRemain(
+                jobId, projectId, scopeKey)) {
+            return persistenceService.getJob(jobId, projectId, username, context);
+        }
+        return persistenceService.completeJob(jobId, projectId, scopeKey);
+    }
+
+    private static boolean isTerminal(AnalysisStatus status) {
+        return status == AnalysisStatus.SUCCESS
+                || status == AnalysisStatus.PARTIAL
+                || status == AnalysisStatus.FAILED
+                || status == AnalysisStatus.CANCELLED;
     }
 
     private GapAnalysisView safeGapAnalysis(AnalysisResult analysis, String requirementText) {

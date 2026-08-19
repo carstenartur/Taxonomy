@@ -3,6 +3,7 @@ package com.taxonomy.portfolio;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
 import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
@@ -13,6 +14,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisRecoveryService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -77,8 +79,9 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                 "recover-" + UUID.randomUUID(),
                 context.username(),
                 context);
+        String scopeKey = PortfolioScope.key(context.username(), context);
 
-        assertThat(workQueue.pending(job.id(), project.id())).hasSize(1);
+        assertThat(workQueue.pending(job.id(), project.id(), scopeKey)).hasSize(1);
         assertThatThrownBy(() -> recoveryService.prepareRetryableItems(
                 job.id(),
                 project.id(),
@@ -87,6 +90,16 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                 Instant.now().minusSeconds(60)))
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("no failed or expired running items");
+
+        var retryVersion = projectService.addRequirementVersion(
+                project.id(),
+                requirement.id(),
+                new CreateRequirementVersionRequest(
+                        "Updated requirement text for the recovered attempt",
+                        "Rebind the retry to the current immutable version",
+                        null),
+                context.username(),
+                context);
 
         int recovered = recoveryService.prepareRetryableItems(
                 job.id(),
@@ -111,6 +124,9 @@ class PortfolioAnalysisRecoveryAndLimitsTest {
                     assertThat(item.status()).isEqualTo(AnalysisStatus.PENDING);
                     assertThat(item.attempt()).isEqualTo(2);
                     assertThat(item.startedAt()).isNull();
+                    assertThat(item.requirementVersionId()).isEqualTo(retryVersion.id());
+                    assertThat(item.requirementVersionNumber())
+                            .isEqualTo(retryVersion.versionNumber());
                 });
     }
 

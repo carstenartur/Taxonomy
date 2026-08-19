@@ -39,12 +39,23 @@ public class AnalyzeRequirementUseCase {
         this.preferencesService = preferencesService;
     }
 
+    /**
+     * Analyze a request. Ad-hoc requests persist generated hypotheses immediately.
+     * Project analyses carry immutable snapshot provenance; their caller owns a
+     * durable claim boundary and therefore persists hypotheses only after that
+     * claim has been revalidated and locked.
+     */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
+        return analyze(command, command.provenance() == null);
+    }
+
+    private AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command,
+                                             boolean persistHypotheses) {
         try {
             applyProviderOverride(command.provider());
 
             AnalysisResult result = llmService.analyzeWithBudget(command.businessText());
-            enrichWithRelationHypotheses(command, result);
+            enrichWithRelationHypotheses(command, result, persistHypotheses);
             enrichWithArchitectureView(command, result);
             populateViewContext(command, result);
             return new AnalyzeRequirementResult(result);
@@ -65,17 +76,16 @@ public class AnalyzeRequirementUseCase {
     }
 
     private void enrichWithRelationHypotheses(AnalyzeRequirementCommand command,
-                                               AnalysisResult result) {
+                                               AnalysisResult result,
+                                               boolean persistHypotheses) {
         if (result.getScores() == null) {
             return;
         }
         result.setProvisionalRelations(analysisRelationGenerator.generate(result.getScores()));
-        if (!result.getProvisionalRelations().isEmpty()) {
-            String stableSessionId = command.provenance() != null
-                    ? command.provenance().analysisSessionId() : null;
+        if (persistHypotheses && !result.getProvisionalRelations().isEmpty()) {
             hypothesisService.persistFromAnalysis(
                     result.getProvisionalRelations(),
-                    stableSessionId,
+                    null,
                     command.workspaceContext());
         }
     }
