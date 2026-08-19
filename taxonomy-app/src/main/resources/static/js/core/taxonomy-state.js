@@ -267,8 +267,7 @@
                 }
                 if (property === 'close') {
                     return function () {
-                        session.cancel();
-                        target.close();
+                        if (!session.cancel()) target.close();
                     };
                 }
                 if (property === 'onerror') return transportErrorListener;
