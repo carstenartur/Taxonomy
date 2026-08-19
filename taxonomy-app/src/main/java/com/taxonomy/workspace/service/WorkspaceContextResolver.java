@@ -6,9 +6,13 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * Resolves the current workspace and repository contexts from the authenticated
@@ -17,9 +21,16 @@ import org.springframework.stereotype.Service;
  * <p>The legacy {@link WorkspaceContext} is retained while existing callers are
  * migrated. New repository-sensitive code must use {@link RepositoryContext} so
  * a {@code null} workspace can never mean an unspecified global repository.</p>
+ *
+ * <p>Browser tabs may pin their exact workspace with
+ * {@value #WORKSPACE_HEADER}. This prevents another session of the same user
+ * from silently changing the repository context of an already open page.</p>
  */
 @Service
 public class WorkspaceContextResolver {
+
+    /** Request header used by one browser tab to bind all API calls to its workspace. */
+    public static final String WORKSPACE_HEADER = "X-Taxonomy-Workspace-Id";
 
     private static final Logger log = LoggerFactory.getLogger(WorkspaceContextResolver.class);
 
@@ -60,7 +71,7 @@ public class WorkspaceContextResolver {
             return WorkspaceContext.SHARED;
         }
 
-        UserWorkspace workspace = findWorkspace(username);
+        UserWorkspace workspace = resolveWorkspace(username);
         if (workspace != null && hasText(workspace.getWorkspaceId())) {
             String branch = hasText(workspace.getCurrentBranch())
                     ? workspace.getCurrentBranch().strip()
@@ -95,7 +106,7 @@ public class WorkspaceContextResolver {
         String user = normalizeUsername(username);
         UserWorkspace workspace = WorkspaceManager.DEFAULT_USER.equals(user)
                 ? null
-                : findWorkspace(user);
+                : resolveWorkspace(user);
 
         if (workspace != null && hasText(workspace.getWorkspaceId())) {
             SystemRepository repository = resolveWorkspaceSource(workspace);
@@ -122,6 +133,24 @@ public class WorkspaceContextResolver {
         return context;
     }
 
+    private UserWorkspace resolveWorkspace(String username) {
+        String requestedWorkspaceId = requestedWorkspaceId();
+        if (requestedWorkspaceId == null) {
+            return findWorkspace(username);
+        }
+
+        UserWorkspace workspace = workspaceManager.getWorkspaceById(requestedWorkspaceId);
+        if (workspace == null
+                || !hasText(workspace.getUsername())
+                || !workspace.getUsername().strip().equals(username.strip())
+                || workspace.isArchived()
+                || workspace.isShared()) {
+            throw new AccessDeniedException(
+                    "Requested workspace is not available to the authenticated user");
+        }
+        return workspace;
+    }
+
     private UserWorkspace findWorkspace(String username) {
         UserWorkspace workspace = workspaceManager.findActiveWorkspace(username);
         return workspace != null ? workspace : workspaceManager.findUserWorkspace(username);
@@ -143,6 +172,15 @@ public class WorkspaceContextResolver {
                 "Persisted primary repository {} as source provenance for legacy workspace {}",
                 primaryRepositoryId, workspace.getWorkspaceId());
         return primary;
+    }
+
+    private static String requestedWorkspaceId() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
+            return null;
+        }
+        String header = servletAttributes.getRequest().getHeader(WORKSPACE_HEADER);
+        return hasText(header) ? header.strip() : null;
     }
 
     private static String requireRepositoryId(SystemRepository repository) {
