@@ -146,9 +146,11 @@
                         <configuration>
                             <skip>${taxonomy.quality.skip}</skip>
                             <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-                            <executable>python3</executable>
+                            <executable>java</executable>
                             <arguments>
-                                <argument>.github/scripts/generate-vex.py</argument>
+                                <argument>-jar</argument>
+                                <argument>${maven.multiModuleProjectDirectory}/taxonomy-tooling/target/taxonomy-tooling-${project.version}.jar</argument>
+                                <argument>generate-sbom-companion</argument>
                                 <argument>--sbom</argument><argument>target/taxonomy-sbom.json</argument>
                                 <argument>--output</argument><argument>target/taxonomy-vex.json</argument>
                             </arguments>
