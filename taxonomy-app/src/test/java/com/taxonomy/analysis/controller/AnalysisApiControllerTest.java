@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.controller;
 
 import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
+import com.taxonomy.analysis.usecase.AnalysisStreamEventHandler;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenUseCase;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementResult;
@@ -38,7 +39,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ExecutorService;
-import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -240,13 +240,12 @@ class AnalysisApiControllerTest {
         detail.setDurationMs(42L);
 
         doAnswer(invocation -> {
-            @SuppressWarnings("unchecked")
-            Consumer<AnalysisStreamEvent> handler = invocation.getArgument(1);
-            handler.accept(new AnalysisStreamEvent.Phase("Working", 12));
-            handler.accept(new AnalysisStreamEvent.Scores(
+            AnalysisStreamEventHandler handler = invocation.getArgument(1);
+            handler.handle(new AnalysisStreamEvent.Phase("Working", 12));
+            handler.handle(new AnalysisStreamEvent.Scores(
                     Map.of("CP", 80), Map.of("CP", "reason"),
                     "Capabilities scored 80/100", detail));
-            handler.accept(new AnalysisStreamEvent.Complete(
+            handler.handle(new AnalysisStreamEvent.Complete(
                     "SUCCESS", Map.of("CP", 80), List.of(), List.of()));
             return null;
         }).when(streamRequirementAnalysisUseCase).stream(any(), any());
@@ -270,10 +269,9 @@ class AnalysisApiControllerTest {
     @Test
     void analyzeStreamEmitsOneOperationAndMonotonicSequences() throws Exception {
         doAnswer(invocation -> {
-            @SuppressWarnings("unchecked")
-            Consumer<AnalysisStreamEvent> handler = invocation.getArgument(1);
-            handler.accept(new AnalysisStreamEvent.Phase("Working", 12));
-            handler.accept(new AnalysisStreamEvent.Complete(
+            AnalysisStreamEventHandler handler = invocation.getArgument(1);
+            handler.handle(new AnalysisStreamEvent.Phase("Working", 12));
+            handler.handle(new AnalysisStreamEvent.Complete(
                     "SUCCESS", Map.of("CP", 80), List.of(), List.of()));
             return null;
         }).when(streamRequirementAnalysisUseCase).stream(any(), any());
