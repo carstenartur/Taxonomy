@@ -243,6 +243,15 @@ test('the installed EventSource guard blocks stale and out-of-order UI callbacks
   instances[2].emit('scores', event('operation-c', 2));
   instances[2].failTransport();
 
+  // Repeated close calls after supersession or terminal completion must remain
+  // idempotent and cannot reach an already closed native transport again.
+  sourceA.close();
+  sourceA.close();
+  sourceB.close();
+  sourceB.close();
+  sourceC.close();
+  sourceC.close();
+
   assert.deepEqual(accepted, [
     ['scores', 1],
     ['scores', 1],
@@ -250,6 +259,7 @@ test('the installed EventSource guard blocks stale and out-of-order UI callbacks
     ['error', 1]
   ]);
   assert.equal(transportFailures, 0);
+  assert.equal(instances[0].closeCalls, 1);
   assert.equal(instances[1].closeCalls, 1);
   assert.equal(instances[2].closeCalls, 1);
   assert.equal(sourceA.closeCalls, 1);
@@ -307,4 +317,67 @@ test('guarded listeners preserve EventTarget identity and equivalent capture opt
 
   instances[0].emit('phase', event('operation-a', 1));
   assert.equal(callbackCount, 0);
+});
+
+test('a once listener releases wrapper identity and can be registered again', () => {
+  const instances = [];
+
+  class FakeEventSource {
+    constructor() {
+      this.listeners = new Map();
+      this.onerror = null;
+      instances.push(this);
+    }
+
+    addEventListener(type, listener, options) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push({
+        listener,
+        once: Boolean(options && typeof options === 'object' && options.once)
+      });
+    }
+
+    removeEventListener(type, listener) {
+      const registrations = this.listeners.get(type) || [];
+      this.listeners.set(type,
+        registrations.filter(registration => registration.listener !== listener));
+    }
+
+    close() {}
+
+    emit(type, envelope) {
+      const message = { type, data: JSON.stringify(envelope) };
+      const registrations = [...(this.listeners.get(type) || [])];
+      for (const registration of registrations) {
+        if (registration.once) this.removeEventListener(type, registration.listener);
+        registration.listener.call(this, message);
+      }
+    }
+  }
+
+  let callbackCount = 0;
+  const listener = () => { callbackCount += 1; };
+  const runtime = loadRuntime({ window: { EventSource: FakeEventSource } });
+  runtime.window.TaxonomyScoring = {
+    runStreamingAnalysis() {
+      const source = new runtime.window.EventSource('/api/analyze-stream');
+      source.addEventListener('phase', listener, { once: true });
+      return source;
+    }
+  };
+  runtime.fireDomReady();
+
+  const source = runtime.window.TaxonomyScoring.runStreamingAnalysis();
+  assert.equal(instances[0].listeners.get('phase').length, 1);
+
+  instances[0].emit('phase', event('operation-a', 1));
+  assert.equal(callbackCount, 1);
+  assert.equal(instances[0].listeners.get('phase').length, 0);
+
+  source.addEventListener('phase', listener, { once: true });
+  assert.equal(instances[0].listeners.get('phase').length, 1);
+
+  instances[0].emit('phase', event('operation-a', 2));
+  assert.equal(callbackCount, 2);
+  assert.equal(instances[0].listeners.get('phase').length, 0);
 });
