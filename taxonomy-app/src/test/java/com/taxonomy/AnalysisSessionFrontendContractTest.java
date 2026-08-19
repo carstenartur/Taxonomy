@@ -12,7 +12,7 @@ class AnalysisSessionFrontendContractTest {
     @Test
     void invalidationClearsEveryRequirementDerivedStateWithoutTouchingPortfolioData()
             throws IOException {
-        String script = resource("/static/js/core/taxonomy-analysis-session.js");
+        String script = sessionSources();
 
         assertThat(script)
                 .contains("S.currentScores = null")
@@ -34,7 +34,7 @@ class AnalysisSessionFrontendContractTest {
 
     @Test
     void staleTextOffersDistinctBusinessActions() throws IOException {
-        String script = resource("/static/js/core/taxonomy-analysis-session.js");
+        String script = sessionSources();
 
         assertThat(script)
                 .contains("discard-edit")
@@ -49,8 +49,9 @@ class AnalysisSessionFrontendContractTest {
 
     @Test
     void workingDraftIsWorkspacePinnedAndOptimisticallyVersioned() throws IOException {
-        String session = resource("/static/js/core/taxonomy-analysis-session.js");
+        String session = sessionSources();
         String state = resource("/static/js/core/taxonomy-state.js");
+        String loader = resource("/static/js/core/taxonomy-analysis-session.js");
 
         assertThat(session)
                 .contains("/api/analysis-drafts/")
@@ -60,6 +61,11 @@ class AnalysisSessionFrontendContractTest {
                 .contains("sessionStorage")
                 .contains("window.location.reload()")
                 .contains("taxonomy:analysis-draft-restored");
+        assertThat(loader)
+                .contains("taxonomy-analysis-session-core.js")
+                .contains("taxonomy-analysis-session-ui.js")
+                .contains("taxonomy-analysis-session-draft.js")
+                .contains("taxonomy-analysis-session-projects.js");
         assertThat(state).contains("taxonomy-analysis-session.js");
     }
 
@@ -74,6 +80,13 @@ class AnalysisSessionFrontendContractTest {
                 .contains("payload_json oid not null")
                 .contains("row_version bigint not null")
                 .contains("unique (scope_key, username)");
+    }
+
+    private static String sessionSources() throws IOException {
+        return resource("/static/js/core/taxonomy-analysis-session-core.js")
+                + resource("/static/js/core/taxonomy-analysis-session-ui.js")
+                + resource("/static/js/core/taxonomy-analysis-session-draft.js")
+                + resource("/static/js/core/taxonomy-analysis-session-projects.js");
     }
 
     private static String resource(String path) throws IOException {
