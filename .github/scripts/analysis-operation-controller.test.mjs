@@ -7,22 +7,52 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..', '..');
-const controllerScript = await readFile(path.join(
+const stateScript = await readFile(path.join(
   repoRoot,
-  'taxonomy-app/src/main/resources/static/js/core/analysis-operation-controller.js'
+  'taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js'
 ), 'utf8');
 
-function createController() {
-  const window = { console };
-  vm.runInNewContext(controllerScript, {
-    window,
+function loadRuntime(overrides = {}) {
+  const domReady = [];
+  const window = {
     console,
+    setTimeout,
+    ...overrides.window
+  };
+  const document = {
+    querySelectorAll: () => [],
+    addEventListener(type, listener) {
+      if (type === 'DOMContentLoaded') domReady.push(listener);
+    },
+    ...overrides.document
+  };
+
+  vm.runInNewContext(stateScript, {
+    window,
+    document,
+    console,
+    Array,
     Boolean,
+    JSON,
+    Map,
     Number,
     Object,
+    Proxy,
+    Reflect,
+    Set,
     String
-  }, { filename: 'analysis-operation-controller.js' });
-  return window.TaxonomyAnalysisOperationController.create();
+  }, { filename: 'taxonomy-state.js' });
+
+  return {
+    window,
+    fireDomReady() {
+      for (const listener of domReady) listener();
+    }
+  };
+}
+
+function createController() {
+  return loadRuntime().window.TaxonomyAnalysisOperationController.create();
 }
 
 function event(operationId, sequence) {
@@ -117,4 +147,104 @@ test('explicit cancellation closes the active transport exactly once', () => {
   assert.equal(session.cancel(), false);
   assert.equal(closeCalls, 1);
   assert.equal(controller.snapshot(), null);
+});
+
+test('the installed EventSource guard blocks stale and out-of-order UI callbacks', () => {
+  const instances = [];
+
+  class FakeEventSource {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSED = 2;
+
+    constructor(url) {
+      this.url = url;
+      this.listeners = new Map();
+      this.closeCalls = 0;
+      this.onerror = null;
+      instances.push(this);
+    }
+
+    addEventListener(type, listener) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(listener);
+    }
+
+    removeEventListener(type, listener) {
+      const listeners = this.listeners.get(type) || [];
+      this.listeners.set(type, listeners.filter(candidate => candidate !== listener));
+    }
+
+    close() {
+      this.closeCalls += 1;
+    }
+
+    emit(type, envelope) {
+      const message = {
+        type,
+        data: envelope === undefined ? undefined : JSON.stringify(envelope)
+      };
+      for (const listener of this.listeners.get(type) || []) listener.call(this, message);
+      if (type === 'error' && typeof this.onerror === 'function') this.onerror(message);
+    }
+
+    failTransport() {
+      const transportEvent = { type: 'error' };
+      for (const listener of this.listeners.get('error') || []) {
+        listener.call(this, transportEvent);
+      }
+      if (typeof this.onerror === 'function') this.onerror(transportEvent);
+    }
+  }
+
+  const accepted = [];
+  let transportFailures = 0;
+  const runtime = loadRuntime({ window: { EventSource: FakeEventSource } });
+  runtime.window.TaxonomyScoring = {
+    runStreamingAnalysis() {
+      const source = new runtime.window.EventSource('/api/analyze-stream');
+      source.addEventListener('scores', message => {
+        accepted.push(['scores', JSON.parse(message.data).sequence]);
+      });
+      source.addEventListener('complete', message => {
+        accepted.push(['complete', JSON.parse(message.data).sequence]);
+        source.close();
+      });
+      source.addEventListener('error', message => {
+        accepted.push(['error', JSON.parse(message.data).sequence]);
+        source.close();
+      });
+      source.onerror = () => { transportFailures += 1; };
+      return source;
+    }
+  };
+  runtime.fireDomReady();
+
+  const sourceA = runtime.window.TaxonomyScoring.runStreamingAnalysis();
+  instances[0].emit('scores', event('operation-a', 1));
+  instances[0].emit('scores', event('operation-a', 1));
+  instances[0].emit('scores', event('operation-a', 0));
+  instances[0].emit('scores', event('operation-b', 2));
+  assert.deepEqual(accepted, [['scores', 1]]);
+
+  const sourceB = runtime.window.TaxonomyScoring.runStreamingAnalysis();
+  assert.equal(instances[0].closeCalls, 1);
+  instances[0].emit('scores', event('operation-a', 2));
+  instances[0].failTransport();
+  assert.equal(transportFailures, 0);
+
+  instances[1].emit('scores', event('operation-b', 1));
+  instances[1].emit('complete', event('operation-b', 2));
+  instances[1].emit('scores', event('operation-b', 3));
+  instances[1].failTransport();
+
+  assert.deepEqual(accepted, [
+    ['scores', 1],
+    ['scores', 1],
+    ['complete', 2]
+  ]);
+  assert.equal(transportFailures, 0);
+  assert.equal(instances[1].closeCalls, 2);
+  assert.equal(sourceA.closeCalls, 1);
+  assert.equal(sourceB.closeCalls, 2);
 });
