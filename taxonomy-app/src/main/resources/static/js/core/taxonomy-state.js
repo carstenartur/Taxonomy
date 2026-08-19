@@ -239,6 +239,10 @@
                 : Boolean(options && options.capture);
         }
 
+        function onceFlag(options) {
+            return Boolean(options && typeof options === 'object' && options.once);
+        }
+
         function wrappersFor(type, listener) {
             if (!listenerMaps.has(type)) listenerMaps.set(type, new Map());
             var listenersForType = listenerMaps.get(type);
@@ -273,10 +277,17 @@
                         // passive and equivalent option objects do not create a
                         // second registration for the same identity.
                         var capture = captureFlag(options);
+                        var once = onceFlag(options);
                         var wrappersForListener = wrappersFor(type, listener);
                         if (wrappersForListener.has(capture)) return;
 
                         var wrapped = function (event) {
+                            // Native EventTarget removes a once-listener before
+                            // invoking it. Release the parallel wrapper identity
+                            // at the same boundary so the listener can be added
+                            // again from inside or after its callback.
+                            if (once) removeStoredWrapper(type, listener, capture);
+
                             var envelope = parseOperationEnvelope(event);
                             if (!session.accept(envelope, {
                                 terminal: terminalTypes.has(type)
@@ -305,7 +316,10 @@
                 }
                 if (property === 'close') {
                     return function () {
-                        if (!session.cancel()) target.close();
+                        // The session owns the native close callback and makes it
+                        // idempotent across user cancellation, terminal events,
+                        // transport failure and supersession.
+                        session.cancel();
                     };
                 }
                 if (property === 'onerror') return transportErrorListener;
