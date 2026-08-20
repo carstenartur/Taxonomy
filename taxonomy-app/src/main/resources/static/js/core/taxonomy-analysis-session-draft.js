@@ -28,6 +28,8 @@
     }
 
     function deleteDraft() {
+        window.clearTimeout(runtime.saveTimer);
+        runtime.saveTimer = null;
         var endpoint = draftEndpoint();
         if (!endpoint || runtime.version === null) return Promise.resolve();
         return jsonRequest(endpoint + '?expectedVersion=' + encodeURIComponent(runtime.version), {
