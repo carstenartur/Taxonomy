@@ -23,14 +23,20 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * a {@code null} workspace can never mean an unspecified global repository.</p>
  *
  * <p>Browser tabs may pin their exact workspace with
- * {@value #WORKSPACE_HEADER}. This prevents another session of the same user
- * from silently changing the repository context of an already open page.</p>
+ * {@value #WORKSPACE_HEADER}. Native {@code EventSource} cannot set a custom
+ * header, so SSE endpoints may use the equivalent
+ * {@value #WORKSPACE_QUERY_PARAMETER} query parameter. This prevents another
+ * session of the same user from silently changing the repository context of an
+ * already open page.</p>
  */
 @Service
 public class WorkspaceContextResolver {
 
-    /** Request header used by one browser tab to bind all API calls to its workspace. */
+    /** Request header used by one browser tab to bind API calls to its workspace. */
     public static final String WORKSPACE_HEADER = "X-Taxonomy-Workspace-Id";
+
+    /** Query parameter used only when a browser transport cannot set headers. */
+    public static final String WORKSPACE_QUERY_PARAMETER = "workspaceId";
 
     private static final Logger log = LoggerFactory.getLogger(WorkspaceContextResolver.class);
 
@@ -180,7 +186,12 @@ public class WorkspaceContextResolver {
             return null;
         }
         String header = servletAttributes.getRequest().getHeader(WORKSPACE_HEADER);
-        return hasText(header) ? header.strip() : null;
+        if (hasText(header)) {
+            return header.strip();
+        }
+        String parameter = servletAttributes.getRequest()
+                .getParameter(WORKSPACE_QUERY_PARAMETER);
+        return hasText(parameter) ? parameter.strip() : null;
     }
 
     private static String requireRepositoryId(SystemRepository repository) {
