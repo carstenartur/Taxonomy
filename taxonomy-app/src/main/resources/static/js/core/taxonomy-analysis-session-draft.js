@@ -164,20 +164,40 @@
         options = options || {};
         var endpoint = draftEndpoint();
         if (!endpoint) return Promise.resolve(null);
+
+        // Loading, rendering and any explicit local-vs-remote choice form one
+        // restoration transaction. Autosave must not run until that transaction
+        // has either established the server baseline or the user has chosen which
+        // state owns the next optimistic revision.
+        runtime.restoring = true;
         return jsonRequest(endpoint, { method: 'GET' }).then(function (view) {
             if (!view) {
                 runtime.version = null;
-                runtime.lastSavedComparable = comparable(currentPayload());
-                runtime.lastObservedComparable = runtime.lastSavedComparable;
+                var payload = currentPayload();
+                var serialized = comparable(payload);
+                runtime.restoring = false;
+                if (meaningful(payload)) {
+                    // Local input may have changed while the GET was in flight.
+                    // The server has no draft, so never label that input as saved.
+                    runtime.lastSavedComparable = null;
+                    runtime.lastObservedComparable = null;
+                    queueSave(0);
+                } else {
+                    runtime.lastSavedComparable = serialized;
+                    runtime.lastObservedComparable = serialized;
+                }
                 return null;
             }
             if (options.force || localStateIsPristine()) {
                 applyDraft(view);
             } else {
+                // Keep restoring=true until the user chooses the authoritative
+                // state; background polling must not overwrite the saved draft.
                 showResumeChoice(view);
             }
             return view;
         }).catch(function (error) {
+            runtime.restoring = false;
             if (options.probe) throw error;
             if (window.console) window.console.warn('[Taxonomy] Draft load failed', error);
             return null;
@@ -200,6 +220,7 @@
                     runtime.version = view.version;
                     runtime.lastSavedComparable = comparable(view.payload);
                     runtime.conflict = false;
+                    runtime.restoring = false;
                     queueSave(0);
                 }
             }
