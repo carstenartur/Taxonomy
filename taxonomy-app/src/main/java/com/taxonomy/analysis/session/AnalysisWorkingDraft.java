@@ -7,12 +7,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -49,7 +50,12 @@ public class AnalysisWorkingDraft {
     @Column(nullable = false, length = 160)
     private String username;
 
-    @Lob
+    /**
+     * Materialized long text rather than a JDBC CLOB/OID locator.
+     * Frequent autosaves must replace one row value without accumulating
+     * PostgreSQL large objects that require separate lifecycle management.
+     */
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
     @Column(name = "payload_json", nullable = false)
     private String payloadJson;
 
