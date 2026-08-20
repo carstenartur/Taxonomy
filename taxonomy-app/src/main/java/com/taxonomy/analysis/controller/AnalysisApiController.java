@@ -31,6 +31,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -170,6 +171,12 @@ public class AnalysisApiController {
             return emitter;
         }
 
+        // Resolve and validate the exact tab-pinned workspace while the request
+        // context is still available. Native EventSource cannot send the custom
+        // header, so WorkspaceContextResolver accepts its equivalent query value.
+        String username = workspaceResolver.resolveCurrentUsername();
+        resolveWorkspaceContext(username);
+
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
                 businessText, provider, LocaleContextHolder.getLocale());
         analysisExecutor.execute(() -> {
@@ -290,6 +297,10 @@ public class AnalysisApiController {
         try {
             repositoryStateService.ensureWorkspaceState(username);
             return workspaceResolver.resolveCurrentContext();
+        } catch (AccessDeniedException exception) {
+            // An explicit tab pin is an authorization boundary. Never turn a
+            // denied or foreign workspace into an implicit shared analysis.
+            throw exception;
         } catch (Exception e) {
             log.warn("Falling back to shared workspace context for user '{}' due to: {}",
                     username, e.toString(), e);
