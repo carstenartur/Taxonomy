@@ -394,6 +394,13 @@
     }
 
     function loadAnalysisSessionLifecycle() {
+        if (typeof document === 'undefined'
+                || typeof document.querySelector !== 'function'
+                || typeof document.createElement !== 'function'
+                || !document.head
+                || typeof document.head.appendChild !== 'function') {
+            return;
+        }
         if (document.querySelector('script[data-taxonomy-analysis-session]')) return;
         var script = document.createElement('script');
         script.src = '/js/core/taxonomy-analysis-session.js';
@@ -409,7 +416,8 @@
 
     loadAnalysisSessionLifecycle();
 
-    if (typeof document.addEventListener === 'function') {
+    if (typeof document !== 'undefined'
+            && typeof document.addEventListener === 'function') {
         document.addEventListener('DOMContentLoaded', installAnalysisStreamGuard, { once: true });
     }
 
