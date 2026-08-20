@@ -42,10 +42,9 @@ class WorkspaceContextResolverRequestPinningTest {
         when(workspaceManager.getWorkspaceById("workspace-a")).thenReturn(requested);
         when(systemRepositoryService.getRepository("repo-a"))
                 .thenReturn(repository("repo-a", "main"));
-        requestWithWorkspace("workspace-a");
+        requestWithWorkspaceHeader("workspace-a");
 
-        WorkspaceContextResolver resolver = new WorkspaceContextResolver(
-                workspaceManager, systemRepositoryService, workspaceRepository);
+        WorkspaceContextResolver resolver = resolver();
         RepositoryContext context = resolver.resolveRepositoryContextForUser("alice");
 
         assertThat(context.workspaceId()).isEqualTo("workspace-a");
@@ -55,13 +54,45 @@ class WorkspaceContextResolverRequestPinningTest {
     }
 
     @Test
+    void eventSourceWorkspaceQueryPinsTheSameExactContext() {
+        UserWorkspace requested = workspace("alice", "workspace-sse", "feature/sse", "repo-sse");
+        when(workspaceManager.getWorkspaceById("workspace-sse")).thenReturn(requested);
+        when(systemRepositoryService.getRepository("repo-sse"))
+                .thenReturn(repository("repo-sse", "main"));
+        requestWithWorkspaceQuery("workspace-sse");
+
+        RepositoryContext context = resolver().resolveRepositoryContextForUser("alice");
+
+        assertThat(context.workspaceId()).isEqualTo("workspace-sse");
+        assertThat(context.repositoryId()).isEqualTo("repo-sse");
+        assertThat(context.branch()).isEqualTo("feature/sse");
+        verify(workspaceManager, never()).findActiveWorkspace("alice");
+    }
+
+    @Test
+    void explicitHeaderTakesPrecedenceOverEventSourceQuery() {
+        UserWorkspace requested = workspace("alice", "workspace-header", "feature/header", "repo-header");
+        when(workspaceManager.getWorkspaceById("workspace-header")).thenReturn(requested);
+        when(systemRepositoryService.getRepository("repo-header"))
+                .thenReturn(repository("repo-header", "main"));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-header");
+        request.addParameter(WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER, "workspace-query");
+        bind(request);
+
+        RepositoryContext context = resolver().resolveRepositoryContextForUser("alice");
+
+        assertThat(context.workspaceId()).isEqualTo("workspace-header");
+        verify(workspaceManager, never()).getWorkspaceById("workspace-query");
+    }
+
+    @Test
     void explicitWorkspaceHeaderCannotSelectAnotherUsersWorkspace() {
         UserWorkspace foreign = workspace("bob", "workspace-b", "feature/b", "repo-b");
         when(workspaceManager.getWorkspaceById("workspace-b")).thenReturn(foreign);
-        requestWithWorkspace("workspace-b");
+        requestWithWorkspaceHeader("workspace-b");
 
-        WorkspaceContextResolver resolver = new WorkspaceContextResolver(
-                workspaceManager, systemRepositoryService, workspaceRepository);
+        WorkspaceContextResolver resolver = resolver();
 
         assertThatThrownBy(() -> resolver.resolveRepositoryContextForUser("alice"))
                 .isInstanceOf(AccessDeniedException.class)
@@ -69,9 +100,24 @@ class WorkspaceContextResolverRequestPinningTest {
         verify(systemRepositoryService, never()).getRepository("repo-b");
     }
 
-    private static void requestWithWorkspace(String workspaceId) {
+    private WorkspaceContextResolver resolver() {
+        return new WorkspaceContextResolver(
+                workspaceManager, systemRepositoryService, workspaceRepository);
+    }
+
+    private static void requestWithWorkspaceHeader(String workspaceId) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader(WorkspaceContextResolver.WORKSPACE_HEADER, workspaceId);
+        bind(request);
+    }
+
+    private static void requestWithWorkspaceQuery(String workspaceId) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addParameter(WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER, workspaceId);
+        bind(request);
+    }
+
+    private static void bind(MockHttpServletRequest request) {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
     }
 
