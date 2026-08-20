@@ -55,8 +55,10 @@ public final class WorkspaceScope {
     }
 
     public static String repositoryId(WorkspaceContext context) {
-        if (context == null || context.repositoryId() == null
-                || context.repositoryId().isBlank()) {
+        if (context == null) {
+            throw new IllegalArgumentException("workspace context is required");
+        }
+        if (context.repositoryId() == null || context.repositoryId().isBlank()) {
             throw new IllegalArgumentException("repositoryId is required");
         }
         return context.repositoryId().strip();
