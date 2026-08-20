@@ -229,7 +229,7 @@
             {
                 id: 'new-project',
                 label: text('newProject'),
-                className: 'btn btn-sm btn-outline-danger',
+                className: 'btn btn-sm btn-danger',
                 handler: function () {
                     openNewProjectDialog({ seedRequirementText: null });
                 }
