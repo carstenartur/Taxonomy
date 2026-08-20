@@ -1,8 +1,5 @@
 package com.taxonomy.analysis.session;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -11,7 +8,6 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceScope;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -19,6 +15,9 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -41,15 +40,14 @@ public class AnalysisWorkingDraftService {
             AnalysisWorkingDraftRepository repository,
             WorkspaceManager workspaceManager,
             SystemRepositoryService systemRepositoryService,
-            ObjectProvider<ObjectMapper> objectMapperProvider,
+            ObjectMapper objectMapper,
             @Value("${taxonomy.analysis-draft.max-characters:2000000}")
             int maximumPayloadCharacters) {
         this(
                 repository,
                 workspaceManager,
                 systemRepositoryService,
-                objectMapperProvider.getIfAvailable(
-                        () -> new ObjectMapper().findAndRegisterModules()),
+                objectMapper,
                 maximumPayloadCharacters);
     }
 
@@ -184,7 +182,7 @@ public class AnalysisWorkingDraftService {
     private String serialize(JsonNode payload) {
         try {
             return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             throw new AnalysisDraftValidationException(
                     "Analysis draft payload is not valid JSON", exception);
         }
@@ -198,7 +196,7 @@ public class AnalysisWorkingDraftService {
                     objectMapper.readTree(draft.getPayloadJson()),
                     draft.getRowVersion(),
                     draft.getUpdatedAt());
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             throw new IllegalStateException(
                     "Persisted analysis draft contains invalid JSON", exception);
         }
