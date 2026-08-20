@@ -22,16 +22,41 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+function fakeControl(id) {
+  const attributes = new Map();
+  return {
+    id,
+    dataset: {},
+    disabled: false,
+    setAttribute(name, value) {
+      attributes.set(name, String(value));
+    },
+    removeAttribute(name) {
+      attributes.delete(name);
+    },
+    getAttribute(name) {
+      return attributes.get(name) || null;
+    }
+  };
+}
+
 function createHarness({ inputText = '', payload, request }) {
   const scheduled = [];
   const cleared = [];
   const alerts = [];
+  const clickListeners = [];
+  let decisionFocusCount = 0;
   const input = {
     value: inputText,
     classList: {
       add() {},
       remove() {}
     }
+  };
+  const controls = {
+    analyzeBtn: fakeControl('analyzeBtn'),
+    copilotBtn: fakeControl('copilotBtn'),
+    taskNextAction: fakeControl('taskNextAction')
   };
   const runtime = {
     workspaceId: 'ws-1',
@@ -91,7 +116,23 @@ function createHarness({ inputText = '', payload, request }) {
   };
   const document = {
     dispatchEvent() {},
-    getElementById() { return null; }
+    getElementById(id) {
+      return controls[id] || null;
+    },
+    querySelectorAll() {
+      return Object.values(controls);
+    },
+    querySelector(selector) {
+      if (selector !== '#statusArea [data-analysis-session-action]') return null;
+      return {
+        focus() {
+          decisionFocusCount += 1;
+        }
+      };
+    },
+    addEventListener(type, listener) {
+      if (type === 'click') clickListeners.push(listener);
+    }
   };
 
   vm.runInNewContext(source, {
@@ -114,7 +155,18 @@ function createHarness({ inputText = '', payload, request }) {
     encodeURIComponent
   }, { filename: 'taxonomy-analysis-session-draft.js' });
 
-  return { context, runtime, state, input, scheduled, cleared, alerts };
+  return {
+    context,
+    runtime,
+    state,
+    input,
+    controls,
+    scheduled,
+    cleared,
+    alerts,
+    clickListeners,
+    decisionFocusCount: () => decisionFocusCount
+  };
 }
 
 test('keeps restoration active while GET is pending and saves input typed during a 204', async () => {
@@ -127,6 +179,8 @@ test('keeps restoration active while GET is pending and saves input typed during
 
   const loading = harness.context.loadDraft();
   assert.equal(harness.runtime.restoring, true);
+  assert.equal(harness.runtime.draftDecisionPending, true);
+  assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), 'true');
   assert.equal(harness.scheduled.length, 0);
 
   harness.input.value = 'Typed while the remote draft was loading';
@@ -135,6 +189,8 @@ test('keeps restoration active while GET is pending and saves input typed during
   await loading;
 
   assert.equal(harness.runtime.restoring, false);
+  assert.equal(harness.runtime.draftDecisionPending, false);
+  assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), null);
   assert.equal(harness.runtime.version, null);
   assert.equal(harness.runtime.lastSavedComparable, null);
   assert.equal(harness.runtime.lastObservedComparable, null);
@@ -142,7 +198,7 @@ test('keeps restoration active while GET is pending and saves input typed during
   assert.equal(harness.scheduled[0].delay, 0);
 });
 
-test('blocks autosave until local-versus-saved resume choice is resolved', async () => {
+test('blocks task actions and autosave until resume choice is resolved', async () => {
   const payload = { current: { businessText: 'Local unsaved text' } };
   const saved = {
     version: 7,
@@ -157,15 +213,36 @@ test('blocks autosave until local-versus-saved resume choice is resolved', async
   await harness.context.loadDraft();
 
   assert.equal(harness.runtime.restoring, true);
+  assert.equal(harness.runtime.draftDecisionPending, true);
+  assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), 'true');
   assert.equal(harness.scheduled.length, 0);
   assert.equal(harness.alerts.length, 1);
   assert.equal(harness.alerts[0].marker, 'resume-choice');
+
+  let prevented = false;
+  let stopped = false;
+  harness.clickListeners[0]({
+    target: {
+      closest: () => harness.controls.analyzeBtn
+    },
+    preventDefault() {
+      prevented = true;
+    },
+    stopImmediatePropagation() {
+      stopped = true;
+    }
+  });
+  assert.equal(prevented, true);
+  assert.equal(stopped, true);
+  assert.equal(harness.decisionFocusCount(), 1);
 
   const keepLocal = harness.alerts[0].actions.find(action => action.id === 'keep-local');
   assert.ok(keepLocal, 'Resume choice must offer the local state');
   keepLocal.handler();
 
   assert.equal(harness.runtime.restoring, false);
+  assert.equal(harness.runtime.draftDecisionPending, false);
+  assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), null);
   assert.equal(harness.runtime.version, 7);
   assert.equal(
     harness.runtime.lastSavedComparable,
