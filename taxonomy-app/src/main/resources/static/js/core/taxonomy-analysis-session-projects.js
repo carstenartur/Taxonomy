@@ -135,9 +135,18 @@
         });
     }
 
+    function applicationUrl(value) {
+        return window.TaxonomyI18n
+                && typeof window.TaxonomyI18n.resolveUrl === 'function'
+            ? window.TaxonomyI18n.resolveUrl(value)
+            : value;
+    }
+
     function discardDraftAndNavigate(url) {
         invalidate({ keepText: false, silent: true, reason: 'promoted-to-project' });
-        return deleteDraft().finally(function () { window.location.assign(url); });
+        return deleteDraft().finally(function () {
+            window.location.assign(applicationUrl(url));
+        });
     }
 
     function openRequirementDialog(requirementText) {
