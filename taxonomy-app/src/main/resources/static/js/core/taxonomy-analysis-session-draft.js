@@ -42,11 +42,18 @@
         runtime.draftDecisionPending = pending;
         document.querySelectorAll(DECISION_CONTROL_SELECTOR).forEach(function (control) {
             if (pending) {
+                if (control.dataset.analysisDraftDecisionPending !== 'true') {
+                    control.dataset.analysisDraftPreviousAriaDisabled =
+                        control.getAttribute('aria-disabled') || '';
+                }
                 control.dataset.analysisDraftDecisionPending = 'true';
                 control.setAttribute('aria-disabled', 'true');
             } else if (control.dataset.analysisDraftDecisionPending === 'true') {
+                var previous = control.dataset.analysisDraftPreviousAriaDisabled;
+                if (previous) control.setAttribute('aria-disabled', previous);
+                else control.removeAttribute('aria-disabled');
+                delete control.dataset.analysisDraftPreviousAriaDisabled;
                 delete control.dataset.analysisDraftDecisionPending;
-                if (!control.disabled) control.removeAttribute('aria-disabled');
             }
         });
     }
