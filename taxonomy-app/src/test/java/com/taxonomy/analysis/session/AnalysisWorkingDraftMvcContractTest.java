@@ -2,6 +2,8 @@ package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -55,6 +58,9 @@ class AnalysisWorkingDraftMvcContractTest {
     @BeforeEach
     void configureUserAndResponse() {
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("analyst");
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(
+                RepositoryContext.workspace(
+                        "repository-a", "workspace-b", "feature/b", "analyst"));
         when(service.save(eq("analyst"), eq("workspace-a"), any()))
                 .thenAnswer(invocation -> {
                     SaveAnalysisDraftRequest request = invocation.getArgument(2);
@@ -101,5 +107,23 @@ class AnalysisWorkingDraftMvcContractTest {
                 .isEqualTo(1);
         assertThat(request.getValue().payload().path("scores").path("BP-1000").asInt())
                 .isEqualTo(82);
+    }
+
+    @Test
+    @WithMockUser(username = "analyst", roles = "USER")
+    void explicitWorkspacePinCannotAddressAnotherDraftPath() throws Exception {
+        mockMvc.perform(put("/api/analysis-drafts/{workspaceId}", "workspace-a")
+                        .with(csrf())
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-b")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "payload": {"businessText": "must not be saved"},
+                                  "expectedVersion": null
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        verify(service, never()).save(any(), any(), any());
     }
 }
