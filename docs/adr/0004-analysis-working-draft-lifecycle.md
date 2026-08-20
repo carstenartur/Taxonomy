@@ -43,11 +43,18 @@ overwrite a newer state from another tab or device.
 
 ### 3. Browser tabs pin their workspace explicitly
 
-Each tab remembers its workspace ID in `sessionStorage` and sends
-`X-Taxonomy-Workspace-Id` with same-origin API requests. The server validates
-ownership and resolves repository context from this explicit identity instead of
-using another session's current workspace selection. An intentional workspace
-switch updates the per-tab identity and reloads the page.
+Each tab remembers its workspace ID in `sessionStorage` and supplies that exact
+identity on same-origin API requests. Direct `fetch` requests and draft mutations
+use `X-Taxonomy-Workspace-Id`; native `EventSource` and the already initialized
+named `TaxonomyApiClient` helpers use the equivalent `workspaceId` query
+parameter because those transports cannot be retrofitted with the later global
+header wrapper. The server gives the explicit header precedence, validates
+ownership for both representations, and resolves repository context from the
+pinned identity instead of another session's current workspace selection.
+
+An intentional workspace switch updates the per-tab identity and reloads the
+page. External requests and non-API resources are never decorated with workspace
+context.
 
 ### 4. Requirement-text changes invalidate every derived result
 
@@ -85,6 +92,8 @@ resetting or deleting a workspace.
   the user has confirmed invalidation.
 - Reloading the page resumes unfinished architecture work.
 - Concurrent sessions fail visibly instead of losing data.
+- Named API clients, legacy direct requests and SSE all retain the same tab-bound
+  repository/workspace/branch authority.
 - A second requirement is kept separate and is aggregated only through the
   project portfolio model established by ADR 0001.
 - Persisted architecture decisions remain outside the destructive reset boundary.
@@ -94,5 +103,6 @@ resetting or deleting a workspace.
 - Draft payloads consume database space and require a PostgreSQL migration.
 - Secondary panels are cleared on invalidation and may be recomputed; their
   rendered HTML is deliberately not persisted as authoritative data.
-- Workspace pinning introduces one documented request header that API clients may
-  also use when they need tab-stable context.
+- Workspace pinning introduces one documented header and an equivalent query
+  representation for transports that cannot set custom headers. Both are treated
+  as the same authorization-sensitive request context by the server.
