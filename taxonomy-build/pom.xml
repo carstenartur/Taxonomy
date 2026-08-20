@@ -163,6 +163,24 @@
 
     <profiles>
         <profile>
+            <id>github-actions-playwright-runtime</id>
+            <activation>
+                <property>
+                    <name>env.GITHUB_ACTIONS</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <!-- GitHub's runner contains the Chromium and Firefox runtime,
+                     but the verified WebKit launch proves that its GTK/GStreamer
+                     libraries are incomplete. Install only WebKit's required OS
+                     packages, then fetch all browser binaries from the pinned
+                     package-lock dependency instead of reinstalling every browser's
+                     OS dependency set. -->
+                <taxonomy.playwright.install.arguments>run install:playwright:github</taxonomy.playwright.install.arguments>
+            </properties>
+        </profile>
+        <profile>
             <id>supply-chain-policy</id>
             <build>
                 <plugins>
