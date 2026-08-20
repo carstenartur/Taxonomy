@@ -5,6 +5,7 @@
     window.__taxonomyAnalysisSessionLoading = true;
 
     var sources = [
+        '/js/api/analysis-session-api.js',
         '/js/core/taxonomy-analysis-session-core.js',
         '/js/core/taxonomy-analysis-session-transport.js',
         '/js/core/taxonomy-analysis-session-ui.js',
