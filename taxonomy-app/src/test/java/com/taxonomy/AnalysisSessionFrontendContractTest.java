@@ -36,7 +36,8 @@ class AnalysisSessionFrontendContractTest {
     }
 
     @Test
-    void staleTextOffersDistinctBusinessActions() throws IOException {
+    void staleTextOffersDistinctBusinessActionsWithContrastSafeDestructiveChoice()
+            throws IOException {
         String script = sessionSources();
 
         assertThat(script)
@@ -45,6 +46,8 @@ class AnalysisSessionFrontendContractTest {
                 .contains("add-requirement")
                 .contains("new-project")
                 .contains("save-version")
+                .contains("className: 'btn btn-sm btn-danger'")
+                .doesNotContain("className: 'btn btn-sm btn-outline-danger'")
                 .contains("/api/projects/")
                 .contains("/requirements")
                 .contains("/versions");
