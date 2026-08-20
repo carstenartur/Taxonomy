@@ -34,15 +34,18 @@ window.TaxonomyViewContext = (function () {
 
         parts.push(
             '<span class="vc-commit">' + escapeHtml(t('context.based.on')) + ' <strong>' + branch +
-            '</strong> @ <code>' + sha + '</code>' +
+            '</strong> @ <code class="text-danger-emphasis">' + sha + '</code>' +
             (ts ? ' <small class="text-muted">(' + ts + ')</small>' : '') +
             '</span>'
         );
 
-        // Provisional relations warning
+        // Provisional relations warning. Bootstrap's emphasis utility adapts to
+        // light and dark themes and meets normal-text contrast requirements;
+        // the base warning yellow is intended for filled surfaces, not text.
         if (viewContext.includesProvisionalRelations) {
             parts.push(
-                '<span class="vc-warning">' + escapeHtml(t('context.provisional.warning')) + '</span>'
+                '<span class="vc-warning text-warning-emphasis">' +
+                escapeHtml(t('context.provisional.warning')) + '</span>'
             );
         }
 
