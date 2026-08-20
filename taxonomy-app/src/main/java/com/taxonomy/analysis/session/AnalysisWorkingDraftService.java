@@ -133,15 +133,13 @@ public class AnalysisWorkingDraftService {
             throw new AccessDeniedException("Workspace is not available to the current user");
         }
 
-        SystemRepository primary = systemRepositoryService.getPrimaryRepository();
-        String repositoryId = hasText(workspace.getSourceRepositoryId())
-                ? workspace.getSourceRepositoryId().strip()
-                : requireText(primary != null ? primary.getRepositoryId() : null,
-                        "primary repository ID");
+        SystemRepository sourceRepository = resolveSourceRepository(workspace);
+        String repositoryId = requireText(
+                sourceRepository.getRepositoryId(), "workspace source repository ID");
         String branch = hasText(workspace.getCurrentBranch())
                 ? workspace.getCurrentBranch().strip()
-                : requireText(primary != null ? primary.getDefaultBranch() : null,
-                        "workspace branch");
+                : requireText(sourceRepository.getDefaultBranch(),
+                        "workspace source repository branch");
 
         WorkspaceContext context = new WorkspaceContext(
                 username, requestedWorkspace, branch, repositoryId);
@@ -150,6 +148,20 @@ public class AnalysisWorkingDraftService {
                 WorkspaceScope.username(username, context),
                 requestedWorkspace,
                 branch);
+    }
+
+    private SystemRepository resolveSourceRepository(UserWorkspace workspace) {
+        if (!hasText(workspace.getSourceRepositoryId())) {
+            return systemRepositoryService.getPrimaryRepository();
+        }
+        String repositoryId = workspace.getSourceRepositoryId().strip();
+        try {
+            return systemRepositoryService.getRepository(repositoryId);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException(
+                    "Workspace source repository is not available: " + repositoryId,
+                    exception);
+        }
     }
 
     private void requireExpectedVersion(AnalysisWorkingDraft draft, Long expectedVersion) {
