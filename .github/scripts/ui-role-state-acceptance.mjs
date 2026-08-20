@@ -3,6 +3,7 @@ import path from 'node:path';
 import { openRoleSession } from './ui-role-fixtures.mjs';
 import { createRoleStateEvidence } from './ui-role-state-evidence.mjs';
 import { captureFailureEvidence } from './ui-evidence-policy.mjs';
+import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
@@ -90,6 +91,10 @@ try {
     }
   });
   page.on('pageerror', error => consoleErrors.push(error.message));
+
+  taskMeasurements.failedStep = 'isolating resumable analysis draft';
+  await isolateRoleStateScenario(page);
+  checks.push('isolated resumable analysis draft state');
 
   evidence = createRoleStateEvidence({ page, outputDir, checks, findings });
   taskMeasurements.failedStep = 'role task and state flow';
