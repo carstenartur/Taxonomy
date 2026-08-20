@@ -219,7 +219,7 @@
             {
                 id: 'preserve-requirement',
                 label: text('preserveAsRequirement'),
-                className: 'btn btn-sm btn-outline-light',
+                className: 'btn btn-sm btn-outline-dark',
                 handler: function () {
                     openRequirementDialog(businessTextElement().value);
                 }
