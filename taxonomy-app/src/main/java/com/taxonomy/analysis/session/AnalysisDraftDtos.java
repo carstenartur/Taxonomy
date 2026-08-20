@@ -1,6 +1,6 @@
 package com.taxonomy.analysis.session;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Instant;
 
