@@ -350,29 +350,34 @@
 
     function installAnalysisStreamGuard() {
         var scoring = window.TaxonomyScoring;
-        var NativeEventSource = window.EventSource;
+        var InitialEventSource = window.EventSource;
         if (!scoring || typeof scoring.runStreamingAnalysis !== 'function'
-                || typeof NativeEventSource !== 'function'
+                || typeof InitialEventSource !== 'function'
                 || scoring.__analysisOperationGuardInstalled === true) {
             return;
         }
 
         var controller = createAnalysisOperationController();
         var original = scoring.runStreamingAnalysis;
+        var currentEventSourceDelegate = null;
 
         function GuardedEventSource(url, configuration) {
-            var nativeSource = new NativeEventSource(url, configuration);
+            var EventSourceDelegate = currentEventSourceDelegate || InitialEventSource;
+            var nativeSource = new EventSourceDelegate(url, configuration);
             var session = controller.begin(function () { nativeSource.close(); });
             return guardAnalysisEventSource(nativeSource, session);
         }
-        GuardedEventSource.prototype = NativeEventSource.prototype;
+        GuardedEventSource.prototype = InitialEventSource.prototype;
         ['CONNECTING', 'OPEN', 'CLOSED'].forEach(function (constant) {
-            if (constant in NativeEventSource) {
-                GuardedEventSource[constant] = NativeEventSource[constant];
+            if (constant in InitialEventSource) {
+                GuardedEventSource[constant] = InitialEventSource[constant];
             }
         });
 
         scoring.runStreamingAnalysis = function () {
+            var previousEventSource = window.EventSource;
+            currentEventSourceDelegate = previousEventSource === GuardedEventSource
+                ? InitialEventSource : previousEventSource;
             window.EventSource = GuardedEventSource;
             try {
                 return original.apply(this, arguments);
@@ -380,7 +385,8 @@
                 controller.cancelActive();
                 throw error;
             } finally {
-                window.EventSource = NativeEventSource;
+                window.EventSource = previousEventSource;
+                currentEventSourceDelegate = null;
             }
         };
         scoring.cancelStreamingAnalysis = controller.cancelActive;
@@ -403,7 +409,11 @@
         }
         if (document.querySelector('script[data-taxonomy-analysis-session]')) return;
         var script = document.createElement('script');
-        script.src = '/js/core/taxonomy-analysis-session.js';
+        var source = '/js/core/taxonomy-analysis-session.js';
+        script.src = window.TaxonomyI18n
+                && typeof window.TaxonomyI18n.resolveUrl === 'function'
+            ? window.TaxonomyI18n.resolveUrl(source)
+            : source;
         script.async = false;
         script.dataset.taxonomyAnalysisSession = 'true';
         document.head.appendChild(script);
