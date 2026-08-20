@@ -1,5 +1,7 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.analysis.session.AnalysisDraftConflictException;
+import com.taxonomy.analysis.session.AnalysisDraftValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSource;
@@ -48,6 +50,25 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
     }
 
+    /** Return malformed or oversized working drafts as a stable client error. */
+    @ExceptionHandler(AnalysisDraftValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleAnalysisDraftValidation(
+            AnalysisDraftValidationException ex, WebRequest request) {
+        log.warn("Invalid analysis draft on {}: {}", request.getDescription(false), ex.getMessage());
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    /**
+     * Preserve the optimistic-concurrency contract expected by browser tabs.
+     * The generic catch-all must never turn a stale draft revision into HTTP 500.
+     */
+    @ExceptionHandler(AnalysisDraftConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleAnalysisDraftConflict(
+            AnalysisDraftConflictException ex, WebRequest request) {
+        log.warn("Analysis draft conflict on {}: {}", request.getDescription(false), ex.getMessage());
+        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
     /**
      * Handles authorization failures raised after the security filter chain,
      * for example while validating an explicit browser-tab workspace pin.
@@ -89,7 +110,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (status.is5xxServerError()) {
             log.error("Spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage(), ex);
         } else {
-            log.warn("Spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage());
+            log.warn("spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage());
         }
         Map<String, Object> errorBody = new LinkedHashMap<>();
         errorBody.put("timestamp", Instant.now().toString());

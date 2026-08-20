@@ -46,6 +46,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class AnalysisWorkingDraftMvcContractTest {
 
+    private static final String VALID_SAVE_REQUEST = """
+            {
+              "payload": {
+                "schemaVersion": 1,
+                "businessText": "Provide resilient communications",
+                "scores": {"BP-1000": 82}
+              },
+              "expectedVersion": 6
+            }
+            """;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -79,16 +90,7 @@ class AnalysisWorkingDraftMvcContractTest {
         mockMvc.perform(put("/api/analysis-drafts/{workspaceId}", "workspace-a")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "payload": {
-                                    "schemaVersion": 1,
-                                    "businessText": "Provide resilient communications",
-                                    "scores": {"BP-1000": 82}
-                                  },
-                                  "expectedVersion": 6
-                                }
-                                """))
+                        .content(VALID_SAVE_REQUEST))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.ETAG, "\"7\""))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
@@ -107,6 +109,42 @@ class AnalysisWorkingDraftMvcContractTest {
                 .isEqualTo(1);
         assertThat(request.getValue().payload().path("scores").path("BP-1000").asInt())
                 .isEqualTo(82);
+    }
+
+    @Test
+    @WithMockUser(username = "analyst", roles = "USER")
+    void optimisticDraftConflictRemainsHttp409AcrossGlobalExceptionHandling() throws Exception {
+        when(service.save(eq("analyst"), eq("workspace-a"), any()))
+                .thenThrow(new AnalysisDraftConflictException(
+                        "Analysis draft version conflict: expected 6, current 7"));
+
+        mockMvc.perform(put("/api/analysis-drafts/{workspaceId}", "workspace-a")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_SAVE_REQUEST))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message")
+                        .value("Analysis draft version conflict: expected 6, current 7"));
+    }
+
+    @Test
+    @WithMockUser(username = "analyst", roles = "USER")
+    void invalidDraftRemainsHttp400AcrossGlobalExceptionHandling() throws Exception {
+        when(service.save(eq("analyst"), eq("workspace-a"), any()))
+                .thenThrow(new AnalysisDraftValidationException(
+                        "Analysis draft payload must be a JSON object"));
+
+        mockMvc.perform(put("/api/analysis-drafts/{workspaceId}", "workspace-a")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_SAVE_REQUEST))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message")
+                        .value("Analysis draft payload must be a JSON object"));
     }
 
     @Test
