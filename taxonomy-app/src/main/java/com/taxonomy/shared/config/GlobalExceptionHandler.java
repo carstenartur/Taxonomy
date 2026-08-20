@@ -8,6 +8,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
@@ -45,6 +46,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException ex, WebRequest request) {
         log.warn("Bad request: {}", ex.getMessage());
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    /**
+     * Handles authorization failures raised after the security filter chain,
+     * for example while validating an explicit browser-tab workspace pin.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(
+            AccessDeniedException ex, WebRequest request) {
+        log.warn("Access denied on {}: {}", request.getDescription(false), ex.getMessage());
+        Locale locale = LocaleContextHolder.getLocale();
+        String message = messageSource.getMessage(
+                "error.forbidden", null, "Access denied.", locale);
+        return buildErrorResponse(HttpStatus.FORBIDDEN, message, request);
     }
 
     /**
