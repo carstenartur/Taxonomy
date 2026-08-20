@@ -1,6 +1,6 @@
 package com.taxonomy.analysis.session;
 
-import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -40,7 +40,7 @@ public class AnalysisWorkingDraft {
     private Long id;
 
     @Column(name = "scope_key", nullable = false,
-            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+            length = RepositoryTenantIdentity.MAX_SCOPE_KEY_LENGTH)
     private String scopeKey;
 
     @Column(name = "workspace_id", nullable = false, length = 320)
