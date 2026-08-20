@@ -51,6 +51,19 @@ class AnalysisSessionFrontendContractTest {
     }
 
     @Test
+    void architecturePromotionActionsFollowTheExistingRoleBoundary() throws IOException {
+        String roleSurface = resource(
+                "/static/js/security/taxonomy-role-surface.js");
+
+        assertThat(roleSurface)
+                .contains("[data-analysis-session-action=\"add-requirement\"]")
+                .contains("[data-analysis-session-action=\"new-project\"]")
+                .contains("[data-analysis-session-action=\"save-version\"]")
+                .contains("[data-analysis-session-action=\"preserve-requirement\"]")
+                .contains("applySelectorGroup(scope, architectureSelectors, canMutateArchitecture())");
+    }
+
+    @Test
     void workingDraftIsWorkspacePinnedSerializedAndOptimisticallyVersioned()
             throws IOException {
         String session = sessionSources();
