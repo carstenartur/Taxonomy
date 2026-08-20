@@ -6,6 +6,7 @@
     "node": "24.x"
   },
   "scripts": {
+    "install:playwright:github": "playwright install --with-deps webkit && playwright install chromium firefox",
     "test:ui-evidence-policy": "node --test scripts/ui-evidence-policy.test.mjs",
     "test:ui-evidence-targets": "node --test scripts/ui-primary-evidence.test.mjs",
     "test:state-render-consistency": "node --test scripts/taxonomy-state.test.mjs",
