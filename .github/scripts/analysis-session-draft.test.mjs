@@ -59,6 +59,7 @@ function createHarness({ inputText = '', payload, request }) {
     taskNextAction: fakeControl('taskNextAction'),
     exportReport: fakeControl('exportReport')
   };
+  controls.copilotBtn.setAttribute('aria-disabled', 'true');
   const runtime = {
     workspaceId: 'ws-1',
     version: null,
@@ -120,7 +121,8 @@ function createHarness({ inputText = '', payload, request }) {
     getElementById(id) {
       return controls[id] || null;
     },
-    querySelectorAll() {
+    querySelectorAll(selector) {
+      assert.match(selector, /#exportGroup button/);
       return Object.values(controls);
     },
     querySelector(selector) {
@@ -193,6 +195,7 @@ test('keeps restoration active while GET is pending and saves input typed during
   assert.equal(harness.runtime.restoring, false);
   assert.equal(harness.runtime.draftDecisionPending, false);
   assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), null);
+  assert.equal(harness.controls.copilotBtn.getAttribute('aria-disabled'), 'true');
   assert.equal(harness.controls.exportReport.getAttribute('aria-disabled'), null);
   assert.equal(harness.runtime.version, null);
   assert.equal(harness.runtime.lastSavedComparable, null);
@@ -227,7 +230,10 @@ test('blocks task actions and autosave until resume choice is resolved', async (
   let stopped = false;
   harness.clickListeners[0]({
     target: {
-      closest: () => harness.controls.exportReport
+      closest(selector) {
+        assert.match(selector, /#exportGroup button/);
+        return harness.controls.exportReport;
+      }
     },
     preventDefault() {
       prevented = true;
@@ -247,6 +253,7 @@ test('blocks task actions and autosave until resume choice is resolved', async (
   assert.equal(harness.runtime.restoring, false);
   assert.equal(harness.runtime.draftDecisionPending, false);
   assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), null);
+  assert.equal(harness.controls.copilotBtn.getAttribute('aria-disabled'), 'true');
   assert.equal(harness.controls.exportReport.getAttribute('aria-disabled'), null);
   assert.equal(harness.runtime.version, 7);
   assert.equal(
