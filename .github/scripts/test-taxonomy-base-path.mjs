@@ -20,6 +20,14 @@ const sessionLoaderSource = await readFile(
   ),
   'utf8'
 );
+const sessionProjectsSource = await readFile(
+  new URL(
+    '../../taxonomy-app/src/main/resources/static/js/core/' +
+      'taxonomy-analysis-session-projects.js',
+    import.meta.url
+  ),
+  'utf8'
+);
 
 async function loadBootstrap(scriptUrl) {
   const requests = [];
@@ -144,6 +152,66 @@ function loadOrderedSessionParts() {
   return appendedScripts;
 }
 
+async function promotedNavigationTarget() {
+  const assigned = [];
+  const invalidations = [];
+  const analysisContext = {
+    S: {},
+    runtime: {},
+    CHANGE_POLL_MS: 1500,
+    language: () => 'en',
+    text: key => key,
+    businessTextElement: () => null,
+    jsonRequest: () => Promise.resolve([]),
+    rememberedWorkspaceId: () => null,
+    rememberWorkspaceId: () => undefined,
+    installWorkspaceFetchRouting: () => undefined,
+    installWorkspaceEventSourceRouting: () => undefined,
+    currentPayload: () => ({}),
+    comparable: () => '{}',
+    isStale: () => false,
+    statusArea: () => null,
+    showActionAlert: () => undefined,
+    invalidate: options => invalidations.push(options),
+    queueStaleActions: () => undefined,
+    queueSave: () => undefined,
+    deleteDraft: () => Promise.resolve(),
+    saveDraft: () => Promise.resolve(),
+    loadDraft: () => Promise.resolve(null)
+  };
+  const document = {
+    readyState: 'loading',
+    addEventListener: () => undefined
+  };
+  const window = {
+    __TaxonomyAnalysisSessionContext: analysisContext,
+    TaxonomyI18n: { resolveUrl: resolvePrefixed },
+    location: { assign: value => assigned.push(value) },
+    setInterval: () => 0,
+    addEventListener: () => undefined,
+    console
+  };
+  vm.runInNewContext(sessionProjectsSource, {
+    window,
+    document,
+    console,
+    Array,
+    Date,
+    JSON,
+    Math,
+    MutationObserver: class MutationObserver {},
+    Number,
+    Object,
+    Promise,
+    String,
+    encodeURIComponent
+  }, { filename: 'taxonomy-analysis-session-projects.js' });
+
+  await analysisContext.discardDraftAndNavigate('/projects/42');
+  assert.equal(invalidations.length, 1);
+  return assigned[0];
+}
+
 {
   const { window, requests } = await loadBootstrap(
     'https://taxonomy.example.test/taxonomy/js/taxonomy-i18n.js'
@@ -236,5 +304,7 @@ function loadOrderedSessionParts() {
   assert.deepEqual(nativeCalls, ['/taxonomy/api/analyze-stream']);
   assert.equal(runtime.window.EventSource, LateWorkspaceRouter);
 }
+
+assert.equal(await promotedNavigationTarget(), '/taxonomy/projects/42');
 
 console.log('Taxonomy base-path bootstrap tests passed.');
