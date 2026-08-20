@@ -1,7 +1,5 @@
 package com.taxonomy.analysis.session;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -16,6 +14,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.Optional;
 
@@ -39,7 +40,7 @@ class AnalysisWorkingDraftServiceTest {
     @Mock
     private SystemRepositoryService systemRepositoryService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
     private AnalysisWorkingDraftService service;
     private UserWorkspace workspace;
 
