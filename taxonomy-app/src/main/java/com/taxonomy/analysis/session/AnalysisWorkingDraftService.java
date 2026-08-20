@@ -5,12 +5,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
-import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
+import com.taxonomy.workspace.service.WorkspaceScope;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -34,12 +36,28 @@ public class AnalysisWorkingDraftService {
     private final ObjectMapper objectMapper;
     private final int maximumPayloadCharacters;
 
+    @Autowired
     public AnalysisWorkingDraftService(
             AnalysisWorkingDraftRepository repository,
             WorkspaceManager workspaceManager,
             SystemRepositoryService systemRepositoryService,
-            ObjectMapper objectMapper,
+            ObjectProvider<ObjectMapper> objectMapperProvider,
             @Value("${taxonomy.analysis-draft.max-characters:2000000}")
+            int maximumPayloadCharacters) {
+        this(
+                repository,
+                workspaceManager,
+                systemRepositoryService,
+                objectMapperProvider.getIfAvailable(
+                        () -> new ObjectMapper().findAndRegisterModules()),
+                maximumPayloadCharacters);
+    }
+
+    AnalysisWorkingDraftService(
+            AnalysisWorkingDraftRepository repository,
+            WorkspaceManager workspaceManager,
+            SystemRepositoryService systemRepositoryService,
+            ObjectMapper objectMapper,
             int maximumPayloadCharacters) {
         this.repository = repository;
         this.workspaceManager = workspaceManager;
@@ -144,8 +162,8 @@ public class AnalysisWorkingDraftService {
         WorkspaceContext context = new WorkspaceContext(
                 username, requestedWorkspace, branch, repositoryId);
         return new DraftScope(
-                PortfolioScope.key(username, context),
-                PortfolioScope.username(username, context),
+                WorkspaceScope.key(username, context),
+                WorkspaceScope.username(username, context),
                 requestedWorkspace,
                 branch);
     }
