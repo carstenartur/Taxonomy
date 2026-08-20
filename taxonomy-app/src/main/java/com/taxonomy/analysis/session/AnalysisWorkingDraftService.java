@@ -43,20 +43,6 @@ public class AnalysisWorkingDraftService {
             ObjectMapper objectMapper,
             @Value("${taxonomy.analysis-draft.max-characters:2000000}")
             int maximumPayloadCharacters) {
-        this(
-                repository,
-                workspaceManager,
-                systemRepositoryService,
-                objectMapper,
-                maximumPayloadCharacters);
-    }
-
-    AnalysisWorkingDraftService(
-            AnalysisWorkingDraftRepository repository,
-            WorkspaceManager workspaceManager,
-            SystemRepositoryService systemRepositoryService,
-            ObjectMapper objectMapper,
-            int maximumPayloadCharacters) {
         this.repository = repository;
         this.workspaceManager = workspaceManager;
         this.systemRepositoryService = systemRepositoryService;
