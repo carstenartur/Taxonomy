@@ -81,11 +81,10 @@ class AnalysisSessionFrontendContractTest {
     void draftDeletionCancelsPendingAutosaveBeforeSendingDelete() throws IOException {
         String draft = resource("/static/js/core/taxonomy-analysis-session-draft.js");
 
-        assertThat(draft).contains("""
-                function deleteDraft() {
-                    window.clearTimeout(runtime.saveTimer);
-                    runtime.saveTimer = null;
-                """);
+        assertThat(draft).contains(
+                "function deleteDraft() {\n"
+                        + "        window.clearTimeout(runtime.saveTimer);\n"
+                        + "        runtime.saveTimer = null;");
     }
 
     @Test
