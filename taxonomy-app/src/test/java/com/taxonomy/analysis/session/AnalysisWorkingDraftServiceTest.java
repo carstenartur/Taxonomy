@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
+import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -58,8 +59,10 @@ class AnalysisWorkingDraftServiceTest {
         workspace.setCurrentBranch("feature/architecture");
         workspace.setSourceRepositoryId("repo-1");
         when(workspaceManager.getWorkspaceById("ws-1")).thenReturn(workspace);
+        lenient().when(systemRepositoryService.getRepository("repo-1"))
+                .thenReturn(repository("repo-1", "main"));
         lenient().when(systemRepositoryService.getPrimaryRepository())
-                .thenReturn(primaryRepository());
+                .thenReturn(repository("primary-repo", "primary-main"));
     }
 
     @Test
@@ -87,6 +90,73 @@ class AnalysisWorkingDraftServiceTest {
         assertThat(view.payload().path("businessText").asText())
                 .isEqualTo("Provide a resilient command platform");
         assertThat(view.version()).isZero();
+        verify(systemRepositoryService).getRepository("repo-1");
+        verify(systemRepositoryService, never()).getPrimaryRepository();
+    }
+
+    @Test
+    void missingWorkspaceBranchUsesItsSourceRepositoryDefault() {
+        workspace.setCurrentBranch(" ");
+        when(systemRepositoryService.getRepository("repo-1"))
+                .thenReturn(repository("repo-1", "source-main"));
+        when(repository.findByScopeKeyAndUsername(any(), any())).thenReturn(Optional.empty());
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var view = service.save(
+                "Alice",
+                "ws-1",
+                new SaveAnalysisDraftRequest(
+                        objectMapper.createObjectNode().put("businessText", "changed"),
+                        null));
+
+        ArgumentCaptor<AnalysisWorkingDraft> captor =
+                ArgumentCaptor.forClass(AnalysisWorkingDraft.class);
+        verify(repository).saveAndFlush(captor.capture());
+        PortfolioTenantIdentity identity = PortfolioTenantIdentity.parse(
+                captor.getValue().getScopeKey());
+        assertThat(identity.repositoryId()).isEqualTo("repo-1");
+        assertThat(identity.branch()).isEqualTo("source-main");
+        assertThat(view.branch()).isEqualTo("source-main");
+        verify(systemRepositoryService, never()).getPrimaryRepository();
+    }
+
+    @Test
+    void unavailableExplicitSourceRepositoryFailsClosedWithoutPrimaryFallback() {
+        when(systemRepositoryService.getRepository("repo-1"))
+                .thenThrow(new IllegalArgumentException("not found"));
+
+        assertThatThrownBy(() -> service.read("Alice", "ws-1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Workspace source repository is not available")
+                .hasMessageContaining("repo-1");
+
+        verify(systemRepositoryService, never()).getPrimaryRepository();
+        verify(repository, never()).findByScopeKeyAndUsername(any(), any());
+    }
+
+    @Test
+    void legacyWorkspaceWithoutSourceUsesThePrimaryRepository() {
+        workspace.setSourceRepositoryId(" ");
+        workspace.setCurrentBranch(" ");
+        when(repository.findByScopeKeyAndUsername(any(), any())).thenReturn(Optional.empty());
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var view = service.save(
+                "Alice",
+                "ws-1",
+                new SaveAnalysisDraftRequest(
+                        objectMapper.createObjectNode().put("businessText", "legacy"),
+                        null));
+
+        ArgumentCaptor<AnalysisWorkingDraft> captor =
+                ArgumentCaptor.forClass(AnalysisWorkingDraft.class);
+        verify(repository).saveAndFlush(captor.capture());
+        PortfolioTenantIdentity identity = PortfolioTenantIdentity.parse(
+                captor.getValue().getScopeKey());
+        assertThat(identity.repositoryId()).isEqualTo("primary-repo");
+        assertThat(identity.branch()).isEqualTo("primary-main");
+        assertThat(view.branch()).isEqualTo("primary-main");
+        verify(systemRepositoryService).getPrimaryRepository();
     }
 
     @Test
@@ -163,10 +233,10 @@ class AnalysisWorkingDraftServiceTest {
                 java.time.Instant.parse("2026-08-19T20:00:00Z"));
     }
 
-    private static SystemRepository primaryRepository() {
+    private static SystemRepository repository(String repositoryId, String defaultBranch) {
         SystemRepository repository = new SystemRepository();
-        repository.setRepositoryId("repo-1");
-        repository.setDefaultBranch("main");
+        repository.setRepositoryId(repositoryId);
+        repository.setDefaultBranch(defaultBranch);
         return repository;
     }
 }
