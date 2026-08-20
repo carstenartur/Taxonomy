@@ -47,6 +47,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "product_taxonomy")).isTrue();
         assertThat(tableExists(dataSource, "project_conflict")).isTrue();
         assertThat(tableExists(dataSource, "repository_membership")).isTrue();
+        assertThat(tableExists(dataSource, "analysis_working_draft")).isTrue();
         assertThat(columnExists(dataSource, "project_requirement", "scope_key")).isTrue();
         assertThat(columnExists(dataSource, "project_req_version", "scope_key")).isTrue();
         assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
@@ -140,7 +141,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16");
     }
 
     @Test
@@ -165,6 +166,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(dataSource, "project_requirement", "scope_key")).isTrue();
         assertThat(columnExists(dataSource, "project_req_version", "scope_key")).isTrue();
         assertThat(tableExists(dataSource, "repository_membership")).isTrue();
+        assertThat(tableExists(dataSource, "analysis_working_draft")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "analysis_snapshot_id"))
                 .isTrue();
         assertThat(columnExists(dataSource, "system_repository", "storage_repository_name"))
@@ -213,7 +215,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16");
     }
 
     @Test
