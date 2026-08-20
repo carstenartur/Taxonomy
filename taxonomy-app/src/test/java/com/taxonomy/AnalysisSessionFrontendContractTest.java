@@ -67,6 +67,17 @@ class AnalysisSessionFrontendContractTest {
     }
 
     @Test
+    void draftConflictOffersContrastSafeRecoveryActions() throws IOException {
+        String draft = resource("/static/js/core/taxonomy-analysis-session-draft.js");
+
+        assertThat(draft)
+                .contains("showActionAlert('danger'")
+                .contains("className: 'btn btn-sm btn-light'")
+                .contains("className: 'btn btn-sm btn-outline-dark'")
+                .doesNotContain("className: 'btn btn-sm btn-outline-light'");
+    }
+
+    @Test
     void workingDraftIsWorkspacePinnedSerializedAndOptimisticallyVersioned()
             throws IOException {
         String session = sessionSources();
