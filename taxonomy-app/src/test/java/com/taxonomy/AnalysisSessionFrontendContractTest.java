@@ -78,6 +78,17 @@ class AnalysisSessionFrontendContractTest {
     }
 
     @Test
+    void draftDeletionCancelsPendingAutosaveBeforeSendingDelete() throws IOException {
+        String draft = resource("/static/js/core/taxonomy-analysis-session-draft.js");
+
+        assertThat(draft).contains("""
+                function deleteDraft() {
+                    window.clearTimeout(runtime.saveTimer);
+                    runtime.saveTimer = null;
+                """);
+    }
+
+    @Test
     void workingDraftIsWorkspacePinnedSerializedAndOptimisticallyVersioned()
             throws IOException {
         String session = sessionSources();
