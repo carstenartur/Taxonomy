@@ -171,12 +171,13 @@
                 </property>
             </activation>
             <properties>
-                <!-- GitHub's Ubuntu runner image already provides browser runtime
-                     libraries and Xvfb. Re-running Playwright's apt installation
-                     makes the canonical build depend on mutable package mirrors
-                     and previously exhausted the two-hour job limit. Browser
-                     binaries remain installed and pinned by package-lock.json. -->
-                <taxonomy.playwright.install.arguments>exec -- playwright install chromium firefox webkit</taxonomy.playwright.install.arguments>
+                <!-- GitHub's runner contains the Chromium and Firefox runtime,
+                     but the verified WebKit launch proves that its GTK/GStreamer
+                     libraries are incomplete. Install only WebKit's required OS
+                     packages, then fetch all browser binaries from the pinned
+                     package-lock dependency instead of reinstalling every browser's
+                     OS dependency set. -->
+                <taxonomy.playwright.install.arguments>run install:playwright:github</taxonomy.playwright.install.arguments>
             </properties>
         </profile>
         <profile>
