@@ -3,7 +3,7 @@ create table if not exists analysis_working_draft (
     scope_key varchar(1024) not null,
     workspace_id varchar(320) not null,
     username varchar(160) not null,
-    payload_json oid not null,
+    payload_json text not null,
     created_at timestamp(6) with time zone not null,
     updated_at timestamp(6) with time zone not null,
     row_version bigint not null default 0,
