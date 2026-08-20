@@ -18,7 +18,17 @@
     var isStale = C.isStale;
     var showActionAlert = C.showActionAlert;
     var showStaleActions = C.showStaleActions;
-    var DECISION_CONTROL_SELECTOR = '#analyzeBtn, #copilotBtn, #taskNextAction';
+    var DECISION_CONTROL_SELECTOR = [
+        '#analyzeBtn',
+        '#copilotBtn',
+        '#taskNextAction',
+        '#exportGroup button',
+        '#suggestedRelationsPanel button',
+        '#gapAnalyzeBtn',
+        '#patternDetectBtn',
+        '#recommendBtn',
+        '#requirementImpactBtn'
+    ].join(', ');
     function openRequirementDialog() { return C.openRequirementDialog.apply(null, arguments); }
 
     function queueSave(delay) {
