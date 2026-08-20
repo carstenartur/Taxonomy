@@ -159,11 +159,23 @@
             var body = request.body ? JSON.parse(request.body) : {};
             body.expectedVersion = runtime.version;
             request.body = JSON.stringify(body);
-        } else if (method === 'DELETE' && target) {
-            target.searchParams.set('expectedVersion', runtime.version);
-            url = target.pathname + target.search;
+        } else if (method === 'DELETE') {
+            if (runtime.version === null) return Promise.resolve(null);
+            if (target) {
+                target.searchParams.set('expectedVersion', runtime.version);
+                url = target.pathname + target.search;
+            }
         }
-        return C.nativeJsonRequest(url, request);
+        return C.nativeJsonRequest(url, request).then(function (view) {
+            // The queue owns revision advancement. Callers may mirror this state,
+            // but the next queued mutation cannot start before this update.
+            if (method === 'PUT' && view && view.version !== undefined) {
+                runtime.version = view.version;
+            } else if (method === 'DELETE') {
+                runtime.version = null;
+            }
+            return view;
+        });
     }
 
     function installDraftMutationQueue() {
@@ -257,6 +269,11 @@
         resetBusyControls();
     }
 
+    // Install workspace routing before the pre-existing streaming guard captures
+    // EventSource on DOMContentLoaded. The wrappers consult runtime.workspaceId
+    // at request creation time, so early installation remains safe.
+    C.installWorkspaceFetchRouting();
+    C.installWorkspaceEventSourceRouting();
     installDerivedFetchGuard();
     installCopilotIntervalGuard();
     installDraftMutationQueue();
