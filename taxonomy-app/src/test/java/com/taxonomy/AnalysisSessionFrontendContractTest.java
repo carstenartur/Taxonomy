@@ -28,6 +28,9 @@ class AnalysisSessionFrontendContractTest {
                 .contains("architectureViewPanel")
                 .contains("suggestedRelationsPanel")
                 .contains("taxonomy:analysis-invalidated")
+                .contains("activeAnalysisControllers")
+                .contains("controller.abort('analysis-invalidated')")
+                .contains("analysisGeneration += 1")
                 .doesNotContain("/api/projects/**/delete")
                 .doesNotContain("/api/relations/**/delete");
     }
@@ -48,7 +51,8 @@ class AnalysisSessionFrontendContractTest {
     }
 
     @Test
-    void workingDraftIsWorkspacePinnedAndOptimisticallyVersioned() throws IOException {
+    void workingDraftIsWorkspacePinnedSerializedAndOptimisticallyVersioned()
+            throws IOException {
         String session = sessionSources();
         String state = resource("/static/js/core/taxonomy-state.js");
         String loader = resource("/static/js/core/taxonomy-analysis-session.js");
@@ -56,6 +60,8 @@ class AnalysisSessionFrontendContractTest {
         assertThat(session)
                 .contains("/api/analysis-drafts/")
                 .contains("expectedVersion: runtime.version")
+                .contains("draftMutationQueue")
+                .contains("body.expectedVersion = runtime.version")
                 .contains("error.status === 409")
                 .contains("X-Taxonomy-Workspace-Id")
                 .contains("sessionStorage")
@@ -63,10 +69,26 @@ class AnalysisSessionFrontendContractTest {
                 .contains("taxonomy:analysis-draft-restored");
         assertThat(loader)
                 .contains("taxonomy-analysis-session-core.js")
+                .contains("taxonomy-analysis-session-transport.js")
                 .contains("taxonomy-analysis-session-ui.js")
                 .contains("taxonomy-analysis-session-draft.js")
                 .contains("taxonomy-analysis-session-projects.js");
         assertThat(state).contains("taxonomy-analysis-session.js");
+    }
+
+    @Test
+    void restoredDraftIncludesAnalysisOptionsAndRejectsSupersededResponses()
+            throws IOException {
+        String session = sessionSources();
+
+        assertThat(session)
+                .contains("payload.analysisOptions = analysisOptions()")
+                .contains("includeArchitectureView")
+                .contains("interactiveMode")
+                .contains("providerSelect")
+                .contains("guardedResponse")
+                .contains("neverSettles")
+                .contains("copilotIntervals");
     }
 
     @Test
@@ -84,6 +106,7 @@ class AnalysisSessionFrontendContractTest {
 
     private static String sessionSources() throws IOException {
         return resource("/static/js/core/taxonomy-analysis-session-core.js")
+                + resource("/static/js/core/taxonomy-analysis-session-transport.js")
                 + resource("/static/js/core/taxonomy-analysis-session-ui.js")
                 + resource("/static/js/core/taxonomy-analysis-session-draft.js")
                 + resource("/static/js/core/taxonomy-analysis-session-projects.js");
