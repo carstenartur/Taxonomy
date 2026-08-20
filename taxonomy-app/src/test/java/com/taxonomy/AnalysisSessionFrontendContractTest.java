@@ -112,7 +112,7 @@ class AnalysisSessionFrontendContractTest {
         assertThat(migration)
                 .contains("create table if not exists analysis_working_draft")
                 .contains("scope_key varchar(1024) not null")
-                .contains("payload_json oid not null")
+                .contains("payload_json text not null")
                 .contains("row_version bigint not null")
                 .contains("unique (scope_key, username)");
     }
