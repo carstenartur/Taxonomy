@@ -56,7 +56,8 @@ function createHarness({ inputText = '', payload, request }) {
   const controls = {
     analyzeBtn: fakeControl('analyzeBtn'),
     copilotBtn: fakeControl('copilotBtn'),
-    taskNextAction: fakeControl('taskNextAction')
+    taskNextAction: fakeControl('taskNextAction'),
+    exportReport: fakeControl('exportReport')
   };
   const runtime = {
     workspaceId: 'ws-1',
@@ -181,6 +182,7 @@ test('keeps restoration active while GET is pending and saves input typed during
   assert.equal(harness.runtime.restoring, true);
   assert.equal(harness.runtime.draftDecisionPending, true);
   assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), 'true');
+  assert.equal(harness.controls.exportReport.getAttribute('aria-disabled'), 'true');
   assert.equal(harness.scheduled.length, 0);
 
   harness.input.value = 'Typed while the remote draft was loading';
@@ -191,6 +193,7 @@ test('keeps restoration active while GET is pending and saves input typed during
   assert.equal(harness.runtime.restoring, false);
   assert.equal(harness.runtime.draftDecisionPending, false);
   assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), null);
+  assert.equal(harness.controls.exportReport.getAttribute('aria-disabled'), null);
   assert.equal(harness.runtime.version, null);
   assert.equal(harness.runtime.lastSavedComparable, null);
   assert.equal(harness.runtime.lastObservedComparable, null);
@@ -215,6 +218,7 @@ test('blocks task actions and autosave until resume choice is resolved', async (
   assert.equal(harness.runtime.restoring, true);
   assert.equal(harness.runtime.draftDecisionPending, true);
   assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), 'true');
+  assert.equal(harness.controls.exportReport.getAttribute('aria-disabled'), 'true');
   assert.equal(harness.scheduled.length, 0);
   assert.equal(harness.alerts.length, 1);
   assert.equal(harness.alerts[0].marker, 'resume-choice');
@@ -223,7 +227,7 @@ test('blocks task actions and autosave until resume choice is resolved', async (
   let stopped = false;
   harness.clickListeners[0]({
     target: {
-      closest: () => harness.controls.analyzeBtn
+      closest: () => harness.controls.exportReport
     },
     preventDefault() {
       prevented = true;
@@ -243,6 +247,7 @@ test('blocks task actions and autosave until resume choice is resolved', async (
   assert.equal(harness.runtime.restoring, false);
   assert.equal(harness.runtime.draftDecisionPending, false);
   assert.equal(harness.controls.analyzeBtn.getAttribute('aria-disabled'), null);
+  assert.equal(harness.controls.exportReport.getAttribute('aria-disabled'), null);
   assert.equal(harness.runtime.version, 7);
   assert.equal(
     harness.runtime.lastSavedComparable,
