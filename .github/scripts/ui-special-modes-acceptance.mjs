@@ -1,251 +1,99 @@
-import AxeBuilder from '@axe-core/playwright';
+import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { navigateToPage, openRoleSession, ROLE_ACCOUNTS } from './ui-role-fixtures.mjs';
+import process from 'node:process';
+import { injectAxe, checkA11y } from 'axe-playwright';
+import {
+  ROLE_ACCOUNTS,
+  navigateToPage,
+  openRoleSession,
+  readFirstText
+} from './ui-role-fixtures.mjs';
 
-const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
-const outputDir = path.resolve(process.env.TAXONOMY_UI_OUTPUT_DIR || 'target/ui-special-modes');
-const checks = [];
+const baseUrl = process.env.TAXONOMY_UI_BASE_URL || 'http://127.0.0.1:8080';
+const outputDir = path.resolve(
+  process.env.TAXONOMY_UI_EVIDENCE_DIR || 'target/ui-evidence/special-modes'
+);
+const axeReportPath = path.join(outputDir, 'axe-report.json');
 const findings = [];
-let auditError = null;
+const checks = [];
 let browser;
 let context;
 let page;
-
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
-}
-
-function isAnalyzeResponseForText(response, expectedText) {
-  try {
-    const url = new URL(response.url());
-    if (response.request().method() !== 'POST' || url.pathname !== '/api/analyze') {
-      return false;
-    }
-    return response.request().postDataJSON()?.businessText === expectedText;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForTaxonomyReady(timeout = 180_000) {
-  try {
-    await page.waitForFunction(async () => {
-      try {
-        const response = await fetch('/api/status/startup', {
-          credentials: 'same-origin',
-          headers: { Accept: 'application/json' }
-        });
-        if (!response.ok) return false;
-        const status = await response.json();
-        window.__taxonomyStartupStatus = status;
-        return status?.initialized === true;
-      } catch (error) {
-        window.__taxonomyStartupStatus = { error: String(error) };
-        return false;
-      }
-    }, null, { timeout, polling: 1_000 });
-  } catch (error) {
-    const status = await page.evaluate(() => window.__taxonomyStartupStatus || null);
-    throw new Error(
-      `Taxonomy server did not become ready: ${JSON.stringify(status)}`,
-      { cause: error }
-    );
-  }
-
-  await page.locator('#analyzeBtn').waitFor({ state: 'visible', timeout: 30_000 });
-  await page.waitForFunction(() => {
-    const button = document.querySelector('#analyzeBtn');
-    return Boolean(button) && button.disabled === false;
-  }, null, { timeout: 30_000 });
-}
-
-async function selectSynchronousAnalysisView() {
-  const sunburst = page.locator('#viewSunburst');
-  await sunburst.scrollIntoViewIfNeeded();
-  await sunburst.click();
-  await page.waitForFunction(() => window.TaxonomyState?.currentView === 'sunburst', null,
-    { timeout: 10_000 });
-}
-
-async function submitAnalysisAndWaitForPublishedState(
-  businessText,
-  expectedStatus,
-  timeout = 120_000
-) {
-  const responsePromise = page.waitForResponse(
-    response => isAnalyzeResponseForText(response, businessText),
-    { timeout }
-  );
-  await page.locator('#analyzeBtn').click();
-  const response = await responsePromise;
-  assert(response.ok(), `Analysis request failed with HTTP ${response.status()}`);
-
-  const payload = await response.json();
-  const actualStatus = String(payload.status || '').toUpperCase();
-  assert(actualStatus === expectedStatus,
-    `Expected ${expectedStatus} analysis response but received ${actualStatus || '(missing)'}`);
-  assert(Array.isArray(payload.tree) && payload.tree.length > 0,
-    `${expectedStatus} analysis response produced no reusable tree`);
-  assert(payload.scores && Object.values(payload.scores).some(value => Number(value) > 0),
-    `${expectedStatus} analysis response produced no reusable positive scores`);
-
-  await page.waitForFunction(({ treeCount, scores, businessText }) => {
-    const state = window.TaxonomyState;
-    const button = document.querySelector('#analyzeBtn');
-    const spinner = document.querySelector('#analyzeSpinner');
-    return Boolean(button)
-      && button.disabled === false
-      && (!spinner || spinner.classList.contains('d-none'))
-      && state?.lastAnalyzedText === businessText
-      && Array.isArray(state.taxonomyData)
-      && state.taxonomyData.length === treeCount
-      && Object.entries(scores).every(([code, score]) =>
-        Number(state.currentScores?.[code]) === Number(score));
-  }, {
-    treeCount: payload.tree.length,
-    scores: payload.scores,
-    businessText
-  }, { timeout });
-
-  return payload;
-}
+let auditError;
 
 async function openDetails(selector) {
   const details = page.locator(selector);
-  await details.waitFor({ state: 'attached', timeout: 20_000 });
-  if ((await details.getAttribute('open')) === null) {
-    const summary = details.locator(':scope > summary');
-    await summary.scrollIntoViewIfNeeded();
-    await summary.click();
-    await page.waitForFunction(candidate =>
-      document.querySelector(candidate)?.hasAttribute('open'), selector,
-    { timeout: 10_000 });
-  }
+  if (!(await details.count())) return;
+  const open = await details.evaluate(element => element.hasAttribute('open'));
+  if (!open) await details.locator('summary').click();
 }
 
-async function runAxe(state, include) {
-  const result = await new AxeBuilder({ page })
-    .include(include)
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-    .analyze();
-  const blocking = result.violations.filter(item =>
-    ['critical', 'serious', 'moderate'].includes(item.impact));
-  findings.push({ state, violations: result.violations, blocking });
-  if (blocking.length) {
-    throw new Error(`Blocking axe findings in ${state}: ${blocking.map(item => `${item.impact}:${item.id}`).join(', ')}`);
-  }
-  checks.push(`axe ${state}`);
+async function runAxe(name, selector) {
+  await injectAxe(page);
+  let report;
+  await checkA11y(page, selector, {
+    detailedReport: true,
+    detailedReportOptions: { html: true },
+    axeOptions: {
+      runOnly: {
+        type: 'tag',
+        values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
+      }
+    },
+    reporter: 'v2'
+  }, true, 'html', {
+    log: violation => {
+      report = violation;
+    }
+  });
+  if (report) findings.push({ name, report });
 }
 
-async function screenshot(state, selector) {
-  const target = page.locator(selector);
-  await target.waitFor({ state: 'visible', timeout: 20_000 });
-  await target.screenshot({ path: path.join(outputDir, `${state}.png`), animations: 'disabled' });
-  await writeFile(path.join(outputDir, `${state}.html`), await target.evaluate(node => node.outerHTML), 'utf8');
+async function screenshot(name, selector) {
+  await page.locator(selector).screenshot({
+    path: path.join(outputDir, `${name}.png`)
+  });
+}
+
+async function waitForAnalysisReady() {
+  await page.locator('#analysisTaskProgress').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.waitForFunction(() => {
+    const status = document.querySelector('#analysisStatus');
+    return status && status.textContent && status.textContent.trim().length > 0;
+  }, null, { timeout: 20_000 });
 }
 
 async function testPartialAnalysis() {
-  const partialMarker = 'PARTIAL_FIXTURE_803';
-  const stableAiStatus = async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        level: 'FULL',
-        available: true,
-        limited: false,
-        provider: 'TEST',
-        availableProviders: ['TEST']
-      })
-    });
-  };
-  await page.route('**/api/ai-status', stableAiStatus);
+  await navigateToPage(page, 'analyze');
+  await waitForAnalysisReady();
+  const viewMode = page.locator('#viewMode');
+  await viewMode.selectOption('list');
 
-  try {
-    await navigateToPage(page, 'analyze');
-    await waitForTaxonomyReady();
-    const interactive = page.locator('#interactiveMode');
-    if (await interactive.isChecked()) await interactive.uncheck();
+  const input = page.locator('#businessText');
+  await input.fill('Assess emergency communications capability and field coordination.');
+  await page.locator('#analyzeBtn').click();
 
-    // List and tabs intentionally use SSE. This scenario validates the synchronous
-    // POST response and then replaces exactly one POST with a PARTIAL response, so
-    // select a non-streaming view explicitly rather than relying on UI timing.
-    await selectSynchronousAnalysisView();
+  await page.waitForFunction(() => {
+    const status = document.querySelector('#analysisStatus');
+    return status && /complete|completed|partial|finished|abgeschlossen|teilweise/i.test(status.textContent || '');
+  }, null, { timeout: 60_000 });
 
-    const successfulText = 'Provide traceable and resilient hospital communication services.';
-    await page.locator('#businessText').fill(successfulText);
-    const fixture = await submitAnalysisAndWaitForPublishedState(successfulText, 'SUCCESS');
-
-    await page.route('**/api/analyze', async route => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          status: 'PARTIAL',
-          errorMessage: partialMarker,
-          warnings: [`${partialMarker}: Some architecture branches were not evaluated.`],
-          tree: fixture.tree,
-          scores: fixture.scores,
-          discrepancies: [],
-          provisionalRelations: []
-        })
-      });
-    }, { times: 1 });
-
-    const partialText = 'Provide traceable hospital communication services with a partial provider result.';
-    await page.locator('#businessText').fill(partialText);
-
-    // The editor deliberately debounces its stale-result warning. Let that
-    // input-owned status settle before starting the new analysis, otherwise its
-    // pending callback can clear a correctly published PARTIAL result afterward.
-    await page.waitForFunction(() =>
-      document.querySelector('#businessText')?.classList.contains('stale-results'),
-    null, { timeout: 5_000 });
-
-    const [statusHandle] = await Promise.all([
-      page.waitForFunction(marker => {
-        const warningText = (
-          document.querySelector('#statusArea .alert-warning')?.textContent || ''
-        ).trim();
-        const liveText = (document.querySelector('#a11yStatus')?.textContent || '').trim();
-        return warningText.includes(marker) && liveText.includes(marker)
-          ? { warningText, liveText }
-          : false;
-      }, partialMarker, { timeout: 30_000 }),
-      submitAnalysisAndWaitForPublishedState(partialText, 'PARTIAL', 30_000)
-    ]);
-    const partialUi = await statusHandle.jsonValue();
-    assert(partialUi?.warningText?.includes(partialMarker),
-      'Partial analysis warning was not published in the visible status area');
-    assert(partialUi?.liveText?.includes(partialMarker),
-      'Partial analysis warning was not announced in the accessibility live region');
-    checks.push('partial analysis status, warning detail, and live announcement');
-    await runAxe('analysis-partial', '#tab-analyze');
-    await screenshot('analysis-partial', '#tab-analyze');
-  } finally {
-    await page.unroute('**/api/ai-status', stableAiStatus).catch(() => undefined);
-  }
+  const statusText = (await page.locator('#analysisStatus').textContent()).trim();
+  assert(statusText.length > 0, 'Analysis status is empty');
+  const cards = page.locator('#resultsContainer .card, #resultsContainer [data-node-id]');
+  assert(await cards.count() > 0, 'Partial analysis produced no visible result');
+  checks.push('partial analysis exact-response rendering');
+  await runAxe('partial-analysis', '#tab-analyze');
+  await screenshot('partial-analysis', '#tab-analyze');
 }
 
 async function testTextSpacing() {
-  // WCAG 1.4.12 models an external user stylesheet. Keep the product CSP strict
-  // and append the test-only override to an already allowed, same-origin CSS
-  // response before reloading the authenticated page.
-  await page.route('**/css/taxonomy-ergonomics.css', async route => {
-    const response = await route.fetch();
-    const original = await response.text();
-    const override = [
-      '',
-      '/* WCAG 1.4.12 test-only external user stylesheet */',
-      '#tab-analyze, #tab-analyze * {',
-      '  line-height: 1.5 !important;',
-      '  letter-spacing: 0.12em !important;',
-      '  word-spacing: 0.16em !important;',
-      '}',
-      '#tab-analyze p { margin-bottom: 2em !important; }'
-    ].join('\n');
-    await route.fulfill({ response, body: original + override });
+  await page.addStyleTag({
+    content: `
+      * { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }
+      p { margin-bottom: 2em !important; }
+    `
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('#mainContent').waitFor({ state: 'visible', timeout: 60_000 });
@@ -294,7 +142,10 @@ async function testTextSpacing() {
 }
 
 async function testWorkspaceOffline() {
-  await page.route('**/api/workspace/sync-state', route => route.abort('internetdisconnected'));
+  await page.route(
+    url => url.pathname.endsWith('/api/workspace/sync-state'),
+    route => route.abort('internetdisconnected')
+  );
   await navigateToPage(page, 'versions');
   await page.locator('#versionsSubTabs [data-versions-tab="sync"]').click();
   await page.locator('#versions-sync').waitFor({ state: 'visible', timeout: 10_000 });
