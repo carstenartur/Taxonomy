@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - agent/decision-rationale-report-extension
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
   workflow_dispatch:
 
 permissions:
@@ -19,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      TARGET_BRANCH: ${{ github.ref_name }}
+      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
     steps:
       - name: Check out integration branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
