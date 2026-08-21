@@ -6,18 +6,6 @@ metadata:
     kubernetes.io/metadata.name: taxonomy-smoke
 ---
 apiVersion: v1
-kind: Secret
-metadata:
-  name: taxonomy-smoke-credentials
-  namespace: taxonomy-smoke
-type: Opaque
-stringData:
-  SPRING_DATASOURCE_URL: "jdbc:hsqldb:file:/app/data/taxonomy;shutdown=true"
-  SPRING_DATASOURCE_USERNAME: "SA"
-  SPRING_DATASOURCE_PASSWORD: ""
-  ADMIN_PASSWORD: "taxonomy-smoke-admin"
----
-apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: taxonomy-smoke-quota
