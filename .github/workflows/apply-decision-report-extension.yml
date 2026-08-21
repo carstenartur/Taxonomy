@@ -81,6 +81,46 @@ jobs:
 
           path = Path(sys.argv[1])
           source = path.read_text(encoding='utf-8')
+
+          self_parent_anchor = '''                // Fallback: parentCode might be a UUID — resolve it to the actual code
+                          if (parent == null && parentCode != null) {
+                              String resolvedCode = uuidToCode.get(parentCode);
+                              if (resolvedCode != null) {
+                                  parent = nodeMap.get(resolvedCode);
+                                  if (parent != null) {
+                                      node.setParentCode(resolvedCode);
+                                  }
+                              }
+                          }
+
+                          // Last resort: attach to the virtual sheet root
+          '''
+          self_parent_replacement = '''                // Fallback: parentCode might be a UUID — resolve it to the actual code
+                          if (parent == null && parentCode != null) {
+                              String resolvedCode = uuidToCode.get(parentCode);
+                              if (resolvedCode != null) {
+                                  parent = nodeMap.get(resolvedCode);
+                                  if (parent != null) {
+                                      node.setParentCode(resolvedCode);
+                                  }
+                              }
+                          }
+
+                          // A self-parent reference is invalid hierarchy data. Treat it like an
+                          // unresolved parent so the existing, explicit root fallback can recover
+                          // the node without creating a cycle or a null parent_id.
+                          if (parent == node) {
+                              log.warn("Node '{}' references itself as parent; attaching it to taxonomy root '{}'.",
+                                      node.getCode(), node.getTaxonomyRoot());
+                              parent = null;
+                          }
+
+                          // Last resort: attach to the virtual sheet root
+          '''
+          if self_parent_anchor not in source:
+              raise SystemExit('Expected parent-resolution anchor was not found')
+          source = source.replace(self_parent_anchor, self_parent_replacement, 1)
+
           old = '''        nonRoots.sort(Comparator.comparingInt(TaxonomyNode::getLevel));
 
                   int count = 0;
