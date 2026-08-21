@@ -66,7 +66,7 @@ jobs:
             END { if (!inserted) exit 42 }
           ' "$workflow" > /tmp/apply-workflow
           mv /tmp/apply-workflow "$workflow"
-          sed -i 's#taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportController.java#taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DecisionRationaleReportController.java#g' "$workflow"
+          sed -i 's#^          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportController.java$#          taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DecisionRationaleReportController.java#' "$workflow"
 
           test "$(grep -Fc 'Place ad-hoc report adapter in the versioning layer' "$workflow")" -eq 1
           test "$(grep -Fc 'taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DecisionRationaleReportController.java' "$workflow")" -eq 1
