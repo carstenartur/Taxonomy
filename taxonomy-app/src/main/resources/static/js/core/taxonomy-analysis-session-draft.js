@@ -251,9 +251,9 @@
             }
             return view;
         }).catch(function (error) {
+            if (options.probe) throw error;
             runtime.restoring = false;
             setDraftDecisionPending(false);
-            if (options.probe) throw error;
             if (window.console) window.console.warn('[Taxonomy] Draft load failed', error);
             return null;
         });
