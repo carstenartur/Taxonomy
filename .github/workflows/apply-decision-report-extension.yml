@@ -4,14 +4,6 @@ on:
   push:
     branches:
       - agent/decision-rationale-report-extension
-  pull_request:
-    branches:
-      - main
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
   workflow_dispatch:
 
 permissions:
@@ -25,18 +17,28 @@ jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
-      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      TARGET_BRANCH: ${{ github.ref_name }}
     steps:
       - name: Check out integration branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_BRANCH }}
 
+      - name: Merge current protected main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-edit origin/main
+          echo "INTEGRATION_BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '21'
@@ -97,31 +99,6 @@ jobs:
           sed -i 's/^          //' /tmp/expected-decision-report-files
           sort -o /tmp/expected-decision-report-files /tmp/expected-decision-report-files
 
-          {
-            git diff --name-only
-            git ls-files --others --exclude-standard
-          } | grep -v '^.github/tmp/decision-report-package/' \
-            | grep -v '^.github/workflows/apply-decision-report-extension.yml$' \
-            | sort -u > /tmp/actual-decision-report-files
-          diff -u /tmp/expected-decision-report-files /tmp/actual-decision-report-files
-
-          unexpected_github_changes="$({
-            git diff --name-only -- .github
-            git ls-files --others --exclude-standard -- .github
-          } | grep '^.github/' \
-            | grep -v '^.github/tmp/decision-report-package/' \
-            | grep -v '^.github/workflows/apply-decision-report-extension.yml$' || true)"
-          test -z "$unexpected_github_changes"
-          test ! -e .github/tmp/decision-report-package
-          test ! -e .github/workflows/apply-decision-report-extension.yml
-
-      - name: Create local final-state commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          mapfile -t report_files < /tmp/expected-decision-report-files
           cat > /tmp/expected-transient-files <<'EOF'
           .github/tmp/decision-report-package/part-00.b64
           .github/tmp/decision-report-package/part-01.b64
@@ -139,26 +116,75 @@ jobs:
           .github/workflows/apply-decision-report-extension.yml
           EOF
           sed -i 's/^          //' /tmp/expected-transient-files
-          mapfile -t transient_files < /tmp/expected-transient-files
 
-          git add -- "${report_files[@]}" "${transient_files[@]}"
-          git diff --cached --check
-          git diff --cached --name-only | sort > /tmp/staged-files
           {
             cat /tmp/expected-decision-report-files
             cat /tmp/expected-transient-files
-          } | sort -u > /tmp/expected-staged-files
-          diff -u /tmp/expected-staged-files /tmp/staged-files
+          } | sort -u > /tmp/expected-all-files
+          {
+            git diff --name-only "$INTEGRATION_BASE"
+            git ls-files --others --exclude-standard
+          } | sort -u > /tmp/actual-all-files
+          diff -u /tmp/expected-all-files /tmp/actual-all-files
+
+          test ! -e .github/tmp/decision-report-package
+          test ! -e .github/workflows/apply-decision-report-extension.yml
+
+      - name: Create local final-state commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t report_files < /tmp/expected-decision-report-files
+          mapfile -t transient_files < /tmp/expected-transient-files
+          git add -- "${report_files[@]}" "${transient_files[@]}"
+          git diff --cached --check
+          git diff --cached --name-only | sort > /tmp/staged-files
+          diff -u /tmp/expected-all-files /tmp/staged-files
           git commit -m 'Add hierarchical decision rationale report extension'
           test -z "$(git status --porcelain)"
 
       - name: Run focused decision-report tests
         shell: bash
         run: |
-          set -euo pipefail
+          mkdir -p target/decision-report-diagnostics
+          set -o pipefail
           ./mvnw -B -pl taxonomy-app -am \
             -Dtest=DecisionRationaleReportTests \
-            -Dsurefire.failIfNoSpecifiedTests=false test
+            -Dsurefire.failIfNoSpecifiedTests=false test \
+            2>&1 | tee target/decision-report-diagnostics/focused-tests.log
+
+      - name: Upload focused-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: decision-report-focused-diagnostics
+          path: |
+            target/decision-report-diagnostics/**
+            **/target/surefire-reports/**
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Run canonical verification
+        shell: bash
+        run: |
+          mkdir -p target/decision-report-diagnostics
+          set -o pipefail
+          ./mvnw -B verify -Pci \
+            2>&1 | tee target/decision-report-diagnostics/full-verify.log
+
+      - name: Upload full-verification diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: decision-report-full-diagnostics
+          path: |
+            target/decision-report-diagnostics/**
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 14
 
       - name: Push validated integration
         shell: bash
