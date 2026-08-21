@@ -1,0 +1,134 @@
+name: Apply decision rationale report extension
+
+on:
+  push:
+    branches:
+      - agent/decision-rationale-report-extension
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: decision-rationale-report-extension
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Apply audited integration payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/tmp/decision-report-package/part-*.b64 | base64 --decode > /tmp/decision-report-source.tar.gz
+          echo 'ff99f3d070e4067b27428ed759b713e9041e089d2677809b8822859f64599cd4  /tmp/decision-report-source.tar.gz' | sha256sum --check --strict
+          mkdir -p /tmp/decision-report-source
+          tar -xzf /tmp/decision-report-source.tar.gz -C /tmp/decision-report-source
+          python3 /tmp/decision-report-source/apply_decision_report.py . --allow-different-base
+          rm -rf .github/tmp/decision-report-package
+          rm -f .github/workflows/apply-decision-report-extension.yml
+
+      - name: Verify exact change scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/expected-decision-report-files <<'EOF'
+          docs/de/DECISION_RATIONALE_REPORT.md
+          docs/dev/07-extension-points.md
+          docs/dev/tasks/add-report-family.md
+          docs/en/DECISION_RATIONALE_REPORT.md
+          taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionChapterDiagramRenderer.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleDocxRenderer.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleHtmlRenderer.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleJsonRenderer.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReport.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportController.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportPlugin.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportService.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleSnapshotReportController.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleSnapshotReportService.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionReportBuildMetadataService.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionReportLabels.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/TaxonomyCatalogueMetadataService.java
+          taxonomy-app/src/main/java/com/taxonomy/architecture/report/ReportRendererRegistry.java
+          taxonomy-app/src/main/java/com/taxonomy/catalog/service/TaxonomyService.java
+          taxonomy-app/src/main/java/com/taxonomy/security/config/AuthorizationRulesConfigurer.java
+          taxonomy-app/src/main/resources/application.properties
+          taxonomy-app/src/main/resources/i18n/messages.properties
+          taxonomy-app/src/main/resources/i18n/messages_de.properties
+          taxonomy-app/src/main/resources/static/js/api/portfolio-api.js
+          taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
+          taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+          taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js
+          taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          taxonomy-app/src/main/resources/templates/index.html
+          taxonomy-app/src/test/java/com/taxonomy/DecisionRationaleReportTests.java
+          taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisResult.java
+          taxonomy-extension-api/src/main/java/com/taxonomy/extension/api/report/ReportRenderContext.java
+          taxonomy-extension-api/src/main/java/com/taxonomy/extension/api/report/ReportRendererExtension.java
+          EOF
+          sed -i 's/^          //' /tmp/expected-decision-report-files
+          sort -o /tmp/expected-decision-report-files /tmp/expected-decision-report-files
+
+          {
+            git diff --name-only
+            git ls-files --others --exclude-standard
+          } | grep -v '^.github/tmp/decision-report-package/' \
+            | grep -v '^.github/workflows/apply-decision-report-extension.yml$' \
+            | sort -u > /tmp/actual-decision-report-files
+          diff -u /tmp/expected-decision-report-files /tmp/actual-decision-report-files
+
+          unexpected_github_changes="$({
+            git diff --name-only -- .github
+            git ls-files --others --exclude-standard -- .github
+          } | grep '^.github/' \
+            | grep -v '^.github/tmp/decision-report-package/' \
+            | grep -v '^.github/workflows/apply-decision-report-extension.yml$' || true)"
+          test -z "$unexpected_github_changes"
+          test ! -e .github/tmp/decision-report-package
+          test ! -e .github/workflows/apply-decision-report-extension.yml
+
+      - name: Run focused decision-report tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-app -am \
+            -Dtest=DecisionRationaleReportTests \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+      - name: Commit generated integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mapfile -t report_files < /tmp/expected-decision-report-files
+          git add -- "${report_files[@]}" \
+            .github/tmp/decision-report-package \
+            .github/workflows/apply-decision-report-extension.yml
+          git diff --cached --check
+          git diff --cached --name-only | sort > /tmp/staged-files
+          {
+            cat /tmp/expected-decision-report-files
+            git ls-files .github/tmp/decision-report-package
+            echo .github/workflows/apply-decision-report-extension.yml
+          } | sort -u > /tmp/expected-staged-files
+          diff -u /tmp/expected-staged-files /tmp/staged-files
+          git commit -m 'Add hierarchical decision rationale report extension'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
