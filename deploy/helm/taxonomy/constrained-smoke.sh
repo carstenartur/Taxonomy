@@ -12,6 +12,7 @@ IMAGE_TAG=${IMAGE_TAG:-sha-${SOURCE_SHA}}
 IMAGE_REFERENCE="${IMAGE_REPOSITORY}:${IMAGE_TAG}"
 EVIDENCE_DIR=${EVIDENCE_DIR:-"${ROOT_DIR}/target/kubernetes-smoke"}
 KEEP_RESOURCES=${KEEP_RESOURCES:-false}
+SMOKE_SECRET=taxonomy-smoke-credentials
 PORT_FORWARD_PID=""
 
 fail() {
@@ -31,7 +32,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for command in docker kind kubectl helm curl jq; do
+for command in docker kind kubectl helm curl jq od; do
   command -v "${command}" >/dev/null 2>&1 \
     || fail "${command} is required for the constrained-cluster smoke test"
 done
@@ -72,8 +73,25 @@ kind load docker-image "${IMAGE_REFERENCE}" --name "${KIND_CLUSTER_NAME}"
 kubectl apply -f "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
 kubectl wait --for=jsonpath='{.status.phase}'=Active \
   "namespace/${NAMESPACE}" --timeout=60s
-kubectl get secret taxonomy-smoke-credentials \
-  --namespace "${NAMESPACE}" >/dev/null
+
+# Create a fresh namespace-local fixture Secret for every run. No credential value
+# is committed to Git or copied into the retained evidence archive.
+SMOKE_ADMIN_PASSWORD=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
+kubectl create secret generic "${SMOKE_SECRET}" \
+  --namespace "${NAMESPACE}" \
+  --from-literal=SPRING_DATASOURCE_URL='jdbc:hsqldb:file:/app/data/taxonomy;shutdown=true' \
+  --from-literal=SPRING_DATASOURCE_USERNAME=SA \
+  --from-literal=SPRING_DATASOURCE_PASSWORD= \
+  --from-literal="ADMIN_PASSWORD=${SMOKE_ADMIN_PASSWORD}" \
+  --dry-run=client -o yaml \
+  | kubectl apply -f -
+unset SMOKE_ADMIN_PASSWORD
+kubectl get secret "${SMOKE_SECRET}" --namespace "${NAMESPACE}" -o json \
+  | jq -e '.data
+      | has("SPRING_DATASOURCE_URL")
+        and has("SPRING_DATASOURCE_USERNAME")
+        and has("SPRING_DATASOURCE_PASSWORD")
+        and has("ADMIN_PASSWORD")' >/dev/null
 
 helm lint "${CHART_DIR}" \
   --values "${CHART_DIR}/values-constrained-smoke.yaml" \
@@ -94,8 +112,6 @@ fi
 grep -Fq 'kind: ResourceQuota' \
   "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
 grep -Fq 'kind: LimitRange' \
-  "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
-grep -Fq 'kind: Secret' \
   "${CHART_DIR}/constrained-smoke-prerequisites.yaml"
 grep -Fq 'kubernetes.io/metadata.name: kube-system' "${RENDERED_MANIFEST}"
 grep -Fq 'protocol: UDP' "${RENDERED_MANIFEST}"
@@ -121,7 +137,9 @@ POD=$(kubectl get pod --namespace "${NAMESPACE}" \
   -o jsonpath='{.items[0].metadata.name}')
 [[ -n "${POD}" ]] || fail "Taxonomy pod was not created"
 
-kubectl get resourcequota,limitrange,secret,pod,service,networkpolicy \
+# Do not archive Secret resources or decoded values. The manifest contains only
+# Secret references and the evidence records only that the fixture existed.
+kubectl get resourcequota,limitrange,pod,service,networkpolicy \
   --namespace "${NAMESPACE}" -o yaml \
   >"${EVIDENCE_DIR}/cluster-resources.yaml"
 kubectl describe pod "${POD}" --namespace "${NAMESPACE}" \
