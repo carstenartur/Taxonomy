@@ -30,7 +30,10 @@ class HelmConstrainedSmokeContractTest {
                 .contains("allowSameNamespaceEgress: true")
                 .contains("kubernetes.io/metadata.name: kube-system")
                 .contains("values: [kube-dns, coredns]")
-                .doesNotContain("egress:\n    - {}");
+                .contains("TAXONOMY_ADMIN_PASSWORD:")
+                .contains("key: ADMIN_PASSWORD")
+                .doesNotContain("egress:\n    - {}")
+                .doesNotContain("  ADMIN_PASSWORD:\n    key: ADMIN_PASSWORD");
         assertThat(small).contains("egressMode: restricted");
         assertThat(rancher)
                 .contains("egressMode: restricted")
@@ -60,6 +63,8 @@ class HelmConstrainedSmokeContractTest {
                 "deploy/helm/taxonomy/constrained-smoke.sh"));
         String workflow = read(root.resolve(
                 ".github/workflows/kubernetes-constrained-smoke.yml"));
+        String verificationSuites = read(root.resolve(
+                ".mvn/verification-suites.json"));
 
         assertThat(prerequisites)
                 .contains("kind: ResourceQuota")
@@ -79,10 +84,14 @@ class HelmConstrainedSmokeContractTest {
                 .contains("--selector \"${RESOURCE_SELECTOR}\"")
                 .contains("Expected exactly one Taxonomy Deployment")
                 .contains("Expected exactly one Taxonomy Service")
+                .contains("name: TAXONOMY_ADMIN_PASSWORD")
+                .contains("Created configured administrator account")
+                .contains("curl --fail --location --silent --show-error")
                 .contains("/actuator/health/readiness")
                 .contains("localImageId")
                 .contains("sourceSha")
                 .contains("fixtureSecret: true")
+                .contains("configuredAdminPassword: true")
                 .contains("restrictedEgress: true")
                 .doesNotContain("deployment/${RELEASE}")
                 .doesNotContain("service/${RELEASE}")
@@ -97,6 +106,9 @@ class HelmConstrainedSmokeContractTest {
                 .contains("bash deploy/helm/taxonomy/constrained-smoke.sh")
                 .contains("kubernetes-constrained-smoke")
                 .doesNotContain("setup-python");
+        assertThat(verificationSuites)
+                .contains("\"kubernetes-constrained-smoke.yml\"")
+                .contains("constrained-cluster release-floor verification");
     }
 
     private static String read(Path path) throws Exception {
