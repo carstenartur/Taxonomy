@@ -63,8 +63,9 @@ jobs:
           python3 /tmp/decision-report-source/apply_decision_report.py . --allow-different-base
           rm -rf .github/tmp/decision-report-package
           rm -f .github/workflows/apply-decision-report-extension.yml
+          rm -f .github/workflows/diagnose-decision-report-fingerprint.yml
 
-      - name: Correct verified reactor compatibility issues
+      - name: Correct verified reactor and hierarchy issues
         shell: bash
         run: |
           set -euo pipefail
@@ -73,6 +74,94 @@ jobs:
           if ! grep -q '^import org.springframework.core.io.ClassPathResource;$' "$taxonomy_service"; then
             sed -i '/^import org.springframework.core.io.Resource;$/i import org.springframework.core.io.ClassPathResource;' "$taxonomy_service"
           fi
+
+          python3 - "$taxonomy_service" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text(encoding='utf-8')
+          old = '''        nonRoots.sort(Comparator.comparingInt(TaxonomyNode::getLevel));
+
+                  int count = 0;
+                  for (TaxonomyNode node : nonRoots) {
+                      // Replace the in-memory parent reference with a lightweight managed proxy so
+                      // that the FK column is set correctly even after earlier PC.clear() calls.
+                      // getReference() returns an uninitialized proxy whose ID is set immediately;
+                      // no SELECT is issued because only the FK value (the ID) is needed for the INSERT.
+                      String parentCode = node.getParentCode();
+                      if (parentCode != null && codeToId.containsKey(parentCode)) {
+                          node.setParent(entityManager.getReference(TaxonomyNode.class,
+                                  codeToId.get(parentCode)));
+                      }
+                      entityManager.persist(node);
+                      codeToId.put(node.getCode(), node.getId());
+                      count++;
+                      if (count % BATCH_SIZE == 0) {
+                          entityManager.flush();
+                          entityManager.clear();
+                      }
+                  }
+                  entityManager.flush();
+                  entityManager.clear();
+          '''
+          new = '''        nonRoots.sort(Comparator.comparingInt(TaxonomyNode::getLevel)
+                          .thenComparing(TaxonomyNode::getCode));
+
+                  // The catalogue level is descriptive data and is not guaranteed to form a
+                  // strict persistence order. Persist only nodes whose actual parent has already
+                  // received an ID. This prevents a same-level child that precedes its parent in
+                  // the workbook from being inserted with a null parent_id.
+                  Map<String, TaxonomyNode> pending = new LinkedHashMap<>();
+                  for (TaxonomyNode node : nonRoots) {
+                      pending.put(node.getCode(), node);
+                  }
+
+                  int count = 0;
+                  while (!pending.isEmpty()) {
+                      boolean madeProgress = false;
+                      Iterator<Map.Entry<String, TaxonomyNode>> iterator =
+                              pending.entrySet().iterator();
+                      while (iterator.hasNext()) {
+                          TaxonomyNode node = iterator.next().getValue();
+                          String parentCode = node.getParentCode();
+                          Long parentId = parentCode != null ? codeToId.get(parentCode) : null;
+                          if (parentId == null) {
+                              continue;
+                          }
+
+                          // Replace the in-memory parent reference with a lightweight managed
+                          // proxy so the FK remains correct across Persistence Context clears.
+                          node.setParent(entityManager.getReference(TaxonomyNode.class, parentId));
+                          entityManager.persist(node);
+                          codeToId.put(node.getCode(), node.getId());
+                          iterator.remove();
+                          madeProgress = true;
+                          count++;
+                          if (count % BATCH_SIZE == 0) {
+                              entityManager.flush();
+                              entityManager.clear();
+                          }
+                      }
+
+                      if (!madeProgress) {
+                          List<String> unresolvedParents = pending.values().stream()
+                                  .map(node -> node.getCode() + "->" + node.getParentCode())
+                                  .sorted()
+                                  .limit(20)
+                                  .toList();
+                          throw new IllegalStateException(
+                                  "Cannot persist taxonomy hierarchy; unresolved parent references: "
+                                          + unresolvedParents);
+                      }
+                  }
+                  entityManager.flush();
+                  entityManager.clear();
+          '''
+          if old not in source:
+              raise SystemExit('Expected level-only persistence block was not found')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
 
           renderer='taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleDocxRenderer.java'
           grep -Fq 'CTTblPr properties = tableXml.isSetTblPr() ? tableXml.getTblPr() : tableXml.addNewTblPr();' "$renderer"
@@ -142,6 +231,7 @@ jobs:
           .github/tmp/decision-report-package/part-08a.b64
           .github/tmp/decision-report-package/part-08b.b64
           .github/workflows/apply-decision-report-extension.yml
+          .github/workflows/diagnose-decision-report-fingerprint.yml
           EOF
           sed -i 's/^          //' /tmp/expected-transient-files
 
@@ -157,6 +247,7 @@ jobs:
 
           test ! -e .github/tmp/decision-report-package
           test ! -e .github/workflows/apply-decision-report-extension.yml
+          test ! -e .github/workflows/diagnose-decision-report-fingerprint.yml
 
       - name: Create local final-state commit
         shell: bash
