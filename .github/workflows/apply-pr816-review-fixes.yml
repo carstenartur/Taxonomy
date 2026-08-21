@@ -37,75 +37,102 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
 
-          function replaceExact(path, oldText, newText) {
-            const source = fs.readFileSync(path, 'utf8');
-            const occurrences = source.split(oldText).length - 1;
-            if (occurrences !== 1) {
-              throw new Error(`${path}: expected one replacement anchor, found ${occurrences}`);
+          function findUnique(lines, predicate, label) {
+            const matches = [];
+            lines.forEach((line, index) => {
+              if (predicate(line)) matches.push(index);
+            });
+            if (matches.length !== 1) {
+              throw new Error(`${label}: expected one anchor, found ${matches.length}`);
             }
-            fs.writeFileSync(path, source.replace(oldText, newText));
+            return matches[0];
+          }
+
+          function writeLines(path, lines) {
+            fs.writeFileSync(path, lines.join('\n'));
           }
 
           const renderer = 'taxonomy-app/src/main/java/com/taxonomy/architecture/decision/'
             + 'DecisionChapterDiagramRenderer.java';
-          const oldSvgHeader = String.raw`        StringBuilder svg = new StringBuilder(8_192);
-          svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ")
-                  .append(WIDTH).append(' ').append(HEIGHT)
-                  .append("\" role=\"img\" aria-labelledby=\"title desc\">");
-          svg.append("<title id=\"title\">").append(xml(labels.parentNode() + " "
-                  + chapter.parentCode())).append("</title>");
-          svg.append("<desc id=\"desc\">").append(xml(altText(
-                  chapter, children, labels, panelNumber, panelCount))).append("</desc>");`;
-          const newSvgHeader = String.raw`        String idPrefix = "decision-chapter-" + chapter.number()
-                  + "-panel-" + panelNumber;
-          String titleId = idPrefix + "-title";
-          String descriptionId = idPrefix + "-desc";
-          StringBuilder svg = new StringBuilder(8_192);
-          svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ")
-                  .append(WIDTH).append(' ').append(HEIGHT)
-                  .append("\" role=\"img\" aria-labelledby=\"")
-                  .append(titleId).append(' ').append(descriptionId).append("\">");
-          svg.append("<title id=\"").append(titleId).append("\">")
-                  .append(xml(labels.parentNode() + " " + chapter.parentCode()))
-                  .append("</title>");
-          svg.append("<desc id=\"").append(descriptionId).append("\">")
-                  .append(xml(altText(
-                          chapter, children, labels, panelNumber, panelCount)))
-                  .append("</desc>");`;
-          replaceExact(renderer, oldSvgHeader, newSvgHeader);
+          const rendererLines = fs.readFileSync(renderer, 'utf8').split('\n');
+
+          let index = findUnique(
+            rendererLines,
+            line => line.includes('StringBuilder svg = new StringBuilder(8_192);'),
+            'SVG builder');
+          rendererLines.splice(index, 1,
+            '        String idPrefix = "decision-chapter-" + chapter.number()',
+            '                + "-panel-" + panelNumber;',
+            '        String titleId = idPrefix + "-title";',
+            '        String descriptionId = idPrefix + "-desc";',
+            '        StringBuilder svg = new StringBuilder(8_192);');
+
+          index = findUnique(
+            rendererLines,
+            line => line.includes('aria-labelledby=\\"title desc\\"'),
+            'SVG aria-labelledby');
+          rendererLines.splice(index, 1,
+            '                .append("\\" role=\\"img\\" aria-labelledby=\\"")',
+            '                .append(titleId).append(\' \').append(descriptionId)',
+            '                .append("\\">");');
+
+          index = findUnique(
+            rendererLines,
+            line => line.includes('svg.append("<title id=\\"title\\">")'),
+            'SVG title');
+          rendererLines.splice(index, 2,
+            '        svg.append("<title id=\\"").append(titleId).append("\\">")',
+            '                .append(xml(labels.parentNode() + " " + chapter.parentCode()))',
+            '                .append("</title>");');
+
+          index = findUnique(
+            rendererLines,
+            line => line.includes('svg.append("<desc id=\\"desc\\">")'),
+            'SVG description');
+          rendererLines.splice(index, 2,
+            '        svg.append("<desc id=\\"").append(descriptionId).append("\\">")',
+            '                .append(xml(altText(',
+            '                        chapter, children, labels, panelNumber, panelCount)))',
+            '                .append("</desc>");');
+          writeLines(renderer, rendererLines);
 
           const controller = 'taxonomy-app/src/main/java/com/taxonomy/versioning/controller/'
             + 'DecisionRationaleReportController.java';
-          replaceExact(
-            controller,
-            '        return validScores && validReasons(request.reasons());',
-            String.raw`        return validScores
-                  && validReasons(request.reasons())
-                  && validDiscrepancies(request.discrepancies());`
-          );
-          replaceExact(
-            controller,
-            '    private boolean validReasons(Map<String, String> reasons) {',
-            String.raw`    private boolean validDiscrepancies(
-                  List<TaxonomyDiscrepancy> discrepancies) {
-              if (discrepancies == null) {
-                  return true;
-              }
-              for (TaxonomyDiscrepancy discrepancy : discrepancies) {
-                  if (discrepancy == null
-                          || !boundedText(discrepancy.parentCode(),
-                                  MAX_NODE_CODE_LENGTH, false)
-                          || discrepancy.expectedParentScore() < 0
-                          || discrepancy.expectedParentScore() > 100
-                          || discrepancy.actualChildSum() < 0) {
-                      return false;
-                  }
-              }
-              return true;
-          }
+          const controllerLines = fs.readFileSync(controller, 'utf8').split('\n');
 
-          private boolean validReasons(Map<String, String> reasons) {`
-          );
+          index = findUnique(
+            controllerLines,
+            line => line.trim() === 'return validScores && validReasons(request.reasons());',
+            'decision request validation return');
+          controllerLines.splice(index, 1,
+            '        return validScores',
+            '                && validReasons(request.reasons())',
+            '                && validDiscrepancies(request.discrepancies());');
+
+          index = findUnique(
+            controllerLines,
+            line => line.trim() === 'private boolean validReasons(Map<String, String> reasons) {',
+            'reason validation method');
+          controllerLines.splice(index, 0,
+            '    private boolean validDiscrepancies(',
+            '            List<TaxonomyDiscrepancy> discrepancies) {',
+            '        if (discrepancies == null) {',
+            '            return true;',
+            '        }',
+            '        for (TaxonomyDiscrepancy discrepancy : discrepancies) {',
+            '            if (discrepancy == null',
+            '                    || !boundedText(discrepancy.parentCode(),',
+            '                            MAX_NODE_CODE_LENGTH, false)',
+            '                    || discrepancy.expectedParentScore() < 0',
+            '                    || discrepancy.expectedParentScore() > 100',
+            '                    || discrepancy.actualChildSum() < 0) {',
+            '                return false;',
+            '            }',
+            '        }',
+            '        return true;',
+            '    }',
+            '');
+          writeLines(controller, controllerLines);
           NODE
 
       - name: Add focused regression tests
