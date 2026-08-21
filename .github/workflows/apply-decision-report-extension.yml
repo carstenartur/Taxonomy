@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - agent/decision-rationale-report-extension
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
   workflow_dispatch:
 
 permissions:
@@ -11,18 +19,21 @@ permissions:
 
 concurrency:
   group: decision-rationale-report-extension
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
     steps:
       - name: Check out integration branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ env.TARGET_BRANCH }}
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -119,16 +130,32 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           mapfile -t report_files < /tmp/expected-decision-report-files
-          git add -- "${report_files[@]}" \
-            .github/tmp/decision-report-package \
-            .github/workflows/apply-decision-report-extension.yml
+          cat > /tmp/expected-transient-files <<'EOF'
+          .github/tmp/decision-report-package/part-00.b64
+          .github/tmp/decision-report-package/part-01.b64
+          .github/tmp/decision-report-package/part-02.b64
+          .github/tmp/decision-report-package/part-03a.b64
+          .github/tmp/decision-report-package/part-03b.b64
+          .github/tmp/decision-report-package/part-04.b64
+          .github/tmp/decision-report-package/part-05.b64
+          .github/tmp/decision-report-package/part-06a.b64
+          .github/tmp/decision-report-package/part-06b.b64
+          .github/tmp/decision-report-package/part-07a.b64
+          .github/tmp/decision-report-package/part-07b.b64
+          .github/tmp/decision-report-package/part-08a.b64
+          .github/tmp/decision-report-package/part-08b.b64
+          .github/workflows/apply-decision-report-extension.yml
+          EOF
+          sed -i 's/^          //' /tmp/expected-transient-files
+          mapfile -t transient_files < /tmp/expected-transient-files
+
+          git add -- "${report_files[@]}" "${transient_files[@]}"
           git diff --cached --check
           git diff --cached --name-only | sort > /tmp/staged-files
           {
             cat /tmp/expected-decision-report-files
-            git ls-files .github/tmp/decision-report-package
-            echo .github/workflows/apply-decision-report-extension.yml
+            cat /tmp/expected-transient-files
           } | sort -u > /tmp/expected-staged-files
           diff -u /tmp/expected-staged-files /tmp/staged-files
           git commit -m 'Add hierarchical decision rationale report extension'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${TARGET_BRANCH}"
