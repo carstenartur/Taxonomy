@@ -188,7 +188,27 @@ public class DecisionRationaleReportController {
                         && entry.getValue() != null
                         && entry.getValue() >= 0
                         && entry.getValue() <= 100);
-        return validScores && validReasons(request.reasons());
+        return validScores
+                && validReasons(request.reasons())
+                && validDiscrepancies(request.discrepancies());
+    }
+
+    private boolean validDiscrepancies(
+            List<TaxonomyDiscrepancy> discrepancies) {
+        if (discrepancies == null) {
+            return true;
+        }
+        for (TaxonomyDiscrepancy discrepancy : discrepancies) {
+            if (discrepancy == null
+                    || !boundedText(discrepancy.parentCode(),
+                            MAX_NODE_CODE_LENGTH, false)
+                    || discrepancy.expectedParentScore() < 0
+                    || discrepancy.expectedParentScore() > 100
+                    || discrepancy.actualChildSum() < 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean validReasons(Map<String, String> reasons) {

@@ -256,14 +256,23 @@ public class DecisionChapterDiagramRenderer {
             DecisionReportLabels labels,
             int panelNumber,
             int panelCount) {
+        String idPrefix = "decision-chapter-" + chapter.number()
+                + "-panel-" + panelNumber;
+        String titleId = idPrefix + "-title";
+        String descriptionId = idPrefix + "-desc";
         StringBuilder svg = new StringBuilder(8_192);
         svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ")
                 .append(WIDTH).append(' ').append(HEIGHT)
-                .append("\" role=\"img\" aria-labelledby=\"title desc\">");
-        svg.append("<title id=\"title\">").append(xml(labels.parentNode() + " "
-                + chapter.parentCode())).append("</title>");
-        svg.append("<desc id=\"desc\">").append(xml(altText(
-                chapter, children, labels, panelNumber, panelCount))).append("</desc>");
+                .append("\" role=\"img\" aria-labelledby=\"")
+                .append(titleId).append(' ').append(descriptionId)
+                .append("\">");
+        svg.append("<title id=\"").append(titleId).append("\">")
+                .append(xml(labels.parentNode() + " " + chapter.parentCode()))
+                .append("</title>");
+        svg.append("<desc id=\"").append(descriptionId).append("\">")
+                .append(xml(altText(
+                        chapter, children, labels, panelNumber, panelCount)))
+                .append("</desc>");
         svg.append("<rect width=\"1200\" height=\"720\" fill=\"#ffffff\"/>");
         String heading = labels.parentNode() + " " + chapter.parentCode()
                 + (panelCount > 1 ? " · " + panelNumber + "/" + panelCount : "");
