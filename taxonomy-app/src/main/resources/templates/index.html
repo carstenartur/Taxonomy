@@ -601,6 +601,15 @@
                                 <button id="exportReportHtml" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.html.title}" title="Export a comprehensive architecture report as HTML">&#128196; Report (.html)</button>
                                 <button id="exportReportDocx" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.docx.title}" title="Export a comprehensive architecture report as Word document">&#128196; Report (.docx)</button>
                             </div>
+                            <h6 class="mb-2" th:text="#{export.decision.heading}">&#128221; Decision Evidence</h6>
+                            <p class="text-muted small mb-2" th:text="#{export.decision.description}">
+                                Export the traceable root-to-leaf decision path with one parent/children chapter per hierarchy decision.
+                            </p>
+                            <div class="d-flex gap-2 flex-wrap mb-3">
+                                <button id="exportDecisionReportDocx" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.docx.title}">&#128221; <span th:text="#{export.btn.decision.docx}">Decision Report (.docx)</span></button>
+                                <button id="exportDecisionReportHtml" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.html.title}">&#128221; <span th:text="#{export.btn.decision.html}">Decision Report (.html)</span></button>
+                                <button id="exportDecisionReportJson" class="btn btn-outline-primary" data-guard="export" th:title="#{export.btn.decision.json.title}">&#128221; <span th:text="#{export.btn.decision.json}">Decision Report (.json)</span></button>
+                            </div>
                         </div>
 
                         <hr class="my-3"/>

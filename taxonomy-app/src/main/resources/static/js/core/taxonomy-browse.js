@@ -106,7 +106,9 @@
         // Export buttons
         ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportJson', 'exportVisio', 'exportArchiMate', 'exportMermaid',
          'exportStructurizr', 'exportDot', 'exportMermaidTree',
-         'exportReportMd', 'exportReportHtml', 'exportReportDocx'].forEach(function (id) {
+         'exportReportMd', 'exportReportHtml', 'exportReportDocx',
+         'exportDecisionReportDocx', 'exportDecisionReportHtml',
+         'exportDecisionReportJson'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
                 btn.addEventListener('click', function () { handleExport(id); });
@@ -140,6 +142,8 @@
                         }
                         S.currentScores = data.scores || {};
                         S.currentReasons = data.reasons || {};
+                        S.lastAnalysisProvider = data.provider || 'IMPORTED';
+                        S.lastAnalysisStatus = data.analysisStatus || 'IMPORTED';
                         // Update business text field if present in the imported data
                         if (data.requirement) {
                             const btEl = document.getElementById('businessText');
@@ -906,6 +910,61 @@
             }
             return;
         }
+        if (btnId === 'exportDecisionReportDocx'
+                || btnId === 'exportDecisionReportHtml'
+                || btnId === 'exportDecisionReportJson') {
+            var decisionFormatMap = {
+                'exportDecisionReportDocx': 'docx',
+                'exportDecisionReportHtml': 'html',
+                'exportDecisionReportJson': 'json'
+            };
+            var decisionExtMap = {
+                'exportDecisionReportDocx': '.docx',
+                'exportDecisionReportHtml': '.html',
+                'exportDecisionReportJson': '.json'
+            };
+            var decisionFormat = decisionFormatMap[btnId];
+            var decisionExt = decisionExtMap[btnId];
+            var decisionTextElement = document.getElementById('businessText');
+            var decisionText = decisionTextElement ? decisionTextElement.value.trim() : '';
+            var selectedProvider = document.getElementById('providerSelect');
+            var decisionProvider = S.lastAnalysisProvider
+                || (selectedProvider ? selectedProvider.value : '')
+                || 'unknown';
+            var request = {
+                scores: S.currentScores,
+                reasons: S.currentReasons || {},
+                businessText: decisionText,
+                provider: decisionProvider,
+                analysisStatus: S.lastAnalysisStatus || 'UNKNOWN',
+                discrepancies: S.currentDiscrepancies || [],
+                language: window.TaxonomyI18n
+                    ? window.TaxonomyI18n.getLocale() : document.documentElement.lang
+            };
+            fetch('/api/decision-report/' + decisionFormat, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('Decision report generation failed');
+                return resp.blob();
+            })
+            .then(function (blob) {
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'taxonomy-decision-rationale-report' + decisionExt;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            })
+            .catch(function (err) {
+                alert(t('browse.decision.report.export.failed', err.message));
+            });
+            return;
+        }
         if (btnId === 'exportReportMd' || btnId === 'exportReportHtml' || btnId === 'exportReportDocx') {
             var formatMap = { 'exportReportMd': 'markdown', 'exportReportHtml': 'html', 'exportReportDocx': 'docx' };
             var extMap = { 'exportReportMd': '.md', 'exportReportHtml': '.html', 'exportReportDocx': '.docx' };
@@ -1412,6 +1471,8 @@
 
                 const scores = result.scores || {};
                 const reasons = result.reasons || {};
+                if (result.provider) { S.lastAnalysisProvider = result.provider; }
+                S.lastAnalysisStatus = result.error ? 'PARTIAL' : 'IN_PROGRESS';
 
                 // Show error in status area if present
                 if (result.error) {

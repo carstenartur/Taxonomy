@@ -134,6 +134,14 @@ window.TaxonomyPortfolioApi = (function () {
             return getJson(projectPath(projectId) + '/snapshots/'
                 + encodeURIComponent(String(snapshotId)));
         },
+        downloadDecisionReport: function (projectId, snapshotId, format, language) {
+            const query = new URLSearchParams();
+            if (language) query.set('language', String(language));
+            const suffix = query.toString();
+            return getResponse(projectPath(projectId) + '/snapshots/'
+                + encodeURIComponent(String(snapshotId)) + '/decision-report/'
+                + encodeURIComponent(String(format)) + (suffix ? '?' + suffix : ''), '*/*');
+        },
         updateConflict: function (projectId, conflictId, decision) {
             return sendJson(projectPath(projectId) + '/conflicts/'
                 + positiveInteger(conflictId, 'conflictId'), 'PATCH', decision);

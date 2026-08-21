@@ -43,6 +43,8 @@
             node: 'Taxonomy node', relation: 'Relation', changeReason: 'Change reason',
             author: 'Author', page: 'Page', section: 'Section', sourceArtifact: 'Source artifact',
             snapshot: 'Snapshot', productCandidates: 'Product candidates', coverage: 'Coverage',
+            decisionReport: 'Decision rationale report', reportDocx: 'Word (.docx)',
+            reportHtml: 'HTML', reportJson: 'JSON',
             selected: 'Selected', retry: 'Retry failed analysis', comparePrevious: 'Compare with previous version',
             added: 'Added', removed: 'Removed', unchanged: 'Unchanged', permission: 'Your role cannot change this requirement.',
             failed: 'The operation failed.'
@@ -69,6 +71,8 @@
             node: 'Taxonomieknoten', relation: 'Beziehung', changeReason: 'Änderungsgrund',
             author: 'Autor', page: 'Seite', section: 'Abschnitt', sourceArtifact: 'Quellartefakt',
             snapshot: 'Snapshot', productCandidates: 'Produktkandidaten', coverage: 'Abdeckung',
+            decisionReport: 'Hierarchischer Entscheidungsbericht', reportDocx: 'Word (.docx)',
+            reportHtml: 'HTML', reportJson: 'JSON',
             selected: 'Ausgewählt', retry: 'Fehlgeschlagene Analyse wiederholen', comparePrevious: 'Mit vorheriger Version vergleichen',
             added: 'Hinzugefügt', removed: 'Entfernt', unchanged: 'Unverändert', permission: 'Ihre Rolle darf diese Anforderung nicht ändern.',
             failed: 'Die Operation ist fehlgeschlagen.'
@@ -121,6 +125,10 @@
         document.getElementById('snapshotList').addEventListener('click', event => {
             const button = event.target.closest('[data-snapshot-id]');
             if (button) selectSnapshot(button.dataset.snapshotId);
+        });
+        document.getElementById('snapshotDetail').addEventListener('click', event => {
+            const button = event.target.closest('[data-decision-report-format]');
+            if (button) downloadDecisionReport(button.dataset.decisionReportFormat);
         });
     }
 
@@ -287,7 +295,55 @@
             + `<dt>${escapeHtml(t('created'))}</dt><dd>${escapeHtml(formatDate(summary.createdAt))}</dd>`
             + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(String(summary.durationMs))} ms</dd>`
             + `<dt>${escapeHtml(t('baseline'))}</dt><dd><code>${escapeHtml(String(summary.taxonomyFingerprint || '').slice(0, 16))}</code> / <code>${escapeHtml(String(summary.promptFingerprint || '').slice(0, 16))}</code></dd></dl>`
+            + renderDecisionReportActions(summary)
             + renderAnalysisSummary(detail);
+    }
+
+    function renderDecisionReportActions(summary) {
+        if (!summary || !summary.id) return '';
+        return `<div class="d-flex flex-wrap align-items-center gap-2 mt-3 p-3 border rounded bg-body-tertiary">`
+            + `<strong class="me-2">${escapeHtml(t('decisionReport'))}</strong>`
+            + `<button type="button" class="btn btn-sm btn-outline-primary" data-decision-report-format="docx">${escapeHtml(t('reportDocx'))}</button>`
+            + `<button type="button" class="btn btn-sm btn-outline-primary" data-decision-report-format="html">${escapeHtml(t('reportHtml'))}</button>`
+            + `<button type="button" class="btn btn-sm btn-outline-secondary" data-decision-report-format="json">${escapeHtml(t('reportJson'))}</button>`
+            + `</div>`;
+    }
+
+    async function downloadDecisionReport(format) {
+        const snapshot = state.selectedSnapshot;
+        if (!snapshot || !snapshot.id || !format) return;
+        setBusy(true);
+        try {
+            const response = await api().downloadDecisionReport(
+                projectId, snapshot.id, format, locale);
+            if (!response.ok) {
+                let detail = `HTTP ${response.status}`;
+                try {
+                    const problem = await response.json();
+                    detail = problem.detail || problem.message || detail;
+                } catch (ignored) {
+                    // A non-JSON error body still retains the HTTP status.
+                }
+                throw new Error(detail);
+            }
+            const blob = await response.blob();
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+            const filename = filenameMatch ? filenameMatch[1]
+                : `taxonomy-decision-rationale-report.${format}`;
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            showError(error);
+        } finally {
+            setBusy(false);
+        }
     }
 
     function renderAnalysisSummary(detail) {

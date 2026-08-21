@@ -399,9 +399,15 @@ step IDs live on the built-ins as `STEP_ID` constants.
 
 **Interface / registry / configuration point**
 
-- `taxonomy-extension-api/src/main/java/com/taxonomy/architecture/report/ReportRendererExtension.java`
+- `taxonomy-extension-api/src/main/java/com/taxonomy/extension/api/report/ReportRendererExtension.java`
 - `taxonomy-app/src/main/java/com/taxonomy/architecture/report/ReportRendererRegistry.java`
 - `taxonomy-app/src/main/java/com/taxonomy/architecture/controller/ReportApiController.java`
+
+Renderers are addressed by `(reportTypeId, formatId)`. Existing renderers use the
+backward-compatible `architecture` report type. Additional report families, such as
+`decision-rationale`, register the same format IDs without colliding. Their global
+extension ID is `reportTypeId:formatId`. See
+[`tasks/add-report-family.md`](tasks/add-report-family.md).
 
 **Required files**
 

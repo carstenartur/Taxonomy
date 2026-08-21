@@ -203,7 +203,11 @@
                 setAnalyzing(false);
                 S.taxonomyData = result.tree;
                 S.currentScores = result.scores;
+                S.currentReasons = result.reasons || {};
                 S.currentDiscrepancies = result.discrepancies || [];
+                S.lastAnalysisProvider = result.provider || provider || null;
+                S.lastAnalysisStatus = result.status || 'UNKNOWN';
+                S.storedBusinessText = text;
                 S.lastAnalyzedText = text;
                 B().renderView(S.taxonomyData, S.currentScores);
 
@@ -286,6 +290,7 @@
             })
             .catch(err => {
                 setAnalyzing(false);
+                S.lastAnalysisStatus = 'ERROR';
                 B().showStatus('danger', t('scoring.analysis.error', err.message));
                 updateAnalysisLog({
                     timestamp: analysisStart,
@@ -311,6 +316,9 @@
         S.evaluatedNodes = new Set();
         S.currentScores = {};
         S.currentReasons = {};
+        var interactiveProvider = document.getElementById('providerSelect');
+        S.lastAnalysisProvider = interactiveProvider ? interactiveProvider.value : null;
+        S.lastAnalysisStatus = 'IN_PROGRESS';
         document.getElementById('businessText').classList.remove('stale-results');
 
         // Render the tree without scores; mark all expandable nodes as unevaluated
@@ -341,6 +349,8 @@
         }
         S.currentScores = {};
         S.currentReasons = {};
+        S.lastAnalysisStatus = 'IN_PROGRESS';
+        S.storedBusinessText = text;
         document.getElementById('businessText').classList.remove('stale-results');
 
         // Render a clean tree without scores first
@@ -364,6 +374,7 @@
             const data = JSON.parse(e.data);
             Object.assign(S.currentScores, data.scores);
             if (data.reasons) { Object.assign(S.currentReasons, data.reasons); }
+            if (data.provider) { S.lastAnalysisProvider = data.provider; }
             Object.entries(data.scores).forEach(function ([code, pct]) {
                 applyScoreToNode(code, pct, data.reasons ? data.reasons[code] : null);
             });
@@ -397,6 +408,8 @@
             setAnalyzing(false);
             S.currentScores = data.totalScores;
             S.currentDiscrepancies = data.discrepancies || [];
+            S.lastAnalysisStatus = data.status || 'SUCCESS';
+            S.storedBusinessText = text;
             S.lastAnalyzedText = text;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
             let statusMsg = t('analyze.complete', matchedCount);
@@ -415,6 +428,7 @@
                     const data = JSON.parse(e.data);
                     eventSource.close();
                     setAnalyzing(false);
+                    S.lastAnalysisStatus = data.status || 'PARTIAL';
                     B().showStatus('warning', '⚠️ ' + data.errorMessage);
                 } catch (parseErr) {
                     console.error('Failed to parse SSE error event:', parseErr);
@@ -425,6 +439,7 @@
         eventSource.onerror = function () {
             eventSource.close();
             setAnalyzing(false);
+            S.lastAnalysisStatus = 'ERROR';
             B().showStatus('danger', t('analyze.connection.lost'));
         };
     }

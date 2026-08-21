@@ -293,6 +293,8 @@ public class LlmService {
      */
     public AnalysisResult analyzeWithBudget(String businessText) {
         Map<String, Integer> allScores = new HashMap<>();
+        Map<String, String> allReasons = new LinkedHashMap<>();
+        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
         // Sort root nodes by priority order
@@ -313,15 +315,25 @@ public class LlmService {
             }
             try {
                 // Score root independently (0-100) to gauge branch relevance
-                Map<String, Integer> rootScore = callLlmPropagating(businessText, List.of(root), 100);
+                LlmCallDetail rootDetail = callLlmPropagatingDetailed(
+                        businessText, List.of(root), 100);
+                Map<String, Integer> rootScore = rootDetail.getScores();
                 allScores.putAll(rootScore);
+                if (rootDetail.getReasons() != null) {
+                    allReasons.putAll(rootDetail.getReasons());
+                }
+                if (rootDetail.getDiscrepancy() != null) {
+                    allDiscrepancies.add(rootDetail.getDiscrepancy());
+                }
                 int score = rootScore.getOrDefault(root.getCode(), 0);
 
                 if (score > 0) {
                     // Score Level-1 children distributing the root's score
                     List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
                     if (!level1Children.isEmpty()) {
-                        analyzeNodesPropagating(businessText, level1Children, allScores, score);
+                        analyzeNodesPropagating(
+                                businessText, level1Children, allScores, allReasons,
+                                allDiscrepancies, score);
                     }
                 }
 
@@ -346,6 +358,9 @@ public class LlmService {
         }
 
         AnalysisResult result = new AnalysisResult(allScores, annotatedTree);
+        result.setReasons(allReasons);
+        result.setProvider(getActiveProviderName());
+        result.setDiscrepancies(allDiscrepancies);
         result.setWarnings(warnings);
 
         if (rateLimitHit) {
@@ -368,16 +383,27 @@ public class LlmService {
     private void analyzeNodesPropagating(String businessText,
                                           List<TaxonomyNode> nodes,
                                           Map<String, Integer> allScores,
+                                          Map<String, String> allReasons,
+                                          List<TaxonomyDiscrepancy> allDiscrepancies,
                                           int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        Map<String, Integer> scores = callLlmPropagating(businessText, nodes, parentScore);
+        LlmCallDetail detail = callLlmPropagatingDetailed(businessText, nodes, parentScore);
+        Map<String, Integer> scores = detail.getScores();
+        allScores.putAll(scores);
+        if (detail.getReasons() != null) {
+            allReasons.putAll(detail.getReasons());
+        }
+        if (detail.getDiscrepancy() != null) {
+            allDiscrepancies.add(detail.getDiscrepancy());
+        }
         for (Map.Entry<String, Integer> entry : scores.entrySet()) {
-            allScores.put(entry.getKey(), entry.getValue());
             if (entry.getValue() > 0) {
                 List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
                 if (!children.isEmpty()) {
-                    analyzeNodesPropagating(businessText, children, allScores, entry.getValue());
+                    analyzeNodesPropagating(
+                            businessText, children, allScores, allReasons,
+                            allDiscrepancies, entry.getValue());
                 }
             }
         }
@@ -410,6 +436,9 @@ public class LlmService {
                 LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100);
                 int rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0);
                 allScores.put(root.getCode(), rootScore);
+                if (rootDetail.getDiscrepancy() != null) {
+                    allDiscrepancies.add(rootDetail.getDiscrepancy());
+                }
                 callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),
                         root.getName() + " scored " + rootScore + "/100", rootDetail);
 
@@ -651,6 +680,7 @@ public class LlmService {
             ScoreParseResult mock = buildMockScores(nodes, parentScore);
             detail.setScores(mock.scores());
             detail.setReasons(mock.reasons());
+            detail.setDiscrepancy(mock.discrepancy());
             detail.setPrompt("(mock mode – no prompt sent)");
             detail.setRawResponse("(hardcoded mock scores)");
             detail.setDurationMs(0);
