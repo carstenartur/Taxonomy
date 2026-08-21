@@ -20,6 +20,8 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -41,8 +43,6 @@ import com.taxonomy.shared.service.AppInitializationStateService;
 public class TaxonomyService {
 
     private static final Logger log = LoggerFactory.getLogger(TaxonomyService.class);
-
-    private static final String CATALOGUE_PATH = "data/C3_Taxonomy_Catalogue_25AUG2025.xlsx";
 
     private static final int BATCH_SIZE = 50;
 
@@ -68,6 +68,13 @@ public class TaxonomyService {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private ResourceLoader resourceLoader;
+
+    /** Exact catalogue resource used both for loading and report provenance. */
+    @Value("${taxonomy.catalogue.resource:classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx}")
+    private String catalogueResource;
 
     /** Whether to load taxonomy asynchronously after the server starts. */
     @Value("${taxonomy.init.async:false}")
@@ -221,7 +228,7 @@ public class TaxonomyService {
             entityManager.clear();
         }
 
-        ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);
+        Resource resource = resourceLoader.getResource(catalogueResource);
 
         // Global node map: code → entity (across all sheets)
         Map<String, TaxonomyNode> nodeMap = new LinkedHashMap<>();
@@ -279,6 +286,15 @@ public class TaxonomyService {
                             node.setParentCode(resolvedCode);
                         }
                     }
+                }
+
+                // A self-parent reference is invalid hierarchy data. Treat it like an
+                // unresolved parent so the explicit root fallback can recover the node
+                // without creating a cycle or a null parent_id.
+                if (parent == node) {
+                    log.warn("Node '{}' references itself as parent; attaching it to taxonomy root '{}'.",
+                            node.getCode(), node.getTaxonomyRoot());
+                    parent = null;
                 }
 
                 // Last resort: attach to the virtual sheet root
@@ -365,25 +381,52 @@ public class TaxonomyService {
                 nonRoots.add(node);
             }
         }
-        nonRoots.sort(Comparator.comparingInt(TaxonomyNode::getLevel));
+        nonRoots.sort(Comparator.comparingInt(TaxonomyNode::getLevel)
+                .thenComparing(TaxonomyNode::getCode));
+
+        // The catalogue level is descriptive data and is not guaranteed to form a
+        // strict persistence order. Persist only nodes whose actual parent has already
+        // received an ID. This prevents a same-level child that precedes its parent in
+        // the workbook from being inserted with a null parent_id.
+        Map<String, TaxonomyNode> pending = new LinkedHashMap<>();
+        for (TaxonomyNode node : nonRoots) {
+            pending.put(node.getCode(), node);
+        }
 
         int count = 0;
-        for (TaxonomyNode node : nonRoots) {
-            // Replace the in-memory parent reference with a lightweight managed proxy so
-            // that the FK column is set correctly even after earlier PC.clear() calls.
-            // getReference() returns an uninitialized proxy whose ID is set immediately;
-            // no SELECT is issued because only the FK value (the ID) is needed for the INSERT.
-            String parentCode = node.getParentCode();
-            if (parentCode != null && codeToId.containsKey(parentCode)) {
-                node.setParent(entityManager.getReference(TaxonomyNode.class,
-                        codeToId.get(parentCode)));
+        while (!pending.isEmpty()) {
+            boolean madeProgress = false;
+            Iterator<Map.Entry<String, TaxonomyNode>> iterator =
+                    pending.entrySet().iterator();
+            while (iterator.hasNext()) {
+                TaxonomyNode node = iterator.next().getValue();
+                String parentCode = node.getParentCode();
+                Long parentId = parentCode != null ? codeToId.get(parentCode) : null;
+                if (parentId == null) {
+                    continue;
+                }
+
+                node.setParent(entityManager.getReference(TaxonomyNode.class, parentId));
+                entityManager.persist(node);
+                codeToId.put(node.getCode(), node.getId());
+                iterator.remove();
+                madeProgress = true;
+                count++;
+                if (count % BATCH_SIZE == 0) {
+                    entityManager.flush();
+                    entityManager.clear();
+                }
             }
-            entityManager.persist(node);
-            codeToId.put(node.getCode(), node.getId());
-            count++;
-            if (count % BATCH_SIZE == 0) {
-                entityManager.flush();
-                entityManager.clear();
+
+            if (!madeProgress) {
+                List<String> unresolvedParents = pending.values().stream()
+                        .map(node -> node.getCode() + "->" + node.getParentCode())
+                        .sorted()
+                        .limit(20)
+                        .toList();
+                throw new IllegalStateException(
+                        "Cannot persist taxonomy hierarchy; unresolved parent references: "
+                                + unresolvedParents);
             }
         }
         entityManager.flush();

@@ -164,7 +164,8 @@ public class AuthorizationRulesConfigurer {
                         "/api/diagram/**",
                         "/api/scores/**",
                         "/api/export/**",
-                        "/api/report/**")
+                        "/api/report/**",
+                        "/api/decision-report/**")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.POST, "/api/account/change-password").authenticated();
