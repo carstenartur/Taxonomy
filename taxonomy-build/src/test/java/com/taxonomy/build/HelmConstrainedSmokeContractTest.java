@@ -38,6 +38,7 @@ class HelmConstrainedSmokeContractTest {
         assertThat(constrained)
                 .contains("egressMode: restricted")
                 .contains("SPRING_PROFILES_ACTIVE: hsqldb,kubernetes")
+                .contains("existingSecret: taxonomy-smoke-credentials")
                 .contains("pullPolicy: Never");
         assertThat(resources)
                 .contains("if eq $egressMode \"open\"")
@@ -50,7 +51,8 @@ class HelmConstrainedSmokeContractTest {
     }
 
     @Test
-    void liveSmokeIsQuotaBoundDigestAwareAndPythonFree() throws Exception {
+    void liveSmokeIsQuotaBoundDigestAwareAndKeepsCredentialsEphemeral()
+            throws Exception {
         Path root = findRepositoryRoot();
         String prerequisites = read(root.resolve(
                 "deploy/helm/taxonomy/constrained-smoke-prerequisites.yaml"));
@@ -63,15 +65,23 @@ class HelmConstrainedSmokeContractTest {
                 .contains("kind: ResourceQuota")
                 .contains("kind: LimitRange")
                 .contains("requests.cpu")
-                .contains("limits.memory");
+                .contains("limits.memory")
+                .doesNotContain("kind: Secret")
+                .doesNotContain("ADMIN_PASSWORD");
         assertThat(script)
                 .contains("docker build")
                 .contains("kind load docker-image")
+                .contains("kubectl create secret generic")
+                .contains("od -An -N24 -tx1 /dev/urandom")
+                .contains("unset SMOKE_ADMIN_PASSWORD")
                 .contains("helm upgrade --install")
                 .contains("/actuator/health/readiness")
                 .contains("localImageId")
                 .contains("sourceSha")
+                .contains("fixtureSecret: true")
                 .contains("restrictedEgress: true")
+                .doesNotContain("resourcequota,limitrange,secret,pod")
+                .doesNotContain("taxonomy-smoke-admin")
                 .doesNotContain("python")
                 .doesNotContain("pip");
         assertThat(workflow)
