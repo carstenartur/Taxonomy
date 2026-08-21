@@ -354,6 +354,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git add -N \
+            taxonomy-app/src/test/java/com/taxonomy/architecture/decision/DecisionChapterDiagramRendererAccessibilityTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/versioning/controller/DecisionRationaleReportControllerValidationTest.java
           git diff --check
           git diff --name-only | sort > /tmp/actual-files
           cat > /tmp/expected-files <<'EOF'
