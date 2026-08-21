@@ -14,8 +14,10 @@ class PortfolioTenantIdentityTest {
 
     @Test
     void repositoryWorkspaceAndBranchAreIndependentIsolationDimensions() {
+        WorkspaceContext repositoryAWorkspaceMainContext =
+                context("repo-a", "workspace-1", "main");
         String repositoryAWorkspaceMain = PortfolioScope.key(
-                "architect", context("repo-a", "workspace-1", "main"));
+                "architect", repositoryAWorkspaceMainContext);
         String repositoryBWorkspaceMain = PortfolioScope.key(
                 "architect", context("repo-b", "workspace-1", "main"));
         String repositoryAWorkspaceDraft = PortfolioScope.key(
@@ -28,9 +30,12 @@ class PortfolioTenantIdentityTest {
                 repositoryBWorkspaceMain,
                 repositoryAWorkspaceDraft,
                 repositoryASecondWorkspace)).hasSize(4);
+        PortfolioTenantIdentity expected = new PortfolioTenantIdentity(
+                "repo-a", "WORKSPACE:workspace-1", "main");
         assertThat(PortfolioTenantIdentity.parse(repositoryAWorkspaceMain))
-                .isEqualTo(new PortfolioTenantIdentity(
-                        "repo-a", "WORKSPACE:workspace-1", "main"));
+                .isEqualTo(expected);
+        assertThat(PortfolioScope.identity("architect", repositoryAWorkspaceMainContext))
+                .isEqualTo(expected);
     }
 
     @Test

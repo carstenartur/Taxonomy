@@ -1,5 +1,7 @@
 package com.taxonomy.shared.config;
 
+import com.taxonomy.analysis.session.AnalysisDraftConflictException;
+import com.taxonomy.analysis.session.AnalysisDraftValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSource;
@@ -8,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
@@ -45,6 +48,39 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException ex, WebRequest request) {
         log.warn("Bad request: {}", ex.getMessage());
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    /** Return malformed or oversized working drafts as a stable client error. */
+    @ExceptionHandler(AnalysisDraftValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleAnalysisDraftValidation(
+            AnalysisDraftValidationException ex, WebRequest request) {
+        log.warn("Invalid analysis draft on {}: {}", request.getDescription(false), ex.getMessage());
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    /**
+     * Preserve the optimistic-concurrency contract expected by browser tabs.
+     * The generic catch-all must never turn a stale draft revision into HTTP 500.
+     */
+    @ExceptionHandler(AnalysisDraftConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleAnalysisDraftConflict(
+            AnalysisDraftConflictException ex, WebRequest request) {
+        log.warn("Analysis draft conflict on {}: {}", request.getDescription(false), ex.getMessage());
+        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    /**
+     * Handles authorization failures raised after the security filter chain,
+     * for example while validating an explicit browser-tab workspace pin.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(
+            AccessDeniedException ex, WebRequest request) {
+        log.warn("Access denied on {}: {}", request.getDescription(false), ex.getMessage());
+        Locale locale = LocaleContextHolder.getLocale();
+        String message = messageSource.getMessage(
+                "error.forbidden", null, "Access denied.", locale);
+        return buildErrorResponse(HttpStatus.FORBIDDEN, message, request);
     }
 
     /**

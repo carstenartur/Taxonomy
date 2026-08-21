@@ -26,6 +26,13 @@ function createHarness({ renderedCodes = [], currentView = 'list' } = {}) {
     setTimeout: callback => scheduled.push(callback)
   };
   const document = {
+    // This harness verifies score-render reconciliation only. Pretend the
+    // independently tested analysis-session loader is already present so the
+    // state module does not need a full DOM implementation here.
+    querySelector: selector => {
+      assert.equal(selector, 'script[data-taxonomy-analysis-session]');
+      return {};
+    },
     querySelectorAll: selector => {
       assert.equal(selector, '#taxonomyTree .tax-node[data-code]');
       return nodes;
