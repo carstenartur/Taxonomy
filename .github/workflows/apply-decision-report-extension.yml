@@ -245,6 +245,19 @@ jobs:
           controller.write_text(text, encoding='utf-8')
           PY
 
+      - name: Place ad-hoc report adapter in the versioning layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          old='taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportController.java'
+          new_dir='taxonomy-app/src/main/java/com/taxonomy/versioning/controller'
+          mkdir -p "$new_dir"
+          mv "$old" "$new_dir/"
+          target="$new_dir/DecisionRationaleReportController.java"
+          perl -0pi -e 's/package com\.taxonomy\.architecture\.decision;\n\n/package com.taxonomy.versioning.controller;\n\nimport com.taxonomy.architecture.decision.DecisionRationaleReport;\nimport com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;\nimport com.taxonomy.architecture.decision.DecisionRationaleReportService;\n/' "$target"
+          grep -Fq 'package com.taxonomy.versioning.controller;' "$target"
+          grep -Fq 'import com.taxonomy.architecture.decision.DecisionRationaleReportService;' "$target"
+
       - name: Register decision-report help documentation
         shell: bash
         run: |
@@ -287,7 +300,7 @@ jobs:
           taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleHtmlRenderer.java
           taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleJsonRenderer.java
           taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReport.java
-          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportController.java
+          taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DecisionRationaleReportController.java
           taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportPlugin.java
           taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportService.java
           taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionReportBuildMetadataService.java
