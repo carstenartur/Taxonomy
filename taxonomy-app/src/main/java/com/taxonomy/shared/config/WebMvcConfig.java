@@ -1,6 +1,7 @@
 package com.taxonomy.shared.config;
 
 import com.taxonomy.versioning.controller.DslWorkspacePreResolutionInterceptor;
+import com.taxonomy.workspace.service.ExplicitWorkspacePinValidationInterceptor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.LocaleResolver;
@@ -26,9 +27,13 @@ import java.util.Locale;
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
+    private final ExplicitWorkspacePinValidationInterceptor pinValidationInterceptor;
     private final DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor;
 
-    public WebMvcConfig(DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor) {
+    public WebMvcConfig(
+            ExplicitWorkspacePinValidationInterceptor pinValidationInterceptor,
+            DslWorkspacePreResolutionInterceptor dslWorkspaceInterceptor) {
+        this.pinValidationInterceptor = pinValidationInterceptor;
         this.dslWorkspaceInterceptor = dslWorkspaceInterceptor;
     }
 
@@ -49,6 +54,16 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(localeChangeInterceptor());
+
+        // Any explicit tab pin is an authorization-sensitive request identity.
+        // Validate it for every API before endpoint-specific exception handling
+        // can convert a denied pin into a shared or otherwise ambiguous context.
+        // Workspace switching is the recovery path from an obsolete tab pin and
+        // validates the requested target independently in WorkspaceManager.
+        registry.addInterceptor(pinValidationInterceptor)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns("/api/workspace/*/switch");
+
         registry.addInterceptor(dslWorkspaceInterceptor)
                 .addPathPatterns(
                         "/api/dsl/current",

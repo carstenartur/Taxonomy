@@ -20,6 +20,10 @@ function loadRuntime(overrides = {}) {
     ...overrides.window
   };
   const document = {
+    querySelector: selector => {
+      assert.equal(selector, 'script[data-taxonomy-analysis-session]');
+      return {};
+    },
     querySelectorAll: () => [],
     addEventListener(type, listener) {
       if (type === 'DOMContentLoaded') domReady.push(listener);
