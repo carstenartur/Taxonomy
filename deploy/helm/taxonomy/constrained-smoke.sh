@@ -13,6 +13,7 @@ IMAGE_REFERENCE="${IMAGE_REPOSITORY}:${IMAGE_TAG}"
 EVIDENCE_DIR=${EVIDENCE_DIR:-"${ROOT_DIR}/target/kubernetes-smoke"}
 KEEP_RESOURCES=${KEEP_RESOURCES:-false}
 SMOKE_SECRET=taxonomy-smoke-credentials
+RESOURCE_SELECTOR="app.kubernetes.io/instance=${RELEASE},app.kubernetes.io/name=taxonomy"
 PORT_FORWARD_PID=""
 
 fail() {
@@ -128,12 +129,31 @@ helm upgrade --install "${RELEASE}" "${CHART_DIR}" \
   --wait \
   --timeout 12m
 
-kubectl rollout status "deployment/${RELEASE}" \
+# Resource names are derived by Helm's fullname helper and need not equal the
+# release name. Resolve exactly one workload and Service through stable labels
+# rather than duplicating the chart's naming rules in this external smoke test.
+mapfile -t DEPLOYMENTS < <(kubectl get deployment \
+  --namespace "${NAMESPACE}" \
+  --selector "${RESOURCE_SELECTOR}" \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+[[ ${#DEPLOYMENTS[@]} -eq 1 ]] \
+  || fail "Expected exactly one Taxonomy Deployment, found ${#DEPLOYMENTS[@]}"
+DEPLOYMENT=${DEPLOYMENTS[0]}
+
+mapfile -t SERVICES < <(kubectl get service \
+  --namespace "${NAMESPACE}" \
+  --selector "${RESOURCE_SELECTOR}" \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+[[ ${#SERVICES[@]} -eq 1 ]] \
+  || fail "Expected exactly one Taxonomy Service, found ${#SERVICES[@]}"
+SERVICE=${SERVICES[0]}
+
+kubectl rollout status "deployment/${DEPLOYMENT}" \
   --namespace "${NAMESPACE}" --timeout=2m
 READY_EPOCH=$(date +%s)
 READINESS_SECONDS=$((READY_EPOCH - START_EPOCH))
 POD=$(kubectl get pod --namespace "${NAMESPACE}" \
-  -l app.kubernetes.io/instance="${RELEASE}" \
+  --selector "${RESOURCE_SELECTOR}" \
   -o jsonpath='{.items[0].metadata.name}')
 [[ -n "${POD}" ]] || fail "Taxonomy pod was not created"
 
@@ -148,7 +168,7 @@ kubectl logs "${POD}" --namespace "${NAMESPACE}" \
   >"${EVIDENCE_DIR}/application.log"
 
 kubectl port-forward --namespace "${NAMESPACE}" \
-  "service/${RELEASE}" 18080:80 \
+  "service/${SERVICE}" 18080:80 \
   >"${EVIDENCE_DIR}/port-forward.log" 2>&1 &
 PORT_FORWARD_PID=$!
 for _ in $(seq 1 60); do
@@ -183,6 +203,8 @@ jq -n \
   --arg imageId "${IMAGE_ID}" \
   --arg podImageId "${POD_IMAGE_ID}" \
   --arg namespace "${NAMESPACE}" \
+  --arg deployment "${DEPLOYMENT}" \
+  --arg service "${SERVICE}" \
   --arg pod "${POD}" \
   --arg node "${NODE}" \
   --arg startedAt "${STARTED_AT}" \
@@ -205,6 +227,8 @@ jq -n \
       node: $node
     },
     workload: {
+      deployment: $deployment,
+      service: $service,
       pod: $pod,
       readinessSeconds: $readinessSeconds,
       restartCount: $restartCount,
