@@ -941,7 +941,7 @@
                 language: window.TaxonomyI18n
                     ? window.TaxonomyI18n.getLocale() : document.documentElement.lang
             };
-            fetch('/api/decision-report/' + decisionFormat, {
+            window.TaxonomyApiClient.request('/api/decision-report/' + decisionFormat, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(request)
