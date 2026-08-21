@@ -64,6 +64,32 @@ jobs:
           rm -rf .github/tmp/decision-report-package
           rm -f .github/workflows/apply-decision-report-extension.yml
 
+      - name: Correct verified reactor compatibility issues
+        shell: bash
+        run: |
+          set -euo pipefail
+          taxonomy_service='taxonomy-app/src/main/java/com/taxonomy/catalog/service/TaxonomyService.java'
+          if ! grep -q '^import org.springframework.core.io.ClassPathResource;$' "$taxonomy_service"; then
+            sed -i '/^import org.springframework.core.io.Resource;$/i import org.springframework.core.io.ClassPathResource;' "$taxonomy_service"
+          fi
+
+          renderer='taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleDocxRenderer.java'
+          python3 - "$renderer" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text(encoding="utf-8")
+          old = "        CTTblPr properties = tableXml.isSetTblPr() ? tableXml.getTblPr() : tableXml.addNewTblPr();"
+          new = """        CTTblPr properties = tableXml.getTblPr();
+                  if (properties == null) {
+                      properties = tableXml.addNewTblPr();
+                  }"""
+          if old not in source:
+              raise SystemExit("Expected CTTbl property expression was not found")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Verify exact change scope
         shell: bash
         run: |
