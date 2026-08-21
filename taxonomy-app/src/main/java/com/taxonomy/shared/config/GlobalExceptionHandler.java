@@ -110,7 +110,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (status.is5xxServerError()) {
             log.error("Spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage(), ex);
         } else {
-            log.warn("spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage());
+            log.warn("Spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage());
         }
         Map<String, Object> errorBody = new LinkedHashMap<>();
         errorBody.put("timestamp", Instant.now().toString());
