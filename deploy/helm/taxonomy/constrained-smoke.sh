@@ -119,6 +119,8 @@ grep -Fq 'protocol: UDP' "${RENDERED_MANIFEST}"
 grep -Fq 'protocol: TCP' "${RENDERED_MANIFEST}"
 grep -Fq 'secretKeyRef:' "${RENDERED_MANIFEST}"
 grep -Fq 'name: "taxonomy-smoke-credentials"' "${RENDERED_MANIFEST}"
+grep -Fq 'name: TAXONOMY_ADMIN_PASSWORD' "${RENDERED_MANIFEST}"
+grep -Fq 'key: "ADMIN_PASSWORD"' "${RENDERED_MANIFEST}"
 
 helm upgrade --install "${RELEASE}" "${CHART_DIR}" \
   --namespace "${NAMESPACE}" \
@@ -166,6 +168,12 @@ kubectl describe pod "${POD}" --namespace "${NAMESPACE}" \
   >"${EVIDENCE_DIR}/pod-describe.txt"
 kubectl logs "${POD}" --namespace "${NAMESPACE}" \
   >"${EVIDENCE_DIR}/application.log"
+if grep -Fq 'Generated a one-time local administrator bootstrap password' \
+    "${EVIDENCE_DIR}/application.log"; then
+  fail "Helm Secret was not bound to taxonomy.admin-password"
+fi
+grep -Fq 'Created configured administrator account' \
+  "${EVIDENCE_DIR}/application.log"
 
 kubectl port-forward --namespace "${NAMESPACE}" \
   "service/${SERVICE}" 18080:80 \
@@ -179,8 +187,10 @@ for _ in $(seq 1 60); do
   fi
   sleep 2
 done
-curl --fail --silent --show-error http://127.0.0.1:18080/ \
+curl --fail --location --silent --show-error http://127.0.0.1:18080/ \
   >"${EVIDENCE_DIR}/home.html"
+[[ -s "${EVIDENCE_DIR}/home.html" ]] \
+  || fail "Taxonomy root redirect did not produce a login page"
 grep -Fq 'Taxonomy' "${EVIDENCE_DIR}/home.html"
 jq -e '.status == "UP"' "${EVIDENCE_DIR}/readiness.json" >/dev/null
 
@@ -235,6 +245,7 @@ jq -n \
       resourceQuota: true,
       limitRange: true,
       fixtureSecret: true,
+      configuredAdminPassword: true,
       restrictedEgress: true,
       minimalHttpWorkflow: true
     },
