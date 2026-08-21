@@ -115,15 +115,7 @@ jobs:
           test ! -e .github/tmp/decision-report-package
           test ! -e .github/workflows/apply-decision-report-extension.yml
 
-      - name: Run focused decision-report tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./mvnw -B -pl taxonomy-app -am \
-            -Dtest=DecisionRationaleReportTests \
-            -Dsurefire.failIfNoSpecifiedTests=false test
-
-      - name: Commit generated integration
+      - name: Create local final-state commit
         shell: bash
         run: |
           set -euo pipefail
@@ -158,4 +150,18 @@ jobs:
           } | sort -u > /tmp/expected-staged-files
           diff -u /tmp/expected-staged-files /tmp/staged-files
           git commit -m 'Add hierarchical decision rationale report extension'
+          test -z "$(git status --porcelain)"
+
+      - name: Run focused decision-report tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -pl taxonomy-app -am \
+            -Dtest=DecisionRationaleReportTests \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+      - name: Push validated integration
+        shell: bash
+        run: |
+          set -euo pipefail
           git push origin "HEAD:${TARGET_BRANCH}"
