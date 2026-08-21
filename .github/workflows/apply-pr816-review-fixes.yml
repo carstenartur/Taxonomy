@@ -1,0 +1,357 @@
+name: Apply PR 816 review fixes
+
+on:
+  push:
+    branches:
+      - agent/decision-rationale-report-extension
+
+permissions:
+  contents: write
+
+concurrency:
+  group: taxonomy-pr816-review-fixes
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: agent/decision-rationale-report-extension
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Apply reviewed source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+
+          function replaceExact(path, oldText, newText) {
+            const source = fs.readFileSync(path, 'utf8');
+            const occurrences = source.split(oldText).length - 1;
+            if (occurrences !== 1) {
+              throw new Error(`${path}: expected one replacement anchor, found ${occurrences}`);
+            }
+            fs.writeFileSync(path, source.replace(oldText, newText));
+          }
+
+          const renderer = 'taxonomy-app/src/main/java/com/taxonomy/architecture/decision/'
+            + 'DecisionChapterDiagramRenderer.java';
+          const oldSvgHeader = String.raw`        StringBuilder svg = new StringBuilder(8_192);
+          svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ")
+                  .append(WIDTH).append(' ').append(HEIGHT)
+                  .append("\" role=\"img\" aria-labelledby=\"title desc\">");
+          svg.append("<title id=\"title\">").append(xml(labels.parentNode() + " "
+                  + chapter.parentCode())).append("</title>");
+          svg.append("<desc id=\"desc\">").append(xml(altText(
+                  chapter, children, labels, panelNumber, panelCount))).append("</desc>");`;
+          const newSvgHeader = String.raw`        String idPrefix = "decision-chapter-" + chapter.number()
+                  + "-panel-" + panelNumber;
+          String titleId = idPrefix + "-title";
+          String descriptionId = idPrefix + "-desc";
+          StringBuilder svg = new StringBuilder(8_192);
+          svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ")
+                  .append(WIDTH).append(' ').append(HEIGHT)
+                  .append("\" role=\"img\" aria-labelledby=\"")
+                  .append(titleId).append(' ').append(descriptionId).append("\">");
+          svg.append("<title id=\"").append(titleId).append("\">")
+                  .append(xml(labels.parentNode() + " " + chapter.parentCode()))
+                  .append("</title>");
+          svg.append("<desc id=\"").append(descriptionId).append("\">")
+                  .append(xml(altText(
+                          chapter, children, labels, panelNumber, panelCount)))
+                  .append("</desc>");`;
+          replaceExact(renderer, oldSvgHeader, newSvgHeader);
+
+          const controller = 'taxonomy-app/src/main/java/com/taxonomy/versioning/controller/'
+            + 'DecisionRationaleReportController.java';
+          replaceExact(
+            controller,
+            '        return validScores && validReasons(request.reasons());',
+            String.raw`        return validScores
+                  && validReasons(request.reasons())
+                  && validDiscrepancies(request.discrepancies());`
+          );
+          replaceExact(
+            controller,
+            '    private boolean validReasons(Map<String, String> reasons) {',
+            String.raw`    private boolean validDiscrepancies(
+                  List<TaxonomyDiscrepancy> discrepancies) {
+              if (discrepancies == null) {
+                  return true;
+              }
+              for (TaxonomyDiscrepancy discrepancy : discrepancies) {
+                  if (discrepancy == null
+                          || !boundedText(discrepancy.parentCode(),
+                                  MAX_NODE_CODE_LENGTH, false)
+                          || discrepancy.expectedParentScore() < 0
+                          || discrepancy.expectedParentScore() > 100
+                          || discrepancy.actualChildSum() < 0) {
+                      return false;
+                  }
+              }
+              return true;
+          }
+
+          private boolean validReasons(Map<String, String> reasons) {`
+          );
+          NODE
+
+      - name: Add focused regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p \
+            taxonomy-app/src/test/java/com/taxonomy/architecture/decision \
+            taxonomy-app/src/test/java/com/taxonomy/versioning/controller
+
+          cat > taxonomy-app/src/test/java/com/taxonomy/architecture/decision/DecisionChapterDiagramRendererAccessibilityTest.java <<'EOF'
+          package com.taxonomy.architecture.decision;
+
+          import com.taxonomy.architecture.decision.DecisionChapterDiagramRenderer.DiagramPanel;
+          import com.taxonomy.architecture.decision.DecisionRationaleReport.ChildDecision;
+          import com.taxonomy.architecture.decision.DecisionRationaleReport.DecisionChapter;
+          import com.taxonomy.architecture.decision.DecisionRationaleReport.Disposition;
+          import com.taxonomy.architecture.decision.DecisionRationaleReport.ReasonSource;
+          import org.junit.jupiter.api.Test;
+
+          import java.util.HashSet;
+          import java.util.List;
+          import java.util.Set;
+          import java.util.regex.Matcher;
+          import java.util.regex.Pattern;
+          import java.util.stream.IntStream;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+
+          class DecisionChapterDiagramRendererAccessibilityTest {
+
+              private static final Pattern ID_PATTERN = Pattern.compile("\\bid=\"([^\"]+)\"");
+
+              @Test
+              void svgAccessibilityIdsRemainUniqueAcrossChaptersAndPanels() {
+                  DecisionChapterDiagramRenderer renderer =
+                          new DecisionChapterDiagramRenderer();
+                  Set<String> documentIds = new HashSet<>();
+
+                  int panelCount = assertUniqueIds(
+                          renderer.render(chapter(1, "P", 13), "en"),
+                          1,
+                          documentIds);
+                  panelCount += assertUniqueIds(
+                          renderer.render(chapter(2, "Q", 2), "en"),
+                          2,
+                          documentIds);
+
+                  assertThat(documentIds).hasSize(panelCount * 2);
+              }
+
+              private int assertUniqueIds(
+                      List<DiagramPanel> panels,
+                      int chapterNumber,
+                      Set<String> documentIds) {
+                  for (DiagramPanel panel : panels) {
+                      String prefix = "decision-chapter-" + chapterNumber
+                              + "-panel-" + panel.panelNumber();
+                      assertThat(panel.svg())
+                              .contains("aria-labelledby=\"" + prefix
+                                      + "-title " + prefix + "-desc\"")
+                              .contains("<title id=\"" + prefix + "-title\">")
+                              .contains("<desc id=\"" + prefix + "-desc\">")
+                              .doesNotContain("id=\"title\"", "id=\"desc\"");
+
+                      Matcher matcher = ID_PATTERN.matcher(panel.svg());
+                      while (matcher.find()) {
+                          assertThat(documentIds.add(matcher.group(1)))
+                                  .as("duplicate SVG ID %s", matcher.group(1))
+                                  .isTrue();
+                      }
+                  }
+                  return panels.size();
+              }
+
+              private DecisionChapter chapter(
+                      int number,
+                      String parentCode,
+                      int childCount) {
+                  List<ChildDecision> children = IntStream.range(0, childCount)
+                          .mapToObj(index -> new ChildDecision(
+                                  parentCode + "-" + index,
+                                  "Child " + index,
+                                  "",
+                                  100 - index,
+                                  100.0 - index,
+                                  index + 1,
+                                  index == 0,
+                                  Disposition.LEAF_CANDIDATE,
+                                  "reason",
+                                  ReasonSource.AI_SCORING,
+                                  true))
+                          .toList();
+                  return new DecisionChapter(
+                          number,
+                          parentCode,
+                          "Parent " + parentCode,
+                          "",
+                          100,
+                          0,
+                          true,
+                          "decision",
+                          "comparison",
+                          children,
+                          List.of());
+              }
+          }
+          EOF
+
+          cat > taxonomy-app/src/test/java/com/taxonomy/versioning/controller/DecisionRationaleReportControllerValidationTest.java <<'EOF'
+          package com.taxonomy.versioning.controller;
+
+          import com.taxonomy.architecture.decision.DecisionRationaleReportService;
+          import com.taxonomy.architecture.report.ReportRendererRegistry;
+          import com.taxonomy.dto.TaxonomyDiscrepancy;
+          import com.taxonomy.versioning.controller.DecisionRationaleReportController.DecisionReportRequest;
+          import com.taxonomy.versioning.service.RepositoryStateService;
+          import com.taxonomy.workspace.service.WorkspaceResolver;
+          import org.junit.jupiter.api.Test;
+          import org.springframework.http.HttpStatus;
+
+          import java.util.ArrayList;
+          import java.util.Collections;
+          import java.util.List;
+          import java.util.Map;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+          import static org.assertj.core.api.Assertions.assertThatThrownBy;
+          import static org.mockito.Mockito.mock;
+          import static org.mockito.Mockito.verify;
+          import static org.mockito.Mockito.verifyNoInteractions;
+          import static org.mockito.Mockito.when;
+
+          class DecisionRationaleReportControllerValidationTest {
+
+              @Test
+              void rejectsMalformedDiscrepanciesBeforeResolvingTrustedContext() {
+                  DecisionRationaleReportService reportService =
+                          mock(DecisionRationaleReportService.class);
+                  ReportRendererRegistry rendererRegistry =
+                          mock(ReportRendererRegistry.class);
+                  RepositoryStateService repositoryStateService =
+                          mock(RepositoryStateService.class);
+                  WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
+                  DecisionRationaleReportController controller =
+                          new DecisionRationaleReportController(
+                                  reportService,
+                                  rendererRegistry,
+                                  repositoryStateService,
+                                  workspaceResolver);
+
+                  List<List<TaxonomyDiscrepancy>> invalidCases = new ArrayList<>();
+                  invalidCases.add(Collections.singletonList(null));
+                  invalidCases.add(List.of(new TaxonomyDiscrepancy(" ", 100, 100)));
+                  invalidCases.add(List.of(new TaxonomyDiscrepancy(
+                          "X".repeat(257), 100, 100)));
+                  invalidCases.add(List.of(new TaxonomyDiscrepancy("CP", -1, 100)));
+                  invalidCases.add(List.of(new TaxonomyDiscrepancy("CP", 101, 100)));
+                  invalidCases.add(List.of(new TaxonomyDiscrepancy("CP", 100, -1)));
+                  invalidCases.add(Collections.nCopies(
+                          10_001, new TaxonomyDiscrepancy("CP", 100, 101)));
+
+                  for (List<TaxonomyDiscrepancy> discrepancies : invalidCases) {
+                      assertThat(controller.exportJson(request(discrepancies)).getStatusCode())
+                              .isEqualTo(HttpStatus.BAD_REQUEST);
+                  }
+                  verifyNoInteractions(
+                          reportService,
+                          rendererRegistry,
+                          repositoryStateService,
+                          workspaceResolver);
+              }
+
+              @Test
+              void acceptsBoundedDiscrepancyIncludingLegitimateOversubscription() {
+                  DecisionRationaleReportService reportService =
+                          mock(DecisionRationaleReportService.class);
+                  ReportRendererRegistry rendererRegistry =
+                          mock(ReportRendererRegistry.class);
+                  RepositoryStateService repositoryStateService =
+                          mock(RepositoryStateService.class);
+                  WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
+                  DecisionRationaleReportController controller =
+                          new DecisionRationaleReportController(
+                                  reportService,
+                                  rendererRegistry,
+                                  repositoryStateService,
+                                  workspaceResolver);
+                  when(workspaceResolver.resolveCurrentContext())
+                          .thenThrow(new IllegalStateException("validation passed"));
+
+                  assertThatThrownBy(() -> controller.exportJson(request(List.of(
+                          new TaxonomyDiscrepancy("CP", 100, 250)))))
+                          .isInstanceOf(IllegalStateException.class)
+                          .hasMessage("validation passed");
+
+                  verify(workspaceResolver).resolveCurrentContext();
+                  verifyNoInteractions(
+                          reportService,
+                          rendererRegistry,
+                          repositoryStateService);
+              }
+
+              private DecisionReportRequest request(
+                      List<TaxonomyDiscrepancy> discrepancies) {
+                  return new DecisionReportRequest(
+                          Map.of("CP", 100),
+                          Map.of("CP", "reason"),
+                          "bounded requirement",
+                          "MOCK",
+                          "SUCCESS",
+                          discrepancies,
+                          "en");
+              }
+          }
+          EOF
+
+      - name: Verify exact source scope and focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --name-only | sort > /tmp/actual-files
+          cat > /tmp/expected-files <<'EOF'
+          taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionChapterDiagramRenderer.java
+          taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DecisionRationaleReportController.java
+          taxonomy-app/src/test/java/com/taxonomy/architecture/decision/DecisionChapterDiagramRendererAccessibilityTest.java
+          taxonomy-app/src/test/java/com/taxonomy/versioning/controller/DecisionRationaleReportControllerValidationTest.java
+          EOF
+          sort -o /tmp/expected-files /tmp/expected-files
+          diff -u /tmp/expected-files /tmp/actual-files
+
+          ./mvnw -B -pl taxonomy-app -am \
+            -Dtest=DecisionChapterDiagramRendererAccessibilityTest,DecisionRationaleReportControllerValidationTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+      - name: Commit and push reviewed fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionChapterDiagramRenderer.java \
+            taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DecisionRationaleReportController.java \
+            taxonomy-app/src/test/java/com/taxonomy/architecture/decision/DecisionChapterDiagramRendererAccessibilityTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/versioning/controller/DecisionRationaleReportControllerValidationTest.java
+          git commit -m 'Address final decision report review findings'
+          git push origin HEAD:agent/decision-rationale-report-extension
