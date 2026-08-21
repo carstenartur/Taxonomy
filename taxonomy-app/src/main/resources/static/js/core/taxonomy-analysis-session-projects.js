@@ -25,6 +25,7 @@
     var deleteDraft = C.deleteDraft;
     var saveDraft = C.saveDraft;
     var loadDraft = C.loadDraft;
+    var setDraftDecisionPending = C.setDraftDecisionPending;
 
     function generateProjectKey() {
         var now = new Date();
@@ -327,7 +328,18 @@
         });
     }
 
+    function beginDraftResolution() {
+        runtime.restoring = true;
+        setDraftDecisionPending(true);
+    }
+
+    function finishDraftResolution() {
+        runtime.restoring = false;
+        setDraftDecisionPending(false);
+    }
+
     function resolveWorkspaceAndLoad() {
+        beginDraftResolution();
         var remembered = rememberedWorkspaceId();
         installWorkspaceFetchRouting();
         installWorkspaceEventSourceRouting();
@@ -351,14 +363,19 @@
     }
 
     function resolveActiveWorkspaceAndLoad() {
+        beginDraftResolution();
         return jsonRequest('/api/workspace/current', { method: 'GET' })
             .then(function (workspace) {
-                if (!workspace || !workspace.workspaceId) return null;
+                if (!workspace || !workspace.workspaceId) {
+                    finishDraftResolution();
+                    return null;
+                }
                 runtime.workspaceId = workspace.workspaceId;
                 rememberWorkspaceId(runtime.workspaceId);
                 return loadDraft();
             })
             .catch(function (error) {
+                finishDraftResolution();
                 if (window.console) window.console.warn('[Taxonomy] Workspace draft unavailable', error);
                 return null;
             });
