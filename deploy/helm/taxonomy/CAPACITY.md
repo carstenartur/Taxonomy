@@ -23,12 +23,13 @@ The `Kubernetes Constrained Smoke` workflow performs these operations on one exa
 1. installs checksum-verified, version-pinned `kind`, `kubectl` and Helm binaries;
 2. builds the production `Dockerfile` and records its immutable local image ID;
 3. loads that image into an isolated kind cluster;
-4. applies `constrained-smoke-prerequisites.yaml`, including namespace, quota and limit range;
-5. renders and installs the chart with `values-constrained-smoke.yaml`;
-6. waits for startup, readiness and rollout completion;
-7. verifies the readiness endpoint and the application home page through the Kubernetes Service;
-8. records source commit/tree, image IDs, Kubernetes/kind/Helm versions, readiness duration, restart count and rendered/cluster resources;
-9. uploads the complete evidence directory even when the smoke test fails.
+4. applies `constrained-smoke-prerequisites.yaml`, containing the namespace, quota and limit range;
+5. creates a fresh namespace-local Kubernetes Secret with generated test credentials, uses only Secret references in the rendered workload, and excludes Secret objects and decoded values from retained evidence;
+6. renders and installs the chart with `values-constrained-smoke.yaml`;
+7. waits for startup, readiness and rollout completion;
+8. verifies the readiness endpoint and the application home page through the Kubernetes Service;
+9. records source commit/tree, image IDs, Kubernetes/kind/Helm versions, readiness duration, restart count and non-secret rendered/cluster resources;
+10. uploads the evidence directory even when the smoke test fails.
 
 The local equivalent is:
 
@@ -41,7 +42,7 @@ KIND_CLUSTER_NAME=taxonomy-smoke \
 kind delete cluster --name taxonomy-smoke
 ```
 
-The evidence is written below `target/kubernetes-smoke/`. A passing `evidence.json` contains both the exact Git source identity and the immutable local image ID used by the pod. Release publication later binds the equivalent proof to the published OCI digest.
+The evidence is written below `target/kubernetes-smoke/`. A passing `evidence.json` contains both the exact Git source identity and the immutable local image ID used by the pod. It records only that the ephemeral fixture Secret existed; the Secret resource and its values are not archived. Release publication later binds the equivalent proof to the published OCI digest.
 
 ## Explicit NetworkPolicy egress
 
@@ -130,7 +131,7 @@ kubectl -n taxonomy logs <pod>
 kubectl -n taxonomy get events --sort-by=.lastTimestamp
 ```
 
-The automated evidence archive retains the same diagnostics.
+The automated evidence archive retains the same diagnostics without copying credential Secrets.
 
 ## Remaining benchmark work
 
