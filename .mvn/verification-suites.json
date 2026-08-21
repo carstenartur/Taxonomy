@@ -41,6 +41,7 @@
     "ci-cd.yml": "authoritative Maven verification and report publication",
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
     "jgit-storage-hibernate-contract.yml": "consumer-owned storage compatibility contract with Maven verification catalogue selectors",
+    "kubernetes-constrained-smoke.yml": "external kind and Helm constrained-cluster release-floor verification",
     "codeql.yml": "external source analysis",
     "security-scan.yml": "Maven-owned immutable-input policy plus external Trivy analysis",
     "dependency-submission.yml": "Maven dependency graph publication",
