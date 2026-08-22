@@ -60,6 +60,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
     private final boolean closeRepository;
     private final ReentrantLock writeLock = new ReentrantLock();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public DocumentTemplateGitRepository(HibernateRepositoryFactory storageFactory) {
         this(Objects.requireNonNull(storageFactory, "storageFactory")
                 .open(new RepositoryName(REPOSITORY_NAME)));
