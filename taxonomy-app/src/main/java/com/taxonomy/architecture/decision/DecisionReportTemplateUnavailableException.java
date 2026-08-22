@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * administrator restores a valid template. Mapping this condition to 503 keeps it
  * distinct from malformed report input and from an unexpected renderer defect.</p>
  */
-@ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+@ResponseStatus(code = HttpStatus.SERVICE_UNAVAILABLE)
 public final class DecisionReportTemplateUnavailableException
         extends IllegalStateException {
 
