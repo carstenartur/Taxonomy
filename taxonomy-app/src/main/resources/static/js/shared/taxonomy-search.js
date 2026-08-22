@@ -138,6 +138,14 @@
             || (error && error.name === 'AbortError');
     }
 
+    function openSearchWorkspace() {
+        var secondaryTools = document.getElementById('analysisSecondaryTools');
+        var panel = document.getElementById('searchPanel');
+        if (secondaryTools) secondaryTools.open = true;
+        if (panel) panel.open = true;
+        return panel;
+    }
+
     function checkEmbeddingStatus() {
         fetch('/api/embedding/status')
             .then(function (response) { return response.json(); })
@@ -189,6 +197,7 @@
     function performSearch(query, mode, maxResults) {
         if (!query) return;
 
+        openSearchWorkspace();
         var request = beginSearchRequest();
         var area = document.getElementById('searchResultsArea');
         resetResultState();
@@ -678,9 +687,8 @@
     function findSimilar(code) {
         var request = beginSearchRequest();
         var area = document.getElementById('searchResultsArea');
-        var panel = document.getElementById('searchPanel');
+        var panel = openSearchWorkspace();
         if (panel) {
-            panel.open = true;
             panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
         if (area) {
