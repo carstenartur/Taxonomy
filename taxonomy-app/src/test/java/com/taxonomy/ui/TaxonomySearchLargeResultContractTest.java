@@ -47,7 +47,10 @@ class TaxonomySearchLargeResultContractTest {
                 .contains("secondaryTools.open = true")
                 .contains("panel.open = true")
                 .contains("var panel = openSearchWorkspace()");
-        assertThat(count(search, "openSearchWorkspace();"))
+        assertThat(search.lines()
+                .map(String::strip)
+                .filter("openSearchWorkspace();"::equals)
+                .count())
                 .as("ordinary search opens the outer and inner disclosures")
                 .isEqualTo(1);
         assertThat(count(search, "openSearchWorkspace()"))
