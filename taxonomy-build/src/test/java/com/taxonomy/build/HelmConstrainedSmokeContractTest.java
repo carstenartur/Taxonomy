@@ -87,6 +87,7 @@ class HelmConstrainedSmokeContractTest {
                 .contains("name: TAXONOMY_ADMIN_PASSWORD")
                 .contains("Created configured administrator account")
                 .contains("curl --fail --location --silent --show-error")
+                .contains("--header 'Accept: text/html'")
                 .contains("/actuator/health/readiness")
                 .contains("localImageId")
                 .contains("sourceSha")
@@ -97,8 +98,10 @@ class HelmConstrainedSmokeContractTest {
                 .doesNotContain("service/${RELEASE}")
                 .doesNotContain("resourcequota,limitrange,secret,pod")
                 .doesNotContain("taxonomy-smoke-admin")
-                .doesNotContain("python")
-                .doesNotContain("pip");
+                .doesNotContainPattern(
+                        "(?<![A-Za-z0-9_-])python(?:3)?(?![A-Za-z0-9_-])")
+                .doesNotContainPattern(
+                        "(?<![A-Za-z0-9_-])pip(?:3)?(?![A-Za-z0-9_-])");
         assertThat(workflow)
                 .contains("KIND_VERSION: v0.31.0")
                 .contains("KUBECTL_VERSION: v1.35.0")
