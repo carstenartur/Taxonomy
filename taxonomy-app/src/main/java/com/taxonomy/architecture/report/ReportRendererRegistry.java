@@ -2,6 +2,7 @@ package com.taxonomy.architecture.report;
 
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -21,10 +22,28 @@ public class ReportRendererRegistry {
 
     private final Map<String, Map<String, ReportRendererExtension>> byReportType;
 
+    /** Backward-compatible constructor for focused unit tests. */
     public ReportRendererRegistry(List<ReportRendererExtension> extensions) {
+        this(extensions, List.of());
+    }
+
+    /**
+     * Production constructor applying application-layer decorators before registration.
+     */
+    @Autowired
+    public ReportRendererRegistry(
+            List<ReportRendererExtension> extensions,
+            List<ReportRendererDecorator> decorators) {
         List<ReportRendererExtension> safeExtensions = extensions == null
                 ? List.of() : new ArrayList<>(extensions);
-        for (ReportRendererExtension extension : safeExtensions) {
+        List<ReportRendererDecorator> safeDecorators = decorators == null
+                ? List.of() : List.copyOf(decorators);
+
+        List<ReportRendererExtension> effectiveExtensions = safeExtensions.stream()
+                .map(extension -> applyDecorators(extension, safeDecorators))
+                .toList();
+
+        for (ReportRendererExtension extension : effectiveExtensions) {
             Objects.requireNonNull(extension, "report renderer extension must not be null");
             Objects.requireNonNull(extension.descriptor(),
                     "report renderer descriptor must not be null");
@@ -35,7 +54,7 @@ public class ReportRendererRegistry {
         }
 
         Map<String, Map<String, ReportRendererExtension>> reportTypes = new LinkedHashMap<>();
-        safeExtensions.stream()
+        effectiveExtensions.stream()
                 .sorted(Comparator
                         .comparing((ReportRendererExtension extension) ->
                                 normalize(extension.reportTypeId()))
@@ -46,10 +65,13 @@ public class ReportRendererRegistry {
                     String formatId = normalizeRequired(
                             extension.descriptor().id(), "report format ID");
                     Map<String, ReportRendererExtension> formats =
-                            reportTypes.computeIfAbsent(reportType, ignored -> new LinkedHashMap<>());
-                    ReportRendererExtension previous = formats.putIfAbsent(formatId, extension);
+                            reportTypes.computeIfAbsent(reportType,
+                                    ignored -> new LinkedHashMap<>());
+                    ReportRendererExtension previous =
+                            formats.putIfAbsent(formatId, extension);
                     if (previous != null) {
-                        if (ReportRendererExtension.DEFAULT_REPORT_TYPE_ID.equals(reportType)) {
+                        if (ReportRendererExtension.DEFAULT_REPORT_TYPE_ID
+                                .equals(reportType)) {
                             throw new IllegalStateException(
                                     "Duplicate report renderer format ID: " + formatId);
                         }
@@ -59,7 +81,8 @@ public class ReportRendererRegistry {
                     }
                 });
 
-        Map<String, Map<String, ReportRendererExtension>> immutable = new LinkedHashMap<>();
+        Map<String, Map<String, ReportRendererExtension>> immutable =
+                new LinkedHashMap<>();
         reportTypes.forEach((reportType, formats) ->
                 immutable.put(reportType, Map.copyOf(formats)));
         this.byReportType = Map.copyOf(immutable);
@@ -118,6 +141,23 @@ public class ReportRendererRegistry {
 
     public List<String> listReportTypeIds() {
         return byReportType.keySet().stream().sorted().toList();
+    }
+
+    private static ReportRendererExtension applyDecorators(
+            ReportRendererExtension source,
+            List<ReportRendererDecorator> decorators) {
+        ReportRendererExtension effective =
+                Objects.requireNonNull(source, "report renderer extension must not be null");
+        for (ReportRendererDecorator decorator : decorators) {
+            Objects.requireNonNull(decorator, "report renderer decorator must not be null");
+            if (!decorator.supports(effective)) {
+                continue;
+            }
+            effective = Objects.requireNonNull(
+                    decorator.decorate(effective),
+                    "report renderer decorator returned null");
+        }
+        return effective;
     }
 
     private String normalizeRequired(String value, String label) {
