@@ -49,7 +49,7 @@ fi
 
 mkdir -p "${EVIDENCE_DIR}"
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-START_EPOCH=$(date +%s)
+SMOKE_START_EPOCH=$(date +%s)
 BUILD_DATE=$(git -C "${ROOT_DIR}" show -s --format=%cI "${SOURCE_SHA}")
 VERSION=$("${ROOT_DIR}/mvnw" -q -f "${ROOT_DIR}/pom.xml" -DforceStdout help:evaluate \
   -Dexpression=project.version)
@@ -91,7 +91,7 @@ kubectl get secret "${SMOKE_SECRET}" --namespace "${NAMESPACE}" -o json \
   | jq -e '.data
       | has("SPRING_DATASOURCE_URL")
         and has("SPRING_DATASOURCE_USERNAME")
-        and has("SPRING_DATASOURCE_PASSWORD")
+        and has("SPRING_DATOURCE_PASSWORD")
         and has("ADMIN_PASSWORD")' >/dev/null
 
 helm lint "${CHART_DIR}" \
@@ -122,6 +122,7 @@ grep -Fq 'name: "taxonomy-smoke-credentials"' "${RENDERED_MANIFEST}"
 grep -Fq 'name: TAXONOMY_ADMIN_PASSWORD' "${RENDERED_MANIFEST}"
 grep -Fq 'key: "ADMIN_PASSWORD"' "${RENDERED_MANIFEST}"
 
+DEPLOYMENT_START_EPOCH=$(date +%s)
 helm upgrade --install "${RELEASE}" "${CHART_DIR}" \
   --namespace "${NAMESPACE}" \
   --values "${CHART_DIR}/values-constrained-smoke.yaml" \
@@ -153,7 +154,7 @@ SERVICE=${SERVICES[0]}
 kubectl rollout status "deployment/${DEPLOYMENT}" \
   --namespace "${NAMESPACE}" --timeout=2m
 READY_EPOCH=$(date +%s)
-READINESS_SECONDS=$((READY_EPOCH - START_EPOCH))
+READINESS_SECONDS=$((READY_EPOCH - DEPLOYMENT_START_EPOCH))
 POD=$(kubectl get pod --namespace "${NAMESPACE}" \
   --selector "${RESOURCE_SELECTOR}" \
   -o jsonpath='{.items[0].metadata.name}')
@@ -210,6 +211,8 @@ KUBERNETES_VERSION=$(kubectl version -o json \
 KIND_VERSION=$(kind version | awk '{print $2}')
 HELM_VERSION=$(helm version --short)
 COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+COMPLETED_EPOCH=$(date +%s)
+TOTAL_SMOKE_SECONDS=$((COMPLETED_EPOCH - SMOKE_START_EPOCH))
 
 jq -n \
   --arg sourceSha "${SOURCE_SHA}" \
@@ -228,6 +231,7 @@ jq -n \
   --arg kindVersion "${KIND_VERSION}" \
   --arg helmVersion "${HELM_VERSION}" \
   --argjson readinessSeconds "${READINESS_SECONDS}" \
+  --argjson totalSmokeSeconds "${TOTAL_SMOKE_SECONDS}" \
   --argjson restartCount "${RESTARTS}" \
   '{
     schemaVersion: 1,
@@ -254,9 +258,10 @@ jq -n \
       restrictedEgress: true,
       minimalHttpWorkflow: true
     },
+    totalSmokeSeconds: $totalSmokeSeconds,
     startedAt: $startedAt,
     completedAt: $completedAt
   }' >"${EVIDENCE_DIR}/evidence.json"
 
-printf 'Constrained Kubernetes smoke passed in %s seconds. Evidence: %s\n' \
-  "${READINESS_SECONDS}" "${EVIDENCE_DIR}/evidence.json"
+printf 'Constrained Kubernetes smoke passed; deployment reached readiness in %s seconds (total smoke %s seconds). Evidence: %s\n' \
+  "${READINESS_SECONDS}" "${TOTAL_SMOKE_SECONDS}" "${EVIDENCE_DIR}/evidence.json"
