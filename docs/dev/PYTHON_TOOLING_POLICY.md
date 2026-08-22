@@ -97,6 +97,10 @@ immutable Java JAR. Positive, blocking and malformed-input behavior is owned by
 JUnit, and a repository contract prevents the deleted Python adapter or a Python
 fallback from returning.
 
+This slice reduces the tracked Python inventory from twelve to **eleven** files.
+That count is encoded by the removal-only source ratchet and may only decrease in
+subsequent protected integrations.
+
 ## Removal-only source ratchet
 
 The remaining Python inventory is an upper bound. Later slices may delete an
