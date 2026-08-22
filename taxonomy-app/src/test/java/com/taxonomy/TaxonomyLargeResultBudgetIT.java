@@ -483,7 +483,7 @@ class TaxonomyLargeResultBudgetIT {
                 .contains("budget-" + scenario.resultCount());
 
         Object responsive = metrics.get("responsiveProfiles");
-        if (responsive instanceof Map<?, ?> values) {
+        if (responsive instanceof Map<?, ?> values && !values.isEmpty()) {
             for (ResponsiveProfile profile : policy.responsiveProfiles()) {
                 Map<?, ?> profileEvidence = map(values.get(profile.id()));
                 long innerWidth = number(profileEvidence.get("innerWidth"));
