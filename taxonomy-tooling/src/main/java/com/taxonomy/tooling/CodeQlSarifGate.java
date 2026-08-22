@@ -17,6 +17,7 @@ import java.util.Map;
 final class CodeQlSarifGate {
 
     private static final String SUPPORTED_SARIF_VERSION = "2.1.0";
+    private static final double MAX_SECURITY_SEVERITY = 10.0;
 
     private CodeQlSarifGate() {
     }
@@ -55,9 +56,11 @@ final class CodeQlSarifGate {
 
     static Inspection inspect(List<Path> candidates, double threshold)
             throws IOException {
-        if (!Double.isFinite(threshold) || threshold < 0.0) {
+        if (!Double.isFinite(threshold)
+                || threshold < 0.0
+                || threshold > MAX_SECURITY_SEVERITY) {
             throw new IllegalArgumentException(
-                    "CodeQL security-severity threshold must be a finite non-negative number");
+                    "CodeQL security-severity threshold must be between 0.0 and 10.0");
         }
 
         List<Path> requested = candidates.stream()
@@ -210,7 +213,7 @@ final class CodeQlSarifGate {
             throw new IllegalArgumentException(
                     "SARIF security-severity must be finite");
         }
-        if (severity < 0.0 || severity > 10.0) {
+        if (severity < 0.0 || severity > MAX_SECURITY_SEVERITY) {
             throw new IllegalArgumentException(
                     "SARIF security-severity must be between 0.0 and 10.0");
         }
