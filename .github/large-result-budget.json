@@ -19,5 +19,35 @@
       "id": "large-1000",
       "resultCount": 1000
     }
+  ],
+  "responsiveProfiles": [
+    {
+      "id": "mobile-portrait",
+      "cssWidth": 390,
+      "cssHeight": 844,
+      "deviceScaleFactor": 1.0,
+      "mobile": true
+    },
+    {
+      "id": "mobile-landscape",
+      "cssWidth": 844,
+      "cssHeight": 390,
+      "deviceScaleFactor": 1.0,
+      "mobile": true
+    },
+    {
+      "id": "zoom-200",
+      "cssWidth": 640,
+      "cssHeight": 450,
+      "deviceScaleFactor": 2.0,
+      "mobile": false
+    },
+    {
+      "id": "zoom-400",
+      "cssWidth": 320,
+      "cssHeight": 225,
+      "deviceScaleFactor": 4.0,
+      "mobile": false
+    }
   ]
 }
