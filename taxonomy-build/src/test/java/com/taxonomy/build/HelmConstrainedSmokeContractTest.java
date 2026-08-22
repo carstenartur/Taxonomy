@@ -2,11 +2,15 @@ package com.taxonomy.build;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Fast repository contract for the constrained Kubernetes release floor. */
 class HelmConstrainedSmokeContractTest {
@@ -50,7 +54,51 @@ class HelmConstrainedSmokeContractTest {
                 .contains("networkPolicy.dns.ports");
         assertThat(validation)
                 .contains("networkPolicy.egressMode must be restricted or open")
-                .contains("must not be an unrestricted empty rule in restricted mode");
+                .contains("kindIs \"map\" $rule")
+                .contains("must constrain destinations and/or ports in restricted mode");
+    }
+
+    @Test
+    void restrictedModeRejectsEverySemanticallyUnrestrictedRuleWhenHelmIsAvailable()
+            throws Exception {
+        Path root = findRepositoryRoot();
+        Path chart = root.resolve("deploy/helm/taxonomy");
+        List<String> unrestrictedRules = List.of(
+                "[{}]",
+                "[{\"to\":[],\"ports\":[]}]");
+
+        for (String egressRules : unrestrictedRules) {
+            Process process;
+            try {
+                process = new ProcessBuilder(
+                        "helm", "template", "taxonomy", chart.toString(),
+                        "--set", "image.tag=sha-0123456789abcdef0123456789abcdef01234567",
+                        "--set", "existingSecret=taxonomy-secrets",
+                        "--set-json", "networkPolicy.egress=" + egressRules)
+                        .directory(root.toFile())
+                        .redirectErrorStream(true)
+                        .start();
+            } catch (IOException exception) {
+                assumeTrue(false,
+                        "Helm 3 is unavailable; executable chart validation is skipped");
+                return;
+            }
+
+            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+            }
+            assertThat(finished)
+                    .as("Helm validation completed for %s", egressRules)
+                    .isTrue();
+            String output = new String(
+                    process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(process.exitValue())
+                    .as("restricted egress rule %s must be rejected", egressRules)
+                    .isNotZero();
+            assertThat(output)
+                    .contains("must constrain destinations and/or ports in restricted mode");
+        }
     }
 
     @Test
