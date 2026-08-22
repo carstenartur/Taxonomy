@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
 
+# One-time branch repair. The successful job removes this workflow again.
 jobs:
   repair:
     runs-on: ubuntu-latest
