@@ -28,7 +28,7 @@ The `Kubernetes Constrained Smoke` workflow performs these operations on one exa
 6. renders and installs the chart with `values-constrained-smoke.yaml`;
 7. waits for startup, readiness and rollout completion;
 8. verifies the readiness endpoint and the application home page through the Kubernetes Service;
-9. records source commit/tree, image IDs, Kubernetes/kind/Helm versions, readiness duration, restart count and non-secret rendered/cluster resources;
+9. records source commit/tree, image IDs, Kubernetes/kind/Helm versions, deployment-to-readiness duration, total smoke duration, restart count and non-secret rendered/cluster resources;
 10. uploads the evidence directory even when the smoke test fails.
 
 The local equivalent is:
@@ -42,7 +42,7 @@ KIND_CLUSTER_NAME=taxonomy-smoke \
 kind delete cluster --name taxonomy-smoke
 ```
 
-The evidence is written below `target/kubernetes-smoke/`. A passing `evidence.json` contains both the exact Git source identity and the immutable local image ID used by the pod. It records only that the ephemeral fixture Secret existed; the Secret resource and its values are not archived. Release publication later binds the equivalent proof to the published OCI digest.
+The evidence is written below `target/kubernetes-smoke/`. A passing `evidence.json` contains both the exact Git source identity and the immutable local image ID used by the pod. `workload.readinessSeconds` measures from immediately before Helm installation until the Deployment is ready; `totalSmokeSeconds` additionally includes image construction, cluster loading and prerequisite setup. It records only that the ephemeral fixture Secret existed; the Secret resource and its values are not archived. Release publication later binds the equivalent proof to the published OCI digest.
 
 ## Explicit NetworkPolicy egress
 
@@ -92,7 +92,7 @@ Portable Kubernetes NetworkPolicy does not support provider FQDNs. Public SaaS e
 
 Do not encode unstable public provider IP ranges into release values.
 
-`networkPolicy.egressMode=open` remains an explicit diagnostic/legacy escape hatch. It renders unrestricted egress visibly and is not used by the supported small, Rancher or constrained-smoke profiles. An empty `{}` rule is rejected when restricted mode is selected.
+`networkPolicy.egressMode=open` remains an explicit diagnostic/legacy escape hatch. It renders unrestricted egress visibly and is not used by the supported small, Rancher or constrained-smoke profiles. In restricted mode, every custom rule must constrain destinations, ports or both; `{}`, `{to: []}`, `{ports: []}` and equivalent rules with both sections empty are rejected.
 
 ## Diagnosing resource pressure
 
