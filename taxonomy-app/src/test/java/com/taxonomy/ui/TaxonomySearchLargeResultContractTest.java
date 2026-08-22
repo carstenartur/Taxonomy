@@ -37,6 +37,25 @@ class TaxonomySearchLargeResultContractTest {
     }
 
     @Test
+    void everySearchOpensTheCompleteNestedWorkspace() throws Exception {
+        String search = resource("/static/js/shared/taxonomy-search.js");
+
+        assertThat(search)
+                .contains("function openSearchWorkspace()")
+                .contains("document.getElementById('analysisSecondaryTools')")
+                .contains("document.getElementById('searchPanel')")
+                .contains("secondaryTools.open = true")
+                .contains("panel.open = true")
+                .contains("var panel = openSearchWorkspace()");
+        assertThat(count(search, "openSearchWorkspace();"))
+                .as("ordinary search opens the outer and inner disclosures")
+                .isEqualTo(1);
+        assertThat(count(search, "openSearchWorkspace()"))
+                .as("definition, ordinary search and Find Similar use one authority")
+                .isEqualTo(3);
+    }
+
+    @Test
     void resultPositionsDoNotOverrideTheActionableLinkRole() throws Exception {
         String search = resource("/static/js/shared/taxonomy-search.js");
 
