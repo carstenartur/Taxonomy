@@ -91,7 +91,7 @@ kubectl get secret "${SMOKE_SECRET}" --namespace "${NAMESPACE}" -o json \
   | jq -e '.data
       | has("SPRING_DATASOURCE_URL")
         and has("SPRING_DATASOURCE_USERNAME")
-        and has("SPRING_DATOURCE_PASSWORD")
+        and has("SPRING_DATASOURCE_PASSWORD")
         and has("ADMIN_PASSWORD")' >/dev/null
 
 helm lint "${CHART_DIR}" \
