@@ -25,32 +25,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
+          index=taxonomy-app/src/main/resources/templates/index.html
 
-          path = Path("taxonomy-app/src/main/resources/templates/index.html")
-          text = path.read_text(encoding="utf-8")
-          start = text.index('<details id="searchPanel"')
-          end = text.index("</details>", start)
-          panel = text[start:end]
-          old = '<div class="row g-2 mb-2">'
-          new = '<div class="row g-2 mx-0 mb-2">'
-          replacements = panel.count(old)
-          if replacements != 1:
-              raise SystemExit(
-                  f"Expected exactly one remaining unbounded search row, found {replacements}"
-              )
-          panel = panel.replace(old, new)
-          if old in panel or panel.count(new) != 2:
-              raise SystemExit("Search panel must contain exactly two bounded rows")
-          path.write_text(text[:start] + panel + text[end:], encoding="utf-8")
-          PY
+          perl -0pi -e 's/(<details id="searchPanel".*?<div class="row g-2 mx-0 mb-2">.*?<div class="row) g-2 mb-2"/$1 g-2 mx-0 mb-2"/s' "$index"
 
-          grep -Fq '<div class="row g-2 mx-0 mb-2">' \
-            taxonomy-app/src/main/resources/templates/index.html
-          ! sed -n '/<details id="searchPanel"/,/<\/details>/p' \
-            taxonomy-app/src/main/resources/templates/index.html \
-            | grep -Fq '<div class="row g-2 mb-2">'
+          panel=$(sed -n '/<details id="searchPanel"/,/<\/details>/p' "$index")
+          [[ $(grep -Foc '<div class="row g-2 mx-0 mb-2">' <<<"$panel") -eq 2 ]]
+          ! grep -Fq '<div class="row g-2 mb-2">' <<<"$panel"
           git diff --check
 
       - name: Run the focused source contract
