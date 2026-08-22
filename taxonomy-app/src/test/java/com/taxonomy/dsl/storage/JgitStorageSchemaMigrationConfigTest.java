@@ -348,13 +348,23 @@ class JgitStorageSchemaMigrationConfigTest {
     void establishesHistoryForExactUnversionedCurrentCoreSchema() throws Exception {
         DataSource dataSource = dataSource("unversioned-current");
         flyway(dataSource).migrate();
-        boolean hasReflogKey = columns(dataSource, "git_reflog").contains("REF_NAME_KEY");
+        Set<String> reflogColumns = columns(dataSource, "git_reflog");
+        boolean hasReflogKey = reflogColumns.contains("REF_NAME_KEY");
+        boolean hasDeliveryId = reflogColumns.contains("DELIVERY_ID");
         dropTable(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
 
         JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway(dataSource), false);
 
+        String expectedBaseline;
+        if (hasDeliveryId) {
+            expectedBaseline = "0.9.2";
+        } else if (hasReflogKey) {
+            expectedBaseline = "0.9.1";
+        } else {
+            expectedBaseline = "0.1.18";
+        }
         assertVersionPrefix(
-                List.of(hasReflogKey ? "0.9.1" : "0.1.18"),
+                List.of(expectedBaseline),
                 successfulVersions(dataSource, CoreSchemaMigrations.SCHEMA_HISTORY_TABLE));
         assertTrue(columns(dataSource, "git_packs").contains("WRITE_LEASE_UNTIL"));
         assertTrue(columns(dataSource, "git_packs").contains("PACK_SOURCE"));
@@ -547,14 +557,18 @@ class JgitStorageSchemaMigrationConfigTest {
 
     private static void assertReflogKeyMatchesMigrationHistory(DataSource dataSource)
             throws SQLException {
-        boolean migrated = successfulVersions(
+        List<String> versions = successfulVersions(
                 dataSource,
-                CoreSchemaMigrations.SCHEMA_HISTORY_TABLE).contains("0.9.1");
-        boolean columnPresent = columns(dataSource, "git_reflog").contains("REF_NAME_KEY");
+                CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);
+        Set<String> reflogColumns = columns(dataSource, "git_reflog");
         assertEquals(
-                migrated,
-                columnPresent,
-                "Core migration 0.9.1 and git_reflog.ref_name_key must appear together");
+                versions.contains("0.9.1") || versions.contains("0.9.2"),
+                reflogColumns.contains("REF_NAME_KEY"),
+                "Core migration 0.9.1 or later and git_reflog.ref_name_key must appear together");
+        assertEquals(
+                versions.contains("0.9.2"),
+                reflogColumns.contains("DELIVERY_ID"),
+                "Core migration 0.9.2 and git_reflog.delivery_id must appear together");
     }
 
     private static void assertVersionPrefix(
