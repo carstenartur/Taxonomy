@@ -43,6 +43,7 @@ removed. It is not an allow-list for permanent exceptions.
 | Declared-reactor release-plan validation | #767 |
 | Productive release/version workflow routing | #769 |
 | Release metadata transformation and routing | #771 / #774 |
+| CycloneDX SBOM/VEX companion generation and legacy-helper removal | #804 / #673 bounded cleanup slice |
 | CodeQL SARIF high-severity enforcement | #673 bounded Java slice |
 
 ## Completed Java release-core migration
@@ -116,6 +117,21 @@ This slice reduces the tracked Python inventory from twelve to **eleven** files.
 That count is encoded by the removal-only source ratchet and may only decrease in
 subsequent protected integrations.
 
+## Legacy VEX helper removal
+
+The Maven build and productive release script already use the reviewed
+`taxonomy-tooling generate-sbom-companion` command for `target/taxonomy-vex.json`.
+The old `generate-vex.py` program therefore had no remaining productive call;
+only the release workflow still copied it to `$RUNNER_TEMP` and exposed an unused
+`VEX_HELPER` variable.
+
+The bounded cleanup removes the file, the copy/chmod operations and the unused
+environment variable together. The existing productive-routing JUnit contract is
+extended to inspect the release workflow as well as Maven and `release.sh`, so a
+legacy helper, Python fallback or competing VEX authority cannot return. The
+source inventory then decreases from eleven to **ten** Python files without
+changing SBOM/VEX output semantics.
+
 ## Removal-only source ratchet
 
 The remaining Python inventory is an upper bound. Later slices may delete an
@@ -143,7 +159,6 @@ bounded shell replacements have equivalent JUnit contracts:
 
 ### Artifact generation
 
-- `generate-vex.py`
 - `generate-quality-site.py`
 
 ### Release, delivery and external-format verification
@@ -167,7 +182,7 @@ No remaining item is an accepted permanent exception.
 
 1. Release parameter, plan and version-state core in `taxonomy-tooling` — complete.
 2. Release metadata transformation, productive routing and helper removal — complete.
-3. CycloneDX SBOM companion generation and productive routing.
+3. CycloneDX SBOM companion generation, productive routing and obsolete helper removal — complete.
 4. CodeQL SARIF policy gate in dependency-free Java with JUnit contracts — complete.
 5. Remaining release/delivery and observability policy checks under Java/JUnit authority.
 6. Quality-site generation and publication verification in Java/Maven-native code.
