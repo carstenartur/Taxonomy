@@ -24,7 +24,6 @@ class PythonSourceRatchetRepositoryTest {
             "5661bff2ba75288e650b7f4a6cb1cb5364d787c2";
 
     private static final Set<String> ALLOWED_REMAINING_PYTHON_PATHS = Set.of(
-            ".github/scripts/check-codeql-sarif.py",
             ".github/scripts/check-delivery-hardening.py",
             ".github/scripts/check-observability-performance-scope.py",
             ".github/scripts/check-release-delivery-contract.py",
@@ -34,13 +33,13 @@ class PythonSourceRatchetRepositoryTest {
             ".github/scripts/test-generate-quality-site.py",
             ".github/scripts/test-verify-deployment.py",
             ".github/scripts/test-verify-quality-publication.py",
-            ".github/scripts/update-release-metadata.py",
             ".github/scripts/verify-deployment.py",
             ".github/scripts/verify-quality-publication.py");
 
     private static final Pattern EXECUTABLE_PYTHON_REFERENCE = Pattern.compile(
             "(^|[\\s\\\"'`=:/])"
-                    + "(python(?:3(?:\\.[0-9]+)?)?|pytest|pip)"
+                    + "(python(?:[0-9]+(?:\\.[0-9]+)*)?"
+                    + "|pytest|pip(?:[0-9]+(?:\\.[0-9]+)*)?|unittest)"
                     + "(?=$|[\\s\\\"'`;])"
                     + "|actions/setup-python@");
 
@@ -52,6 +51,23 @@ class PythonSourceRatchetRepositoryTest {
         assertThat(ALLOWED_REMAINING_PYTHON_PATHS)
                 .as("#673 remaining Python inventory; additions are prohibited")
                 .containsAll(current);
+    }
+
+    @Test
+    void executablePythonTokenRecognitionCoversVersionedCommandsWithoutSubstringNoise() {
+        assertThat(matches("python script.py")).isTrue();
+        assertThat(matches("python2 script.py")).isTrue();
+        assertThat(matches("python3.12 script.py")).isTrue();
+        assertThat(matches("pytest -q")).isTrue();
+        assertThat(matches("pip install package")).isTrue();
+        assertThat(matches("pip3 install package")).isTrue();
+        assertThat(matches("pip3.12 install package")).isTrue();
+        assertThat(matches("unittest discover")).isTrue();
+        assertThat(matches("uses: actions/setup-python@v6")).isTrue();
+
+        assertThat(matches("set -euo pipefail")).isFalse();
+        assertThat(matches("pipeline")).isFalse();
+        assertThat(matches("pythonSourceRatchet")).isFalse();
     }
 
     @Test
@@ -73,9 +89,6 @@ class PythonSourceRatchetRepositoryTest {
                 .as("git rev-parse --is-shallow-repository result")
                 .isIn("true", "false");
         if ("true".equals(shallow.stdout().strip())) {
-            // Specialized database/security jobs intentionally use shallow clones.
-            // They still enforce the exact file inventory above; canonical CI uses
-            // fetch-depth: 0 and remains the authority for ancestry/diff checks.
             return;
         }
 
@@ -150,6 +163,10 @@ class PythonSourceRatchetRepositoryTest {
                 .as("new executable Python references after %s",
                         RELEASE_CORE_REMOVAL_BASELINE)
                 .isEmpty();
+    }
+
+    private static boolean matches(String source) {
+        return EXECUTABLE_PYTHON_REFERENCE.matcher(source).find();
     }
 
     private static Set<String> trackedPythonPaths(Path root) throws IOException {
