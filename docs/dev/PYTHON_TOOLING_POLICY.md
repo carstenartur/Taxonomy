@@ -25,7 +25,7 @@ removed. It is not an allow-list for permanent exceptions.
 7. Every protected integration must remain green; adapter deletion and the
    relocation of tests that execute it are one atomic transition.
 
-## Policies already owned by Maven/JUnit
+## Policies already owned by Maven/JUnit or dependency-free Java tooling
 
 | Concern | Integration |
 |---|---|
@@ -43,6 +43,7 @@ removed. It is not an allow-list for permanent exceptions.
 | Declared-reactor release-plan validation | #767 |
 | Productive release/version workflow routing | #769 |
 | Release metadata transformation and routing | #771 / #774 |
+| CodeQL SARIF high-severity enforcement | #673 bounded Java slice |
 
 ## Completed Java release-core migration
 
@@ -81,6 +82,21 @@ Java JAR rather than reconstructing these rules in YAML or shell. Historical
 their behavior remains covered beside the Java implementation in
 `taxonomy-tooling`.
 
+## CodeQL SARIF gate
+
+The Java and JavaScript CodeQL jobs now build the same dependency-free
+`taxonomy-tooling` JAR and invoke its `check-codeql-sarif` command. The command
+preserves the prior threshold contract: a result blocks when its
+`security-severity` is at least 7.0 or when its SARIF level is `error`. It emits
+one deterministic JSON evidence file and fails closed for missing reports,
+malformed SARIF, invalid thresholds or structured values where scalar SARIF
+fields are required.
+
+The workflow contains only orchestration: it locates SARIF files and invokes the
+immutable Java JAR. Positive, blocking and malformed-input behavior is owned by
+JUnit, and a repository contract prevents the deleted Python adapter or a Python
+fallback from returning.
+
 ## Removal-only source ratchet
 
 The remaining Python inventory is an upper bound. Later slices may delete an
@@ -115,7 +131,6 @@ bounded shell replacements have equivalent JUnit contracts:
 - `check-delivery-hardening.py`
 - `verify-deployment.py`
 - `verify-quality-publication.py`
-- `check-codeql-sarif.py`
 - `check-observability-performance-scope.py`
 
 ### Duplicate Python test programs to remove with their productive boundary
@@ -131,10 +146,11 @@ No remaining item is an accepted permanent exception.
 1. Release parameter, plan and version-state core in `taxonomy-tooling` — complete.
 2. Release metadata transformation, productive routing and helper removal — complete.
 3. CycloneDX SBOM companion generation and productive routing.
-4. Release/delivery, CodeQL and observability policy checks under JUnit authority.
-5. Quality-site generation and publication verification in Java/Maven-native code.
-6. Deployment verification at its real HTTP/Helm boundary.
-7. Repository-wide absolute source contract rejecting every Python path and
+4. CodeQL SARIF policy gate in dependency-free Java with JUnit contracts — complete.
+5. Remaining release/delivery and observability policy checks under Java/JUnit authority.
+6. Quality-site generation and publication verification in Java/Maven-native code.
+7. Deployment verification at its real HTTP/Helm boundary.
+8. Repository-wide absolute source contract rejecting every Python path and
    invocation.
 
 Each slice must remain bounded, preserve the real behavior before deleting the
