@@ -58,6 +58,9 @@ public class JgitStorageSchemaMigrationConfig {
     private static final String LATEST_CORE_SCHEMA_VERSION = "0.9.1";
     private static final String LATEST_CORE_BASELINE_DESCRIPTION =
             "jgit-storage-hibernate-core 0.9.1";
+    private static final String DELIVERY_ID_SCHEMA_VERSION = "0.9.2";
+    private static final String DELIVERY_ID_BASELINE_DESCRIPTION =
+            "jgit-storage-hibernate-core 0.9.2";
 
     private static final Set<String> LEGACY_PACK_COLUMNS = Set.of(
             "ID",
@@ -129,7 +132,7 @@ public class JgitStorageSchemaMigrationConfig {
             "MESSAGE");
 
     /** Exact physical reflog shape released by Core 0.9.1. */
-    private static final Set<String> CURRENT_REFLOG_COLUMNS = Set.of(
+    private static final Set<String> REFLOG_KEY_COLUMNS = Set.of(
             "ID",
             "VERSION",
             "REPOSITORY_NAME",
@@ -141,6 +144,21 @@ public class JgitStorageSchemaMigrationConfig {
             "WHO_EMAIL",
             "WHO_WHEN",
             "MESSAGE");
+
+    /** Exact physical reflog shape released by Core 0.9.2. */
+    private static final Set<String> CURRENT_REFLOG_COLUMNS = Set.of(
+            "ID",
+            "VERSION",
+            "REPOSITORY_NAME",
+            "REF_NAME",
+            "REF_NAME_KEY",
+            "OLD_ID",
+            "NEW_ID",
+            "WHO_NAME",
+            "WHO_EMAIL",
+            "WHO_WHEN",
+            "MESSAGE",
+            "DELIVERY_ID");
 
     /** Restrict the Boot-managed Flyway instance to the released Core migration stream. */
     @Bean
@@ -306,13 +324,18 @@ public class JgitStorageSchemaMigrationConfig {
         requireCurrentCoreTables(schema);
         requireSupportedReflogColumns(schema);
         requireCurrentCoreIndexes(schema);
-        boolean currentReflogShape = hasReflogReferenceKey(schema);
-        String baselineVersion = currentReflogShape
-                ? LATEST_CORE_SCHEMA_VERSION
-                : PRE_REFLOG_KEY_SCHEMA_VERSION;
-        String baselineDescription = currentReflogShape
-                ? LATEST_CORE_BASELINE_DESCRIPTION
-                : PRE_REFLOG_KEY_BASELINE_DESCRIPTION;
+        String baselineVersion;
+        String baselineDescription;
+        if (hasReflogDeliveryId(schema)) {
+            baselineVersion = DELIVERY_ID_SCHEMA_VERSION;
+            baselineDescription = DELIVERY_ID_BASELINE_DESCRIPTION;
+        } else if (hasReflogReferenceKey(schema)) {
+            baselineVersion = LATEST_CORE_SCHEMA_VERSION;
+            baselineDescription = LATEST_CORE_BASELINE_DESCRIPTION;
+        } else {
+            baselineVersion = PRE_REFLOG_KEY_SCHEMA_VERSION;
+            baselineDescription = PRE_REFLOG_KEY_BASELINE_DESCRIPTION;
+        }
         log.info(
                 "Establishing Flyway history for an exact unversioned {} schema on {}",
                 baselineVersion,
@@ -456,15 +479,37 @@ public class JgitStorageSchemaMigrationConfig {
 
     private static void requireManagedReflogHistoryConsistency(
             Flyway flyway, SchemaSnapshot schema) {
-        boolean migrationApplied =
-                isCoreMigrationApplied(flyway, LATEST_CORE_SCHEMA_VERSION);
-        boolean referenceKeyPresent = hasReflogReferenceKey(schema);
-        if (migrationApplied == referenceKeyPresent) {
+        boolean deliveryIdMigrationApplied =
+                isCoreMigrationApplied(flyway, DELIVERY_ID_SCHEMA_VERSION);
+        boolean referenceKeyMigrationApplied =
+                isCoreMigrationApplied(flyway, LATEST_CORE_SCHEMA_VERSION)
+                        || deliveryIdMigrationApplied;
+        requireManagedReflogHistoryConsistency(
+                schema,
+                LATEST_CORE_SCHEMA_VERSION + " or later",
+                "REF_NAME_KEY",
+                referenceKeyMigrationApplied,
+                hasReflogReferenceKey(schema));
+        requireManagedReflogHistoryConsistency(
+                schema,
+                DELIVERY_ID_SCHEMA_VERSION,
+                "DELIVERY_ID",
+                deliveryIdMigrationApplied,
+                hasReflogDeliveryId(schema));
+    }
+
+    private static void requireManagedReflogHistoryConsistency(
+            SchemaSnapshot schema,
+            String migrationVersion,
+            String column,
+            boolean migrationApplied,
+            boolean columnPresent) {
+        if (migrationApplied == columnPresent) {
             return;
         }
         throw unsafeSchema(
-                "Core migration " + LATEST_CORE_SCHEMA_VERSION
-                        + " and git_reflog.REF_NAME_KEY must appear together; "
+                "Core migration " + migrationVersion
+                        + " and git_reflog." + column + " must appear together; "
                         + "migration applied=" + migrationApplied
                         + ", reflog columns=" + schema.reflogColumns()
                         + ", reflog indexes=" + schema.reflogIndexes());
@@ -703,6 +748,11 @@ public class JgitStorageSchemaMigrationConfig {
     }
 
     private static boolean hasReflogReferenceKey(SchemaSnapshot schema) {
+        return schema.reflogColumns().equals(REFLOG_KEY_COLUMNS)
+                || schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS);
+    }
+
+    private static boolean hasReflogDeliveryId(SchemaSnapshot schema) {
         return schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS);
     }
 
@@ -715,10 +765,11 @@ public class JgitStorageSchemaMigrationConfig {
         if (schema.reflogColumns().equals(PRE_REFLOG_KEY_COLUMNS)) {
             return;
         }
-        if (schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS)) {
+        if (schema.reflogColumns().equals(REFLOG_KEY_COLUMNS)
+                || schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS)) {
             if (!schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {
                 throw unsafeSchema(
-                        "git_reflog carries the 0.9.1 REF_NAME_KEY shape, but git_packs "
+                        "git_reflog carries a released REF_NAME_KEY shape, but git_packs "
                                 + "does not match the current Core pack schema; expected "
                                 + "git_packs columns=" + CURRENT_PACK_COLUMNS
                                 + ", actual git_packs columns=" + schema.packColumns());
@@ -726,8 +777,8 @@ public class JgitStorageSchemaMigrationConfig {
             return;
         }
         throw unsafeSchema(
-                "git_reflog is neither the exact pre-0.9.1 shape nor the exact 0.9.1 "
-                        + "shape; actual=" + schema.reflogColumns());
+                "git_reflog is neither the exact pre-0.9.1, 0.9.1 nor 0.9.2 shape; "
+                        + "actual=" + schema.reflogColumns());
     }
 
     private static void requireExactColumns(
