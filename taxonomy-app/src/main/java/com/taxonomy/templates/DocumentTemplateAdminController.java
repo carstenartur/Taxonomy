@@ -73,7 +73,7 @@ public class DocumentTemplateAdminController {
                 principal.getName(),
                 "Upload document template " + templateId);
         return ResponseEntity.status(201)
-                .eTag(saved.headCommit())
+                .eTag(etag(saved.headCommit()))
                 .body(saved);
     }
 
@@ -87,7 +87,7 @@ public class DocumentTemplateAdminController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(file.manifest().mediaType()))
                 .contentLength(file.content().length)
-                .eTag(file.commitId())
+                .eTag(file.etag())
                 .lastModified(file.lastModified().toEpochMilli())
                 .cacheControl(CacheControl.noCache().cachePrivate())
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -133,7 +133,11 @@ public class DocumentTemplateAdminController {
                 expectedHead,
                 principal.getName());
         return ResponseEntity.ok()
-                .eTag(restored.headCommit())
+                .eTag(etag(restored.headCommit()))
                 .body(restored);
+    }
+
+    private static String etag(String commitId) {
+        return "\"" + commitId + "\"";
     }
 }
