@@ -3,10 +3,12 @@ package com.taxonomy.templates;
 import com.taxonomy.shared.config.I18nConfig;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
 import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -77,6 +79,14 @@ class DocumentTemplateWordLinkContractTest {
                 .doesNotContain("access_token")
                 .doesNotContain("?token=")
                 .doesNotContain("Authorization");
+    }
+
+    @Test
+    void springSelectsTheProductionRepositoryConstructor() throws Exception {
+        var constructor = DocumentTemplateGitRepository.class
+                .getConstructor(HibernateRepositoryFactory.class);
+
+        assertThat(constructor.isAnnotationPresent(Autowired.class)).isTrue();
     }
 
     @Test
