@@ -40,9 +40,11 @@ class DocumentTemplateWebDavLockManagerTest {
                 });
 
         assertThat(value).isEqualTo("saved");
-        assertThat(manager.require(
-                "decision-report", lock.token(), "admin").currentCommit())
-                .isEqualTo("version-b");
+        TemplateLock refreshed = manager.require(
+                "decision-report", lock.token(), "admin");
+        assertThat(refreshed.currentCommit()).isEqualTo("version-b");
+        assertThat(refreshed.expiresAt())
+                .isEqualTo(Instant.parse("2026-08-22T12:45:00Z"));
     }
 
     private static final class MutableClock extends Clock {

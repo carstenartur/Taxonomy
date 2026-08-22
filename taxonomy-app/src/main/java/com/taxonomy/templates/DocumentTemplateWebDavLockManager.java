@@ -92,10 +92,10 @@ public class DocumentTemplateWebDavLockManager {
      * Run one versioned write and advance its lock without a post-commit failure window.
      *
      * <p>The manager monitor is deliberately held across the bounded template validation
-     * and Git commit. This prevents a competing lock acquisition during an unlocked
-     * conditional write and prevents an expired lease from turning a successful Git commit
-     * into a WebDAV 423 response. Template edits are rare administrative operations, so the
-     * stronger correctness boundary is preferable to parallel lock mutations.</p>
+     * and Git commit. No competing lock operation can expire or replace the lease during
+     * that critical section. After a successful write the existing lease is retained and,
+     * when necessary, extended to the normal refresh interval rather than silently changed
+     * to the maximum one-hour timeout.</p>
      */
     public synchronized <T> T executeWrite(
             String resource,
@@ -110,16 +110,6 @@ public class DocumentTemplateWebDavLockManager {
         String expected = expectedWithoutLock;
         if (active != null) {
             active = requireExisting(resource, token, owner);
-            Instant protectedUntil = later(
-                    active.expiresAt(), clock.instant().plus(MAX_TIMEOUT));
-            active = new TemplateLock(
-                    active.resource(),
-                    active.token(),
-                    active.owner(),
-                    active.baseCommit(),
-                    active.currentCommit(),
-                    protectedUntil);
-            locks.put(resource, active);
             expected = active.currentCommit();
         } else if (token != null && !token.isBlank()) {
             throw new LockConflictException(

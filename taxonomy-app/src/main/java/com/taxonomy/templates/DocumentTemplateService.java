@@ -1,5 +1,6 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
@@ -81,6 +82,7 @@ public class DocumentTemplateService {
         DocumentTemplateGitRepository.validateTemplateId(templateId);
         String normalizedDisplayName = normalizeDisplayName(displayName, templateId);
         OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(dotx);
+        validateReservedPackagePaths(packageData.parts());
         validateContract(templateId, packageData.parts());
         String effectiveExpectedVersion = resolveExpectedVersion(
                 templateId, expectedVersion);
@@ -120,6 +122,7 @@ public class DocumentTemplateService {
      */
     public TemplateFile downloadCurrentValidated(String templateId) throws IOException {
         TemplateSnapshot snapshot = repository.readCurrent(templateId);
+        validateReservedPackagePaths(snapshot.parts());
         validateContract(templateId, snapshot.parts());
         return toTemplateFile(snapshot);
     }
@@ -173,6 +176,7 @@ public class DocumentTemplateService {
         TemplateSnapshot historical = repository.read(templateId, revision);
         OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(
                 new ByteArrayInputStream(codec.pack(historical.parts())));
+        validateReservedPackagePaths(packageData.parts());
         validateContract(templateId, packageData.parts());
         String effectiveExpected = resolveExpectedVersion(
                 templateId, expectedVersion);
@@ -202,16 +206,52 @@ public class DocumentTemplateService {
         return repository.headCommit();
     }
 
-    private String resolveExpectedVersion(String templateId, String value)
+    /**
+     * Resolve an HTTP {@code If-Match} value against the current template version.
+     *
+     * <p>Strong entity-tag comparison is required for {@code If-Match}. A comma-separated
+     * list succeeds when any strong tag matches; {@code *} succeeds only when the resource
+     * exists. Raw 40-character commit IDs remain accepted for internal lock hand-off.</p>
+     */
+    String resolveExpectedVersion(String templateId, String value)
             throws IOException {
-        String expected = stripEtag(value);
-        if (expected == null || expected.isBlank()) {
+        if (value == null || value.isBlank()) {
             return null;
         }
-        if ("*".equals(expected)) {
-            return repository.readCurrent(templateId).commitId();
+
+        TemplateSnapshot current;
+        try {
+            current = repository.readCurrent(templateId);
+        } catch (TemplateNotFoundException missing) {
+            throw new TemplateConflictException(value.strip(), null);
         }
-        return expected;
+        String currentCommit = current.commitId();
+
+        for (String candidate : value.split(",")) {
+            String tag = candidate.strip();
+            if ("*".equals(tag)) {
+                return currentCommit;
+            }
+            if (tag.regionMatches(true, 0, "W/", 0, 2)) {
+                continue;
+            }
+            String normalized = stripQuotedEtag(tag);
+            if (currentCommit.equalsIgnoreCase(normalized)) {
+                return currentCommit;
+            }
+        }
+        throw new TemplateConflictException(value.strip(), currentCommit);
+    }
+
+    private static void validateReservedPackagePaths(Map<String, byte[]> packageParts) {
+        for (String path : packageParts.keySet()) {
+            String normalized = path.toLowerCase(java.util.Locale.ROOT);
+            if (normalized.equals(DocumentTemplateGitRepository.MANIFEST_NAME)
+                    || normalized.endsWith("/" + DocumentTemplateGitRepository.MANIFEST_NAME)) {
+                throw new IllegalArgumentException(
+                        "OOXML package part uses reserved Taxonomy metadata name: " + path);
+            }
+        }
     }
 
     private void validateContract(String templateId, Map<String, byte[]> packageParts) {
@@ -269,10 +309,15 @@ public class DocumentTemplateService {
         if (stripped.startsWith("W/")) {
             stripped = stripped.substring(2).strip();
         }
-        if (stripped.length() >= 2
+        return stripQuotedEtag(stripped);
+    }
+
+    private static String stripQuotedEtag(String value) {
+        String stripped = value == null ? null : value.strip();
+        if (stripped != null && stripped.length() >= 2
                 && stripped.startsWith("\"")
                 && stripped.endsWith("\"")) {
-            stripped = stripped.substring(1, stripped.length() - 1);
+            return stripped.substring(1, stripped.length() - 1);
         }
         return stripped;
     }

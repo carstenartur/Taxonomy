@@ -199,24 +199,31 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
         TemplateFile current = currentOrNull(resource.templateId());
         String suppliedToken = requestLockToken(request);
         TemplateLock observedLock = locks.find(resource.templateId());
-        String expectedWithoutLock = null;
 
-        if (observedLock == null && current != null) {
-            String ifMatch = request.getHeader("If-Match");
-            if (ifMatch == null || ifMatch.isBlank()) {
-                response.sendError(SC_PRECONDITION_REQUIRED,
-                        "Use WebDAV LOCK or If-Match before replacing a template");
-                return;
-            }
-            String condition = DocumentTemplateService.stripEtag(ifMatch);
-            expectedWithoutLock = "*".equals(condition)
-                    ? current.commitId() : condition;
+        if (current != null
+                && etagMatches(request.getHeader("If-None-Match"), current.commitId())) {
+            response.sendError(HttpServletResponse.SC_PRECONDITION_FAILED,
+                    "If-None-Match precondition failed for the current template");
+            return;
+        }
+
+        String ifMatch = request.getHeader("If-Match");
+        String expectedWithoutLock = null;
+        if (ifMatch != null && !ifMatch.isBlank()) {
+            // Evaluate every If-Match precondition even when a DAV lock is active.
+            // The service implements strong comparison and comma-separated tag lists.
+            expectedWithoutLock = templates.resolveExpectedVersion(
+                    resource.templateId(), ifMatch);
+        } else if (observedLock == null && current != null) {
+            response.sendError(SC_PRECONDITION_REQUIRED,
+                    "Use WebDAV LOCK or If-Match before replacing a template");
+            return;
         }
 
         String displayName = current == null
                 ? resource.templateId()
                 : current.manifest().displayName();
-        String fallbackExpected = expectedWithoutLock;
+        String fallbackExpected = observedLock == null ? expectedWithoutLock : null;
         TemplateDescriptor saved = locks.executeWrite(
                 resource.templateId(),
                 suppliedToken,
