@@ -10,6 +10,8 @@
     var t = TaxonomyI18n.t;
 
     const RESULT_WINDOW_SIZE = 50;
+    const NAVIGATION_COMPLETE_EVENT = 'taxonomy:search-navigation-complete';
+    const MAX_FOCUS_ATTEMPTS = 4;
     let embeddingAvailable = false;
     let resultState = emptyResultState();
     let searchGeneration = 0;
@@ -362,6 +364,9 @@
         area.dataset.renderedResults = String(end - resultState.windowStart);
         area.dataset.windowSize = String(RESULT_WINDOW_SIZE);
         area.dataset.currentIndex = String(resultState.currentIndex);
+        delete area.dataset.navigationAction;
+        delete area.dataset.navigationFocusTarget;
+        delete area.dataset.navigationFocusConfirmed;
         updateNavigationButtons();
     }
 
@@ -399,7 +404,10 @@
         var item = event.target.closest('.search-result-item[data-result-index]');
         if (!item) return;
         event.preventDefault();
-        navigateToResult(parseInt(item.dataset.resultIndex, 10), false);
+        navigateToResult(
+            parseInt(item.dataset.resultIndex, 10),
+            false,
+            'select');
     }
 
     function navigateByAction(action) {
@@ -417,10 +425,10 @@
                 ? Math.max(0, resultState.currentIndex - 1)
                 : Math.min(total - 1, resultState.currentIndex + 1);
         }
-        navigateToResult(index, true);
+        navigateToResult(index, true, action);
     }
 
-    function navigateToResult(index, restoreResultFocus) {
+    function navigateToResult(index, restoreResultFocus, action) {
         if (!Number.isInteger(index)
                 || index < 0
                 || index >= resultState.nodes.length) return;
@@ -446,20 +454,93 @@
 
         var node = resultState.nodes[index];
         announceResultPosition(index);
-        highlightNodeInTree(node.code, !restoreResultFocus, function (treeNode) {
+        highlightNodeInTree(node.code, function (treeNode) {
             updateCurrentPath(treeNode, node.code);
-            if (restoreResultFocus) {
-                requestAnimationFrame(function () {
-                    if (resultState.focusRequestId !== focusRequestId) return;
-                    var refreshed = area.querySelector(
-                        '.search-result-item[data-result-index="' + index + '"]');
-                    if (refreshed) {
-                        refreshed.focus({ preventScroll: true });
-                        refreshed.scrollIntoView({ block: 'nearest' });
+            var focusTarget = restoreResultFocus ? 'result' : 'tree';
+            completeNavigationFocus({
+                requestId: focusRequestId,
+                action: action || 'select',
+                index: index,
+                code: node.code,
+                focusTarget: focusTarget,
+                scrollBlock: restoreResultFocus ? 'nearest' : 'center',
+                resolveTarget: restoreResultFocus
+                    ? function () {
+                        return area.querySelector(
+                            '.search-result-item[data-result-index="'
+                                + index + '"]');
                     }
-                });
-            }
+                    : function () { return findTreeNode(node.code); }
+            });
         });
+    }
+
+    function completeNavigationFocus(options) {
+        var attempts = 0;
+
+        function publish(target, confirmed) {
+            if (resultState.focusRequestId !== options.requestId) return;
+            var area = document.getElementById('searchResultsArea');
+            var active = document.activeElement;
+            var detail = {
+                action: options.action,
+                index: options.index,
+                code: options.code,
+                focusTarget: options.focusTarget,
+                focusConfirmed: confirmed,
+                activeElementId: active && active.id ? active.id : '',
+                activeElementClass: active && active.className
+                    ? String(active.className)
+                    : '',
+                activeElementTag: active && active.tagName
+                    ? active.tagName.toLowerCase()
+                    : ''
+            };
+            if (area) {
+                area.dataset.navigationAction = detail.action;
+                area.dataset.navigationFocusTarget = detail.focusTarget;
+                area.dataset.navigationFocusConfirmed = String(confirmed);
+            }
+            document.dispatchEvent(new CustomEvent(
+                NAVIGATION_COMPLETE_EVENT,
+                { detail: detail }));
+        }
+
+        function attempt() {
+            if (resultState.focusRequestId !== options.requestId) return;
+            var target = options.resolveTarget();
+            if (!target || !target.isConnected) {
+                attempts += 1;
+                if (attempts < MAX_FOCUS_ATTEMPTS) {
+                    requestAnimationFrame(attempt);
+                } else {
+                    publish(target, false);
+                }
+                return;
+            }
+
+            target.scrollIntoView({
+                behavior: 'auto',
+                block: options.scrollBlock || 'nearest'
+            });
+            target.focus({ preventScroll: true });
+            requestAnimationFrame(function () {
+                if (resultState.focusRequestId !== options.requestId) return;
+                var stableTarget = options.resolveTarget();
+                if (stableTarget && document.activeElement === stableTarget) {
+                    publish(stableTarget, true);
+                    return;
+                }
+                attempts += 1;
+                if (attempts < MAX_FOCUS_ATTEMPTS) {
+                    requestAnimationFrame(attempt);
+                } else {
+                    publish(stableTarget, false);
+                }
+            });
+        }
+
+        requestAnimationFrame(attempt);
     }
 
     function announceResultPosition(index) {
@@ -495,18 +576,27 @@
         var area = document.getElementById('searchResultsArea');
         var summary = document.getElementById('searchResultSummary');
         if (!area || !summary) return;
-        resultState.focusRequestId += 1;
+        var focusRequestId = ++resultState.focusRequestId;
         area.scrollTop = 0;
         if (resultState.originWindowY !== null) {
             window.scrollTo({ top: resultState.originWindowY, behavior: 'auto' });
         }
-        requestAnimationFrame(function () {
-            summary.focus({ preventScroll: true });
-            summary.scrollIntoView({ block: 'nearest' });
+        completeNavigationFocus({
+            requestId: focusRequestId,
+            action: 'summary',
+            index: resultState.currentIndex,
+            code: resultState.currentIndex >= 0
+                ? resultState.nodes[resultState.currentIndex].code
+                : '',
+            focusTarget: 'summary',
+            scrollBlock: 'nearest',
+            resolveTarget: function () {
+                return document.getElementById('searchResultSummary');
+            }
         });
     }
 
-    function highlightNodeInTree(code, moveFocus, completed) {
+    function highlightNodeInTree(code, completed) {
         document.querySelectorAll('.search-highlight').forEach(function (element) {
             element.classList.remove('search-highlight');
         });
@@ -517,25 +607,45 @@
         if (currentView !== 'list'
                 && window.TaxonomyBrowse
                 && window.TaxonomyBrowse.switchView) {
+            var completedOnce = false;
+            var tree = document.getElementById('taxonomyTree');
+            var finish = function () {
+                if (completedOnce) return;
+                completedOnce = true;
+                document.removeEventListener(
+                    'taxonomy:view-rendered', onViewRendered);
+                completed(revealNodeInTree(code));
+            };
+            var onViewRendered = function (event) {
+                if (event.detail && event.detail.view === 'list') {
+                    finish();
+                }
+            };
+            document.addEventListener(
+                'taxonomy:view-rendered', onViewRendered);
             window.TaxonomyBrowse.switchView('list');
-            window.requestAnimationFrame(function () {
-                completed(revealNodeInTree(code, moveFocus));
-            });
+            if (tree && tree.dataset.viewRendered === 'list') {
+                finish();
+            }
             return;
         }
-        completed(revealNodeInTree(code, moveFocus));
+        completed(revealNodeInTree(code));
     }
 
-    function revealNodeInTree(code, moveFocus) {
+    function findTreeNode(code) {
+        return Array.from(document.querySelectorAll('.tax-node'))
+            .find(function (candidate) {
+                return candidate.dataset && candidate.dataset.code === code;
+            }) || null;
+    }
+
+    function revealNodeInTree(code) {
         if (window.TaxonomyBrowse && window.TaxonomyBrowse.ensureNodeRendered) {
             window.TaxonomyBrowse.ensureNodeRendered(
                 code,
                 window.TaxonomyState ? window.TaxonomyState.currentScores : null);
         }
-        var node = Array.from(document.querySelectorAll('.tax-node'))
-            .find(function (candidate) {
-                return candidate.dataset && candidate.dataset.code === code;
-            });
+        var node = findTreeNode(code);
         if (!node) return null;
 
         var ancestor = node.parentElement;
@@ -561,11 +671,7 @@
             '#taxonomyTree [role="treeitem"][tabindex="0"]')
             .forEach(function (item) { item.setAttribute('tabindex', '-1'); });
         node.setAttribute('tabindex', '0');
-        if (moveFocus) node.focus({ preventScroll: true });
-        header.scrollIntoView({
-            behavior: moveFocus ? 'smooth' : 'auto',
-            block: 'center'
-        });
+        header.scrollIntoView({ behavior: 'auto', block: 'center' });
         return node;
     }
 
@@ -621,6 +727,9 @@
             delete area.dataset.renderedResults;
             delete area.dataset.windowSize;
             delete area.dataset.currentIndex;
+            delete area.dataset.navigationAction;
+            delete area.dataset.navigationFocusTarget;
+            delete area.dataset.navigationFocusConfirmed;
         }
     }
 
@@ -640,7 +749,16 @@
                     ? area.querySelectorAll('.search-result-item').length
                     : 0,
                 currentIndex: resultState.currentIndex,
-                windowStart: resultState.windowStart
+                windowStart: resultState.windowStart,
+                navigationAction: area
+                    ? area.dataset.navigationAction || ''
+                    : '',
+                navigationFocusTarget: area
+                    ? area.dataset.navigationFocusTarget || ''
+                    : '',
+                navigationFocusConfirmed: area
+                    ? area.dataset.navigationFocusConfirmed === 'true'
+                    : false
             };
         }
     };
