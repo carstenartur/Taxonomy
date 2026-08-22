@@ -18,17 +18,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CodeQlSarifGateTest {
 
     @Test
-    void blocksHighSecuritySeverityAndErrorLevelAcrossReports(
+    void blocksHighSecuritySeverityAndErrorLevelAcrossReportsInStableOrder(
             @TempDir Path root) throws Exception {
-        Path javaReport = root.resolve("java.sarif");
-        Path scriptReport = root.resolve("javascript.sarif");
+        Path javaReport = root.resolve("a-java.sarif");
+        Path scriptReport = root.resolve("z-javascript.sarif");
         writeSarif(javaReport, "java/high", "8.1", "warning", "high severity");
         writeSarif(scriptReport, "js/error", "not-a-number", "error", "error level");
 
         CodeQlSarifGate.Inspection inspection = CodeQlSarifGate.inspect(
-                List.of(javaReport, scriptReport), 7.0);
+                List.of(scriptReport, javaReport), 7.0);
 
         assertThat(inspection.resultCount()).isEqualTo(2);
+        assertThat(inspection.sarifFiles())
+                .containsExactly(
+                        javaReport.toAbsolutePath().normalize(),
+                        scriptReport.toAbsolutePath().normalize());
         assertThat(inspection.blocking())
                 .extracting(CodeQlSarifGate.Finding::ruleId)
                 .containsExactly("java/high", "js/error");
@@ -95,8 +99,8 @@ class CodeQlSarifGateTest {
     }
 
     @Test
-    void missingOrMalformedInputRemovesStaleReport(@TempDir Path root)
-            throws Exception {
+    void missingMalformedOrInvalidArgumentsRemoveStaleReport(
+            @TempDir Path root) throws Exception {
         Path report = root.resolve("codeql-gate.json");
         Files.writeString(report, "stale", StandardCharsets.UTF_8);
         ByteArrayOutputStream errors = new ByteArrayOutputStream();
@@ -126,6 +130,22 @@ class CodeQlSarifGateTest {
         assertThat(invalid).isEqualTo(1);
         assertThat(errors.toString(StandardCharsets.UTF_8))
                 .contains("SARIF runs must be an array");
+        assertThat(report).doesNotExist();
+
+        Files.writeString(report, "stale-threshold", StandardCharsets.UTF_8);
+        errors.reset();
+        int invalidThreshold = CodeQlSarifGate.run(
+                new String[]{
+                        malformed.toString(),
+                        "--report", report.toString(),
+                        "--threshold", "not-a-number"},
+                root,
+                new PrintStream(OutputStream.nullOutputStream()),
+                new PrintStream(errors, true, StandardCharsets.UTF_8));
+
+        assertThat(invalidThreshold).isEqualTo(1);
+        assertThat(errors.toString(StandardCharsets.UTF_8))
+                .contains("CodeQL gate failed");
         assertThat(report).doesNotExist();
     }
 
