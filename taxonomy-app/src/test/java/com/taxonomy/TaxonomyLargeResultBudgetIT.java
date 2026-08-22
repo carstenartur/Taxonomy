@@ -159,7 +159,9 @@ class TaxonomyLargeResultBudgetIT {
             long deferredContainers) {
         clearDeviceMetricsOverride();
         driver.manage().window().setSize(new Dimension(1440, 1000));
-        execute("const panel=document.querySelector('#searchPanel');"
+        execute("const secondaryTools=document.querySelector('#analysisSecondaryTools');"
+                + "secondaryTools.open=true;"
+                + "const panel=document.querySelector('#searchPanel');"
                 + "panel.open=true;"
                 + "const area=document.querySelector('#searchResultsArea');"
                 + "area.innerHTML=''; area.style.display='none'; area.scrollTop=0;");
