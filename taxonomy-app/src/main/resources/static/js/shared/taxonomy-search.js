@@ -12,6 +12,8 @@
     const RESULT_WINDOW_SIZE = 50;
     let embeddingAvailable = false;
     let resultState = emptyResultState();
+    let searchGeneration = 0;
+    let activeSearchController = null;
 
     const orientationMessages = {
         en: {
@@ -107,6 +109,33 @@
         return typeof value === 'function' ? value.apply(null, args) : value;
     }
 
+    function beginSearchRequest() {
+        searchGeneration += 1;
+        if (activeSearchController) {
+            activeSearchController.abort();
+        }
+        activeSearchController = typeof AbortController === 'function'
+            ? new AbortController()
+            : null;
+        return {
+            generation: searchGeneration,
+            signal: activeSearchController ? activeSearchController.signal : null
+        };
+    }
+
+    function isCurrentSearch(request) {
+        return request.generation === searchGeneration;
+    }
+
+    function searchFetchOptions(request) {
+        return request.signal ? { signal: request.signal } : undefined;
+    }
+
+    function shouldIgnoreSearchError(error, request) {
+        return !isCurrentSearch(request)
+            || (error && error.name === 'AbortError');
+    }
+
     function checkEmbeddingStatus() {
         fetch('/api/embedding/status')
             .then(function (response) { return response.json(); })
@@ -158,6 +187,7 @@
     function performSearch(query, mode, maxResults) {
         if (!query) return;
 
+        var request = beginSearchRequest();
         var area = document.getElementById('searchResultsArea');
         resetResultState();
         area.style.display = 'block';
@@ -184,7 +214,7 @@
                     + '&maxResults=' + maxResults;
         }
 
-        fetch(url)
+        fetch(url, searchFetchOptions(request))
             .then(function (response) {
                 if (!response.ok) {
                     throw new Error('Search failed (' + response.status + ')');
@@ -192,6 +222,7 @@
                 return response.json();
             })
             .then(function (data) {
+                if (!isCurrentSearch(request)) return;
                 var context = { query: query, mode: mode, maxResults: maxResults };
                 if (mode === 'graph') {
                     renderGraphSearchResults(data, context);
@@ -200,6 +231,7 @@
                 }
             })
             .catch(function (error) {
+                if (shouldIgnoreSearchError(error, request)) return;
                 resetResultState();
                 area.innerHTML = '<div class="text-danger small p-2">⚠️ '
                     + escapeHtml(error.message) + '</div>';
@@ -319,7 +351,7 @@
                 + (current ? ' aria-current="true"' : '') + '>';
             html += '<span class="search-result-code fw-semibold me-1">'
                 + escapeHtml(node.code) + '</span> ';
-            html += '<span class="search-result-name text-truncate">'
+            html += '<span class="search-result-name text-truncate flex-grow-1">'
                 + escapeHtml(node.nameEn || '') + '</span>';
             html += percentageBadge;
             html += '</a></div>';
@@ -538,6 +570,7 @@
     }
 
     function findSimilar(code) {
+        var request = beginSearchRequest();
         var area = document.getElementById('searchResultsArea');
         var panel = document.getElementById('searchPanel');
         if (panel) {
@@ -552,12 +585,15 @@
                 + t('search.finding.similar') + '</div>';
         }
 
-        fetch('/api/search/similar/' + encodeURIComponent(code) + '?topK=10')
+        fetch(
+            '/api/search/similar/' + encodeURIComponent(code) + '?topK=10',
+            searchFetchOptions(request))
             .then(function (response) {
                 if (!response.ok) throw new Error('Failed (' + response.status + ')');
                 return response.json();
             })
             .then(function (nodes) {
+                if (!isCurrentSearch(request)) return;
                 renderSearchResults(nodes, {
                     query: code,
                     mode: 'similar',
@@ -565,6 +601,7 @@
                 });
             })
             .catch(function (error) {
+                if (shouldIgnoreSearchError(error, request)) return;
                 resetResultState();
                 if (area) {
                     area.innerHTML = '<div class="text-danger small p-2">⚠️ '
