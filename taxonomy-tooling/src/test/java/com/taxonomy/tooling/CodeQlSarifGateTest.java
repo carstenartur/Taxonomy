@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,7 +69,7 @@ class CodeQlSarifGateTest {
                 Files.readString(report, StandardCharsets.UTF_8));
         assertThat(payload)
                 .containsEntry("resultCount", 1L)
-                .containsEntry("threshold", 7.0)
+                .containsEntry("threshold", new BigDecimal("7.0"))
                 .containsEntry("status", "PASS")
                 .containsEntry("blocking", List.of());
         assertThat(FlatJson.pretty(payload) + "\n")
