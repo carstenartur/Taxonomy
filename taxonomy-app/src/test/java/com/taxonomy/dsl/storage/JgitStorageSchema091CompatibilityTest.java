@@ -113,7 +113,8 @@ class JgitStorageSchema091CompatibilityTest {
                 IllegalStateException.class,
                 () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false));
 
-        assertTrue(error.getMessage().contains("neither the exact pre-0.9.1 shape"));
+        assertTrue(error.getMessage().contains(
+                "neither the exact pre-0.9.1, 0.9.1 nor 0.9.2 shape"));
         assertTrue(error.getMessage().contains("UNSUPPORTED_PROBE"));
     }
 
