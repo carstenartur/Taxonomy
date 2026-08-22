@@ -1,0 +1,72 @@
+name: Complete PR 819 search overflow repair
+
+on:
+  push:
+    branches:
+      - agent/630-large-result-release-floor-current
+    paths:
+      - .github/workflows/pr819-search-overflow-contract-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull-request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/630-large-result-release-floor-current
+          fetch-depth: 0
+
+      - name: Keep every search-form row inside the panel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("taxonomy-app/src/main/resources/templates/index.html")
+          text = path.read_text(encoding="utf-8")
+          start = text.index('<details id="searchPanel"')
+          end = text.index("</details>", start)
+          panel = text[start:end]
+          old = '<div class="row g-2 mb-2">'
+          new = '<div class="row g-2 mx-0 mb-2">'
+          replacements = panel.count(old)
+          if replacements != 1:
+              raise SystemExit(
+                  f"Expected exactly one remaining unbounded search row, found {replacements}"
+              )
+          panel = panel.replace(old, new)
+          if old in panel or panel.count(new) != 2:
+              raise SystemExit("Search panel must contain exactly two bounded rows")
+          path.write_text(text[:start] + panel + text[end:], encoding="utf-8")
+          PY
+
+          grep -Fq '<div class="row g-2 mx-0 mb-2">' \
+            taxonomy-app/src/main/resources/templates/index.html
+          ! sed -n '/<details id="searchPanel"/,/<\/details>/p' \
+            taxonomy-app/src/main/resources/templates/index.html \
+            | grep -Fq '<div class="row g-2 mb-2">'
+          git diff --check
+
+      - name: Run the focused source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -Dtest=TaxonomySearchLargeResultContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+      - name: Commit the completed fix and remove this one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/pr819-search-overflow-contract-repair.yml
+          git add taxonomy-app/src/main/resources/templates/index.html
+          git commit -m 'Bound every search form row within the panel'
+          git push origin HEAD:agent/630-large-result-release-floor-current
