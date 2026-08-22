@@ -18,9 +18,9 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
  * Spring Security configuration for form-login mode (default, without Keycloak).
  *
  * <p>The GUI uses form-login sessions and therefore keeps CSRF protection for
- * state-changing API calls. Only programmatic API clients authenticated with an
- * explicit Basic or Bearer Authorization header are treated as stateless and
- * may call the REST API without a CSRF token.</p>
+ * state-changing API calls. Only programmatic API or WebDAV clients authenticated
+ * with an explicit Basic or Bearer Authorization header are treated as stateless
+ * and may call their protocol endpoint without a CSRF token.</p>
  */
 @Configuration
 @EnableMethodSecurity
@@ -38,11 +38,11 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        RequestMatcher statelessApiClient = SecurityConfig::isStatelessApiClient;
+        RequestMatcher statelessProtocolClient = SecurityConfig::isStatelessProtocolClient;
 
         http
             .authorizeHttpRequests(auth -> authRules.configure(auth))
-            .csrf(csrf -> csrf.ignoringRequestMatchers(statelessApiClient))
+            .csrf(csrf -> csrf.ignoringRequestMatchers(statelessProtocolClient))
             .headers(headers -> headers
                 .withObjectPostProcessor(eagerHeaderWriter())
                 .contentTypeOptions(Customizer.withDefaults())
@@ -72,13 +72,16 @@ public class SecurityConfig {
     }
 
     /**
-     * A request is stateless only when it carries an explicit HTTP
-     * authentication scheme. The absence of an existing session is not enough:
-     * otherwise a browser request made before session resolution could bypass
-     * CSRF protection.
+     * A request is stateless only when it targets a protocol endpoint and carries
+     * an explicit HTTP authentication scheme. The absence of an existing session
+     * is not enough: otherwise a browser request made before session resolution
+     * could bypass CSRF protection.
      */
-    static boolean isStatelessApiClient(HttpServletRequest request) {
-        if (!request.getRequestURI().startsWith("/api/")) {
+    static boolean isStatelessProtocolClient(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        if (!uri.startsWith("/api/")
+                && !uri.equals("/dav/templates")
+                && !uri.startsWith("/dav/templates/")) {
             return false;
         }
         String authorization = request.getHeader("Authorization");

@@ -20,8 +20,8 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * Spring Security configuration for Keycloak/OIDC mode.
- * Browser OIDC sessions retain CSRF protection; explicit JWT Bearer API clients
- * are stateless and do not require a CSRF token.
+ * Browser OIDC sessions retain CSRF protection; explicit JWT Bearer API and
+ * WebDAV clients are stateless and do not require a CSRF token.
  */
 @Configuration
 @EnableMethodSecurity
@@ -49,7 +49,7 @@ public class KeycloakSecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         RequestMatcher csrfExempt = new OrRequestMatcher(
-                KeycloakSecurityConfig::isStatelessBearerApiClient,
+                KeycloakSecurityConfig::isStatelessBearerProtocolClient,
                 KeycloakSecurityConfig::isOAuth2Callback);
 
         http
@@ -84,8 +84,11 @@ public class KeycloakSecurityConfig {
         };
     }
 
-    private static boolean isStatelessBearerApiClient(HttpServletRequest request) {
-        if (!request.getRequestURI().startsWith("/api/")) {
+    private static boolean isStatelessBearerProtocolClient(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        if (!uri.startsWith("/api/")
+                && !uri.equals("/dav/templates")
+                && !uri.startsWith("/dav/templates/")) {
             return false;
         }
         String authorization = request.getHeader("Authorization");
