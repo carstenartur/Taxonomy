@@ -243,7 +243,7 @@ jq -n \
     },
     workload: {
       deployment: $deployment,
-      service: $SERVICE,
+      service: $service,
       pod: $pod,
       readinessSeconds: $readinessSeconds,
       restartCount: $restartCount,
