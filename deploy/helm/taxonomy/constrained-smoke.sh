@@ -187,7 +187,9 @@ for _ in $(seq 1 60); do
   fi
   sleep 2
 done
-curl --fail --location --silent --show-error http://127.0.0.1:18080/ \
+curl --fail --location --silent --show-error \
+  --header 'Accept: text/html' \
+  http://127.0.0.1:18080/ \
   >"${EVIDENCE_DIR}/home.html"
 [[ -s "${EVIDENCE_DIR}/home.html" ]] \
   || fail "Taxonomy root redirect did not produce a login page"
