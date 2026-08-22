@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -168,7 +169,9 @@ class DocumentTemplateWordLinkContractTest {
         assertThat(response.getHeader("Lock-Token"))
                 .startsWith("<opaquelocktoken:")
                 .endsWith(">");
-        assertThat(response.getContentType()).isEqualTo("application/xml;charset=UTF-8");
+        MediaType lockResponseType = MediaType.parseMediaType(response.getContentType());
+        assertThat(lockResponseType.isCompatibleWith(MediaType.APPLICATION_XML)).isTrue();
+        assertThat(lockResponseType.getCharset()).isEqualTo(StandardCharsets.UTF_8);
     }
 
     @Test
