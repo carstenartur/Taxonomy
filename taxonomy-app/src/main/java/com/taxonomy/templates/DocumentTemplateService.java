@@ -1,0 +1,347 @@
+package com.taxonomy.templates;
+
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateRevision;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateSnapshot;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Application boundary shared by the web UI and the virtual WebDAV projection.
+ */
+@Service
+public class DocumentTemplateService {
+
+    private final DocumentTemplateGitRepository repository;
+    private final OoxmlTemplatePackageCodec codec;
+    private final Map<String, DocumentTemplateContract> contracts;
+
+    /**
+     * Production constructor. Spring supplies all registered report-template contracts.
+     */
+    @Autowired
+    public DocumentTemplateService(
+            DocumentTemplateGitRepository repository,
+            OoxmlTemplatePackageCodec codec,
+            List<DocumentTemplateContract> contracts) {
+        this.repository = Objects.requireNonNull(repository, "repository");
+        this.codec = Objects.requireNonNull(codec, "codec");
+        this.contracts = indexContracts(contracts);
+    }
+
+    /** Test and compatibility constructor for generic templates without semantic contracts. */
+    public DocumentTemplateService(
+            DocumentTemplateGitRepository repository,
+            OoxmlTemplatePackageCodec codec) {
+        this(repository, codec, List.of());
+    }
+
+    public List<TemplateDescriptor> list() throws IOException {
+        return repository.list();
+    }
+
+    public boolean exists(String templateId) throws IOException {
+        DocumentTemplateGitRepository.validateTemplateId(templateId);
+        try {
+            repository.readCurrent(templateId);
+            return true;
+        } catch (TemplateNotFoundException exception) {
+            return false;
+        }
+    }
+
+    /**
+     * Import a full DOTX and commit its canonical unzipped package atomically.
+     *
+     * <p>A missing expected version is create-only. Replacing a template requires its
+     * current per-template Git version, normally supplied through {@code If-Match} or a
+     * WebDAV lock. Unrelated template commits never invalidate this precondition.</p>
+     */
+    public TemplateDescriptor upload(
+            String templateId,
+            String displayName,
+            InputStream dotx,
+            String expectedVersion,
+            String actor,
+            String message) throws IOException {
+
+        DocumentTemplateGitRepository.validateTemplateId(templateId);
+        String normalizedDisplayName = normalizeDisplayName(displayName, templateId);
+        OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(dotx);
+        validateContract(templateId, packageData.parts());
+        String effectiveExpectedVersion = resolveExpectedVersion(
+                templateId, expectedVersion);
+
+        String now = Instant.now().toString();
+        String user = actor == null || actor.isBlank() ? "taxonomy" : actor;
+        TemplateManifest manifest = new TemplateManifest(
+                1,
+                templateId,
+                normalizedDisplayName,
+                templateId + ".dotx",
+                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                now,
+                user,
+                packageData.uncompressedSize(),
+                packageData.parts().size(),
+                packageData.sha256());
+
+        TemplateSnapshot saved = repository.commit(
+                manifest,
+                packageData.parts(),
+                effectiveExpectedVersion,
+                user,
+                message);
+        return descriptor(saved);
+    }
+
+    public TemplateFile downloadCurrent(String templateId) throws IOException {
+        return toTemplateFile(repository.readCurrent(templateId));
+    }
+
+    /**
+     * Read and revalidate the current package before a business-critical renderer uses it.
+     *
+     * <p>Normal uploads are validated before commit. Revalidation here also detects direct
+     * expert Git changes that bypassed the web and WebDAV application boundaries.</p>
+     */
+    public TemplateFile downloadCurrentValidated(String templateId) throws IOException {
+        TemplateSnapshot snapshot = repository.readCurrent(templateId);
+        validateContract(templateId, snapshot.parts());
+        return toTemplateFile(snapshot);
+    }
+
+    public TemplateFile download(String templateId, String revision) throws IOException {
+        return toTemplateFile(repository.read(templateId, revision));
+    }
+
+    public List<TemplateRevision> history(String templateId) throws IOException {
+        return repository.history(templateId);
+    }
+
+    public TemplateDiff diff(
+            String templateId,
+            String fromRevision,
+            String toRevision) throws IOException {
+        return repository.diff(templateId, fromRevision, toRevision);
+    }
+
+    public TemplatePartView readPart(
+            String templateId,
+            String revision,
+            String path) throws IOException {
+        if (path == null || path.isBlank() || path.startsWith("/")
+                || path.contains("\\") || path.contains("../")) {
+            throw new IllegalArgumentException("Invalid OOXML part path");
+        }
+        TemplateSnapshot snapshot = repository.read(templateId, revision);
+        byte[] content = snapshot.parts().get(path);
+        if (content == null) {
+            throw new TemplateNotFoundException(
+                    templateId + "/" + path, revision);
+        }
+        boolean text = path.endsWith(".xml") || path.endsWith(".rels")
+                || path.endsWith(".txt") || path.endsWith(".json");
+        String rendered = text && content.length <= 1_048_576
+                ? new String(content, StandardCharsets.UTF_8)
+                : null;
+        return new TemplatePartView(
+                path,
+                content.length,
+                text ? "application/xml" : "application/octet-stream",
+                rendered);
+    }
+
+    public TemplateDescriptor restore(
+            String templateId,
+            String revision,
+            String expectedVersion,
+            String actor) throws IOException {
+        TemplateSnapshot historical = repository.read(templateId, revision);
+        OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(
+                new ByteArrayInputStream(codec.pack(historical.parts())));
+        validateContract(templateId, packageData.parts());
+        String effectiveExpected = resolveExpectedVersion(
+                templateId, expectedVersion);
+        String user = actor == null || actor.isBlank() ? "taxonomy" : actor;
+        TemplateManifest restored = new TemplateManifest(
+                historical.manifest().schemaVersion(),
+                templateId,
+                historical.manifest().displayName(),
+                historical.manifest().fileName(),
+                historical.manifest().mediaType(),
+                Instant.now().toString(),
+                user,
+                packageData.uncompressedSize(),
+                packageData.parts().size(),
+                packageData.sha256());
+        TemplateSnapshot saved = repository.commit(
+                restored,
+                packageData.parts(),
+                effectiveExpected,
+                user,
+                "Restore document template " + templateId + " from " + revision);
+        return descriptor(saved);
+    }
+
+    /** Repository-wide head retained only for diagnostics. */
+    public String headCommit() throws IOException {
+        return repository.headCommit();
+    }
+
+    private String resolveExpectedVersion(String templateId, String value)
+            throws IOException {
+        String expected = stripEtag(value);
+        if (expected == null || expected.isBlank()) {
+            return null;
+        }
+        if ("*".equals(expected)) {
+            return repository.readCurrent(templateId).commitId();
+        }
+        return expected;
+    }
+
+    private void validateContract(String templateId, Map<String, byte[]> packageParts) {
+        DocumentTemplateContract contract = contracts.get(templateId);
+        if (contract != null) {
+            contract.validate(packageParts);
+        }
+    }
+
+    private TemplateFile toTemplateFile(TemplateSnapshot snapshot) throws IOException {
+        byte[] dotx = codec.pack(snapshot.parts());
+        return new TemplateFile(
+                snapshot.manifest(),
+                snapshot.commitId(),
+                dotx,
+                parseInstant(snapshot.manifest().updatedAt()));
+    }
+
+    private static Map<String, DocumentTemplateContract> indexContracts(
+            List<DocumentTemplateContract> contracts) {
+        LinkedHashMap<String, DocumentTemplateContract> indexed = new LinkedHashMap<>();
+        for (DocumentTemplateContract contract :
+                contracts == null ? List.<DocumentTemplateContract>of() : contracts) {
+            Objects.requireNonNull(contract, "document template contract");
+            DocumentTemplateGitRepository.validateTemplateId(contract.templateId());
+            DocumentTemplateContract previous = indexed.putIfAbsent(
+                    contract.templateId(), contract);
+            if (previous != null) {
+                throw new IllegalStateException(
+                        "Duplicate document template contract for " + contract.templateId());
+            }
+        }
+        return Map.copyOf(indexed);
+    }
+
+    private static TemplateDescriptor descriptor(TemplateSnapshot snapshot) {
+        TemplateManifest manifest = snapshot.manifest();
+        return new TemplateDescriptor(
+                manifest.templateId(),
+                manifest.displayName(),
+                manifest.fileName(),
+                snapshot.commitId(),
+                manifest.updatedAt(),
+                manifest.updatedBy(),
+                manifest.uncompressedSize(),
+                manifest.partCount(),
+                manifest.packageSha256());
+    }
+
+    static String stripEtag(String value) {
+        if (value == null) {
+            return null;
+        }
+        String stripped = value.strip();
+        if (stripped.startsWith("W/")) {
+            stripped = stripped.substring(2).strip();
+        }
+        if (stripped.length() >= 2
+                && stripped.startsWith("\"")
+                && stripped.endsWith("\"")) {
+            stripped = stripped.substring(1, stripped.length() - 1);
+        }
+        return stripped;
+    }
+
+    static String normalizeDisplayName(String displayName, String templateId) {
+        String normalized = displayName == null || displayName.isBlank()
+                ? templateId
+                : displayName.strip();
+        normalized = normalized.replace('\r', ' ')
+                .replace('\n', ' ')
+                .replace('\t', ' ');
+        for (int offset = 0; offset < normalized.length();) {
+            int codePoint = normalized.codePointAt(offset);
+            if (!isValidXml10CodePoint(codePoint)) {
+                throw new IllegalArgumentException(
+                        "Template display name contains a character that is not permitted in XML 1.0");
+            }
+            offset += Character.charCount(codePoint);
+        }
+        if (normalized.length() > 160) {
+            throw new IllegalArgumentException(
+                    "Template display name must not exceed 160 characters");
+        }
+        return normalized;
+    }
+
+    static boolean isValidXml10CodePoint(int codePoint) {
+        return codePoint == 0x9
+                || codePoint == 0xA
+                || codePoint == 0xD
+                || (codePoint >= 0x20 && codePoint <= 0xD7FF)
+                || (codePoint >= 0xE000 && codePoint <= 0xFFFD)
+                || (codePoint >= 0x10000 && codePoint <= 0x10FFFF);
+    }
+
+    private static Instant parseInstant(String value) {
+        try {
+            return Instant.parse(value);
+        } catch (RuntimeException exception) {
+            return Instant.EPOCH;
+        }
+    }
+
+    public record TemplateFile(
+            TemplateManifest manifest,
+            String commitId,
+            byte[] content,
+            Instant lastModified) {
+
+        public TemplateFile {
+            Objects.requireNonNull(manifest, "manifest");
+            Objects.requireNonNull(commitId, "commitId");
+            content = content.clone();
+        }
+
+        @Override
+        public byte[] content() {
+            return content.clone();
+        }
+
+        public String etag() {
+            return "\"" + commitId + "\"";
+        }
+    }
+
+    public record TemplatePartView(
+            String path,
+            long size,
+            String mediaType,
+            String textContent) {
+    }
+}

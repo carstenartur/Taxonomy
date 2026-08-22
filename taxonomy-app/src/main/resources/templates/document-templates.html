@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title th:text="#{document.templates.page.title}">Document templates — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#documentTemplateWorkspace">Skip to document templates</a>
+<div id="documentTemplateLive" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Document template navigation">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
+        <span class="navbar-text text-white fw-semibold me-auto" th:text="#{document.templates.heading}">
+            Versioned Word document templates
+        </span>
+        <a id="documentTemplateBack" class="btn btn-sm btn-outline-light" th:href="@{/}"
+           th:text="#{document.templates.nav.back}">Back to administration</a>
+    </div>
+</nav>
+
+<main id="documentTemplateWorkspace" class="container-fluid py-3 px-lg-4"
+      th:attr="data-api-base=@{/api/admin/document-templates},data-webdav-base=@{/dav/templates/},data-home-url=@{/}">
+    <div id="documentTemplateError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
+    <div id="documentTemplateSuccess" class="alert alert-success d-none" role="status"></div>
+    <div id="documentTemplateHttpsWarning" class="alert alert-warning d-none" role="alert"
+         th:text="#{document.templates.https.warning}">
+        Direct Word editing should use the public HTTPS address of Taxonomy.
+    </div>
+
+    <section class="card shadow-sm mb-3" aria-labelledby="documentTemplateHeading">
+        <div class="card-body">
+            <h1 id="documentTemplateHeading" class="h2 mb-2" th:text="#{document.templates.heading}">
+                Versioned Word document templates
+            </h1>
+            <p class="mb-0 text-body-secondary" th:text="#{document.templates.intro}">
+                Manage organization-specific DOTX templates.
+            </p>
+        </div>
+    </section>
+
+    <section class="card shadow-sm mb-3" aria-labelledby="documentTemplateHelpHeading">
+        <div class="card-header">
+            <h2 id="documentTemplateHelpHeading" class="h5 mb-0" th:text="#{document.templates.help.title}">
+                Choose the workflow that fits your experience
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-lg-4">
+                    <h3 class="h6" th:text="#{document.templates.action.edit}">Edit template in Word</h3>
+                    <p class="small text-body-secondary mb-0" th:text="#{document.templates.help.edit}">
+                        Open the versioned WebDAV resource in Word and save changes back to Taxonomy.
+                    </p>
+                </div>
+                <div class="col-lg-4">
+                    <h3 class="h6" th:text="#{document.templates.action.new}">New document from template</h3>
+                    <p class="small text-body-secondary mb-0" th:text="#{document.templates.help.new}">
+                        Create a separate document without changing the template.
+                    </p>
+                </div>
+                <div class="col-lg-4">
+                    <h3 class="h6" th:text="#{document.templates.action.download}">Download</h3>
+                    <p class="small text-body-secondary mb-0" th:text="#{document.templates.help.fallback}">
+                        Use the normal download when the direct Word link is unavailable.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm mb-3" aria-labelledby="documentTemplateUploadHeading">
+        <div class="card-header">
+            <h2 id="documentTemplateUploadHeading" class="h5 mb-0" th:text="#{document.templates.upload.title}">
+                Upload or replace a template
+            </h2>
+        </div>
+        <div class="card-body">
+            <form id="documentTemplateUploadForm" novalidate>
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-3">
+                        <label for="documentTemplateId" class="form-label" th:text="#{document.templates.upload.id}">
+                            Template ID
+                        </label>
+                        <input id="documentTemplateId" name="templateId" type="text" class="form-control"
+                               required maxlength="80" pattern="[a-z0-9][a-z0-9._-]{0,79}"
+                               autocomplete="off" aria-describedby="documentTemplateIdHelp"/>
+                        <div id="documentTemplateIdHelp" class="form-text" th:text="#{document.templates.upload.id.help}">
+                            Lower-case technical identifier.
+                        </div>
+                    </div>
+                    <div class="col-lg-3">
+                        <label for="documentTemplateDisplayName" class="form-label"
+                               th:text="#{document.templates.upload.name}">Display name</label>
+                        <input id="documentTemplateDisplayName" name="displayName" type="text"
+                               class="form-control" required maxlength="160" autocomplete="off"/>
+                    </div>
+                    <div class="col-lg-4">
+                        <label for="documentTemplateFile" class="form-label"
+                               th:text="#{document.templates.upload.file}">DOTX file</label>
+                        <input id="documentTemplateFile" name="file" type="file" class="form-control"
+                               required accept=".dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.template"/>
+                    </div>
+                    <div class="col-lg-2 d-grid">
+                        <button id="documentTemplateUploadButton" type="submit" class="btn btn-primary">
+                            <span id="documentTemplateUploadSpinner"
+                                  class="spinner-border spinner-border-sm d-none me-1" aria-hidden="true"></span>
+                            <span th:text="#{document.templates.upload.submit}">Upload and create version</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="form-text mt-3 mb-0" th:text="#{document.templates.upload.help}">
+                    Concurrent changes are not overwritten silently.
+                </p>
+            </form>
+        </div>
+    </section>
+
+    <section class="card shadow-sm" aria-labelledby="documentTemplateListHeading">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h2 id="documentTemplateListHeading" class="h5 mb-0" th:text="#{document.templates.list.title}">
+                Available templates
+            </h2>
+            <button id="documentTemplateRefresh" type="button" class="btn btn-sm btn-outline-secondary"
+                    th:text="#{document.templates.refresh}">Refresh</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th scope="col" th:text="#{document.templates.col.template}">Template</th>
+                    <th scope="col" th:text="#{document.templates.col.version}">Current version</th>
+                    <th scope="col" th:text="#{document.templates.col.word}">Open in Word</th>
+                    <th scope="col" th:text="#{document.templates.col.actions}">Other actions</th>
+                </tr>
+                </thead>
+                <tbody id="documentTemplateRows" aria-live="polite">
+                <tr id="documentTemplateLoadingRow">
+                    <td colspan="4" class="text-center text-body-secondary py-4"
+                        th:text="#{document.templates.loading}">Loading document templates…</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="documentTemplateEmpty" class="d-none text-center text-body-secondary p-5"
+             th:text="#{document.templates.empty}">
+            No document templates have been uploaded yet.
+        </div>
+    </section>
+
+    <div id="documentTemplateLabels" class="d-none"
+         th:attr="data-edit=#{document.templates.action.edit},data-new=#{document.templates.action.new},data-download=#{document.templates.action.download},data-copy=#{document.templates.action.copy},data-history=#{document.templates.action.history},data-history-empty=#{document.templates.history.empty}"></div>
+</main>
+
+<div class="modal fade" id="documentTemplateHistoryModal" tabindex="-1"
+     aria-labelledby="documentTemplateHistoryTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="documentTemplateHistoryTitle" class="modal-title h5"
+                    th:text="#{document.templates.history.title}">Template history</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="documentTemplateHistoryBody" class="modal-body"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
+                        th:text="#{document.templates.history.close}">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script th:src="@{/webjars/bootstrap/5.3.8/dist/js/bootstrap.bundle.min.js}"></script>
+<script th:src="@{/js/api/document-templates-api.js}"></script>
+<script th:src="@{/js/document-templates/word-template-links.js}"></script>
+<script th:src="@{/js/document-templates/document-templates.js}"></script>
+</body>
+</html>
