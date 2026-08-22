@@ -294,7 +294,10 @@ async function testTextSpacing() {
 }
 
 async function testWorkspaceOffline() {
-  await page.route('**/api/workspace/sync-state', route => route.abort('internetdisconnected'));
+  await page.route(
+    url => url.pathname.endsWith('/api/workspace/sync-state'),
+    route => route.abort('internetdisconnected')
+  );
   await navigateToPage(page, 'versions');
   await page.locator('#versionsSubTabs [data-versions-tab="sync"]').click();
   await page.locator('#versions-sync').waitFor({ state: 'visible', timeout: 10_000 });

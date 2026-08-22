@@ -93,6 +93,12 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.PUT, "/api/workspace/**").hasRole("ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/workspace/**").hasRole("ADMIN");
 
+        auth.requestMatchers(HttpMethod.GET, "/api/analysis-drafts/**").authenticated();
+        auth.requestMatchers(HttpMethod.PUT, "/api/analysis-drafts/**")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/analysis-drafts/**")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+
         auth.requestMatchers(HttpMethod.GET, "/api/repositories/**").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/repositories")
                 .hasRole("ADMIN");
@@ -158,7 +164,8 @@ public class AuthorizationRulesConfigurer {
                         "/api/diagram/**",
                         "/api/scores/**",
                         "/api/export/**",
-                        "/api/report/**")
+                        "/api/report/**",
+                        "/api/decision-report/**")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.POST, "/api/account/change-password").authenticated();

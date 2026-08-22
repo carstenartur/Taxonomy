@@ -23,7 +23,11 @@ window.TaxonomyRoleSurface = (function () {
         '.proposal-select',
         '#proposalSelectAll',
         '#bulkProposalActions',
-        '.relation-delete-btn'
+        '.relation-delete-btn',
+        '[data-analysis-session-action="add-requirement"]',
+        '[data-analysis-session-action="new-project"]',
+        '[data-analysis-session-action="save-version"]',
+        '[data-analysis-session-action="preserve-requirement"]'
     ];
 
     var administratorSelectors = [

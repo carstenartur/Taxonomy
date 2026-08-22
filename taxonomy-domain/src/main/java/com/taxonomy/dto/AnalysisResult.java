@@ -1,12 +1,20 @@
 package com.taxonomy.dto;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class AnalysisResult {
 
     private Map<String, Integer> scores;
+
+    /** Original node-code → reason text returned by the scoring provider. */
+    private Map<String, String> reasons = new LinkedHashMap<>();
+
+    /** Effective provider used for this analysis (informational/provenance). */
+    private String provider;
+
     private List<TaxonomyNodeDto> tree;
 
     /** "SUCCESS", "PARTIAL", or "ERROR" */
@@ -43,6 +51,14 @@ public class AnalysisResult {
 
     public Map<String, Integer> getScores() { return scores; }
     public void setScores(Map<String, Integer> scores) { this.scores = scores; }
+
+    public Map<String, String> getReasons() { return reasons; }
+    public void setReasons(Map<String, String> reasons) {
+        this.reasons = reasons != null ? reasons : new LinkedHashMap<>();
+    }
+
+    public String getProvider() { return provider; }
+    public void setProvider(String provider) { this.provider = provider; }
 
     public List<TaxonomyNodeDto> getTree() { return tree; }
     public void setTree(List<TaxonomyNodeDto> tree) { this.tree = tree; }

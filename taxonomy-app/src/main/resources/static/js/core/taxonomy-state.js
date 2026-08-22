@@ -11,6 +11,8 @@
         currentReasons: {},   // code → reason string
         currentDiscrepancies: [], // TaxonomyDiscrepancy list from analysis
         currentArchView: null, // latest architecture view from analysis
+        lastAnalysisProvider: null, // provider that produced current scores
+        lastAnalysisStatus: null, // SUCCESS, PARTIAL, ERROR, IN_PROGRESS, or imported/unknown
         currentView: 'list', // 'list' | 'tabs' | 'sunburst' | 'tree' | 'decision' | 'summary'
         currentTreeRoot: 'BP', // code of the taxonomy shown in tree view
 
@@ -257,7 +259,6 @@
             if (!wrappersForListener) return null;
             var wrapped = wrappersForListener.get(capture) || null;
             if (!wrapped) return null;
-
             wrappersForListener.delete(capture);
             if (wrappersForListener.size === 0) listenersForType.delete(listener);
             if (listenersForType.size === 0) listenerMaps.delete(type);
@@ -351,29 +352,34 @@
 
     function installAnalysisStreamGuard() {
         var scoring = window.TaxonomyScoring;
-        var NativeEventSource = window.EventSource;
+        var InitialEventSource = window.EventSource;
         if (!scoring || typeof scoring.runStreamingAnalysis !== 'function'
-                || typeof NativeEventSource !== 'function'
+                || typeof InitialEventSource !== 'function'
                 || scoring.__analysisOperationGuardInstalled === true) {
             return;
         }
 
         var controller = createAnalysisOperationController();
         var original = scoring.runStreamingAnalysis;
+        var currentEventSourceDelegate = null;
 
         function GuardedEventSource(url, configuration) {
-            var nativeSource = new NativeEventSource(url, configuration);
+            var EventSourceDelegate = currentEventSourceDelegate || InitialEventSource;
+            var nativeSource = new EventSourceDelegate(url, configuration);
             var session = controller.begin(function () { nativeSource.close(); });
             return guardAnalysisEventSource(nativeSource, session);
         }
-        GuardedEventSource.prototype = NativeEventSource.prototype;
+        GuardedEventSource.prototype = InitialEventSource.prototype;
         ['CONNECTING', 'OPEN', 'CLOSED'].forEach(function (constant) {
-            if (constant in NativeEventSource) {
-                GuardedEventSource[constant] = NativeEventSource[constant];
+            if (constant in InitialEventSource) {
+                GuardedEventSource[constant] = InitialEventSource[constant];
             }
         });
 
         scoring.runStreamingAnalysis = function () {
+            var previousEventSource = window.EventSource;
+            currentEventSourceDelegate = previousEventSource === GuardedEventSource
+                ? InitialEventSource : previousEventSource;
             window.EventSource = GuardedEventSource;
             try {
                 return original.apply(this, arguments);
@@ -381,7 +387,8 @@
                 controller.cancelActive();
                 throw error;
             } finally {
-                window.EventSource = NativeEventSource;
+                window.EventSource = previousEventSource;
+                currentEventSourceDelegate = null;
             }
         };
         scoring.cancelStreamingAnalysis = controller.cancelActive;
@@ -394,12 +401,35 @@
         });
     }
 
+    function loadAnalysisSessionLifecycle() {
+        if (typeof document === 'undefined'
+                || typeof document.querySelector !== 'function'
+                || typeof document.createElement !== 'function'
+                || !document.head
+                || typeof document.head.appendChild !== 'function') {
+            return;
+        }
+        if (document.querySelector('script[data-taxonomy-analysis-session]')) return;
+        var script = document.createElement('script');
+        var source = '/js/core/taxonomy-analysis-session.js';
+        script.src = window.TaxonomyI18n
+                && typeof window.TaxonomyI18n.resolveUrl === 'function'
+            ? window.TaxonomyI18n.resolveUrl(source)
+            : source;
+        script.async = false;
+        script.dataset.taxonomyAnalysisSession = 'true';
+        document.head.appendChild(script);
+    }
+
     window.TaxonomyState = state;
     window.TaxonomyAnalysisOperationController = Object.freeze({
         create: createAnalysisOperationController
     });
 
-    if (typeof document.addEventListener === 'function') {
+    loadAnalysisSessionLifecycle();
+
+    if (typeof document !== 'undefined'
+            && typeof document.addEventListener === 'function') {
         document.addEventListener('DOMContentLoaded', installAnalysisStreamGuard, { once: true });
     }
 
