@@ -33,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TaxonomyLargeResultBudgetIT {
 
     private static final String ADMIN_PASSWORD = "Large-Result-Budget-2026!";
+    private static final String NAVIGATION_COMPLETE_EVENT =
+            "taxonomy:search-navigation-complete";
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private static Network network;
@@ -224,8 +226,10 @@ class TaxonomyLargeResultBudgetIT {
         Map<?, ?> interaction = map(executeAsync("""
                 const done = arguments[arguments.length - 1];
                 const started = performance.now();
-                document.querySelector('[data-search-result-nav="next"]').click();
-                requestAnimationFrame(() => requestAnimationFrame(() => {
+                const eventName = arguments[0];
+                const onComplete = event => {
+                  if (!event.detail || event.detail.action !== 'next') return;
+                  document.removeEventListener(eventName, onComplete);
                   const selected = document.querySelector(
                     '#searchResultsArea .search-result-item[aria-current="true"]');
                   const highlighted = document.querySelector('.search-highlight')
@@ -234,24 +238,38 @@ class TaxonomyLargeResultBudgetIT {
                     latencyMs: performance.now() - started,
                     currentIndex: Number(document.querySelector('#searchResultsArea')
                       .dataset.currentIndex || -1),
-                    activeClass: document.activeElement?.className || '',
+                    focusConfirmed: event.detail.focusConfirmed === true,
+                    focusTarget: event.detail.focusTarget || '',
+                    activeClass: event.detail.activeElementClass || '',
+                    activeTag: event.detail.activeElementTag || '',
                     selectedCode: selected?.dataset.code || '',
                     highlightedCode: highlighted?.dataset.code || '',
                     path: document.querySelector('#searchCurrentPath')?.textContent || ''
                   });
-                }));
-                """));
+                };
+                document.addEventListener(eventName, onComplete);
+                document.querySelector('[data-search-result-nav="next"]').click();
+                """, NAVIGATION_COMPLETE_EVENT));
 
         Map<?, ?> returnContext = map(executeAsync("""
                 const done = arguments[arguments.length - 1];
+                const eventName = arguments[0];
                 const area = document.querySelector('#searchResultsArea');
+                const onComplete = event => {
+                  if (!event.detail || event.detail.action !== 'summary') return;
+                  document.removeEventListener(eventName, onComplete);
+                  done({
+                    focusConfirmed: event.detail.focusConfirmed === true,
+                    focusTarget: event.detail.focusTarget || '',
+                    activeId: event.detail.activeElementId || '',
+                    activeTag: event.detail.activeElementTag || '',
+                    areaScrollTop: area.scrollTop
+                  });
+                };
+                document.addEventListener(eventName, onComplete);
                 area.scrollTop = 100;
                 document.querySelector('[data-search-result-nav="summary"]').click();
-                requestAnimationFrame(() => done({
-                  activeId: document.activeElement?.id || '',
-                  areaScrollTop: area.scrollTop
-                }));
-                """));
+                """, NAVIGATION_COMPLETE_EVENT));
 
         Map<String, Object> responsiveEvidence = scenario.resultCount() >= 1000
                 ? verifyResponsiveProfiles()
@@ -288,11 +306,17 @@ class TaxonomyLargeResultBudgetIT {
         metrics.put("filterText", measured.get("filterText"));
         metrics.put("interactionLatencyMs", decimal(interaction.get("latencyMs")));
         metrics.put("currentIndex", number(interaction.get("currentIndex")));
+        metrics.put("interactionFocusConfirmed", interaction.get("focusConfirmed"));
+        metrics.put("interactionFocusTarget", interaction.get("focusTarget"));
         metrics.put("activeClass", interaction.get("activeClass"));
+        metrics.put("activeTag", interaction.get("activeTag"));
         metrics.put("selectedCode", interaction.get("selectedCode"));
         metrics.put("highlightedCode", interaction.get("highlightedCode"));
         metrics.put("currentPath", interaction.get("path"));
+        metrics.put("returnFocusConfirmed", returnContext.get("focusConfirmed"));
+        metrics.put("returnFocusTarget", returnContext.get("focusTarget"));
         metrics.put("returnActiveId", returnContext.get("activeId"));
+        metrics.put("returnActiveTag", returnContext.get("activeTag"));
         metrics.put("returnAreaScrollTop", number(returnContext.get("areaScrollTop")));
         metrics.put("responsiveProfiles", responsiveEvidence);
         return metrics;
@@ -431,14 +455,25 @@ class TaxonomyLargeResultBudgetIT {
                 .as(scenario.id() + " maximum hidden label width")
                 .isPositive();
         assertThat(number(metrics.get("currentIndex"))).isZero();
+        assertThat(metrics.get("interactionFocusConfirmed"))
+                .as(scenario.id() + " confirmed result focus")
+                .isEqualTo(Boolean.TRUE);
+        assertThat(metrics.get("interactionFocusTarget"))
+                .isEqualTo("result");
         assertThat(String.valueOf(metrics.get("activeClass")))
                 .contains("search-result-item");
+        assertThat(metrics.get("activeTag")).isEqualTo("a");
         assertThat(metrics.get("selectedCode")).isEqualTo(realTaxonomyCode);
         assertThat(metrics.get("highlightedCode")).isEqualTo(realTaxonomyCode);
         assertThat(String.valueOf(metrics.get("currentPath")))
                 .contains(realTaxonomyCode)
                 .doesNotContain("no result selected");
+        assertThat(metrics.get("returnFocusConfirmed"))
+                .as(scenario.id() + " confirmed summary focus")
+                .isEqualTo(Boolean.TRUE);
+        assertThat(metrics.get("returnFocusTarget")).isEqualTo("summary");
         assertThat(metrics.get("returnActiveId")).isEqualTo("searchResultSummary");
+        assertThat(metrics.get("returnActiveTag")).isEqualTo("div");
         assertThat(number(metrics.get("returnAreaScrollTop"))).isZero();
         assertThat(String.valueOf(metrics.get("summaryText")))
                 .contains(Integer.toString(scenario.resultCount()));
