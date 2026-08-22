@@ -3,8 +3,10 @@ package com.taxonomy.templates;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateRevision;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateSnapshot;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
@@ -12,7 +14,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -23,16 +27,40 @@ public class DocumentTemplateService {
 
     private final DocumentTemplateGitRepository repository;
     private final OoxmlTemplatePackageCodec codec;
+    private final Map<String, DocumentTemplateContract> contracts;
 
+    /**
+     * Production constructor. Spring supplies all registered report-template contracts.
+     */
+    @Autowired
+    public DocumentTemplateService(
+            DocumentTemplateGitRepository repository,
+            OoxmlTemplatePackageCodec codec,
+            List<DocumentTemplateContract> contracts) {
+        this.repository = Objects.requireNonNull(repository, "repository");
+        this.codec = Objects.requireNonNull(codec, "codec");
+        this.contracts = indexContracts(contracts);
+    }
+
+    /** Test and compatibility constructor for generic templates without semantic contracts. */
     public DocumentTemplateService(
             DocumentTemplateGitRepository repository,
             OoxmlTemplatePackageCodec codec) {
-        this.repository = repository;
-        this.codec = codec;
+        this(repository, codec, List.of());
     }
 
     public List<TemplateDescriptor> list() throws IOException {
         return repository.list();
+    }
+
+    public boolean exists(String templateId) throws IOException {
+        DocumentTemplateGitRepository.validateTemplateId(templateId);
+        try {
+            repository.readCurrent(templateId);
+            return true;
+        } catch (TemplateNotFoundException exception) {
+            return false;
+        }
     }
 
     /**
@@ -49,6 +77,7 @@ public class DocumentTemplateService {
         DocumentTemplateGitRepository.validateTemplateId(templateId);
         String normalizedDisplayName = normalizeDisplayName(displayName, templateId);
         OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(dotx);
+        validateContract(templateId, packageData.parts());
         String observedHead = repository.headCommit();
         String effectiveExpectedHead = expectedHead == null || expectedHead.isBlank()
                 ? observedHead
@@ -81,6 +110,18 @@ public class DocumentTemplateService {
         return toTemplateFile(repository.readCurrent(templateId));
     }
 
+    /**
+     * Read and revalidate the current package before a business-critical renderer uses it.
+     *
+     * <p>Normal uploads are validated before commit. Revalidation here also detects direct
+     * expert Git changes that bypassed the web and WebDAV application boundaries.</p>
+     */
+    public TemplateFile downloadCurrentValidated(String templateId) throws IOException {
+        TemplateSnapshot snapshot = repository.readCurrent(templateId);
+        validateContract(templateId, snapshot.parts());
+        return toTemplateFile(snapshot);
+    }
+
     public TemplateFile download(String templateId, String revision) throws IOException {
         return toTemplateFile(repository.read(templateId, revision));
     }
@@ -107,7 +148,7 @@ public class DocumentTemplateService {
         TemplateSnapshot snapshot = repository.read(templateId, revision);
         byte[] content = snapshot.parts().get(path);
         if (content == null) {
-            throw new DocumentTemplateGitRepository.TemplateNotFoundException(
+            throw new TemplateNotFoundException(
                     templateId + "/" + path, revision);
         }
         boolean text = path.endsWith(".xml") || path.endsWith(".rels")
@@ -130,6 +171,7 @@ public class DocumentTemplateService {
         TemplateSnapshot historical = repository.read(templateId, revision);
         OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(
                 new ByteArrayInputStream(codec.pack(historical.parts())));
+        validateContract(templateId, packageData.parts());
         String observedHead = repository.headCommit();
         String effectiveExpected = expectedHead == null || expectedHead.isBlank()
                 ? observedHead
@@ -159,6 +201,13 @@ public class DocumentTemplateService {
         return repository.headCommit();
     }
 
+    private void validateContract(String templateId, Map<String, byte[]> packageParts) {
+        DocumentTemplateContract contract = contracts.get(templateId);
+        if (contract != null) {
+            contract.validate(packageParts);
+        }
+    }
+
     private TemplateFile toTemplateFile(TemplateSnapshot snapshot) throws IOException {
         byte[] dotx = codec.pack(snapshot.parts());
         return new TemplateFile(
@@ -166,6 +215,23 @@ public class DocumentTemplateService {
                 snapshot.commitId(),
                 dotx,
                 parseInstant(snapshot.manifest().updatedAt()));
+    }
+
+    private static Map<String, DocumentTemplateContract> indexContracts(
+            List<DocumentTemplateContract> contracts) {
+        LinkedHashMap<String, DocumentTemplateContract> indexed = new LinkedHashMap<>();
+        for (DocumentTemplateContract contract :
+                contracts == null ? List.<DocumentTemplateContract>of() : contracts) {
+            Objects.requireNonNull(contract, "document template contract");
+            DocumentTemplateGitRepository.validateTemplateId(contract.templateId());
+            DocumentTemplateContract previous = indexed.putIfAbsent(
+                    contract.templateId(), contract);
+            if (previous != null) {
+                throw new IllegalStateException(
+                        "Duplicate document template contract for " + contract.templateId());
+            }
+        }
+        return Map.copyOf(indexed);
     }
 
     private static TemplateDescriptor descriptor(TemplateSnapshot snapshot) {
