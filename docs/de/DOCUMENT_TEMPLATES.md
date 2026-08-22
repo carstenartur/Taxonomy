@@ -46,3 +46,29 @@ Uploads und Wiederherstellungen der Standardvorlage werden zusätzlich zum
 allgemeinen OOXML-Sicherheitscheck gegen diesen Vertrag validiert. Der
 Actuator-Health-Check `decisionRationaleTemplate` meldet `DOWN`, wenn die Pflichtvorlage
 fehlt oder strukturell ungültig ist.
+
+## Versions- und Konkurrenzmodell
+
+Jede Vorlage verwendet den letzten Git-Commit, der ihren eigenen OOXML-Unterbaum
+geändert hat, als Version und HTTP-ETag. Eine Änderung an einer anderen Vorlage macht
+deshalb keinen geöffneten Editor ungültig und erzeugt keinen falschen Konflikt. Die
+Erstanlage ist ausschließlich create-only; Ersetzen und Wiederherstellen benötigen das
+aktuelle Vorlagen-ETag. Der abschließende Branch-Update bleibt atomar und wird erneut
+versucht, wenn eine andere Taxonomy-Instanz nur eine fremde Vorlage geändert hat.
+
+WebDAV-Sperren verbessern die Bearbeitung in Word. Die Git-Prüfung der erwarteten
+Vorlagenversion bleibt auch nach einem Prozessneustart oder dem Ablauf einer Sperre der
+dauerhafte Schutz vor verlorenen Änderungen.
+
+## Zugriff und Transport
+
+Angemeldete Benutzer dürfen vollständige Vorlagen lesen und daraus ein neues Dokument
+erzeugen. Nur Administratoren dürfen Vorlagen hochladen, wiederherstellen, sperren oder
+speichern. Direkte Desktop-Word-Links benötigen HTTPS; ausgenommen sind lokale
+Loopback-Adressen für die Entwicklung. Der normale HTTPS-Download und eine kopierbare
+WebDAV-Adresse bleiben als Rückfallwege verfügbar.
+
+Taxonomy weist Makros, ActiveX, eingebettete OLE-Objekte, Signaturen, unsichere
+ZIP-Pfade, nur in Groß-/Kleinschreibung kollidierende Paketbestandteile, fehlerhaftes
+XML, externe Beziehungen außer Hyperlinks, fehlende interne Beziehungsziele sowie
+Pakete ohne genau eine Root-`officeDocument`-Beziehung auf `word/document.xml` zurück.

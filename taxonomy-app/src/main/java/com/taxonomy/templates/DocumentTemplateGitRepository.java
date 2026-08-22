@@ -41,7 +41,9 @@ import java.util.regex.Pattern;
  * Versions canonical, unzipped OOXML template packages in one logical JGit repository.
  *
  * <p>This facade is intentionally separate from {@code DslGitRepository}, which owns
- * the single-file {@code architecture.taxdsl} convention.</p>
+ * the single-file {@code architecture.taxdsl} convention. The branch head is the atomic
+ * repository update boundary, while each template exposes the most recent commit that
+ * actually changed its own subtree as its representation version and HTTP ETag.</p>
  */
 @Component
 public class DocumentTemplateGitRepository implements AutoCloseable {
@@ -54,6 +56,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
 
     private static final Pattern COMMIT_ID = Pattern.compile("[0-9a-fA-F]{40}");
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final int MAX_WRITE_ATTEMPTS = 5;
 
     private final HibernateGitStorage storageHandle;
     private final Repository repository;
@@ -80,83 +83,101 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
 
     /**
      * Commit a complete replacement package while preserving all other templates.
+     *
+     * <p>A {@code null} expected template version means create-only. A non-null version
+     * must match the most recent commit that changed this template. The repository-wide
+     * branch head is intentionally not exposed as the template ETag: unrelated template
+     * changes can therefore be rebased transparently without causing false conflicts.</p>
      */
     public TemplateSnapshot commit(
             TemplateManifest manifest,
             Map<String, byte[]> packageParts,
-            String expectedHead,
+            String expectedTemplateVersion,
             String author,
             String message) throws IOException {
 
         Objects.requireNonNull(manifest, "manifest");
         Objects.requireNonNull(packageParts, "packageParts");
         String prefix = templatePrefix(manifest.templateId());
+        String normalizedExpected = normalizeExpectedVersion(expectedTemplateVersion);
 
         writeLock.lock();
         try {
-            Ref currentRef = repository.getRefDatabase()
-                    .exactRef(Constants.R_HEADS + BRANCH);
-            String currentHead = currentRef == null || currentRef.getObjectId() == null
-                    ? null
-                    : currentRef.getObjectId().name();
-            if (expectedHead != null && !expectedHead.isBlank()
-                    && !Objects.equals(expectedHead, currentHead)) {
-                throw new TemplateConflictException(expectedHead, currentHead);
-            }
+            for (int attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt++) {
+                Ref currentRef = repository.getRefDatabase()
+                        .exactRef(Constants.R_HEADS + BRANCH);
+                ObjectId repositoryHead = currentRef == null
+                        ? null : currentRef.getObjectId();
+                String actualTemplateVersion = currentTemplateVersion(
+                        manifest.templateId(), repositoryHead);
+                requireTemplatePrecondition(
+                        normalizedExpected, actualTemplateVersion);
 
-            TreeMap<String, ObjectId> treeObjects = currentRef == null
-                    ? new TreeMap<>()
-                    : readTreeObjectIds(currentRef.getObjectId());
-            treeObjects.keySet().removeIf(path -> path.startsWith(prefix));
+                TreeMap<String, ObjectId> treeObjects = repositoryHead == null
+                        ? new TreeMap<>()
+                        : readTreeObjectIds(repositoryHead);
+                treeObjects.keySet().removeIf(path -> path.startsWith(prefix));
 
-            try (ObjectInserter inserter = repository.newObjectInserter()) {
-                byte[] manifestBytes = JSON.writeValueAsBytes(manifest);
-                treeObjects.put(prefix + MANIFEST_NAME,
-                        inserter.insert(Constants.OBJ_BLOB, manifestBytes));
-
-                TreeMap<String, byte[]> sortedParts = new TreeMap<>(packageParts);
-                for (Map.Entry<String, byte[]> part : sortedParts.entrySet()) {
-                    treeObjects.put(prefix + PACKAGE_DIRECTORY + part.getKey(),
-                            inserter.insert(Constants.OBJ_BLOB, part.getValue()));
-                }
-
-                DirCache cache = DirCache.newInCore();
-                DirCacheBuilder builder = cache.builder();
-                for (Map.Entry<String, ObjectId> entry : treeObjects.entrySet()) {
-                    DirCacheEntry cacheEntry = new DirCacheEntry(entry.getKey());
-                    cacheEntry.setFileMode(FileMode.REGULAR_FILE);
-                    cacheEntry.setObjectId(entry.getValue());
-                    builder.add(cacheEntry);
-                }
-                builder.finish();
-                ObjectId treeId = cache.writeTree(inserter);
-
+                ObjectId commitId;
                 PersonIdent identity = identity(author);
-                CommitBuilder commit = new CommitBuilder();
-                commit.setTreeId(treeId);
-                commit.setAuthor(identity);
-                commit.setCommitter(identity);
-                commit.setMessage(message == null || message.isBlank()
-                        ? "Update document template " + manifest.templateId()
-                        : message.strip());
-                if (currentRef != null && currentRef.getObjectId() != null) {
-                    commit.setParentId(currentRef.getObjectId());
-                }
+                try (ObjectInserter inserter = repository.newObjectInserter()) {
+                    byte[] manifestBytes = JSON.writeValueAsBytes(manifest);
+                    treeObjects.put(prefix + MANIFEST_NAME,
+                            inserter.insert(Constants.OBJ_BLOB, manifestBytes));
 
-                ObjectId commitId = inserter.insert(commit);
-                inserter.flush();
+                    TreeMap<String, byte[]> sortedParts = new TreeMap<>(packageParts);
+                    for (Map.Entry<String, byte[]> part : sortedParts.entrySet()) {
+                        treeObjects.put(prefix + PACKAGE_DIRECTORY + part.getKey(),
+                                inserter.insert(Constants.OBJ_BLOB, part.getValue()));
+                    }
+
+                    DirCache cache = DirCache.newInCore();
+                    DirCacheBuilder builder = cache.builder();
+                    for (Map.Entry<String, ObjectId> entry : treeObjects.entrySet()) {
+                        DirCacheEntry cacheEntry = new DirCacheEntry(entry.getKey());
+                        cacheEntry.setFileMode(FileMode.REGULAR_FILE);
+                        cacheEntry.setObjectId(entry.getValue());
+                        builder.add(cacheEntry);
+                    }
+                    builder.finish();
+                    ObjectId treeId = cache.writeTree(inserter);
+
+                    CommitBuilder commit = new CommitBuilder();
+                    commit.setTreeId(treeId);
+                    commit.setAuthor(identity);
+                    commit.setCommitter(identity);
+                    commit.setMessage(message == null || message.isBlank()
+                            ? "Update document template " + manifest.templateId()
+                            : message.strip());
+                    if (repositoryHead != null) {
+                        commit.setParentId(repositoryHead);
+                    }
+
+                    commitId = inserter.insert(commit);
+                    inserter.flush();
+                }
 
                 RefUpdate update = repository.updateRef(Constants.R_HEADS + BRANCH);
                 update.setNewObjectId(commitId);
-                update.setExpectedOldObjectId(currentRef == null
-                        ? ObjectId.zeroId()
-                        : currentRef.getObjectId());
+                update.setExpectedOldObjectId(repositoryHead == null
+                        ? ObjectId.zeroId() : repositoryHead);
                 update.setForceUpdate(false);
                 update.setRefLogIdent(identity);
                 update.setRefLogMessage("template: " + manifest.templateId(), false);
-                requireSuccessfulUpdate(update.update(), currentHead);
-                return read(manifest.templateId(), commitId.name());
+                RefUpdate.Result result = update.update();
+                if (successful(result)) {
+                    return read(manifest.templateId(), commitId.name());
+                }
+                if (!concurrent(result)) {
+                    throw new IOException("Template repository ref update failed: " + result);
+                }
+                // Another process advanced the shared branch. Re-read it and retry only
+                // if this template still satisfies the same per-template precondition.
             }
+
+            String actual = currentTemplateVersion(
+                    manifest.templateId(), headObjectId());
+            throw new TemplateConflictException(normalizedExpected, actual);
         } finally {
             writeLock.unlock();
         }
@@ -173,12 +194,17 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
             if (!file.getKey().endsWith("/" + MANIFEST_NAME)) {
                 continue;
             }
-            TemplateManifest manifest = JSON.readValue(file.getValue(), TemplateManifest.class);
+            TemplateManifest manifest = JSON.readValue(
+                    file.getValue(), TemplateManifest.class);
+            String version = currentTemplateVersion(manifest.templateId(), head);
+            if (version == null) {
+                continue;
+            }
             templates.add(new TemplateDescriptor(
                     manifest.templateId(),
                     manifest.displayName(),
                     manifest.fileName(),
-                    head.name(),
+                    version,
                     manifest.updatedAt(),
                     manifest.updatedBy(),
                     manifest.uncompressedSize(),
@@ -192,11 +218,13 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
     }
 
     public TemplateSnapshot readCurrent(String templateId) throws IOException {
+        validateTemplateId(templateId);
         ObjectId head = headObjectId();
-        if (head == null) {
+        String version = currentTemplateVersion(templateId, head);
+        if (version == null) {
             throw new TemplateNotFoundException(templateId, null);
         }
-        return read(templateId, head.name());
+        return read(templateId, version);
     }
 
     public TemplateSnapshot read(String templateId, String revision) throws IOException {
@@ -208,7 +236,11 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         if (manifestBytes == null) {
             throw new TemplateNotFoundException(templateId, revision);
         }
-        TemplateManifest manifest = JSON.readValue(manifestBytes, TemplateManifest.class);
+        TemplateManifest manifest = JSON.readValue(
+                manifestBytes, TemplateManifest.class);
+        if (!templateId.equals(manifest.templateId())) {
+            throw new IOException("Stored template manifest ID does not match its path");
+        }
         TreeMap<String, byte[]> parts = new TreeMap<>();
         String packagePrefix = prefix + PACKAGE_DIRECTORY;
         files.forEach((path, content) -> {
@@ -229,8 +261,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         if (head == null) {
             return List.of();
         }
-        String path = templatePrefix(templateId).substring(
-                0, templatePrefix(templateId).length() - 1);
+        String path = templateDirectoryPath(templateId);
         List<TemplateRevision> history = new ArrayList<>();
         try (RevWalk walk = new RevWalk(repository)) {
             walk.markStart(walk.parseCommit(head));
@@ -277,9 +308,66 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         return new TemplateDiff(templateId, before.commitId(), after.commitId(), changes);
     }
 
+    /** Repository-wide branch head used only for diagnostics and atomic ref updates. */
     public String headCommit() throws IOException {
         ObjectId head = headObjectId();
         return head == null ? null : head.name();
+    }
+
+    private String currentTemplateVersion(String templateId, ObjectId head)
+            throws IOException {
+        if (head == null) {
+            return null;
+        }
+        String path = templateDirectoryPath(templateId);
+        try (RevWalk walk = new RevWalk(repository)) {
+            RevCommit commit = walk.parseCommit(head);
+            if (pathObjectId(commit.getTree(), path) == null) {
+                return null;
+            }
+            while (true) {
+                ObjectId current = pathObjectId(commit.getTree(), path);
+                RevCommit parentCommit = null;
+                ObjectId parent = null;
+                if (commit.getParentCount() > 0) {
+                    parentCommit = walk.parseCommit(commit.getParent(0));
+                    parent = pathObjectId(parentCommit.getTree(), path);
+                }
+                if (!Objects.equals(current, parent)) {
+                    return commit.name();
+                }
+                if (parentCommit == null) {
+                    return null;
+                }
+                commit = parentCommit;
+            }
+        }
+    }
+
+    private static void requireTemplatePrecondition(
+            String expected,
+            String actual) throws TemplateConflictException {
+        if (expected == null) {
+            if (actual != null) {
+                throw new TemplateConflictException(null, actual);
+            }
+            return;
+        }
+        if (!expected.equals(actual)) {
+            throw new TemplateConflictException(expected, actual);
+        }
+    }
+
+    private static String normalizeExpectedVersion(String expected) {
+        if (expected == null || expected.isBlank()) {
+            return null;
+        }
+        String normalized = expected.strip();
+        if (!COMMIT_ID.matcher(normalized).matches()) {
+            throw new IllegalArgumentException(
+                    "Expected template version must be a full Git commit ID");
+        }
+        return normalized.toLowerCase(java.util.Locale.ROOT);
     }
 
     private ObjectId resolveRevision(String revision) throws IOException {
@@ -331,7 +419,8 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
                 if (!path.startsWith(ROOT) || !path.endsWith("/" + MANIFEST_NAME)) {
                     continue;
                 }
-                ObjectLoader loader = repository.open(tree.getObjectId(0), Constants.OBJ_BLOB);
+                ObjectLoader loader = repository.open(
+                        tree.getObjectId(0), Constants.OBJ_BLOB);
                 result.put(path, loader.getBytes(1_048_576));
             }
         }
@@ -349,7 +438,8 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
                 if (!path.startsWith(prefix)) {
                     continue;
                 }
-                ObjectLoader loader = repository.open(tree.getObjectId(0), Constants.OBJ_BLOB);
+                ObjectLoader loader = repository.open(
+                        tree.getObjectId(0), Constants.OBJ_BLOB);
                 result.put(path, loader.getBytes(MAX_STORED_PART_BYTES));
             }
         }
@@ -366,8 +456,12 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
             OoxmlTemplatePackageCodec.MAX_PART_BYTES + 1_048_576;
 
     private static String templatePrefix(String templateId) {
+        return templateDirectoryPath(templateId) + "/";
+    }
+
+    private static String templateDirectoryPath(String templateId) {
         validateTemplateId(templateId);
-        return ROOT + templateId + "/";
+        return ROOT + templateId;
     }
 
     static void validateTemplateId(String templateId) {
@@ -389,19 +483,15 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         return new PersonIdent(name, local + "@taxonomy.local");
     }
 
-    private static void requireSuccessfulUpdate(
-            RefUpdate.Result result,
-            String observedHead) throws IOException {
-        if (result == RefUpdate.Result.NEW
+    private static boolean successful(RefUpdate.Result result) {
+        return result == RefUpdate.Result.NEW
                 || result == RefUpdate.Result.FAST_FORWARD
-                || result == RefUpdate.Result.NO_CHANGE) {
-            return;
-        }
-        if (result == RefUpdate.Result.REJECTED
-                || result == RefUpdate.Result.LOCK_FAILURE) {
-            throw new TemplateConflictException(observedHead, null);
-        }
-        throw new IOException("Template repository ref update failed: " + result);
+                || result == RefUpdate.Result.NO_CHANGE;
+    }
+
+    private static boolean concurrent(RefUpdate.Result result) {
+        return result == RefUpdate.Result.REJECTED
+                || result == RefUpdate.Result.LOCK_FAILURE;
     }
 
     @PreDestroy
@@ -427,6 +517,11 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
             String packageSha256) {
     }
 
+    /**
+     * Current per-template representation metadata. Despite the historic field name,
+     * {@code headCommit} is the last commit that changed this template, not the shared
+     * repository branch head.
+     */
     public record TemplateDescriptor(
             String templateId,
             String displayName,
@@ -477,8 +572,12 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         private final String actualHead;
 
         TemplateConflictException(String expectedHead, String actualHead) {
-            super("Template repository changed concurrently"
-                    + (actualHead == null ? "" : "; current head is " + actualHead));
+            super(expectedHead == null
+                    ? "Document template already exists"
+                            + (actualHead == null ? "" : "; current version is " + actualHead)
+                    : "Document template changed concurrently"
+                            + (actualHead == null ? "; it no longer exists"
+                                    : "; current version is " + actualHead));
             this.expectedHead = expectedHead;
             this.actualHead = actualHead;
         }

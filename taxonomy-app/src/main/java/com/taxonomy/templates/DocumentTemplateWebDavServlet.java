@@ -5,6 +5,7 @@ import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
 import com.taxonomy.templates.DocumentTemplateWebDavLockManager.LockConflictException;
+import com.taxonomy.templates.DocumentTemplateWebDavLockManager.LockedWriteResult;
 import com.taxonomy.templates.DocumentTemplateWebDavLockManager.TemplateLock;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -13,6 +14,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -39,10 +43,13 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
     private static final int SC_MULTI_STATUS = 207;
     private static final int SC_LOCKED = 423;
     private static final int SC_PRECONDITION_REQUIRED = 428;
+    private static final String DAV_NAMESPACE = "DAV:";
     private static final Pattern LOCK_TOKEN =
             Pattern.compile("opaquelocktoken:[^>\\s)]+", Pattern.CASE_INSENSITIVE);
     private static final DateTimeFormatter HTTP_DATE =
             DateTimeFormatter.RFC_1123_DATE_TIME.withZone(ZoneOffset.UTC);
+    private static final XMLOutputFactory XML_OUTPUT_FACTORY =
+            XMLOutputFactory.newFactory();
 
     private final DocumentTemplateService templates;
     private final DocumentTemplateWebDavLockManager locks;
@@ -103,40 +110,52 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
         Resource resource = resource(request);
         String depth = request.getHeader("Depth");
         response.setStatus(SC_MULTI_STATUS);
-        response.setContentType("application/xml; charset=UTF-8");
+        response.setContentType("application/xml");
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 
-        StringBuilder xml = new StringBuilder(4_096);
-        xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-                .append("<D:multistatus xmlns:D=\"DAV:\">");
+        try {
+            XMLStreamWriter writer = XML_OUTPUT_FACTORY.createXMLStreamWriter(
+                    response.getOutputStream(), StandardCharsets.UTF_8.name());
+            writer.writeStartDocument(StandardCharsets.UTF_8.name(), "1.0");
+            start(writer, "multistatus");
+            writer.writeNamespace("D", DAV_NAMESPACE);
 
-        if (resource.collection()) {
-            appendCollectionResponse(xml, collectionHref(request));
-            if (!"0".equals(depth)) {
-                for (TemplateDescriptor template : templates.list()) {
-                    appendTemplateResponse(
-                            xml,
-                            collectionHref(request) + encode(template.fileName()),
-                            template.displayName(),
-                            template.headCommit(),
-                            template.updatedAt(),
-                            template.uncompressedSize(),
-                            locks.find(template.templateId()));
+            if (resource.collection()) {
+                writeCollectionResponse(writer, collectionHref(request));
+                if (!"0".equals(depth)) {
+                    for (TemplateDescriptor descriptor : templates.list()) {
+                        TemplateFile file = templates.downloadCurrent(
+                                descriptor.templateId());
+                        byte[] content = file.content();
+                        writeTemplateResponse(
+                                writer,
+                                templateHref(request, file.manifest().fileName()),
+                                file.manifest().displayName(),
+                                file.commitId(),
+                                file.manifest().updatedAt(),
+                                content.length,
+                                locks.find(descriptor.templateId()));
+                    }
                 }
+            } else {
+                TemplateFile file = templates.downloadCurrent(resource.templateId());
+                byte[] content = file.content();
+                writeTemplateResponse(
+                        writer,
+                        templateHref(request, file.manifest().fileName()),
+                        file.manifest().displayName(),
+                        file.commitId(),
+                        file.manifest().updatedAt(),
+                        content.length,
+                        locks.find(resource.templateId()));
             }
-        } else {
-            TemplateFile file = templates.downloadCurrent(resource.templateId());
-            appendTemplateResponse(
-                    xml,
-                    request.getRequestURI(),
-                    file.manifest().displayName(),
-                    file.commitId(),
-                    file.manifest().updatedAt(),
-                    file.content().length,
-                    locks.find(resource.templateId()));
-        }
 
-        xml.append("</D:multistatus>");
-        response.getWriter().write(xml.toString());
+            writer.writeEndElement();
+            writer.writeEndDocument();
+            writer.flush();
+        } catch (XMLStreamException exception) {
+            throw new IOException("Could not produce WebDAV multistatus XML", exception);
+        }
     }
 
     private void get(
@@ -149,20 +168,21 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
             return;
         }
         TemplateFile file = templates.downloadCurrent(resource.templateId());
+        byte[] content = file.content();
+        response.setContentType(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+        response.setHeader("ETag", file.etag());
+        response.setHeader("Last-Modified", HTTP_DATE.format(file.lastModified()));
+        response.setHeader("Content-Disposition",
+                "inline; filename=\"" + file.manifest().fileName() + "\"");
         if (etagMatches(request.getHeader("If-None-Match"), file.commitId())) {
             response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
             return;
         }
 
-        response.setContentType(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
-        response.setContentLengthLong(file.content().length);
-        response.setHeader("ETag", file.etag());
-        response.setHeader("Last-Modified", HTTP_DATE.format(file.lastModified()));
-        response.setHeader("Content-Disposition",
-                "inline; filename=\"" + file.manifest().fileName() + "\"");
+        response.setContentLengthLong(content.length);
         response.setStatus(HttpServletResponse.SC_OK);
         if (includeBody) {
-            response.getOutputStream().write(file.content());
+            response.getOutputStream().write(content);
         }
     }
 
@@ -177,15 +197,11 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
 
         String owner = principalName(request);
         TemplateFile current = currentOrNull(resource.templateId());
-        TemplateLock activeLock = locks.find(resource.templateId());
         String suppliedToken = requestLockToken(request);
-        String expectedHead;
+        TemplateLock observedLock = locks.find(resource.templateId());
+        String expectedWithoutLock = null;
 
-        if (activeLock != null) {
-            TemplateLock verified = locks.require(
-                    resource.templateId(), suppliedToken, owner);
-            expectedHead = verified.currentCommit();
-        } else if (current != null) {
+        if (observedLock == null && current != null) {
             String ifMatch = request.getHeader("If-Match");
             if (ifMatch == null || ifMatch.isBlank()) {
                 response.sendError(SC_PRECONDITION_REQUIRED,
@@ -193,32 +209,34 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
                 return;
             }
             String condition = DocumentTemplateService.stripEtag(ifMatch);
-            if ("*".equals(condition)) {
-                expectedHead = current.commitId();
-            } else {
-                expectedHead = condition;
-            }
-        } else {
-            expectedHead = null;
+            expectedWithoutLock = "*".equals(condition)
+                    ? current.commitId() : condition;
         }
 
         String displayName = current == null
                 ? resource.templateId()
                 : current.manifest().displayName();
-        TemplateDescriptor saved = templates.upload(
+        String fallbackExpected = expectedWithoutLock;
+        TemplateDescriptor saved = locks.executeWrite(
                 resource.templateId(),
-                displayName,
-                request.getInputStream(),
-                expectedHead,
+                suppliedToken,
                 owner,
-                "Update document template through WebDAV");
-
-        if (activeLock != null) {
-            locks.advance(resource.templateId(), suppliedToken, owner, saved.headCommit());
-        }
+                fallbackExpected,
+                expectedCommit -> {
+                    TemplateDescriptor committed = templates.upload(
+                            resource.templateId(),
+                            displayName,
+                            request.getInputStream(),
+                            expectedCommit,
+                            owner,
+                            "Update document template through WebDAV");
+                    return new LockedWriteResult<>(
+                            committed, committed.headCommit());
+                });
 
         response.setHeader("ETag", "\"" + saved.headCommit() + "\"");
-        response.setHeader("Location", request.getRequestURI());
+        response.setHeader("Location",
+                templateHref(request, saved.fileName()));
         response.setStatus(current == null
                 ? HttpServletResponse.SC_CREATED
                 : HttpServletResponse.SC_NO_CONTENT);
@@ -244,8 +262,12 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
 
         response.setStatus(HttpServletResponse.SC_OK);
         response.setHeader("Lock-Token", "<" + lock.token() + ">");
-        response.setContentType("application/xml; charset=UTF-8");
-        response.getWriter().write(lockResponse(lock));
+        response.setContentType("application/xml");
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        writeLockResponse(
+                response,
+                lock,
+                templateHref(request, resource.templateId() + ".dotx"));
     }
 
     private void unlock(HttpServletRequest request, HttpServletResponse response) {
@@ -272,12 +294,11 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
 
     private static void requireTemplateWriter(HttpServletRequest request) {
         if (request.isUserInRole("ADMIN")
-                || request.isUserInRole("ARCHITECT")
-                || request.isUserInRole("ROLE_ADMIN")
-                || request.isUserInRole("ROLE_ARCHITECT")) {
+                || request.isUserInRole("ROLE_ADMIN")) {
             return;
         }
-        throw new SecurityException("Template write permission is required");
+        throw new SecurityException(
+                "Administrator role is required to modify document templates");
     }
 
     private static String principalName(HttpServletRequest request) {
@@ -305,8 +326,12 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
     }
 
     private static String collectionHref(HttpServletRequest request) {
-        String uri = request.getRequestURI();
-        return uri.endsWith("/") ? uri : uri + "/";
+        String contextPath = request.getContextPath();
+        return (contextPath == null ? "" : contextPath) + "/dav/templates/";
+    }
+
+    private static String templateHref(HttpServletRequest request, String fileName) {
+        return collectionHref(request) + encode(fileName);
     }
 
     private static String requestLockToken(HttpServletRequest request) {
@@ -361,79 +386,154 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
         response.setHeader("Cache-Control", "private, no-cache");
     }
 
-    private static void appendCollectionResponse(StringBuilder xml, String href) {
-        xml.append("<D:response><D:href>").append(xml(href))
-                .append("</D:href><D:propstat><D:prop>")
-                .append("<D:displayname>Taxonomy document templates</D:displayname>")
-                .append("<D:resourcetype><D:collection/></D:resourcetype>")
-                .append("<D:supportedlock>")
-                .append("<D:lockentry><D:lockscope><D:exclusive/></D:lockscope>")
-                .append("<D:locktype><D:write/></D:locktype></D:lockentry>")
-                .append("</D:supportedlock>")
-                .append("</D:prop><D:status>HTTP/1.1 200 OK</D:status>")
-                .append("</D:propstat></D:response>");
+    private static void writeCollectionResponse(
+            XMLStreamWriter writer,
+            String href) throws XMLStreamException {
+        start(writer, "response");
+        element(writer, "href", href);
+        start(writer, "propstat");
+        start(writer, "prop");
+        element(writer, "displayname", "Taxonomy document templates");
+        start(writer, "resourcetype");
+        empty(writer, "collection");
+        writer.writeEndElement();
+        writeSupportedLock(writer);
+        writer.writeEndElement();
+        element(writer, "status", "HTTP/1.1 200 OK");
+        writer.writeEndElement();
+        writer.writeEndElement();
     }
 
-    private static void appendTemplateResponse(
-            StringBuilder xml,
+    private static void writeTemplateResponse(
+            XMLStreamWriter writer,
             String href,
             String displayName,
             String commitId,
             String updatedAt,
             long contentLength,
-            TemplateLock lock) {
-        xml.append("<D:response><D:href>").append(xml(href))
-                .append("</D:href><D:propstat><D:prop>")
-                .append("<D:displayname>").append(xml(displayName)).append("</D:displayname>")
-                .append("<D:resourcetype/>")
-                .append("<D:getcontenttype>")
-                .append(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE)
-                .append("</D:getcontenttype>")
-                .append("<D:getcontentlength>").append(contentLength)
-                .append("</D:getcontentlength>")
-                .append("<D:getetag>&quot;").append(xml(commitId))
-                .append("&quot;</D:getetag>")
-                .append("<D:getlastmodified>")
-                .append(xml(httpDate(updatedAt)))
-                .append("</D:getlastmodified>")
-                .append("<D:supportedlock>")
-                .append("<D:lockentry><D:lockscope><D:exclusive/></D:lockscope>")
-                .append("<D:locktype><D:write/></D:locktype></D:lockentry>")
-                .append("</D:supportedlock>");
-        if (lock != null) {
-            xml.append("<D:lockdiscovery><D:activelock>")
-                    .append("<D:locktype><D:write/></D:locktype>")
-                    .append("<D:lockscope><D:exclusive/></D:lockscope>")
-                    .append("<D:depth>0</D:depth>")
-                    .append("<D:owner><D:href>").append(xml(lock.owner()))
-                    .append("</D:href></D:owner>")
-                    .append("<D:timeout>Second-")
-                    .append(Math.max(1, Duration.between(
-                            Instant.now(), lock.expiresAt()).toSeconds()))
-                    .append("</D:timeout>")
-                    .append("<D:locktoken><D:href>").append(xml(lock.token()))
-                    .append("</D:href></D:locktoken>")
-                    .append("</D:activelock></D:lockdiscovery>");
-        } else {
-            xml.append("<D:lockdiscovery/>");
-        }
-        xml.append("</D:prop><D:status>HTTP/1.1 200 OK</D:status>")
-                .append("</D:propstat></D:response>");
+            TemplateLock lock) throws XMLStreamException {
+        start(writer, "response");
+        element(writer, "href", href);
+        start(writer, "propstat");
+        start(writer, "prop");
+        element(writer, "displayname", safeXmlText(displayName));
+        empty(writer, "resourcetype");
+        element(writer, "getcontenttype",
+                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+        element(writer, "getcontentlength", Long.toString(contentLength));
+        element(writer, "getetag", "\"" + commitId + "\"");
+        element(writer, "getlastmodified", httpDate(updatedAt));
+        writeSupportedLock(writer);
+        writeLockDiscovery(writer, lock, href);
+        writer.writeEndElement();
+        element(writer, "status", "HTTP/1.1 200 OK");
+        writer.writeEndElement();
+        writer.writeEndElement();
     }
 
-    private static String lockResponse(TemplateLock lock) {
-        long seconds = Math.max(1,
-                Duration.between(Instant.now(), lock.expiresAt()).toSeconds());
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-                + "<D:prop xmlns:D=\"DAV:\"><D:lockdiscovery><D:activelock>"
-                + "<D:locktype><D:write/></D:locktype>"
-                + "<D:lockscope><D:exclusive/></D:lockscope>"
-                + "<D:depth>0</D:depth>"
-                + "<D:owner><D:href>" + xml(lock.owner()) + "</D:href></D:owner>"
-                + "<D:timeout>Second-" + seconds + "</D:timeout>"
-                + "<D:locktoken><D:href>" + xml(lock.token())
-                + "</D:href></D:locktoken>"
-                + "</D:activelock></D:lockdiscovery></D:prop>";
+    private static void writeSupportedLock(XMLStreamWriter writer)
+            throws XMLStreamException {
+        start(writer, "supportedlock");
+        start(writer, "lockentry");
+        start(writer, "lockscope");
+        empty(writer, "exclusive");
+        writer.writeEndElement();
+        start(writer, "locktype");
+        empty(writer, "write");
+        writer.writeEndElement();
+        writer.writeEndElement();
+        writer.writeEndElement();
+    }
+
+    private static void writeLockDiscovery(
+            XMLStreamWriter writer,
+            TemplateLock lock,
+            String href) throws XMLStreamException {
+        start(writer, "lockdiscovery");
+        if (lock != null) {
+            writeActiveLock(writer, lock, href);
+        }
+        writer.writeEndElement();
+    }
+
+    private static void writeActiveLock(
+            XMLStreamWriter writer,
+            TemplateLock lock,
+            String href) throws XMLStreamException {
+        start(writer, "activelock");
+        start(writer, "locktype");
+        empty(writer, "write");
+        writer.writeEndElement();
+        start(writer, "lockscope");
+        empty(writer, "exclusive");
+        writer.writeEndElement();
+        element(writer, "depth", "0");
+        start(writer, "owner");
+        element(writer, "href", safeXmlText(lock.owner()));
+        writer.writeEndElement();
+        element(writer, "timeout", "Second-" + Math.max(1,
+                Duration.between(Instant.now(), lock.expiresAt()).toSeconds()));
+        start(writer, "locktoken");
+        element(writer, "href", lock.token());
+        writer.writeEndElement();
+        start(writer, "lockroot");
+        element(writer, "href", href);
+        writer.writeEndElement();
+        writer.writeEndElement();
+    }
+
+    private static void writeLockResponse(
+            HttpServletResponse response,
+            TemplateLock lock,
+            String href) throws IOException {
+        try {
+            XMLStreamWriter writer = XML_OUTPUT_FACTORY.createXMLStreamWriter(
+                    response.getOutputStream(), StandardCharsets.UTF_8.name());
+            writer.writeStartDocument(StandardCharsets.UTF_8.name(), "1.0");
+            start(writer, "prop");
+            writer.writeNamespace("D", DAV_NAMESPACE);
+            start(writer, "lockdiscovery");
+            writeActiveLock(writer, lock, href);
+            writer.writeEndElement();
+            writer.writeEndElement();
+            writer.writeEndDocument();
+            writer.flush();
+        } catch (XMLStreamException exception) {
+            throw new IOException("Could not produce WebDAV lock XML", exception);
+        }
+    }
+
+    private static void start(XMLStreamWriter writer, String localName)
+            throws XMLStreamException {
+        writer.writeStartElement("D", localName, DAV_NAMESPACE);
+    }
+
+    private static void empty(XMLStreamWriter writer, String localName)
+            throws XMLStreamException {
+        writer.writeEmptyElement("D", localName, DAV_NAMESPACE);
+    }
+
+    private static void element(
+            XMLStreamWriter writer,
+            String localName,
+            String value) throws XMLStreamException {
+        start(writer, localName);
+        writer.writeCharacters(safeXmlText(value));
+        writer.writeEndElement();
+    }
+
+    private static String safeXmlText(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int offset = 0; offset < value.length();) {
+            int codePoint = value.codePointAt(offset);
+            safe.appendCodePoint(DocumentTemplateService.isValidXml10CodePoint(codePoint)
+                    ? codePoint : 0xFFFD);
+            offset += Character.charCount(codePoint);
+        }
+        return safe.toString();
     }
 
     private static String httpDate(String instant) {
@@ -447,17 +547,6 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8)
                 .replace("+", "%20");
-    }
-
-    private static String xml(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;");
     }
 
     private record Resource(boolean collection, String templateId) {

@@ -46,3 +46,27 @@ Uploads and restores of the default template are checked against this semantic
 contract in addition to the generic OOXML security validation. The
 `decisionRationaleTemplate` Actuator health component reports `DOWN` when the
 required template is missing or structurally invalid.
+
+## Version and concurrency semantics
+
+Each template exposes the last Git commit that changed its own OOXML subtree as its
+version and HTTP ETag. A commit to another template therefore does not invalidate an
+open editor or cause a false conflict. Creating a template is create-only; replacing
+or restoring one requires the current template ETag. The final branch update remains
+atomic and is retried when another Taxonomy instance changed only an unrelated
+template.
+
+WebDAV locks improve the Word editing workflow. The Git expected-version check is the
+durable lost-update guard even after a process restart or expired lock.
+
+## Access and transport
+
+Authenticated users may read complete templates and create a new document from them.
+Only administrators may upload, restore, lock, or save a template. Direct desktop Word
+links require HTTPS, except for loopback development addresses. Normal HTTPS download
+and a copyable WebDAV URL remain available as fallbacks.
+
+Taxonomy rejects macros, ActiveX, embedded OLE objects, signatures, unsafe ZIP paths,
+case-colliding package parts, malformed XML, external non-hyperlink relationships,
+missing internal relationship targets, and packages without exactly one root
+`officeDocument` relationship to `word/document.xml`.

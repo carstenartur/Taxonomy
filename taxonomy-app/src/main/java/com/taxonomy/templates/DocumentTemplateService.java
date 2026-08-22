@@ -65,12 +65,16 @@ public class DocumentTemplateService {
 
     /**
      * Import a full DOTX and commit its canonical unzipped package atomically.
+     *
+     * <p>A missing expected version is create-only. Replacing a template requires its
+     * current per-template Git version, normally supplied through {@code If-Match} or a
+     * WebDAV lock. Unrelated template commits never invalidate this precondition.</p>
      */
     public TemplateDescriptor upload(
             String templateId,
             String displayName,
             InputStream dotx,
-            String expectedHead,
+            String expectedVersion,
             String actor,
             String message) throws IOException {
 
@@ -78,10 +82,8 @@ public class DocumentTemplateService {
         String normalizedDisplayName = normalizeDisplayName(displayName, templateId);
         OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(dotx);
         validateContract(templateId, packageData.parts());
-        String observedHead = repository.headCommit();
-        String effectiveExpectedHead = expectedHead == null || expectedHead.isBlank()
-                ? observedHead
-                : stripEtag(expectedHead);
+        String effectiveExpectedVersion = resolveExpectedVersion(
+                templateId, expectedVersion);
 
         String now = Instant.now().toString();
         String user = actor == null || actor.isBlank() ? "taxonomy" : actor;
@@ -100,7 +102,7 @@ public class DocumentTemplateService {
         TemplateSnapshot saved = repository.commit(
                 manifest,
                 packageData.parts(),
-                effectiveExpectedHead,
+                effectiveExpectedVersion,
                 user,
                 message);
         return descriptor(saved);
@@ -166,16 +168,14 @@ public class DocumentTemplateService {
     public TemplateDescriptor restore(
             String templateId,
             String revision,
-            String expectedHead,
+            String expectedVersion,
             String actor) throws IOException {
         TemplateSnapshot historical = repository.read(templateId, revision);
         OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(
                 new ByteArrayInputStream(codec.pack(historical.parts())));
         validateContract(templateId, packageData.parts());
-        String observedHead = repository.headCommit();
-        String effectiveExpected = expectedHead == null || expectedHead.isBlank()
-                ? observedHead
-                : stripEtag(expectedHead);
+        String effectiveExpected = resolveExpectedVersion(
+                templateId, expectedVersion);
         String user = actor == null || actor.isBlank() ? "taxonomy" : actor;
         TemplateManifest restored = new TemplateManifest(
                 historical.manifest().schemaVersion(),
@@ -197,8 +197,21 @@ public class DocumentTemplateService {
         return descriptor(saved);
     }
 
+    /** Repository-wide head retained only for diagnostics. */
     public String headCommit() throws IOException {
         return repository.headCommit();
+    }
+
+    private String resolveExpectedVersion(String templateId, String value)
+            throws IOException {
+        String expected = stripEtag(value);
+        if (expected == null || expected.isBlank()) {
+            return null;
+        }
+        if ("*".equals(expected)) {
+            return repository.readCurrent(templateId).commitId();
+        }
+        return expected;
     }
 
     private void validateContract(String templateId, Map<String, byte[]> packageParts) {
@@ -264,16 +277,35 @@ public class DocumentTemplateService {
         return stripped;
     }
 
-    private static String normalizeDisplayName(String displayName, String templateId) {
+    static String normalizeDisplayName(String displayName, String templateId) {
         String normalized = displayName == null || displayName.isBlank()
                 ? templateId
                 : displayName.strip();
-        normalized = normalized.replaceAll("[\\r\\n\\t]", " ");
+        normalized = normalized.replace('\r', ' ')
+                .replace('\n', ' ')
+                .replace('\t', ' ');
+        for (int offset = 0; offset < normalized.length();) {
+            int codePoint = normalized.codePointAt(offset);
+            if (!isValidXml10CodePoint(codePoint)) {
+                throw new IllegalArgumentException(
+                        "Template display name contains a character that is not permitted in XML 1.0");
+            }
+            offset += Character.charCount(codePoint);
+        }
         if (normalized.length() > 160) {
             throw new IllegalArgumentException(
                     "Template display name must not exceed 160 characters");
         }
         return normalized;
+    }
+
+    static boolean isValidXml10CodePoint(int codePoint) {
+        return codePoint == 0x9
+                || codePoint == 0xA
+                || codePoint == 0xD
+                || (codePoint >= 0x20 && codePoint <= 0xD7FF)
+                || (codePoint >= 0xE000 && codePoint <= 0xFFFD)
+                || (codePoint >= 0x10000 && codePoint <= 0x10FFFF);
     }
 
     private static Instant parseInstant(String value) {
@@ -294,6 +326,11 @@ public class DocumentTemplateService {
             Objects.requireNonNull(manifest, "manifest");
             Objects.requireNonNull(commitId, "commitId");
             content = content.clone();
+        }
+
+        @Override
+        public byte[] content() {
+            return content.clone();
         }
 
         public String etag() {

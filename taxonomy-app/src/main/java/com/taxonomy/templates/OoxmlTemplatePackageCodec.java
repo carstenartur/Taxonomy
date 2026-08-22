@@ -13,12 +13,16 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.time.LocalDateTime;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -49,6 +53,8 @@ public final class OoxmlTemplatePackageCodec {
             "[Content_Types].xml",
             "_rels/.rels",
             "word/document.xml");
+    private static final String OFFICE_DOCUMENT_RELATIONSHIP_SUFFIX =
+            "/officeDocument";
 
     /**
      * Import and validate one complete DOTX file.
@@ -56,6 +62,7 @@ public final class OoxmlTemplatePackageCodec {
     public PackageData unpack(InputStream input) throws IOException {
         byte[] archive = readBounded(input, MAX_ARCHIVE_BYTES, "DOTX archive");
         TreeMap<String, byte[]> parts = new TreeMap<>();
+        Set<String> caseInsensitivePaths = new HashSet<>();
         long totalBytes = 0;
 
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive))) {
@@ -70,6 +77,11 @@ public final class OoxmlTemplatePackageCodec {
                 }
 
                 String path = validatePartPath(entry.getName());
+                String foldedPath = path.toLowerCase(Locale.ROOT);
+                if (!caseInsensitivePaths.add(foldedPath)) {
+                    throw invalid("DOTX contains duplicate or case-colliding package part: "
+                            + path);
+                }
                 byte[] content = readBounded(zip, MAX_PART_BYTES, "OOXML part " + path);
                 totalBytes += content.length;
                 if (totalBytes > MAX_UNCOMPRESSED_BYTES) {
@@ -127,8 +139,13 @@ public final class OoxmlTemplatePackageCodec {
         }
 
         long total = 0;
+        Set<String> caseInsensitivePaths = new HashSet<>();
         for (Map.Entry<String, byte[]> entry : packageParts.entrySet()) {
             String path = validatePartPath(entry.getKey());
+            if (!caseInsensitivePaths.add(path.toLowerCase(Locale.ROOT))) {
+                throw invalid("DOTX contains duplicate or case-colliding package part: "
+                        + path);
+            }
             byte[] content = entry.getValue();
             if (content == null) {
                 throw invalid("OOXML part has no content: " + path);
@@ -151,8 +168,9 @@ public final class OoxmlTemplatePackageCodec {
 
         validateContentTypes(packageParts.get("[Content_Types].xml"));
         packageParts.entrySet().stream()
-                .filter(entry -> entry.getKey().endsWith(".rels"))
-                .forEach(entry -> validateRelationships(entry.getKey(), entry.getValue()));
+                .filter(entry -> isXmlPart(entry.getKey()))
+                .forEach(entry -> parseXml(entry.getKey(), entry.getValue()));
+        validateRelationships(packageParts);
     }
 
     private static TreeMap<String, byte[]> defensiveSortedCopy(Map<String, byte[]> input) {
@@ -184,7 +202,7 @@ public final class OoxmlTemplatePackageCodec {
     }
 
     private static void rejectUnsafePart(String path) {
-        String lower = path.toLowerCase(java.util.Locale.ROOT);
+        String lower = path.toLowerCase(Locale.ROOT);
         if (lower.endsWith("vbaproject.bin")
                 || lower.startsWith("word/activex/")
                 || lower.startsWith("word/embeddings/")
@@ -200,31 +218,149 @@ public final class OoxmlTemplatePackageCodec {
         boolean templateMainPart = false;
         for (int index = 0; index < overrides.getLength(); index++) {
             Element element = (Element) overrides.item(index);
+            String contentType = element.getAttribute("ContentType");
+            rejectActiveContentType(contentType);
             if ("/word/document.xml".equals(element.getAttribute("PartName"))
-                    && DOTX_MAIN_CONTENT_TYPE.equals(element.getAttribute("ContentType"))) {
+                    && DOTX_MAIN_CONTENT_TYPE.equals(contentType)) {
                 templateMainPart = true;
-                break;
             }
+        }
+        NodeList defaults = document.getElementsByTagNameNS("*", "Default");
+        for (int index = 0; index < defaults.getLength(); index++) {
+            rejectActiveContentType(((Element) defaults.item(index))
+                    .getAttribute("ContentType"));
         }
         if (!templateMainPart) {
             throw invalid("Package is not a macro-free Word DOTX template");
         }
     }
 
-    private static void validateRelationships(String path, byte[] xml) {
-        Document document = parseXml(path, xml);
-        NodeList relationships = document.getElementsByTagNameNS("*", "Relationship");
-        for (int index = 0; index < relationships.getLength(); index++) {
-            Element relationship = (Element) relationships.item(index);
-            if (!"External".equalsIgnoreCase(relationship.getAttribute("TargetMode"))) {
-                continue;
-            }
-            String type = relationship.getAttribute("Type");
-            if (type.endsWith("/hyperlink")) {
-                continue;
-            }
-            throw invalid("External OOXML relationship is not permitted in " + path);
+    private static void rejectActiveContentType(String contentType) {
+        String lower = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        if (lower.contains("macroenabled")
+                || lower.contains("vbaproject")
+                || lower.contains("activex")
+                || lower.contains("oleobject")) {
+            throw invalid("Unsupported active OOXML content type: " + contentType);
         }
+    }
+
+    private static void validateRelationships(Map<String, byte[]> packageParts) {
+        int officeDocumentRelationships = 0;
+        for (Map.Entry<String, byte[]> entry : packageParts.entrySet()) {
+            String relationshipPath = entry.getKey();
+            if (!relationshipPath.endsWith(".rels")) {
+                continue;
+            }
+            String sourcePart = relationshipSourcePart(relationshipPath);
+            if (!sourcePart.isEmpty() && !packageParts.containsKey(sourcePart)) {
+                throw invalid("Relationship part has no source OOXML part: "
+                        + relationshipPath);
+            }
+
+            Document document = parseXml(relationshipPath, entry.getValue());
+            NodeList relationships = document.getElementsByTagNameNS("*", "Relationship");
+            for (int index = 0; index < relationships.getLength(); index++) {
+                Element relationship = (Element) relationships.item(index);
+                String target = relationship.getAttribute("Target");
+                String type = relationship.getAttribute("Type");
+                boolean external = "External".equalsIgnoreCase(
+                        relationship.getAttribute("TargetMode"));
+                if (external) {
+                    if (type.endsWith("/hyperlink")) {
+                        continue;
+                    }
+                    throw invalid("External OOXML relationship is not permitted in "
+                            + relationshipPath);
+                }
+
+                String resolvedTarget = resolveRelationshipTarget(
+                        relationshipPath, sourcePart, target);
+                if (!packageParts.containsKey(resolvedTarget)) {
+                    throw invalid("OOXML relationship in " + relationshipPath
+                            + " targets missing package part " + resolvedTarget);
+                }
+                if ("_rels/.rels".equals(relationshipPath)
+                        && type.endsWith(OFFICE_DOCUMENT_RELATIONSHIP_SUFFIX)) {
+                    officeDocumentRelationships++;
+                    if (!"word/document.xml".equals(resolvedTarget)) {
+                        throw invalid("Root officeDocument relationship must target "
+                                + "word/document.xml");
+                    }
+                }
+            }
+        }
+        if (officeDocumentRelationships != 1) {
+            throw invalid("Package must contain exactly one internal root officeDocument relationship");
+        }
+    }
+
+    private static String relationshipSourcePart(String relationshipPath) {
+        if ("_rels/.rels".equals(relationshipPath)) {
+            return "";
+        }
+        int marker = relationshipPath.lastIndexOf("_rels/");
+        if (marker < 0) {
+            throw invalid("Invalid OOXML relationship part path: " + relationshipPath);
+        }
+        String prefix = relationshipPath.substring(0, marker);
+        String relationshipFile = relationshipPath.substring(marker + "_rels/".length());
+        if (!relationshipFile.endsWith(".rels")
+                || relationshipFile.length() <= ".rels".length()) {
+            throw invalid("Invalid OOXML relationship part path: " + relationshipPath);
+        }
+        return prefix + relationshipFile.substring(
+                0, relationshipFile.length() - ".rels".length());
+    }
+
+    private static String resolveRelationshipTarget(
+            String relationshipPath,
+            String sourcePart,
+            String target) {
+        if (target == null || target.isBlank() || target.contains("\\")
+                || target.contains("\0")) {
+            throw invalid("Invalid OOXML relationship target in " + relationshipPath);
+        }
+        try {
+            URI uri = URI.create(target);
+            if (uri.isAbsolute() || uri.getAuthority() != null) {
+                throw invalid("Internal OOXML relationship target must be package-relative in "
+                        + relationshipPath);
+            }
+            String targetPath = uri.getPath();
+            if (targetPath == null || targetPath.isBlank()) {
+                throw invalid("Invalid OOXML relationship target in " + relationshipPath);
+            }
+            while (targetPath.startsWith("/")) {
+                targetPath = targetPath.substring(1);
+            }
+            String baseDirectory = "";
+            int slash = sourcePart.lastIndexOf('/');
+            if (slash >= 0) {
+                baseDirectory = sourcePart.substring(0, slash + 1);
+            }
+            Path resolved = Path.of(baseDirectory)
+                    .resolve(targetPath)
+                    .normalize();
+            if (resolved.isAbsolute() || resolved.startsWith("..")) {
+                throw invalid("OOXML relationship escapes the package root in "
+                        + relationshipPath);
+            }
+            String normalized = resolved.toString().replace('\\', '/');
+            return validatePartPath(normalized);
+        } catch (IllegalArgumentException exception) {
+            if (exception.getMessage() != null
+                    && exception.getMessage().startsWith("OOXML")) {
+                throw exception;
+            }
+            throw invalid("Invalid OOXML relationship target in "
+                    + relationshipPath, exception);
+        }
+    }
+
+    private static boolean isXmlPart(String path) {
+        String lower = path.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".xml") || lower.endsWith(".rels");
     }
 
     private static Document parseXml(String path, byte[] content) {

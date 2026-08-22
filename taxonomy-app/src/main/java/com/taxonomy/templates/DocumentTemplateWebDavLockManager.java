@@ -2,6 +2,7 @@ package com.taxonomy.templates;
 
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -13,8 +14,8 @@ import java.util.UUID;
 /**
  * Bounded in-process WebDAV edit locks.
  *
- * <p>Locks improve the Word editing experience; Git expected-old-object checks remain
- * the durable lost-update protection if a process restarts and its locks expire.</p>
+ * <p>Locks improve the Word editing experience; Git per-template expected-version checks
+ * remain the durable lost-update protection if a process restarts and its locks expire.</p>
  */
 @Component
 public class DocumentTemplateWebDavLockManager {
@@ -59,7 +60,8 @@ public class DocumentTemplateWebDavLockManager {
                 locks.put(resource, refreshed);
                 return refreshed;
             }
-            throw new LockConflictException("Template is already locked by another edit session");
+            throw new LockConflictException(
+                    "Template is already locked by another edit session");
         }
 
         TemplateLock created = new TemplateLock(
@@ -78,20 +80,66 @@ public class DocumentTemplateWebDavLockManager {
             String token,
             String owner) {
         purgeExpired();
-        TemplateLock existing = locks.get(resource);
-        if (existing == null) {
-            throw new LockConflictException("No active WebDAV lock exists for this template");
-        }
-        String normalized = normalizeToken(token);
-        if (!existing.token().equals(normalized) || !existing.owner().equals(owner)) {
-            throw new LockConflictException("WebDAV lock token or owner does not match");
-        }
-        return existing;
+        return requireExisting(resource, token, owner);
     }
 
     public synchronized TemplateLock find(String resource) {
         purgeExpired();
         return locks.get(resource);
+    }
+
+    /**
+     * Run one versioned write and advance its lock without a post-commit failure window.
+     *
+     * <p>The manager monitor is deliberately held across the bounded template validation
+     * and Git commit. This prevents a competing lock acquisition during an unlocked
+     * conditional write and prevents an expired lease from turning a successful Git commit
+     * into a WebDAV 423 response. Template edits are rare administrative operations, so the
+     * stronger correctness boundary is preferable to parallel lock mutations.</p>
+     */
+    public synchronized <T> T executeWrite(
+            String resource,
+            String token,
+            String owner,
+            String expectedWithoutLock,
+            LockedWrite<T> operation) throws IOException {
+        Objects.requireNonNull(operation, "operation");
+        purgeExpired();
+
+        TemplateLock active = locks.get(resource);
+        String expected = expectedWithoutLock;
+        if (active != null) {
+            active = requireExisting(resource, token, owner);
+            Instant protectedUntil = later(
+                    active.expiresAt(), clock.instant().plus(MAX_TIMEOUT));
+            active = new TemplateLock(
+                    active.resource(),
+                    active.token(),
+                    active.owner(),
+                    active.baseCommit(),
+                    active.currentCommit(),
+                    protectedUntil);
+            locks.put(resource, active);
+            expected = active.currentCommit();
+        } else if (token != null && !token.isBlank()) {
+            throw new LockConflictException(
+                    "The supplied WebDAV lock token is no longer active");
+        }
+
+        LockedWriteResult<T> result = Objects.requireNonNull(
+                operation.execute(expected), "locked write result");
+        if (active != null) {
+            Instant refreshedUntil = later(
+                    active.expiresAt(), clock.instant().plus(DEFAULT_TIMEOUT));
+            locks.put(resource, new TemplateLock(
+                    active.resource(),
+                    active.token(),
+                    active.owner(),
+                    active.baseCommit(),
+                    Objects.requireNonNull(result.currentCommit(), "currentCommit"),
+                    refreshedUntil));
+        }
+        return result.value();
     }
 
     public synchronized TemplateLock advance(
@@ -116,9 +164,30 @@ public class DocumentTemplateWebDavLockManager {
         locks.remove(existing.resource());
     }
 
+    private TemplateLock requireExisting(
+            String resource,
+            String token,
+            String owner) {
+        TemplateLock existing = locks.get(resource);
+        if (existing == null) {
+            throw new LockConflictException(
+                    "No active WebDAV lock exists for this template");
+        }
+        String normalized = normalizeToken(token);
+        if (!existing.token().equals(normalized) || !existing.owner().equals(owner)) {
+            throw new LockConflictException(
+                    "WebDAV lock token or owner does not match");
+        }
+        return existing;
+    }
+
     private void purgeExpired() {
         Instant now = clock.instant();
         locks.values().removeIf(lock -> !lock.expiresAt().isAfter(now));
+    }
+
+    private static Instant later(Instant first, Instant second) {
+        return first.isAfter(second) ? first : second;
     }
 
     private static Duration boundedTimeout(Duration requested) {
@@ -137,6 +206,14 @@ public class DocumentTemplateWebDavLockManager {
             normalized = normalized.substring(1, normalized.length() - 1);
         }
         return normalized;
+    }
+
+    @FunctionalInterface
+    public interface LockedWrite<T> {
+        LockedWriteResult<T> execute(String expectedCommit) throws IOException;
+    }
+
+    public record LockedWriteResult<T>(T value, String currentCommit) {
     }
 
     public record TemplateLock(
