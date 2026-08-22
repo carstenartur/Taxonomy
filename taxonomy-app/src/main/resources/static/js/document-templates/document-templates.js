@@ -23,12 +23,14 @@
         copied: 'Die WebDAV-Adresse wurde kopiert.',
         copyFailed: 'Die WebDAV-Adresse konnte nicht kopiert werden.',
         historyFailed: 'Die Vorlagenhistorie konnte nicht geladen werden.',
+        templates: '{0} Vorlagen geladen',
         versions: '{0} Versionen',
         current: 'Aktuell',
         unknown: 'Unbekannt',
         loading: 'Wird geladen…',
         invalidDotx: 'Bitte wählen Sie eine Datei mit der Endung .dotx.',
         wordHint: 'Word kann beim ersten Aufruf um Erlaubnis zum Öffnen der Anwendung bitten.',
+        insecureWord: 'Direkte Word-Bearbeitung ist außerhalb der lokalen Entwicklung nur über HTTPS verfügbar.',
         downloadRevision: 'Diese Version herunterladen'
     } : {
         loadFailed: 'Document templates could not be loaded.',
@@ -37,12 +39,14 @@
         copied: 'The WebDAV address was copied.',
         copyFailed: 'The WebDAV address could not be copied.',
         historyFailed: 'The template history could not be loaded.',
+        templates: '{0} templates loaded',
         versions: '{0} versions',
         current: 'Current',
         unknown: 'Unknown',
         loading: 'Loading…',
         invalidDotx: 'Choose a file with the .dotx extension.',
         wordHint: 'Word may ask for permission to open the application on first use.',
+        insecureWord: 'Direct Word editing is available only over HTTPS outside local development.',
         downloadRevision: 'Download this version'
     };
 
@@ -188,6 +192,15 @@
         return anchor;
     }
 
+    function disableWordLink(anchor) {
+        anchor.removeAttribute('href');
+        anchor.removeAttribute('target');
+        anchor.classList.add('disabled');
+        anchor.setAttribute('aria-disabled', 'true');
+        anchor.setAttribute('tabindex', '-1');
+        anchor.title = text.insecureWord;
+    }
+
     function renderTemplate(template) {
         const row = document.createElement('tr');
         row.dataset.templateId = template.templateId;
@@ -214,12 +227,17 @@
         const wordActions = element('div', 'd-flex flex-wrap gap-2');
         const webDavUrl = templateWebDavUrl(template);
         const editLink = actionLink(labels.edit || 'Edit template in Word', 'btn btn-sm btn-primary');
-        links.configureWordLink(editLink, webDavUrl, 'edit');
-        editLink.title = text.wordHint;
         const newLink = actionLink(labels.new || 'New document from template',
             'btn btn-sm btn-outline-primary');
-        links.configureWordLink(newLink, webDavUrl, 'new');
-        newLink.title = text.wordHint;
+        if (links.directWordLinkAllowed(webDavUrl)) {
+            links.configureWordLink(editLink, webDavUrl, 'edit');
+            links.configureWordLink(newLink, webDavUrl, 'new');
+            editLink.title = text.wordHint;
+            newLink.title = text.wordHint;
+        } else {
+            disableWordLink(editLink);
+            disableWordLink(newLink);
+        }
         wordActions.append(editLink, newLink);
         const address = element('code', 'small text-break d-block mt-2', webDavUrl);
         wordCell.append(wordActions, address);
@@ -266,7 +284,7 @@
         try {
             const templates = await fetchJson(apiUrl(''), null, text.loadFailed);
             renderTemplates(templates);
-            announce(format(text.versions, templates.length));
+            announce(format(text.templates, templates.length));
         } catch (error) {
             renderTemplates([]);
             showError(error.message || text.loadFailed);

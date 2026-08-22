@@ -9,7 +9,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -21,6 +20,7 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,13 +51,17 @@ class DocumentTemplateWordLinkContractTest {
     }
 
     @Test
-    void officeUriHelperUsesTheMicrosoftEditAndNewFromTemplateSchemes() throws Exception {
+    void officeUriHelperUsesMicrosoftSchemesAndRequiresPublicHttps()
+            throws Exception {
         String helper = resource(
                 "/static/js/document-templates/word-template-links.js");
 
         assertThat(helper)
                 .contains("const WORD_EDIT_PREFIX = 'ms-word:ofe|u|';")
                 .contains("const WORD_NEW_FROM_TEMPLATE_PREFIX = 'ms-word:nft|u|';")
+                .contains("url.protocol === 'https:'")
+                .contains("isLoopbackHostname(url.hostname)")
+                .contains("Direct Word editing requires HTTPS")
                 .contains("anchor.setAttribute('href', officeUri);")
                 .contains("anchor.setAttribute('target', '_blank');")
                 .contains("anchor.setAttribute('rel', 'noopener noreferrer');")
@@ -66,7 +70,7 @@ class DocumentTemplateWordLinkContractTest {
     }
 
     @Test
-    void workspaceBuildsAbsoluteWordLinksFromTheWebDavResourceAndKeepsFallbacks()
+    void workspaceBuildsAbsoluteWordLinksKeepsFallbacksAndAnnouncesTemplates()
             throws Exception {
         String workspace = resource(
                 "/static/js/document-templates/document-templates.js");
@@ -74,10 +78,13 @@ class DocumentTemplateWordLinkContractTest {
         assertThat(workspace)
                 .contains("new URL(webDavBase, window.location.href)")
                 .contains("new URL(encodeURIComponent(template.fileName), base).href")
+                .contains("links.directWordLinkAllowed(webDavUrl)")
                 .contains("links.configureWordLink(editLink, webDavUrl, 'edit');")
                 .contains("links.configureWordLink(newLink, webDavUrl, 'new');")
                 .contains("download.href = templateDownloadUrl(template.templateId);")
+                .contains("announce(format(text.templates, templates.length));")
                 .contains("copyAddress(webDavUrl)")
+                .doesNotContain("announce(format(text.versions, templates.length));")
                 .doesNotContain("access_token")
                 .doesNotContain("?token=")
                 .doesNotContain("Authorization");
@@ -133,25 +140,8 @@ class DocumentTemplateWordLinkContractTest {
     }
 
     @Test
-    void webDavRejectsTemplateWritesWithoutArchitectOrAdministratorRole()
+    void webDavRejectsTemplateWritesWithoutAdministratorRole()
             throws Exception {
-        DocumentTemplateWebDavServlet servlet =
-                new DocumentTemplateWebDavServlet(
-                        templates,
-                        new DocumentTemplateWebDavLockManager());
-        MockHttpServletRequest request = new MockHttpServletRequest(
-                "LOCK", "/dav/templates/decision-report.dotx");
-        request.setPathInfo("/decision-report.dotx");
-        request.setUserPrincipal(principal("reader"));
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        servlet.service(request, response);
-
-        assertThat(response.getStatus()).isEqualTo(403);
-    }
-
-    @Test
-    void architectCanAcquireAWebDavTemplateWriteLock() throws Exception {
         DocumentTemplateWebDavServlet servlet =
                 new DocumentTemplateWebDavServlet(
                         templates,
@@ -165,13 +155,40 @@ class DocumentTemplateWordLinkContractTest {
 
         servlet.service(request, response);
 
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void administratorCanAcquireAWebDavTemplateWriteLock() throws Exception {
+        DocumentTemplateWebDavServlet servlet =
+                new DocumentTemplateWebDavServlet(
+                        templates,
+                        new DocumentTemplateWebDavLockManager());
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "LOCK", "/dav/templates/decision-report.dotx");
+        request.setPathInfo("/decision-report.dotx");
+        request.setUserPrincipal(principal("admin"));
+        request.addUserRole("ADMIN");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        servlet.service(request, response);
+
         assertThat(response.getStatus()).isEqualTo(200);
         assertThat(response.getHeader("Lock-Token"))
                 .startsWith("<opaquelocktoken:")
                 .endsWith(">");
-        MediaType lockResponseType = MediaType.parseMediaType(response.getContentType());
-        assertThat(lockResponseType.isCompatibleWith(MediaType.APPLICATION_XML)).isTrue();
-        assertThat(lockResponseType.getCharset()).isEqualTo(StandardCharsets.UTF_8);
+        assertThat(response.getContentType()).isEqualTo("application/xml;charset=UTF-8");
+    }
+
+    @Test
+    void displayNamesRejectEveryXmlForbiddenControlCharacter() {
+        assertThat(DocumentTemplateService.normalizeDisplayName(
+                "Organization\tTemplate", "fallback"))
+                .isEqualTo("Organization Template");
+        assertThatThrownBy(() -> DocumentTemplateService.normalizeDisplayName(
+                "Invalid\u0001Template", "fallback"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("XML 1.0");
     }
 
     @Test
@@ -181,9 +198,11 @@ class DocumentTemplateWordLinkContractTest {
         assertThat(I18nConfig.MESSAGE_BASENAMES)
                 .contains("messages_document_templates");
         assertThat(resource("/i18n/messages_document_templates.properties"))
-                .contains("document.templates.action.edit=");
+                .contains("document.templates.action.edit=")
+                .contains("help.toc.DOCUMENT_TEMPLATES=");
         assertThat(resource("/i18n/messages_document_templates_de.properties"))
-                .contains("document.templates.action.edit=");
+                .contains("document.templates.action.edit=")
+                .contains("help.toc.DOCUMENT_TEMPLATES=");
     }
 
     private static TemplateFile templateFile() {
