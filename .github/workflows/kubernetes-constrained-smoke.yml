@@ -103,16 +103,16 @@ jobs:
         shell: bash
         run: bash deploy/helm/taxonomy/constrained-smoke.sh
 
-      - name: Collect cluster diagnostics
+      - name: Collect secret-free cluster diagnostics
         if: always()
         shell: bash
         run: |
           mkdir -p target/kubernetes-smoke
-          kubectl cluster-info dump --all-namespaces \
-            --output-directory=target/kubernetes-smoke/cluster-dump \
-            >/dev/null 2>&1 || true
           kubectl get nodes -o wide \
             > target/kubernetes-smoke/nodes.txt 2>&1 || true
+          kubectl get pods,services,networkpolicies,resourcequotas,limitranges \
+            --all-namespaces -o wide \
+            > target/kubernetes-smoke/cluster-resources.txt 2>&1 || true
           kubectl get events --all-namespaces --sort-by=.lastTimestamp \
             > target/kubernetes-smoke/events.txt 2>&1 || true
 
