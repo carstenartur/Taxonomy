@@ -53,7 +53,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
     static final String PACKAGE_DIRECTORY = "package/";
 
     private static final Pattern COMMIT_ID = Pattern.compile("[0-9a-fA-F]{40}");
-    private static final ObjectMapper JSON = ObjectMapper.jsonMapper();
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final HibernateGitStorage storageHandle;
     private final Repository repository;
@@ -318,7 +318,6 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         }
         return result;
     }
-
 
     private Map<String, byte[]> readManifestFiles(ObjectId commitId) throws IOException {
         LinkedHashMap<String, byte[]> result = new LinkedHashMap<>();
