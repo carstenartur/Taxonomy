@@ -181,6 +181,22 @@ class TaxonomySearchLargeResultContractTest {
                 .contains("\"deviceScaleFactor\": 4.0");
     }
 
+    @Test
+    void searchPanelGuttersStayInsideTheResponsiveContainer() throws Exception {
+        Path root = findRepositoryRoot();
+        String index = Files.readString(
+                root.resolve("taxonomy-app/src/main/resources/templates/index.html"),
+                StandardCharsets.UTF_8);
+        int panelStart = index.indexOf("<details id=\"searchPanel\"");
+        int panelEnd = index.indexOf("</details>", panelStart);
+
+        assertThat(panelStart).isGreaterThanOrEqualTo(0);
+        assertThat(panelEnd).isGreaterThan(panelStart);
+        assertThat(index.substring(panelStart, panelEnd))
+                .contains("<div class=\"row g-2 mx-0 mb-2\">")
+                .doesNotContain("<div class=\"row g-2 mb-2\">");
+    }
+
     private static int count(String value, String needle) {
         return value.split(java.util.regex.Pattern.quote(needle), -1).length - 1;
     }
