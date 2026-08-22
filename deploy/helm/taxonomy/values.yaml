@@ -108,16 +108,42 @@ podDisruptionBudget:
   enabled: false
   minAvailable: 1
 
-# The default policy permits application access only from the same namespace.
-# When ingress is enabled, add the ingress-controller namespace/pod selectors to
-# ingressFrom. Egress remains open because PostgreSQL, LLM and optional model
-# endpoints are deployment-specific; replace it with explicit rules as required.
+# Default-deny ingress/egress with explicit, composable exceptions.
+#
+# restricted: permit only the generated same-namespace and DNS rules plus the
+#             deployment-specific entries supplied in `egress`.
+# open:       render one unrestricted egress rule. This is an explicit legacy or
+#             diagnostic opt-in and is rejected by the supported small/Rancher
+#             verification profiles.
+#
+# Kubernetes NetworkPolicy does not resolve FQDNs. External database, LLM, OIDC,
+# OTLP or model-download destinations must therefore be represented by reviewed
+# ipBlock, namespaceSelector and/or podSelector rules. CNI-specific FQDN policies
+# belong in separately managed resources, not in this portable chart.
 networkPolicy:
   enabled: true
   allowSameNamespace: true
   ingressFrom: []
-  egress:
-    - {}
+  egressMode: restricted
+  allowSameNamespaceEgress: true
+  dns:
+    enabled: true
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+    podSelector:
+      matchExpressions:
+        - key: k8s-app
+          operator: In
+          values: [kube-dns, coredns]
+    ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+  # Additional explicit Kubernetes NetworkPolicy egress rules. Examples and
+  # operational guidance are documented in README.md and RANCHER.md.
+  egress: []
 
 # Existing Secret containing the keys referenced by secretEnv. Required while
 # secretEnv is non-empty; credentials are never rendered into chart values.
@@ -132,7 +158,9 @@ secretEnv:
   SPRING_DATASOURCE_PASSWORD:
     key: SPRING_DATASOURCE_PASSWORD
     optional: false
-  ADMIN_PASSWORD:
+  # Spring maps TAXONOMY_ADMIN_PASSWORD to taxonomy.admin-password. The Secret
+  # key remains ADMIN_PASSWORD for compatibility with existing deployments.
+  TAXONOMY_ADMIN_PASSWORD:
     key: ADMIN_PASSWORD
     optional: false
   GEMINI_API_KEY:
@@ -183,8 +211,9 @@ config:
   TAXONOMY_AI_MAXIMUM_RUNTIME_SECONDS: "1800"
   JAVA_OPTS: -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=20.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp
 
-# Prometheus Operator integration. The application accepts the ADMIN_PASSWORD as
-# a Bearer token for /actuator/prometheus; the ServiceMonitor reads it from a Secret.
+# Prometheus Operator integration. The application accepts the configured local
+# administrator password as a Bearer token for /actuator/prometheus; the
+# ServiceMonitor reads that value from the existing Secret.
 serviceMonitor:
   enabled: false
   additionalLabels: {}

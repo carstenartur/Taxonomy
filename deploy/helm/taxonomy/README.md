@@ -277,13 +277,33 @@ The ServiceMonitor reads the Bearer credential from `existingSecret` by default.
 
 ## Network policy
 
-The default policy permits ingress only from pods in the same namespace and permits egress because database, LLM and optional model endpoints are environment-specific. Replace `networkPolicy.egress` with explicit DNS, PostgreSQL, identity-provider and approved external endpoint rules in high-assurance clusters.
+The chart now defaults to **restricted egress**. It permits only same-namespace pod traffic, selected CoreDNS/kube-dns pods in `kube-system` on TCP/UDP port 53, and additional rules that the operator adds explicitly under `networkPolicy.egress`.
 
-When enabling ingress, add the ingress-controller selectors as shown above. The same mechanism can allow a Prometheus namespace if the Prometheus instance does not scrape through a same-namespace agent.
+External PostgreSQL, LLM, OIDC, OTLP or model-mirror destinations therefore require reviewed `ipBlock`, `namespaceSelector` and/or `podSelector` entries. Portable Kubernetes NetworkPolicy cannot resolve provider FQDNs; use a controlled egress proxy or a separately managed CNI-specific FQDN policy when public service addresses rotate.
+
+Example for a PostgreSQL service in a controlled private CIDR:
+
+```yaml
+networkPolicy:
+  egressMode: restricted
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.40.0.0/16
+      ports:
+        - protocol: TCP
+          port: 5432
+```
+
+`networkPolicy.egressMode=open` remains an explicit diagnostic or legacy escape hatch and renders unrestricted egress visibly. It is not used by the supported small, Rancher/RKE2 or constrained-smoke profiles. An empty `{}` rule is rejected in restricted mode.
+
+When enabling ingress, add the ingress-controller selectors as shown above. The same mechanism can allow a Prometheus namespace if the Prometheus instance does not scrape through a same-namespace agent. See [CAPACITY.md](CAPACITY.md) for the exact constrained-cluster evidence contract, supported deployment floor and remaining benchmark boundary.
 
 ## Resource tuning
 
-The generic defaults reserve 768 MiB and limit the pod to 2 GiB. The Rancher/RKE2 profile requests `100m` CPU and `512Mi` memory and limits the pod to `500m` CPU and `1536Mi` memory. `JAVA_OPTS` sizes heap as a percentage so native memory remains available for Lucene, ONNX, thread stacks and metaspace. Validate limits with production-sized imports and embedding models.
+The generic defaults reserve 768 MiB and limit the pod to 2 GiB. The Rancher/RKE2 profile requests `100m` CPU and `512Mi` memory and limits the pod to `500m` CPU and `1536Mi` memory. `JAVA_OPTS` sizes heap as a percentage so native memory remains available for Lucene, ONNX, thread stacks and metaspace.
+
+Only the constrained single-replica floor is currently proven through a live quota-bound cluster test. The default and larger profiles remain declarations until the workload matrix in [CAPACITY.md](CAPACITY.md) is measured. Do not infer throughput, concurrency or local-model support from requests and limits alone.
 
 ## Reproducible validation
 
@@ -294,6 +314,18 @@ bash deploy/helm/taxonomy/verify.sh
 ```
 
 The script performs linting, renders Kubernetes, Rancher and OpenShift variants, packages a simulated release, verifies automatic release-image selection, proves the default `Recreate` strategy, exercises the guarded rolling override, and demonstrates that unsafe configurations are rejected.
+
+The live constrained-cluster equivalent is:
+
+```bash
+kind create cluster --name taxonomy-smoke --wait 180s
+KIND_CLUSTER_NAME=taxonomy-smoke \
+  SOURCE_SHA="$(git rev-parse HEAD)" \
+  bash deploy/helm/taxonomy/constrained-smoke.sh
+kind delete cluster --name taxonomy-smoke
+```
+
+The smoke test generates a fresh namespace-local credential Secret for the run and excludes Secret objects and values from retained evidence.
 
 After deployment:
 

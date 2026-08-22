@@ -15,6 +15,11 @@ resources:
     cpu: "500m"
     memory: 1536Mi
 
+networkPolicy:
+  egressMode: restricted
+  allowSameNamespaceEgress: true
+  egress: []
+
 config:
   TAXONOMY_INIT_ASYNC: "true"
   TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap
