@@ -37,13 +37,17 @@
         if (!anchor) {
             throw new TypeError('A link element is required');
         }
+        if (mode !== 'edit' && mode !== 'new') {
+            throw new TypeError('Word link mode must be edit or new');
+        }
         const absoluteUrl = absoluteWebDavUrl(webDavUrl);
-        anchor.href = mode === 'new'
+        const officeUri = mode === 'new'
             ? newFromTemplateUri(absoluteUrl)
             : editUri(absoluteUrl);
-        anchor.target = '_blank';
-        anchor.rel = 'noopener noreferrer';
-        anchor.type = DOTX_MEDIA_TYPE;
+        anchor.setAttribute('href', officeUri);
+        anchor.setAttribute('target', '_blank');
+        anchor.setAttribute('rel', 'noopener noreferrer');
+        anchor.setAttribute('type', DOTX_MEDIA_TYPE);
         anchor.dataset.webdavUrl = absoluteUrl;
         return absoluteUrl;
     }
