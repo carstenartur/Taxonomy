@@ -28,6 +28,8 @@ class CodeQlSarifRoutingRepositoryTest {
                 .contains("-pl taxonomy-tooling package -DskipTests")
                 .contains("cp \"$tooling_jar\" \"$RUNNER_TEMP/taxonomy-tooling.jar\"")
                 .contains("java -jar \"$RUNNER_TEMP/taxonomy-tooling.jar\" check-codeql-sarif")
+                .contains("find codeql-java -type f -name '*.sarif' -print0 | sort -z")
+                .contains("find codeql-javascript -type f -name '*.sarif' -print0 | sort -z")
                 .contains("target/codeql-java-gate.json")
                 .contains("target/codeql-javascript-gate.json")
                 .doesNotContain("check-codeql-sarif.py")
@@ -39,6 +41,9 @@ class CodeQlSarifRoutingRepositoryTest {
                 .isEqualTo(2);
         assertThat(count(workflow, "Java CodeQL SARIF gate jar was not produced"))
                 .as("both jobs fail closed when the immutable Java jar is missing")
+                .isEqualTo(2);
+        assertThat(count(workflow, "-print0 | sort -z"))
+                .as("both jobs order their discovered SARIF inputs deterministically")
                 .isEqualTo(2);
         assertThat(removedPythonGate).doesNotExist();
     }
