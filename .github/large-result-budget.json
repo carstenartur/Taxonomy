@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "resultWindowSize": 50,
+  "maxInitialTaxonomyDomNodes": 250,
+  "maxResultAreaDomNodes": 275,
+  "maxResultAreaClientHeightPx": 310,
+  "maxDocumentHeightIncreasePx": 420,
+  "maxRenderDurationMs": 1200,
+  "maxLongestTaskMs": 250,
+  "maxInteractionLatencyMs": 250,
+  "maxHeapIncreaseBytes": 25165824,
+  "maxHorizontalOverflowPx": 2,
+  "scenarios": [
+    {
+      "id": "representative-309",
+      "resultCount": 309
+    },
+    {
+      "id": "large-1000",
+      "resultCount": 1000
+    }
+  ],
+  "responsiveProfiles": [
+    {
+      "id": "mobile-portrait",
+      "cssWidth": 390,
+      "cssHeight": 844,
+      "deviceScaleFactor": 1.0,
+      "mobile": true
+    },
+    {
+      "id": "mobile-landscape",
+      "cssWidth": 844,
+      "cssHeight": 390,
+      "deviceScaleFactor": 1.0,
+      "mobile": true
+    },
+    {
+      "id": "zoom-200",
+      "cssWidth": 640,
+      "cssHeight": 450,
+      "deviceScaleFactor": 2.0,
+      "mobile": false
+    },
+    {
+      "id": "zoom-400",
+      "cssWidth": 320,
+      "cssHeight": 225,
+      "deviceScaleFactor": 4.0,
+      "mobile": false
+    }
+  ]
+}
