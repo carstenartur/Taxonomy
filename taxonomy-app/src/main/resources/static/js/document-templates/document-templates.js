@@ -6,7 +6,11 @@
         return;
     }
 
+    const api = window.TaxonomyDocumentTemplatesApi;
     const links = window.TaxonomyDocumentTemplateLinks;
+    if (!api) {
+        throw new Error('Document template API support was not loaded');
+    }
     if (!links) {
         throw new Error('Document template Word link support was not loaded');
     }
@@ -23,14 +27,13 @@
         copied: 'Die WebDAV-Adresse wurde kopiert.',
         copyFailed: 'Die WebDAV-Adresse konnte nicht kopiert werden.',
         historyFailed: 'Die Vorlagenhistorie konnte nicht geladen werden.',
-        templates: '{0} Vorlagen geladen',
-        versions: '{0} Versionen',
+        templatesLoaded: '{0} Vorlagen geladen.',
         current: 'Aktuell',
         unknown: 'Unbekannt',
         loading: 'Wird geladen…',
         invalidDotx: 'Bitte wählen Sie eine Datei mit der Endung .dotx.',
         wordHint: 'Word kann beim ersten Aufruf um Erlaubnis zum Öffnen der Anwendung bitten.',
-        insecureWord: 'Direkte Word-Bearbeitung ist außerhalb der lokalen Entwicklung nur über HTTPS verfügbar.',
+        wordHttpsRequired: 'Direktes Öffnen in Word ist außerhalb lokaler Entwicklung nur über HTTPS verfügbar.',
         downloadRevision: 'Diese Version herunterladen'
     } : {
         loadFailed: 'Document templates could not be loaded.',
@@ -39,14 +42,13 @@
         copied: 'The WebDAV address was copied.',
         copyFailed: 'The WebDAV address could not be copied.',
         historyFailed: 'The template history could not be loaded.',
-        templates: '{0} templates loaded',
-        versions: '{0} versions',
+        templatesLoaded: '{0} templates loaded.',
         current: 'Current',
         unknown: 'Unknown',
         loading: 'Loading…',
         invalidDotx: 'Choose a file with the .dotx extension.',
         wordHint: 'Word may ask for permission to open the application on first use.',
-        insecureWord: 'Direct Word editing is available only over HTTPS outside local development.',
+        wordHttpsRequired: 'Direct Word opening requires HTTPS outside local development.',
         downloadRevision: 'Download this version'
     };
 
@@ -69,12 +71,13 @@
     }
 
     function announce(message) {
-        if (liveRegion) {
-            liveRegion.textContent = '';
-            window.setTimeout(function () {
-                liveRegion.textContent = message;
-            }, 0);
+        if (!liveRegion) {
+            return;
         }
+        liveRegion.textContent = '';
+        window.setTimeout(function () {
+            liveRegion.textContent = message;
+        }, 0);
     }
 
     function hideAlerts() {
@@ -97,38 +100,6 @@
         successAlert.textContent = message;
         successAlert.classList.remove('d-none');
         announce(message);
-    }
-
-    function csrfHeaders() {
-        const token = document.querySelector('meta[name="_csrf"]')?.content;
-        const header = document.querySelector('meta[name="_csrf_header"]')?.content;
-        return token && header ? { [header]: token } : {};
-    }
-
-    async function responseError(response, fallback) {
-        const type = response.headers.get('content-type') || '';
-        try {
-            if (type.includes('application/json')) {
-                const payload = await response.json();
-                return payload.error || payload.message || fallback;
-            }
-            const body = await response.text();
-            return body.trim() || fallback;
-        } catch (ignored) {
-            return fallback;
-        }
-    }
-
-    async function fetchJson(url, options, fallback) {
-        const response = await fetch(url, Object.assign({
-            credentials: 'same-origin',
-            cache: 'no-store',
-            headers: { Accept: 'application/json' }
-        }, options || {}));
-        if (!response.ok) {
-            throw new Error(await responseError(response, fallback));
-        }
-        return response.status === 204 ? null : response.json();
     }
 
     function apiUrl(path) {
@@ -192,13 +163,16 @@
         return anchor;
     }
 
-    function disableWordLink(anchor) {
+    function configureWordAction(anchor, webDavUrl, mode) {
+        if (links.directWordLinkAllowed(webDavUrl)) {
+            links.configureWordLink(anchor, webDavUrl, mode);
+            anchor.title = text.wordHint;
+            return;
+        }
         anchor.removeAttribute('href');
-        anchor.removeAttribute('target');
         anchor.classList.add('disabled');
         anchor.setAttribute('aria-disabled', 'true');
-        anchor.setAttribute('tabindex', '-1');
-        anchor.title = text.insecureWord;
+        anchor.title = text.wordHttpsRequired;
     }
 
     function renderTemplate(template) {
@@ -226,34 +200,31 @@
         const wordCell = document.createElement('td');
         const wordActions = element('div', 'd-flex flex-wrap gap-2');
         const webDavUrl = templateWebDavUrl(template);
-        const editLink = actionLink(labels.edit || 'Edit template in Word', 'btn btn-sm btn-primary');
+        const editLink = actionLink(labels.edit || 'Edit template in Word',
+            'btn btn-sm btn-primary');
+        configureWordAction(editLink, webDavUrl, 'edit');
         const newLink = actionLink(labels.new || 'New document from template',
             'btn btn-sm btn-outline-primary');
-        if (links.directWordLinkAllowed(webDavUrl)) {
-            links.configureWordLink(editLink, webDavUrl, 'edit');
-            links.configureWordLink(newLink, webDavUrl, 'new');
-            editLink.title = text.wordHint;
-            newLink.title = text.wordHint;
-        } else {
-            disableWordLink(editLink);
-            disableWordLink(newLink);
-        }
+        configureWordAction(newLink, webDavUrl, 'new');
         wordActions.append(editLink, newLink);
         const address = element('code', 'small text-break d-block mt-2', webDavUrl);
         wordCell.append(wordActions, address);
 
         const otherCell = document.createElement('td');
         const otherActions = element('div', 'd-flex flex-wrap gap-2');
-        const download = actionLink(labels.download || 'Download', 'btn btn-sm btn-outline-secondary');
+        const download = actionLink(labels.download || 'Download',
+            'btn btn-sm btn-outline-secondary');
         download.href = templateDownloadUrl(template.templateId);
         download.setAttribute('download', template.fileName);
         download.setAttribute('type', links.DOTX_MEDIA_TYPE);
-        const copy = element('button', 'btn btn-sm btn-outline-secondary', labels.copy || 'Copy WebDAV address');
+        const copy = element('button', 'btn btn-sm btn-outline-secondary',
+            labels.copy || 'Copy WebDAV address');
         copy.type = 'button';
         copy.addEventListener('click', function () {
             copyAddress(webDavUrl);
         });
-        const history = element('button', 'btn btn-sm btn-outline-secondary', labels.history || 'History');
+        const history = element('button', 'btn btn-sm btn-outline-secondary',
+            labels.history || 'History');
         history.type = 'button';
         history.addEventListener('click', function () {
             showHistory(template);
@@ -282,9 +253,9 @@
         hideAlerts();
         refreshButton.disabled = true;
         try {
-            const templates = await fetchJson(apiUrl(''), null, text.loadFailed);
+            const templates = await api.list(apiUrl(''), text.loadFailed);
             renderTemplates(templates);
-            announce(format(text.templates, templates.length));
+            announce(format(text.templatesLoaded, templates.length));
         } catch (error) {
             renderTemplates([]);
             showError(error.message || text.loadFailed);
@@ -345,23 +316,18 @@
         const existing = templatesById.get(templateId);
         const url = new URL(apiBase + '/' + encodeURIComponent(templateId), window.location.href);
         url.searchParams.set('displayName', displayNameInput.value);
-        const headers = Object.assign({
+        const headers = {
             Accept: 'application/json',
             'Content-Type': links.DOTX_MEDIA_TYPE
-        }, csrfHeaders());
+        };
         if (existing && existing.headCommit) {
             headers['If-Match'] = '"' + existing.headCommit + '"';
         }
 
         setUploadBusy(true);
         try {
-            const saved = await fetchJson(url.href, {
-                method: 'PUT',
-                headers: headers,
-                body: file
-            }, text.uploadFailed);
+            const saved = await api.upload(url.href, file, headers, text.uploadFailed);
             uploadForm.reset();
-            showSuccess(format(text.uploaded, saved.displayName));
             await loadTemplates();
             showSuccess(format(text.uploaded, saved.displayName));
         } catch (error) {
@@ -377,9 +343,8 @@
         historyBody.replaceChildren(element('p', 'text-body-secondary', text.loading));
         modal.show();
         try {
-            const revisions = await fetchJson(
+            const revisions = await api.history(
                 apiUrl('/' + encodeURIComponent(template.templateId) + '/history'),
-                null,
                 text.historyFailed);
             historyBody.replaceChildren();
             if (!revisions.length) {
@@ -390,19 +355,22 @@
             const list = element('div', 'list-group');
             revisions.forEach(function (revision, index) {
                 const item = element('div', 'list-group-item');
-                const heading = element('div', 'd-flex flex-wrap justify-content-between gap-2');
-                const commit = element('code', '', String(revision.commitId).slice(0, 12));
-                commit.title = revision.commitId;
+                const heading = element('div',
+                    'd-flex flex-wrap justify-content-between gap-2');
+                const revisionCommit = element('code', '',
+                    String(revision.commitId).slice(0, 12));
+                revisionCommit.title = revision.commitId;
                 const badge = element('span', index === 0
                     ? 'badge text-bg-success' : 'badge text-bg-secondary',
                     index === 0 ? text.current : formatDate(revision.committedAt));
-                heading.append(commit, badge);
+                heading.append(revisionCommit, badge);
                 const message = element('div', 'mt-2', revision.message || text.unknown);
                 const author = element('div', 'small text-body-secondary',
                     (revision.author || text.unknown) + ' · ' + formatDate(revision.committedAt));
                 const historicalDownload = actionLink(text.downloadRevision,
                     'btn btn-sm btn-outline-secondary mt-2');
-                historicalDownload.href = templateDownloadUrl(template.templateId, revision.commitId);
+                historicalDownload.href = templateDownloadUrl(
+                    template.templateId, revision.commitId);
                 historicalDownload.setAttribute('download', template.fileName);
                 historicalDownload.setAttribute('type', links.DOTX_MEDIA_TYPE);
                 item.append(heading, message, author, historicalDownload);
