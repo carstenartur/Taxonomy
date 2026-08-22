@@ -6,13 +6,26 @@ on:
       - agent/630-large-result-release-floor-current
     paths:
       - .github/workflows/pr819-search-overflow-contract-repair.yml
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
 
 permissions:
   contents: write
 
-# One-time branch repair. The successful job removes this workflow again.
+concurrency:
+  group: pr819-search-overflow-repair
+  cancel-in-progress: false
+
 jobs:
   repair:
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.number == 819
     runs-on: ubuntu-latest
     steps:
       - name: Check out the pull-request branch
@@ -34,15 +47,7 @@ jobs:
           ! grep -Fq '<div class="row g-2 mb-2">' <<<"$panel"
           git diff --check
 
-      - name: Run the focused source contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./mvnw -B -ntp -pl taxonomy-app -am \
-            -Dtest=TaxonomySearchLargeResultContractTest \
-            -Dsurefire.failIfNoSpecifiedTests=false test
-
-      - name: Commit the completed fix and remove this one-time workflow
+      - name: Commit the product fix and remove this one-time workflow
         shell: bash
         run: |
           set -euo pipefail
@@ -50,5 +55,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm .github/workflows/pr819-search-overflow-contract-repair.yml
           git add taxonomy-app/src/main/resources/templates/index.html
+          git diff --cached --check
           git commit -m 'Bound every search form row within the panel'
           git push origin HEAD:agent/630-large-result-release-floor-current
