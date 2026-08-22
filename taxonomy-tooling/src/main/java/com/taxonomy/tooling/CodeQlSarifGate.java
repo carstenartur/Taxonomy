@@ -23,9 +23,10 @@ final class CodeQlSarifGate {
             Path workingDirectory,
             PrintStream output,
             PrintStream error) {
-        Path report = CommandArguments.reportPath(
-                rawArguments, workingDirectory);
+        Path report = workingDirectory.resolve("target/codeql-gate.json");
         try {
+            report = CommandArguments.reportPath(
+                    rawArguments, workingDirectory);
             CommandArguments arguments = CommandArguments.parse(
                     rawArguments, workingDirectory);
             report = arguments.report();
@@ -57,7 +58,7 @@ final class CodeQlSarifGate {
         }
 
         List<Path> existing = candidates.stream()
-                .map(path -> path.toAbsolutePath().normalize())
+                .map(Path::normalize)
                 .filter(Files::isRegularFile)
                 .sorted(Comparator.comparing(Path::toString))
                 .toList();
