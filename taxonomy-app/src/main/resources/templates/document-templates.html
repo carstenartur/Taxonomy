@@ -26,12 +26,16 @@
 </nav>
 
 <main id="documentTemplateWorkspace" class="container-fluid py-3 px-lg-4"
-      th:attr="data-api-base=@{/api/admin/document-templates},data-webdav-base=@{/dav/templates/},data-home-url=@{/}">
+      th:attr="data-api-base=@{/api/admin/document-templates},data-webdav-base=@{/dav/templates/},data-home-url=@{/},data-direct-word-enabled=${directWordEnabled}">
     <div id="documentTemplateError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
     <div id="documentTemplateSuccess" class="alert alert-success d-none" role="status"></div>
     <div id="documentTemplateHttpsWarning" class="alert alert-warning d-none" role="alert"
          th:text="#{document.templates.https.warning}">
         Direct Word editing should use the public HTTPS address of Taxonomy.
+    </div>
+    <div th:if="${!directWordEnabled}" class="alert alert-warning" role="alert"
+         th:text="#{document.templates.direct-word.disabled}">
+        Direct Word opening is disabled for this authentication profile. Download remains available.
     </div>
 
     <section class="card shadow-sm mb-3" aria-labelledby="documentTemplateHeading">

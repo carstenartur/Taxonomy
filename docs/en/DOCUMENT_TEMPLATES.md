@@ -52,12 +52,15 @@ required template is missing or structurally invalid.
 Each template exposes the last Git commit that changed its own OOXML subtree as its
 version and HTTP ETag. A commit to another template therefore does not invalidate an
 open editor or cause a false conflict. Creating a template is create-only; replacing
-or restoring one requires the current template ETag. The final branch update remains
-atomic and is retried when another Taxonomy instance changed only an unrelated
-template.
+or restoring one requires the current template ETag. `If-Match` uses strong HTTP
+entity-tag semantics, accepts comma-separated alternatives, and never creates a
+missing resource.
 
-WebDAV locks improve the Word editing workflow. The Git expected-version check is the
-durable lost-update guard even after a process restart or expired lock.
+WebDAV locks improve the Word editing workflow. They are intentionally process-local;
+the supported Helm profile therefore remains single-replica. Git's atomic
+per-template expected-version check is the durable lost-update guard after a process
+restart or expired lock. A future multi-replica deployment needs a shared lock store
+before it can promise uninterrupted Word lock sessions across replicas.
 
 ## Access and transport
 
@@ -66,7 +69,14 @@ Only administrators may upload, restore, lock, or save a template. Direct deskto
 links require HTTPS, except for loopback development addresses. Normal HTTPS download
 and a copyable WebDAV URL remain available as fallbacks.
 
+The Keycloak profile disables direct `ms-word:` links by default. Desktop Word cannot
+reuse the browser OIDC session and does not receive Taxonomy's bearer token. Operators
+must not re-enable the links until they provide and test a WebDAV-compatible credential
+flow such as a scoped application password. Bearer-capable WebDAV clients can continue
+to use the endpoint directly.
+
 Taxonomy rejects macros, ActiveX, embedded OLE objects, signatures, unsafe ZIP paths,
 case-colliding package parts, malformed XML, external non-hyperlink relationships,
-missing internal relationship targets, and packages without exactly one root
-`officeDocument` relationship to `word/document.xml`.
+missing internal relationship targets, packages without exactly one root
+`officeDocument` relationship to `word/document.xml`, and OOXML parts named
+`template.json`, which is reserved for Taxonomy's internal manifest.

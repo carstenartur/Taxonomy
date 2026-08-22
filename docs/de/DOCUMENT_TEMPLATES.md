@@ -53,12 +53,16 @@ Jede Vorlage verwendet den letzten Git-Commit, der ihren eigenen OOXML-Unterbaum
 geändert hat, als Version und HTTP-ETag. Eine Änderung an einer anderen Vorlage macht
 deshalb keinen geöffneten Editor ungültig und erzeugt keinen falschen Konflikt. Die
 Erstanlage ist ausschließlich create-only; Ersetzen und Wiederherstellen benötigen das
-aktuelle Vorlagen-ETag. Der abschließende Branch-Update bleibt atomar und wird erneut
-versucht, wenn eine andere Taxonomy-Instanz nur eine fremde Vorlage geändert hat.
+aktuelle Vorlagen-ETag. `If-Match` verwendet starke HTTP-Entity-Tags, akzeptiert mehrere
+Alternativen in einer kommaseparierten Liste und legt niemals eine fehlende Ressource
+an.
 
-WebDAV-Sperren verbessern die Bearbeitung in Word. Die Git-Prüfung der erwarteten
-Vorlagenversion bleibt auch nach einem Prozessneustart oder dem Ablauf einer Sperre der
-dauerhafte Schutz vor verlorenen Änderungen.
+WebDAV-Sperren verbessern die Bearbeitung in Word. Sie werden bewusst pro Prozess
+gehalten; das unterstützte Helm-Profil bleibt deshalb bei genau einer Replik. Die
+atomare Git-Prüfung der erwarteten Vorlagenversion bleibt auch nach einem
+Prozessneustart oder dem Ablauf einer Sperre der dauerhafte Schutz vor verlorenen
+Änderungen. Für mehrere Repliken wäre zunächst ein gemeinsamer Lock-Speicher nötig,
+damit Word-Sperren ohne Unterbrechung zwischen Instanzen funktionieren.
 
 ## Zugriff und Transport
 
@@ -68,7 +72,16 @@ speichern. Direkte Desktop-Word-Links benötigen HTTPS; ausgenommen sind lokale
 Loopback-Adressen für die Entwicklung. Der normale HTTPS-Download und eine kopierbare
 WebDAV-Adresse bleiben als Rückfallwege verfügbar.
 
+Im Keycloak-Profil sind direkte `ms-word:`-Links standardmäßig deaktiviert. Desktop-
+Word kann die OIDC-Sitzung des Browsers nicht übernehmen und erhält den erforderlichen
+Bearer-Token nicht. Die Links dürfen erst wieder aktiviert werden, wenn der Betrieb
+einen WebDAV-kompatiblen, begrenzten Zugang wie ein App-Passwort implementiert und
+getestet hat. WebDAV-Clients mit Bearer-Token-Unterstützung können den Endpunkt weiter
+verwenden.
+
 Taxonomy weist Makros, ActiveX, eingebettete OLE-Objekte, Signaturen, unsichere
 ZIP-Pfade, nur in Groß-/Kleinschreibung kollidierende Paketbestandteile, fehlerhaftes
-XML, externe Beziehungen außer Hyperlinks, fehlende interne Beziehungsziele sowie
-Pakete ohne genau eine Root-`officeDocument`-Beziehung auf `word/document.xml` zurück.
+XML, externe Beziehungen außer Hyperlinks, fehlende interne Beziehungsziele, Pakete
+ohne genau eine Root-`officeDocument`-Beziehung auf `word/document.xml` sowie
+OOXML-Bestandteile namens `template.json` zurück. Dieser Name ist dem internen
+Taxonomy-Manifest vorbehalten.

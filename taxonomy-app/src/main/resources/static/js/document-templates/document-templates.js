@@ -17,6 +17,7 @@
 
     const apiBase = String(workspace.dataset.apiBase || '').replace(/\/+$/, '');
     const webDavBase = String(workspace.dataset.webdavBase || '');
+    const directWordEnabled = workspace.dataset.directWordEnabled !== 'false';
     const labelsElement = document.getElementById('documentTemplateLabels');
     const labels = labelsElement ? labelsElement.dataset : {};
     const german = (document.documentElement.lang || '').toLowerCase().startsWith('de');
@@ -34,7 +35,9 @@
         invalidDotx: 'Bitte wählen Sie eine Datei mit der Endung .dotx.',
         wordHint: 'Word kann beim ersten Aufruf um Erlaubnis zum Öffnen der Anwendung bitten.',
         wordHttpsRequired: 'Direktes Öffnen in Word ist außerhalb lokaler Entwicklung nur über HTTPS verfügbar.',
-        downloadRevision: 'Diese Version herunterladen'
+        wordAuthenticationUnavailable: 'Direktes Öffnen in Word ist für den aktuellen Anmeldemodus nicht aktiviert. Verwenden Sie Download oder die WebDAV-Adresse mit einem unterstützten Client.',
+        downloadRevision: 'Diese Version herunterladen',
+        ooxmlParts: 'OOXML-Bestandteile'
     } : {
         loadFailed: 'Document templates could not be loaded.',
         uploadFailed: 'The document template could not be saved.',
@@ -49,7 +52,9 @@
         invalidDotx: 'Choose a file with the .dotx extension.',
         wordHint: 'Word may ask for permission to open the application on first use.',
         wordHttpsRequired: 'Direct Word opening requires HTTPS outside local development.',
-        downloadRevision: 'Download this version'
+        wordAuthenticationUnavailable: 'Direct Word opening is not enabled for the current sign-in mode. Use download or the WebDAV address with a supported client.',
+        downloadRevision: 'Download this version',
+        ooxmlParts: 'OOXML parts'
     };
 
     const rows = document.getElementById('documentTemplateRows');
@@ -163,16 +168,24 @@
         return anchor;
     }
 
+    function disableWordAction(anchor, reason) {
+        anchor.removeAttribute('href');
+        anchor.classList.add('disabled');
+        anchor.setAttribute('aria-disabled', 'true');
+        anchor.title = reason;
+    }
+
     function configureWordAction(anchor, webDavUrl, mode) {
+        if (!directWordEnabled) {
+            disableWordAction(anchor, text.wordAuthenticationUnavailable);
+            return;
+        }
         if (links.directWordLinkAllowed(webDavUrl)) {
             links.configureWordLink(anchor, webDavUrl, mode);
             anchor.title = text.wordHint;
             return;
         }
-        anchor.removeAttribute('href');
-        anchor.classList.add('disabled');
-        anchor.setAttribute('aria-disabled', 'true');
-        anchor.title = text.wordHttpsRequired;
+        disableWordAction(anchor, text.wordHttpsRequired);
     }
 
     function renderTemplate(template) {
@@ -185,7 +198,7 @@
             element('code', 'small d-block', template.templateId),
             element('span', 'small text-body-secondary',
                 template.fileName + ' · ' + formatBytes(template.uncompressedSize)
-                + ' · ' + template.partCount + ' OOXML parts')
+                + ' · ' + template.partCount + ' ' + text.ooxmlParts)
         );
 
         const versionCell = document.createElement('td');
@@ -256,9 +269,11 @@
             const templates = await api.list(apiUrl(''), text.loadFailed);
             renderTemplates(templates);
             announce(format(text.templatesLoaded, templates.length));
+            return true;
         } catch (error) {
             renderTemplates([]);
             showError(error.message || text.loadFailed);
+            return false;
         } finally {
             refreshButton.disabled = false;
         }
@@ -328,8 +343,10 @@
         try {
             const saved = await api.upload(url.href, file, headers, text.uploadFailed);
             uploadForm.reset();
-            await loadTemplates();
-            showSuccess(format(text.uploaded, saved.displayName));
+            const refreshed = await loadTemplates();
+            if (refreshed) {
+                showSuccess(format(text.uploaded, saved.displayName));
+            }
         } catch (error) {
             showError(error.message || text.uploadFailed);
         } finally {
@@ -394,7 +411,7 @@
 
     const httpsWarning = document.getElementById('documentTemplateHttpsWarning');
     const loopback = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-    if (window.location.protocol !== 'https:' && !loopback) {
+    if (directWordEnabled && window.location.protocol !== 'https:' && !loopback) {
         httpsWarning.classList.remove('d-none');
     }
 
