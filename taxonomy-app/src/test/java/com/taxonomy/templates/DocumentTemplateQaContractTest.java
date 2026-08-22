@@ -70,6 +70,34 @@ class DocumentTemplateQaContractTest {
                 .contains("document.templates.history.close.aria=");
     }
 
+    @Test
+    void administratorsCanDiscoverTemplateManagementFromTheMainAdminTab()
+            throws Exception {
+        String roleSurface = resource(
+                "/static/js/security/taxonomy-role-surface.js");
+        String english = resource(
+                "/i18n/messages_document_templates.properties");
+        String german = resource(
+                "/i18n/messages_document_templates_de.properties");
+
+        assertThat(roleSurface)
+                .contains("ensureDocumentTemplateAdminEntry")
+                .contains("documentTemplateAdminEntry")
+                .contains("document.templates.admin.entry.title")
+                .contains("document.templates.admin.entry.description")
+                .contains("document.templates.admin.entry.action")
+                .contains("resolveUrl('/admin/document-templates')")
+                .contains("if (!isAdministrator()) return;");
+        assertThat(english)
+                .contains("document.templates.admin.entry.title=")
+                .contains("document.templates.admin.entry.description=")
+                .contains("document.templates.admin.entry.action=");
+        assertThat(german)
+                .contains("document.templates.admin.entry.title=")
+                .contains("document.templates.admin.entry.description=")
+                .contains("document.templates.admin.entry.action=");
+    }
+
     private static String resource(String path) throws IOException {
         try (InputStream input = DocumentTemplateQaContractTest.class
                 .getResourceAsStream(path)) {
