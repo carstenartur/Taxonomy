@@ -193,7 +193,10 @@ curl --fail --location --silent --show-error \
   >"${EVIDENCE_DIR}/home.html"
 [[ -s "${EVIDENCE_DIR}/home.html" ]] \
   || fail "Taxonomy root redirect did not produce a login page"
-grep -Fq 'Taxonomy' "${EVIDENCE_DIR}/home.html"
+grep -Fq 'class="login-form"' "${EVIDENCE_DIR}/home.html"
+grep -Fq 'method="post" action="/login"' "${EVIDENCE_DIR}/home.html"
+grep -Fq 'name="password"' "${EVIDENCE_DIR}/home.html"
+grep -Fq 'name="_csrf"' "${EVIDENCE_DIR}/home.html"
 jq -e '.status == "UP"' "${EVIDENCE_DIR}/readiness.json" >/dev/null
 
 POD_IMAGE_ID=$(kubectl get pod "${POD}" --namespace "${NAMESPACE}" \
@@ -240,7 +243,7 @@ jq -n \
     },
     workload: {
       deployment: $deployment,
-      service: $service,
+      service: $SERVICE,
       pod: $pod,
       readinessSeconds: $readinessSeconds,
       restartCount: $restartCount,
