@@ -1,0 +1,123 @@
+package com.taxonomy.ui;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/** Fast source contract for the bounded search-result workspace. */
+class TaxonomySearchLargeResultContractTest {
+
+    @Test
+    void largeResultsUseAWindowAndExposeOrientationControls() throws Exception {
+        String search = resource("/static/js/shared/taxonomy-search.js");
+
+        assertThat(search)
+                .contains("const RESULT_WINDOW_SIZE = 50")
+                .contains("function renderResultWindow()")
+                .contains("navigationButton('previous'")
+                .contains("navigationButton('next'")
+                .contains("navigationButton('summary'")
+                .contains("data-search-result-nav=\"")
+                .contains("id=\"searchResultSummary\"")
+                .contains("id=\"searchActiveFilters\"")
+                .contains("id=\"searchCurrentPath\"")
+                .contains("orientationText('navigation')")
+                .contains("orientationText('results')")
+                .contains("aria-posinset")
+                .contains("aria-setsize")
+                .contains("area.dataset.renderedResults")
+                .contains("resultDiagnostics")
+                .doesNotContain("nodes.forEach(function (node)");
+    }
+
+    @Test
+    void resultPositionsDoNotOverrideTheActionableLinkRole() throws Exception {
+        String search = resource("/static/js/shared/taxonomy-search.js");
+
+        assertThat(search)
+                .contains("class=\"search-result-position\" role=\"listitem\"")
+                .contains("<a href=\"#\" class=\"list-group-item list-group-item-action")
+                .contains("html += '</a></div>'")
+                .doesNotContain("search-result-item\" data-code=\"'\n"
+                        + "                + escapeHtml(node.code) + '\" data-result-index=\"' + index + '\" '\n"
+                        + "                + 'role=\"listitem\"");
+    }
+
+    @Test
+    void resultNavigationPreservesFocusAndReturnContextWithoutRaces() throws Exception {
+        String search = resource("/static/js/shared/taxonomy-search.js");
+
+        assertThat(search)
+                .contains("var focusRequestId = ++resultState.focusRequestId")
+                .contains("highlightNodeInTree(node.code, !restoreResultFocus")
+                .contains("resultState.focusRequestId !== focusRequestId")
+                .contains("resultState.focusRequestId += 1")
+                .contains("function revealNodeInTree(code, moveFocus)")
+                .contains("if (moveFocus) node.focus({ preventScroll: true })")
+                .contains("refreshed.focus({ preventScroll: true })")
+                .contains("summary.focus({ preventScroll: true })")
+                .contains("summary.scrollIntoView({ block: 'nearest' })")
+                .contains("window.scrollTo({ top: resultState.originWindowY")
+                .contains("announceResultPosition(index)")
+                .contains("updateCurrentPath(treeNode, node.code)")
+                .contains("previous.disabled = total === 0 || resultState.currentIndex <= 0")
+                .contains("next.disabled = total === 0 || resultState.currentIndex >= total - 1")
+                .doesNotContain("if (item && restoreResultFocus)");
+    }
+
+    @Test
+    void newSearchClearsStaleHighlightAndKeepsOneTreeTabStop() throws Exception {
+        String search = resource("/static/js/shared/taxonomy-search.js");
+
+        assertThat(search)
+                .contains("function resetResultState()")
+                .contains("document.querySelectorAll('.search-highlight')")
+                .contains("#taxonomyTree [role=\"treeitem\"][tabindex=\"0\"]")
+                .contains("item.setAttribute('tabindex', '-1')")
+                .contains("node.setAttribute('tabindex', '0')");
+    }
+
+    @Test
+    void browserEvidenceUsesAndVerifiesARealTaxonomyNode() throws Exception {
+        Path root = findRepositoryRoot();
+        String integration = Files.readString(
+                root.resolve("taxonomy-app/src/test/java/com/taxonomy/"
+                        + "TaxonomyLargeResultBudgetIT.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(integration)
+                .contains("window.__taxonomyBudgetRealCode")
+                .contains("realTaxonomyCode")
+                .contains("selectedCode")
+                .contains("highlightedCode")
+                .contains(".isEqualTo(realTaxonomyCode)")
+                .doesNotContain(".contains(\"BUDGET-0001\")");
+    }
+
+    private static String resource(String path) throws Exception {
+        try (InputStream input = TaxonomySearchLargeResultContractTest.class
+                .getResourceAsStream(path)) {
+            assertThat(input).as("classpath resource %s", path).isNotNull();
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static Path findRepositoryRoot() {
+        Path current = Path.of(System.getProperty("user.dir"))
+                .toAbsolutePath().normalize();
+        while (current != null) {
+            if (Files.isRegularFile(current.resolve("pom.xml"))
+                    && Files.isRegularFile(current.resolve(
+                            "taxonomy-app/pom.xml"))) {
+                return current;
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException("Unable to locate Taxonomy repository root");
+    }
+}

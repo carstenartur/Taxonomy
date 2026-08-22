@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "resultWindowSize": 50,
+  "maxInitialTaxonomyDomNodes": 250,
+  "maxResultAreaDomNodes": 275,
+  "maxResultAreaClientHeightPx": 310,
+  "maxDocumentHeightIncreasePx": 420,
+  "maxRenderDurationMs": 1200,
+  "maxLongestTaskMs": 250,
+  "maxInteractionLatencyMs": 250,
+  "maxHeapIncreaseBytes": 25165824,
+  "maxHorizontalOverflowPx": 2,
+  "scenarios": [
+    {
+      "id": "representative-309",
+      "resultCount": 309
+    },
+    {
+      "id": "large-1000",
+      "resultCount": 1000
+    }
+  ]
+}
