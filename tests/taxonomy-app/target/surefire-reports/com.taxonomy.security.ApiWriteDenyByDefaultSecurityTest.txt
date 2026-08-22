@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.security.ApiWriteDenyByDefaultSecurityTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.337 s -- in com.taxonomy.security.ApiWriteDenyByDefaultSecurityTest

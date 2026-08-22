@@ -1,0 +1,613 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProposalApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">ProposalApiController.java</span></div><h1>ProposalApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.dto.RelationProposalDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.ReadOnlyRepositoryContextException;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.ProposalReviewPendingException;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.ReviewAction;
+import com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.ReviewResult;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationProjectionReadService.RelationProjectionUnavailableException;
+import com.taxonomy.relations.service.RelationProposalService;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/** REST API for repository/workspace-scoped relation proposals and review. */
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Proposals&quot;)
+public class ProposalApiController {
+
+    private static final String IDEMPOTENCY_KEY = &quot;Idempotency-Key&quot;;
+
+    private final RelationProposalService proposalService;
+    private final GitAuthoritativeProposalReviewService reviewService;
+    private final RelationBranchProjectionReadinessService readinessService;
+    private final WorkspaceResolver workspaceResolver;
+    private final SystemRepositoryService repositoryService;
+    private final RepositoryMembershipService membershipService;
+
+    public ProposalApiController(
+            RelationProposalService proposalService,
+            GitAuthoritativeProposalReviewService reviewService,
+            RelationBranchProjectionReadinessService readinessService,
+            WorkspaceResolver workspaceResolver,
+            SystemRepositoryService repositoryService,
+<span class="fc" id="L67">            RepositoryMembershipService membershipService) {</span>
+<span class="fc" id="L68">        this.proposalService = proposalService;</span>
+<span class="fc" id="L69">        this.reviewService = reviewService;</span>
+<span class="fc" id="L70">        this.readinessService = readinessService;</span>
+<span class="fc" id="L71">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L72">        this.repositoryService = repositoryService;</span>
+<span class="fc" id="L73">        this.membershipService = membershipService;</span>
+<span class="fc" id="L74">    }</span>
+
+    @Operation(summary = &quot;Propose relations&quot;)
+    @PostMapping(&quot;/proposals/propose&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; proposeRelations(
+            @RequestBody Map&lt;String, String&gt; body) {
+<span class="fc" id="L80">        String sourceCode = body.get(&quot;sourceCode&quot;);</span>
+<span class="fc" id="L81">        String relationTypeText = body.get(&quot;relationType&quot;);</span>
+<span class="pc bpc" id="L82" title="2 of 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank()</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                || relationTypeText == null || relationTypeText.isBlank()) {</span>
+<span class="fc" id="L84">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        RelationType relationType;
+        try {
+<span class="fc" id="L89">            relationType = RelationType.valueOf(relationTypeText.toUpperCase());</span>
+<span class="fc" id="L90">        } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L91">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L92">        }</span>
+
+<span class="fc" id="L94">        RepositoryContext context = writableContext(</span>
+<span class="fc" id="L95">                workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L97">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+        }
+
+<span class="fc" id="L100">        int limit = parseLimit(body.getOrDefault(&quot;limit&quot;, &quot;10&quot;));</span>
+        try {
+<span class="fc" id="L102">            return ResponseEntity.ok(proposalService.proposeRelationsInContext(</span>
+                    sourceCode, relationType, limit, context));
+<span class="fc" id="L104">        } catch (RelationProjectionUnavailableException error) {</span>
+<span class="fc" id="L105">            return projectionUnavailable(error).build();</span>
+<span class="fc" id="L106">        } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L107">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    @Operation(summary = &quot;List all proposals&quot;)
+    @GetMapping(&quot;/proposals&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getAllProposals() {
+<span class="fc" id="L114">        RepositoryContext context = workspaceResolver</span>
+<span class="fc" id="L115">                .resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L116">        return ResponseEntity.ok(</span>
+<span class="fc" id="L117">                proposalService.getAllProposalsInContext(context));</span>
+    }
+
+    @Operation(summary = &quot;List pending proposals&quot;)
+    @GetMapping(&quot;/proposals/pending&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getPendingProposals() {
+<span class="fc" id="L123">        RepositoryContext context = workspaceResolver</span>
+<span class="fc" id="L124">                .resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L125">        return ResponseEntity.ok(</span>
+<span class="fc" id="L126">                proposalService.getPendingProposalsInContext(context));</span>
+    }
+
+    @Operation(summary = &quot;List node proposals&quot;)
+    @GetMapping(&quot;/node/{code}/proposals&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getProposalsForNode(
+            @PathVariable String code) {
+<span class="fc" id="L133">        RepositoryContext context = workspaceResolver</span>
+<span class="fc" id="L134">                .resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L135">        return ResponseEntity.ok(</span>
+<span class="fc" id="L136">                proposalService.getProposalsForNodeInContext(code, context));</span>
+    }
+
+    /** Compatibility overload used by focused unit tests and in-process callers. */
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; acceptProposal(Long id) {
+<span class="fc" id="L141">        return acceptProposal(id, null, null);</span>
+    }
+
+    @Operation(summary = &quot;Accept proposal through an authoritative Git commit&quot;)
+    @PostMapping(&quot;/proposals/{id}/accept&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; acceptProposal(
+            @PathVariable Long id,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = &quot;Idempotency-Key&quot;, required = false)
+            String idempotencyKey) {
+<span class="fc" id="L152">        return reviewProposal(id, ReviewAction.ACCEPT, ifMatch, idempotencyKey);</span>
+    }
+
+    /** Compatibility overload used by focused unit tests and in-process callers. */
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; rejectProposal(Long id) {
+<span class="nc" id="L157">        return rejectProposal(id, null, null);</span>
+    }
+
+    @Operation(summary = &quot;Reject proposal through an authoritative Git commit&quot;)
+    @PostMapping(&quot;/proposals/{id}/reject&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; rejectProposal(
+            @PathVariable Long id,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = &quot;Idempotency-Key&quot;, required = false)
+            String idempotencyKey) {
+<span class="fc" id="L168">        return reviewProposal(id, ReviewAction.REJECT, ifMatch, idempotencyKey);</span>
+    }
+
+    @Operation(summary = &quot;Create proposal from hypothesis&quot;)
+    @PostMapping(&quot;/proposals/from-hypothesis&quot;)
+    public ResponseEntity&lt;RelationProposalDto&gt; createFromHypothesis(
+            @RequestBody Map&lt;String, Object&gt; body) {
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        String sourceCode = body.get(&quot;sourceCode&quot;) instanceof String value</span>
+<span class="pc" id="L176">                ? value : null;</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        String targetCode = body.get(&quot;targetCode&quot;) instanceof String value</span>
+<span class="pc" id="L178">                ? value : null;</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        String relationTypeText = body.get(&quot;relationType&quot;) instanceof String value</span>
+<span class="pc" id="L180">                ? value : null;</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        Number confidenceNumber = body.get(&quot;confidence&quot;) instanceof Number value</span>
+<span class="pc" id="L182">                ? value : null;</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        String rationale = body.get(&quot;rationale&quot;) instanceof String value</span>
+<span class="pc" id="L184">                ? value : null;</span>
+<span class="pc bpc" id="L185" title="3 of 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank()</span>
+<span class="pc bpc" id="L186" title="2 of 4 branches missed.">                || targetCode == null || targetCode.isBlank()</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">                || relationTypeText == null || relationTypeText.isBlank()) {</span>
+<span class="nc" id="L188">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        RelationType relationType;
+        try {
+<span class="fc" id="L193">            relationType = RelationType.valueOf(</span>
+<span class="fc" id="L194">                    relationTypeText.toUpperCase());</span>
+<span class="nc" id="L195">        } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L196">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L197">        }</span>
+
+<span class="fc" id="L199">        RepositoryContext context = writableContext(</span>
+<span class="fc" id="L200">                workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L202">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+        }
+
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        double confidence = confidenceNumber != null</span>
+<span class="pc" id="L206">                ? confidenceNumber.doubleValue() : 0.5;</span>
+        try {
+<span class="fc" id="L208">            RelationProposalDto proposal =</span>
+<span class="nc" id="L209">                    proposalService.createFromHypothesisInContext(</span>
+                            sourceCode,
+                            targetCode,
+                            relationType,
+                            confidence,
+                            rationale,
+                            context);
+<span class="nc bnc" id="L216" title="All 2 branches missed.">            return proposal != null</span>
+<span class="nc" id="L217">                    ? ResponseEntity.ok(proposal)</span>
+<span class="nc" id="L218">                    : ResponseEntity.status(HttpStatus.CONFLICT).build();</span>
+<span class="fc" id="L219">        } catch (RelationProjectionUnavailableException error) {</span>
+<span class="fc" id="L220">            return projectionUnavailable(error).build();</span>
+<span class="nc" id="L221">        } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L222">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /** Compatibility overload used by focused unit tests and in-process callers. */
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; revertProposal(Long id) {
+<span class="nc" id="L228">        return revertProposal(id, null, null);</span>
+    }
+
+    @Operation(summary = &quot;Revert proposal through an authoritative Git commit&quot;)
+    @PostMapping(&quot;/proposals/{id}/revert&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; revertProposal(
+            @PathVariable Long id,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = &quot;Idempotency-Key&quot;, required = false)
+            String idempotencyKey) {
+<span class="fc" id="L239">        return reviewProposal(id, ReviewAction.REVERT, ifMatch, idempotencyKey);</span>
+    }
+
+    /** Compatibility overload used by focused unit tests and in-process callers. */
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; bulkAction(
+            Map&lt;String, Object&gt; body) {
+<span class="fc" id="L245">        return bulkAction(body, null);</span>
+    }
+
+    @Operation(summary = &quot;Ordered Git-first bulk action on proposals&quot;)
+    @PostMapping(&quot;/proposals/bulk&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; bulkAction(
+            @RequestBody Map&lt;String, Object&gt; body,
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = false)
+            String idempotencyKey) {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        List&lt;Number&gt; ids = body.get(&quot;ids&quot;) instanceof List&lt;?&gt; list</span>
+<span class="fc" id="L256">                ? (List&lt;Number&gt;) list : null;</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        String actionText = body.get(&quot;action&quot;) instanceof String value</span>
+<span class="fc" id="L258">                ? value : null;</span>
+<span class="fc bfc" id="L259" title="All 6 branches covered.">        if (ids == null || ids.isEmpty()</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">                || actionText == null || actionText.isBlank()) {</span>
+<span class="fc" id="L261">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        ReviewAction action;
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (&quot;ACCEPT&quot;.equalsIgnoreCase(actionText)) {</span>
+<span class="fc" id="L266">            action = ReviewAction.ACCEPT;</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        } else if (&quot;REJECT&quot;.equalsIgnoreCase(actionText)) {</span>
+<span class="nc" id="L268">            action = ReviewAction.REJECT;</span>
+        } else {
+<span class="fc" id="L270">            return ResponseEntity.badRequest().build();</span>
+        }
+
+<span class="fc" id="L273">        RepositoryContext context = writableContext(</span>
+<span class="fc" id="L274">                workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L276">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+        }
+
+<span class="fc" id="L279">        String expectedHead = currentHead(context);</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">        if (expectedHead == null) {</span>
+<span class="nc" id="L281">            return ResponseEntity.status(HttpStatus.NOT_FOUND)</span>
+<span class="nc" id="L282">                    .header(RelationApiController.PROJECTION_STATE_HEADER,</span>
+<span class="nc" id="L283">                            ReadinessState.BRANCH_MISSING.name())</span>
+<span class="nc" id="L284">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="nc" id="L285">                    .build();</span>
+        }
+
+<span class="fc" id="L288">        String bulkKey = normalizeIdempotencyKey(idempotencyKey);</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        if (bulkKey == null) {</span>
+<span class="fc" id="L290">            bulkKey = &quot;legacy-proposal-bulk-&quot;</span>
+<span class="fc" id="L291">                    + action.name().toLowerCase(Locale.ROOT)</span>
+<span class="fc" id="L292">                    + &quot;-&quot; + expectedHead + &quot;-&quot; + ids.hashCode();</span>
+        }
+
+<span class="fc" id="L295">        List&lt;Map&lt;String, Object&gt;&gt; itemResults = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L296">        int projected = 0;</span>
+<span class="fc" id="L297">        int pending = 0;</span>
+<span class="fc" id="L298">        int failed = 0;</span>
+<span class="fc" id="L299">        boolean stop = false;</span>
+<span class="pc bpc" id="L300" title="1 of 4 branches missed.">        for (int index = 0; index &lt; ids.size() &amp;&amp; !stop; index++) {</span>
+<span class="fc" id="L301">            Number idNumber = ids.get(index);</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">            if (idNumber == null) {</span>
+<span class="nc" id="L303">                failed++;</span>
+<span class="nc" id="L304">                itemResults.add(itemFailure(null, &quot;INVALID_ID&quot;, null));</span>
+<span class="nc" id="L305">                continue;</span>
+            }
+<span class="fc" id="L307">            long proposalId = idNumber.longValue();</span>
+<span class="fc" id="L308">            String itemKey = bulkKey + &quot;:&quot; + index + &quot;:&quot; + proposalId;</span>
+            try {
+<span class="fc" id="L310">                ReviewResult result = executeReview(</span>
+<span class="fc" id="L311">                        proposalId,</span>
+                        action,
+                        context,
+                        expectedHead,
+                        itemKey);
+<span class="fc" id="L316">                CommandResult authority = result.mutation().authority();</span>
+<span class="fc" id="L317">                expectedHead = authority.authoritativeCommitId();</span>
+<span class="fc" id="L318">                projected++;</span>
+<span class="fc" id="L319">                itemResults.add(reviewPayload(result, &quot;PROJECTED&quot;));</span>
+<span class="nc" id="L320">            } catch (ProposalReviewPendingException error) {</span>
+<span class="nc" id="L321">                expectedHead = error.getAuthority().authoritativeCommitId();</span>
+<span class="nc" id="L322">                pending++;</span>
+<span class="nc" id="L323">                itemResults.add(pendingPayload(error));</span>
+<span class="nc" id="L324">                stop = true;</span>
+<span class="nc" id="L325">            } catch (BranchHeadConflictException error) {</span>
+<span class="nc" id="L326">                failed++;</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">                if (error.getActualHeadCommit() != null) {</span>
+<span class="nc" id="L328">                    expectedHead = error.getActualHeadCommit();</span>
+                }
+<span class="nc" id="L330">                itemResults.add(itemFailure(</span>
+<span class="nc" id="L331">                        proposalId,</span>
+                        &quot;PRECONDITION_FAILED&quot;,
+<span class="nc" id="L333">                        error.getMessage()));</span>
+<span class="nc" id="L334">                stop = true;</span>
+<span class="fc" id="L335">            } catch (IllegalArgumentException | IllegalStateException error) {</span>
+<span class="fc" id="L336">                failed++;</span>
+<span class="fc" id="L337">                itemResults.add(itemFailure(</span>
+<span class="fc" id="L338">                        proposalId,</span>
+                        &quot;REVIEW_REJECTED&quot;,
+<span class="fc" id="L340">                        error.getMessage()));</span>
+<span class="nc" id="L341">            } catch (IOException error) {</span>
+<span class="nc" id="L342">                failed++;</span>
+<span class="nc" id="L343">                itemResults.add(itemFailure(</span>
+<span class="nc" id="L344">                        proposalId,</span>
+                        &quot;GIT_UNAVAILABLE&quot;,
+<span class="nc" id="L346">                        error.getMessage()));</span>
+<span class="nc" id="L347">                stop = true;</span>
+<span class="pc" id="L348">            }</span>
+        }
+
+<span class="fc" id="L351">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L352">        result.put(&quot;action&quot;, action.name());</span>
+<span class="fc" id="L353">        result.put(&quot;total&quot;, ids.size());</span>
+<span class="fc" id="L354">        result.put(&quot;processed&quot;, itemResults.size());</span>
+<span class="fc" id="L355">        result.put(&quot;projected&quot;, projected);</span>
+<span class="fc" id="L356">        result.put(&quot;success&quot;, projected); // legacy alias for &quot;projected&quot; — kept for browser UI compatibility</span>
+<span class="fc" id="L357">        result.put(&quot;pendingRecovery&quot;, pending);</span>
+<span class="fc" id="L358">        result.put(&quot;failed&quot;, failed);</span>
+<span class="pc bpc" id="L359" title="2 of 6 branches missed.">        result.put(&quot;complete&quot;, itemResults.size() == ids.size()</span>
+                &amp;&amp; pending == 0 &amp;&amp; failed == 0);
+<span class="fc" id="L361">        result.put(&quot;authoritativeCommitId&quot;, expectedHead);</span>
+<span class="fc" id="L362">        result.put(&quot;items&quot;, itemResults);</span>
+
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">        HttpStatus status = pending &gt; 0</span>
+<span class="nc" id="L365">                ? HttpStatus.ACCEPTED</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">                : failed &gt; 0 ? HttpStatus.MULTI_STATUS : HttpStatus.OK;</span>
+<span class="fc" id="L367">        ResponseEntity.BodyBuilder response = ResponseEntity.status(status)</span>
+<span class="fc" id="L368">                .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="pc bpc" id="L369" title="1 of 2 branches missed.">        if (expectedHead != null) {</span>
+<span class="fc" id="L370">            response.header(</span>
+                    HttpHeaders.ETAG,
+<span class="fc" id="L372">                    GitHttpPrecondition.etag(expectedHead));</span>
+        }
+<span class="fc" id="L374">        return response.body(result);</span>
+    }
+
+    private ResponseEntity&lt;Map&lt;String, Object&gt;&gt; reviewProposal(
+            Long proposalId,
+            ReviewAction action,
+            String ifMatch,
+            String suppliedIdempotencyKey) {
+<span class="fc" id="L382">        RepositoryContext context = writableContext(</span>
+<span class="fc" id="L383">                workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="fc bfc" id="L384" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L385">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+        }
+
+        try {
+<span class="fc" id="L389">            String expectedHead = expectedHead(context, ifMatch);</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">            if (expectedHead == null) {</span>
+<span class="nc" id="L391">                return ResponseEntity.status(HttpStatus.NOT_FOUND)</span>
+<span class="nc" id="L392">                        .header(RelationApiController.PROJECTION_STATE_HEADER,</span>
+<span class="nc" id="L393">                                ReadinessState.BRANCH_MISSING.name())</span>
+<span class="nc" id="L394">                        .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="nc" id="L395">                        .build();</span>
+            }
+<span class="fc" id="L397">            String causationId = normalizeIdempotencyKey(suppliedIdempotencyKey);</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">            if (causationId == null) {</span>
+<span class="fc" id="L399">                causationId = &quot;legacy-proposal-&quot;</span>
+<span class="fc" id="L400">                        + action.name().toLowerCase(Locale.ROOT)</span>
+                        + &quot;-&quot; + proposalId + &quot;-&quot; + expectedHead;
+            }
+<span class="fc" id="L403">            ReviewResult result = executeReview(</span>
+                    proposalId,
+                    action,
+                    context,
+                    expectedHead,
+                    causationId);
+<span class="fc" id="L409">            CommandResult authority = result.mutation().authority();</span>
+<span class="fc" id="L410">            return ResponseEntity.ok()</span>
+<span class="fc" id="L411">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L412">                    .header(</span>
+                            HttpHeaders.ETAG,
+<span class="fc" id="L414">                            GitHttpPrecondition.etag(</span>
+<span class="fc" id="L415">                                    authority.authoritativeCommitId()))</span>
+<span class="fc" id="L416">                    .body(reviewPayload(result, &quot;PROJECTED&quot;));</span>
+<span class="nc" id="L417">        } catch (BranchHeadConflictException error) {</span>
+<span class="nc" id="L418">            ResponseEntity.BodyBuilder response = ResponseEntity.status(</span>
+                    HttpStatus.PRECONDITION_FAILED)
+<span class="nc" id="L420">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">            if (error.getActualHeadCommit() != null) {</span>
+<span class="nc" id="L422">                response.header(</span>
+                        HttpHeaders.ETAG,
+<span class="nc" id="L424">                        GitHttpPrecondition.etag(error.getActualHeadCommit()));</span>
+            }
+<span class="nc" id="L426">            return response.body(conflictPayload(proposalId, action, error));</span>
+<span class="nc" id="L427">        } catch (ProposalReviewPendingException error) {</span>
+<span class="nc" id="L428">            return ResponseEntity.status(HttpStatus.ACCEPTED)</span>
+<span class="nc" id="L429">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="nc" id="L430">                    .header(</span>
+                            HttpHeaders.ETAG,
+<span class="nc" id="L432">                            GitHttpPrecondition.etag(</span>
+<span class="nc" id="L433">                                    error.getAuthority().authoritativeCommitId()))</span>
+<span class="nc" id="L434">                    .body(pendingPayload(error));</span>
+<span class="nc" id="L435">        } catch (ReadOnlyRepositoryContextException error) {</span>
+<span class="nc" id="L436">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+<span class="fc" id="L437">        } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L438">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L439">        } catch (IllegalStateException error) {</span>
+<span class="nc" id="L440">            return ResponseEntity.status(HttpStatus.CONFLICT).build();</span>
+<span class="nc" id="L441">        } catch (IOException error) {</span>
+<span class="nc" id="L442">            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();</span>
+        }
+    }
+
+    private ReviewResult executeReview(
+            Long proposalId,
+            ReviewAction action,
+            RepositoryContext context,
+            String expectedHead,
+            String causationId) throws IOException {
+<span class="fc" id="L452">        CommandMetadata metadata = new CommandMetadata(</span>
+                causationId,
+                &quot;Git-first proposal review through the productive API&quot;);
+<span class="pc bpc" id="L455" title="2 of 3 branches missed.">        return switch (action) {</span>
+<span class="fc" id="L456">            case ACCEPT -&gt; reviewService.accept(</span>
+                    proposalId, context, expectedHead, metadata);
+<span class="nc" id="L458">            case REJECT -&gt; reviewService.reject(</span>
+                    proposalId, context, expectedHead, metadata);
+<span class="nc" id="L460">            case REVERT -&gt; reviewService.revert(</span>
+                    proposalId, context, expectedHead, metadata);
+        };
+    }
+
+    private String expectedHead(RepositoryContext context, String ifMatch) {
+<span class="pc bpc" id="L466" title="3 of 4 branches missed.">        if (ifMatch != null &amp;&amp; !ifMatch.isBlank()) {</span>
+<span class="nc" id="L467">            return GitHttpPrecondition.expectedHead(ifMatch, null);</span>
+        }
+<span class="fc" id="L469">        return currentHead(context);</span>
+    }
+
+    private String currentHead(RepositoryContext context) {
+<span class="fc" id="L473">        return readinessService.readCurrentHead(context);</span>
+    }
+
+    private static Map&lt;String, Object&gt; reviewPayload(
+            ReviewResult result,
+            String projectionStatus) {
+<span class="fc" id="L479">        CommandResult authority = result.mutation().authority();</span>
+<span class="fc" id="L480">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L481">        payload.put(&quot;proposalId&quot;, result.proposalId());</span>
+<span class="fc" id="L482">        payload.put(&quot;action&quot;, result.action().name());</span>
+<span class="fc" id="L483">        payload.put(&quot;status&quot;, result.proposalStatus().name());</span>
+<span class="fc" id="L484">        payload.put(&quot;authoritativeCommitId&quot;,</span>
+<span class="fc" id="L485">                authority.authoritativeCommitId());</span>
+<span class="fc" id="L486">        payload.put(&quot;previousHeadCommit&quot;, authority.previousHeadCommit());</span>
+<span class="fc" id="L487">        payload.put(&quot;changeKind&quot;, authority.changeKind().name());</span>
+<span class="fc" id="L488">        payload.put(&quot;commitCreated&quot;, authority.commitCreated());</span>
+<span class="fc" id="L489">        payload.put(&quot;projectionStatus&quot;, projectionStatus);</span>
+<span class="fc" id="L490">        payload.put(&quot;projectionOutcome&quot;,</span>
+<span class="fc" id="L491">                result.mutation().projection().outcome().name());</span>
+<span class="fc" id="L492">        payload.put(&quot;relationPresent&quot;,</span>
+<span class="fc" id="L493">                result.mutation().projection().relationPresent());</span>
+<span class="fc" id="L494">        return payload;</span>
+    }
+
+    private static Map&lt;String, Object&gt; pendingPayload(
+            ProposalReviewPendingException error) {
+<span class="nc" id="L499">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L500">        payload.put(&quot;proposalId&quot;, error.getProposalId());</span>
+<span class="nc" id="L501">        payload.put(&quot;status&quot;, error.getIntendedStatus().name());</span>
+<span class="nc" id="L502">        payload.put(&quot;authoritativeCommitId&quot;,</span>
+<span class="nc" id="L503">                error.getAuthority().authoritativeCommitId());</span>
+<span class="nc" id="L504">        payload.put(&quot;changeKind&quot;, error.getAuthority().changeKind().name());</span>
+<span class="nc" id="L505">        payload.put(&quot;commitCreated&quot;, error.getAuthority().commitCreated());</span>
+<span class="nc" id="L506">        payload.put(&quot;projectionStatus&quot;, &quot;PENDING_RECOVERY&quot;);</span>
+<span class="nc" id="L507">        payload.put(&quot;pendingPhase&quot;, error.getPhase().name());</span>
+<span class="nc" id="L508">        return payload;</span>
+    }
+
+    private static Map&lt;String, Object&gt; conflictPayload(
+            Long proposalId,
+            ReviewAction action,
+            BranchHeadConflictException error) {
+<span class="nc" id="L515">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L516">        payload.put(&quot;proposalId&quot;, proposalId);</span>
+<span class="nc" id="L517">        payload.put(&quot;action&quot;, action.name());</span>
+<span class="nc" id="L518">        payload.put(&quot;projectionStatus&quot;, &quot;PRECONDITION_FAILED&quot;);</span>
+<span class="nc" id="L519">        payload.put(&quot;expectedHeadCommit&quot;, error.getExpectedHeadCommit());</span>
+<span class="nc" id="L520">        payload.put(&quot;actualHeadCommit&quot;, error.getActualHeadCommit());</span>
+<span class="nc" id="L521">        return payload;</span>
+    }
+
+    private static Map&lt;String, Object&gt; itemFailure(
+            Long proposalId,
+            String code,
+            String detail) {
+<span class="fc" id="L528">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L529">        payload.put(&quot;proposalId&quot;, proposalId);</span>
+<span class="fc" id="L530">        payload.put(&quot;projectionStatus&quot;, code);</span>
+<span class="pc bpc" id="L531" title="2 of 4 branches missed.">        if (detail != null &amp;&amp; !detail.isBlank()) {</span>
+<span class="fc" id="L532">            payload.put(&quot;detail&quot;, detail);</span>
+        }
+<span class="fc" id="L534">        return payload;</span>
+    }
+
+    /** Convert a central read context into an explicitly authorized write context. */
+    private RepositoryContext writableContext(RepositoryContext context) {
+<span class="fc bfc" id="L539" title="All 2 branches covered.">        if (context.scope() == RepositoryScope.WORKSPACE</span>
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">                || context.scope() == RepositoryScope.FORK) {</span>
+<span class="fc" id="L541">            return context;</span>
+        }
+<span class="fc" id="L543">        SystemRepository repository = repositoryService.getRepository(</span>
+<span class="fc" id="L544">                context.repositoryId());</span>
+<span class="fc bfc" id="L545" title="All 2 branches covered.">        if (!isApplicationAdmin()</span>
+<span class="fc bfc" id="L546" title="All 2 branches covered.">                &amp;&amp; !membershipService.canMaintain(</span>
+<span class="fc" id="L547">                        repository, context.username())) {</span>
+<span class="fc" id="L548">            return null;</span>
+        }
+<span class="fc" id="L550">        return new RepositoryContext(</span>
+<span class="fc" id="L551">                context.repositoryId(),</span>
+                null,
+<span class="fc" id="L553">                context.branch(),</span>
+<span class="fc" id="L554">                context.username(),</span>
+                RepositoryScope.CENTRAL_WRITE);
+    }
+
+    private static ResponseEntity.BodyBuilder projectionUnavailable(
+            RelationProjectionUnavailableException error) {
+<span class="fc bfc" id="L560" title="All 2 branches covered.">        HttpStatus status = error.getReadinessState()</span>
+<span class="fc" id="L561">                == ReadinessState.BRANCH_MISSING</span>
+<span class="fc" id="L562">                ? HttpStatus.NOT_FOUND</span>
+<span class="fc" id="L563">                : HttpStatus.CONFLICT;</span>
+<span class="fc" id="L564">        ResponseEntity.BodyBuilder response = ResponseEntity.status(status)</span>
+<span class="fc" id="L565">                .header(</span>
+                        RelationApiController.PROJECTION_STATE_HEADER,
+<span class="fc" id="L567">                        error.getReadinessState().name())</span>
+<span class="fc" id="L568">                .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="fc bfc" id="L569" title="All 2 branches covered.">        if (error.getPendingRecoveryCount() &gt; 0) {</span>
+<span class="fc" id="L570">            response.header(</span>
+                    RelationApiController.PENDING_RECOVERY_HEADER,
+<span class="fc" id="L572">                    String.valueOf(error.getPendingRecoveryCount()));</span>
+        }
+<span class="fc bfc" id="L574" title="All 2 branches covered.">        if (error.getCurrentHeadCommit() != null) {</span>
+<span class="fc" id="L575">            response.header(</span>
+                    HttpHeaders.ETAG,
+<span class="fc" id="L577">                    GitHttpPrecondition.etag(</span>
+<span class="fc" id="L578">                            error.getCurrentHeadCommit()));</span>
+        }
+<span class="fc" id="L580">        return response;</span>
+    }
+
+    private static String normalizeIdempotencyKey(String value) {
+<span class="pc bpc" id="L584" title="3 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L585">            return null;</span>
+        }
+<span class="nc" id="L587">        String normalized = value.strip();</span>
+<span class="nc bnc" id="L588" title="All 4 branches missed.">        if (normalized.indexOf('\n') &gt;= 0 || normalized.indexOf('\r') &gt;= 0) {</span>
+<span class="nc" id="L589">            throw new IllegalArgumentException(</span>
+                    &quot;Idempotency-Key must be one line&quot;);
+        }
+<span class="nc" id="L592">        return normalized;</span>
+    }
+
+    private static boolean isApplicationAdmin() {
+<span class="fc" id="L596">        Authentication authentication = SecurityContextHolder.getContext()</span>
+<span class="fc" id="L597">                .getAuthentication();</span>
+<span class="fc bfc" id="L598" title="All 2 branches covered.">        return authentication != null</span>
+<span class="fc" id="L599">                &amp;&amp; authentication.getAuthorities().stream()</span>
+<span class="fc bfc" id="L600" title="All 2 branches covered.">                        .anyMatch(authority -&gt; &quot;ROLE_ADMIN&quot;.equals(</span>
+<span class="fc" id="L601">                                authority.getAuthority()));</span>
+    }
+
+    private static int parseLimit(String value) {
+        try {
+<span class="fc" id="L606">            int limit = Integer.parseInt(value);</span>
+<span class="pc bpc" id="L607" title="2 of 4 branches missed.">            return limit &gt;= 1 &amp;&amp; limit &lt;= 100 ? limit : 10;</span>
+<span class="nc" id="L608">        } catch (NumberFormatException error) {</span>
+<span class="nc" id="L609">            return 10;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

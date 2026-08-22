@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureWorkbenchService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.workbench</a> &gt; <span class="el_source">ArchitectureWorkbenchService.java</span></div><h1>ArchitectureWorkbenchService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.workbench;
+
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.PersistedDiagramProjection;
+import com.taxonomy.export.SvgDiagramRenderer;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ElementMappingView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.ElementMetadata;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.RelationMetadata;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Replays an immutable portfolio analysis snapshot for browser, SVG and PDF adapters. */
+@Service
+public class ArchitectureWorkbenchService {
+
+    private final PortfolioAnalysisPersistenceService persistenceService;
+    private final ProjectPortfolioService projectService;
+    private final DiagramProjectionService diagramProjectionService;
+    private final LayeredDiagramLayoutService layoutService;
+    private final SvgDiagramRenderer svgRenderer;
+    private final ArchitecturePdfRenderer pdfRenderer;
+
+    public ArchitectureWorkbenchService(
+            PortfolioAnalysisPersistenceService persistenceService,
+            ProjectPortfolioService projectService,
+            DiagramProjectionService diagramProjectionService,
+            LayeredDiagramLayoutService layoutService,
+            SvgDiagramRenderer svgRenderer,
+<span class="fc" id="L51">            ArchitecturePdfRenderer pdfRenderer) {</span>
+<span class="fc" id="L52">        this.persistenceService = persistenceService;</span>
+<span class="fc" id="L53">        this.projectService = projectService;</span>
+<span class="fc" id="L54">        this.diagramProjectionService = diagramProjectionService;</span>
+<span class="fc" id="L55">        this.layoutService = layoutService;</span>
+<span class="fc" id="L56">        this.svgRenderer = svgRenderer;</span>
+<span class="fc" id="L57">        this.pdfRenderer = pdfRenderer;</span>
+<span class="fc" id="L58">    }</span>
+
+    @Transactional(readOnly = true)
+    public Projection load(Long projectId,
+                           String snapshotId,
+                           String username,
+                           WorkspaceContext context) {
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">        if (snapshotId == null || snapshotId.isBlank()) {</span>
+<span class="nc" id="L66">            throw PortfolioException.validation(&quot;snapshotId is required&quot;);</span>
+        }
+
+<span class="fc" id="L69">        SnapshotDetail snapshot = persistenceService.getSnapshot(</span>
+<span class="fc" id="L70">                projectId, snapshotId.strip(), username, context);</span>
+<span class="fc" id="L71">        AnalysisResult analysis = snapshot.analysis();</span>
+        RequirementArchitectureView architectureView =
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                analysis != null ? analysis.getArchitectureView() : null;</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (architectureView == null</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                || architectureView.getIncludedElements() == null</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                || architectureView.getIncludedElements().isEmpty()) {</span>
+<span class="fc" id="L77">            throw PortfolioException.conflict(</span>
+                    &quot;Snapshot &quot; + snapshotId
+                            + &quot; contains no persisted architecture view. &quot;
+                            + &quot;Re-run the requirement analysis with Architecture View enabled.&quot;);
+        }
+
+<span class="fc" id="L83">        ProjectView project = projectService.getProject(projectId, username, context);</span>
+<span class="fc" id="L84">        Long requirementId = snapshot.summary().requirementId();</span>
+<span class="fc" id="L85">        RequirementView requirement = projectService.getRequirement(</span>
+                projectId, requirementId, username, context);
+<span class="fc" id="L87">        RequirementVersionView version = projectService</span>
+<span class="fc" id="L88">                .listRequirementVersions(projectId, requirementId, username, context)</span>
+<span class="fc" id="L89">                .stream()</span>
+<span class="fc" id="L90">                .filter(candidate -&gt; candidate.id().equals(snapshot.summary().requirementVersionId()))</span>
+<span class="fc" id="L91">                .findFirst()</span>
+<span class="pc" id="L92">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Requirement version for snapshot was not found: &quot;
+<span class="nc" id="L94">                                + snapshot.summary().requirementVersionId()));</span>
+
+<span class="fc" id="L96">        String fallbackTitle = project.projectKey() + &quot; / &quot; + requirement.requirementKey()</span>
+<span class="fc" id="L97">                + &quot; — &quot; + requirement.title();</span>
+<span class="fc" id="L98">        String persistedTitle = architectureView.getViewTitle();</span>
+<span class="pc bpc" id="L99" title="2 of 4 branches missed.">        String title = persistedTitle == null || persistedTitle.isBlank()</span>
+<span class="nc" id="L100">                ? fallbackTitle</span>
+<span class="fc" id="L101">                : persistedTitle.strip();</span>
+<span class="fc" id="L102">        DiagramModel diagram = PersistedDiagramProjection.project(</span>
+                diagramProjectionService, architectureView, title);
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">        if (diagram.nodes() == null || diagram.nodes().isEmpty()) {</span>
+<span class="nc" id="L105">            throw PortfolioException.conflict(</span>
+                    &quot;The persisted architecture view contains no exportable architecture elements&quot;);
+        }
+<span class="fc" id="L108">        DiagramScene scene = layoutService.layout(diagram);</span>
+
+<span class="fc" id="L110">        Map&lt;String, ElementMetadata&gt; elements = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        for (ElementMappingView mapping : safe(snapshot.elementMappings())) {</span>
+<span class="nc" id="L112">            elements.put(mapping.nodeCode(), new ElementMetadata(</span>
+<span class="nc" id="L113">                    mapping.nodeCode(), mapping.nodeTitle(), mapping.taxonomyRoot(),</span>
+<span class="nc" id="L114">                    mapping.directScore(), mapping.relevance(), mapping.confidence(),</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                    mapping.mappingOrigin() != null ? mapping.mappingOrigin().name() : null,</span>
+<span class="nc" id="L116">                    mapping.hierarchyPath(), mapping.presenceReason(), mapping.selectedForImpact(),</span>
+<span class="nc" id="L117">                    mapping.reviewStatus(), mapping.actionStatus(), mapping.actionEvidence(),</span>
+<span class="nc" id="L118">                    mapping.decisionBy(), mapping.decisionAt(), mapping.decisionComment()));</span>
+<span class="nc" id="L119">        }</span>
+
+<span class="fc" id="L121">        Map&lt;String, RelationMetadata&gt; relations = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        for (RelationMappingView mapping : safe(snapshot.relationMappings())) {</span>
+<span class="nc" id="L123">            RelationMetadata metadata = new RelationMetadata(</span>
+<span class="nc" id="L124">                    mapping.sourceCode(), mapping.targetCode(), mapping.relationType(),</span>
+<span class="nc" id="L125">                    mapping.relationOrigin(), mapping.relationCategory(), mapping.relevance(),</span>
+<span class="nc" id="L126">                    mapping.confidence(), mapping.presenceReason(), mapping.reviewStatus(),</span>
+<span class="nc" id="L127">                    mapping.decisionBy(), mapping.decisionAt(), mapping.decisionComment());</span>
+<span class="nc" id="L128">            relations.put(metadata.signature(), metadata);</span>
+<span class="nc" id="L129">        }</span>
+
+<span class="fc" id="L131">        Set&lt;String&gt; warnings = new LinkedHashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        if (analysis.getWarnings() != null) warnings.addAll(analysis.getWarnings());</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (architectureView.getNotes() != null) warnings.addAll(architectureView.getNotes());</span>
+<span class="pc bpc" id="L134" title="2 of 4 branches missed.">        warnings.removeIf(value -&gt; value == null || value.isBlank());</span>
+
+<span class="fc" id="L136">        return new Projection(</span>
+<span class="fc" id="L137">                projectId, project.projectKey(), project.title(), requirementId,</span>
+<span class="fc" id="L138">                requirement.requirementKey(), requirement.title(), version.text(),</span>
+<span class="fc" id="L139">                snapshot.summary().id(), snapshot.summary().status(), snapshot.summary().createdAt(),</span>
+<span class="fc" id="L140">                snapshot.summary().provider(), snapshot.summary().modelName(),</span>
+<span class="fc" id="L141">                snapshot.summary().workspaceId(), snapshot.summary().branchName(),</span>
+<span class="fc" id="L142">                snapshot.summary().commitSha(), diagram, scene, elements, relations,</span>
+                new ArrayList&lt;&gt;(warnings));
+    }
+
+    @Transactional(readOnly = true)
+    public String renderSvg(Long projectId,
+                            String snapshotId,
+                            String username,
+                            WorkspaceContext context) {
+<span class="fc" id="L151">        return svgRenderer.render(load(projectId, snapshotId, username, context).scene());</span>
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] renderPdf(Long projectId,
+                            String snapshotId,
+                            String username,
+                            WorkspaceContext context) {
+<span class="fc" id="L159">        return pdfRenderer.render(load(projectId, snapshotId, username, context));</span>
+    }
+
+    private static &lt;T&gt; List&lt;T&gt; safe(List&lt;T&gt; values) {
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        return values == null ? List.of() : values;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

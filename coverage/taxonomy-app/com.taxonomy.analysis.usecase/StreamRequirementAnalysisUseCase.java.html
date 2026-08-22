@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>StreamRequirementAnalysisUseCase.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">StreamRequirementAnalysisUseCase.java</span></div><h1>StreamRequirementAnalysisUseCase.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.analysis.service.AnalysisEventCallback;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+@Service
+public class StreamRequirementAnalysisUseCase {
+
+    private final LlmService llmService;
+
+<span class="fc" id="L20">    public StreamRequirementAnalysisUseCase(LlmService llmService) {</span>
+<span class="fc" id="L21">        this.llmService = llmService;</span>
+<span class="fc" id="L22">    }</span>
+
+    public void stream(StreamRequirementAnalysisCommand command, AnalysisStreamEventHandler handler) {
+<span class="fc" id="L25">        Locale previousLocale = LocaleContextHolder.getLocale();</span>
+        try {
+<span class="fc" id="L27">            applyRequestLocale(command.requestLocale());</span>
+<span class="fc" id="L28">            applyProviderOverride(command.provider());</span>
+<span class="fc" id="L29">            llmService.analyzeStreaming(command.businessText(), new AnalysisEventCallback() {</span>
+                @Override
+                public void onPhase(String message, int progressPercent) {
+<span class="fc" id="L32">                    handler.handle(new AnalysisStreamEvent.Phase(message, progressPercent));</span>
+<span class="fc" id="L33">                }</span>
+
+                @Override
+                public void onScores(Map&lt;String, Integer&gt; newScores, Map&lt;String, String&gt; reasons,
+                                     String description, LlmCallDetail detail) {
+<span class="fc" id="L38">                    handler.handle(new AnalysisStreamEvent.Scores(newScores, reasons, description, detail));</span>
+<span class="fc" id="L39">                }</span>
+
+                @Override
+                public void onExpanding(String parentCode, List&lt;String&gt; childCodes) {
+<span class="fc" id="L43">                    handler.handle(new AnalysisStreamEvent.Expanding(parentCode, childCodes));</span>
+<span class="fc" id="L44">                }</span>
+
+                @Override
+                public void onComplete(String status, Map&lt;String, Integer&gt; allScores,
+                                       List&lt;String&gt; warnings,
+                                       List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="fc" id="L50">                    handler.handle(new AnalysisStreamEvent.Complete(status, allScores, warnings, discrepancies));</span>
+<span class="fc" id="L51">                }</span>
+
+                @Override
+                public void onError(String status, String errorMessage,
+                                    Map&lt;String, Integer&gt; partialScores,
+                                    List&lt;String&gt; warnings,
+                                    List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="fc" id="L58">                    handler.handle(new AnalysisStreamEvent.Error(</span>
+                            status, errorMessage, partialScores, warnings, discrepancies));
+<span class="fc" id="L60">                }</span>
+            });
+        } finally {
+            try {
+<span class="fc" id="L64">                llmService.clearRequestProvider();</span>
+            } finally {
+<span class="fc" id="L66">                LocaleContextHolder.setLocale(previousLocale);</span>
+            }
+        }
+<span class="fc" id="L69">    }</span>
+
+    private void applyRequestLocale(Locale requestLocale) {
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (requestLocale != null) {</span>
+<span class="fc" id="L73">            LocaleContextHolder.setLocale(requestLocale);</span>
+        } else {
+<span class="nc" id="L75">            LocaleContextHolder.resetLocaleContext();</span>
+        }
+<span class="fc" id="L77">    }</span>
+
+    private void applyProviderOverride(String provider) {
+<span class="pc bpc" id="L80" title="1 of 4 branches missed.">        if (provider == null || provider.isBlank()) {</span>
+<span class="fc" id="L81">            return;</span>
+        }
+        try {
+<span class="fc" id="L84">            llmService.setRequestProvider(LlmProvider.valueOf(provider.toUpperCase(Locale.ROOT)));</span>
+<span class="fc" id="L85">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L86">            throw new UnknownAnalysisProviderException(provider);</span>
+<span class="fc" id="L87">        }</span>
+<span class="fc" id="L88">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationProjectionRecovery.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RelationProjectionRecovery.java</span></div><h1>RelationProjectionRecovery.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Objects;
+
+/**
+ * Durable recovery record for a Git-authoritative relation commit whose
+ * database projection did not complete.
+ *
+ * &lt;p&gt;The authoritative commit is immutable. Rebuild reconciliation may only
+ * complete or supersede the record after the selected branch has been rebuilt
+ * from a commit that contains that authority.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;relation_projection_recovery&quot;,
+        indexes = {
+                @Index(
+                        name = &quot;idx_rel_projection_recovery_repository&quot;,
+                        columnList = &quot;repository_id&quot;),
+                @Index(
+                        name = &quot;idx_rel_projection_recovery_pending&quot;,
+                        columnList = &quot;repository_id, workspace_scope_key, branch, status, id&quot;)
+        },
+        uniqueConstraints = @UniqueConstraint(
+                name = &quot;uq_rel_projection_recovery_authority&quot;,
+                columnNames = {
+                        &quot;repository_id&quot;,
+                        &quot;workspace_scope_key&quot;,
+                        &quot;branch&quot;,
+                        &quot;authoritative_commit_id&quot;
+                }))
+<span class="fc" id="L47">public class RelationProjectionRecovery {</span>
+
+    private static final int FAILURE_TYPE_LIMIT = 255;
+    private static final int FAILURE_MESSAGE_LIMIT = 2000;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255)
+    private String repositoryId;
+
+    @Column(name = &quot;workspace_id&quot;, length = 255)
+    private String workspaceId;
+
+<span class="fc" id="L62">    @Column(name = &quot;workspace_scope_key&quot;, nullable = false, length = 255)</span>
+    private String workspaceScopeKey = RelationDecisionProjection.CENTRAL_SCOPE_KEY;
+
+    @Column(name = &quot;branch&quot;, nullable = false, length = 255)
+    private String branch;
+
+    @Column(name = &quot;previous_head_commit&quot;, length = 40)
+    private String previousHeadCommit;
+
+    @Column(name = &quot;authoritative_commit_id&quot;, nullable = false, length = 40)
+    private String authoritativeCommitId;
+
+    @Column(name = &quot;causation_id&quot;, nullable = false, length = 255)
+    private String causationId;
+
+<span class="fc" id="L77">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;status&quot;, nullable = false, length = 32)
+    private RecoveryStatus status = RecoveryStatus.PENDING;
+
+    @Column(name = &quot;attempt_count&quot;, nullable = false)
+    private int attemptCount;
+
+    @Column(name = &quot;failure_type&quot;, nullable = false, length = FAILURE_TYPE_LIMIT)
+    private String failureType;
+
+    @Column(name = &quot;failure_message&quot;, nullable = false, length = FAILURE_MESSAGE_LIMIT)
+    private String failureMessage;
+
+    @Column(name = &quot;first_observed_at&quot;, nullable = false)
+    private Instant firstObservedAt;
+
+    @Column(name = &quot;last_observed_at&quot;, nullable = false)
+    private Instant lastObservedAt;
+
+    @Column(name = &quot;completed_at&quot;)
+    private Instant completedAt;
+
+    @Version
+    @Column(name = &quot;version&quot;, nullable = false)
+    private long version;
+
+    @PrePersist
+    void onCreate() {
+<span class="nc" id="L105">        synchronize();</span>
+<span class="nc" id="L106">        Instant now = Instant.now();</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        if (firstObservedAt == null) {</span>
+<span class="nc" id="L108">            firstObservedAt = now;</span>
+        }
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (lastObservedAt == null) {</span>
+<span class="nc" id="L111">            lastObservedAt = firstObservedAt;</span>
+        }
+<span class="nc" id="L113">    }</span>
+
+    @PreUpdate
+    void onUpdate() {
+<span class="nc" id="L117">        synchronize();</span>
+<span class="nc" id="L118">    }</span>
+
+    private void synchronize() {
+<span class="nc" id="L121">        repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="nc" id="L122">        workspaceId = normalizeOptional(workspaceId);</span>
+<span class="nc" id="L123">        workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(workspaceId);</span>
+<span class="nc" id="L124">        branch = requireText(branch, &quot;branch&quot;);</span>
+<span class="nc" id="L125">        previousHeadCommit = normalizeCommitId(</span>
+                previousHeadCommit, &quot;previousHeadCommit&quot;, true);
+<span class="nc" id="L127">        authoritativeCommitId = normalizeCommitId(</span>
+                authoritativeCommitId, &quot;authoritativeCommitId&quot;, false);
+<span class="nc" id="L129">        causationId = requireText(causationId, &quot;causationId&quot;);</span>
+<span class="nc" id="L130">        status = Objects.requireNonNull(status, &quot;status&quot;);</span>
+<span class="nc" id="L131">        failureType = limit(requireText(failureType, &quot;failureType&quot;), FAILURE_TYPE_LIMIT);</span>
+<span class="nc" id="L132">        failureMessage = limit(</span>
+<span class="nc" id="L133">                requireText(failureMessage, &quot;failureMessage&quot;),</span>
+                FAILURE_MESSAGE_LIMIT);
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        if (attemptCount &lt; 1) {</span>
+<span class="nc" id="L136">            throw new IllegalArgumentException(&quot;attemptCount must be positive&quot;);</span>
+        }
+<span class="nc bnc" id="L138" title="All 4 branches missed.">        if (status == RecoveryStatus.PENDING &amp;&amp; completedAt != null) {</span>
+<span class="nc" id="L139">            throw new IllegalArgumentException(</span>
+                    &quot;pending recovery must not have completedAt&quot;);
+        }
+<span class="nc bnc" id="L142" title="All 4 branches missed.">        if (status != RecoveryStatus.PENDING &amp;&amp; completedAt == null) {</span>
+<span class="nc" id="L143">            throw new IllegalArgumentException(</span>
+                    &quot;completed recovery requires completedAt&quot;);
+        }
+<span class="nc" id="L146">    }</span>
+
+    public void recordFailure(Throwable failure) {
+<span class="fc" id="L149">        Objects.requireNonNull(failure, &quot;failure&quot;);</span>
+<span class="fc" id="L150">        Instant now = Instant.now();</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (firstObservedAt == null) {</span>
+<span class="fc" id="L152">            firstObservedAt = now;</span>
+        }
+<span class="fc" id="L154">        lastObservedAt = now;</span>
+<span class="fc" id="L155">        status = RecoveryStatus.PENDING;</span>
+<span class="fc" id="L156">        completedAt = null;</span>
+<span class="fc" id="L157">        attemptCount = Math.addExact(attemptCount, 1);</span>
+<span class="fc" id="L158">        failureType = limit(failure.getClass().getName(), FAILURE_TYPE_LIMIT);</span>
+<span class="fc" id="L159">        String message = normalizeOptional(failure.getMessage());</span>
+<span class="fc" id="L160">        failureMessage = limit(</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                message == null ? failure.getClass().getSimpleName() : message,</span>
+                FAILURE_MESSAGE_LIMIT);
+<span class="fc" id="L163">    }</span>
+
+    public void complete(RecoveryStatus completion) {
+<span class="pc bpc" id="L166" title="2 of 4 branches missed.">        if (completion == null || completion == RecoveryStatus.PENDING) {</span>
+<span class="nc" id="L167">            throw new IllegalArgumentException(</span>
+                    &quot;completion must be RECOVERED or SUPERSEDED&quot;);
+        }
+<span class="fc" id="L170">        status = completion;</span>
+<span class="fc" id="L171">        completedAt = Instant.now();</span>
+<span class="fc" id="L172">    }</span>
+
+    public Long getId() {
+<span class="fc" id="L175">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="nc" id="L179">        this.id = id;</span>
+<span class="nc" id="L180">    }</span>
+
+    public String getRepositoryId() {
+<span class="fc" id="L183">        return repositoryId;</span>
+    }
+
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L187">        this.repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L188">    }</span>
+
+    public String getWorkspaceId() {
+<span class="fc" id="L191">        return workspaceId;</span>
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L195">        this.workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L196">        this.workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(</span>
+                this.workspaceId);
+<span class="fc" id="L198">    }</span>
+
+    public String getWorkspaceScopeKey() {
+<span class="nc" id="L201">        return workspaceScopeKey;</span>
+    }
+
+    public String getBranch() {
+<span class="fc" id="L205">        return branch;</span>
+    }
+
+    public void setBranch(String branch) {
+<span class="fc" id="L209">        this.branch = requireText(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L210">    }</span>
+
+    public String getPreviousHeadCommit() {
+<span class="fc" id="L213">        return previousHeadCommit;</span>
+    }
+
+    public void setPreviousHeadCommit(String previousHeadCommit) {
+<span class="fc" id="L217">        this.previousHeadCommit = normalizeCommitId(</span>
+                previousHeadCommit, &quot;previousHeadCommit&quot;, true);
+<span class="fc" id="L219">    }</span>
+
+    public String getAuthoritativeCommitId() {
+<span class="fc" id="L222">        return authoritativeCommitId;</span>
+    }
+
+    public void setAuthoritativeCommitId(String authoritativeCommitId) {
+<span class="fc" id="L226">        this.authoritativeCommitId = normalizeCommitId(</span>
+                authoritativeCommitId, &quot;authoritativeCommitId&quot;, false);
+<span class="fc" id="L228">    }</span>
+
+    public String getCausationId() {
+<span class="fc" id="L231">        return causationId;</span>
+    }
+
+    public void setCausationId(String causationId) {
+<span class="fc" id="L235">        this.causationId = requireText(causationId, &quot;causationId&quot;);</span>
+<span class="fc" id="L236">    }</span>
+
+    public RecoveryStatus getStatus() {
+<span class="fc" id="L239">        return status;</span>
+    }
+
+    public int getAttemptCount() {
+<span class="fc" id="L243">        return attemptCount;</span>
+    }
+
+    public String getFailureType() {
+<span class="fc" id="L247">        return failureType;</span>
+    }
+
+    public String getFailureMessage() {
+<span class="fc" id="L251">        return failureMessage;</span>
+    }
+
+    public Instant getFirstObservedAt() {
+<span class="fc" id="L255">        return firstObservedAt;</span>
+    }
+
+    public Instant getLastObservedAt() {
+<span class="fc" id="L259">        return lastObservedAt;</span>
+    }
+
+    public Instant getCompletedAt() {
+<span class="fc" id="L263">        return completedAt;</span>
+    }
+
+    public long getVersion() {
+<span class="nc" id="L267">        return version;</span>
+    }
+
+    private static String normalizeCommitId(
+            String value,
+            String field,
+            boolean optional) {
+<span class="fc" id="L274">        String normalized = normalizeOptional(value);</span>
+<span class="pc bpc" id="L275" title="1 of 4 branches missed.">        if (normalized == null &amp;&amp; optional) {</span>
+<span class="fc" id="L276">            return null;</span>
+        }
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">        if (normalized == null</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                || normalized.length() != 40</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                || !normalized.chars().allMatch(RelationProjectionRecovery::isHex)) {</span>
+<span class="nc" id="L281">            throw new IllegalArgumentException(</span>
+                    field + &quot; must be a full Git object ID&quot;);
+        }
+<span class="fc" id="L284">        return normalized.toLowerCase(Locale.ROOT);</span>
+    }
+
+    private static boolean isHex(int value) {
+<span class="pc bpc" id="L288" title="7 of 12 branches missed.">        return value &gt;= '0' &amp;&amp; value &lt;= '9'</span>
+                || value &gt;= 'a' &amp;&amp; value &lt;= 'f'
+                || value &gt;= 'A' &amp;&amp; value &lt;= 'F';
+    }
+
+    private static String limit(String value, int limit) {
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">        return value.length() &lt;= limit ? value : value.substring(0, limit);</span>
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L298" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L302" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L303">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L305">        return value.strip();</span>
+    }
+
+<span class="fc" id="L308">    public enum RecoveryStatus {</span>
+<span class="fc" id="L309">        PENDING,</span>
+<span class="fc" id="L310">        RECOVERED,</span>
+<span class="fc" id="L311">        SUPERSEDED</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

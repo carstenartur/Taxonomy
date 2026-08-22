@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementElementView.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RequirementElementView.java</span></div><h1>RequirementElementView.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+public class RequirementElementView {
+
+    private String nodeCode;
+    private String title;
+    private String taxonomySheet;
+    private double relevance;
+    private int hopDistance;
+    private boolean anchor;
+    private String includedBecause;
+    /** Full hierarchy path from root to this node (e.g. &quot;CP &amp;gt; CP-1000 &amp;gt; CP-1023&quot;). */
+    private String hierarchyPath;
+
+    // ── Phase 1.3 fields ────────────────────────────────────────────────────
+
+    /** Structured origin classification replacing free-text {@link #includedBecause}. */
+    private NodeOrigin origin;
+
+    /** Depth (level) of this node in the taxonomy tree (0 = root). */
+    private int taxonomyDepth;
+
+    /** Computed specificity value; higher means more concrete. */
+    private double specificityScore;
+
+    /** Human-readable scoring path, e.g. &quot;CP(92%) &gt; CP-1000(90%) &gt; CP-1023(85%)&quot;. */
+    private String scoringPath;
+
+    /** Original LLM score (0–100); 0 when the node was only reached by propagation. */
+    private int directLlmScore;
+
+    /** Whether this node was selected for the final impact presentation. */
+    private boolean selectedForImpact;
+
+    /**
+     * Nearest ancestor node code present in the same view (e.g. &quot;CP-1000&quot; for &quot;CP-1023&quot;).
+     * {@code null} for top-level nodes without a parent in the view.
+     * Used by the display layer for containment/cluster rendering.
+     */
+    private String parentNodeCode;
+
+    /**
+     * Short human-readable sentence explaining why this node is present.
+     * Combines origin, score, and taxonomy context into a single inspectable string.
+     */
+    private String presenceReason;
+
+<span class="fc" id="L48">    public RequirementElementView() {}</span>
+
+<span class="fc" id="L50">    public String getNodeCode() { return nodeCode; }</span>
+<span class="fc" id="L51">    public void setNodeCode(String nodeCode) { this.nodeCode = nodeCode; }</span>
+
+<span class="fc" id="L53">    public String getTitle() { return title; }</span>
+<span class="fc" id="L54">    public void setTitle(String title) { this.title = title; }</span>
+
+<span class="fc" id="L56">    public String getTaxonomySheet() { return taxonomySheet; }</span>
+<span class="fc" id="L57">    public void setTaxonomySheet(String taxonomySheet) { this.taxonomySheet = taxonomySheet; }</span>
+
+<span class="fc" id="L59">    public double getRelevance() { return relevance; }</span>
+<span class="fc" id="L60">    public void setRelevance(double relevance) { this.relevance = relevance; }</span>
+
+<span class="fc" id="L62">    public int getHopDistance() { return hopDistance; }</span>
+<span class="fc" id="L63">    public void setHopDistance(int hopDistance) { this.hopDistance = hopDistance; }</span>
+
+<span class="fc" id="L65">    public boolean isAnchor() { return anchor; }</span>
+<span class="fc" id="L66">    public void setAnchor(boolean anchor) { this.anchor = anchor; }</span>
+
+<span class="fc" id="L68">    public String getIncludedBecause() { return includedBecause; }</span>
+<span class="fc" id="L69">    public void setIncludedBecause(String includedBecause) { this.includedBecause = includedBecause; }</span>
+
+<span class="fc" id="L71">    public String getHierarchyPath() { return hierarchyPath; }</span>
+<span class="fc" id="L72">    public void setHierarchyPath(String hierarchyPath) { this.hierarchyPath = hierarchyPath; }</span>
+
+    // ── Phase 1.3 accessors ─────────────────────────────────────────────────
+
+<span class="fc" id="L76">    public NodeOrigin getOrigin() { return origin; }</span>
+<span class="fc" id="L77">    public void setOrigin(NodeOrigin origin) { this.origin = origin; }</span>
+
+<span class="fc" id="L79">    public int getTaxonomyDepth() { return taxonomyDepth; }</span>
+<span class="fc" id="L80">    public void setTaxonomyDepth(int taxonomyDepth) { this.taxonomyDepth = taxonomyDepth; }</span>
+
+<span class="fc" id="L82">    public double getSpecificityScore() { return specificityScore; }</span>
+<span class="fc" id="L83">    public void setSpecificityScore(double specificityScore) { this.specificityScore = specificityScore; }</span>
+
+<span class="fc" id="L85">    public String getScoringPath() { return scoringPath; }</span>
+<span class="fc" id="L86">    public void setScoringPath(String scoringPath) { this.scoringPath = scoringPath; }</span>
+
+<span class="fc" id="L88">    public int getDirectLlmScore() { return directLlmScore; }</span>
+<span class="fc" id="L89">    public void setDirectLlmScore(int directLlmScore) { this.directLlmScore = directLlmScore; }</span>
+
+<span class="fc" id="L91">    public boolean isSelectedForImpact() { return selectedForImpact; }</span>
+<span class="fc" id="L92">    public void setSelectedForImpact(boolean selectedForImpact) { this.selectedForImpact = selectedForImpact; }</span>
+
+<span class="fc" id="L94">    public String getParentNodeCode() { return parentNodeCode; }</span>
+<span class="fc" id="L95">    public void setParentNodeCode(String parentNodeCode) { this.parentNodeCode = parentNodeCode; }</span>
+
+<span class="fc" id="L97">    public String getPresenceReason() { return presenceReason; }</span>
+<span class="fc" id="L98">    public void setPresenceReason(String presenceReason) { this.presenceReason = presenceReason; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

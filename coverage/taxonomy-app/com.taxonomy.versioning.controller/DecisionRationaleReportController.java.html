@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleReportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.controller</a> &gt; <span class="el_source">DecisionRationaleReportController.java</span></div><h1>DecisionRationaleReportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.controller;
+
+import com.taxonomy.architecture.decision.DecisionRationaleReport;
+import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.architecture.decision.DecisionRationaleReportService;
+import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
+import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * HTTP adapter for the hierarchical decision-rationale report extension family.
+ *
+ * &lt;p&gt;The controller owns the report-specific request and trusted runtime provenance.
+ * Format rendering is delegated exclusively to {@link ReportRendererRegistry}; adding
+ * another decision-report format therefore requires only another renderer extension.&lt;/p&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/decision-report&quot;)
+@Tag(name = &quot;Decision Rationale Report&quot;)
+public class DecisionRationaleReportController {
+
+    private static final int MAX_SCORE_ENTRIES = 25_000;
+    private static final int MAX_REASON_ENTRIES = 25_000;
+    private static final int MAX_NODE_CODE_LENGTH = 256;
+    private static final int MAX_REQUIREMENT_LENGTH = 500_000;
+    private static final int MAX_REASON_LENGTH = 50_000;
+    private static final long MAX_TOTAL_REASON_CHARACTERS = 5_000_000L;
+    private static final int MAX_DISCREPANCIES = 10_000;
+    private static final int MAX_METADATA_LENGTH = 256;
+
+    private final DecisionRationaleReportService reportService;
+    private final ReportRendererRegistry reportRendererRegistry;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public DecisionRationaleReportController(
+            DecisionRationaleReportService reportService,
+            ReportRendererRegistry reportRendererRegistry,
+            RepositoryStateService repositoryStateService,
+<span class="fc" id="L65">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L66">        this.reportService = reportService;</span>
+<span class="fc" id="L67">        this.reportRendererRegistry = reportRendererRegistry;</span>
+<span class="fc" id="L68">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L69">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L70">    }</span>
+
+<span class="fc" id="L72">    public record DecisionReportRequest(</span>
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons,
+            String businessText,
+            String provider,
+            String analysisStatus,
+            List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+            String language) {
+    }
+
+    @Operation(
+            summary = &quot;List decision-rationale report formats&quot;,
+            description = &quot;Returns formats registered through the report-renderer extension SPI.&quot;)
+    @GetMapping(&quot;/formats&quot;)
+    public List&lt;ReportFormatDescriptor&gt; listFormats() {
+<span class="fc" id="L87">        return reportRendererRegistry.listDescriptors(</span>
+                DecisionRationaleReportPlugin.REPORT_TYPE_ID);
+    }
+
+    @Operation(
+            summary = &quot;Export hierarchical decision rationale as DOCX&quot;,
+            description = &quot;Creates a professional Word document with title page, executive summary, &quot;
+                    + &quot;one parent/children decision chapter per positive hierarchy decision, diagrams, &quot;
+                    + &quot;and account/version provenance in the footer.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;DOCX report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement or scores are missing&quot;)
+    @PostMapping(&quot;/docx&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportDocx(@RequestBody DecisionReportRequest request) {
+<span class="fc" id="L100">        return render(request, &quot;docx&quot;);</span>
+    }
+
+    @Operation(
+            summary = &quot;Export hierarchical decision rationale as HTML&quot;,
+            description = &quot;Creates a self-contained, print-ready HTML report with inline SVG diagrams.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;HTML report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement or scores are missing&quot;)
+    @PostMapping(&quot;/html&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportHtml(@RequestBody DecisionReportRequest request) {
+<span class="fc" id="L110">        return render(request, &quot;html&quot;);</span>
+    }
+
+    @Operation(
+            summary = &quot;Export hierarchical decision rationale as JSON&quot;,
+            description = &quot;Returns the format-neutral report model including all chapters and provenance.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Structured report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement or scores are missing&quot;)
+    @PostMapping(&quot;/json&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportJson(@RequestBody DecisionReportRequest request) {
+<span class="fc" id="L120">        return render(request, &quot;json&quot;);</span>
+    }
+
+    private ResponseEntity&lt;byte[]&gt; render(
+            DecisionReportRequest request,
+            String formatId) {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (!isValid(request)) {</span>
+<span class="fc" id="L127">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L129">        DecisionRationaleReport report = generate(request);</span>
+<span class="fc" id="L130">        ReportRendererExtension renderer = reportRendererRegistry.getRequired(</span>
+                DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId);
+<span class="fc" id="L132">        ReportFormatDescriptor format = renderer.descriptor();</span>
+<span class="fc" id="L133">        ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));</span>
+<span class="fc" id="L134">        return ResponseEntity.ok()</span>
+<span class="fc" id="L135">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L136">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+                        &quot;attachment; filename=\&quot;&quot;
+                                + DecisionRationaleReportPlugin.BASE_FILENAME + &quot;.&quot;
+<span class="fc" id="L139">                                + format.fileExtension() + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L140">                .header(&quot;X-Taxonomy-Data-SHA256&quot;,</span>
+<span class="fc" id="L141">                        report.metadata().taxonomyDataFingerprintSha256())</span>
+<span class="fc" id="L142">                .header(&quot;X-Taxonomy-Analysis-SHA256&quot;,</span>
+<span class="fc" id="L143">                        report.metadata().analysisSnapshotFingerprintSha256())</span>
+<span class="fc" id="L144">                .contentType(MediaType.parseMediaType(format.contentType()))</span>
+<span class="fc" id="L145">                .body(rendered.bytes());</span>
+    }
+
+    private DecisionRationaleReport generate(DecisionReportRequest request) {
+<span class="fc" id="L149">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L150">        String branch = repositoryStateService.resolveWorkspaceBranch(context.username());</span>
+<span class="fc" id="L151">        ViewContext viewContext = repositoryStateService.getViewContext(</span>
+<span class="fc" id="L152">                context.username(), branch, context);</span>
+<span class="fc" id="L153">        Locale locale = resolveLocale(request.language());</span>
+<span class="fc" id="L154">        DecisionAnalysisInput input = new DecisionAnalysisInput(</span>
+<span class="fc" id="L155">                request.businessText(),</span>
+<span class="fc" id="L156">                request.scores(),</span>
+<span class="fc" id="L157">                request.reasons(),</span>
+<span class="fc" id="L158">                request.provider(),</span>
+<span class="fc" id="L159">                request.analysisStatus(),</span>
+<span class="fc" id="L160">                request.discrepancies());</span>
+<span class="fc" id="L161">        return reportService.generate(input, context, viewContext, locale);</span>
+    }
+
+    private Locale resolveLocale(String language) {
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">        if (language == null || language.isBlank()) {</span>
+<span class="nc" id="L166">            return LocaleContextHolder.getLocale();</span>
+        }
+<span class="fc" id="L168">        Locale locale = Locale.forLanguageTag(language.strip());</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        return locale.getLanguage().isBlank()</span>
+<span class="pc" id="L170">                ? LocaleContextHolder.getLocale() : locale;</span>
+    }
+
+    private boolean isValid(DecisionReportRequest request) {
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">        if (request == null</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">                || !boundedText(request.businessText(), MAX_REQUIREMENT_LENGTH, false)</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">                || request.scores() == null</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                || request.scores().isEmpty()</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                || request.scores().size() &gt; MAX_SCORE_ENTRIES</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                || !boundedMetadata(request.provider())</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                || !boundedMetadata(request.analysisStatus())</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">                || !boundedMetadata(request.language())</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">                || (request.discrepancies() != null</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">                        &amp;&amp; request.discrepancies().size() &gt; MAX_DISCREPANCIES)) {</span>
+<span class="fc" id="L184">            return false;</span>
+        }
+<span class="fc" id="L186">        boolean validScores = request.scores().entrySet().stream().allMatch(entry -&gt;</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">                boundedText(entry.getKey(), MAX_NODE_CODE_LENGTH, false)</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">                        &amp;&amp; entry.getValue() != null</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">                        &amp;&amp; entry.getValue() &gt;= 0</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                        &amp;&amp; entry.getValue() &lt;= 100);</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        return validScores</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">                &amp;&amp; validReasons(request.reasons())</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                &amp;&amp; validDiscrepancies(request.discrepancies());</span>
+    }
+
+    private boolean validDiscrepancies(
+            List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (discrepancies == null) {</span>
+<span class="fc" id="L199">            return true;</span>
+        }
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        for (TaxonomyDiscrepancy discrepancy : discrepancies) {</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            if (discrepancy == null</span>
+<span class="fc bfc" id="L203" title="All 2 branches covered.">                    || !boundedText(discrepancy.parentCode(),</span>
+                            MAX_NODE_CODE_LENGTH, false)
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                    || discrepancy.expectedParentScore() &lt; 0</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                    || discrepancy.expectedParentScore() &gt; 100</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">                    || discrepancy.actualChildSum() &lt; 0) {</span>
+<span class="fc" id="L208">                return false;</span>
+            }
+<span class="fc" id="L210">        }</span>
+<span class="fc" id="L211">        return true;</span>
+    }
+
+    private boolean validReasons(Map&lt;String, String&gt; reasons) {
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        if (reasons == null) {</span>
+<span class="nc" id="L216">            return true;</span>
+        }
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        if (reasons.size() &gt; MAX_REASON_ENTRIES) {</span>
+<span class="nc" id="L219">            return false;</span>
+        }
+<span class="fc" id="L221">        long totalCharacters = 0;</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        for (Map.Entry&lt;String, String&gt; entry : reasons.entrySet()) {</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            if (!boundedText(entry.getKey(), MAX_NODE_CODE_LENGTH, false)</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">                    || !boundedText(entry.getValue(), MAX_REASON_LENGTH, true)) {</span>
+<span class="fc" id="L225">                return false;</span>
+            }
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">            if (entry.getValue() != null) {</span>
+<span class="fc" id="L228">                totalCharacters += entry.getValue().length();</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                if (totalCharacters &gt; MAX_TOTAL_REASON_CHARACTERS) {</span>
+<span class="nc" id="L230">                    return false;</span>
+                }
+            }
+<span class="fc" id="L233">        }</span>
+<span class="fc" id="L234">        return true;</span>
+    }
+
+    private boolean boundedMetadata(String value) {
+<span class="fc" id="L238">        return boundedText(value, MAX_METADATA_LENGTH, true);</span>
+    }
+
+    private boolean boundedText(String value, int maxLength, boolean nullable) {
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L243">            return nullable;</span>
+        }
+<span class="fc bfc" id="L245" title="All 6 branches covered.">        return value.length() &lt;= maxLength &amp;&amp; (nullable || !value.isBlank());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

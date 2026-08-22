@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AboutController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.controller</a> &gt; <span class="el_source">AboutController.java</span></div><h1>AboutController.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.controller;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.info.BuildProperties;
+import org.springframework.boot.info.GitProperties;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * REST API for application version, build info, licenses, notices and SBOMs.
+ */
+@RestController
+@RequestMapping(&quot;/api/about&quot;)
+@Tag(name = &quot;About&quot;)
+public class AboutController {
+
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(AboutController.class);</span>
+<span class="fc" id="L32">    private static final MediaType MARKDOWN = MediaType.parseMediaType(&quot;text/markdown;charset=UTF-8&quot;);</span>
+<span class="fc" id="L33">    private static final MediaType UTF8_TEXT = MediaType.parseMediaType(&quot;text/plain;charset=UTF-8&quot;);</span>
+
+    private final BuildProperties buildProperties;
+    private final GitProperties gitProperties;
+
+    @Autowired(required = false)
+<span class="fc" id="L39">    public AboutController(BuildProperties buildProperties, GitProperties gitProperties) {</span>
+<span class="fc" id="L40">        this.buildProperties = buildProperties;</span>
+<span class="fc" id="L41">        this.gitProperties = gitProperties;</span>
+<span class="fc" id="L42">    }</span>
+
+<span class="nc" id="L44">    public AboutController() {</span>
+<span class="nc" id="L45">        this.buildProperties = null;</span>
+<span class="nc" id="L46">        this.gitProperties = null;</span>
+<span class="nc" id="L47">    }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;Application info&quot;, description = &quot;Returns version, build, source and packaged legal-resource information.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; about() {
+<span class="fc" id="L52">        Map&lt;String, Object&gt; info = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L53">        info.put(&quot;product&quot;, &quot;Taxonomy Architecture Analyzer&quot;);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        info.put(&quot;version&quot;, buildProperties != null ? buildProperties.getVersion() : &quot;unknown&quot;);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        info.put(&quot;buildTime&quot;, buildProperties != null ? buildProperties.getTime() : null);</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        info.put(&quot;commit&quot;, gitProperties != null ? gitProperties.getShortCommitId() : &quot;unknown&quot;);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        info.put(&quot;commitTime&quot;, gitProperties != null ? gitProperties.getCommitTime() : null);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        info.put(&quot;branch&quot;, gitProperties != null ? gitProperties.getBranch() : &quot;unknown&quot;);</span>
+<span class="fc" id="L59">        info.put(&quot;license&quot;, &quot;MIT&quot;);</span>
+<span class="fc" id="L60">        info.put(&quot;copyright&quot;, &quot;Copyright 2026 Carsten Hammer&quot;);</span>
+<span class="fc" id="L61">        info.put(&quot;sourceUrl&quot;, &quot;https://github.com/carstenartur/Taxonomy&quot;);</span>
+<span class="fc" id="L62">        info.put(&quot;apiDocsUrl&quot;, &quot;/swagger-ui.html&quot;);</span>
+<span class="fc" id="L63">        info.put(&quot;projectLicenseUrl&quot;, &quot;/api/about/license&quot;);</span>
+<span class="fc" id="L64">        info.put(&quot;noticeUrl&quot;, &quot;/api/about/notice&quot;);</span>
+<span class="fc" id="L65">        info.put(&quot;thirdPartyNoticesUrl&quot;, &quot;/api/about/third-party&quot;);</span>
+<span class="fc" id="L66">        info.put(&quot;runtimeThirdPartyLicensesUrl&quot;, &quot;/api/about/runtime-licenses&quot;);</span>
+<span class="fc" id="L67">        info.put(&quot;sbomJsonUrl&quot;, &quot;/api/about/sbom.json&quot;);</span>
+<span class="fc" id="L68">        info.put(&quot;sbomXmlUrl&quot;, &quot;/api/about/sbom.xml&quot;);</span>
+<span class="fc" id="L69">        return ResponseEntity.ok(info);</span>
+    }
+
+    @GetMapping(&quot;/license&quot;)
+    @Operation(summary = &quot;Project license&quot;, description = &quot;Returns the packaged Taxonomy MIT license.&quot;)
+    public ResponseEntity&lt;String&gt; license() {
+<span class="fc" id="L75">        return classpathText(&quot;static/LICENSE&quot;, UTF8_TEXT);</span>
+    }
+
+    @GetMapping(&quot;/notice&quot;)
+    @Operation(summary = &quot;Product notice&quot;, description = &quot;Returns the packaged product NOTICE file.&quot;)
+    public ResponseEntity&lt;String&gt; notice() {
+<span class="fc" id="L81">        return classpathText(&quot;static/NOTICE&quot;, UTF8_TEXT);</span>
+    }
+
+    @GetMapping(&quot;/third-party&quot;)
+    @Operation(summary = &quot;Curated third-party notices&quot;, description = &quot;Returns curated notices for browser assets, models, containers and special distribution terms.&quot;)
+    public ResponseEntity&lt;String&gt; thirdParty() {
+<span class="fc" id="L87">        return classpathText(&quot;static/THIRD-PARTY-NOTICES.md&quot;, MARKDOWN);</span>
+    }
+
+    @GetMapping(&quot;/runtime-licenses&quot;)
+    @Operation(summary = &quot;Generated runtime dependency licenses&quot;, description = &quot;Returns the build-generated report for packaged Maven runtime dependencies.&quot;)
+    public ResponseEntity&lt;String&gt; runtimeLicenses() {
+<span class="fc" id="L93">        return classpathText(&quot;THIRD-PARTY-RUNTIME.txt&quot;, UTF8_TEXT);</span>
+    }
+
+    @GetMapping(&quot;/sbom.json&quot;)
+    @Operation(summary = &quot;CycloneDX SBOM as JSON&quot;, description = &quot;Returns the build-specific packaged CycloneDX software bill of materials.&quot;)
+    public ResponseEntity&lt;String&gt; sbomJson() {
+<span class="fc" id="L99">        return classpathText(&quot;static/taxonomy-sbom.json&quot;, MediaType.APPLICATION_JSON);</span>
+    }
+
+    @GetMapping(&quot;/sbom.xml&quot;)
+    @Operation(summary = &quot;CycloneDX SBOM as XML&quot;, description = &quot;Returns the build-specific packaged CycloneDX software bill of materials.&quot;)
+    public ResponseEntity&lt;String&gt; sbomXml() {
+<span class="fc" id="L105">        return classpathText(&quot;static/taxonomy-sbom.xml&quot;, MediaType.APPLICATION_XML);</span>
+    }
+
+    private ResponseEntity&lt;String&gt; classpathText(String path, MediaType contentType) {
+<span class="fc" id="L109">        ClassPathResource resource = new ClassPathResource(path);</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (!resource.exists()) {</span>
+<span class="nc" id="L111">            log.warn(&quot;About resource not found on classpath: {}&quot;, path);</span>
+<span class="nc" id="L112">            return ResponseEntity.notFound().build();</span>
+        }
+<span class="fc" id="L114">        try (InputStream input = resource.getInputStream()) {</span>
+<span class="fc" id="L115">            String content = new String(input.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L116">            return ResponseEntity.ok().contentType(contentType).body(content);</span>
+<span class="nc" id="L117">        } catch (IOException e) {</span>
+<span class="nc" id="L118">            log.warn(&quot;Could not read about resource {}: {}&quot;, path, e.getMessage());</span>
+<span class="nc" id="L119">            return ResponseEntity.internalServerError().contentType(UTF8_TEXT)</span>
+<span class="nc" id="L120">                    .body(&quot;Packaged legal resource could not be read.&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

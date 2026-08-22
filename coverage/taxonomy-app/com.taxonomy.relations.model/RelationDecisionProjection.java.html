@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationDecisionProjection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RelationDecisionProjection.java</span></div><h1>RelationDecisionProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
+
+import com.taxonomy.model.RelationType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+import java.util.Objects;
+
+/**
+ * Rebuildable branch-local projection of one relation decision from authoritative Git.
+ *
+ * &lt;p&gt;This table is deliberately separate from the legacy relation read model. A
+ * workspace or variant can therefore record a removal tombstone without making an
+ * inherited central relation visible again, and independent branches can project the
+ * same relation identity without overwriting each other.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;relation_decision_projection&quot;,
+        indexes = {
+                @Index(
+                        name = &quot;idx_rel_decision_repository&quot;,
+                        columnList = &quot;repository_id&quot;),
+                @Index(
+                        name = &quot;idx_rel_decision_scope_branch&quot;,
+                        columnList = &quot;repository_id, workspace_scope_key, branch&quot;),
+                @Index(
+                        name = &quot;idx_rel_decision_commit&quot;,
+                        columnList = &quot;authoritative_commit_id&quot;)
+        },
+        uniqueConstraints = @UniqueConstraint(
+                name = &quot;uq_rel_decision_scope_identity&quot;,
+                columnNames = {
+                        &quot;repository_id&quot;,
+                        &quot;workspace_scope_key&quot;,
+                        &quot;branch&quot;,
+                        &quot;source_code&quot;,
+                        &quot;relation_type&quot;,
+                        &quot;target_code&quot;
+                }))
+<span class="fc" id="L52">public class RelationDecisionProjection {</span>
+
+    public static final String CENTRAL_SCOPE_KEY = &quot;__shared__&quot;;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255)
+    private String repositoryId;
+
+    @Column(name = &quot;workspace_id&quot;, length = 255)
+    private String workspaceId;
+
+<span class="fc" id="L66">    @Column(name = &quot;workspace_scope_key&quot;, nullable = false, length = 255)</span>
+    private String workspaceScopeKey = CENTRAL_SCOPE_KEY;
+
+    @Column(name = &quot;branch&quot;, nullable = false, length = 255)
+    private String branch;
+
+    @Column(name = &quot;source_code&quot;, nullable = false, length = 255)
+    private String sourceCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;relation_type&quot;, nullable = false, length = 64)
+    private RelationType relationType;
+
+    @Column(name = &quot;target_code&quot;, nullable = false, length = 255)
+    private String targetCode;
+
+    @Column(name = &quot;relation_present&quot;, nullable = false)
+    private boolean relationPresent;
+
+    @Column(name = &quot;status&quot;, length = 255)
+    private String status;
+
+    @Column(name = &quot;confidence&quot;)
+    private Double confidence;
+
+    @Column(name = &quot;provenance&quot;, length = 255)
+    private String provenance;
+
+    @Column(name = &quot;authoritative_commit_id&quot;, nullable = false, length = 40)
+    private String authoritativeCommitId;
+
+    @Column(name = &quot;causation_id&quot;, nullable = false, length = 255)
+    private String causationId;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false)
+    private Instant updatedAt;
+
+    @Version
+    @Column(name = &quot;version&quot;, nullable = false)
+    private long version;
+
+    @PrePersist
+    void onCreate() {
+<span class="fc" id="L109">        synchronize();</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (updatedAt == null) {</span>
+<span class="fc" id="L111">            updatedAt = Instant.now();</span>
+        }
+<span class="fc" id="L113">    }</span>
+
+    @PreUpdate
+    void onUpdate() {
+<span class="fc" id="L117">        synchronize();</span>
+<span class="fc" id="L118">        updatedAt = Instant.now();</span>
+<span class="fc" id="L119">    }</span>
+
+    private void synchronize() {
+<span class="fc" id="L122">        repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L123">        workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L124">        workspaceScopeKey = scopeKeyFor(workspaceId);</span>
+<span class="fc" id="L125">        branch = requireText(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L126">        sourceCode = requireText(sourceCode, &quot;sourceCode&quot;);</span>
+<span class="fc" id="L127">        relationType = Objects.requireNonNull(relationType, &quot;relationType&quot;);</span>
+<span class="fc" id="L128">        targetCode = requireText(targetCode, &quot;targetCode&quot;);</span>
+<span class="fc" id="L129">        status = normalizeOptional(status);</span>
+<span class="fc" id="L130">        confidence = normalizeConfidence(confidence);</span>
+<span class="fc" id="L131">        provenance = normalizeOptional(provenance);</span>
+<span class="fc" id="L132">        authoritativeCommitId = requireText(</span>
+                authoritativeCommitId, &quot;authoritativeCommitId&quot;);
+<span class="fc" id="L134">        causationId = requireText(causationId, &quot;causationId&quot;);</span>
+<span class="fc" id="L135">    }</span>
+
+    public static String scopeKeyFor(String workspaceId) {
+<span class="fc" id="L138">        String normalized = normalizeOptional(workspaceId);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        return normalized == null ? CENTRAL_SCOPE_KEY : normalized;</span>
+    }
+
+    public Long getId() {
+<span class="fc" id="L143">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="fc" id="L147">        this.id = id;</span>
+<span class="fc" id="L148">    }</span>
+
+    public String getRepositoryId() {
+<span class="fc" id="L151">        return repositoryId;</span>
+    }
+
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L155">        this.repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L156">    }</span>
+
+    public String getWorkspaceId() {
+<span class="fc" id="L159">        return workspaceId;</span>
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L163">        this.workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L164">        this.workspaceScopeKey = scopeKeyFor(this.workspaceId);</span>
+<span class="fc" id="L165">    }</span>
+
+    public String getWorkspaceScopeKey() {
+<span class="fc" id="L168">        return workspaceScopeKey;</span>
+    }
+
+    public String getBranch() {
+<span class="fc" id="L172">        return branch;</span>
+    }
+
+    public void setBranch(String branch) {
+<span class="fc" id="L176">        this.branch = requireText(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L177">    }</span>
+
+    public String getSourceCode() {
+<span class="fc" id="L180">        return sourceCode;</span>
+    }
+
+    public void setSourceCode(String sourceCode) {
+<span class="fc" id="L184">        this.sourceCode = requireText(sourceCode, &quot;sourceCode&quot;);</span>
+<span class="fc" id="L185">    }</span>
+
+    public RelationType getRelationType() {
+<span class="fc" id="L188">        return relationType;</span>
+    }
+
+    public void setRelationType(RelationType relationType) {
+<span class="fc" id="L192">        this.relationType = Objects.requireNonNull(relationType, &quot;relationType&quot;);</span>
+<span class="fc" id="L193">    }</span>
+
+    public String getTargetCode() {
+<span class="fc" id="L196">        return targetCode;</span>
+    }
+
+    public void setTargetCode(String targetCode) {
+<span class="fc" id="L200">        this.targetCode = requireText(targetCode, &quot;targetCode&quot;);</span>
+<span class="fc" id="L201">    }</span>
+
+    public boolean isRelationPresent() {
+<span class="fc" id="L204">        return relationPresent;</span>
+    }
+
+    public void setRelationPresent(boolean relationPresent) {
+<span class="fc" id="L208">        this.relationPresent = relationPresent;</span>
+<span class="fc" id="L209">    }</span>
+
+    public String getStatus() {
+<span class="fc" id="L212">        return status;</span>
+    }
+
+    public void setStatus(String status) {
+<span class="fc" id="L216">        this.status = normalizeOptional(status);</span>
+<span class="fc" id="L217">    }</span>
+
+    public Double getConfidence() {
+<span class="fc" id="L220">        return confidence;</span>
+    }
+
+    public void setConfidence(Double confidence) {
+<span class="fc" id="L224">        this.confidence = normalizeConfidence(confidence);</span>
+<span class="fc" id="L225">    }</span>
+
+    public String getProvenance() {
+<span class="fc" id="L228">        return provenance;</span>
+    }
+
+    public void setProvenance(String provenance) {
+<span class="fc" id="L232">        this.provenance = normalizeOptional(provenance);</span>
+<span class="fc" id="L233">    }</span>
+
+    public String getAuthoritativeCommitId() {
+<span class="fc" id="L236">        return authoritativeCommitId;</span>
+    }
+
+    public void setAuthoritativeCommitId(String authoritativeCommitId) {
+<span class="fc" id="L240">        this.authoritativeCommitId = requireText(</span>
+                authoritativeCommitId, &quot;authoritativeCommitId&quot;);
+<span class="fc" id="L242">    }</span>
+
+    public String getCausationId() {
+<span class="fc" id="L245">        return causationId;</span>
+    }
+
+    public void setCausationId(String causationId) {
+<span class="fc" id="L249">        this.causationId = requireText(causationId, &quot;causationId&quot;);</span>
+<span class="fc" id="L250">    }</span>
+
+    public Instant getUpdatedAt() {
+<span class="nc" id="L253">        return updatedAt;</span>
+    }
+
+    public long getVersion() {
+<span class="nc" id="L257">        return version;</span>
+    }
+
+    private static Double normalizeConfidence(Double value) {
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L262">            return null;</span>
+        }
+<span class="pc bpc" id="L264" title="3 of 6 branches missed.">        if (!Double.isFinite(value) || value &lt; 0.0 || value &gt; 1.0) {</span>
+<span class="nc" id="L265">            throw new IllegalArgumentException(</span>
+                    &quot;confidence must be finite and between 0.0 and 1.0&quot;);
+        }
+<span class="fc" id="L268">        return value;</span>
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L272" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L276" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L277">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L279">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

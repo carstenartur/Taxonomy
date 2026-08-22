@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmProviderConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmProviderConfig.java</span></div><h1>LlmProviderConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.shared.service.LocalEmbeddingService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Centralises LLM provider selection, credentials, endpoints and readiness diagnostics. */
+@Component
+public class LlmProviderConfig {
+
+<span class="fc" id="L18">    private static final Logger log = LoggerFactory.getLogger(LlmProviderConfig.class);</span>
+
+    static final String GEMINI_URL =
+            &quot;https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=&quot;;
+
+    static final String OPENAI_URL = &quot;https://api.openai.com/v1/chat/completions&quot;;
+    static final String DEEPSEEK_URL = &quot;https://api.deepseek.com/v1/chat/completions&quot;;
+    static final String QWEN_URL = &quot;https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions&quot;;
+    static final String LLAMA_URL = &quot;https://api.llama-api.com/chat/completions&quot;;
+    static final String MISTRAL_URL = &quot;https://api.mistral.ai/v1/chat/completions&quot;;
+
+    /** Internal marker for an intentionally unauthenticated custom endpoint. Never sent as a header. */
+    static final String CUSTOM_NO_AUTH_API_KEY = &quot;__taxonomy_custom_no_auth__&quot;;
+
+    static final String OPENAI_MODEL = &quot;gpt-4o-mini&quot;;
+    static final String DEEPSEEK_MODEL = &quot;deepseek-chat&quot;;
+    static final String QWEN_MODEL = &quot;qwen-plus&quot;;
+    static final String LLAMA_MODEL = &quot;llama3.1-70b&quot;;
+    static final String MISTRAL_MODEL = &quot;mistral-small-latest&quot;;
+
+<span class="fc" id="L38">    private static final ThreadLocal&lt;LlmProvider&gt; requestProviderOverride = new ThreadLocal&lt;&gt;();</span>
+
+    @Value(&quot;${llm.provider:}&quot;)
+    private String llmProviderConfig;
+
+    @Value(&quot;${llm.mock:false}&quot;)
+    private boolean llmMock;
+
+    @Value(&quot;${gemini.api.key:}&quot;)
+    private String geminiApiKey;
+
+    @Value(&quot;${openai.api.key:}&quot;)
+    private String openaiApiKey;
+
+    @Value(&quot;${deepseek.api.key:}&quot;)
+    private String deepseekApiKey;
+
+    @Value(&quot;${qwen.api.key:}&quot;)
+    private String qwenApiKey;
+
+    @Value(&quot;${llama.api.key:}&quot;)
+    private String llamaApiKey;
+
+    @Value(&quot;${mistral.api.key:}&quot;)
+    private String mistralApiKey;
+
+    @Value(&quot;${custom.llm.url:}&quot;)
+    private String customLlmUrl;
+
+    @Value(&quot;${custom.llm.model:}&quot;)
+    private String customLlmModel;
+
+    @Value(&quot;${custom.llm.api.key:}&quot;)
+    private String customLlmApiKey;
+
+    private final LocalEmbeddingService localEmbeddingService;
+
+<span class="fc" id="L75">    public LlmProviderConfig(LocalEmbeddingService localEmbeddingService) {</span>
+<span class="fc" id="L76">        this.localEmbeddingService = localEmbeddingService;</span>
+<span class="fc" id="L77">    }</span>
+
+    /** Structured, operator-facing validation result for {@code CUSTOM_OPENAI}. */
+<span class="fc" id="L80">    public record CustomOpenAiConfigurationStatus(boolean valid, String code, String message) {</span>
+        static CustomOpenAiConfigurationStatus ready() {
+<span class="fc" id="L82">            return new CustomOpenAiConfigurationStatus(true, &quot;READY&quot;, &quot;CUSTOM_OPENAI is configured.&quot;);</span>
+        }
+
+        static CustomOpenAiConfigurationStatus invalid(String code, String message) {
+<span class="fc" id="L86">            return new CustomOpenAiConfigurationStatus(false, code, message);</span>
+        }
+    }
+
+    public void setRequestProvider(LlmProvider provider) {
+<span class="fc" id="L91">        requestProviderOverride.set(provider);</span>
+<span class="fc" id="L92">    }</span>
+
+    public void clearRequestProvider() {
+<span class="fc" id="L95">        requestProviderOverride.remove();</span>
+<span class="fc" id="L96">    }</span>
+
+    public LlmProvider getActiveProvider() {
+<span class="fc" id="L99">        LlmProvider override = requestProviderOverride.get();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (override != null) return override;</span>
+
+<span class="pc bpc" id="L102" title="1 of 4 branches missed.">        if (llmProviderConfig != null &amp;&amp; !llmProviderConfig.isBlank()) {</span>
+            try {
+<span class="fc" id="L104">                return LlmProvider.valueOf(llmProviderConfig.trim().toUpperCase());</span>
+<span class="fc" id="L105">            } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L106">                log.warn(&quot;Unknown LLM provider '{}' in config; falling back to auto-detect&quot;,</span>
+                        llmProviderConfig);
+            }
+        }
+
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (hasText(geminiApiKey)) return LlmProvider.GEMINI;</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (hasText(openaiApiKey)) return LlmProvider.OPENAI;</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (hasText(deepseekApiKey)) return LlmProvider.DEEPSEEK;</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (hasText(qwenApiKey)) return LlmProvider.QWEN;</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (hasText(llamaApiKey)) return LlmProvider.LLAMA;</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (hasText(mistralApiKey)) return LlmProvider.MISTRAL;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (isCustomOpenAiConfigured()) return LlmProvider.CUSTOM_OPENAI;</span>
+<span class="fc" id="L118">        return LlmProvider.GEMINI;</span>
+    }
+
+    public String getActiveProviderName() {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (llmMock) return &quot;Mock&quot;;</span>
+<span class="fc bfc" id="L123" title="All 8 branches covered.">        return switch (getActiveProvider()) {</span>
+<span class="fc" id="L124">            case GEMINI -&gt; &quot;Gemini&quot;;</span>
+<span class="fc" id="L125">            case OPENAI -&gt; &quot;OpenAI&quot;;</span>
+<span class="fc" id="L126">            case DEEPSEEK -&gt; &quot;DeepSeek&quot;;</span>
+<span class="fc" id="L127">            case QWEN -&gt; &quot;Qwen&quot;;</span>
+<span class="fc" id="L128">            case LLAMA -&gt; &quot;Llama&quot;;</span>
+<span class="fc" id="L129">            case MISTRAL -&gt; &quot;Mistral&quot;;</span>
+<span class="fc" id="L130">            case CUSTOM_OPENAI -&gt; &quot;Custom OpenAI-compatible&quot;;</span>
+<span class="fc" id="L131">            case LOCAL_ONNX -&gt; &quot;Local (bge-small-en-v1.5)&quot;;</span>
+        };
+    }
+
+    public List&lt;String&gt; getAvailableProviders() {
+<span class="fc" id="L136">        List&lt;String&gt; providers = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L137">        providers.add(&quot;LOCAL_ONNX&quot;);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (hasText(geminiApiKey)) providers.add(&quot;GEMINI&quot;);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (hasText(openaiApiKey)) providers.add(&quot;OPENAI&quot;);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (hasText(deepseekApiKey)) providers.add(&quot;DEEPSEEK&quot;);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (hasText(qwenApiKey)) providers.add(&quot;QWEN&quot;);</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (hasText(llamaApiKey)) providers.add(&quot;LLAMA&quot;);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (hasText(mistralApiKey)) providers.add(&quot;MISTRAL&quot;);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (isCustomOpenAiConfigured()) providers.add(&quot;CUSTOM_OPENAI&quot;);</span>
+<span class="fc" id="L145">        return providers;</span>
+    }
+
+    /**
+     * Returns the transport credential. CUSTOM_OPENAI always returns either the real optional
+     * bearer token or an internal no-auth marker, even when URL/model validation fails. This keeps
+     * provider-agnostic callers from misdiagnosing an invalid endpoint as a missing API key.
+     */
+    public String getApiKey(LlmProvider provider) {
+<span class="fc bfc" id="L154" title="All 8 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L155">            case GEMINI -&gt; geminiApiKey;</span>
+<span class="fc" id="L156">            case OPENAI -&gt; openaiApiKey;</span>
+<span class="fc" id="L157">            case DEEPSEEK -&gt; deepseekApiKey;</span>
+<span class="fc" id="L158">            case QWEN -&gt; qwenApiKey;</span>
+<span class="fc" id="L159">            case LLAMA -&gt; llamaApiKey;</span>
+<span class="fc" id="L160">            case MISTRAL -&gt; mistralApiKey;</span>
+<span class="fc" id="L161">            case CUSTOM_OPENAI -&gt; customOpenAiTransportApiKey();</span>
+<span class="fc" id="L162">            case LOCAL_ONNX -&gt; null;</span>
+        };
+    }
+
+    public boolean hasConfiguredApiKey(LlmProvider provider) {
+<span class="fc bfc" id="L167" title="All 8 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L168">            case GEMINI -&gt; hasText(geminiApiKey);</span>
+<span class="fc" id="L169">            case OPENAI -&gt; hasText(openaiApiKey);</span>
+<span class="fc" id="L170">            case DEEPSEEK -&gt; hasText(deepseekApiKey);</span>
+<span class="fc" id="L171">            case QWEN -&gt; hasText(qwenApiKey);</span>
+<span class="fc" id="L172">            case LLAMA -&gt; hasText(llamaApiKey);</span>
+<span class="fc" id="L173">            case MISTRAL -&gt; hasText(mistralApiKey);</span>
+<span class="fc" id="L174">            case CUSTOM_OPENAI -&gt; hasText(customLlmApiKey);</span>
+<span class="fc" id="L175">            case LOCAL_ONNX -&gt; false;</span>
+        };
+    }
+
+    public String getOpenAiCompatibleUrl(LlmProvider provider) {
+<span class="fc bfc" id="L180" title="All 7 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L181">            case OPENAI -&gt; OPENAI_URL;</span>
+<span class="fc" id="L182">            case DEEPSEEK -&gt; DEEPSEEK_URL;</span>
+<span class="fc" id="L183">            case QWEN -&gt; QWEN_URL;</span>
+<span class="fc" id="L184">            case LLAMA -&gt; LLAMA_URL;</span>
+<span class="fc" id="L185">            case MISTRAL -&gt; MISTRAL_URL;</span>
+<span class="fc" id="L186">            case CUSTOM_OPENAI -&gt; trimToEmpty(customLlmUrl);</span>
+<span class="fc" id="L187">            default -&gt; throw new IllegalArgumentException(&quot;Not an OpenAI-compatible provider: &quot; + provider);</span>
+        };
+    }
+
+    public String getOpenAiCompatibleModel(LlmProvider provider) {
+<span class="fc bfc" id="L192" title="All 7 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L193">            case OPENAI -&gt; OPENAI_MODEL;</span>
+<span class="fc" id="L194">            case DEEPSEEK -&gt; DEEPSEEK_MODEL;</span>
+<span class="fc" id="L195">            case QWEN -&gt; QWEN_MODEL;</span>
+<span class="fc" id="L196">            case LLAMA -&gt; LLAMA_MODEL;</span>
+<span class="fc" id="L197">            case MISTRAL -&gt; MISTRAL_MODEL;</span>
+<span class="fc" id="L198">            case CUSTOM_OPENAI -&gt; trimToEmpty(customLlmModel);</span>
+<span class="fc" id="L199">            default -&gt; throw new IllegalArgumentException(&quot;Unknown provider: &quot; + provider);</span>
+        };
+    }
+
+    public String getGeminiUrl() {
+<span class="fc" id="L204">        return GEMINI_URL;</span>
+    }
+
+    public CustomOpenAiConfigurationStatus getCustomOpenAiConfigurationStatus() {
+<span class="fc" id="L208">        return validateCustomOpenAiConfiguration(customLlmUrl, customLlmModel);</span>
+    }
+
+    /** Shared validation used by readiness diagnostics and the HTTP gateway. */
+    static CustomOpenAiConfigurationStatus validateCustomOpenAiConfiguration(
+            String configuredUrl, String configuredModel) {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (!hasText(configuredUrl)) {</span>
+<span class="fc" id="L215">            return CustomOpenAiConfigurationStatus.invalid(&quot;MISSING_URL&quot;,</span>
+                    &quot;CUSTOM_LLM_URL is required when LLM_PROVIDER=CUSTOM_OPENAI.&quot;);
+        }
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        if (!hasText(configuredModel)) {</span>
+<span class="fc" id="L219">            return CustomOpenAiConfigurationStatus.invalid(&quot;MISSING_MODEL&quot;,</span>
+                    &quot;CUSTOM_LLM_MODEL is required when LLM_PROVIDER=CUSTOM_OPENAI.&quot;);
+        }
+
+        URI uri;
+        try {
+<span class="fc" id="L225">            uri = URI.create(configuredUrl.trim());</span>
+<span class="fc" id="L226">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L227">            return CustomOpenAiConfigurationStatus.invalid(&quot;INVALID_URL&quot;,</span>
+                    &quot;CUSTOM_LLM_URL is not a valid URI.&quot;);
+<span class="fc" id="L229">        }</span>
+
+<span class="fc" id="L231">        String scheme = uri.getScheme();</span>
+<span class="pc bpc" id="L232" title="1 of 4 branches missed.">        if (!&quot;http&quot;.equalsIgnoreCase(scheme) &amp;&amp; !&quot;https&quot;.equalsIgnoreCase(scheme)) {</span>
+<span class="fc" id="L233">            return CustomOpenAiConfigurationStatus.invalid(&quot;UNSUPPORTED_SCHEME&quot;,</span>
+                    &quot;CUSTOM_LLM_URL must use http or https.&quot;);
+        }
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        if (uri.getHost() == null) {</span>
+<span class="fc" id="L237">            return CustomOpenAiConfigurationStatus.invalid(&quot;MISSING_HOST&quot;,</span>
+                    &quot;CUSTOM_LLM_URL must contain a host name.&quot;);
+        }
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        if (uri.getUserInfo() != null) {</span>
+<span class="fc" id="L241">            return CustomOpenAiConfigurationStatus.invalid(&quot;USER_INFO_NOT_ALLOWED&quot;,</span>
+                    &quot;CUSTOM_LLM_URL must not contain credentials; use optional CUSTOM_LLM_API_KEY instead.&quot;);
+        }
+<span class="fc" id="L244">        String path = uri.getPath();</span>
+<span class="pc bpc" id="L245" title="1 of 4 branches missed.">        if (path == null || !path.endsWith(&quot;/chat/completions&quot;)) {</span>
+<span class="fc" id="L246">            return CustomOpenAiConfigurationStatus.invalid(&quot;INVALID_PATH&quot;,</span>
+                    &quot;CUSTOM_LLM_URL must end with /chat/completions.&quot;);
+        }
+<span class="fc" id="L249">        return CustomOpenAiConfigurationStatus.ready();</span>
+    }
+
+    public boolean isCustomOpenAiConfigured() {
+<span class="fc" id="L253">        return getCustomOpenAiConfigurationStatus().valid();</span>
+    }
+
+    public boolean isProviderConfigured(LlmProvider provider) {
+<span class="pc bpc" id="L257" title="1 of 8 branches missed.">        return switch (provider) {</span>
+<span class="fc" id="L258">            case GEMINI -&gt; hasText(geminiApiKey);</span>
+<span class="fc" id="L259">            case OPENAI -&gt; hasText(openaiApiKey);</span>
+<span class="fc" id="L260">            case DEEPSEEK -&gt; hasText(deepseekApiKey);</span>
+<span class="fc" id="L261">            case QWEN -&gt; hasText(qwenApiKey);</span>
+<span class="fc" id="L262">            case LLAMA -&gt; hasText(llamaApiKey);</span>
+<span class="fc" id="L263">            case MISTRAL -&gt; hasText(mistralApiKey);</span>
+<span class="fc" id="L264">            case CUSTOM_OPENAI -&gt; isCustomOpenAiConfigured();</span>
+<span class="nc" id="L265">            case LOCAL_ONNX -&gt; localEmbeddingService.isAvailable();</span>
+        };
+    }
+
+    /** Returns a precise operator-facing reason when the selected provider is not ready. */
+    public String getProviderConfigurationError(LlmProvider provider) {
+<span class="pc bpc" id="L271" title="5 of 8 branches missed.">        return switch (provider) {</span>
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">            case GEMINI -&gt; hasText(geminiApiKey) ? null : &quot;GEMINI_API_KEY is required.&quot;;</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">            case OPENAI -&gt; hasText(openaiApiKey) ? null : &quot;OPENAI_API_KEY is required.&quot;;</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">            case DEEPSEEK -&gt; hasText(deepseekApiKey) ? null : &quot;DEEPSEEK_API_KEY is required.&quot;;</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">            case QWEN -&gt; hasText(qwenApiKey) ? null : &quot;DASHSCOPE_API_KEY is required.&quot;;</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">            case LLAMA -&gt; hasText(llamaApiKey) ? null : &quot;LLAMA_API_KEY is required.&quot;;</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">            case MISTRAL -&gt; hasText(mistralApiKey) ? null : &quot;MISTRAL_API_KEY is required.&quot;;</span>
+            case CUSTOM_OPENAI -&gt; {
+<span class="fc" id="L279">                CustomOpenAiConfigurationStatus status = getCustomOpenAiConfigurationStatus();</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">                yield status.valid() ? null : status.message();</span>
+            }
+<span class="nc bnc" id="L282" title="All 2 branches missed.">            case LOCAL_ONNX -&gt; localEmbeddingService.isAvailable()</span>
+<span class="nc" id="L283">                    ? null</span>
+<span class="nc" id="L284">                    : &quot;Local semantic embedding is disabled or unavailable. Set &quot;</span>
+                    + &quot;TAXONOMY_EMBEDDING_ENABLED=true and provide a local model or explicitly &quot;
+                    + &quot;allow a runtime download.&quot;;
+        };
+    }
+
+    public boolean hasAnyCloudApiKey() {
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">        return hasText(geminiApiKey)</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">                || hasText(openaiApiKey)</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">                || hasText(deepseekApiKey)</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">                || hasText(qwenApiKey)</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">                || hasText(llamaApiKey)</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">                || hasText(mistralApiKey)</span>
+<span class="pc bnc" id="L297" title="All 2 branches missed.">                || hasText(customLlmApiKey);</span>
+    }
+
+    public boolean hasAnyHttpProviderConfiguration() {
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">        return hasText(geminiApiKey)</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">                || hasText(openaiApiKey)</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">                || hasText(deepseekApiKey)</span>
+<span class="nc bnc" id="L304" title="All 2 branches missed.">                || hasText(qwenApiKey)</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">                || hasText(llamaApiKey)</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">                || hasText(mistralApiKey)</span>
+<span class="pc bnc" id="L307" title="All 2 branches missed.">                || isCustomOpenAiConfigured();</span>
+    }
+
+    public AiAvailabilityLevel getAvailabilityLevel() {
+<span class="fc bfc" id="L311" title="All 2 branches covered.">        if (llmMock) return AiAvailabilityLevel.FULL;</span>
+<span class="fc" id="L312">        LlmProvider provider = getActiveProvider();</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">            return localEmbeddingService.isAvailable()</span>
+<span class="fc" id="L315">                    ? AiAvailabilityLevel.LIMITED</span>
+<span class="nc" id="L316">                    : AiAvailabilityLevel.UNAVAILABLE;</span>
+        }
+<span class="fc bfc" id="L318" title="All 2 branches covered.">        if (isProviderConfigured(provider)) return AiAvailabilityLevel.FULL;</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        return localEmbeddingService.isAvailable()</span>
+<span class="fc" id="L320">                ? AiAvailabilityLevel.LIMITED</span>
+<span class="fc" id="L321">                : AiAvailabilityLevel.UNAVAILABLE;</span>
+    }
+
+    public boolean isAvailable() {
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        return getAvailabilityLevel() != AiAvailabilityLevel.UNAVAILABLE;</span>
+    }
+
+    public boolean isMockMode() {
+<span class="fc" id="L329">        return llmMock;</span>
+    }
+
+    private String customOpenAiTransportApiKey() {
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        return hasText(customLlmApiKey) ? customLlmApiKey : CUSTOM_NO_AUTH_API_KEY;</span>
+    }
+
+    private static boolean hasText(String value) {
+<span class="pc bpc" id="L337" title="1 of 4 branches missed.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+
+    private static String trimToEmpty(String value) {
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : value.trim();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ImpactRelationStep.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">ImpactRelationStep.java</span></div><h1>ImpactRelationStep.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.architecture.service.ImpactEndpointSelector;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dto.RelationOrigin;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.RequirementRelationshipView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Generates concrete impact relations between leaf nodes from different taxonomy
+ * categories, and emits derived impact relations as {@link RelationHypothesisDto}
+ * entries so they flow through the Accept/Reject UI.
+ *
+ * &lt;p&gt;For each trace (root-to-root) relation, this step finds the most qualified
+ * leaf nodes in each endpoint's category and creates a derived impact relation
+ * between them. This ensures the final architecture view prioritises meaningful
+ * cross-category connections over abstract root-level propagation relations.
+ *
+ * &lt;p&gt;After generating impact relations, the full relationship list is ranked so
+ * that cross-category leaf-to-leaf relations appear before root-level ones.
+ *
+ * &lt;p&gt;&lt;b&gt;Safe extension point&lt;/b&gt; — this step may be replaced or augmented to
+ * change how cross-category impact relations are derived, provided the overall
+ * relationship list remains valid on exit.
+ */
+@Service
+public class ImpactRelationStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;impact-relation&quot;;
+
+<span class="fc" id="L45">    private static final Logger log = LoggerFactory.getLogger(ImpactRelationStep.class);</span>
+
+    /** Semantic strength/order used only after priority and measured relevance tie. */
+<span class="fc" id="L48">    private static final Map&lt;String, Integer&gt; RELATION_TYPE_ORDER = Map.of(</span>
+<span class="fc" id="L49">            &quot;REALIZES&quot;, 10,</span>
+<span class="fc" id="L50">            &quot;SUPPORTS&quot;, 20,</span>
+<span class="fc" id="L51">            &quot;FULFILLS&quot;, 30,</span>
+<span class="fc" id="L52">            &quot;USES&quot;, 40,</span>
+<span class="fc" id="L53">            &quot;DEPENDS_ON&quot;, 50);</span>
+
+    /** Canonical architecture-layer tie breaker, independent of persistence order. */
+<span class="fc" id="L56">    private static final Map&lt;String, Integer&gt; ROOT_ORDER = Map.of(</span>
+<span class="fc" id="L57">            &quot;CP&quot;, 10,</span>
+<span class="fc" id="L58">            &quot;BP&quot;, 20,</span>
+<span class="fc" id="L59">            &quot;BR&quot;, 21,</span>
+<span class="fc" id="L60">            &quot;CR&quot;, 30,</span>
+<span class="fc" id="L61">            &quot;CI&quot;, 31,</span>
+<span class="fc" id="L62">            &quot;UA&quot;, 40,</span>
+<span class="fc" id="L63">            &quot;IP&quot;, 50,</span>
+<span class="fc" id="L64">            &quot;CO&quot;, 60);</span>
+
+<span class="fc" id="L66">    private static final Comparator&lt;String&gt; NULL_SAFE_TEXT =</span>
+<span class="fc" id="L67">            Comparator.nullsLast(Comparator.naturalOrder());</span>
+
+    private final TaxonomyNodeRepository nodeRepository;
+
+<span class="fc" id="L71">    public ImpactRelationStep(TaxonomyNodeRepository nodeRepository) {</span>
+<span class="fc" id="L72">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L73">    }</span>
+
+    @Override
+<span class="fc" id="L76">    public String id() { return STEP_ID; }</span>
+
+    @Override
+<span class="fc" id="L79">    public int order() { return 800; }</span>
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L83">        generateImpactRelations(ctx.getElements(), ctx.getRelationships());</span>
+<span class="fc" id="L84">        emitImpactHypotheses(ctx.getRelationships(), ctx.getProvisionalRelations());</span>
+<span class="fc" id="L85">    }</span>
+
+    private void generateImpactRelations(List&lt;RequirementElementView&gt; elements,
+                                          List&lt;RequirementRelationshipView&gt; relationships) {
+        // Group leaf elements by their taxonomy root
+<span class="fc" id="L90">        Map&lt;String, List&lt;RequirementElementView&gt;&gt; leafByRoot = new java.util.LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        for (RequirementElementView el : elements) {</span>
+<span class="fc" id="L92">            String code = el.getNodeCode();</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (!code.contains(&quot;-&quot;)) continue;</span>
+<span class="fc" id="L94">            String root = code.substring(0, code.indexOf('-'));</span>
+<span class="fc" id="L95">            leafByRoot.computeIfAbsent(root, k -&gt; new ArrayList&lt;&gt;()).add(el);</span>
+<span class="fc" id="L96">        }</span>
+
+<span class="fc" id="L98">        List&lt;RequirementRelationshipView&gt; impactRelations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L99">        Set&lt;String&gt; impactSignatures = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L100">        ImpactEndpointSelector endpointSelector = new ImpactEndpointSelector();</span>
+
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        for (RequirementRelationshipView trace : relationships) {</span>
+<span class="fc" id="L103">            String srcRoot = rootOf(trace.getSourceCode());</span>
+<span class="fc" id="L104">            String tgtRoot = rootOf(trace.getTargetCode());</span>
+<span class="pc bpc" id="L105" title="2 of 4 branches missed.">            if (srcRoot == null || tgtRoot == null) continue;</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">            if (srcRoot.equals(tgtRoot)) continue;</span>
+
+<span class="fc" id="L108">            List&lt;RequirementElementView&gt; srcLeaves = leafByRoot.getOrDefault(srcRoot, List.of());</span>
+<span class="fc" id="L109">            List&lt;RequirementElementView&gt; tgtLeaves = leafByRoot.getOrDefault(tgtRoot, List.of());</span>
+<span class="fc bfc" id="L110" title="All 4 branches covered.">            if (srcLeaves.isEmpty() || tgtLeaves.isEmpty()) continue;</span>
+
+<span class="fc" id="L112">            List&lt;RequirementElementView&gt; srcEndpoints = endpointSelector.selectEndpoints(srcLeaves);</span>
+<span class="fc" id="L113">            List&lt;RequirementElementView&gt; tgtEndpoints = endpointSelector.selectEndpoints(tgtLeaves);</span>
+
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            for (RequirementElementView src : srcEndpoints) {</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                for (RequirementElementView tgt : tgtEndpoints) {</span>
+<span class="fc" id="L117">                    String sig = src.getNodeCode() + &quot;-&gt;&quot; + tgt.getNodeCode()</span>
+<span class="fc" id="L118">                            + &quot;:&quot; + trace.getRelationType();</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                    if (!impactSignatures.add(sig)) continue;</span>
+
+<span class="fc" id="L121">                    RequirementRelationshipView impact = new RequirementRelationshipView();</span>
+<span class="fc" id="L122">                    impact.setSourceCode(src.getNodeCode());</span>
+<span class="fc" id="L123">                    impact.setTargetCode(tgt.getNodeCode());</span>
+<span class="fc" id="L124">                    impact.setRelationType(trace.getRelationType());</span>
+<span class="fc" id="L125">                    impact.setPropagatedRelevance(</span>
+<span class="fc" id="L126">                            Math.min(src.getRelevance(), tgt.getRelevance()));</span>
+<span class="fc" id="L127">                    impact.setHopDistance(0);</span>
+<span class="fc" id="L128">                    impact.setIncludedBecause(&quot;impact: &quot; + src.getNodeCode() + &quot; → &quot;</span>
+<span class="fc" id="L129">                            + tgt.getNodeCode() + &quot; (derived from &quot; + trace.getSourceCode()</span>
+<span class="fc" id="L130">                            + &quot; → &quot; + trace.getTargetCode() + &quot;)&quot;);</span>
+<span class="fc" id="L131">                    impact.setOrigin(RelationOrigin.IMPACT_DERIVED);</span>
+<span class="fc" id="L132">                    impact.setConfidence(Math.min(src.getRelevance(), tgt.getRelevance()));</span>
+<span class="fc" id="L133">                    impact.setDerivationReason(&quot;Cross-category leaf-to-leaf: &quot;</span>
+<span class="fc" id="L134">                            + src.getNodeCode() + &quot; → &quot; + tgt.getNodeCode());</span>
+<span class="fc" id="L135">                    impactRelations.add(impact);</span>
+<span class="fc" id="L136">                }</span>
+<span class="fc" id="L137">            }</span>
+<span class="fc" id="L138">        }</span>
+
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!impactRelations.isEmpty()) {</span>
+<span class="fc" id="L141">            relationships.addAll(impactRelations);</span>
+<span class="fc" id="L142">            log.info(&quot;Generated {} impact relation(s) from {} trace relation(s)&quot;,</span>
+<span class="fc" id="L143">                    impactRelations.size(), relationships.size() - impactRelations.size());</span>
+        }
+
+<span class="fc" id="L146">        rankRelationships(relationships);</span>
+<span class="fc" id="L147">    }</span>
+
+    /**
+     * Emits derived impact relations as {@link RelationHypothesisDto} entries into
+     * the provisional relations list, so they flow through the existing Accept/Reject
+     * UI and can be evaluated by the LLM.
+     *
+     * &lt;p&gt;Only impact-category relations that don't already exist as confirmed or
+     * provisional relations are emitted.
+     */
+    private void emitImpactHypotheses(List&lt;RequirementRelationshipView&gt; relationships,
+                                      List&lt;RelationHypothesisDto&gt; provisionalRelations) {
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (provisionalRelations == null) return;</span>
+
+<span class="fc" id="L161">        Set&lt;String&gt; existingSignatures = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        for (RelationHypothesisDto h : provisionalRelations) {</span>
+<span class="fc" id="L163">            existingSignatures.add(h.getSourceCode() + &quot;-&gt;&quot; + h.getTargetCode()</span>
+<span class="fc" id="L164">                    + &quot;:&quot; + h.getRelationType());</span>
+<span class="fc" id="L165">        }</span>
+
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        for (RequirementRelationshipView rel : relationships) {</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">            if (!RequirementRelationshipView.CATEGORY_IMPACT.equals(rel.getRelationCategory())) {</span>
+<span class="fc" id="L169">                continue;</span>
+            }
+<span class="nc" id="L171">            String sig = rel.getSourceCode() + &quot;-&gt;&quot; + rel.getTargetCode()</span>
+<span class="nc" id="L172">                    + &quot;:&quot; + rel.getRelationType();</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">            if (!existingSignatures.add(sig)) continue;</span>
+
+<span class="nc" id="L175">            String srcTitle = nodeRepository.findByCode(rel.getSourceCode())</span>
+<span class="nc" id="L176">                    .map(TaxonomyNode::getNameEn).orElse(rel.getSourceCode());</span>
+<span class="nc" id="L177">            String tgtTitle = nodeRepository.findByCode(rel.getTargetCode())</span>
+<span class="nc" id="L178">                    .map(TaxonomyNode::getNameEn).orElse(rel.getTargetCode());</span>
+
+<span class="nc" id="L180">            RelationHypothesisDto hyp = new RelationHypothesisDto(</span>
+<span class="nc" id="L181">                    rel.getSourceCode(), srcTitle,</span>
+<span class="nc" id="L182">                    rel.getTargetCode(), tgtTitle,</span>
+<span class="nc" id="L183">                    rel.getRelationType(),</span>
+<span class="nc" id="L184">                    rel.getPropagatedRelevance(),</span>
+<span class="nc" id="L185">                    rel.getIncludedBecause());</span>
+<span class="nc" id="L186">            provisionalRelations.add(hyp);</span>
+<span class="nc" id="L187">        }</span>
+<span class="fc" id="L188">    }</span>
+
+    /**
+     * Sorts relationships by priority:
+     * &lt;ol&gt;
+     *   &lt;li&gt;Cross-category leaf-to-leaf impact relations&lt;/li&gt;
+     *   &lt;li&gt;Same-category leaf-to-leaf relations&lt;/li&gt;
+     *   &lt;li&gt;Relations involving at least one leaf node&lt;/li&gt;
+     *   &lt;li&gt;Root-level propagation relations (non-seed)&lt;/li&gt;
+     *   &lt;li&gt;Seed-origin root-to-root relations (structural context)&lt;/li&gt;
+     * &lt;/ol&gt;
+     * Within each tier, relations are sorted by confidence/relevance descending,
+     * then by stable semantic tie breakers. The final tie breakers are required:
+     * Java's stable sort cannot provide deterministic output when the input list
+     * came from an unordered database query or hash-based intermediate structure.
+     */
+    static void rankRelationships(List&lt;RequirementRelationshipView&gt; relationships) {
+<span class="fc" id="L205">        relationships.sort(Comparator</span>
+<span class="fc" id="L206">                .comparingInt(ImpactRelationStep::relationPriority)</span>
+<span class="fc" id="L207">                .thenComparing(Comparator.comparingDouble(</span>
+<span class="fc" id="L208">                        RequirementRelationshipView::getConfidence).reversed())</span>
+<span class="fc" id="L209">                .thenComparing(Comparator.comparingDouble(</span>
+<span class="fc" id="L210">                        RequirementRelationshipView::getPropagatedRelevance).reversed())</span>
+<span class="fc" id="L211">                .thenComparingInt(rel -&gt; relationTypeOrder(rel.getRelationType()))</span>
+<span class="fc" id="L212">                .thenComparingInt(rel -&gt; rootOrder(rel.getSourceCode()))</span>
+<span class="fc" id="L213">                .thenComparingInt(rel -&gt; rootOrder(rel.getTargetCode()))</span>
+<span class="fc" id="L214">                .thenComparing(RequirementRelationshipView::getSourceCode, NULL_SAFE_TEXT)</span>
+<span class="fc" id="L215">                .thenComparing(RequirementRelationshipView::getTargetCode, NULL_SAFE_TEXT)</span>
+<span class="fc" id="L216">                .thenComparing(RequirementRelationshipView::getRelationType, NULL_SAFE_TEXT)</span>
+<span class="fc" id="L217">                .thenComparing(RequirementRelationshipView::getIncludedBecause, NULL_SAFE_TEXT));</span>
+<span class="fc" id="L218">    }</span>
+
+    private static int relationPriority(RequirementRelationshipView rel) {
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">        boolean srcIsLeaf = rel.getSourceCode() != null &amp;&amp; rel.getSourceCode().contains(&quot;-&quot;);</span>
+<span class="pc bpc" id="L222" title="1 of 4 branches missed.">        boolean tgtIsLeaf = rel.getTargetCode() != null &amp;&amp; rel.getTargetCode().contains(&quot;-&quot;);</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">        boolean isCrossCategory = !Objects.equals(rootOf(rel.getSourceCode()), rootOf(rel.getTargetCode()));</span>
+<span class="fc" id="L224">        boolean isSeed = RequirementRelationshipView.CATEGORY_SEED.equals(rel.getRelationCategory());</span>
+
+<span class="pc bpc" id="L226" title="2 of 6 branches missed.">        if (srcIsLeaf &amp;&amp; tgtIsLeaf &amp;&amp; isCrossCategory) return 1;</span>
+<span class="pc bpc" id="L227" title="3 of 4 branches missed.">        if (srcIsLeaf &amp;&amp; tgtIsLeaf) return 2;</span>
+<span class="pc bpc" id="L228" title="2 of 4 branches missed.">        if (srcIsLeaf || tgtIsLeaf) return 3;</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (isSeed) return 5;</span>
+<span class="fc" id="L230">        return 4;</span>
+    }
+
+    private static int relationTypeOrder(String relationType) {
+<span class="fc" id="L234">        return RELATION_TYPE_ORDER.getOrDefault(relationType, Integer.MAX_VALUE);</span>
+    }
+
+    private static int rootOrder(String code) {
+<span class="fc" id="L238">        return ROOT_ORDER.getOrDefault(rootOf(code), Integer.MAX_VALUE);</span>
+    }
+
+    /**
+     * Returns the taxonomy root code for a node code.
+     * For leaf codes like &quot;CP-1023&quot; returns &quot;CP&quot;; for root codes like &quot;CP&quot; returns &quot;CP&quot;.
+     */
+    static String rootOf(String code) {
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        if (code == null) return null;</span>
+<span class="fc" id="L247">        int dash = code.indexOf('-');</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        return dash &gt;= 0 ? code.substring(0, dash) : code;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

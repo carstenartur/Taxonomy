@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationHypothesisRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.repository</a> &gt; <span class="el_source">RelationHypothesisRepository.java</span></div><h1>RelationHypothesisRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.repository;
+
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationHypothesis;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface RelationHypothesisRepository extends JpaRepository&lt;RelationHypothesis, Long&gt; {
+
+    String PRIMARY_SCOPE = &quot; h.repositoryId IN (&quot;
+            + &quot;SELECT repository.repositoryId FROM SystemRepository repository &quot;
+            + &quot;WHERE repository.primaryRepo = true)&quot;;
+
+    // ── Explicit repository/workspace tenant scope ─────────────────
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE h.repositoryId = :repositoryId
+              AND h.workspaceId IS NULL
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findCentralByRepository(
+            @Param(&quot;repositoryId&quot;) String repositoryId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE h.repositoryId = :repositoryId
+              AND h.workspaceId IS NULL
+              AND h.status = :status
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findCentralByRepositoryAndStatus(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;status&quot;) HypothesisStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE h.repositoryId = :repositoryId
+              AND (h.workspaceId = :workspaceId OR h.workspaceId IS NULL)
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findVisibleByRepositoryAndWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE h.repositoryId = :repositoryId
+              AND (h.workspaceId = :workspaceId OR h.workspaceId IS NULL)
+              AND h.status = :status
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findVisibleByRepositoryAndWorkspaceAndStatus(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;status&quot;) HypothesisStatus status);
+
+    /** Looks up a hypothesis in exactly one mutable repository/workspace scope. */
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE h.repositoryId = :repositoryId
+              AND h.id = :id
+              AND ((:workspaceId IS NULL AND h.workspaceId IS NULL)
+                   OR h.workspaceId = :workspaceId)
+            &quot;&quot;&quot;)
+    Optional&lt;RelationHypothesis&gt; findByIdInRepositoryWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;id&quot;) Long id,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    /** Looks up a readable hypothesis, including the selected repository's central baseline. */
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE h.repositoryId = :repositoryId
+              AND h.id = :id
+              AND ((:workspaceId IS NULL AND h.workspaceId IS NULL)
+                   OR (:workspaceId IS NOT NULL
+                       AND (h.workspaceId = :workspaceId OR h.workspaceId IS NULL)))
+            &quot;&quot;&quot;)
+    Optional&lt;RelationHypothesis&gt; findByIdVisibleInRepositoryWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;id&quot;) Long id,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE h.repositoryId = :repositoryId
+              AND h.analysisSessionId = :analysisSessionId
+              AND ((:workspaceId IS NULL AND h.workspaceId IS NULL)
+                   OR h.workspaceId = :workspaceId)
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByAnalysisSessionIdInRepositoryWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;analysisSessionId&quot;) String analysisSessionId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT CASE WHEN COUNT(h) &gt; 0 THEN true ELSE false END
+            FROM RelationHypothesis h
+            WHERE h.repositoryId = :repositoryId
+              AND h.sourceNodeId = :sourceNodeId
+              AND h.targetNodeId = :targetNodeId
+              AND h.relationType = :relationType
+              AND h.analysisSessionScopeKey = :analysisSessionScopeKey
+              AND h.workspaceScopeKey = :workspaceScopeKey
+            &quot;&quot;&quot;)
+    boolean existsInRepositoryWorkspaceSession(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceScopeKey&quot;) String workspaceScopeKey,
+            @Param(&quot;analysisSessionScopeKey&quot;) String analysisSessionScopeKey,
+            @Param(&quot;sourceNodeId&quot;) String sourceNodeId,
+            @Param(&quot;targetNodeId&quot;) String targetNodeId,
+            @Param(&quot;relationType&quot;) RelationType relationType);
+
+    List&lt;RelationHypothesis&gt; findByRepositoryIdAndWorkspaceId(
+            String repositoryId, String workspaceId);
+
+    // ── Primary-repository compatibility boundary ──────────────────
+    // Historic signatures remain available while callers migrate. They are
+    // deliberately primary-repository scoped and never query every tenant.
+
+    @Override
+    @Query(&quot;SELECT h FROM RelationHypothesis h WHERE &quot; + PRIMARY_SCOPE + &quot; ORDER BY h.id&quot;)
+    List&lt;RelationHypothesis&gt; findAll();
+
+    @Override
+    @Query(&quot;SELECT COUNT(h) FROM RelationHypothesis h WHERE &quot; + PRIMARY_SCOPE)
+    long count();
+
+    @Override
+    @Query(&quot;SELECT h FROM RelationHypothesis h WHERE h.id = :id AND &quot; + PRIMARY_SCOPE)
+    Optional&lt;RelationHypothesis&gt; findById(@Param(&quot;id&quot;) Long id);
+
+    @Override
+    default void deleteAll() {
+<span class="nc" id="L144">        deleteAll(findAll());</span>
+<span class="nc" id="L145">    }</span>
+
+    @Override
+    default void deleteAllInBatch() {
+<span class="nc" id="L149">        deleteAll(findAll());</span>
+<span class="nc" id="L150">    }</span>
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND h.status = :status
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByStatus(@Param(&quot;status&quot;) HypothesisStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND h.analysisSessionId = :analysisSessionId
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByAnalysisSessionId(
+            @Param(&quot;analysisSessionId&quot;) String analysisSessionId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND h.sourceNodeId = :sourceNodeId
+              AND h.targetNodeId = :targetNodeId
+              AND h.relationType = :relationType
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findBySourceNodeIdAndTargetNodeIdAndRelationType(
+            @Param(&quot;sourceNodeId&quot;) String sourceNodeId,
+            @Param(&quot;targetNodeId&quot;) String targetNodeId,
+            @Param(&quot;relationType&quot;) RelationType relationType);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND h.status IN :statuses
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByStatusIn(
+            @Param(&quot;statuses&quot;) List&lt;HypothesisStatus&gt; statuses);
+
+    // ── Legacy workspace aliases constrained to the primary repository ──
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND h.workspaceId = :workspaceId
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByWorkspaceId(
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND h.workspaceId IS NULL
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByWorkspaceIdIsNull();
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND h.status = :status
+              AND h.workspaceId IS NULL
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByStatusAndWorkspaceIdIsNull(
+            @Param(&quot;status&quot;) HypothesisStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND (h.workspaceId = :workspaceId OR h.workspaceId IS NULL)
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByWorkspaceIdIsNullOrWorkspaceId(
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT h FROM RelationHypothesis h
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND h.status = :status
+              AND (h.workspaceId = :workspaceId OR h.workspaceId IS NULL)
+            ORDER BY h.id
+            &quot;&quot;&quot;)
+    List&lt;RelationHypothesis&gt; findByStatusAndWorkspace(
+            @Param(&quot;status&quot;) HypothesisStatus status,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

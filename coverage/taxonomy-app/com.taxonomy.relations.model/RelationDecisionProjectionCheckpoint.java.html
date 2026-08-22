@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationDecisionProjectionCheckpoint.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RelationDecisionProjectionCheckpoint.java</span></div><h1>RelationDecisionProjectionCheckpoint.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/**
+ * Completion token for one fully rebuilt repository/workspace/branch relation projection.
+ *
+ * &lt;p&gt;A checkpoint is valid only while its authoritative commit remains the exact
+ * selected branch head. Incremental command projections invalidate the checkpoint;
+ * user-facing reads may consume decision rows only after a complete rebuild has
+ * atomically replaced the branch rows and checkpoint in one database transaction.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;relation_decision_projection_checkpoint&quot;,
+        indexes = {
+                @Index(
+                        name = &quot;idx_rel_projection_checkpoint_repository&quot;,
+                        columnList = &quot;repository_id&quot;),
+                @Index(
+                        name = &quot;idx_rel_projection_checkpoint_scope&quot;,
+                        columnList = &quot;repository_id, workspace_scope_key, branch&quot;)
+        },
+        uniqueConstraints = @UniqueConstraint(
+                name = &quot;uq_rel_projection_checkpoint_scope&quot;,
+                columnNames = {
+                        &quot;repository_id&quot;,
+                        &quot;workspace_scope_key&quot;,
+                        &quot;branch&quot;
+                }))
+<span class="fc" id="L42">public class RelationDecisionProjectionCheckpoint {</span>
+
+    public static final String CENTRAL_SCOPE_KEY = &quot;__shared__&quot;;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255)
+    private String repositoryId;
+
+    @Column(name = &quot;workspace_id&quot;, length = 255)
+    private String workspaceId;
+
+<span class="fc" id="L56">    @Column(name = &quot;workspace_scope_key&quot;, nullable = false, length = 255)</span>
+    private String workspaceScopeKey = CENTRAL_SCOPE_KEY;
+
+    @Column(name = &quot;branch&quot;, nullable = false, length = 255)
+    private String branch;
+
+    @Column(name = &quot;authoritative_commit_id&quot;, nullable = false, length = 40)
+    private String authoritativeCommitId;
+
+    @Column(name = &quot;relation_count&quot;, nullable = false)
+    private int relationCount;
+
+    @Column(name = &quot;completed_at&quot;, nullable = false)
+    private Instant completedAt;
+
+    @Version
+    @Column(name = &quot;version&quot;, nullable = false)
+    private long version;
+
+    @PrePersist
+    void onCreate() {
+<span class="fc" id="L77">        synchronize();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (completedAt == null) {</span>
+<span class="fc" id="L79">            completedAt = Instant.now();</span>
+        }
+<span class="fc" id="L81">    }</span>
+
+    @PreUpdate
+    void onUpdate() {
+<span class="nc" id="L85">        synchronize();</span>
+<span class="nc" id="L86">        completedAt = Instant.now();</span>
+<span class="nc" id="L87">    }</span>
+
+    private void synchronize() {
+<span class="fc" id="L90">        repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L91">        workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L92">        workspaceScopeKey = scopeKeyFor(workspaceId);</span>
+<span class="fc" id="L93">        branch = requireText(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L94">        authoritativeCommitId = requireCommitId(authoritativeCommitId);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">        if (relationCount &lt; 0) {</span>
+<span class="nc" id="L96">            throw new IllegalArgumentException(&quot;relationCount must not be negative&quot;);</span>
+        }
+<span class="fc" id="L98">    }</span>
+
+    public static String scopeKeyFor(String workspaceId) {
+<span class="fc" id="L101">        String normalized = normalizeOptional(workspaceId);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        return normalized == null ? CENTRAL_SCOPE_KEY : normalized;</span>
+    }
+
+    public Long getId() {
+<span class="nc" id="L106">        return id;</span>
+    }
+
+    public String getRepositoryId() {
+<span class="fc" id="L110">        return repositoryId;</span>
+    }
+
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L114">        this.repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L115">    }</span>
+
+    public String getWorkspaceId() {
+<span class="nc" id="L118">        return workspaceId;</span>
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L122">        this.workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L123">        this.workspaceScopeKey = scopeKeyFor(this.workspaceId);</span>
+<span class="fc" id="L124">    }</span>
+
+    public String getWorkspaceScopeKey() {
+<span class="fc" id="L127">        return workspaceScopeKey;</span>
+    }
+
+    public String getBranch() {
+<span class="fc" id="L131">        return branch;</span>
+    }
+
+    public void setBranch(String branch) {
+<span class="fc" id="L135">        this.branch = requireText(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L136">    }</span>
+
+    public String getAuthoritativeCommitId() {
+<span class="fc" id="L139">        return authoritativeCommitId;</span>
+    }
+
+    public void setAuthoritativeCommitId(String authoritativeCommitId) {
+<span class="fc" id="L143">        this.authoritativeCommitId = requireCommitId(authoritativeCommitId);</span>
+<span class="fc" id="L144">    }</span>
+
+    public int getRelationCount() {
+<span class="fc" id="L147">        return relationCount;</span>
+    }
+
+    public void setRelationCount(int relationCount) {
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (relationCount &lt; 0) {</span>
+<span class="nc" id="L152">            throw new IllegalArgumentException(&quot;relationCount must not be negative&quot;);</span>
+        }
+<span class="fc" id="L154">        this.relationCount = relationCount;</span>
+<span class="fc" id="L155">    }</span>
+
+    public Instant getCompletedAt() {
+<span class="nc" id="L158">        return completedAt;</span>
+    }
+
+    public long getVersion() {
+<span class="nc" id="L162">        return version;</span>
+    }
+
+    private static String requireCommitId(String value) {
+<span class="fc" id="L166">        String normalized = requireText(value, &quot;authoritativeCommitId&quot;);</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (normalized.length() != 40</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                || !normalized.chars().allMatch(RelationDecisionProjectionCheckpoint::isHex)) {</span>
+<span class="nc" id="L169">            throw new IllegalArgumentException(</span>
+                    &quot;authoritativeCommitId must be a full Git object ID&quot;);
+        }
+<span class="fc" id="L172">        return normalized.toLowerCase(java.util.Locale.ROOT);</span>
+    }
+
+    private static boolean isHex(int value) {
+<span class="pc bpc" id="L176" title="7 of 12 branches missed.">        return value &gt;= '0' &amp;&amp; value &lt;= '9'</span>
+                || value &gt;= 'a' &amp;&amp; value &lt;= 'f'
+                || value &gt;= 'A' &amp;&amp; value &lt;= 'F';
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L186" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L187">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L189">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

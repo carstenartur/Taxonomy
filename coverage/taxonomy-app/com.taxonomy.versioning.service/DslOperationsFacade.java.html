@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslOperationsFacade.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">DslOperationsFacade.java</span></div><h1>DslOperationsFacade.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.architecture.model.ArchitectureCommitIndex;
+import com.taxonomy.architecture.model.ArchitectureDslDocument;
+import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
+import com.taxonomy.architecture.service.CommitIndexService;
+import com.taxonomy.dsl.diff.ModelDiff;
+import com.taxonomy.dsl.export.DslMaterializeService;
+import com.taxonomy.dsl.export.TaxDslExportService;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.storage.DslBranch;
+import com.taxonomy.dsl.storage.DslCommit;
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dto.ElementHistoryAggregation;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * High-level facade that aggregates the DSL operation services.
+ *
+ * &lt;p&gt;Provides coarse-grained operations for Git versioning, DSL export,
+ * materialization, commit indexing, and conflict detection, so that
+ * the {@code DslApiController} does not need direct access to
+ * repositories or low-level services.&lt;/p&gt;
+ */
+@Service
+public class DslOperationsFacade {
+
+<span class="fc" id="L40">    private static final Logger log = LoggerFactory.getLogger(DslOperationsFacade.class);</span>
+
+    private final TaxDslExportService exportService;
+    private final DslMaterializeService materializeService;
+    private final ArchitectureDslDocumentRepository documentRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final CommitIndexService commitIndexService;
+    private final ConflictDetectionService conflictDetectionService;
+    private final RepositoryStateGuard stateGuard;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public DslOperationsFacade(TaxDslExportService exportService,
+                               DslMaterializeService materializeService,
+                               ArchitectureDslDocumentRepository documentRepository,
+                               DslGitRepositoryFactory repositoryFactory,
+                               CommitIndexService commitIndexService,
+                               ConflictDetectionService conflictDetectionService,
+                               RepositoryStateGuard stateGuard,
+                               RepositoryStateService repositoryStateService,
+<span class="fc" id="L60">                               WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L61">        this.exportService = exportService;</span>
+<span class="fc" id="L62">        this.materializeService = materializeService;</span>
+<span class="fc" id="L63">        this.documentRepository = documentRepository;</span>
+<span class="fc" id="L64">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L65">        this.commitIndexService = commitIndexService;</span>
+<span class="fc" id="L66">        this.conflictDetectionService = conflictDetectionService;</span>
+<span class="fc" id="L67">        this.stateGuard = stateGuard;</span>
+<span class="fc" id="L68">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L69">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L70">    }</span>
+
+    private DslGitRepository resolveRepository() {
+<span class="fc" id="L73">        return repositoryFactory.resolveRepository(resolveRepositoryContext());</span>
+    }
+
+    private DslGitRepository resolveRepository(WorkspaceContext workspaceContext) {
+<span class="fc" id="L77">        return repositoryFactory.resolveRepository(workspaceContext);</span>
+    }
+
+    /**
+     * Resolves the request-bound workspace after eager provisioning.
+     *
+     * &lt;p&gt;This deliberately fails closed. Falling back to the shared repository
+     * after a resolver, persistence or provisioning failure could make a read,
+     * commit, merge or index operation cross the authenticated user's workspace
+     * boundary.&lt;/p&gt;
+     */
+    private WorkspaceContext resolveContext() {
+<span class="fc" id="L89">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L90">        repositoryStateService.ensureWorkspaceState(username);</span>
+<span class="fc" id="L91">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L93">            throw new IllegalStateException(&quot;Workspace context resolver returned null&quot;);</span>
+        }
+<span class="fc" id="L95">        return context;</span>
+    }
+
+    /** Resolve the mandatory logical repository identity for this request. */
+    private RepositoryContext resolveRepositoryContext() {
+<span class="fc" id="L100">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L101">        repositoryStateService.ensureWorkspaceState(username);</span>
+<span class="fc" id="L102">        RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L104">            throw new IllegalStateException(&quot;Repository context resolver returned null&quot;);</span>
+        }
+<span class="fc" id="L106">        return context;</span>
+    }
+
+    // ── Export ───────────────────────────────────────────────────────
+
+    public String exportAll(String namespace) {
+<span class="fc" id="L112">        return exportService.exportAll(namespace);</span>
+    }
+
+    public CanonicalArchitectureModel buildCanonicalModel() {
+<span class="fc" id="L116">        return exportService.buildCanonicalModel();</span>
+    }
+
+    // ── Materialization ─────────────────────────────────────────────
+
+    public DslMaterializeService.MaterializeResult materialize(
+            String dslText, String path, String branch, String commitId) {
+<span class="fc" id="L123">        return materializeService.materialize(dslText, path, branch, commitId);</span>
+    }
+
+    public DslMaterializeService.MaterializeResult materializeIncremental(
+            Long beforeDocId, Long afterDocId) {
+<span class="fc" id="L128">        return materializeService.materializeIncremental(beforeDocId, afterDocId);</span>
+    }
+
+    public Optional&lt;ArchitectureDslDocument&gt; findDocumentById(Long id) {
+<span class="fc" id="L132">        return documentRepository.findById(id);</span>
+    }
+
+    // ── Git operations ──────────────────────────────────────────────
+
+    public String commitDsl(String branch, String dslText, String author, String message)
+            throws IOException {
+<span class="fc" id="L139">        return resolveRepository().commitDsl(branch, dslText, author, message);</span>
+    }
+
+    public boolean isDatabaseBacked() {
+<span class="fc" id="L143">        return resolveRepository().isDatabaseBacked();</span>
+    }
+
+    public List&lt;DslCommit&gt; getDslHistory(String branch) throws IOException {
+<span class="nc" id="L147">        return resolveRepository().getDslHistory(branch);</span>
+    }
+
+    public List&lt;DslCommit&gt; getDslHistory(
+            String branch, WorkspaceContext workspaceContext) throws IOException {
+<span class="fc" id="L152">        return resolveRepository(workspaceContext).getDslHistory(branch);</span>
+    }
+
+    public Optional&lt;Long&gt; findDocumentIdByCommitId(String commitId) {
+<span class="fc" id="L156">        return documentRepository.findByCommitId(commitId)</span>
+<span class="fc" id="L157">                .map(ArchitectureDslDocument::getId);</span>
+    }
+
+    public ModelDiff diffBetween(String beforeId, String afterId) throws Exception {
+<span class="pc bpc" id="L161" title="1 of 4 branches missed.">        if (looksLikeGitSha(beforeId) &amp;&amp; looksLikeGitSha(afterId)) {</span>
+<span class="fc" id="L162">            return resolveRepository().diffBetween(beforeId, afterId);</span>
+        }
+<span class="pc" id="L164">        return materializeService.diffDocuments(</span>
+<span class="fc" id="L165">                Long.valueOf(beforeId), Long.valueOf(afterId));</span>
+    }
+
+    public String textDiff(String beforeId, String afterId) throws Exception {
+<span class="fc" id="L169">        return resolveRepository().textDiff(beforeId, afterId);</span>
+    }
+
+    public List&lt;DslBranch&gt; listBranches() throws IOException {
+<span class="fc" id="L173">        return resolveRepository().listBranches();</span>
+    }
+
+    public String createBranch(String name, String fromBranch) throws IOException {
+<span class="fc" id="L177">        return resolveRepository().createBranch(name, fromBranch);</span>
+    }
+
+    public String cherryPick(String commitId, String targetBranch) throws IOException {
+<span class="fc" id="L181">        return resolveRepository().cherryPick(commitId, targetBranch);</span>
+    }
+
+    public String merge(String fromBranch, String intoBranch) throws IOException {
+<span class="nc" id="L185">        return resolveRepository().merge(fromBranch, intoBranch);</span>
+    }
+
+    public String revert(String commitId, String branch) throws IOException {
+<span class="nc" id="L189">        return resolveRepository().revert(commitId, branch);</span>
+    }
+
+    public String undoLast(String branch) throws IOException {
+<span class="nc" id="L193">        return resolveRepository().undoLast(branch);</span>
+    }
+
+    public String restore(String commitId, String branch) throws Exception {
+<span class="nc" id="L197">        return resolveRepository().restore(commitId, branch);</span>
+    }
+
+    public boolean deleteBranch(String name) throws IOException {
+<span class="fc" id="L201">        return resolveRepository().deleteBranch(name);</span>
+    }
+
+    public String getDslAtHead(String branch) throws IOException {
+<span class="nc" id="L205">        return resolveRepository().getDslAtHead(branch);</span>
+    }
+
+    public String getDslAtHead(
+            String branch, WorkspaceContext workspaceContext) throws IOException {
+<span class="fc" id="L210">        return resolveRepository(workspaceContext).getDslAtHead(branch);</span>
+    }
+
+    public String getDslAtCommit(String commitId) throws Exception {
+<span class="fc" id="L214">        return resolveRepository().getDslAtCommit(commitId);</span>
+    }
+
+    public String getHeadCommit(String branch) throws IOException {
+<span class="nc" id="L218">        return resolveRepository().getHeadCommit(branch);</span>
+    }
+
+    // ── Conflict detection ──────────────────────────────────────────
+
+    public ConflictDetectionService.MergePreview previewMerge(String from, String into) {
+<span class="nc" id="L224">        return conflictDetectionService.previewMerge(from, into, resolveContext());</span>
+    }
+
+    public ConflictDetectionService.CherryPickPreview previewCherryPick(
+            String commitId, String targetBranch) {
+<span class="nc" id="L229">        return conflictDetectionService.previewCherryPick(</span>
+<span class="nc" id="L230">                commitId, targetBranch, resolveContext());</span>
+    }
+
+    public ConflictDetectionService.ConflictDetails getMergeConflictDetails(
+            String from, String into) {
+<span class="fc" id="L235">        return conflictDetectionService.getMergeConflictDetails(</span>
+<span class="fc" id="L236">                from, into, resolveContext());</span>
+    }
+
+    public ConflictDetectionService.ConflictDetails getCherryPickConflictDetails(
+            String commitId, String targetBranch) {
+<span class="nc" id="L241">        return conflictDetectionService.getCherryPickConflictDetails(</span>
+<span class="nc" id="L242">                commitId, targetBranch, resolveContext());</span>
+    }
+
+    // ── View context &amp; state guard ──────────────────────────────────
+
+    public ViewContext getViewContext(String branch) {
+<span class="fc" id="L248">        return repositoryStateService.getViewContext(</span>
+<span class="fc" id="L249">                workspaceResolver.resolveCurrentUsername(), branch, resolveContext());</span>
+    }
+
+    public ViewContext getViewContext(
+            String username,
+            String branch,
+            WorkspaceContext workspaceContext) {
+<span class="fc" id="L256">        return repositoryStateService.getViewContext(</span>
+                username, branch, workspaceContext);
+    }
+
+    public RepositoryStateGuard.OperationCheck checkWriteOperation(
+            String branch, String operationType) {
+<span class="nc" id="L262">        return stateGuard.checkWriteOperation(</span>
+<span class="nc" id="L263">                workspaceResolver.resolveCurrentUsername(), branch, operationType);</span>
+    }
+
+    public String resolveCurrentUsername() {
+<span class="fc" id="L267">        return workspaceResolver.resolveCurrentUsername();</span>
+    }
+
+    public String resolveWorkspaceBranch(String username) {
+<span class="fc" id="L271">        return repositoryStateService.resolveWorkspaceBranch(username);</span>
+    }
+
+    // ── Document listing ────────────────────────────────────────────
+
+    public List&lt;ArchitectureDslDocument&gt; listDocuments() {
+<span class="fc" id="L277">        return documentRepository.findAll();</span>
+    }
+
+    // ── History search ──────────────────────────────────────────────
+
+    public int indexBranch(String branch) {
+<span class="fc" id="L283">        return commitIndexService.indexBranch(branch, resolveRepositoryContext());</span>
+    }
+
+    public int rebuildHistoryBranch(String branch) {
+<span class="nc" id="L287">        return commitIndexService.rebuildBranch(branch, resolveRepositoryContext());</span>
+    }
+
+    public int purgeHistoryIndex() {
+<span class="nc" id="L291">        return commitIndexService.purge(resolveRepositoryContext());</span>
+    }
+
+    public List&lt;ArchitectureCommitIndex&gt; searchHistory(
+            String query, int maxResults) {
+<span class="fc" id="L296">        return commitIndexService.search(</span>
+<span class="fc" id="L297">                query, maxResults, resolveRepositoryContext());</span>
+    }
+
+    public List&lt;ArchitectureCommitIndex&gt; findByElement(String elementId) {
+<span class="fc" id="L301">        return commitIndexService.findByElement(</span>
+<span class="fc" id="L302">                elementId, resolveRepositoryContext());</span>
+    }
+
+    public List&lt;ArchitectureCommitIndex&gt; findByRelation(String key) {
+<span class="nc" id="L306">        return commitIndexService.findByRelation(</span>
+<span class="nc" id="L307">                key, resolveRepositoryContext());</span>
+    }
+
+    public ElementHistoryAggregation aggregateElementHistory(String elementId) {
+<span class="nc" id="L311">        return commitIndexService.aggregateElementHistory(</span>
+<span class="nc" id="L312">                elementId, resolveRepositoryContext());</span>
+    }
+
+    private static boolean looksLikeGitSha(String value) {
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">        return value != null</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                &amp;&amp; value.length() == 40</span>
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">                &amp;&amp; value.matches(&quot;[0-9a-f]+&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

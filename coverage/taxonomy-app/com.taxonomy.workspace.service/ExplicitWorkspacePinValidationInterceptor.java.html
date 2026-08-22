@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExplicitWorkspacePinValidationInterceptor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">ExplicitWorkspacePinValidationInterceptor.java</span></div><h1>ExplicitWorkspacePinValidationInterceptor.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+/**
+ * Validates every explicit browser-tab workspace pin before controller code can
+ * catch a resolver exception and accidentally continue in a shared context.
+ *
+ * &lt;p&gt;Requests without an explicit pin retain the existing endpoint-specific
+ * provisioning behaviour. Requests carrying either the custom header or the
+ * equivalent query parameter must resolve to that exact owned workspace. The
+ * header has the same precedence as {@link WorkspaceContextResolver}.&lt;/p&gt;
+ */
+@Component
+public class ExplicitWorkspacePinValidationInterceptor implements HandlerInterceptor {
+
+    private final WorkspaceResolver workspaceResolver;
+
+<span class="fc" id="L23">    public ExplicitWorkspacePinValidationInterceptor(WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L24">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L25">    }</span>
+
+    @Override
+    public boolean preHandle(HttpServletRequest request,
+                             HttpServletResponse response,
+                             Object handler) {
+<span class="fc" id="L31">        String requestedWorkspaceId = explicitWorkspaceId(request);</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        if (requestedWorkspaceId == null) {</span>
+<span class="fc" id="L33">            return true;</span>
+        }
+
+<span class="fc" id="L36">        RepositoryContext resolved = workspaceResolver.resolveCurrentRepositoryContext();</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (resolved.scope() != RepositoryScope.WORKSPACE</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">                || !requestedWorkspaceId.equals(resolved.workspaceId())) {</span>
+<span class="fc" id="L39">            throw new AccessDeniedException(</span>
+                    &quot;Pinned workspace does not match the resolved request context&quot;);
+        }
+<span class="fc" id="L42">        return true;</span>
+    }
+
+    private static String explicitWorkspaceId(HttpServletRequest request) {
+<span class="fc" id="L46">        String header = request.getHeader(WorkspaceContextResolver.WORKSPACE_HEADER);</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (hasText(header)) {</span>
+<span class="fc" id="L48">            return header.strip();</span>
+        }
+<span class="fc" id="L50">        String parameter = request.getParameter(</span>
+                WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER);
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        return hasText(parameter) ? parameter.strip() : null;</span>
+    }
+
+    private static boolean hasText(String value) {
+<span class="pc bpc" id="L56" title="1 of 4 branches missed.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

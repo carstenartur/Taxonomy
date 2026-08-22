@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>QualityApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">QualityApiController.java</span></div><h1>QualityApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.dto.ProvenanceMetrics;
+import com.taxonomy.dto.RelationQualityMetrics;
+import com.taxonomy.dto.RelationTypeMetrics;
+import com.taxonomy.dto.TopRejectedProposal;
+import com.taxonomy.relations.service.RelationQualityService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+/**
+ * REST API for the Relation Quality Dashboard.
+ *
+ * &lt;p&gt;Every request resolves one stable selected repository context. Responses
+ * are not cacheable because the URL is intentionally independent of the
+ * repository/workspace selection stored in the user session.&lt;/p&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/relations/metrics&quot;)
+@Tag(name = &quot;Quality Metrics&quot;)
+public class QualityApiController {
+
+    private final RelationQualityService qualityService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public QualityApiController(
+            RelationQualityService qualityService,
+<span class="fc" id="L39">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L40">        this.qualityService = qualityService;</span>
+<span class="fc" id="L41">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L42">    }</span>
+
+    /** Returns the full quality dashboard metrics. */
+    @Operation(
+            summary = &quot;Quality dashboard&quot;,
+            description = &quot;Returns quality metrics for the selected repository context&quot;)
+    @GetMapping
+    public ResponseEntity&lt;RelationQualityMetrics&gt; getMetrics() {
+<span class="fc" id="L50">        RepositoryContext context = currentContext();</span>
+<span class="fc" id="L51">        return noStore(qualityService.calculateMetrics(context));</span>
+    }
+
+    /** Returns metrics broken down by relation type. */
+    @Operation(
+            summary = &quot;Metrics by relation type&quot;,
+            description = &quot;Returns relation-type metrics for the selected repository context&quot;)
+    @GetMapping(&quot;/by-type&quot;)
+    public ResponseEntity&lt;List&lt;RelationTypeMetrics&gt;&gt; getMetricsByType() {
+<span class="fc" id="L60">        RepositoryContext context = currentContext();</span>
+<span class="fc" id="L61">        return noStore(qualityService.metricsByRelationType(context));</span>
+    }
+
+    /** Returns metrics broken down by provenance. */
+    @Operation(
+            summary = &quot;Metrics by provenance&quot;,
+            description = &quot;Returns provenance metrics for the selected repository context&quot;)
+    @GetMapping(&quot;/by-provenance&quot;)
+    public ResponseEntity&lt;List&lt;ProvenanceMetrics&gt;&gt; getMetricsByProvenance() {
+<span class="fc" id="L70">        RepositoryContext context = currentContext();</span>
+<span class="fc" id="L71">        return noStore(qualityService.metricsByProvenance(context));</span>
+    }
+
+    /** Returns the highest-confidence rejected proposals in the visible scope. */
+    @Operation(
+            summary = &quot;Top rejected proposals&quot;,
+            description = &quot;Returns rejected proposals from the selected repository context&quot;)
+    @GetMapping(&quot;/top-rejected&quot;)
+    public ResponseEntity&lt;List&lt;TopRejectedProposal&gt;&gt; getTopRejected(
+            @Parameter(description = &quot;Maximum number of results&quot;)
+            @RequestParam(defaultValue = &quot;10&quot;) int limit) {
+<span class="fc" id="L82">        RepositoryContext context = currentContext();</span>
+<span class="fc" id="L83">        return noStore(qualityService.topRejected(limit, context));</span>
+    }
+
+    private RepositoryContext currentContext() {
+<span class="fc" id="L87">        return workspaceResolver.resolveCurrentRepositoryContext();</span>
+    }
+
+    private static &lt;T&gt; ResponseEntity&lt;T&gt; noStore(T body) {
+<span class="fc" id="L91">        return ResponseEntity.ok()</span>
+<span class="fc" id="L92">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L93">                .body(body);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

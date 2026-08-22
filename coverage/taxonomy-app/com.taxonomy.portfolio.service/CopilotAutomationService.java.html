@@ -1,0 +1,580 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CopilotAutomationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">CopilotAutomationService.java</span></div><h1>CopilotAutomationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
+import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
+import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+
+/**
+ * Server-side, persisted orchestration for one requirement Copilot operation.
+ *
+ * &lt;p&gt;Each verification pass is an ordinary tenant-bound analysis job. Operation
+ * identity and pass metadata are encoded in that job's idempotency key, so a page
+ * reload can reconstruct and resume the operation without browser-owned state.&lt;/p&gt;
+ */
+@Service
+public class CopilotAutomationService {
+
+<span class="fc" id="L49">    private static final Logger LOGGER = LoggerFactory.getLogger(CopilotAutomationService.class);</span>
+<span class="fc" id="L50">    private static final Duration POLL_INTERVAL = Duration.ofSeconds(1);</span>
+
+    private final ProjectRequirementAnalysisService analysisService;
+    private final ProjectPortfolioService projectService;
+    private final PortfolioFingerprintService fingerprintService;
+    private final AiAutomationPolicy policy;
+    private final CopilotResultSelector resultSelector;
+    private final CopilotResultPersistenceService resultPersistenceService;
+    private final CopilotCompletionService completionService;
+    private final CopilotJobControlService jobControlService;
+    private final ExecutorService coordinator;
+<span class="fc" id="L61">    private final ConcurrentMap&lt;String, CompletableFuture&lt;Void&gt;&gt; running = new ConcurrentHashMap&lt;&gt;();</span>
+
+    public CopilotAutomationService(
+            ProjectRequirementAnalysisService analysisService,
+            ProjectPortfolioService projectService,
+            PortfolioFingerprintService fingerprintService,
+            AiAutomationPolicy policy,
+            CopilotResultSelector resultSelector,
+            CopilotResultPersistenceService resultPersistenceService,
+            CopilotCompletionService completionService,
+            CopilotJobControlService jobControlService,
+<span class="fc" id="L72">            @Qualifier(&quot;copilotAutomationExecutor&quot;) ExecutorService coordinator) {</span>
+<span class="fc" id="L73">        this.analysisService = analysisService;</span>
+<span class="fc" id="L74">        this.projectService = projectService;</span>
+<span class="fc" id="L75">        this.fingerprintService = fingerprintService;</span>
+<span class="fc" id="L76">        this.policy = policy;</span>
+<span class="fc" id="L77">        this.resultSelector = resultSelector;</span>
+<span class="fc" id="L78">        this.resultPersistenceService = resultPersistenceService;</span>
+<span class="fc" id="L79">        this.completionService = completionService;</span>
+<span class="fc" id="L80">        this.jobControlService = jobControlService;</span>
+<span class="fc" id="L81">        this.coordinator = coordinator;</span>
+<span class="fc" id="L82">    }</span>
+
+    public AiAutomationStatus status() {
+<span class="fc" id="L85">        return policy.status();</span>
+    }
+
+    public CopilotOperationView enqueueManual(
+            Long projectId,
+            Long requirementId,
+            CopilotRunRequest request,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L94">        return enqueue(</span>
+                projectId,
+                requirementId,
+<span class="fc" id="L97">                policy.manual(request),</span>
+                username,
+                context);
+    }
+
+    public Optional&lt;CopilotOperationView&gt; tryAutopilot(
+            Long projectId,
+            Long requirementId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (!policy.autopilotReady()) return Optional.empty();</span>
+<span class="fc" id="L108">        return Optional.of(enqueue(</span>
+                projectId,
+                requirementId,
+<span class="fc" id="L111">                policy.autopilot(),</span>
+                username,
+                context));
+    }
+
+    public Optional&lt;CopilotOperationView&gt; latestOperation(
+            Long projectId,
+            Long requirementId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L121">        return analysisService.listJobs(projectId, username, context).stream()</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                .filter(job -&gt; job.items() != null &amp;&amp; job.items().stream()</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">                        .anyMatch(item -&gt; Objects.equals(item.requirementId(), requirementId)))</span>
+<span class="fc" id="L124">                .map(job -&gt; CopilotOperationKey.parse(job.idempotencyKey())</span>
+<span class="fc" id="L125">                        .map(key -&gt; new JobWithKey(job, key)))</span>
+<span class="fc" id="L126">                .flatMap(Optional::stream)</span>
+<span class="fc" id="L127">                .max(Comparator.comparing(entry -&gt; entry.job().createdAt()))</span>
+<span class="fc" id="L128">                .map(entry -&gt; getOperation(</span>
+                        projectId,
+<span class="fc" id="L130">                        entry.key().operationId(),</span>
+                        username,
+                        context));
+    }
+
+    public CopilotOperationView getOperation(
+            Long projectId,
+            String operationId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L140">        List&lt;JobWithKey&gt; jobs = jobsForOperation(projectId, operationId, username, context);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (jobs.isEmpty()) {</span>
+<span class="fc" id="L142">            throw PortfolioException.notFound(&quot;Copilot operation not found: &quot; + operationId);</span>
+        }
+<span class="fc" id="L144">        OperationDefinition definition = definition(jobs);</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (!operationTerminal(jobs, definition.totalPasses())) {</span>
+<span class="fc" id="L146">            schedule(definition, username, context);</span>
+        } else {
+<span class="fc" id="L148">            finalizeOperation(definition, jobs, username, context);</span>
+        }
+<span class="fc" id="L150">        return view(definition, jobsForOperation(</span>
+                projectId, operationId, username, context), username, context);
+    }
+
+    public CopilotOperationView cancelOperation(
+            Long projectId,
+            String operationId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L159">        List&lt;JobWithKey&gt; jobs = jobsForOperation(projectId, operationId, username, context);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (jobs.isEmpty()) {</span>
+<span class="fc" id="L161">            throw PortfolioException.notFound(&quot;Copilot operation not found: &quot; + operationId);</span>
+        }
+<span class="fc" id="L163">        OperationDefinition definition = definition(jobs);</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        for (JobWithKey entry : jobs) {</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">            if (!isTerminal(entry.job().status())) {</span>
+<span class="fc" id="L166">                jobControlService.cancel(entry.job().id(), projectId, username, context);</span>
+            }
+<span class="fc" id="L168">        }</span>
+<span class="fc" id="L169">        return view(definition, jobsForOperation(</span>
+                projectId, operationId, username, context), username, context);
+    }
+
+    private CopilotOperationView enqueue(
+            Long projectId,
+            Long requirementId,
+            AiAutomationPolicy.RunSettings settings,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L179">        RequirementView requirement = projectService.getRequirement(</span>
+                projectId, requirementId, username, context);
+<span class="fc" id="L181">        RequirementVersionView version = requirement.currentVersion();</span>
+<span class="pc bpc" id="L182" title="2 of 6 branches missed.">        if (version == null || version.id() == null || version.contentHash() == null) {</span>
+<span class="fc" id="L183">            throw PortfolioException.conflict(</span>
+                    &quot;Requirement has no immutable current version to analyze&quot;);
+        }
+<span class="fc" id="L186">        String operationId = operationId(</span>
+                projectId, requirement, settings, username, context);
+<span class="fc" id="L188">        OperationDefinition definition = new OperationDefinition(</span>
+<span class="fc" id="L189">                settings.autopilot(),</span>
+                operationId,
+                projectId,
+                requirementId,
+<span class="fc" id="L193">                settings.profile(),</span>
+<span class="fc" id="L194">                settings.provider(),</span>
+<span class="fc" id="L195">                settings.maxArchitectureNodes(),</span>
+<span class="fc" id="L196">                settings.verificationPasses(),</span>
+<span class="fc" id="L197">                settings.proposeSolutions(),</span>
+<span class="fc" id="L198">                settings.proposeProducts());</span>
+
+<span class="fc" id="L200">        enqueuePass(definition, 1, username, context);</span>
+<span class="fc" id="L201">        schedule(definition, username, context);</span>
+<span class="fc" id="L202">        return view(definition, jobsForOperation(</span>
+                projectId, operationId, username, context), username, context);
+    }
+
+    private void schedule(
+            OperationDefinition definition,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L210">        String executionKey = PortfolioScope.key(username, context)</span>
+<span class="fc" id="L211">                + &quot;|&quot; + definition.operationId();</span>
+        try {
+<span class="fc" id="L213">            running.computeIfAbsent(executionKey, ignored -&gt; {</span>
+<span class="fc" id="L214">                CompletableFuture&lt;Void&gt; future = new CompletableFuture&lt;&gt;();</span>
+<span class="fc" id="L215">                coordinator.execute(() -&gt; {</span>
+                    try {
+<span class="fc" id="L217">                        execute(definition, username, context);</span>
+<span class="fc" id="L218">                        future.complete(null);</span>
+<span class="nc" id="L219">                    } catch (Throwable failure) {</span>
+<span class="nc" id="L220">                        LOGGER.error(</span>
+                                &quot;Copilot operation {} for project {} requirement {} stopped unexpectedly&quot;,
+<span class="nc" id="L222">                                definition.operationId(),</span>
+<span class="nc" id="L223">                                definition.projectId(),</span>
+<span class="nc" id="L224">                                definition.requirementId(),</span>
+                                failure);
+<span class="nc" id="L226">                        future.completeExceptionally(failure);</span>
+                    } finally {
+<span class="fc" id="L228">                        running.remove(executionKey, future);</span>
+                    }
+<span class="fc" id="L230">                });</span>
+<span class="fc" id="L231">                return future;</span>
+            });
+<span class="fc" id="L233">        } catch (RejectedExecutionException rejected) {</span>
+<span class="fc" id="L234">            throw PortfolioException.unavailable(</span>
+                    &quot;Copilot coordinator capacity is exhausted; the persisted operation can be resumed later&quot;,
+                    rejected);
+<span class="fc" id="L237">        }</span>
+<span class="fc" id="L238">    }</span>
+
+    private void execute(
+            OperationDefinition definition,
+            String username,
+            WorkspaceContext context) {
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        for (int pass = 1; pass &lt;= definition.totalPasses(); pass++) {</span>
+<span class="fc" id="L245">            AnalysisJobView job = enqueuePass(definition, pass, username, context);</span>
+<span class="fc" id="L246">            AnalysisJobView terminal = awaitTerminal(</span>
+<span class="fc" id="L247">                    job.id(), definition.projectId(), username, context);</span>
+<span class="pc bpc" id="L248" title="1 of 4 branches missed.">            if (terminal == null || terminal.status() == AnalysisStatus.CANCELLED) {</span>
+<span class="fc" id="L249">                return;</span>
+            }
+        }
+<span class="fc" id="L252">        List&lt;JobWithKey&gt; jobs = jobsForOperation(</span>
+<span class="fc" id="L253">                definition.projectId(), definition.operationId(), username, context);</span>
+<span class="fc" id="L254">        finalizeOperation(definition, jobs, username, context);</span>
+<span class="fc" id="L255">    }</span>
+
+    private AnalysisJobView enqueuePass(
+            OperationDefinition definition,
+            int pass,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L262">        CopilotOperationKey key = definition.key(pass);</span>
+<span class="fc" id="L263">        return analysisService.enqueueRequirement(</span>
+<span class="fc" id="L264">                definition.projectId(),</span>
+<span class="fc" id="L265">                definition.requirementId(),</span>
+<span class="fc" id="L266">                definition.provider(),</span>
+<span class="fc" id="L267">                definition.maxArchitectureNodes(),</span>
+<span class="fc" id="L268">                key.value(),</span>
+                username,
+                context);
+    }
+
+    private AnalysisJobView awaitTerminal(
+            String jobId,
+            Long projectId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L278">        Instant deadline = Instant.now().plus(policy.maximumRuntime());</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        while (Instant.now().isBefore(deadline)) {</span>
+<span class="fc" id="L280">            AnalysisJobView job = analysisService.getJob(</span>
+                    jobId, projectId, username, context);
+<span class="fc bfc" id="L282" title="All 2 branches covered.">            if (isTerminal(job.status())) return job;</span>
+            try {
+<span class="nc" id="L284">                Thread.sleep(POLL_INTERVAL);</span>
+<span class="fc" id="L285">            } catch (InterruptedException interrupted) {</span>
+<span class="fc" id="L286">                Thread.currentThread().interrupt();</span>
+<span class="fc" id="L287">                return null;</span>
+<span class="nc" id="L288">            }</span>
+<span class="nc" id="L289">        }</span>
+<span class="fc" id="L290">        LOGGER.warn(&quot;Copilot coordinator stopped waiting for job {} after {} seconds; &quot;</span>
+                        + &quot;the persisted job remains recoverable&quot;,
+<span class="fc" id="L292">                jobId, policy.maximumRuntime().toSeconds());</span>
+<span class="fc" id="L293">        return null;</span>
+    }
+
+    private void finalizeOperation(
+            OperationDefinition definition,
+            List&lt;JobWithKey&gt; jobs,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L301">        OperationDefinition persistedDefinition = definition(jobs);</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">        if (!persistedDefinition.equals(definition)) {</span>
+<span class="nc" id="L303">            throw PortfolioException.conflict(</span>
+                    &quot;Copilot operation identity changed while the operation was running&quot;);
+        }
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        if (!operationTerminal(jobs, definition.totalPasses())) return;</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">        if (jobs.stream().anyMatch(entry -&gt;</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">                entry.job().status() == AnalysisStatus.CANCELLED)) {</span>
+<span class="fc" id="L309">            LOGGER.info(</span>
+                    &quot;Copilot operation {} was cancelled; completed immutable snapshots remain archived without promotion&quot;,
+<span class="fc" id="L311">                    definition.operationId());</span>
+<span class="fc" id="L312">            return;</span>
+        }
+<span class="fc" id="L314">        List&lt;SnapshotDetail&gt; snapshots = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">        for (JobWithKey entry : jobs) {</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">            for (AnalysisJobItemView item : entry.job().items()) {</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">                if (item.snapshotId() != null) {</span>
+<span class="fc" id="L318">                    snapshots.add(analysisService.getSnapshot(</span>
+<span class="fc" id="L319">                            definition.projectId(), item.snapshotId(), username, context));</span>
+                }
+<span class="fc" id="L321">            }</span>
+<span class="fc" id="L322">        }</span>
+<span class="fc" id="L323">        resultSelector.select(snapshots).ifPresent(best -&gt; {</span>
+<span class="fc" id="L324">            resultPersistenceService.selectCurrentSnapshot(</span>
+<span class="fc" id="L325">                    definition.projectId(),</span>
+<span class="fc" id="L326">                    definition.requirementId(),</span>
+<span class="fc" id="L327">                    best.summary().id(),</span>
+                    username,
+                    context);
+<span class="fc" id="L330">            completionService.enrich(</span>
+<span class="fc" id="L331">                    definition.projectId(),</span>
+                    username,
+                    context,
+<span class="fc" id="L334">                    definition.proposeSolutions(),</span>
+<span class="fc" id="L335">                    definition.proposeProducts());</span>
+<span class="fc" id="L336">        });</span>
+<span class="fc" id="L337">    }</span>
+
+    private CopilotOperationView view(
+            OperationDefinition definition,
+            List&lt;JobWithKey&gt; entries,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L344">        OperationDefinition persistedDefinition = definition(entries);</span>
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">        if (!persistedDefinition.equals(definition)) {</span>
+<span class="nc" id="L346">            throw PortfolioException.conflict(</span>
+                    &quot;Copilot operation identity changed while rendering its status&quot;);
+        }
+<span class="fc" id="L349">        List&lt;JobWithKey&gt; ordered = entries.stream()</span>
+<span class="fc" id="L350">                .sorted(Comparator.comparingInt(entry -&gt; entry.key().pass()))</span>
+<span class="fc" id="L351">                .toList();</span>
+<span class="fc" id="L352">        List&lt;AnalysisJobView&gt; jobs = ordered.stream().map(JobWithKey::job).toList();</span>
+<span class="fc" id="L353">        AnalysisStatus status = aggregateStatus(ordered, definition.totalPasses());</span>
+<span class="fc" id="L354">        int completed = (int) jobs.stream().filter(job -&gt; isTerminal(job.status())).count();</span>
+<span class="fc" id="L355">        Set&lt;String&gt; snapshots = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L356" title="All 2 branches covered.">        for (AnalysisJobView job : jobs) {</span>
+<span class="fc" id="L357">            job.items().stream().map(AnalysisJobItemView::snapshotId)</span>
+<span class="fc" id="L358">                    .filter(Objects::nonNull).forEach(snapshots::add);</span>
+<span class="fc" id="L359">        }</span>
+<span class="fc" id="L360">        String current = projectService.getRequirement(</span>
+<span class="fc" id="L361">                definition.projectId(), definition.requirementId(), username, context)</span>
+<span class="fc" id="L362">                .currentAnalysisSnapshotId();</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        String selected = snapshots.contains(current) ? current : null;</span>
+<span class="fc" id="L364">        return new CopilotOperationView(</span>
+<span class="fc" id="L365">                definition.operationId(),</span>
+<span class="fc" id="L366">                definition.projectId(),</span>
+<span class="fc" id="L367">                definition.requirementId(),</span>
+<span class="fc" id="L368">                definition.profile(),</span>
+<span class="fc" id="L369">                policy.costPolicy(),</span>
+<span class="fc" id="L370">                definition.autopilot(),</span>
+<span class="fc" id="L371">                definition.provider(),</span>
+<span class="fc" id="L372">                definition.maxArchitectureNodes(),</span>
+<span class="fc" id="L373">                definition.totalPasses(),</span>
+                completed,
+                status,
+<span class="fc" id="L376">                definition.proposeSolutions(),</span>
+<span class="fc" id="L377">                definition.proposeProducts(),</span>
+                selected,
+<span class="fc" id="L379">                message(status, completed, definition.totalPasses()),</span>
+                jobs,
+<span class="fc" id="L381">                automaticSteps(definition),</span>
+                AiAutomationPolicy.HUMAN_REVIEW_REQUIRED);
+    }
+
+    private List&lt;JobWithKey&gt; jobsForOperation(
+            Long projectId,
+            String operationId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L390">        return analysisService.listJobs(projectId, username, context).stream()</span>
+<span class="fc" id="L391">                .map(job -&gt; CopilotOperationKey.parse(job.idempotencyKey())</span>
+<span class="fc" id="L392">                        .map(key -&gt; new JobWithKey(job, key)))</span>
+<span class="fc" id="L393">                .flatMap(Optional::stream)</span>
+<span class="fc" id="L394">                .filter(entry -&gt; entry.key().operationId().equals(operationId))</span>
+<span class="fc" id="L395">                .sorted(Comparator.comparingInt(entry -&gt; entry.key().pass()))</span>
+<span class="fc" id="L396">                .toList();</span>
+    }
+
+    private static OperationDefinition definition(List&lt;JobWithKey&gt; jobs) {
+<span class="pc bpc" id="L400" title="2 of 4 branches missed.">        if (jobs == null || jobs.isEmpty()) {</span>
+<span class="nc" id="L401">            throw PortfolioException.conflict(</span>
+                    &quot;Copilot operation contains no persisted analysis job&quot;);
+        }
+<span class="fc" id="L404">        JobWithKey first = jobs.getFirst();</span>
+<span class="fc" id="L405">        AnalysisJobItemView firstItem = onlyItem(first.job());</span>
+<span class="fc" id="L406">        CopilotOperationKey key = first.key();</span>
+<span class="fc" id="L407">        OperationDefinition expected = new OperationDefinition(</span>
+<span class="fc" id="L408">                key.autopilot(),</span>
+<span class="fc" id="L409">                key.operationId(),</span>
+<span class="fc" id="L410">                first.job().projectId(),</span>
+<span class="fc" id="L411">                firstItem.requirementId(),</span>
+<span class="fc" id="L412">                key.profile(),</span>
+<span class="fc" id="L413">                first.job().provider(),</span>
+<span class="fc" id="L414">                first.job().maxArchitectureNodes(),</span>
+<span class="fc" id="L415">                key.totalPasses(),</span>
+<span class="fc" id="L416">                key.proposeSolutions(),</span>
+<span class="fc" id="L417">                key.proposeProducts());</span>
+<span class="fc" id="L418">        Set&lt;Integer&gt; passes = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L420" title="All 2 branches covered.">        for (JobWithKey entry : jobs) {</span>
+<span class="fc" id="L421">            AnalysisJobView job = entry.job();</span>
+<span class="fc" id="L422">            AnalysisJobItemView item = onlyItem(job);</span>
+<span class="fc" id="L423">            CopilotOperationKey candidate = entry.key();</span>
+<span class="pc bpc" id="L424" title="1 of 2 branches missed.">            boolean consistent = candidate.operationId().equals(expected.operationId())</span>
+<span class="pc bpc" id="L425" title="1 of 2 branches missed.">                    &amp;&amp; candidate.totalPasses() == expected.totalPasses()</span>
+<span class="pc bpc" id="L426" title="1 of 2 branches missed.">                    &amp;&amp; candidate.profile() == expected.profile()</span>
+<span class="pc bpc" id="L427" title="1 of 2 branches missed.">                    &amp;&amp; candidate.autopilot() == expected.autopilot()</span>
+<span class="pc bpc" id="L428" title="1 of 2 branches missed.">                    &amp;&amp; candidate.proposeSolutions() == expected.proposeSolutions()</span>
+<span class="pc bpc" id="L429" title="1 of 2 branches missed.">                    &amp;&amp; candidate.proposeProducts() == expected.proposeProducts()</span>
+<span class="pc bpc" id="L430" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(job.projectId(), expected.projectId())</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">                    &amp;&amp; Objects.equals(item.requirementId(), expected.requirementId())</span>
+<span class="pc bpc" id="L432" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(job.provider(), expected.provider())</span>
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">                    &amp;&amp; job.maxArchitectureNodes() == expected.maxArchitectureNodes();</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">            if (!consistent) {</span>
+<span class="fc" id="L435">                throw PortfolioException.conflict(</span>
+                        &quot;Copilot operation metadata is inconsistent across analysis jobs&quot;);
+            }
+<span class="fc bfc" id="L438" title="All 2 branches covered.">            if (!passes.add(candidate.pass())) {</span>
+<span class="fc" id="L439">                throw PortfolioException.conflict(</span>
+<span class="fc" id="L440">                        &quot;Copilot operation contains duplicate pass &quot; + candidate.pass());</span>
+            }
+<span class="fc" id="L442">        }</span>
+<span class="fc" id="L443">        return expected;</span>
+    }
+
+    private static AnalysisJobItemView onlyItem(AnalysisJobView job) {
+<span class="pc bpc" id="L447" title="1 of 4 branches missed.">        if (job.items() == null || job.items().size() != 1) {</span>
+<span class="fc" id="L448">            throw PortfolioException.conflict(</span>
+                    &quot;Every Copilot analysis pass must contain exactly one requirement item&quot;);
+        }
+<span class="fc" id="L451">        AnalysisJobItemView item = job.items().getFirst();</span>
+<span class="pc bpc" id="L452" title="1 of 4 branches missed.">        if (item == null || item.requirementId() == null) {</span>
+<span class="fc" id="L453">            throw PortfolioException.conflict(</span>
+                    &quot;Copilot analysis job contains no requirement identity&quot;);
+        }
+<span class="fc" id="L456">        return item;</span>
+    }
+
+    private String operationId(
+            Long projectId,
+            RequirementView requirement,
+            AiAutomationPolicy.RunSettings settings,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L465">        RequirementVersionView version = requirement.currentVersion();</span>
+<span class="fc" id="L466">        String material = String.join(&quot;\n&quot;,</span>
+<span class="fc" id="L467">                PortfolioScope.key(username, context),</span>
+<span class="fc" id="L468">                String.valueOf(projectId),</span>
+<span class="fc" id="L469">                String.valueOf(requirement.id()),</span>
+<span class="fc" id="L470">                String.valueOf(version.id()),</span>
+<span class="fc" id="L471">                version.contentHash(),</span>
+<span class="fc" id="L472">                fingerprintService.taxonomyFingerprint(),</span>
+<span class="fc" id="L473">                fingerprintService.promptFingerprint(),</span>
+<span class="fc" id="L474">                settings.provider(),</span>
+<span class="fc" id="L475">                String.valueOf(settings.maxArchitectureNodes()),</span>
+<span class="fc" id="L476">                settings.profile().name(),</span>
+<span class="fc" id="L477">                String.valueOf(settings.verificationPasses()),</span>
+<span class="fc" id="L478">                String.valueOf(settings.proposeSolutions()),</span>
+<span class="fc" id="L479">                String.valueOf(settings.proposeProducts()),</span>
+<span class="pc bpc" id="L480" title="1 of 2 branches missed.">                settings.force() ? UUID.randomUUID().toString() : &quot;stable&quot;);</span>
+        try {
+<span class="fc" id="L482">            return HexFormat.of().formatHex(</span>
+<span class="fc" id="L483">                    MessageDigest.getInstance(&quot;SHA-256&quot;)</span>
+<span class="fc" id="L484">                            .digest(material.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="nc" id="L485">        } catch (NoSuchAlgorithmException impossible) {</span>
+<span class="nc" id="L486">            throw new IllegalStateException(&quot;SHA-256 is unavailable&quot;, impossible);</span>
+        }
+    }
+
+    private static AnalysisStatus aggregateStatus(
+            List&lt;JobWithKey&gt; jobs,
+            int expectedPasses) {
+<span class="fc bfc" id="L493" title="All 4 branches covered.">        if (jobs.stream().anyMatch(entry -&gt; entry.job().status() == AnalysisStatus.RUNNING)) {</span>
+<span class="fc" id="L494">            return AnalysisStatus.RUNNING;</span>
+        }
+<span class="fc bfc" id="L496" title="All 4 branches covered.">        if (jobs.stream().anyMatch(entry -&gt; entry.job().status() == AnalysisStatus.PENDING)) {</span>
+<span class="fc" id="L497">            return AnalysisStatus.PENDING;</span>
+        }
+<span class="fc bfc" id="L499" title="All 4 branches covered.">        if (jobs.stream().anyMatch(entry -&gt; entry.job().status() == AnalysisStatus.CANCELLED)) {</span>
+<span class="fc" id="L500">            return AnalysisStatus.CANCELLED;</span>
+        }
+<span class="fc bfc" id="L502" title="All 2 branches covered.">        if (jobs.size() &lt; expectedPasses) return AnalysisStatus.PENDING;</span>
+<span class="fc" id="L503">        long success = jobs.stream()</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">                .filter(entry -&gt; entry.job().status() == AnalysisStatus.SUCCESS).count();</span>
+<span class="fc" id="L505">        long partial = jobs.stream()</span>
+<span class="fc bfc" id="L506" title="All 2 branches covered.">                .filter(entry -&gt; entry.job().status() == AnalysisStatus.PARTIAL).count();</span>
+<span class="fc" id="L507">        long failed = jobs.stream()</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">                .filter(entry -&gt; entry.job().status() == AnalysisStatus.FAILED).count();</span>
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        if (success == expectedPasses) return AnalysisStatus.SUCCESS;</span>
+<span class="pc bpc" id="L510" title="1 of 4 branches missed.">        if (success &gt; 0 || partial &gt; 0) return AnalysisStatus.PARTIAL;</span>
+<span class="pc bpc" id="L511" title="1 of 2 branches missed.">        if (failed == expectedPasses) return AnalysisStatus.FAILED;</span>
+<span class="nc" id="L512">        return AnalysisStatus.PENDING;</span>
+    }
+
+    private static boolean operationTerminal(List&lt;JobWithKey&gt; jobs, int expectedPasses) {
+<span class="fc bfc" id="L516" title="All 4 branches covered.">        if (jobs.stream().anyMatch(entry -&gt; entry.job().status() == AnalysisStatus.CANCELLED)) {</span>
+<span class="fc" id="L517">            return true;</span>
+        }
+<span class="fc bfc" id="L519" title="All 2 branches covered.">        return jobs.size() == expectedPasses</span>
+<span class="fc bfc" id="L520" title="All 2 branches covered.">                &amp;&amp; jobs.stream().allMatch(entry -&gt; isTerminal(entry.job().status()));</span>
+    }
+
+    private static boolean isTerminal(AnalysisStatus status) {
+<span class="fc bfc" id="L524" title="All 8 branches covered.">        return status == AnalysisStatus.SUCCESS</span>
+                || status == AnalysisStatus.PARTIAL
+                || status == AnalysisStatus.FAILED
+                || status == AnalysisStatus.CANCELLED;
+    }
+
+    private static String message(AnalysisStatus status, int completed, int total) {
+<span class="fc bfc" id="L531" title="All 6 branches covered.">        return switch (status) {</span>
+<span class="fc" id="L532">            case PENDING -&gt; &quot;Copilot is queued (&quot; + completed + &quot;/&quot; + total + &quot; passes complete).&quot;;</span>
+<span class="fc" id="L533">            case RUNNING -&gt; &quot;Copilot is analyzing the requirement (&quot; + completed + &quot;/&quot; + total</span>
+                    + &quot; passes complete).&quot;;
+<span class="fc" id="L535">            case SUCCESS -&gt; &quot;Full analysis is complete and ready for human review.&quot;;</span>
+<span class="fc" id="L536">            case PARTIAL -&gt; &quot;Analysis completed with partial results; review warnings and failed passes.&quot;;</span>
+<span class="fc" id="L537">            case FAILED -&gt; &quot;All Copilot passes failed. The persisted jobs can be retried safely.&quot;;</span>
+<span class="fc" id="L538">            case CANCELLED -&gt; &quot;Copilot was cancelled. Completed immutable snapshots remain available.&quot;;</span>
+        };
+    }
+
+    private static List&lt;String&gt; automaticSteps(OperationDefinition definition) {
+<span class="fc" id="L543">        List&lt;String&gt; steps = new ArrayList&lt;&gt;(AiAutomationPolicy.AUTOMATIC_STEPS.subList(0, 6));</span>
+<span class="fc bfc" id="L544" title="All 2 branches covered.">        if (definition.proposeSolutions()) {</span>
+<span class="fc" id="L545">            steps.add(AiAutomationPolicy.AUTOMATIC_STEPS.get(6));</span>
+        }
+<span class="fc bfc" id="L547" title="All 2 branches covered.">        if (definition.proposeProducts()) {</span>
+<span class="fc" id="L548">            steps.add(AiAutomationPolicy.AUTOMATIC_STEPS.get(7));</span>
+        }
+<span class="fc" id="L550">        return List.copyOf(steps);</span>
+    }
+
+<span class="fc" id="L553">    private record JobWithKey(AnalysisJobView job, CopilotOperationKey key) {</span>
+    }
+
+<span class="fc" id="L556">    private record OperationDefinition(</span>
+            boolean autopilot,
+            String operationId,
+            Long projectId,
+            Long requirementId,
+            com.taxonomy.portfolio.model.AnalysisAutomationProfile profile,
+            String provider,
+            int maxArchitectureNodes,
+            int totalPasses,
+            boolean proposeSolutions,
+            boolean proposeProducts) {
+
+        CopilotOperationKey key(int pass) {
+<span class="fc" id="L569">            return new CopilotOperationKey(</span>
+                    autopilot,
+                    operationId,
+                    pass,
+                    totalPasses,
+                    profile,
+                    proposeSolutions,
+                    proposeProducts);
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

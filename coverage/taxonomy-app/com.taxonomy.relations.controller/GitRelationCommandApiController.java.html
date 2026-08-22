@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitRelationCommandApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">GitRelationCommandApiController.java</span></div><h1>GitRelationCommandApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
+import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.ReadOnlyRepositoryContextException;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.MutationResult;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.ProjectionPendingException;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Git-authoritative relation mutation API.
+ *
+ * &lt;p&gt;Existing branches require one strong {@code If-Match} commit ETag. Branch
+ * creation requires {@code If-None-Match: *}. The authoritative commit is
+ * returned as the response ETag; the database projection can never precede it.&lt;/p&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/architecture/relations&quot;)
+@Tag(name = &quot;Git-authoritative relations&quot;)
+public class GitRelationCommandApiController {
+
+    private static final String IDEMPOTENCY_KEY = &quot;Idempotency-Key&quot;;
+
+    private final GitAuthoritativeRelationMutationService mutationService;
+    private final WorkspaceResolver workspaceResolver;
+    private final SystemRepositoryService repositoryService;
+    private final RepositoryMembershipService membershipService;
+
+    public GitRelationCommandApiController(
+            GitAuthoritativeRelationMutationService mutationService,
+            WorkspaceResolver workspaceResolver,
+            SystemRepositoryService repositoryService,
+<span class="fc" id="L62">            RepositoryMembershipService membershipService) {</span>
+<span class="fc" id="L63">        this.mutationService = mutationService;</span>
+<span class="fc" id="L64">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L65">        this.repositoryService = repositoryService;</span>
+<span class="fc" id="L66">        this.membershipService = membershipService;</span>
+<span class="fc" id="L67">    }</span>
+
+    @Operation(summary = &quot;Add or update one relation through an exact Git commit&quot;)
+    @PutMapping(&quot;/{sourceCode}/{relationType}/{targetCode}&quot;)
+    public ResponseEntity&lt;MutationResponse&gt; upsert(
+            @PathVariable String sourceCode,
+            @PathVariable String relationType,
+            @PathVariable String targetCode,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
+            String ifNoneMatch,
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = true)
+            String causationId,
+            @RequestBody(required = false) MutationBody body) {
+        try {
+<span class="fc" id="L83">            RepositoryContext context = writableContext(</span>
+<span class="fc" id="L84">                    workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">            if (context == null) {</span>
+<span class="nc" id="L86">                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+            }
+<span class="fc" id="L88">            String expectedHead = GitHttpPrecondition.expectedHead(</span>
+                    ifMatch, ifNoneMatch);
+<span class="fc" id="L90">            RelationIdentity identity = identity(</span>
+                    sourceCode, relationType, targetCode);
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            MutationBody payload = body == null ? MutationBody.EMPTY : body;</span>
+<span class="fc" id="L93">            MutationResult result = mutationService.upsert(</span>
+                    context,
+                    expectedHead,
+                    new RelationDefinition(
+                            identity,
+<span class="fc" id="L98">                            payload.status(),</span>
+<span class="fc" id="L99">                            payload.confidence(),</span>
+<span class="fc" id="L100">                            payload.provenance(),</span>
+<span class="fc" id="L101">                            payload.extensions()),</span>
+<span class="fc" id="L102">                    new CommandMetadata(causationId, payload.rationale()));</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            HttpStatus status = result.authority().changeKind() == ChangeKind.ADDED</span>
+<span class="fc" id="L104">                    ? HttpStatus.CREATED : HttpStatus.OK;</span>
+<span class="fc" id="L105">            return authoritative(status, result);</span>
+<span class="fc" id="L106">        } catch (GitHttpPrecondition.PreconditionRequiredException error) {</span>
+<span class="fc" id="L107">            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();</span>
+<span class="nc" id="L108">        } catch (BranchHeadConflictException error) {</span>
+<span class="nc" id="L109">            return preconditionFailed(error);</span>
+<span class="nc" id="L110">        } catch (ProjectionPendingException error) {</span>
+<span class="nc" id="L111">            return projectionPending(error.getAuthority());</span>
+<span class="nc" id="L112">        } catch (ReadOnlyRepositoryContextException error) {</span>
+<span class="nc" id="L113">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+<span class="nc" id="L114">        } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L115">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L116">        } catch (IllegalStateException error) {</span>
+<span class="nc" id="L117">            return ResponseEntity.status(HttpStatus.CONFLICT).build();</span>
+<span class="nc" id="L118">        } catch (IOException error) {</span>
+<span class="nc" id="L119">            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();</span>
+        }
+    }
+
+    @Operation(summary = &quot;Remove one relation through an exact Git commit&quot;)
+    @DeleteMapping(&quot;/{sourceCode}/{relationType}/{targetCode}&quot;)
+    public ResponseEntity&lt;MutationResponse&gt; remove(
+            @PathVariable String sourceCode,
+            @PathVariable String relationType,
+            @PathVariable String targetCode,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false)
+            String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false)
+            String ifNoneMatch,
+            @RequestHeader(value = IDEMPOTENCY_KEY, required = true)
+            String causationId) {
+        try {
+<span class="fc" id="L136">            RepositoryContext context = writableContext(</span>
+<span class="fc" id="L137">                    workspaceResolver.resolveCurrentRepositoryContext());</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">            if (context == null) {</span>
+<span class="nc" id="L139">                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+            }
+<span class="fc" id="L141">            String expectedHead = GitHttpPrecondition.expectedHead(</span>
+                    ifMatch, ifNoneMatch);
+<span class="pc" id="L143">            MutationResult result = mutationService.remove(</span>
+                    context,
+                    expectedHead,
+<span class="fc" id="L146">                    identity(sourceCode, relationType, targetCode),</span>
+                    new CommandMetadata(causationId));
+<span class="nc" id="L148">            return authoritative(HttpStatus.OK, result);</span>
+<span class="nc" id="L149">        } catch (GitHttpPrecondition.PreconditionRequiredException error) {</span>
+<span class="nc" id="L150">            return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED).build();</span>
+<span class="nc" id="L151">        } catch (BranchHeadConflictException error) {</span>
+<span class="nc" id="L152">            return preconditionFailed(error);</span>
+<span class="fc" id="L153">        } catch (ProjectionPendingException error) {</span>
+<span class="fc" id="L154">            return projectionPending(error.getAuthority());</span>
+<span class="nc" id="L155">        } catch (ReadOnlyRepositoryContextException error) {</span>
+<span class="nc" id="L156">            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();</span>
+<span class="nc" id="L157">        } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L158">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L159">        } catch (IllegalStateException error) {</span>
+<span class="nc" id="L160">            return ResponseEntity.status(HttpStatus.CONFLICT).build();</span>
+<span class="nc" id="L161">        } catch (IOException error) {</span>
+<span class="nc" id="L162">            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();</span>
+        }
+    }
+
+    private static RelationIdentity identity(
+            String sourceCode,
+            String relationType,
+            String targetCode) {
+<span class="fc" id="L170">        RelationType type = RelationType.valueOf(</span>
+<span class="fc" id="L171">                relationType.strip().toUpperCase(Locale.ROOT));</span>
+<span class="fc" id="L172">        return new RelationIdentity(sourceCode, type.name(), targetCode);</span>
+    }
+
+    private static ResponseEntity&lt;MutationResponse&gt; authoritative(
+            HttpStatus status,
+            MutationResult result) {
+<span class="fc" id="L178">        CommandResult authority = result.authority();</span>
+<span class="fc" id="L179">        return ResponseEntity.status(status)</span>
+<span class="fc" id="L180">                .header(HttpHeaders.ETAG,</span>
+<span class="fc" id="L181">                        GitHttpPrecondition.etag(</span>
+<span class="fc" id="L182">                                authority.authoritativeCommitId()))</span>
+<span class="fc" id="L183">                .body(MutationResponse.projected(result));</span>
+    }
+
+    private static ResponseEntity&lt;MutationResponse&gt; projectionPending(
+            CommandResult authority) {
+<span class="fc" id="L188">        return ResponseEntity.status(HttpStatus.ACCEPTED)</span>
+<span class="fc" id="L189">                .header(HttpHeaders.ETAG,</span>
+<span class="fc" id="L190">                        GitHttpPrecondition.etag(</span>
+<span class="fc" id="L191">                                authority.authoritativeCommitId()))</span>
+<span class="fc" id="L192">                .body(MutationResponse.pending(authority));</span>
+    }
+
+    private static ResponseEntity&lt;MutationResponse&gt; preconditionFailed(
+            BranchHeadConflictException error) {
+<span class="nc" id="L197">        ResponseEntity.BodyBuilder response = ResponseEntity.status(</span>
+                HttpStatus.PRECONDITION_FAILED);
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        if (error.getActualHeadCommit() != null) {</span>
+<span class="nc" id="L200">            response.header(</span>
+                    HttpHeaders.ETAG,
+<span class="nc" id="L202">                    GitHttpPrecondition.etag(</span>
+<span class="nc" id="L203">                            error.getActualHeadCommit()));</span>
+        }
+<span class="nc" id="L205">        return response.body(MutationResponse.conflict(error));</span>
+    }
+
+    /** Preserve isolated write scopes; authorize central reads before upgrading. */
+    private RepositoryContext writableContext(RepositoryContext context) {
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        if (context.scope() == RepositoryScope.WORKSPACE</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">                || context.scope() == RepositoryScope.FORK) {</span>
+<span class="fc" id="L212">            return context;</span>
+        }
+<span class="nc" id="L214">        SystemRepository repository = repositoryService.getRepository(</span>
+<span class="nc" id="L215">                context.repositoryId());</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (!isApplicationAdmin()</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">                &amp;&amp; !membershipService.canMaintain(</span>
+<span class="nc" id="L218">                        repository, context.username())) {</span>
+<span class="nc" id="L219">            return null;</span>
+        }
+<span class="nc" id="L221">        return new RepositoryContext(</span>
+<span class="nc" id="L222">                context.repositoryId(),</span>
+                null,
+<span class="nc" id="L224">                context.branch(),</span>
+<span class="nc" id="L225">                context.username(),</span>
+                RepositoryScope.CENTRAL_WRITE);
+    }
+
+    private static boolean isApplicationAdmin() {
+<span class="nc" id="L230">        Authentication authentication = SecurityContextHolder.getContext()</span>
+<span class="nc" id="L231">                .getAuthentication();</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">        return authentication != null</span>
+<span class="nc" id="L233">                &amp;&amp; authentication.getAuthorities().stream()</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">                .anyMatch(authority -&gt; &quot;ROLE_ADMIN&quot;.equals(</span>
+<span class="nc" id="L235">                        authority.getAuthority()));</span>
+    }
+
+    public record MutationBody(
+            String status,
+            Double confidence,
+            String provenance,
+            Map&lt;String, String&gt; extensions,
+            String rationale) {
+<span class="fc" id="L244">        private static final MutationBody EMPTY = new MutationBody(</span>
+<span class="fc" id="L245">                null, null, null, Map.of(), null);</span>
+
+<span class="fc" id="L247">        public MutationBody {</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">            extensions = extensions == null ? Map.of() : Map.copyOf(extensions);</span>
+<span class="fc" id="L249">        }</span>
+    }
+
+<span class="fc" id="L252">    public record MutationResponse(</span>
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String scope,
+            String previousHeadCommit,
+            String authoritativeCommitId,
+            String changeKind,
+            boolean commitCreated,
+            String causationId,
+            String projectionStatus,
+            String projectionOutcome,
+            Boolean relationPresent,
+            String expectedHeadCommit,
+            String actualHeadCommit) {
+
+        static MutationResponse projected(MutationResult result) {
+<span class="fc" id="L269">            CommandResult authority = result.authority();</span>
+<span class="fc" id="L270">            return new MutationResponse(</span>
+<span class="fc" id="L271">                    authority.repositoryId(),</span>
+<span class="fc" id="L272">                    authority.workspaceId(),</span>
+<span class="fc" id="L273">                    authority.branch(),</span>
+<span class="fc" id="L274">                    authority.scope().name(),</span>
+<span class="fc" id="L275">                    authority.previousHeadCommit(),</span>
+<span class="fc" id="L276">                    authority.authoritativeCommitId(),</span>
+<span class="fc" id="L277">                    authority.changeKind().name(),</span>
+<span class="fc" id="L278">                    authority.commitCreated(),</span>
+<span class="fc" id="L279">                    authority.causationId(),</span>
+                    &quot;PROJECTED&quot;,
+<span class="fc" id="L281">                    result.projection().outcome().name(),</span>
+<span class="fc" id="L282">                    result.projection().relationPresent(),</span>
+                    null,
+                    null);
+        }
+
+        static MutationResponse pending(CommandResult authority) {
+<span class="fc" id="L288">            return new MutationResponse(</span>
+<span class="fc" id="L289">                    authority.repositoryId(),</span>
+<span class="fc" id="L290">                    authority.workspaceId(),</span>
+<span class="fc" id="L291">                    authority.branch(),</span>
+<span class="fc" id="L292">                    authority.scope().name(),</span>
+<span class="fc" id="L293">                    authority.previousHeadCommit(),</span>
+<span class="fc" id="L294">                    authority.authoritativeCommitId(),</span>
+<span class="fc" id="L295">                    authority.changeKind().name(),</span>
+<span class="fc" id="L296">                    authority.commitCreated(),</span>
+<span class="fc" id="L297">                    authority.causationId(),</span>
+                    &quot;PENDING_REBUILD&quot;,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        static MutationResponse conflict(BranchHeadConflictException error) {
+<span class="nc" id="L306">            return new MutationResponse(</span>
+                    null,
+                    null,
+<span class="nc" id="L309">                    error.getBranch(),</span>
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    null,
+                    &quot;PRECONDITION_FAILED&quot;,
+                    null,
+                    null,
+<span class="nc" id="L319">                    error.getExpectedHeadCommit(),</span>
+<span class="nc" id="L320">                    error.getActualHeadCommit());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CopilotDtos.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.dto</a> &gt; <span class="el_source">CopilotDtos.java</span></div><h1>CopilotDtos.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.dto;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.model.AiCostPolicy;
+import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+
+import java.util.List;
+
+/** API contracts for persisted Copilot and explicitly enabled Autopilot operations. */
+public final class CopilotDtos {
+
+    private CopilotDtos() {
+    }
+
+<span class="fc" id="L16">    public record CopilotRunRequest(</span>
+            String provider,
+            Integer maxArchitectureNodes,
+            AnalysisAutomationProfile profile,
+            Integer verificationPasses,
+            Boolean force,
+            Boolean proposeSolutions,
+            Boolean proposeProducts) {
+
+        public boolean forceRun() {
+<span class="fc" id="L26">            return Boolean.TRUE.equals(force);</span>
+        }
+    }
+
+<span class="fc" id="L30">    public record ProjectAutopilotRunRequest(</span>
+            List&lt;Long&gt; requirementIds,
+            Integer maxRequirements) {
+    }
+
+<span class="fc" id="L35">    public record ProjectAutopilotStatus(</span>
+            Long projectId,
+            boolean autopilotReady,
+            boolean runAfterRequirementSave,
+            int requirementCount,
+            int maximumBatchRequirements,
+            String reason) {
+    }
+
+<span class="fc" id="L44">    public record ProjectAutopilotRunView(</span>
+            Long projectId,
+            int selectedRequirements,
+            int operationsStarted,
+            List&lt;String&gt; operationIds,
+            String message) {
+    }
+
+<span class="fc" id="L52">    public record AiAutomationStatus(</span>
+            AiCostPolicy costPolicy,
+            boolean manualCopilotReady,
+            boolean autopilotEnabled,
+            boolean autopilotReady,
+            boolean runAfterRequirementSave,
+            String activeProvider,
+            String autopilotProvider,
+            AnalysisAutomationProfile copilotProfile,
+            AnalysisAutomationProfile autopilotProfile,
+            int copilotVerificationPasses,
+            int autopilotVerificationPasses,
+            int maxArchitectureNodes,
+            String reason,
+            List&lt;String&gt; automaticSteps,
+            List&lt;String&gt; humanReviewRequired) {
+    }
+
+<span class="fc" id="L70">    public record CopilotOperationView(</span>
+            String operationId,
+            Long projectId,
+            Long requirementId,
+            AnalysisAutomationProfile profile,
+            AiCostPolicy costPolicy,
+            boolean autopilot,
+            String provider,
+            int maxArchitectureNodes,
+            int verificationPasses,
+            int completedPasses,
+            AnalysisStatus status,
+            boolean proposeSolutions,
+            boolean proposeProducts,
+            String selectedSnapshotId,
+            String message,
+            List&lt;AnalysisJobView&gt; jobs,
+            List&lt;String&gt; automaticSteps,
+            List&lt;String&gt; humanReviewRequired) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

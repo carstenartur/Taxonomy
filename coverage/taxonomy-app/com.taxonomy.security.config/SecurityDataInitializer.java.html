@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SecurityDataInitializer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">SecurityDataInitializer.java</span></div><h1>SecurityDataInitializer.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import com.taxonomy.security.model.AppRole;
+import com.taxonomy.security.model.AppUser;
+import com.taxonomy.security.repository.RoleRepository;
+import com.taxonomy.security.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.security.SecureRandom;
+import java.util.Base64;
+import java.util.Set;
+
+/** Seeds local roles and an explicitly configured or one-time administrator. */
+@Component
+@Profile(&quot;!keycloak&quot;)
+@Order(Ordered.LOWEST_PRECEDENCE)
+public class SecurityDataInitializer implements ApplicationRunner {
+
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(SecurityDataInitializer.class);</span>
+<span class="fc" id="L30">    private static final SecureRandom SECURE_RANDOM = new SecureRandom();</span>
+
+    private final RoleRepository roleRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final String configuredAdminPassword;
+    private final boolean requirePasswordChange;
+
+    public SecurityDataInitializer(RoleRepository roleRepository,
+                                   UserRepository userRepository,
+                                   PasswordEncoder passwordEncoder,
+                                   @Value(&quot;${taxonomy.admin-password:}&quot;) String configuredAdminPassword,
+                                   @Value(&quot;${taxonomy.security.require-password-change:true}&quot;)
+<span class="fc" id="L43">                                   boolean requirePasswordChange) {</span>
+<span class="fc" id="L44">        this.roleRepository = roleRepository;</span>
+<span class="fc" id="L45">        this.userRepository = userRepository;</span>
+<span class="fc" id="L46">        this.passwordEncoder = passwordEncoder;</span>
+<span class="fc" id="L47">        this.configuredAdminPassword = configuredAdminPassword;</span>
+<span class="fc" id="L48">        this.requirePasswordChange = requirePasswordChange;</span>
+<span class="fc" id="L49">    }</span>
+
+    @Override
+    @Transactional
+    public void run(ApplicationArguments args) {
+<span class="fc" id="L54">        AppRole roleUser = findOrCreateRole(&quot;ROLE_USER&quot;);</span>
+<span class="fc" id="L55">        AppRole roleArchitect = findOrCreateRole(&quot;ROLE_ARCHITECT&quot;);</span>
+<span class="fc" id="L56">        AppRole roleAdmin = findOrCreateRole(&quot;ROLE_ADMIN&quot;);</span>
+
+<span class="fc" id="L58">        AppUser admin = userRepository.findByUsername(&quot;admin&quot;).orElse(null);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (admin == null) {</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">            boolean generatedBootstrapPassword = configuredAdminPassword == null</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">                    || configuredAdminPassword.isBlank();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            String effectivePassword = generatedBootstrapPassword</span>
+<span class="fc" id="L63">                    ? generateBootstrapPassword()</span>
+<span class="fc" id="L64">                    : configuredAdminPassword;</span>
+
+<span class="fc" id="L66">            admin = new AppUser();</span>
+<span class="fc" id="L67">            admin.setUsername(&quot;admin&quot;);</span>
+<span class="fc" id="L68">            admin.setPasswordHash(passwordEncoder.encode(effectivePassword));</span>
+<span class="fc" id="L69">            admin.setEnabled(true);</span>
+<span class="fc" id="L70">            admin.setDisplayName(&quot;Administrator&quot;);</span>
+<span class="fc" id="L71">            admin.setRoles(Set.of(roleUser, roleArchitect, roleAdmin));</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">            admin.setMustChangePassword(generatedBootstrapPassword || requirePasswordChange);</span>
+<span class="fc" id="L73">            userRepository.save(admin);</span>
+
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (generatedBootstrapPassword) {</span>
+<span class="fc" id="L76">                log.warn(&quot;Generated a one-time local administrator bootstrap password. &quot;</span>
+                                + &quot;Sign in as 'admin' with this value and replace it immediately: {}&quot;,
+                        effectivePassword);
+            } else {
+<span class="fc" id="L80">                log.info(&quot;Created configured administrator account &quot;</span>
+                                + &quot;(passwordChangeRequired={}).&quot;,
+<span class="fc" id="L82">                        requirePasswordChange);</span>
+            }
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        } else if (!admin.isMustChangePassword()</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">                &amp;&amp; passwordEncoder.matches(&quot;admin&quot;, admin.getPasswordHash())) {</span>
+            // One-time migration for accounts created by historic releases with
+            // the removed built-in credential. Do not re-lock normal accounts on
+            // every application restart.
+<span class="fc" id="L89">            admin.setMustChangePassword(true);</span>
+<span class="fc" id="L90">            userRepository.save(admin);</span>
+<span class="fc" id="L91">            log.warn(&quot;Detected a legacy administrator credential and required replacement.&quot;);</span>
+        }
+<span class="fc" id="L93">    }</span>
+
+    private AppRole findOrCreateRole(String name) {
+<span class="fc" id="L96">        return roleRepository.findByName(name)</span>
+<span class="fc" id="L97">                .orElseGet(() -&gt; roleRepository.save(new AppRole(name)));</span>
+    }
+
+    private static String generateBootstrapPassword() {
+<span class="fc" id="L101">        byte[] entropy = new byte[24];</span>
+<span class="fc" id="L102">        SECURE_RANDOM.nextBytes(entropy);</span>
+<span class="fc" id="L103">        return Base64.getUrlEncoder().withoutPadding().encodeToString(entropy);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

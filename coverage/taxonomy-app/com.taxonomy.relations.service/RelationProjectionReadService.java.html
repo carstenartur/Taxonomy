@@ -1,0 +1,400 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationProjectionReadService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationProjectionReadService.java</span></div><h1>RelationProjectionReadService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationDecisionProjection;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
+
+/**
+ * Product read boundary for relation decisions.
+ *
+ * &lt;p&gt;A complete branch projection is the normal source. The only compatibility
+ * fallback is the historic primary repository's configured default branch while
+ * no projection has ever been built and no failed Git-authoritative projection
+ * is pending. Stale, corrupt, branch-missing, workspace and fork projections
+ * fail closed instead of exposing an unrelated legacy overlay.&lt;/p&gt;
+ */
+@Service
+public class RelationProjectionReadService {
+
+<span class="fc" id="L42">    private static final Logger log = LoggerFactory.getLogger(</span>
+            RelationProjectionReadService.class);
+
+    private final RelationBranchProjectionReadinessService readinessService;
+    private final RelationProjectionRecoveryService recoveryService;
+    private final TaxonomyRelationService legacyRelationService;
+    private final TaxonomyNodeRepository nodeRepository;
+    private final SystemRepositoryService repositoryService;
+<span class="fc" id="L50">    private final Set&lt;String&gt; reportedFallbacks = ConcurrentHashMap.newKeySet();</span>
+
+    public RelationProjectionReadService(
+            RelationBranchProjectionReadinessService readinessService,
+            RelationProjectionRecoveryService recoveryService,
+            TaxonomyRelationService legacyRelationService,
+            TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L57">            SystemRepositoryService repositoryService) {</span>
+<span class="fc" id="L58">        this.readinessService = Objects.requireNonNull(</span>
+                readinessService, &quot;readinessService&quot;);
+<span class="fc" id="L60">        this.recoveryService = Objects.requireNonNull(</span>
+                recoveryService, &quot;recoveryService&quot;);
+<span class="fc" id="L62">        this.legacyRelationService = Objects.requireNonNull(</span>
+                legacyRelationService, &quot;legacyRelationService&quot;);
+<span class="fc" id="L64">        this.nodeRepository = Objects.requireNonNull(</span>
+                nodeRepository, &quot;nodeRepository&quot;);
+<span class="fc" id="L66">        this.repositoryService = Objects.requireNonNull(</span>
+                repositoryService, &quot;repositoryService&quot;);
+<span class="fc" id="L68">    }</span>
+
+    public ReadResult readAll(RepositoryContext context) {
+<span class="fc" id="L71">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L72">        return read(</span>
+                selected,
+<span class="fc" id="L74">                ignored -&gt; true,</span>
+<span class="fc" id="L75">                () -&gt; legacyRelationService.getAllRelationsInContext(selected));</span>
+    }
+
+    public ReadResult readByType(
+            RepositoryContext context,
+            RelationType relationType) {
+<span class="fc" id="L81">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L82">        RelationType type = Objects.requireNonNull(</span>
+                relationType, &quot;relationType&quot;);
+<span class="fc" id="L84">        return read(</span>
+                selected,
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                row -&gt; row.getRelationType() == type,</span>
+<span class="fc" id="L87">                () -&gt; legacyRelationService.getRelationsByTypeInContext(</span>
+                        type, selected));
+    }
+
+    public ReadResult readForNode(
+            RepositoryContext context,
+            String nodeCode) {
+<span class="fc" id="L94">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L95">        String code = requireText(nodeCode, &quot;nodeCode&quot;);</span>
+<span class="fc" id="L96">        return read(</span>
+                selected,
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                row -&gt; code.equals(row.getSourceCode())</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                        || code.equals(row.getTargetCode()),</span>
+<span class="fc" id="L100">                () -&gt; legacyRelationService.getRelationsForNodeInContext(</span>
+                        code, selected));
+    }
+
+    /** Count from the same proven source without allocating relation DTOs. */
+    public CountResult count(RepositoryContext context) {
+<span class="fc" id="L106">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L107">        ResolvedSource source = resolveSource(selected);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        long count = source.readModel() == ReadModel.PROJECTION</span>
+<span class="fc" id="L109">                ? source.readiness().rows().size()</span>
+<span class="fc" id="L110">                : legacyRelationService.countRelationsInContext(selected);</span>
+<span class="fc" id="L111">        return new CountResult(</span>
+<span class="fc" id="L112">                source.readModel(),</span>
+<span class="fc" id="L113">                source.readiness().state(),</span>
+<span class="fc" id="L114">                source.readiness().currentHeadCommit(),</span>
+                count);
+    }
+
+    /**
+     * Resolve one immutable relation-identity snapshot for proposal duplicate
+     * validation without loading node names or allocating relation DTOs for a
+     * ready projection.
+     */
+    public IdentitySnapshot readIdentitySnapshot(RepositoryContext context) {
+<span class="fc" id="L124">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L125">        ResolvedSource source = resolveSource(selected);</span>
+<span class="fc" id="L126">        Set&lt;RelationIdentity&gt; identities = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (source.readModel() == ReadModel.PROJECTION) {</span>
+<span class="fc" id="L128">            source.readiness().rows().forEach(row -&gt; identities.add(</span>
+                    new RelationIdentity(
+<span class="fc" id="L130">                            row.getSourceCode(),</span>
+<span class="fc" id="L131">                            row.getRelationType(),</span>
+<span class="fc" id="L132">                            row.getTargetCode())));</span>
+        } else {
+<span class="fc" id="L134">            legacyRelationService.getAllRelationsInContext(selected)</span>
+<span class="fc" id="L135">                    .forEach(relation -&gt; identities.add(new RelationIdentity(</span>
+<span class="fc" id="L136">                            relation.getSourceCode(),</span>
+<span class="fc" id="L137">                            RelationType.valueOf(relation.getRelationType()),</span>
+<span class="fc" id="L138">                            relation.getTargetCode())));</span>
+        }
+<span class="fc" id="L140">        return new IdentitySnapshot(</span>
+<span class="fc" id="L141">                source.readModel(),</span>
+<span class="fc" id="L142">                source.readiness().state(),</span>
+<span class="fc" id="L143">                source.readiness().currentHeadCommit(),</span>
+                identities);
+    }
+
+    private ReadResult read(
+            RepositoryContext selected,
+            Predicate&lt;RelationDecisionProjection&gt; projectionFilter,
+            Supplier&lt;List&lt;TaxonomyRelationDto&gt;&gt; legacyRead) {
+<span class="fc" id="L151">        ResolvedSource source = resolveSource(selected);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (source.readModel() == ReadModel.PROJECTION) {</span>
+<span class="fc" id="L153">            List&lt;RelationDecisionProjection&gt; selectedRows = source.readiness()</span>
+<span class="fc" id="L154">                    .rows()</span>
+<span class="fc" id="L155">                    .stream()</span>
+<span class="fc" id="L156">                    .filter(projectionFilter)</span>
+<span class="fc" id="L157">                    .toList();</span>
+<span class="fc" id="L158">            return new ReadResult(</span>
+<span class="fc" id="L159">                    source.readModel(),</span>
+<span class="fc" id="L160">                    source.readiness().state(),</span>
+<span class="fc" id="L161">                    source.readiness().currentHeadCommit(),</span>
+<span class="fc" id="L162">                    projectionDtos(selectedRows));</span>
+        }
+<span class="fc" id="L164">        return new ReadResult(</span>
+<span class="fc" id="L165">                source.readModel(),</span>
+<span class="fc" id="L166">                source.readiness().state(),</span>
+<span class="fc" id="L167">                source.readiness().currentHeadCommit(),</span>
+<span class="fc" id="L168">                legacyRead.get());</span>
+    }
+
+    /** One authority/fallback decision shared by list, count and identity reads. */
+    private ResolvedSource resolveSource(RepositoryContext selected) {
+<span class="fc" id="L173">        Readiness readiness = readinessService.inspect(selected);</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (readiness.state() == ReadinessState.READY) {</span>
+<span class="fc" id="L175">            return new ResolvedSource(ReadModel.PROJECTION, readiness);</span>
+        }
+
+<span class="fc" id="L178">        long pendingRecoveries = recoveryService.pendingCount(selected);</span>
+<span class="fc bfc" id="L179" title="All 4 branches covered.">        if (readiness.state() == ReadinessState.NOT_BUILT</span>
+                &amp;&amp; pendingRecoveries == 0
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                &amp;&amp; mayUseLegacyFallback(selected)) {</span>
+<span class="fc" id="L182">            reportFallback(selected);</span>
+<span class="fc" id="L183">            return new ResolvedSource(ReadModel.LEGACY_FALLBACK, readiness);</span>
+        }
+
+<span class="fc" id="L186">        throw unavailable(selected, readiness, pendingRecoveries);</span>
+    }
+
+    private static RelationProjectionUnavailableException unavailable(
+            RepositoryContext selected,
+            Readiness readiness,
+            long pendingRecoveries) {
+<span class="fc" id="L193">        return new RelationProjectionUnavailableException(</span>
+                selected,
+<span class="fc" id="L195">                readiness.state(),</span>
+<span class="fc" id="L196">                readiness.currentHeadCommit(),</span>
+<span class="fc" id="L197">                readiness.projectedCommit(),</span>
+                pendingRecoveries);
+    }
+
+    private List&lt;TaxonomyRelationDto&gt; projectionDtos(
+            List&lt;RelationDecisionProjection&gt; rows) {
+<span class="fc" id="L203">        List&lt;RelationDecisionProjection&gt; projections = List.copyOf(rows);</span>
+<span class="fc" id="L204">        Set&lt;String&gt; codes = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L205">        projections.forEach(row -&gt; {</span>
+<span class="fc" id="L206">            codes.add(row.getSourceCode());</span>
+<span class="fc" id="L207">            codes.add(row.getTargetCode());</span>
+<span class="fc" id="L208">        });</span>
+<span class="fc" id="L209">        Map&lt;String, String&gt; names = names(codes);</span>
+<span class="fc" id="L210">        return projections.stream()</span>
+<span class="fc" id="L211">                .map(row -&gt; projectionDto(row, names))</span>
+<span class="fc" id="L212">                .toList();</span>
+    }
+
+    private Map&lt;String, String&gt; names(Collection&lt;String&gt; codes) {
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        if (codes.isEmpty()) {</span>
+<span class="nc" id="L217">            return Map.of();</span>
+        }
+<span class="fc" id="L219">        Map&lt;String, String&gt; names = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L220">        nodeRepository.findByCodeIn(codes).forEach(node -&gt; names.put(</span>
+<span class="fc" id="L221">                node.getCode(), displayName(node)));</span>
+<span class="fc" id="L222">        return Map.copyOf(names);</span>
+    }
+
+    private static String displayName(TaxonomyNode node) {
+<span class="pc bpc" id="L226" title="2 of 4 branches missed.">        return node.getNameEn() == null || node.getNameEn().isBlank()</span>
+<span class="nc" id="L227">                ? node.getCode()</span>
+<span class="fc" id="L228">                : node.getNameEn();</span>
+    }
+
+    private static TaxonomyRelationDto projectionDto(
+            RelationDecisionProjection row,
+            Map&lt;String, String&gt; names) {
+<span class="fc" id="L234">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
+<span class="fc" id="L235">        dto.setId(row.getId());</span>
+<span class="fc" id="L236">        dto.setSourceCode(row.getSourceCode());</span>
+<span class="fc" id="L237">        dto.setSourceName(names.getOrDefault(</span>
+<span class="fc" id="L238">                row.getSourceCode(), row.getSourceCode()));</span>
+<span class="fc" id="L239">        dto.setTargetCode(row.getTargetCode());</span>
+<span class="fc" id="L240">        dto.setTargetName(names.getOrDefault(</span>
+<span class="fc" id="L241">                row.getTargetCode(), row.getTargetCode()));</span>
+<span class="fc" id="L242">        dto.setRelationType(row.getRelationType().name());</span>
+<span class="fc" id="L243">        dto.setDescription(null);</span>
+<span class="fc" id="L244">        dto.setProvenance(row.getProvenance());</span>
+<span class="fc" id="L245">        dto.setWeight(null);</span>
+<span class="fc" id="L246">        dto.setBidirectional(false);</span>
+<span class="fc" id="L247">        return dto;</span>
+    }
+
+    private boolean mayUseLegacyFallback(RepositoryContext context) {
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        if (context.scope() != RepositoryScope.CENTRAL_READ</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">                &amp;&amp; context.scope() != RepositoryScope.CENTRAL_WRITE) {</span>
+<span class="fc" id="L253">            return false;</span>
+        }
+<span class="fc" id="L255">        SystemRepository primary = repositoryService.getPrimaryRepository();</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        return primary.getRepositoryId().equals(context.repositoryId())</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">                &amp;&amp; primary.getDefaultBranch().equals(context.branch());</span>
+    }
+
+    private void reportFallback(RepositoryContext context) {
+<span class="fc" id="L261">        String key = context.repositoryId() + &quot;/&quot; + context.branch();</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (reportedFallbacks.add(key)) {</span>
+<span class="fc" id="L263">            log.warn(&quot;Relation reads use the migration-only legacy fallback for {}. &quot;</span>
+                            + &quot;Build the complete Git branch projection to remove this fallback.&quot;,
+                    key);
+        }
+<span class="fc" id="L267">    }</span>
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L270" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L271">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L273">        return value.strip();</span>
+    }
+
+<span class="fc" id="L276">    public enum ReadModel {</span>
+<span class="fc" id="L277">        PROJECTION,</span>
+<span class="fc" id="L278">        LEGACY_FALLBACK</span>
+    }
+
+    public record ReadResult(
+            ReadModel readModel,
+            ReadinessState readinessState,
+            String authoritativeCommitId,
+            List&lt;TaxonomyRelationDto&gt; relations) {
+<span class="fc" id="L286">        public ReadResult {</span>
+<span class="fc" id="L287">            readModel = Objects.requireNonNull(readModel, &quot;readModel&quot;);</span>
+<span class="fc" id="L288">            readinessState = Objects.requireNonNull(</span>
+                    readinessState, &quot;readinessState&quot;);
+<span class="fc" id="L290">            relations = List.copyOf(Objects.requireNonNull(</span>
+                    relations, &quot;relations&quot;));
+<span class="fc" id="L292">        }</span>
+    }
+
+    public record CountResult(
+            ReadModel readModel,
+            ReadinessState readinessState,
+            String authoritativeCommitId,
+            long count) {
+<span class="fc" id="L300">        public CountResult {</span>
+<span class="fc" id="L301">            readModel = Objects.requireNonNull(readModel, &quot;readModel&quot;);</span>
+<span class="fc" id="L302">            readinessState = Objects.requireNonNull(</span>
+                    readinessState, &quot;readinessState&quot;);
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">            if (count &lt; 0) {</span>
+<span class="nc" id="L305">                throw new IllegalArgumentException(&quot;count must not be negative&quot;);</span>
+            }
+<span class="fc" id="L307">        }</span>
+    }
+
+    public record RelationIdentity(
+            String sourceCode,
+            RelationType relationType,
+            String targetCode) {
+<span class="fc" id="L314">        public RelationIdentity {</span>
+<span class="fc" id="L315">            sourceCode = requireText(sourceCode, &quot;sourceCode&quot;);</span>
+<span class="fc" id="L316">            relationType = Objects.requireNonNull(</span>
+                    relationType, &quot;relationType&quot;);
+<span class="fc" id="L318">            targetCode = requireText(targetCode, &quot;targetCode&quot;);</span>
+<span class="fc" id="L319">        }</span>
+    }
+
+    public record IdentitySnapshot(
+            ReadModel readModel,
+            ReadinessState readinessState,
+            String authoritativeCommitId,
+            Set&lt;RelationIdentity&gt; identities) {
+<span class="fc" id="L327">        public IdentitySnapshot {</span>
+<span class="fc" id="L328">            readModel = Objects.requireNonNull(readModel, &quot;readModel&quot;);</span>
+<span class="fc" id="L329">            readinessState = Objects.requireNonNull(</span>
+                    readinessState, &quot;readinessState&quot;);
+<span class="fc" id="L331">            identities = Set.copyOf(Objects.requireNonNull(</span>
+                    identities, &quot;identities&quot;));
+<span class="fc" id="L333">        }</span>
+
+        public boolean contains(
+                String sourceCode,
+                RelationType relationType,
+                String targetCode) {
+<span class="fc" id="L339">            return identities.contains(new RelationIdentity(</span>
+                    sourceCode, relationType, targetCode));
+        }
+    }
+
+    private record ResolvedSource(
+            ReadModel readModel,
+            Readiness readiness) {
+<span class="fc" id="L347">        private ResolvedSource {</span>
+<span class="fc" id="L348">            readModel = Objects.requireNonNull(readModel, &quot;readModel&quot;);</span>
+<span class="fc" id="L349">            readiness = Objects.requireNonNull(readiness, &quot;readiness&quot;);</span>
+<span class="fc" id="L350">        }</span>
+    }
+
+    public static final class RelationProjectionUnavailableException
+            extends IllegalStateException {
+        private final RepositoryContext context;
+        private final ReadinessState readinessState;
+        private final String currentHeadCommit;
+        private final String projectedCommit;
+        private final long pendingRecoveryCount;
+
+        public RelationProjectionUnavailableException(
+                RepositoryContext context,
+                ReadinessState readinessState,
+                String currentHeadCommit,
+                String projectedCommit,
+                long pendingRecoveryCount) {
+<span class="fc" id="L367">            super(&quot;Relation projection is not safely readable for &quot;</span>
+<span class="fc" id="L368">                    + context.repositoryId() + &quot;/&quot; + context.branch()</span>
+                    + &quot;: &quot; + readinessState
+                    + &quot; (pending recovery=&quot; + pendingRecoveryCount + &quot;)&quot;);
+<span class="fc" id="L371">            this.context = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L372">            this.readinessState = Objects.requireNonNull(</span>
+                    readinessState, &quot;readinessState&quot;);
+<span class="fc" id="L374">            this.currentHeadCommit = currentHeadCommit;</span>
+<span class="fc" id="L375">            this.projectedCommit = projectedCommit;</span>
+<span class="fc" id="L376">            this.pendingRecoveryCount = pendingRecoveryCount;</span>
+<span class="fc" id="L377">        }</span>
+
+        public RepositoryContext getContext() {
+<span class="nc" id="L380">            return context;</span>
+        }
+
+        public ReadinessState getReadinessState() {
+<span class="fc" id="L384">            return readinessState;</span>
+        }
+
+        public String getCurrentHeadCommit() {
+<span class="fc" id="L388">            return currentHeadCommit;</span>
+        }
+
+        public String getProjectedCommit() {
+<span class="nc" id="L392">            return projectedCommit;</span>
+        }
+
+        public long getPendingRecoveryCount() {
+<span class="fc" id="L396">            return pendingRecoveryCount;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

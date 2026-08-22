@@ -1,0 +1,585 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HypothesisService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">HypothesisService.java</span></div><h1>HypothesisService.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.mapper.ModelToAstMapper;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.validation.DslValidationResult;
+import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationEvidence;
+import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.relations.repository.RelationEvidenceRepository;
+import com.taxonomy.relations.repository.RelationHypothesisRepository;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Manages the lifecycle of repository/workspace-scoped relation hypotheses.
+ *
+ * &lt;p&gt;Explicit {@link RepositoryContext} methods are authoritative. Historic
+ * {@link WorkspaceContext} overloads retain the exact selected repository and
+ * resolve workspace provenance through the repository catalog. Only the explicit
+ * legacy repository sentinel may fall back to the configured primary repository.&lt;/p&gt;
+ */
+@Service
+public class HypothesisService {
+
+<span class="fc" id="L59">    private static final Logger log = LoggerFactory.getLogger(HypothesisService.class);</span>
+    private static final String TEST_REPOSITORY_ID = &quot;test-primary&quot;;
+
+    private final RelationHypothesisRepository hypothesisRepository;
+    private final RelationEvidenceRepository evidenceRepository;
+    private final TaxonomyRelationService relationService;
+    private final TaxonomyNodeRepository nodeRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final SystemRepositoryService systemRepositoryService;
+    private final UserWorkspaceRepository userWorkspaceRepository;
+
+<span class="fc" id="L70">    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();</span>
+<span class="fc" id="L71">    private final AstToModelMapper astToModelMapper = new AstToModelMapper();</span>
+<span class="fc" id="L72">    private final TaxDslSerializer serializer = new TaxDslSerializer();</span>
+<span class="fc" id="L73">    private final TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L74">    private final DslValidator validator = new DslValidator();</span>
+
+    @Autowired
+    public HypothesisService(RelationHypothesisRepository hypothesisRepository,
+                             RelationEvidenceRepository evidenceRepository,
+                             TaxonomyRelationService relationService,
+                             TaxonomyNodeRepository nodeRepository,
+                             DslGitRepositoryFactory repositoryFactory,
+                             SystemRepositoryService systemRepositoryService,
+<span class="fc" id="L83">                             UserWorkspaceRepository userWorkspaceRepository) {</span>
+<span class="fc" id="L84">        this.hypothesisRepository = hypothesisRepository;</span>
+<span class="fc" id="L85">        this.evidenceRepository = evidenceRepository;</span>
+<span class="fc" id="L86">        this.relationService = relationService;</span>
+<span class="fc" id="L87">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L88">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L89">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L90">        this.userWorkspaceRepository = userWorkspaceRepository;</span>
+<span class="fc" id="L91">    }</span>
+
+    /** Test-only compatibility constructor for isolated mapper/DSL tests. */
+    public HypothesisService(RelationHypothesisRepository hypothesisRepository,
+                             RelationEvidenceRepository evidenceRepository,
+                             TaxonomyRelationService relationService,
+                             TaxonomyNodeRepository nodeRepository,
+                             DslGitRepositoryFactory repositoryFactory) {
+<span class="fc" id="L99">        this(hypothesisRepository, evidenceRepository, relationService, nodeRepository,</span>
+                repositoryFactory, null, null);
+<span class="fc" id="L101">    }</span>
+
+    /** Persist provisional hypotheses and version their canonical DSL immediately. */
+    @Transactional
+    public List&lt;RelationHypothesis&gt; persistFromAnalysis(
+            List&lt;RelationHypothesisDto&gt; hypotheses,
+            String sessionId,
+            RepositoryContext context) {
+<span class="fc" id="L109">        return persistFromAnalysis(hypotheses, sessionId, context, false);</span>
+    }
+
+    /**
+     * Persist provisional hypotheses in the surrounding transaction and publish
+     * their canonical Git DSL only after that transaction has committed.
+     *
+     * &lt;p&gt;This variant is the durable worker boundary: a snapshot or claim
+     * finalization rollback must never leave a Git commit for database state that
+     * was not committed.&lt;/p&gt;
+     */
+    @Transactional
+    public List&lt;RelationHypothesis&gt; persistFromAnalysisAfterCommit(
+            List&lt;RelationHypothesisDto&gt; hypotheses,
+            String sessionId,
+            RepositoryContext context) {
+<span class="fc" id="L125">        return persistFromAnalysis(hypotheses, sessionId, context, true);</span>
+    }
+
+    private List&lt;RelationHypothesis&gt; persistFromAnalysis(
+            List&lt;RelationHypothesisDto&gt; hypotheses,
+            String sessionId,
+            RepositoryContext context,
+            boolean publishAfterCommit) {
+<span class="fc bfc" id="L133" title="All 4 branches covered.">        if (hypotheses == null || hypotheses.isEmpty()) {</span>
+<span class="fc" id="L134">            return List.of();</span>
+        }
+<span class="fc" id="L136">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L137">        String effectiveSessionId = normalizeSessionId(sessionId);</span>
+
+<span class="fc" id="L139">        List&lt;RelationHypothesis&gt; persisted = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        for (RelationHypothesisDto dto : hypotheses) {</span>
+<span class="fc" id="L141">            RelationType relationType = RelationType.valueOf(</span>
+<span class="fc" id="L142">                    requireText(dto.getRelationType(), &quot;relationType&quot;).toUpperCase(Locale.ROOT));</span>
+<span class="fc" id="L143">            String sourceCode = requireText(dto.getSourceCode(), &quot;sourceCode&quot;);</span>
+<span class="fc" id="L144">            String targetCode = requireText(dto.getTargetCode(), &quot;targetCode&quot;);</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (hypothesisRepository.existsInRepositoryWorkspaceSession(</span>
+<span class="fc" id="L146">                    tenant.repositoryId(),</span>
+<span class="fc" id="L147">                    RelationHypothesis.scopeKeyFor(tenant.workspaceId()),</span>
+<span class="fc" id="L148">                    RelationHypothesis.sessionScopeKeyFor(effectiveSessionId),</span>
+                    sourceCode,
+                    targetCode,
+                    relationType)) {
+<span class="fc" id="L152">                continue;</span>
+            }
+
+<span class="fc" id="L155">            RelationHypothesis entity = new RelationHypothesis();</span>
+<span class="fc" id="L156">            entity.setRepositoryId(tenant.repositoryId());</span>
+<span class="fc" id="L157">            entity.setSourceNodeId(sourceCode);</span>
+<span class="fc" id="L158">            entity.setTargetNodeId(targetCode);</span>
+<span class="fc" id="L159">            entity.setRelationType(relationType);</span>
+<span class="fc" id="L160">            entity.setConfidence(dto.getConfidence());</span>
+<span class="fc" id="L161">            entity.setStatus(HypothesisStatus.PROVISIONAL);</span>
+<span class="fc" id="L162">            entity.setAnalysisSessionId(effectiveSessionId);</span>
+<span class="fc" id="L163">            entity.setWorkspaceId(tenant.workspaceId());</span>
+<span class="fc" id="L164">            entity.setOwnerUsername(tenant.username());</span>
+
+<span class="fc" id="L166">            RelationHypothesis saved = hypothesisRepository.save(entity);</span>
+<span class="fc" id="L167">            persisted.add(saved);</span>
+
+<span class="pc bpc" id="L169" title="2 of 4 branches missed.">            if (dto.getReasoning() != null &amp;&amp; !dto.getReasoning().isBlank()) {</span>
+<span class="fc" id="L170">                RelationEvidence evidence = new RelationEvidence();</span>
+<span class="fc" id="L171">                evidence.setHypothesis(saved);</span>
+<span class="fc" id="L172">                evidence.setEvidenceType(&quot;analysis-rule&quot;);</span>
+<span class="fc" id="L173">                evidence.setSummary(dto.getReasoning());</span>
+<span class="fc" id="L174">                evidence.setConfidence(dto.getConfidence());</span>
+<span class="fc" id="L175">                evidenceRepository.save(evidence);</span>
+            }
+<span class="fc" id="L177">        }</span>
+
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (!persisted.isEmpty()) {</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (publishAfterCommit) {</span>
+<span class="fc" id="L181">                publishHypothesesAfterCommit(</span>
+                        persisted, effectiveSessionId, tenant);
+            } else {
+<span class="fc" id="L184">                commitHypothesesAsDsl(</span>
+                        persisted, effectiveSessionId, tenant);
+            }
+        }
+<span class="fc" id="L188">        log.info(&quot;Persisted {} hypotheses for session {} in repository {} workspace {}&quot;,</span>
+<span class="fc" id="L189">                persisted.size(), effectiveSessionId,</span>
+<span class="fc" id="L190">                tenant.repositoryId(), tenant.workspaceId());</span>
+<span class="fc" id="L191">        return persisted;</span>
+    }
+
+    /** Historic workspace-only overload, resolved through catalog provenance. */
+    @Transactional
+    public List&lt;RelationHypothesis&gt; persistFromAnalysis(
+            List&lt;RelationHypothesisDto&gt; hypotheses,
+            String sessionId,
+            WorkspaceContext workspaceContext) {
+<span class="nc" id="L200">        return persistFromAnalysis(</span>
+<span class="nc" id="L201">                hypotheses, sessionId, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    /** Historic workspace-only overload with commit-bound Git publication. */
+    @Transactional
+    public List&lt;RelationHypothesis&gt; persistFromAnalysisAfterCommit(
+            List&lt;RelationHypothesisDto&gt; hypotheses,
+            String sessionId,
+            WorkspaceContext workspaceContext) {
+<span class="nc" id="L210">        return persistFromAnalysisAfterCommit(</span>
+<span class="nc" id="L211">                hypotheses, sessionId, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Transactional
+    public RelationHypothesis accept(Long hypothesisId, RepositoryContext context) {
+<span class="fc" id="L216">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L217">        RelationHypothesis hypothesis = requireWritableHypothesis(hypothesisId, tenant);</span>
+
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {</span>
+<span class="fc" id="L220">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already ACCEPTED&quot;);</span>
+        }
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">        if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {</span>
+<span class="fc" id="L223">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already REJECTED&quot;);</span>
+        }
+
+<span class="nc" id="L226">        boolean relationCreated = false;</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        if (nodeRepository.findByCode(hypothesis.getSourceNodeId()).isPresent()</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">                &amp;&amp; nodeRepository.findByCode(hypothesis.getTargetNodeId()).isPresent()) {</span>
+<span class="nc" id="L229">            relationService.createRelationInContext(</span>
+<span class="nc" id="L230">                    hypothesis.getSourceNodeId(),</span>
+<span class="nc" id="L231">                    hypothesis.getTargetNodeId(),</span>
+<span class="nc" id="L232">                    hypothesis.getRelationType(),</span>
+                    &quot;Accepted from hypothesis &quot; + hypothesisId,
+                    &quot;hypothesis-accepted&quot;,
+                    tenant);
+<span class="nc" id="L236">            relationCreated = true;</span>
+        } else {
+<span class="nc" id="L238">            log.warn(&quot;Could not create relation for hypothesis {}: source or target node not found&quot;,</span>
+                    hypothesisId);
+        }
+
+<span class="nc" id="L242">        hypothesis.setStatus(HypothesisStatus.ACCEPTED);</span>
+<span class="nc" id="L243">        hypothesisRepository.save(hypothesis);</span>
+<span class="nc" id="L244">        commitHypothesesAsDsl(List.of(hypothesis), &quot;accepted-&quot; + hypothesisId, tenant);</span>
+
+<span class="nc" id="L246">        log.info(&quot;Accepted hypothesis {} in repository {} workspace {}: {} --[{}]--&gt; {} &quot;</span>
+                        + &quot;(relation created: {})&quot;,
+<span class="nc" id="L248">                hypothesisId, tenant.repositoryId(), tenant.workspaceId(),</span>
+<span class="nc" id="L249">                hypothesis.getSourceNodeId(), hypothesis.getRelationType(),</span>
+<span class="nc" id="L250">                hypothesis.getTargetNodeId(), relationCreated);</span>
+<span class="nc" id="L251">        return hypothesis;</span>
+    }
+
+    @Transactional
+    public RelationHypothesis accept(Long hypothesisId, WorkspaceContext workspaceContext) {
+<span class="nc" id="L256">        return accept(hypothesisId, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Transactional
+    public RelationHypothesis reject(Long hypothesisId, RepositoryContext context) {
+<span class="fc" id="L261">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L262">        RelationHypothesis hypothesis = requireWritableHypothesis(hypothesisId, tenant);</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {</span>
+<span class="fc" id="L264">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already ACCEPTED&quot;);</span>
+        }
+<span class="fc bfc" id="L266" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {</span>
+<span class="fc" id="L267">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already REJECTED&quot;);</span>
+        }
+<span class="fc" id="L269">        hypothesis.setStatus(HypothesisStatus.REJECTED);</span>
+<span class="fc" id="L270">        return hypothesisRepository.save(hypothesis);</span>
+    }
+
+    @Transactional
+    public RelationHypothesis reject(Long hypothesisId, WorkspaceContext workspaceContext) {
+<span class="nc" id="L275">        return reject(hypothesisId, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Transactional
+    public RelationHypothesis applyForSession(Long hypothesisId, RepositoryContext context) {
+<span class="fc" id="L280">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L281">        RelationHypothesis hypothesis = requireWritableHypothesis(hypothesisId, tenant);</span>
+<span class="fc" id="L282">        hypothesis.setAppliedInCurrentAnalysis(true);</span>
+<span class="fc" id="L283">        return hypothesisRepository.save(hypothesis);</span>
+    }
+
+    @Transactional
+    public RelationHypothesis applyForSession(
+            Long hypothesisId, WorkspaceContext workspaceContext) {
+<span class="fc" id="L289">        return applyForSession(hypothesisId, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationHypothesis&gt; findByStatus(
+            HypothesisStatus status, RepositoryContext context) {
+<span class="fc" id="L295">        RepositoryContext tenant = requireContext(context);</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">        return tenant.workspaceId() == null</span>
+<span class="nc" id="L297">                ? hypothesisRepository.findCentralByRepositoryAndStatus(</span>
+<span class="nc" id="L298">                        tenant.repositoryId(), status)</span>
+<span class="fc" id="L299">                : hypothesisRepository.findVisibleByRepositoryAndWorkspaceAndStatus(</span>
+<span class="fc" id="L300">                        tenant.repositoryId(), tenant.workspaceId(), status);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationHypothesis&gt; findByStatus(
+            HypothesisStatus status, WorkspaceContext workspaceContext) {
+<span class="fc" id="L306">        return findByStatus(status, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationHypothesis&gt; findAll(RepositoryContext context) {
+<span class="fc" id="L311">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc bfc" id="L312" title="All 2 branches covered.">        return tenant.workspaceId() == null</span>
+<span class="fc" id="L313">                ? hypothesisRepository.findCentralByRepository(tenant.repositoryId())</span>
+<span class="fc" id="L314">                : hypothesisRepository.findVisibleByRepositoryAndWorkspace(</span>
+<span class="fc" id="L315">                        tenant.repositoryId(), tenant.workspaceId());</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationHypothesis&gt; findAll(WorkspaceContext workspaceContext) {
+<span class="fc" id="L320">        return findAll(resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationEvidence&gt; findEvidence(
+            Long hypothesisId, RepositoryContext context) {
+<span class="fc" id="L326">        requireReadableHypothesis(hypothesisId, requireContext(context));</span>
+<span class="fc" id="L327">        return evidenceRepository.findByHypothesisId(hypothesisId);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationEvidence&gt; findEvidence(
+            Long hypothesisId, WorkspaceContext workspaceContext) {
+<span class="fc" id="L333">        return findEvidence(hypothesisId, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    private RelationHypothesis requireReadableHypothesis(
+            Long hypothesisId, RepositoryContext context) {
+<span class="fc" id="L338">        return hypothesisRepository.findByIdVisibleInRepositoryWorkspace(</span>
+<span class="fc" id="L339">                        context.repositoryId(), hypothesisId, context.workspaceId())</span>
+<span class="fc" id="L340">                .orElseThrow(() -&gt; hypothesisNotFound(hypothesisId));</span>
+    }
+
+    private RelationHypothesis requireWritableHypothesis(
+            Long hypothesisId, RepositoryContext context) {
+<span class="fc" id="L345">        return hypothesisRepository.findByIdInRepositoryWorkspace(</span>
+<span class="fc" id="L346">                        context.repositoryId(), hypothesisId, context.workspaceId())</span>
+<span class="fc" id="L347">                .orElseThrow(() -&gt; hypothesisNotFound(hypothesisId));</span>
+    }
+
+    private IllegalArgumentException hypothesisNotFound(Long hypothesisId) {
+<span class="fc" id="L351">        return new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId);</span>
+    }
+
+    private void publishHypothesesAfterCommit(
+            List&lt;RelationHypothesis&gt; hypotheses,
+            String sessionId,
+            RepositoryContext context) {
+<span class="fc bfc" id="L358" title="All 2 branches covered.">        if (!TransactionSynchronizationManager.isSynchronizationActive()) {</span>
+<span class="fc" id="L359">            throw new IllegalStateException(</span>
+                    &quot;Commit-bound hypothesis publication requires active transaction synchronization&quot;);
+        }
+<span class="fc" id="L362">        List&lt;RelationHypothesis&gt; committedHypotheses = List.copyOf(hypotheses);</span>
+<span class="fc" id="L363">        TransactionSynchronizationManager.registerSynchronization(</span>
+<span class="fc" id="L364">                new TransactionSynchronization() {</span>
+                    @Override
+                    public void afterCommit() {
+                        try {
+<span class="fc" id="L368">                            commitHypothesesAsDsl(</span>
+                                    committedHypotheses, sessionId, context);
+<span class="nc" id="L370">                        } catch (RuntimeException failure) {</span>
+                            // The database is already authoritative and committed.
+                            // Keep the snapshot valid, but make the projection gap
+                            // operationally visible for reconciliation.
+<span class="nc" id="L374">                            log.error(&quot;Failed to publish committed hypotheses for session {} &quot;</span>
+                                            + &quot;in repository {} workspace {}&quot;,
+                                    sessionId,
+<span class="nc" id="L377">                                    context.repositoryId(),</span>
+<span class="nc" id="L378">                                    context.workspaceId(),</span>
+                                    failure);
+<span class="fc" id="L380">                        }</span>
+<span class="fc" id="L381">                    }</span>
+                });
+<span class="fc" id="L383">    }</span>
+
+    private void commitHypothesesAsDsl(
+            List&lt;RelationHypothesis&gt; hypotheses,
+            String sessionId,
+            RepositoryContext context) {
+<span class="fc" id="L389">        String dslText = generateCanonicalDsl(hypotheses, sessionId);</span>
+<span class="fc" id="L390">        String branch = hypotheses.stream()</span>
+<span class="pc bpc" id="L391" title="2 of 4 branches missed.">                .anyMatch(h -&gt; h.getStatus() == HypothesisStatus.ACCEPTED)</span>
+<span class="pc" id="L392">                ? &quot;accepted&quot; : &quot;draft&quot;;</span>
+<span class="fc" id="L393">        DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+        try {
+<span class="fc" id="L395">            String commitId = repository.commitDsl(</span>
+                    branch,
+                    dslText,
+<span class="fc" id="L398">                    context.username(),</span>
+                    &quot;Auto-generated from analysis session &quot; + sessionId);
+<span class="fc" id="L400">            log.info(&quot;Committed {} hypotheses as canonical DSL to repository {} workspace {} &quot;</span>
+                            + &quot;branch '{}': {}&quot;,
+<span class="fc" id="L402">                    hypotheses.size(), context.repositoryId(), context.workspaceId(),</span>
+                    branch, commitId);
+<span class="nc" id="L404">        } catch (IOException e) {</span>
+<span class="nc" id="L405">            throw new IllegalStateException(&quot;Failed to commit canonical hypothesis DSL&quot;, e);</span>
+<span class="fc" id="L406">        }</span>
+<span class="fc" id="L407">    }</span>
+
+    private String generateCanonicalDsl(List&lt;RelationHypothesis&gt; hypotheses, String sessionId) {
+<span class="fc" id="L410">        CanonicalArchitectureModel model = new CanonicalArchitectureModel();</span>
+<span class="fc" id="L411">        Set&lt;String&gt; declaredElements = new LinkedHashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L413" title="All 2 branches covered.">        for (RelationHypothesis hypothesis : hypotheses) {</span>
+<span class="fc" id="L414">            addElement(model, declaredElements, hypothesis.getSourceNodeId());</span>
+<span class="fc" id="L415">            addElement(model, declaredElements, hypothesis.getTargetNodeId());</span>
+
+<span class="fc" id="L417">            ArchitectureRelation relation = new ArchitectureRelation(</span>
+<span class="fc" id="L418">                    hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L419">                    hypothesis.getRelationType().name(),</span>
+<span class="fc" id="L420">                    hypothesis.getTargetNodeId());</span>
+<span class="fc" id="L421">            relation.setStatus(hypothesis.getStatus().name().toLowerCase(Locale.ROOT));</span>
+<span class="fc" id="L422">            relation.setConfidence(hypothesis.getConfidence());</span>
+<span class="fc" id="L423">            relation.setProvenance(&quot;analysis-session:&quot; + sessionId);</span>
+<span class="fc" id="L424">            model.getRelations().add(relation);</span>
+<span class="fc" id="L425">        }</span>
+
+<span class="fc" id="L427">        assertValid(model, &quot;generated hypothesis model&quot;);</span>
+<span class="fc" id="L428">        String text = serializer.serialize(modelToAstMapper.toDocument(model, &quot;hypothesis-auto&quot;));</span>
+
+<span class="fc" id="L430">        CanonicalArchitectureModel roundTripped = astToModelMapper.map(</span>
+<span class="fc" id="L431">                parser.parse(text, &quot;hypotheses.taxdsl&quot;));</span>
+<span class="fc" id="L432">        assertValid(roundTripped, &quot;round-tripped hypothesis DSL&quot;);</span>
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">        if (roundTripped.getElements().size() != model.getElements().size()</span>
+<span class="pc bpc" id="L434" title="1 of 2 branches missed.">                || roundTripped.getRelations().size() != model.getRelations().size()) {</span>
+<span class="nc" id="L435">            throw new IllegalStateException(</span>
+                    &quot;Canonical hypothesis DSL round-trip lost elements or relations&quot;);
+        }
+<span class="fc" id="L438">        return text;</span>
+    }
+
+    private void addElement(CanonicalArchitectureModel model,
+                            Set&lt;String&gt; declaredElements,
+                            String code) {
+<span class="pc bpc" id="L444" title="1 of 2 branches missed.">        if (!declaredElements.add(code)) {</span>
+<span class="nc" id="L445">            return;</span>
+        }
+<span class="fc" id="L447">        TaxonomyNode node = nodeRepository.findByCode(code).orElse(null);</span>
+<span class="fc" id="L448">        String root = resolveRoot(code, node);</span>
+<span class="fc" id="L449">        ArchitectureElement element = new ArchitectureElement();</span>
+<span class="fc" id="L450">        element.setId(code);</span>
+<span class="fc" id="L451">        element.setType(TaxonomyRootTypes.typeFor(root));</span>
+<span class="fc" id="L452">        element.setTaxonomy(root);</span>
+<span class="pc bpc" id="L453" title="2 of 6 branches missed.">        element.setTitle(node != null &amp;&amp; node.getNameEn() != null &amp;&amp; !node.getNameEn().isBlank()</span>
+<span class="fc" id="L454">                ? node.getNameEn() : code);</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">        if (node != null) {</span>
+<span class="fc" id="L456">            element.setDescription(node.getDescriptionEn());</span>
+        }
+<span class="fc" id="L458">        model.getElements().add(element);</span>
+<span class="fc" id="L459">    }</span>
+
+    private String resolveRoot(String code, TaxonomyNode node) {
+<span class="pc bpc" id="L462" title="1 of 4 branches missed.">        if (node != null &amp;&amp; node.getTaxonomyRoot() != null) {</span>
+<span class="fc" id="L463">            return node.getTaxonomyRoot();</span>
+        }
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">        if (TaxonomyRootTypes.ROOT_TO_TYPE.containsKey(code)) {</span>
+<span class="nc" id="L466">            return code;</span>
+        }
+<span class="fc" id="L468">        String root = TaxonomyRootTypes.rootFromId(code);</span>
+<span class="pc bpc" id="L469" title="1 of 2 branches missed.">        return root != null ? root : &quot;Unknown&quot;;</span>
+    }
+
+    private void assertValid(CanonicalArchitectureModel model, String description) {
+<span class="fc" id="L473">        DslValidationResult result = validator.validate(model);</span>
+<span class="pc bpc" id="L474" title="1 of 2 branches missed.">        if (!result.isValid()) {</span>
+<span class="nc" id="L475">            throw new IllegalStateException(description + &quot; is invalid: &quot; + result);</span>
+        }
+<span class="fc bfc" id="L477" title="All 2 branches covered.">        if (result.hasWarnings()) {</span>
+<span class="fc" id="L478">            log.warn(&quot;{} contains validation warnings: {}&quot;, description, result.getWarnings());</span>
+        }
+<span class="fc" id="L480">    }</span>
+
+    private RepositoryContext resolveLegacyContext(WorkspaceContext workspaceContext) {
+<span class="pc bpc" id="L483" title="1 of 2 branches missed.">        WorkspaceContext legacy = workspaceContext != null</span>
+<span class="pc" id="L484">                ? workspaceContext : WorkspaceContext.SHARED;</span>
+<span class="fc" id="L485">        String username = normalizeUsername(legacy.username());</span>
+<span class="fc" id="L486">        String branch = normalizeBranch(legacy.currentBranch());</span>
+<span class="fc" id="L487">        String workspaceId = normalizeOptional(legacy.workspaceId());</span>
+<span class="fc" id="L488">        String requestedRepositoryId = requireText(</span>
+<span class="fc" id="L489">                legacy.repositoryId(), &quot;workspaceContext.repositoryId&quot;);</span>
+<span class="fc" id="L490">        boolean legacyRepositorySelection = WorkspaceContext.LEGACY_REPOSITORY_ID</span>
+<span class="fc" id="L491">                .equals(requestedRepositoryId);</span>
+
+        // Isolated mapper tests use the five-argument constructor. Preserve the
+        // historic fixture repository only for the explicit legacy sentinel.
+<span class="pc bpc" id="L495" title="2 of 4 branches missed.">        if (systemRepositoryService == null || userWorkspaceRepository == null) {</span>
+<span class="nc bnc" id="L496" title="All 2 branches missed.">            String repositoryId = legacyRepositorySelection</span>
+<span class="nc" id="L497">                    ? TEST_REPOSITORY_ID : requestedRepositoryId;</span>
+<span class="nc bnc" id="L498" title="All 2 branches missed.">            String effectiveBranch = branch != null ? branch : &quot;draft&quot;;</span>
+<span class="nc bnc" id="L499" title="All 2 branches missed.">            return workspaceId == null</span>
+<span class="nc" id="L500">                    ? RepositoryContext.centralRead(</span>
+                            repositoryId, effectiveBranch, username)
+<span class="nc" id="L502">                    : RepositoryContext.workspace(</span>
+                            repositoryId, workspaceId, effectiveBranch, username);
+        }
+
+<span class="fc bfc" id="L506" title="All 2 branches covered.">        if (workspaceId == null) {</span>
+<span class="fc bfc" id="L507" title="All 2 branches covered.">            SystemRepository selectedRepository = legacyRepositorySelection</span>
+<span class="fc" id="L508">                    ? systemRepositoryService.getPrimaryRepository()</span>
+<span class="fc" id="L509">                    : systemRepositoryService.getRepository(requestedRepositoryId);</span>
+<span class="fc" id="L510">            return RepositoryContext.centralRead(</span>
+<span class="fc" id="L511">                    selectedRepository.getRepositoryId(),</span>
+<span class="pc bpc" id="L512" title="1 of 2 branches missed.">                    branch != null</span>
+<span class="pc" id="L513">                            ? branch : selectedRepository.getDefaultBranch(),</span>
+                    username);
+        }
+
+<span class="fc" id="L517">        UserWorkspace workspace = userWorkspaceRepository.findByWorkspaceId(workspaceId)</span>
+<span class="pc" id="L518">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Workspace not found while resolving repository context: &quot; + workspaceId));
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">        if (workspace.getUsername() != null</span>
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">                &amp;&amp; !workspace.getUsername().equals(username)</span>
+<span class="nc bnc" id="L522" title="All 2 branches missed.">                &amp;&amp; !&quot;system&quot;.equals(username)) {</span>
+<span class="nc" id="L523">            throw new IllegalArgumentException(</span>
+                    &quot;Workspace does not belong to the active user: &quot; + workspaceId);
+        }
+<span class="fc" id="L526">        String repositoryId = requireText(</span>
+<span class="fc" id="L527">                workspace.getSourceRepositoryId(), &quot;workspace.sourceRepositoryId&quot;);</span>
+<span class="pc bpc" id="L528" title="1 of 2 branches missed.">        if (!legacyRepositorySelection</span>
+<span class="fc bfc" id="L529" title="All 2 branches covered.">                &amp;&amp; !repositoryId.equals(requestedRepositoryId)) {</span>
+<span class="fc" id="L530">            throw new IllegalArgumentException(</span>
+                    &quot;Workspace repository does not match the selected repository: &quot;
+                            + workspaceId);
+        }
+<span class="pc bpc" id="L534" title="1 of 2 branches missed.">        String workspaceBranch = branch != null</span>
+<span class="pc" id="L535">                ? branch : normalizeBranch(workspace.getCurrentBranch());</span>
+<span class="fc" id="L536">        return RepositoryContext.workspace(</span>
+                repositoryId,
+                workspaceId,
+<span class="pc bpc" id="L539" title="1 of 2 branches missed.">                workspaceBranch != null ? workspaceBranch : &quot;draft&quot;,</span>
+                username);
+    }
+
+    private static RepositoryContext requireContext(RepositoryContext context) {
+<span class="fc bfc" id="L544" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L545">            throw new IllegalArgumentException(&quot;RepositoryContext must not be null&quot;);</span>
+        }
+<span class="fc" id="L547">        return context;</span>
+    }
+
+    private static RepositoryContext requireWritableContext(RepositoryContext context) {
+<span class="fc" id="L551">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc bfc" id="L552" title="All 2 branches covered.">        if (tenant.scope() == RepositoryScope.CENTRAL_READ) {</span>
+<span class="fc" id="L553">            throw new IllegalStateException(</span>
+                    &quot;Hypothesis mutation requires a workspace or explicit central write context&quot;);
+        }
+<span class="fc" id="L556">        return tenant;</span>
+    }
+
+    private static String normalizeSessionId(String value) {
+<span class="fc" id="L560">        String normalized = normalizeOptional(value);</span>
+<span class="pc bpc" id="L561" title="1 of 2 branches missed.">        return normalized != null ? normalized : UUID.randomUUID().toString();</span>
+    }
+
+    private static String normalizeUsername(String value) {
+<span class="fc" id="L565">        String normalized = normalizeOptional(value);</span>
+<span class="pc bpc" id="L566" title="1 of 2 branches missed.">        return normalized != null ? normalized : &quot;system&quot;;</span>
+    }
+
+    private static String normalizeBranch(String value) {
+<span class="fc" id="L570">        return normalizeOptional(value);</span>
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L574" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="fc" id="L578">        String normalized = normalizeOptional(value);</span>
+<span class="pc bpc" id="L579" title="1 of 2 branches missed.">        if (normalized == null) {</span>
+<span class="nc" id="L580">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L582">        return normalized;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

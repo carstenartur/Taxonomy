@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReportRendererRegistry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">ReportRendererRegistry.java</span></div><h1>ReportRendererRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Spring registry for report-renderer extensions grouped by report family and format.
+ */
+@Service
+public class ReportRendererRegistry {
+
+    private final Map&lt;String, Map&lt;String, ReportRendererExtension&gt;&gt; byReportType;
+
+<span class="fc" id="L24">    public ReportRendererRegistry(List&lt;ReportRendererExtension&gt; extensions) {</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">        List&lt;ReportRendererExtension&gt; safeExtensions = extensions == null</span>
+<span class="pc" id="L26">                ? List.of() : new ArrayList&lt;&gt;(extensions);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        for (ReportRendererExtension extension : safeExtensions) {</span>
+<span class="fc" id="L28">            Objects.requireNonNull(extension, &quot;report renderer extension must not be null&quot;);</span>
+<span class="fc" id="L29">            Objects.requireNonNull(extension.descriptor(),</span>
+                    &quot;report renderer descriptor must not be null&quot;);
+<span class="fc" id="L31">            Objects.requireNonNull(extension.reportModelType(),</span>
+                    &quot;report renderer model type must not be null&quot;);
+<span class="fc" id="L33">            normalizeRequired(extension.reportTypeId(), &quot;report type ID&quot;);</span>
+<span class="fc" id="L34">            normalizeRequired(extension.descriptor().id(), &quot;report format ID&quot;);</span>
+<span class="fc" id="L35">        }</span>
+
+<span class="fc" id="L37">        Map&lt;String, Map&lt;String, ReportRendererExtension&gt;&gt; reportTypes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L38">        safeExtensions.stream()</span>
+<span class="fc" id="L39">                .sorted(Comparator</span>
+<span class="fc" id="L40">                        .comparing((ReportRendererExtension extension) -&gt;</span>
+<span class="fc" id="L41">                                normalize(extension.reportTypeId()))</span>
+<span class="fc" id="L42">                        .thenComparing(extension -&gt; normalize(extension.descriptor().id())))</span>
+<span class="fc" id="L43">                .forEach(extension -&gt; {</span>
+<span class="fc" id="L44">                    String reportType = normalizeRequired(</span>
+<span class="fc" id="L45">                            extension.reportTypeId(), &quot;report type ID&quot;);</span>
+<span class="fc" id="L46">                    String formatId = normalizeRequired(</span>
+<span class="fc" id="L47">                            extension.descriptor().id(), &quot;report format ID&quot;);</span>
+<span class="fc" id="L48">                    Map&lt;String, ReportRendererExtension&gt; formats =</span>
+<span class="fc" id="L49">                            reportTypes.computeIfAbsent(reportType, ignored -&gt; new LinkedHashMap&lt;&gt;());</span>
+<span class="fc" id="L50">                    ReportRendererExtension previous = formats.putIfAbsent(formatId, extension);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                    if (previous != null) {</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                        if (ReportRendererExtension.DEFAULT_REPORT_TYPE_ID.equals(reportType)) {</span>
+<span class="fc" id="L53">                            throw new IllegalStateException(</span>
+                                    &quot;Duplicate report renderer format ID: &quot; + formatId);
+                        }
+<span class="nc" id="L56">                        throw new IllegalStateException(</span>
+                                &quot;Duplicate report renderer for report type &quot; + reportType
+                                        + &quot; and format &quot; + formatId);
+                    }
+<span class="fc" id="L60">                });</span>
+
+<span class="fc" id="L62">        Map&lt;String, Map&lt;String, ReportRendererExtension&gt;&gt; immutable = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L63">        reportTypes.forEach((reportType, formats) -&gt;</span>
+<span class="fc" id="L64">                immutable.put(reportType, Map.copyOf(formats)));</span>
+<span class="fc" id="L65">        this.byReportType = Map.copyOf(immutable);</span>
+<span class="fc" id="L66">    }</span>
+
+    /** Backward-compatible lookup for the architecture-report family. */
+    public ReportRendererExtension getRequired(String formatId) {
+<span class="fc" id="L70">        return getRequired(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID, formatId);</span>
+    }
+
+    public ReportRendererExtension getRequired(String reportTypeId, String formatId) {
+<span class="fc" id="L74">        return findByFormatId(reportTypeId, formatId)</span>
+<span class="pc" id="L75">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Unknown report renderer: &quot; + reportTypeId + &quot;/&quot; + formatId));
+    }
+
+    /** Backward-compatible lookup for the architecture-report family. */
+    public Optional&lt;ReportRendererExtension&gt; findByFormatId(String formatId) {
+<span class="nc" id="L81">        return findByFormatId(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID, formatId);</span>
+    }
+
+    public Optional&lt;ReportRendererExtension&gt; findByFormatId(
+            String reportTypeId,
+            String formatId) {
+<span class="pc bpc" id="L87" title="3 of 6 branches missed.">        if (reportTypeId == null || reportTypeId.isBlank()</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                || formatId == null || formatId.isBlank()) {</span>
+<span class="nc" id="L89">            return Optional.empty();</span>
+        }
+<span class="fc" id="L91">        Map&lt;String, ReportRendererExtension&gt; formats =</span>
+<span class="fc" id="L92">                byReportType.get(normalize(reportTypeId));</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (formats == null) {</span>
+<span class="nc" id="L94">            return Optional.empty();</span>
+        }
+<span class="fc" id="L96">        return Optional.ofNullable(formats.get(normalize(formatId)));</span>
+    }
+
+    /** Backward-compatible descriptor list for architecture reports. */
+    public List&lt;ReportFormatDescriptor&gt; listDescriptors() {
+<span class="fc" id="L101">        return listDescriptors(ReportRendererExtension.DEFAULT_REPORT_TYPE_ID);</span>
+    }
+
+    public List&lt;ReportFormatDescriptor&gt; listDescriptors(String reportTypeId) {
+<span class="pc bpc" id="L105" title="2 of 4 branches missed.">        if (reportTypeId == null || reportTypeId.isBlank()) {</span>
+<span class="nc" id="L106">            return List.of();</span>
+        }
+<span class="fc" id="L108">        Map&lt;String, ReportRendererExtension&gt; formats =</span>
+<span class="fc" id="L109">                byReportType.get(normalize(reportTypeId));</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (formats == null) {</span>
+<span class="nc" id="L111">            return List.of();</span>
+        }
+<span class="fc" id="L113">        return formats.values().stream()</span>
+<span class="fc" id="L114">                .map(ReportRendererExtension::descriptor)</span>
+<span class="fc" id="L115">                .sorted(Comparator.comparing(ReportFormatDescriptor::id))</span>
+<span class="fc" id="L116">                .toList();</span>
+    }
+
+    public List&lt;String&gt; listReportTypeIds() {
+<span class="fc" id="L120">        return byReportType.keySet().stream().sorted().toList();</span>
+    }
+
+    private String normalizeRequired(String value, String label) {
+<span class="pc bpc" id="L124" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L125">            throw new IllegalArgumentException(label + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L127">        String normalized = normalize(value);</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (normalized.contains(&quot;:&quot;)) {</span>
+<span class="nc" id="L129">            throw new IllegalArgumentException(label + &quot; must not contain ':'&quot;);</span>
+        }
+<span class="fc" id="L131">        return normalized;</span>
+    }
+
+    private String normalize(String value) {
+<span class="fc" id="L135">        return value.trim().toLowerCase(Locale.ROOT);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

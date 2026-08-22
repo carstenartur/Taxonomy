@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationHypothesis.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RelationHypothesis.java</span></div><h1>RelationHypothesis.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
+
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.Nationalized;
+
+import java.time.Instant;
+
+/**
+ * A provisional/proposed relation hypothesis derived from analysis.
+ *
+ * &lt;p&gt;Unlike {@link TaxonomyRelation} which represents confirmed relations,
+ * a hypothesis is a candidate relation that can be accepted or rejected
+ * through a review workflow. Every row belongs to exactly one repository
+ * tenant and either its central scope or one personal workspace.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;relation_hypothesis&quot;,
+       indexes = {
+           @Index(name = &quot;idx_hyp_repository&quot;, columnList = &quot;repository_id&quot;),
+           @Index(name = &quot;idx_hyp_repository_workspace&quot;,
+                   columnList = &quot;repository_id, workspace_id&quot;),
+           @Index(name = &quot;idx_hyp_project&quot;, columnList = &quot;project_id&quot;),
+           @Index(name = &quot;idx_hyp_requirement&quot;, columnList = &quot;requirement_id&quot;),
+           @Index(name = &quot;idx_hyp_snapshot&quot;, columnList = &quot;analysis_snapshot_id&quot;)
+       },
+       uniqueConstraints = @UniqueConstraint(
+               name = &quot;uq_hypothesis_repository_workspace_session_relation&quot;,
+               columnNames = {
+                       &quot;repository_id&quot;,
+                       &quot;workspace_scope_key&quot;,
+                       &quot;source_node_id&quot;,
+                       &quot;target_node_id&quot;,
+                       &quot;relation_type&quot;,
+                       &quot;analysis_session_scope_key&quot;
+               }))
+<span class="fc" id="L50">public class RelationHypothesis {</span>
+
+    public static final String CENTRAL_SCOPE_KEY = &quot;__shared__&quot;;
+    public static final String UNSPECIFIED_SESSION_SCOPE_KEY = &quot;__unspecified__&quot;;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255)
+    private String repositoryId;
+
+    @Nationalized
+    @Column(name = &quot;source_node_id&quot;, nullable = false)
+    private String sourceNodeId;
+
+    @Nationalized
+    @Column(name = &quot;target_node_id&quot;, nullable = false)
+    private String targetNodeId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;relation_type&quot;, nullable = false)
+    private RelationType relationType;
+
+<span class="fc" id="L74">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false)
+    private HypothesisStatus status = HypothesisStatus.PROVISIONAL;
+
+    @Column
+    private Double confidence;
+
+    @Nationalized
+    @Column(name = &quot;analysis_session_id&quot;)
+    private String analysisSessionId;
+
+    /** Non-null key that makes a missing legacy analysis session deterministic. */
+<span class="fc" id="L86">    @Column(name = &quot;analysis_session_scope_key&quot;, nullable = false, length = 255)</span>
+    private String analysisSessionScopeKey = UNSPECIFIED_SESSION_SCOPE_KEY;
+
+    @Column(name = &quot;project_id&quot;)
+    private Long projectId;
+
+    @Column(name = &quot;requirement_id&quot;)
+    private Long requirementId;
+
+    @Column(name = &quot;analysis_snapshot_id&quot;, length = 36)
+    private String analysisSnapshotId;
+
+    @Column(name = &quot;applied_in_current_analysis&quot;)
+    private boolean appliedInCurrentAnalysis;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;workspace_id&quot;)
+    private String workspaceId;
+
+    /** Non-null key for central and personal-workspace uniqueness. */
+<span class="fc" id="L108">    @Column(name = &quot;workspace_scope_key&quot;, nullable = false, length = 255)</span>
+    private String workspaceScopeKey = CENTRAL_SCOPE_KEY;
+
+    @Column(name = &quot;owner_username&quot;)
+    private String ownerUsername;
+
+    @PrePersist
+    protected void onCreate() {
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (createdAt == null) {</span>
+<span class="fc" id="L117">            createdAt = Instant.now();</span>
+        }
+<span class="fc" id="L119">        synchronizeTenantKeys();</span>
+<span class="fc" id="L120">    }</span>
+
+    @PreUpdate
+    protected void onUpdate() {
+<span class="fc" id="L124">        synchronizeTenantKeys();</span>
+<span class="fc" id="L125">    }</span>
+
+    private void synchronizeTenantKeys() {
+<span class="fc" id="L128">        repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L129">        sourceNodeId = requireText(sourceNodeId, &quot;sourceNodeId&quot;);</span>
+<span class="fc" id="L130">        targetNodeId = requireText(targetNodeId, &quot;targetNodeId&quot;);</span>
+<span class="fc" id="L131">        workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L132">        workspaceScopeKey = scopeKeyFor(workspaceId);</span>
+<span class="fc" id="L133">        analysisSessionId = normalizeOptional(analysisSessionId);</span>
+<span class="fc" id="L134">        analysisSessionScopeKey = sessionScopeKeyFor(analysisSessionId);</span>
+<span class="fc" id="L135">        ownerUsername = normalizeOptional(ownerUsername);</span>
+<span class="fc" id="L136">    }</span>
+
+    public static String scopeKeyFor(String workspaceId) {
+<span class="fc" id="L139">        String normalized = normalizeOptional(workspaceId);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        return normalized == null ? CENTRAL_SCOPE_KEY : normalized;</span>
+    }
+
+    public static String sessionScopeKeyFor(String analysisSessionId) {
+<span class="fc" id="L144">        String normalized = normalizeOptional(analysisSessionId);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        return normalized == null ? UNSPECIFIED_SESSION_SCOPE_KEY : normalized;</span>
+    }
+
+<span class="fc" id="L148">    public Long getId() { return id; }</span>
+<span class="fc" id="L149">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L151">    public String getRepositoryId() { return repositoryId; }</span>
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L153">        this.repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L154">    }</span>
+
+<span class="fc" id="L156">    public String getSourceNodeId() { return sourceNodeId; }</span>
+    public void setSourceNodeId(String sourceNodeId) {
+<span class="fc" id="L158">        this.sourceNodeId = requireText(sourceNodeId, &quot;sourceNodeId&quot;);</span>
+<span class="fc" id="L159">    }</span>
+
+<span class="fc" id="L161">    public String getTargetNodeId() { return targetNodeId; }</span>
+    public void setTargetNodeId(String targetNodeId) {
+<span class="fc" id="L163">        this.targetNodeId = requireText(targetNodeId, &quot;targetNodeId&quot;);</span>
+<span class="fc" id="L164">    }</span>
+
+<span class="fc" id="L166">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L167">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+
+<span class="fc" id="L169">    public HypothesisStatus getStatus() { return status; }</span>
+<span class="fc" id="L170">    public void setStatus(HypothesisStatus status) { this.status = status; }</span>
+
+<span class="fc" id="L172">    public Double getConfidence() { return confidence; }</span>
+<span class="fc" id="L173">    public void setConfidence(Double confidence) { this.confidence = confidence; }</span>
+
+<span class="fc" id="L175">    public String getAnalysisSessionId() { return analysisSessionId; }</span>
+    public void setAnalysisSessionId(String analysisSessionId) {
+<span class="fc" id="L177">        this.analysisSessionId = normalizeOptional(analysisSessionId);</span>
+<span class="fc" id="L178">        this.analysisSessionScopeKey = sessionScopeKeyFor(this.analysisSessionId);</span>
+<span class="fc" id="L179">    }</span>
+
+<span class="fc" id="L181">    public String getAnalysisSessionScopeKey() { return analysisSessionScopeKey; }</span>
+
+<span class="fc" id="L183">    public Long getProjectId() { return projectId; }</span>
+<span class="nc" id="L184">    public void setProjectId(Long projectId) { this.projectId = projectId; }</span>
+
+<span class="fc" id="L186">    public Long getRequirementId() { return requirementId; }</span>
+<span class="nc" id="L187">    public void setRequirementId(Long requirementId) { this.requirementId = requirementId; }</span>
+
+<span class="fc" id="L189">    public String getAnalysisSnapshotId() { return analysisSnapshotId; }</span>
+    public void setAnalysisSnapshotId(String analysisSnapshotId) {
+<span class="nc" id="L191">        this.analysisSnapshotId = normalizeOptional(analysisSnapshotId);</span>
+<span class="nc" id="L192">    }</span>
+
+<span class="fc" id="L194">    public boolean isAppliedInCurrentAnalysis() { return appliedInCurrentAnalysis; }</span>
+    public void setAppliedInCurrentAnalysis(boolean appliedInCurrentAnalysis) {
+<span class="fc" id="L196">        this.appliedInCurrentAnalysis = appliedInCurrentAnalysis;</span>
+<span class="fc" id="L197">    }</span>
+
+<span class="fc" id="L199">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L200">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+
+<span class="fc" id="L202">    public String getWorkspaceId() { return workspaceId; }</span>
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L204">        this.workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L205">        this.workspaceScopeKey = scopeKeyFor(this.workspaceId);</span>
+<span class="fc" id="L206">    }</span>
+
+<span class="fc" id="L208">    public String getWorkspaceScopeKey() { return workspaceScopeKey; }</span>
+
+<span class="fc" id="L210">    public String getOwnerUsername() { return ownerUsername; }</span>
+    public void setOwnerUsername(String ownerUsername) {
+<span class="fc" id="L212">        this.ownerUsername = normalizeOptional(ownerUsername);</span>
+<span class="fc" id="L213">    }</span>
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L216" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L220" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L221">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L223">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
