@@ -4,6 +4,7 @@ import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictExce
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.Ordered;
@@ -32,6 +33,7 @@ public final class DefaultDocumentTemplateBootstrap implements ApplicationRunner
     private final DocumentTemplateService templates;
     private final Resource defaultDecisionTemplate;
 
+    @Autowired
     public DefaultDocumentTemplateBootstrap(DocumentTemplateService templates) {
         this(templates, new ClassPathResource(
                 DecisionRationaleTemplateContract.DEFAULT_RESOURCE));
