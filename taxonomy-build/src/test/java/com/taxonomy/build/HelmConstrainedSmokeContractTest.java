@@ -122,6 +122,8 @@ class HelmConstrainedSmokeContractTest {
                 .doesNotContain("kind: Secret")
                 .doesNotContain("ADMIN_PASSWORD");
         assertThat(script)
+                .contains("NAMESPACE=taxonomy-smoke")
+                .doesNotContain("TAXONOMY_SMOKE_NAMESPACE")
                 .contains("docker build")
                 .contains("kind load docker-image")
                 .contains("kubectl create secret generic")
@@ -158,7 +160,11 @@ class HelmConstrainedSmokeContractTest {
                 .contains("KUBECTL_VERSION: v1.35.0")
                 .contains("sha256sum -c -")
                 .contains("bash deploy/helm/taxonomy/constrained-smoke.sh")
+                .contains("Collect secret-free cluster diagnostics")
+                .contains("kubectl get pods,services,networkpolicies,resourcequotas,limitranges")
                 .contains("kubernetes-constrained-smoke")
+                .doesNotContain("cluster-info dump")
+                .doesNotContain("cluster-dump")
                 .doesNotContain("setup-python");
         assertThat(verificationSuites)
                 .contains("\"kubernetes-constrained-smoke.yml\"")
