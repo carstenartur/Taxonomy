@@ -150,15 +150,15 @@ class CodeQlSarifGateTest {
     }
 
     @Test
-    void invalidThresholdAndStructuredScalarFailClosed(@TempDir Path root)
-            throws Exception {
+    void malformedCollectionsScalarsAndNonFiniteSeverityFailClosed(
+            @TempDir Path root) throws Exception {
         Path sarif = root.resolve("result.sarif");
-        writeSarif(sarif, "java/rule", "5.0", "warning", "message");
 
+        Files.writeString(sarif, "{\"runs\": null}", StandardCharsets.UTF_8);
         assertThatThrownBy(() -> CodeQlSarifGate.inspect(
-                List.of(sarif), Double.NaN))
+                List.of(sarif), 7.0))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("finite non-negative");
+                .hasMessageContaining("SARIF runs must be an array");
 
         Files.writeString(sarif, """
                 {
@@ -171,7 +171,18 @@ class CodeQlSarifGateTest {
         assertThatThrownBy(() -> CodeQlSarifGate.inspect(
                 List.of(sarif), 7.0))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("scalar field");
+                .hasMessageContaining("SARIF ruleId must be a scalar value");
+
+        writeSarif(sarif, "java/rule", "NaN", "warning", "message");
+        assertThatThrownBy(() -> CodeQlSarifGate.inspect(
+                List.of(sarif), 7.0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("security-severity must be finite");
+
+        assertThatThrownBy(() -> CodeQlSarifGate.inspect(
+                List.of(sarif), Double.NaN))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("finite non-negative");
     }
 
     @Test
