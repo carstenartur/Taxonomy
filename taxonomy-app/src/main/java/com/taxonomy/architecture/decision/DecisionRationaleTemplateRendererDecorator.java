@@ -67,7 +67,18 @@ public final class DecisionRationaleTemplateRendererDecorator
         public ReportRenderResult render(ReportRenderContext context) {
             DecisionRationaleReport report =
                     context.payloadAs(DecisionRationaleReport.class);
-            return new ReportRenderResult(templateRenderer.render(delegate, report));
+            try {
+                return new ReportRenderResult(
+                        templateRenderer.render(delegate, report));
+            } catch (DecisionReportTemplateUnavailableException exception) {
+                throw exception;
+            } catch (IllegalStateException exception) {
+                // The template renderer normalizes missing, invalid, and failed template
+                // materialization states to IllegalStateException. Reclassify that
+                // operational dependency failure at the HTTP boundary as 503.
+                throw new DecisionReportTemplateUnavailableException(
+                        exception.getMessage(), exception);
+            }
         }
     }
 }
