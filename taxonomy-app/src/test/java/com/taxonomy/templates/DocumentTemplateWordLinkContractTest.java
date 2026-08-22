@@ -36,7 +36,7 @@ class DocumentTemplateWordLinkContractTest {
     private DocumentTemplateWebDavLockManager locks;
 
     @Test
-    void managementPageLoadsTheOfficeUriHelperBeforeItsWorkspaceController()
+    void managementPageLoadsApiAndOfficeHelpersBeforeItsWorkspaceController()
             throws Exception {
         String page = resource("/templates/document-templates.html");
 
@@ -45,9 +45,12 @@ class DocumentTemplateWordLinkContractTest {
                 .contains("application/vnd.openxmlformats-officedocument.wordprocessingml.template")
                 .contains("id=\"documentTemplateRows\"")
                 .contains("id=\"documentTemplateHistoryModal\"");
-        assertThat(page.indexOf("/js/document-templates/word-template-links.js"))
-                .isGreaterThanOrEqualTo(0)
-                .isLessThan(page.indexOf("/js/document-templates/document-templates.js"));
+        int api = page.indexOf("/js/api/document-templates-api.js");
+        int word = page.indexOf("/js/document-templates/word-template-links.js");
+        int workspace = page.indexOf("/js/document-templates/document-templates.js");
+        assertThat(api).isGreaterThanOrEqualTo(0);
+        assertThat(word).isGreaterThan(api);
+        assertThat(workspace).isGreaterThan(word);
     }
 
     @Test
@@ -70,24 +73,43 @@ class DocumentTemplateWordLinkContractTest {
     }
 
     @Test
-    void workspaceBuildsAbsoluteWordLinksKeepsFallbacksAndAnnouncesTemplates()
+    void workspaceUsesTheApiBoundaryBuildsWordLinksAndKeepsFallbacks()
             throws Exception {
         String workspace = resource(
                 "/static/js/document-templates/document-templates.js");
 
         assertThat(workspace)
+                .contains("const api = window.TaxonomyDocumentTemplatesApi;")
                 .contains("new URL(webDavBase, window.location.href)")
                 .contains("new URL(encodeURIComponent(template.fileName), base).href")
                 .contains("links.directWordLinkAllowed(webDavUrl)")
-                .contains("links.configureWordLink(editLink, webDavUrl, 'edit');")
-                .contains("links.configureWordLink(newLink, webDavUrl, 'new');")
+                .contains("links.configureWordLink(anchor, webDavUrl, mode);")
+                .contains("api.list(apiUrl(''), text.loadFailed)")
+                .contains("api.upload(url.href, file, headers, text.uploadFailed)")
+                .contains("api.history(")
                 .contains("download.href = templateDownloadUrl(template.templateId);")
-                .contains("announce(format(text.templates, templates.length));")
+                .contains("announce(format(text.templatesLoaded, templates.length));")
                 .contains("copyAddress(webDavUrl)")
-                .doesNotContain("announce(format(text.versions, templates.length));")
+                .doesNotContain("fetch(")
                 .doesNotContain("access_token")
                 .doesNotContain("?token=")
                 .doesNotContain("Authorization");
+    }
+
+    @Test
+    void documentTemplateTransportLivesInTheApprovedApiLayer() throws Exception {
+        String transport = resource(
+                "/static/js/api/document-templates-api.js");
+
+        assertThat(transport)
+                .contains("window.TaxonomyDocumentTemplatesApi")
+                .contains("global.fetch(url, request)")
+                .contains("credentials: 'same-origin'")
+                .contains("meta[name=\"_csrf\"]")
+                .contains("method !== 'GET' && method !== 'HEAD'")
+                .contains("list,")
+                .contains("history,")
+                .contains("upload");
     }
 
     @Test
