@@ -57,8 +57,13 @@
 {{- end -}}
 {{- if eq $egressMode "restricted" -}}
 {{- range $index, $rule := .Values.networkPolicy.egress -}}
-{{- if eq (toJson $rule) "{}" -}}
-{{- fail (printf "networkPolicy.egress[%d] must not be an unrestricted empty rule in restricted mode" $index) -}}
+{{- if not (kindIs "map" $rule) -}}
+{{- fail (printf "networkPolicy.egress[%d] must be a mapping in restricted mode" $index) -}}
+{{- end -}}
+{{- $destinations := get $rule "to" | default (list) -}}
+{{- $ports := get $rule "ports" | default (list) -}}
+{{- if and (empty $destinations) (empty $ports) -}}
+{{- fail (printf "networkPolicy.egress[%d] must constrain destinations and/or ports in restricted mode" $index) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
