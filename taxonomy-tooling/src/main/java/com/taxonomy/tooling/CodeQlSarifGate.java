@@ -71,19 +71,19 @@ final class CodeQlSarifGate {
         for (Path path : existing) {
             Map<String, Object> report = FlatJson.parseObject(
                     Files.readString(path, StandardCharsets.UTF_8));
-            for (Object runValue : optionalList(report.get("runs"), "runs")) {
+            for (Object runValue : listField(report, "runs", "runs")) {
                 Map<String, Object> run = object(runValue, "SARIF run");
                 Map<String, Map<String, Object>> rules = rules(run);
-                for (Object resultValue : optionalList(
-                        run.get("results"), "results")) {
+                for (Object resultValue : listField(
+                        run, "results", "results")) {
                     resultCount++;
                     Map<String, Object> result = object(
                             resultValue, "SARIF result");
-                    String ruleId = scalarText(
-                            result.get("ruleId"), "unknown");
+                    String ruleId = scalarField(
+                            result, "ruleId", "unknown");
                     double severity = securitySeverity(rules.get(ruleId));
-                    String level = scalarText(
-                            result.get("level"), "warning");
+                    String level = scalarField(
+                            result, "level", "warning");
                     if (severity >= threshold || "error".equals(level)) {
                         blocking.add(new Finding(
                                 path.toString(),
@@ -104,25 +104,26 @@ final class CodeQlSarifGate {
 
     private static Map<String, Map<String, Object>> rules(
             Map<String, Object> run) {
-        Object toolValue = run.get("tool");
-        if (toolValue == null) {
+        Map<String, Object> tool = optionalObjectField(
+                run, "tool", "SARIF tool");
+        if (tool == null) {
             return Map.of();
         }
-        Map<String, Object> tool = object(toolValue, "SARIF tool");
-        Object driverValue = tool.get("driver");
-        if (driverValue == null) {
+        Map<String, Object> driver = optionalObjectField(
+                tool, "driver", "SARIF tool driver");
+        if (driver == null) {
             return Map.of();
         }
-        Map<String, Object> driver = object(
-                driverValue, "SARIF tool driver");
         LinkedHashMap<String, Map<String, Object>> result =
                 new LinkedHashMap<>();
-        for (Object ruleValue : optionalList(
-                driver.get("rules"), "tool.driver.rules")) {
+        for (Object ruleValue : listField(
+                driver, "rules", "tool.driver.rules")) {
             Map<String, Object> rule = object(ruleValue, "SARIF rule");
-            Object id = rule.get("id");
-            if (id != null) {
-                result.put(String.valueOf(id), rule);
+            if (rule.containsKey("id")) {
+                String id = scalarField(rule, "id", "");
+                if (!id.isEmpty()) {
+                    result.put(id, rule);
+                }
             }
         }
         return result;
@@ -132,31 +133,37 @@ final class CodeQlSarifGate {
         if (rule == null) {
             return 0.0;
         }
-        Object propertiesValue = rule.get("properties");
-        if (propertiesValue == null) {
+        Map<String, Object> properties = optionalObjectField(
+                rule, "properties", "SARIF rule properties");
+        if (properties == null || !properties.containsKey("security-severity")) {
             return 0.0;
         }
-        Map<String, Object> properties = object(
-                propertiesValue, "SARIF rule properties");
         Object value = properties.get("security-severity");
-        if (value == null) {
-            return 0.0;
+        if (!(value instanceof String
+                || value instanceof Number
+                || value instanceof Boolean)) {
+            throw new IllegalArgumentException(
+                    "SARIF security-severity must be a scalar value");
         }
         try {
-            return Double.parseDouble(String.valueOf(value));
+            double severity = Double.parseDouble(String.valueOf(value));
+            if (!Double.isFinite(severity)) {
+                throw new IllegalArgumentException(
+                        "SARIF security-severity must be finite");
+            }
+            return severity;
         } catch (NumberFormatException ignored) {
             return 0.0;
         }
     }
 
     private static String messageText(Map<String, Object> result) {
-        Object messageValue = result.get("message");
-        if (messageValue == null) {
+        Map<String, Object> message = optionalObjectField(
+                result, "message", "SARIF result message");
+        if (message == null) {
             return "";
         }
-        Map<String, Object> message = object(
-                messageValue, "SARIF result message");
-        return scalarText(message.get("text"), "");
+        return scalarField(message, "text", "");
     }
 
     private static void writeReport(Path report, Inspection inspection)
@@ -212,10 +219,24 @@ final class CodeQlSarifGate {
         return (Map<String, Object>) map;
     }
 
-    private static List<?> optionalList(Object value, String description) {
-        if (value == null) {
+    private static Map<String, Object> optionalObjectField(
+            Map<String, Object> owner,
+            String field,
+            String description) {
+        if (!owner.containsKey(field)) {
+            return null;
+        }
+        return object(owner.get(field), description);
+    }
+
+    private static List<?> listField(
+            Map<String, Object> owner,
+            String field,
+            String description) {
+        if (!owner.containsKey(field)) {
             return List.of();
         }
+        Object value = owner.get(field);
         if (!(value instanceof List<?> list)) {
             throw new IllegalArgumentException(
                     "SARIF " + description + " must be an array");
@@ -223,17 +244,21 @@ final class CodeQlSarifGate {
         return list;
     }
 
-    private static String scalarText(Object value, String fallback) {
-        if (value == null) {
+    private static String scalarField(
+            Map<String, Object> owner,
+            String field,
+            String fallback) {
+        if (!owner.containsKey(field)) {
             return fallback;
         }
+        Object value = owner.get(field);
         if (value instanceof String
                 || value instanceof Number
                 || value instanceof Boolean) {
             return String.valueOf(value);
         }
         throw new IllegalArgumentException(
-                "SARIF scalar field contains a structured value");
+                "SARIF " + field + " must be a scalar value");
     }
 
     record Inspection(
