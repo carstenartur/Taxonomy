@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,12 +23,15 @@ final class CodeQlSarifGate {
             Path workingDirectory,
             PrintStream output,
             PrintStream error) {
-        CommandArguments arguments = null;
+        Path report = CommandArguments.reportPath(
+                rawArguments, workingDirectory);
         try {
-            arguments = CommandArguments.parse(rawArguments, workingDirectory);
+            CommandArguments arguments = CommandArguments.parse(
+                    rawArguments, workingDirectory);
+            report = arguments.report();
             Inspection inspection = inspect(
                     arguments.sarifPaths(), arguments.threshold());
-            writeReport(arguments.report(), inspection);
+            writeReport(report, inspection);
 
             output.println("CodeQL results: " + inspection.resultCount()
                     + "; blocking: " + inspection.blocking().size());
@@ -39,9 +43,7 @@ final class CodeQlSarifGate {
             }
             return inspection.blocking().isEmpty() ? 0 : 1;
         } catch (IOException | IllegalArgumentException failure) {
-            if (arguments != null) {
-                removeStaleReport(arguments.report(), failure);
-            }
+            removeStaleReport(report, failure);
             error.println("::error::CodeQL gate failed: " + failure.getMessage());
             return 1;
         }
@@ -57,6 +59,7 @@ final class CodeQlSarifGate {
         List<Path> existing = candidates.stream()
                 .map(path -> path.toAbsolutePath().normalize())
                 .filter(Files::isRegularFile)
+                .sorted(Comparator.comparing(Path::toString))
                 .toList();
         if (existing.isEmpty()) {
             throw new IllegalArgumentException("no SARIF files supplied");
@@ -285,6 +288,19 @@ final class CodeQlSarifGate {
             }
             return new CommandArguments(
                     List.copyOf(paths), threshold, report);
+        }
+
+        static Path reportPath(
+                String[] rawArguments,
+                Path workingDirectory) {
+            Path report = workingDirectory.resolve("target/codeql-gate.json");
+            for (int index = 0; index < rawArguments.length - 1; index++) {
+                if ("--report".equals(rawArguments[index])
+                        && !rawArguments[index + 1].startsWith("--")) {
+                    report = resolve(workingDirectory, rawArguments[index + 1]);
+                }
+            }
+            return report;
         }
 
         private static String requiredValue(
