@@ -45,6 +45,31 @@ class DocumentTemplateQaContractTest {
                 .doesNotContain("await loadTemplates();\n            showSuccess(");
     }
 
+    @Test
+    void assistiveNavigationLabelsAreLocalizedInBothLanguages()
+            throws Exception {
+        String page = resource("/templates/document-templates.html");
+        String english = resource(
+                "/i18n/messages_document_templates.properties");
+        String german = resource(
+                "/i18n/messages_document_templates_de.properties");
+
+        assertThat(page)
+                .contains("document.templates.skip")
+                .contains("document.templates.nav.aria")
+                .contains("document.templates.history.close.aria")
+                .doesNotContain("aria-label=\"Close\"")
+                .doesNotContain("aria-label=\"Document template navigation\"");
+        assertThat(english)
+                .contains("document.templates.skip=")
+                .contains("document.templates.nav.aria=")
+                .contains("document.templates.history.close.aria=");
+        assertThat(german)
+                .contains("document.templates.skip=")
+                .contains("document.templates.nav.aria=")
+                .contains("document.templates.history.close.aria=");
+    }
+
     private static String resource(String path) throws IOException {
         try (InputStream input = DocumentTemplateQaContractTest.class
                 .getResourceAsStream(path)) {

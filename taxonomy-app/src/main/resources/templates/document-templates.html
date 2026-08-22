@@ -11,10 +11,12 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
 </head>
 <body class="bg-body-tertiary">
-<a class="skip-link" href="#documentTemplateWorkspace">Skip to document templates</a>
+<a class="skip-link" href="#documentTemplateWorkspace"
+   th:text="#{document.templates.skip}">Skip to document templates</a>
 <div id="documentTemplateLive" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
 
-<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Document template navigation">
+<nav class="navbar navbar-dark bg-dark sticky-top"
+     th:attr="aria-label=#{document.templates.nav.aria}">
     <div class="container-fluid gap-2">
         <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
         <span class="navbar-text text-white fw-semibold me-auto" th:text="#{document.templates.heading}">
@@ -169,7 +171,8 @@
             <div class="modal-header">
                 <h2 id="documentTemplateHistoryTitle" class="modal-title h5"
                     th:text="#{document.templates.history.title}">Template history</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                        th:attr="aria-label=#{document.templates.history.close.aria}"></button>
             </div>
             <div id="documentTemplateHistoryBody" class="modal-body"></div>
             <div class="modal-footer">
