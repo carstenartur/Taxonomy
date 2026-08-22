@@ -15,6 +15,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.Principal;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -131,6 +132,46 @@ class DocumentTemplateWordLinkContractTest {
     }
 
     @Test
+    void webDavRejectsTemplateWritesWithoutArchitectOrAdministratorRole()
+            throws Exception {
+        DocumentTemplateWebDavServlet servlet =
+                new DocumentTemplateWebDavServlet(
+                        templates,
+                        new DocumentTemplateWebDavLockManager());
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "LOCK", "/dav/templates/decision-report.dotx");
+        request.setPathInfo("/decision-report.dotx");
+        request.setUserPrincipal(principal("reader"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        servlet.service(request, response);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void architectCanAcquireAWebDavTemplateWriteLock() throws Exception {
+        DocumentTemplateWebDavServlet servlet =
+                new DocumentTemplateWebDavServlet(
+                        templates,
+                        new DocumentTemplateWebDavLockManager());
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "LOCK", "/dav/templates/decision-report.dotx");
+        request.setPathInfo("/decision-report.dotx");
+        request.setUserPrincipal(principal("architect"));
+        request.addUserRole("ARCHITECT");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        servlet.service(request, response);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getHeader("Lock-Token"))
+                .startsWith("<opaquelocktoken:")
+                .endsWith(">");
+        assertThat(response.getContentType()).isEqualTo("application/xml;charset=UTF-8");
+    }
+
+    @Test
     void pageControllerAndMessageSourceExposeTheWorkspace() throws Exception {
         assertThat(new DocumentTemplatePageController().documentTemplates())
                 .isEqualTo("document-templates");
@@ -140,6 +181,10 @@ class DocumentTemplateWordLinkContractTest {
                 .contains("document.templates.action.edit=");
         assertThat(resource("/i18n/messages_document_templates_de.properties"))
                 .contains("document.templates.action.edit=");
+    }
+
+    private static Principal principal(String name) {
+        return () -> name;
     }
 
     private static String resource(String path) throws IOException {
