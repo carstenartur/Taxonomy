@@ -55,6 +55,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
     static final String PACKAGE_DIRECTORY = "package/";
 
     private static final Pattern COMMIT_ID = Pattern.compile("[0-9a-fA-F]{40}");
+    private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_WRITE_ATTEMPTS = 5;
 
@@ -98,6 +99,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
 
         Objects.requireNonNull(manifest, "manifest");
         Objects.requireNonNull(packageParts, "packageParts");
+        validateStoredManifest(manifest.templateId(), manifest, packageParts);
         String prefix = templatePrefix(manifest.templateId());
         String normalizedExpected = normalizeExpectedVersion(expectedTemplateVersion);
 
@@ -191,12 +193,14 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         Map<String, byte[]> manifests = readManifestFiles(head);
         List<TemplateDescriptor> templates = new ArrayList<>();
         for (Map.Entry<String, byte[]> file : manifests.entrySet()) {
-            if (!file.getKey().endsWith("/" + MANIFEST_NAME)) {
+            String pathTemplateId = templateIdFromManifestPath(file.getKey());
+            if (pathTemplateId == null) {
                 continue;
             }
             TemplateManifest manifest = JSON.readValue(
                     file.getValue(), TemplateManifest.class);
-            String version = currentTemplateVersion(manifest.templateId(), head);
+            validateStoredManifest(pathTemplateId, manifest, null);
+            String version = currentTemplateVersion(pathTemplateId, head);
             if (version == null) {
                 continue;
             }
@@ -238,9 +242,6 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
         }
         TemplateManifest manifest = JSON.readValue(
                 manifestBytes, TemplateManifest.class);
-        if (!templateId.equals(manifest.templateId())) {
-            throw new IOException("Stored template manifest ID does not match its path");
-        }
         TreeMap<String, byte[]> parts = new TreeMap<>();
         String packagePrefix = prefix + PACKAGE_DIRECTORY;
         files.forEach((path, content) -> {
@@ -248,10 +249,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
                 parts.put(path.substring(packagePrefix.length()), content);
             }
         });
-        String actualHash = OoxmlTemplatePackageCodec.packageSha256(parts);
-        if (!actualHash.equals(manifest.packageSha256())) {
-            throw new IOException("Stored OOXML package checksum does not match its manifest");
-        }
+        validateStoredManifest(templateId, manifest, parts);
         return new TemplateSnapshot(manifest, objectId.name(), parts);
     }
 
@@ -416,7 +414,7 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
             tree.setRecursive(true);
             while (tree.next()) {
                 String path = tree.getPathString();
-                if (!path.startsWith(ROOT) || !path.endsWith("/" + MANIFEST_NAME)) {
+                if (templateIdFromManifestPath(path) == null) {
                     continue;
                 }
                 ObjectLoader loader = repository.open(
@@ -462,6 +460,87 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
     private static String templateDirectoryPath(String templateId) {
         validateTemplateId(templateId);
         return ROOT + templateId;
+    }
+
+    private static String templateIdFromManifestPath(String path) {
+        if (path == null || !path.startsWith(ROOT)) {
+            return null;
+        }
+        String relative = path.substring(ROOT.length());
+        int slash = relative.indexOf('/');
+        if (slash <= 0 || slash != relative.lastIndexOf('/')
+                || !MANIFEST_NAME.equals(relative.substring(slash + 1))) {
+            return null;
+        }
+        String templateId = relative.substring(0, slash);
+        try {
+            validateTemplateId(templateId);
+            return templateId;
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
+    }
+
+    private static void validateStoredManifest(
+            String expectedTemplateId,
+            TemplateManifest manifest,
+            Map<String, byte[]> parts) throws IOException {
+        if (manifest.schemaVersion() != 1) {
+            throw new IOException("Unsupported stored template manifest schema version: "
+                    + manifest.schemaVersion());
+        }
+        if (!expectedTemplateId.equals(manifest.templateId())) {
+            throw new IOException("Stored template manifest ID does not match its path");
+        }
+        String normalizedDisplayName;
+        try {
+            normalizedDisplayName = DocumentTemplateService.normalizeDisplayName(
+                    manifest.displayName(), expectedTemplateId);
+        } catch (IllegalArgumentException invalid) {
+            throw new IOException("Stored template display name is invalid", invalid);
+        }
+        if (!Objects.equals(normalizedDisplayName, manifest.displayName())) {
+            throw new IOException("Stored template display name is not canonical");
+        }
+        if (!Objects.equals(expectedTemplateId + ".dotx", manifest.fileName())) {
+            throw new IOException("Stored template filename does not match its ID");
+        }
+        if (!Objects.equals(
+                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, manifest.mediaType())) {
+            throw new IOException("Stored template media type is invalid");
+        }
+        try {
+            Instant.parse(manifest.updatedAt());
+        } catch (RuntimeException invalid) {
+            throw new IOException("Stored template update timestamp is invalid", invalid);
+        }
+        if (manifest.uncompressedSize() < 0 || manifest.partCount() < 0) {
+            throw new IOException("Stored template package statistics are invalid");
+        }
+        if (manifest.packageSha256() == null
+                || !SHA256.matcher(manifest.packageSha256()).matches()) {
+            throw new IOException("Stored template package checksum is invalid");
+        }
+        if (parts == null) {
+            return;
+        }
+        long actualSize = 0;
+        for (Map.Entry<String, byte[]> part : parts.entrySet()) {
+            if (part.getKey() == null || part.getValue() == null) {
+                throw new IOException("Stored OOXML package contains a null part");
+            }
+            actualSize += part.getValue().length;
+        }
+        if (manifest.partCount() != parts.size()) {
+            throw new IOException("Stored OOXML part count does not match its manifest");
+        }
+        if (manifest.uncompressedSize() != actualSize) {
+            throw new IOException("Stored OOXML size does not match its manifest");
+        }
+        String actualHash = OoxmlTemplatePackageCodec.packageSha256(parts);
+        if (!actualHash.equals(manifest.packageSha256())) {
+            throw new IOException("Stored OOXML package checksum does not match its manifest");
+        }
     }
 
     static void validateTemplateId(String templateId) {
