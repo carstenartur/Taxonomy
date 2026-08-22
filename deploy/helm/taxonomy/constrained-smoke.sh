@@ -3,7 +3,10 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 CHART_DIR="${ROOT_DIR}/deploy/helm/taxonomy"
-NAMESPACE=${TAXONOMY_SMOKE_NAMESPACE:-taxonomy-smoke}
+# The prerequisites manifest owns this fixed namespace together with its
+# ResourceQuota and LimitRange. Keeping one authority prevents a caller from
+# redirecting the workload into an unconstrained or non-existent namespace.
+NAMESPACE=taxonomy-smoke
 RELEASE=${TAXONOMY_SMOKE_RELEASE:-taxonomy}
 KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME:-taxonomy-smoke}
 SOURCE_SHA=${SOURCE_SHA:-$(git -C "${ROOT_DIR}" rev-parse HEAD)}
