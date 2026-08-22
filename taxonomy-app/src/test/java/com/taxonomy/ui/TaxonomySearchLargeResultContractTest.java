@@ -30,6 +30,7 @@ class TaxonomySearchLargeResultContractTest {
                 .contains("orientationText('results')")
                 .contains("aria-posinset")
                 .contains("aria-setsize")
+                .contains("search-result-name text-truncate flex-grow-1")
                 .contains("area.dataset.renderedResults")
                 .contains("resultDiagnostics")
                 .doesNotContain("nodes.forEach(function (node)");
@@ -71,6 +72,34 @@ class TaxonomySearchLargeResultContractTest {
     }
 
     @Test
+    void concurrentSearchResponsesCannotOverwriteNewerState() throws Exception {
+        String search = resource("/static/js/shared/taxonomy-search.js");
+        Path root = findRepositoryRoot();
+        String integration = Files.readString(
+                root.resolve("taxonomy-app/src/test/java/com/taxonomy/"
+                        + "TaxonomyLargeResultBudgetIT.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(search)
+                .contains("let searchGeneration = 0")
+                .contains("activeSearchController.abort()")
+                .contains("function beginSearchRequest()")
+                .contains("function isCurrentSearch(request)")
+                .contains("function shouldIgnoreSearchError(error, request)")
+                .contains("error.name === 'AbortError'")
+                .contains("fetch(url, searchFetchOptions(request))")
+                .contains("if (!isCurrentSearch(request)) return;");
+        assertThat(count(search, "var request = beginSearchRequest();"))
+                .as("full-text/semantic search and Find Similar share one authority")
+                .isEqualTo(2);
+        assertThat(integration)
+                .contains("newestSearchOwnsResultsAcrossStaleSuccessAndFailure")
+                .contains("race-slow-success")
+                .contains("race-slow-failure")
+                .contains("race-fast");
+    }
+
+    @Test
     void newSearchClearsStaleHighlightAndKeepsOneTreeTabStop() throws Exception {
         String search = resource("/static/js/shared/taxonomy-search.js");
 
@@ -83,11 +112,14 @@ class TaxonomySearchLargeResultContractTest {
     }
 
     @Test
-    void browserEvidenceUsesAndVerifiesARealTaxonomyNode() throws Exception {
+    void browserEvidenceUsesRealNodesGeometryAndBrowserMetrics() throws Exception {
         Path root = findRepositoryRoot();
         String integration = Files.readString(
                 root.resolve("taxonomy-app/src/test/java/com/taxonomy/"
                         + "TaxonomyLargeResultBudgetIT.java"),
+                StandardCharsets.UTF_8);
+        String budget = Files.readString(
+                root.resolve(".github/large-result-budget.json"),
                 StandardCharsets.UTF_8);
 
         assertThat(integration)
@@ -96,7 +128,25 @@ class TaxonomySearchLargeResultContractTest {
                 .contains("selectedCode")
                 .contains("highlightedCode")
                 .contains(".isEqualTo(realTaxonomyCode)")
+                .contains("name.scrollWidth > name.clientWidth")
+                .contains("clippedNames")
+                .contains("maxNameOverflowPx")
+                .contains("Emulation.setDeviceMetricsOverride")
+                .contains("measuredDevicePixelRatio")
+                .contains("horizontalOverflowPx")
+                .doesNotContain("document.documentElement.style.fontSize")
                 .doesNotContain(".contains(\"BUDGET-0001\")");
+        assertThat(budget)
+                .contains("\"responsiveProfiles\"")
+                .contains("\"mobile-portrait\"")
+                .contains("\"mobile-landscape\"")
+                .contains("\"zoom-200\"")
+                .contains("\"zoom-400\"")
+                .contains("\"deviceScaleFactor\": 4.0");
+    }
+
+    private static int count(String value, String needle) {
+        return value.split(java.util.regex.Pattern.quote(needle), -1).length - 1;
     }
 
     private static String resource(String path) throws Exception {
