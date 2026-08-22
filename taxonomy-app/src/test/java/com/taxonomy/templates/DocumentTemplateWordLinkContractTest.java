@@ -93,24 +93,8 @@ class DocumentTemplateWordLinkContractTest {
     @Test
     void webDavGetReturnsTheRegisteredDotxMediaTypeAndInlineFileName()
             throws Exception {
-        byte[] content = {1, 2, 3, 4};
-        TemplateManifest manifest = new TemplateManifest(
-                1,
-                "decision-report",
-                "Decision report",
-                "decision-report.dotx",
-                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
-                "2026-08-22T12:00:00Z",
-                "alice",
-                4,
-                3,
-                "package-sha");
-        when(templates.downloadCurrent("decision-report"))
-                .thenReturn(new TemplateFile(
-                        manifest,
-                        COMMIT_ID,
-                        content,
-                        Instant.parse("2026-08-22T12:00:00Z")));
+        TemplateFile file = templateFile();
+        when(templates.downloadCurrent("decision-report")).thenReturn(file);
 
         DocumentTemplateWebDavServlet servlet =
                 new DocumentTemplateWebDavServlet(templates, locks);
@@ -128,7 +112,23 @@ class DocumentTemplateWordLinkContractTest {
                 .isEqualTo("inline; filename=\"decision-report.dotx\"");
         assertThat(response.getHeader("ETag"))
                 .isEqualTo("\"" + COMMIT_ID + "\"");
-        assertThat(response.getContentAsByteArray()).containsExactly(content);
+        assertThat(response.getContentAsByteArray()).containsExactly(file.content());
+    }
+
+    @Test
+    void adminDownloadReturnsQuotedGitEtagAndDotxMediaType() throws Exception {
+        TemplateFile file = templateFile();
+        when(templates.downloadCurrent("decision-report")).thenReturn(file);
+
+        var response = new DocumentTemplateAdminController(templates)
+                .download("decision-report", null);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getHeaders().getFirst("ETag"))
+                .isEqualTo("\"" + COMMIT_ID + "\"");
+        assertThat(response.getHeaders().getContentType())
+                .hasToString(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+        assertThat(response.getBody()).containsExactly(file.content());
     }
 
     @Test
@@ -181,6 +181,25 @@ class DocumentTemplateWordLinkContractTest {
                 .contains("document.templates.action.edit=");
         assertThat(resource("/i18n/messages_document_templates_de.properties"))
                 .contains("document.templates.action.edit=");
+    }
+
+    private static TemplateFile templateFile() {
+        TemplateManifest manifest = new TemplateManifest(
+                1,
+                "decision-report",
+                "Decision report",
+                "decision-report.dotx",
+                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                "2026-08-22T12:00:00Z",
+                "alice",
+                4,
+                3,
+                "package-sha");
+        return new TemplateFile(
+                manifest,
+                COMMIT_ID,
+                new byte[]{1, 2, 3, 4},
+                Instant.parse("2026-08-22T12:00:00Z"));
     }
 
     private static Principal principal(String name) {
