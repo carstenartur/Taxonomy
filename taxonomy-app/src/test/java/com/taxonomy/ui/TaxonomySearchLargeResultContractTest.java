@@ -50,25 +50,38 @@ class TaxonomySearchLargeResultContractTest {
     }
 
     @Test
-    void resultNavigationPreservesFocusAndReturnContextWithoutRaces() throws Exception {
+    void resultNavigationPublishesOnlyConfirmedStableFocus() throws Exception {
         String search = resource("/static/js/shared/taxonomy-search.js");
+        Path root = findRepositoryRoot();
+        String integration = Files.readString(
+                root.resolve("taxonomy-app/src/test/java/com/taxonomy/"
+                        + "TaxonomyLargeResultBudgetIT.java"),
+                StandardCharsets.UTF_8);
 
         assertThat(search)
-                .contains("var focusRequestId = ++resultState.focusRequestId")
-                .contains("highlightNodeInTree(node.code, !restoreResultFocus")
-                .contains("resultState.focusRequestId !== focusRequestId")
-                .contains("resultState.focusRequestId += 1")
-                .contains("function revealNodeInTree(code, moveFocus)")
-                .contains("if (moveFocus) node.focus({ preventScroll: true })")
-                .contains("refreshed.focus({ preventScroll: true })")
-                .contains("summary.focus({ preventScroll: true })")
-                .contains("summary.scrollIntoView({ block: 'nearest' })")
-                .contains("window.scrollTo({ top: resultState.originWindowY")
-                .contains("announceResultPosition(index)")
-                .contains("updateCurrentPath(treeNode, node.code)")
+                .contains("const NAVIGATION_COMPLETE_EVENT = '")
+                .contains("taxonomy:search-navigation-complete")
+                .contains("const MAX_FOCUS_ATTEMPTS = 4")
+                .contains("function completeNavigationFocus(options)")
+                .contains("resultState.focusRequestId !== options.requestId")
+                .contains("document.activeElement === stableTarget")
+                .contains("area.dataset.navigationFocusConfirmed = String(confirmed)")
+                .contains("document.dispatchEvent(new CustomEvent(")
+                .contains("focusTarget: restoreResultFocus ? 'result' : 'tree'")
+                .contains("focusTarget: 'summary'")
+                .contains("'taxonomy:view-rendered', onViewRendered")
+                .contains("tree.dataset.viewRendered === 'list'")
                 .contains("previous.disabled = total === 0 || resultState.currentIndex <= 0")
                 .contains("next.disabled = total === 0 || resultState.currentIndex >= total - 1")
                 .doesNotContain("if (item && restoreResultFocus)");
+        assertThat(integration)
+                .contains("NAVIGATION_COMPLETE_EVENT")
+                .contains("document.addEventListener(eventName, onComplete)")
+                .contains("event.detail.focusConfirmed === true")
+                .contains("interactionFocusConfirmed")
+                .contains("returnFocusConfirmed")
+                .doesNotContain(
+                        "requestAnimationFrame(() => requestAnimationFrame(() =>");
     }
 
     @Test
