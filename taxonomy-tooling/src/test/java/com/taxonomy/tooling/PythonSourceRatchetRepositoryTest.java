@@ -33,7 +33,6 @@ class PythonSourceRatchetRepositoryTest {
             ".github/scripts/test-generate-quality-site.py",
             ".github/scripts/test-verify-deployment.py",
             ".github/scripts/test-verify-quality-publication.py",
-            ".github/scripts/update-release-metadata.py",
             ".github/scripts/verify-deployment.py",
             ".github/scripts/verify-quality-publication.py");
 
