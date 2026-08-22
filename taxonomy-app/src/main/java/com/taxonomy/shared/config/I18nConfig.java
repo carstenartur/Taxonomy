@@ -22,6 +22,7 @@ public class I18nConfig {
     public static final List<String> MESSAGE_BASENAMES = List.of(
             "messages",
             "messages_document_import",
+            "messages_document_templates",
             "messages_jgit_storage",
             "messages_observability",
             "messages_portfolio",
