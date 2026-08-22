@@ -8,6 +8,8 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.chromium.HasCdp;
+import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -37,11 +39,13 @@ class TaxonomyLargeResultBudgetIT {
     private static GenericContainer<?> application;
     private static ContainerTestUtils.BrowserSession browserSession;
     private static RemoteWebDriver driver;
+    private static HasCdp cdp;
     private static WebDriverWait wait;
     private static BudgetPolicy policy;
     private static Path evidencePath;
     private static String realTaxonomyCode;
     private static final List<Map<String, Object>> evidence = new ArrayList<>();
+    private static Map<String, Object> concurrencyEvidence = Map.of();
 
     @BeforeAll
     static void startApplicationAndBrowser() throws Exception {
@@ -50,6 +54,13 @@ class TaxonomyLargeResultBudgetIT {
                 root.resolve(".github/large-result-budget.json").toFile(),
                 BudgetPolicy.class);
         assertThat(policy.schemaVersion()).isEqualTo(1);
+        assertThat(policy.responsiveProfiles())
+                .extracting(ResponsiveProfile::id)
+                .containsExactly(
+                        "mobile-portrait",
+                        "mobile-landscape",
+                        "zoom-200",
+                        "zoom-400");
         evidencePath = root.resolve(
                 "target/ui-verification/large-results/report.json");
 
@@ -66,6 +77,11 @@ class TaxonomyLargeResultBudgetIT {
 
         browserSession = ContainerTestUtils.startBrowser(network);
         driver = browserSession.driver();
+        var augmented = new Augmenter().augment(driver);
+        assertThat(augmented)
+                .as("Selenium browser must expose CDP device-metrics control")
+                .isInstanceOf(HasCdp.class);
+        cdp = (HasCdp) augmented;
         driver.manage().window().setSize(new Dimension(1440, 1000));
         driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(30));
         wait = new WebDriverWait(driver, Duration.ofSeconds(120));
@@ -82,6 +98,7 @@ class TaxonomyLargeResultBudgetIT {
     @AfterAll
     static void stopApplicationAndBrowser() throws Exception {
         writeEvidence();
+        clearDeviceMetricsOverride();
         ContainerTestUtils.closeAll(browserSession, application, network);
     }
 
@@ -107,13 +124,40 @@ class TaxonomyLargeResultBudgetIT {
         }
     }
 
+    @Test
+    void newestSearchOwnsResultsAcrossStaleSuccessAndFailure() throws Exception {
+        Map<String, Object> staleSuccess = exerciseSearchRace(
+                "race-slow-success");
+        Map<String, Object> staleFailure = exerciseSearchRace(
+                "race-slow-failure");
+
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        result.put("staleSuccess", staleSuccess);
+        result.put("staleFailure", staleFailure);
+        concurrencyEvidence = result;
+        writeEvidence();
+
+        for (Map.Entry<String, Object> entry : result.entrySet()) {
+            Map<?, ?> observation = map(entry.getValue());
+            assertThat(observation.get("activeQuery"))
+                    .as(entry.getKey() + " active query")
+                    .isEqualTo("race-fast");
+            assertThat(number(observation.get("totalResults")))
+                    .as(entry.getKey() + " total results")
+                    .isEqualTo(3);
+            assertThat(observation.get("hasError"))
+                    .as(entry.getKey() + " stale failure visibility")
+                    .isEqualTo(Boolean.FALSE);
+        }
+    }
+
     private static Map<String, Object> exerciseScenario(
             Scenario scenario,
             long initialTaxonomyNodes,
             long deferredContainers) {
+        clearDeviceMetricsOverride();
         driver.manage().window().setSize(new Dimension(1440, 1000));
-        execute("document.documentElement.style.fontSize='';"
-                + "const panel=document.querySelector('#searchPanel');"
+        execute("const panel=document.querySelector('#searchPanel');"
                 + "panel.open=true;"
                 + "const area=document.querySelector('#searchResultsArea');"
                 + "area.innerHTML=''; area.style.display='none'; area.scrollTop=0;");
@@ -146,6 +190,14 @@ class TaxonomyLargeResultBudgetIT {
                 const list = area.querySelector('.search-results-list');
                 const tasks = window.__taxonomySearchLongTasks || [];
                 const heap = performance.memory ? performance.memory.usedJSHeapSize : null;
+                const names = Array.from(area.querySelectorAll('.search-result-name'));
+                const clipped = names.filter(name => {
+                  const style = getComputedStyle(name);
+                  return style.whiteSpace === 'nowrap'
+                    && style.textOverflow === 'ellipsis'
+                    && (style.overflowX === 'hidden' || style.overflow === 'hidden')
+                    && name.scrollWidth > name.clientWidth;
+                });
                 return {
                   totalResults: Number(area.dataset.totalResults || 0),
                   renderedResults: area.querySelectorAll('.search-result-item').length,
@@ -157,8 +209,13 @@ class TaxonomyLargeResultBudgetIT {
                   renderDurationMs: performance.now() - window.__taxonomySearchStarted,
                   longestTaskMs: tasks.length ? Math.max(...tasks) : 0,
                   heap: heap,
-                  truncatedNames: area.querySelectorAll(
+                  truncationClassNames: area.querySelectorAll(
                     '.search-result-name.text-truncate').length,
+                  clippedNames: clipped.length,
+                  maxNameOverflowPx: names.length
+                    ? Math.max(...names.map(name => Math.max(0,
+                        name.scrollWidth - name.clientWidth)))
+                    : 0,
                   summaryText: document.querySelector('#searchResultSummary')?.textContent || '',
                   filterText: document.querySelector('#searchActiveFilters')?.textContent || ''
                 };
@@ -196,8 +253,8 @@ class TaxonomyLargeResultBudgetIT {
                 }));
                 """));
 
-        Map<String, Object> zoomEvidence = scenario.resultCount() >= 1000
-                ? verifyResponsiveZoom()
+        Map<String, Object> responsiveEvidence = scenario.resultCount() >= 1000
+                ? verifyResponsiveProfiles()
                 : Map.of();
 
         long heapBefore = nullableNumber(baseline.get("heap"), -1);
@@ -224,7 +281,9 @@ class TaxonomyLargeResultBudgetIT {
         metrics.put("renderDurationMs", decimal(measured.get("renderDurationMs")));
         metrics.put("longestTaskMs", decimal(measured.get("longestTaskMs")));
         metrics.put("heapIncreaseBytes", heapIncrease);
-        metrics.put("truncatedNames", number(measured.get("truncatedNames")));
+        metrics.put("truncationClassNames", number(measured.get("truncationClassNames")));
+        metrics.put("clippedNames", number(measured.get("clippedNames")));
+        metrics.put("maxNameOverflowPx", number(measured.get("maxNameOverflowPx")));
         metrics.put("summaryText", measured.get("summaryText"));
         metrics.put("filterText", measured.get("filterText"));
         metrics.put("interactionLatencyMs", decimal(interaction.get("latencyMs")));
@@ -235,28 +294,99 @@ class TaxonomyLargeResultBudgetIT {
         metrics.put("currentPath", interaction.get("path"));
         metrics.put("returnActiveId", returnContext.get("activeId"));
         metrics.put("returnAreaScrollTop", number(returnContext.get("areaScrollTop")));
-        metrics.put("responsiveZoom", zoomEvidence);
+        metrics.put("responsiveProfiles", responsiveEvidence);
         return metrics;
     }
 
-    private static Map<String, Object> verifyResponsiveZoom() {
-        driver.manage().window().setSize(new Dimension(390, 844));
-        Map<String, Object> evidence = new LinkedHashMap<>();
-        for (String zoom : List.of("200%", "400%")) {
-            execute("document.documentElement.style.fontSize=arguments[0]", zoom);
-            sleep(100);
-            long overflow = number(execute("""
-                    const panel = document.querySelector('#searchPanel');
-                    const area = document.querySelector('#searchResultsArea');
-                    return Math.max(
-                      0,
-                      panel.scrollWidth - panel.clientWidth,
-                      area.scrollWidth - area.clientWidth);
-                    """));
-            evidence.put(zoom, overflow);
-        }
-        execute("document.documentElement.style.fontSize=''");
+    private static Map<String, Object> exerciseSearchRace(String staleQuery) {
+        clearDeviceMetricsOverride();
         driver.manage().window().setSize(new Dimension(1440, 1000));
+        execute("""
+                window.__taxonomyBudgetInstall(3);
+                window.TaxonomySearch.performSearch(
+                    arguments[0], 'fulltext', 3);
+                window.TaxonomySearch.performSearch(
+                    'race-fast', 'fulltext', 3);
+                """, staleQuery);
+
+        wait.until(browser -> String.valueOf(execute(
+                "return document.querySelector('#searchActiveFilters')?.textContent || ''"))
+                .contains("race-fast"));
+        sleep(350);
+
+        Map<?, ?> observation = map(execute("""
+                const area = document.querySelector('#searchResultsArea');
+                return {
+                  activeQuery: document.querySelector('#searchActiveFilters')
+                    ?.textContent.includes('race-fast') ? 'race-fast' : '',
+                  totalResults: Number(area.dataset.totalResults || 0),
+                  hasError: Boolean(area.querySelector('.text-danger')),
+                  summary: document.querySelector('#searchResultSummary')?.textContent || ''
+                };
+                """));
+        LinkedHashMap<String, Object> evidence = new LinkedHashMap<>();
+        evidence.put("staleQuery", staleQuery);
+        evidence.put("activeQuery", observation.get("activeQuery"));
+        evidence.put("totalResults", number(observation.get("totalResults")));
+        evidence.put("hasError", observation.get("hasError"));
+        evidence.put("summary", observation.get("summary"));
+        return evidence;
+    }
+
+    private static Map<String, Object> verifyResponsiveProfiles() {
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        try {
+            for (ResponsiveProfile profile : policy.responsiveProfiles()) {
+                cdp.executeCdpCommand(
+                        "Emulation.setDeviceMetricsOverride",
+                        Map.of(
+                                "width", profile.cssWidth(),
+                                "height", profile.cssHeight(),
+                                "deviceScaleFactor", profile.deviceScaleFactor(),
+                                "mobile", profile.mobile(),
+                                "screenWidth", profile.cssWidth(),
+                                "screenHeight", profile.cssHeight()));
+                sleep(120);
+                Map<?, ?> measured = map(execute("""
+                        const panel = document.querySelector('#searchPanel');
+                        const area = document.querySelector('#searchResultsArea');
+                        return {
+                          innerWidth: window.innerWidth,
+                          innerHeight: window.innerHeight,
+                          devicePixelRatio: window.devicePixelRatio,
+                          visualViewportScale: window.visualViewport
+                            ? window.visualViewport.scale : 1,
+                          horizontalOverflowPx: Math.max(
+                            0,
+                            document.documentElement.scrollWidth
+                              - document.documentElement.clientWidth,
+                            panel.scrollWidth - panel.clientWidth,
+                            area.scrollWidth - area.clientWidth)
+                        };
+                        """));
+
+                LinkedHashMap<String, Object> profileEvidence = new LinkedHashMap<>();
+                profileEvidence.put("cssWidth", profile.cssWidth());
+                profileEvidence.put("cssHeight", profile.cssHeight());
+                profileEvidence.put("deviceScaleFactor", profile.deviceScaleFactor());
+                profileEvidence.put("mobile", profile.mobile());
+                profileEvidence.put("innerWidth", number(measured.get("innerWidth")));
+                profileEvidence.put("innerHeight", number(measured.get("innerHeight")));
+                profileEvidence.put(
+                        "measuredDevicePixelRatio",
+                        decimal(measured.get("devicePixelRatio")));
+                profileEvidence.put(
+                        "visualViewportScale",
+                        decimal(measured.get("visualViewportScale")));
+                profileEvidence.put(
+                        "horizontalOverflowPx",
+                        number(measured.get("horizontalOverflowPx")));
+                evidence.put(profile.id(), profileEvidence);
+            }
+        } finally {
+            clearDeviceMetricsOverride();
+            driver.manage().window().setSize(new Dimension(1440, 1000));
+        }
         return evidence;
     }
 
@@ -291,9 +421,15 @@ class TaxonomyLargeResultBudgetIT {
                     .as(scenario.id() + " JavaScript heap increase")
                     .isLessThanOrEqualTo(policy.maxHeapIncreaseBytes());
         }
-        assertThat(number(metrics.get("truncatedNames")))
-                .as(scenario.id() + " collapsed result descriptions")
+        assertThat(number(metrics.get("truncationClassNames")))
+                .as(scenario.id() + " result labels with truncation styling")
                 .isEqualTo(number(metrics.get("renderedResults")));
+        assertThat(number(metrics.get("clippedNames")))
+                .as(scenario.id() + " geometrically clipped result labels")
+                .isEqualTo(number(metrics.get("renderedResults")));
+        assertThat(number(metrics.get("maxNameOverflowPx")))
+                .as(scenario.id() + " maximum hidden label width")
+                .isPositive();
         assertThat(number(metrics.get("currentIndex"))).isZero();
         assertThat(String.valueOf(metrics.get("activeClass")))
                 .contains("search-result-item");
@@ -309,11 +445,23 @@ class TaxonomyLargeResultBudgetIT {
         assertThat(String.valueOf(metrics.get("filterText")))
                 .contains("budget-" + scenario.resultCount());
 
-        Object zoom = metrics.get("responsiveZoom");
-        if (zoom instanceof Map<?, ?> values) {
-            for (Map.Entry<?, ?> entry : values.entrySet()) {
-                assertThat(number(entry.getValue()))
-                        .as(scenario.id() + " horizontal overflow at " + entry.getKey())
+        Object responsive = metrics.get("responsiveProfiles");
+        if (responsive instanceof Map<?, ?> values) {
+            for (ResponsiveProfile profile : policy.responsiveProfiles()) {
+                Map<?, ?> profileEvidence = map(values.get(profile.id()));
+                long innerWidth = number(profileEvidence.get("innerWidth"));
+                assertThat(innerWidth)
+                        .as(scenario.id() + " CSS viewport width for " + profile.id())
+                        .isBetween(
+                                Math.max(1L, profile.cssWidth() - 25L),
+                                (long) profile.cssWidth());
+                assertThat(Math.abs(
+                        decimal(profileEvidence.get("measuredDevicePixelRatio"))
+                                - profile.deviceScaleFactor()))
+                        .as(scenario.id() + " device scale factor for " + profile.id())
+                        .isLessThanOrEqualTo(0.1);
+                assertThat(number(profileEvidence.get("horizontalOverflowPx")))
+                        .as(scenario.id() + " horizontal overflow for " + profile.id())
                         .isLessThanOrEqualTo(policy.maxHorizontalOverflowPx());
             }
         }
@@ -364,29 +512,54 @@ class TaxonomyLargeResultBudgetIT {
                 }
                 window.__taxonomyBudgetInstall = function (count) {
                   const original = window.__taxonomyBudgetOriginalFetch;
+                  const nodes = () => Array.from({length: count}, (_, index) => {
+                    const longSuffix = ' — repeated bounded-label evidence segment'.repeat(12);
+                    return {
+                      code: index === 0
+                        ? window.__taxonomyBudgetRealCode
+                        : 'BUDGET-' + String(index + 1).padStart(4, '0'),
+                      nameEn: (index === 0
+                        ? 'Existing taxonomy result ' + window.__taxonomyBudgetRealCode
+                        : 'Synthetic bounded result ' + String(index + 1))
+                        + longSuffix,
+                      matchPercentage: 100 - (index % 100)
+                    };
+                  });
+                  const response = () => new Response(JSON.stringify(nodes()), {
+                    status: 200,
+                    headers: {'Content-Type': 'application/json'}
+                  });
                   window.fetch = function (input, init) {
                     const raw = input instanceof Request ? input.url : String(input);
                     const url = new URL(raw, window.location.href);
                     if (url.pathname === '/api/search') {
-                      const nodes = Array.from({length: count}, (_, index) => ({
-                        code: index === 0
-                          ? window.__taxonomyBudgetRealCode
-                          : 'BUDGET-' + String(index + 1).padStart(4, '0'),
-                        nameEn: index === 0
-                          ? 'Existing taxonomy result ' + window.__taxonomyBudgetRealCode
-                          : 'Synthetic bounded result ' + String(index + 1)
-                            + ' with an intentionally long description-like label',
-                        matchPercentage: 100 - (index % 100)
-                      }));
-                      return Promise.resolve(new Response(JSON.stringify(nodes), {
-                        status: 200,
-                        headers: {'Content-Type': 'application/json'}
-                      }));
+                      const query = url.searchParams.get('q') || '';
+                      if (query === 'race-slow-success') {
+                        return new Promise(resolve => {
+                          setTimeout(() => resolve(response()), 220);
+                        });
+                      }
+                      if (query === 'race-slow-failure') {
+                        return new Promise((resolve, reject) => {
+                          setTimeout(() => reject(new Error('stale search failure')), 220);
+                        });
+                      }
+                      return Promise.resolve(response());
                     }
                     return original(input, init);
                   };
                 };
                 """);
+    }
+
+    private static void clearDeviceMetricsOverride() {
+        if (cdp == null) return;
+        try {
+            cdp.executeCdpCommand(
+                    "Emulation.clearDeviceMetricsOverride", Map.of());
+        } catch (RuntimeException ignored) {
+            // Teardown remains best-effort; profile setup/assertions fail normally.
+        }
     }
 
     private static void writeEvidence() throws Exception {
@@ -396,6 +569,7 @@ class TaxonomyLargeResultBudgetIT {
         report.put("schemaVersion", 1);
         report.put("policy", policy);
         report.put("scenarios", evidence);
+        report.put("concurrency", concurrencyEvidence);
         Files.writeString(
                 evidencePath,
                 JSON.writerWithDefaultPrettyPrinter().writeValueAsString(report) + "\n");
@@ -465,9 +639,18 @@ class TaxonomyLargeResultBudgetIT {
             double maxInteractionLatencyMs,
             long maxHeapIncreaseBytes,
             long maxHorizontalOverflowPx,
-            List<Scenario> scenarios) {
+            List<Scenario> scenarios,
+            List<ResponsiveProfile> responsiveProfiles) {
     }
 
     record Scenario(String id, int resultCount) {
+    }
+
+    record ResponsiveProfile(
+            String id,
+            int cssWidth,
+            int cssHeight,
+            double deviceScaleFactor,
+            boolean mobile) {
     }
 }
