@@ -42,7 +42,7 @@ class WebDavApplicationCredentialServiceTest {
 
         var created = service.create(owner, "Word laptop", true, true, 30);
 
-        assertThat(created.secret()).startsWith("taxdav_");
+        assertThat(created.secret()).startsWith("taxdav_").hasSizeLessThanOrEqualTo(72);
         assertThat(stored.get().getSecretHash()).doesNotContain(created.secret());
         assertThat(encoder.matches(created.secret(), stored.get().getSecretHash())).isTrue();
         assertThat(created.credential().scopes())
@@ -76,7 +76,7 @@ class WebDavApplicationCredentialServiceTest {
         WebDavApplicationCredentialRepository repository =
                 mock(WebDavApplicationCredentialRepository.class);
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
-        String token = "taxdav_" + "a".repeat(24) + "_" + "A".repeat(43);
+        String token = "taxdav_" + "a".repeat(24) + "_" + "A".repeat(39);
         WebDavApplicationCredential credential = credential(token, encoder);
         when(repository.findByCredentialIdAndUsername("a".repeat(24), "admin"))
                 .thenReturn(Optional.of(credential));
