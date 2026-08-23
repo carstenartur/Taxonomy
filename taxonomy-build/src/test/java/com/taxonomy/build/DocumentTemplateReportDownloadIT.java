@@ -178,18 +178,19 @@ class DocumentTemplateReportDownloadIT {
                     "Downloaded report must not remain a DOTX package");
 
             String document = readEntry(zip, "word/document.xml");
+            String visibleDocumentParts = readVisibleDocumentParts(zip, document);
             assertTrue(document.contains("Krankenhaus"),
                     "Downloaded report must contain the hospital requirement");
             assertTrue(document.contains("Patienten")
                             || document.contains("Kommunikations"),
                     "Downloaded report must contain substantive requirement text");
-            assertTrue(document.contains("decision-rationale-report"),
+            assertTrue(visibleDocumentParts.contains("decision-rationale-report"),
                     "Visible report metadata must identify the source template");
-            assertFalse(document.contains("{{taxonomy.template."),
+            assertFalse(visibleDocumentParts.contains("{{taxonomy.template."),
                     "Template provenance tokens must be fully resolved");
-            assertFalse(document.contains("Taxonomy template test report"),
+            assertFalse(visibleDocumentParts.contains("Taxonomy template test report"),
                     "Production report must not contain the synthetic preview title");
-            assertFalse(document.contains(
+            assertFalse(visibleDocumentParts.contains(
                             "no architecture decision was evaluated"),
                     "Production report must not contain the preview-only warning");
 
@@ -200,6 +201,24 @@ class DocumentTemplateReportDownloadIT {
             assertTrue(embeddedImages > 0,
                     "Evaluated report must embed at least one decision diagram");
         }
+    }
+
+    private static String readVisibleDocumentParts(
+            ZipFile zip,
+            String document) throws IOException {
+        StringBuilder visible = new StringBuilder(document);
+        for (String name : zip.stream()
+                .map(ZipEntry::getName)
+                .filter(DocumentTemplateReportDownloadIT::isHeaderOrFooter)
+                .sorted()
+                .toList()) {
+            visible.append('\n').append(readEntry(zip, name));
+        }
+        return visible.toString();
+    }
+
+    private static boolean isHeaderOrFooter(String name) {
+        return name.matches("word/(?:header|footer)\\d+\\.xml");
     }
 
     private static String readEntry(ZipFile zip, String name) throws IOException {
