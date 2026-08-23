@@ -11,6 +11,8 @@
     const terminal = new Set(['SUCCESS', 'PARTIAL', 'FAILED', 'CANCELLED']);
     let activeOperationId = null;
     let polling = false;
+    let manualCopilotReady = false;
+    let lastAnnouncement = null;
 
     const copy = {
         en: {
@@ -200,11 +202,10 @@
             + escapeHtml(status.autopilotReady ? t('autopilotReady') : t('autopilotOff'))
             + '</span><div class="small text-body-secondary mt-1">'
             + escapeHtml(status.reason || '') + '</div>';
+        manualCopilotReady = Boolean(status.manualCopilotReady);
         const button = document.getElementById('copilotRun');
-        if (button) {
-            button.disabled = !status.manualCopilotReady;
-            if (!status.manualCopilotReady) button.title = status.reason || '';
-        }
+        if (button) button.title = manualCopilotReady ? '' : (status.reason || '');
+        setControls(false);
     }
 
     function renderOperation(operation) {
@@ -235,7 +236,7 @@
     function setControls(running) {
         const run = document.getElementById('copilotRun');
         const spinner = document.getElementById('copilotRunSpinner');
-        if (run) run.disabled = running;
+        if (run) run.disabled = running || !manualCopilotReady;
         spinner?.classList.toggle('d-none', !running);
     }
 
@@ -252,8 +253,13 @@
     }
 
     function announce(message) {
+        const normalized = String(message || '').trim();
+        if (!normalized || normalized === lastAnnouncement) return;
         const live = document.getElementById('requirementLive');
-        if (live) live.textContent = message;
+        if (live) {
+            lastAnnouncement = normalized;
+            live.textContent = normalized;
+        }
     }
 
     function api() {
