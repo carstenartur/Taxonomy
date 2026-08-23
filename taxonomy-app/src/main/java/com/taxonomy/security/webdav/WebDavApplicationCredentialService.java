@@ -50,6 +50,7 @@ public class WebDavApplicationCredentialService {
     private final Clock clock;
     private final String dummyHash;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public WebDavApplicationCredentialService(
             WebDavApplicationCredentialRepository repository,
             PasswordEncoder passwordEncoder) {
