@@ -28,6 +28,8 @@ class SbomCompanionProductiveRoutingRepositoryTest {
 
         assertThat(buildPom)
                 .contains("<id>generate-sbom-companion</id>")
+                .contains("<executable>java</executable>")
+                .contains("taxonomy-tooling-${project.version}.jar")
                 .contains("<argument>generate-sbom-companion</argument>")
                 .contains("<argument>target/taxonomy-sbom.json</argument>")
                 .contains("<argument>target/taxonomy-vex.json</argument>")
