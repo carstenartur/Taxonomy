@@ -12,6 +12,7 @@ import java.util.List;
 public class I18nConfig {
 
     public static final List<String> MESSAGE_BASENAMES = List.of(
+            "messages_onboarding",
             "messages",
             "messages_document_import",
             "messages_document_templates",
