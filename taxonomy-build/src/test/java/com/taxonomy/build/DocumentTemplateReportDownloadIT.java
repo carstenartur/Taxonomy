@@ -23,12 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Browser-level acceptance test for the versioned decision-report template.
+ * Browser-level acceptance test for the complete template-backed decision-report workflow.
  *
- * <p>The test deliberately crosses both process boundaries involved in production:
- * Testcontainers starts the packaged Taxonomy application, while the pinned Playwright
- * installation drives a real browser, locates the Word/WebDAV surface and downloads the
- * generated DOCX through the visible administration link.</p>
+ * <p>Testcontainers starts the packaged Taxonomy application with deterministic mock scoring.
+ * Playwright then follows the regular user path: it enters a civil hospital requirement,
+ * performs the analysis, verifies the architecture graph, exports the production decision
+ * report and renders the downloaded DOCX for document-level QA.</p>
  */
 @EnabledIfSystemProperty(named = "documentTemplateE2E", matches = "true")
 class DocumentTemplateReportDownloadIT {
@@ -36,11 +36,11 @@ class DocumentTemplateReportDownloadIT {
     private static final String APP_RUNTIME_IMAGE =
             "eclipse-temurin@sha256:"
                     + "d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13";
-    private static final String TEST_REPORT_NAME =
-            "decision-rationale-template-test.docx";
+    private static final String REPORT_NAME =
+            "taxonomy-decision-rationale-report.docx";
 
     @Test
-    void playwrightDownloadsARealTemplateBackedReportFromThePackagedApplication()
+    void playwrightEvaluatesHospitalRequirementAndDownloadsDecisionReport()
             throws Exception {
         Path repository = repositoryRoot();
         Path applicationJar = applicationJar(repository);
@@ -79,17 +79,29 @@ class DocumentTemplateReportDownloadIT {
 
         Path managementScreenshot =
                 output.resolve("document-template-management.png");
-        Path downloadedReport = output.resolve(TEST_REPORT_NAME);
+        Path analysisScreenshot =
+                output.resolve("hospital-requirement-analysis.png");
+        Path graphScreenshot =
+                output.resolve("hospital-requirement-architecture-graph.png");
+        Path downloadedReport = output.resolve(REPORT_NAME);
         Path evidence = output.resolve("report-download-evidence.json");
 
         assertFile(managementScreenshot, 1_000);
-        assertFile(downloadedReport, 1_000);
-        assertFile(evidence, 100);
+        assertFile(analysisScreenshot, 10_000);
+        assertFile(graphScreenshot, 10_000);
+        assertFile(downloadedReport, 10_000);
+        assertFile(evidence, 500);
+        assertEvidence(evidence);
+
         if (Boolean.parseBoolean(
                 System.getenv().getOrDefault(
                         "TAXONOMY_RENDER_DOCX_PREVIEW", "false"))) {
             assertFile(output.resolve(
-                    "decision-rationale-template-test-report.png"), 1_000);
+                    "decision-rationale-template-test-report.png"), 10_000);
+            assertFile(output.resolve(
+                    "taxonomy-decision-rationale-report.pdf"), 10_000);
+            assertFile(output.resolve(
+                    "taxonomy-decision-rationale-report.txt"), 1_000);
         }
 
         assertDownloadedDocx(downloadedReport);
@@ -117,17 +129,33 @@ class DocumentTemplateReportDownloadIT {
         builder.environment().put("TAXONOMY_UI_OUTPUT_DIR", output.toString());
 
         Process process = builder.start();
-        boolean finished = process.waitFor(5, TimeUnit.MINUTES);
+        boolean finished = process.waitFor(10, TimeUnit.MINUTES);
         if (!finished) {
             process.destroyForcibly();
             throw new AssertionError(
-                    "Playwright report-download acceptance timed out; see " + log);
+                    "Playwright hospital-report acceptance timed out; see " + log);
         }
         String outputText = Files.exists(log)
                 ? Files.readString(log, StandardCharsets.UTF_8)
                 : "";
         assertEquals(0, process.exitValue(),
-                "Playwright report-download acceptance failed:\n" + outputText);
+                "Playwright hospital-report acceptance failed:\n" + outputText);
+    }
+
+    private static void assertEvidence(Path evidence) throws IOException {
+        String json = Files.readString(evidence, StandardCharsets.UTF_8);
+        assertTrue(json.contains("\"schemaVersion\": 2"),
+                "Evidence must use the evaluated-report schema");
+        assertTrue(json.contains("\"requirement\": \"Ein kommunales Krankenhaus"),
+                "Evidence must identify the hospital requirement");
+        assertTrue(json.contains("\"impactGraphRendered\": true"),
+                "Evidence must prove that the architecture graph was rendered");
+        assertTrue(json.contains("\"completenessPercent\": 100"),
+                "Evidence must prove a complete deterministic evaluation");
+        assertFalse(json.contains("\"chapterCount\": 0"),
+                "Evidence must contain at least one decision chapter");
+        assertFalse(json.contains("\"leadingLeafCount\": 0"),
+                "Evidence must contain at least one leading leaf");
     }
 
     private static void assertDownloadedDocx(Path docx) throws IOException {
@@ -141,11 +169,29 @@ class DocumentTemplateReportDownloadIT {
                     "Downloaded report must not remain a DOTX package");
 
             String document = readEntry(zip, "word/document.xml");
-            assertTrue(document.contains("Taxonomy template test report"),
-                    "Downloaded report must contain the synthetic preview title");
-            assertTrue(document.contains(
-                            "The active Word template was opened and materialized successfully."),
-                    "Downloaded report must contain generated report content");
+            assertTrue(document.contains("Krankenhaus"),
+                    "Downloaded report must contain the hospital requirement");
+            assertTrue(document.contains("Patienten")
+                            || document.contains("Kommunikations"),
+                    "Downloaded report must contain substantive requirement text");
+            assertFalse(document.contains("Taxonomy template test report"),
+                    "Production report must not contain the synthetic preview title");
+            assertFalse(document.contains(
+                            "no architecture decision was evaluated"),
+                    "Production report must not contain the preview-only warning");
+
+            long embeddedImages = zip.stream()
+                    .map(ZipEntry::getName)
+                    .filter(name -> name.startsWith("word/media/"))
+                    .count();
+            assertTrue(embeddedImages > 0,
+                    "Evaluated report must embed at least one decision diagram");
+
+            String customProperties = readEntry(zip, "docProps/custom.xml");
+            assertTrue(customProperties.contains("taxonomy.template.id"),
+                    "Downloaded report must contain template provenance");
+            assertTrue(customProperties.contains("taxonomy.template.commit"),
+                    "Downloaded report must contain the full template commit");
         }
     }
 
