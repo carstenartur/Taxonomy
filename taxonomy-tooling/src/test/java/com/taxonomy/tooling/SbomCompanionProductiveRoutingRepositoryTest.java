@@ -37,10 +37,11 @@ class SbomCompanionProductiveRoutingRepositoryTest {
                 .doesNotContain("python3");
 
         assertThat(releaseScript)
-                .contains("generate-sbom-companion")
-                .contains("SBOM_FILE")
-                .contains("VEX_FILE")
-                .contains("java -jar \"$TOOLING_JAR\"")
+                .contains("java -jar \"$TOOLING_JAR\" generate-sbom-companion")
+                .contains("--sbom target/taxonomy-sbom.json")
+                .contains("--output target/taxonomy-vex.json")
+                .doesNotContain("SBOM_FILE")
+                .doesNotContain("VEX_FILE")
                 .doesNotContain("generate-vex.py")
                 .doesNotContain("VEX_HELPER")
                 .doesNotContainPattern(
