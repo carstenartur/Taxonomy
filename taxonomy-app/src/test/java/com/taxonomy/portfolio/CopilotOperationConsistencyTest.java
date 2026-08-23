@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -97,6 +98,40 @@ class CopilotOperationConsistencyTest {
 
         verifyNoInteractions(
                 resultSelector, resultPersistenceService, completionService, coordinator);
+    }
+
+    @Test
+    void latestOperationUsesTheFirstPassStartInsteadOfADeferredLaterPass() {
+        String olderOperation = "c".repeat(64);
+        String newerOperation = "d".repeat(64);
+        Instant base = Instant.parse("2026-08-18T10:00:00Z");
+        AnalysisJobView olderPassOne = job(
+                "old-1", olderOperation, 1, 2, 7L,
+                AnalysisStatus.CANCELLED, base);
+        AnalysisJobView newerPassOne = job(
+                "new-1", newerOperation, 1, 2, 7L,
+                AnalysisStatus.CANCELLED, base.plusSeconds(60));
+        AnalysisJobView newerPassTwo = job(
+                "new-2", newerOperation, 2, 2, 7L,
+                AnalysisStatus.CANCELLED, base.plusSeconds(120));
+        AnalysisJobView olderDeferredPassTwo = job(
+                "old-2", olderOperation, 2, 2, 7L,
+                AnalysisStatus.CANCELLED, base.plusSeconds(180));
+        List<AnalysisJobView> jobs = List.of(
+                olderPassOne, newerPassOne, newerPassTwo, olderDeferredPassTwo);
+        RequirementView requirement = mock(RequirementView.class);
+        when(analysisService.listJobs(41L, context.username(), context))
+                .thenReturn(jobs);
+        when(projectService.getRequirement(41L, 7L, context.username(), context))
+                .thenReturn(requirement);
+        when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+
+        var latest = service.latestOperation(
+                41L, 7L, context.username(), context);
+
+        assertThat(latest).isPresent();
+        assertThat(latest.orElseThrow().operationId()).isEqualTo(newerOperation);
+        verifyNoInteractions(resultSelector, resultPersistenceService, completionService, coordinator);
     }
 
     @Test
@@ -172,6 +207,24 @@ class CopilotOperationConsistencyTest {
             int totalPasses,
             Long requirementId,
             AnalysisStatus status) {
+        return job(
+                jobId,
+                operationId,
+                pass,
+                totalPasses,
+                requirementId,
+                status,
+                Instant.now());
+    }
+
+    private static AnalysisJobView job(
+            String jobId,
+            String operationId,
+            int pass,
+            int totalPasses,
+            Long requirementId,
+            AnalysisStatus status,
+            Instant createdAt) {
         CopilotOperationKey key = new CopilotOperationKey(
                 false,
                 operationId,
@@ -189,8 +242,8 @@ class CopilotOperationConsistencyTest {
                 status,
                 status == AnalysisStatus.SUCCESS ? "snapshot-" + pass : null,
                 1,
-                Instant.now(),
-                status == AnalysisStatus.RUNNING ? null : Instant.now(),
+                createdAt,
+                status == AnalysisStatus.RUNNING ? null : createdAt,
                 null);
         return new AnalysisJobView(
                 jobId,
@@ -201,9 +254,9 @@ class CopilotOperationConsistencyTest {
                 50,
                 "architect",
                 "ws-architect",
-                Instant.now(),
-                Instant.now(),
-                status == AnalysisStatus.RUNNING ? null : Instant.now(),
+                createdAt,
+                createdAt,
+                status == AnalysisStatus.RUNNING ? null : createdAt,
                 1,
                 status == AnalysisStatus.SUCCESS ? 1 : 0,
                 0,
