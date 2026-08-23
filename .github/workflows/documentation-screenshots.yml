@@ -75,7 +75,7 @@ jobs:
         run: |
           ./mvnw -B -pl taxonomy-build \
             -Pdocument-template-report-e2e \
-            failsafe:integration-test failsafe:verify \
+            verify \
             -Dtaxonomy.node.executable="${GITHUB_WORKSPACE}/taxonomy-build/target/frontend/node/node"
 
       - name: Stage screenshot artifact
