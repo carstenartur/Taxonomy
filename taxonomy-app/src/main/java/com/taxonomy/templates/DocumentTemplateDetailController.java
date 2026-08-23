@@ -1,6 +1,5 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.architecture.decision.DecisionRationaleTemplatePreviewService;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
 import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
@@ -26,11 +25,11 @@ import java.security.Principal;
 public final class DocumentTemplateDetailController {
 
     private final DocumentTemplateService templates;
-    private final DecisionRationaleTemplatePreviewService preview;
+    private final DocumentTemplateReportPreview preview;
 
     public DocumentTemplateDetailController(
             DocumentTemplateService templates,
-            DecisionRationaleTemplatePreviewService preview) {
+            DocumentTemplateReportPreview preview) {
         this.templates = templates;
         this.preview = preview;
     }
