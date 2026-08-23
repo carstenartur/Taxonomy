@@ -67,6 +67,8 @@ public final class TaxonomyTooling {
                     commandArguments, workingDirectory, output, error);
             case "generate-sbom-companion" -> generateSbomCompanion(
                     commandArguments, workingDirectory, output, error);
+            case "check-codeql-sarif" -> CodeQlSarifGate.run(
+                    commandArguments, workingDirectory, output, error);
             default -> {
                 error.println("Unknown taxonomy-tooling command: " + command);
                 yield 2;
