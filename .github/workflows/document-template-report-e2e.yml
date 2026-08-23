@@ -72,7 +72,8 @@ jobs:
           TAXONOMY_RENDER_DOCX_PREVIEW: 'true'
           TAXONOMY_DOCS_IMAGE_DIR: ${{ github.workspace }}/docs/images
         run: |
-          ./mvnw -B -pl taxonomy-build verify \
+          ./mvnw -B -pl taxonomy-build \
+            failsafe:integration-test failsafe:verify \
             -Dtaxonomy.ui.skip=true \
             -Dtaxonomy.quality.skip=false \
             -DskipITs=false \
