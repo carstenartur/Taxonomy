@@ -5,6 +5,7 @@ import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundExce
 import com.taxonomy.templates.DocumentTemplateService;
 import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
 import com.taxonomy.templates.OoxmlTemplatePackageCodec;
+import org.apache.poi.ooxml.POIXMLProperties;
 import org.apache.poi.xwpf.usermodel.BodyElementType;
 import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
@@ -50,6 +51,10 @@ public final class DecisionRationaleTemplateRenderer {
 
     private static final String DOCX_MAIN_CONTENT_TYPE =
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml";
+    private static final String TEMPLATE_ID_PROPERTY = "Taxonomy.Template.Id";
+    private static final String TEMPLATE_COMMIT_PROPERTY = "Taxonomy.Template.Commit";
+    private static final String TEMPLATE_SHA256_PROPERTY =
+            "Taxonomy.Template.PackageSha256";
 
     private static final Method CONFIGURE_CORE_PROPERTIES = method(
             "configureCoreProperties",
@@ -114,6 +119,7 @@ public final class DecisionRationaleTemplateRenderer {
             invoke(RENDER_EXECUTIVE_SUMMARY, delegate, document, report, labels);
             invoke(RENDER_CHAPTERS, delegate, document, report, labels);
             invoke(RENDER_APPENDIX, delegate, document, report, labels);
+            writeTemplateProvenanceProperties(document, template);
 
             document.write(output);
             return output.toByteArray();
@@ -164,6 +170,40 @@ public final class DecisionRationaleTemplateRenderer {
         values.put("{{taxonomy.template.sha256}}",
                 value(template.manifest().packageSha256()));
         return Map.copyOf(values);
+    }
+
+    private static void writeTemplateProvenanceProperties(
+            XWPFDocument document,
+            TemplateFile template) {
+        POIXMLProperties.CustomProperties properties =
+                document.getProperties().getCustomProperties();
+        replaceCustomProperty(
+                properties,
+                TEMPLATE_ID_PROPERTY,
+                DecisionRationaleTemplateContract.TEMPLATE_ID);
+        replaceCustomProperty(
+                properties,
+                TEMPLATE_COMMIT_PROPERTY,
+                value(template.commitId()));
+        replaceCustomProperty(
+                properties,
+                TEMPLATE_SHA256_PROPERTY,
+                value(template.manifest().packageSha256()));
+    }
+
+    private static void replaceCustomProperty(
+            POIXMLProperties.CustomProperties properties,
+            String name,
+            String value) {
+        var underlying = properties.getUnderlyingProperties();
+        for (int index = underlying.sizeOfPropertyArray() - 1;
+                index >= 0;
+                index--) {
+            if (name.equals(underlying.getPropertyArray(index).getName())) {
+                underlying.removeProperty(index);
+            }
+        }
+        properties.addProperty(name, value);
     }
 
     private static void replaceTokens(
