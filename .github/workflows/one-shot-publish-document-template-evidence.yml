@@ -1,0 +1,56 @@
+name: One-shot publish document-template evidence
+
+on:
+  push:
+    branches: [ feature/820-versioned-dotx-webdav ]
+    paths:
+      - '.github/workflows/one-shot-publish-document-template-evidence.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'carstenartur/Taxonomy' && github.actor == 'carstenartur'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: feature/820-versioned-dotx-webdav
+          fetch-depth: 0
+
+      - name: Download the verified E2E evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/document-template-evidence
+          mkdir -p /tmp/document-template-evidence
+          gh run download 32624910378 \
+            --repo carstenartur/Taxonomy \
+            --name document-template-report-e2e \
+            --dir /tmp/document-template-evidence
+
+      - name: Verify and stage the screenshots
+        run: |
+          set -euo pipefail
+          test "$(sha256sum /tmp/document-template-evidence/docs/images/document-template-management.png | cut -d' ' -f1)" = \
+            '7df80ae08af4aa4dcd631b742da4d59b9acf73399edfdbdfbcb76bee0d4bec83'
+          test "$(sha256sum /tmp/document-template-evidence/docs/images/decision-rationale-template-test-report.png | cut -d' ' -f1)" = \
+            'df7d91f1f169f432febe3c12fe4ac73b092e13114f21db996f090c1c0a8739f8'
+          file /tmp/document-template-evidence/docs/images/*.png | grep -q 'PNG image data'
+          mkdir -p docs/images
+          cp /tmp/document-template-evidence/docs/images/document-template-management.png docs/images/
+          cp /tmp/document-template-evidence/docs/images/decision-rationale-template-test-report.png docs/images/
+
+      - name: Commit the verified images and remove this one-shot workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/images/document-template-management.png \
+            docs/images/decision-rationale-template-test-report.png
+          git rm .github/workflows/one-shot-publish-document-template-evidence.yml
+          git commit -m 'docs: add verified document-template screenshots'
+          git push origin HEAD:feature/820-versioned-dotx-webdav
