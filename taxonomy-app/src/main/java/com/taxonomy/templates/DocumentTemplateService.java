@@ -20,30 +20,39 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Application boundary shared by the web UI and the virtual WebDAV projection.
- */
+/** Application boundary shared by the web UI and virtual WebDAV projection. */
 @Service
 public class DocumentTemplateService {
 
     private final DocumentTemplateGitRepository repository;
     private final OoxmlTemplatePackageCodec codec;
+    private final OoxmlActiveContentValidator activeContent;
+    private final DocumentTemplateMaterializationCache materializations;
     private final Map<String, DocumentTemplateContract> contracts;
 
-    /**
-     * Production constructor. Spring supplies all registered report-template contracts.
-     */
     @Autowired
     public DocumentTemplateService(
             DocumentTemplateGitRepository repository,
             OoxmlTemplatePackageCodec codec,
-            List<DocumentTemplateContract> contracts) {
+            List<DocumentTemplateContract> contracts,
+            OoxmlActiveContentValidator activeContent,
+            DocumentTemplateMaterializationCache materializations) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.codec = Objects.requireNonNull(codec, "codec");
+        this.activeContent = Objects.requireNonNull(activeContent, "activeContent");
+        this.materializations = Objects.requireNonNull(materializations, "materializations");
         this.contracts = indexContracts(contracts);
     }
 
-    /** Test and compatibility constructor for generic templates without semantic contracts. */
+    /** Focused-test constructor retaining the existing generic-template contract. */
+    public DocumentTemplateService(
+            DocumentTemplateGitRepository repository,
+            OoxmlTemplatePackageCodec codec,
+            List<DocumentTemplateContract> contracts) {
+        this(repository, codec, contracts, new OoxmlActiveContentValidator(),
+                new DocumentTemplateMaterializationCache());
+    }
+
     public DocumentTemplateService(
             DocumentTemplateGitRepository repository,
             OoxmlTemplatePackageCodec codec) {
@@ -64,13 +73,7 @@ public class DocumentTemplateService {
         }
     }
 
-    /**
-     * Import a full DOTX and commit its canonical unzipped package atomically.
-     *
-     * <p>A missing expected version is create-only. Replacing a template requires its
-     * current per-template Git version, normally supplied through {@code If-Match} or a
-     * WebDAV lock. Unrelated template commits never invalidate this precondition.</p>
-     */
+    /** Import one complete DOTX and atomically commit its canonical package tree. */
     public TemplateDescriptor upload(
             String templateId,
             String displayName,
@@ -78,16 +81,11 @@ public class DocumentTemplateService {
             String expectedVersion,
             String actor,
             String message) throws IOException {
-
         DocumentTemplateGitRepository.validateTemplateId(templateId);
         String normalizedDisplayName = normalizeDisplayName(displayName, templateId);
         OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(dotx);
-        validateReservedPackagePaths(packageData.parts());
-        validateContract(templateId, packageData.parts());
-        String effectiveExpectedVersion = resolveExpectedVersion(
-                templateId, expectedVersion);
-
-        String now = Instant.now().toString();
+        validatePackage(templateId, packageData.parts());
+        String effectiveExpectedVersion = resolveExpectedVersion(templateId, expectedVersion);
         String user = actor == null || actor.isBlank() ? "taxonomy" : actor;
         TemplateManifest manifest = new TemplateManifest(
                 1,
@@ -95,12 +93,11 @@ public class DocumentTemplateService {
                 normalizedDisplayName,
                 templateId + ".dotx",
                 OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
-                now,
+                Instant.now().toString(),
                 user,
                 packageData.uncompressedSize(),
                 packageData.parts().size(),
                 packageData.sha256());
-
         TemplateSnapshot saved = repository.commit(
                 manifest,
                 packageData.parts(),
@@ -114,17 +111,8 @@ public class DocumentTemplateService {
         return toTemplateFile(repository.readCurrent(templateId));
     }
 
-    /**
-     * Read and revalidate the current package before a business-critical renderer uses it.
-     *
-     * <p>Normal uploads are validated before commit. Revalidation here also detects direct
-     * expert Git changes that bypassed the web and WebDAV application boundaries.</p>
-     */
     public TemplateFile downloadCurrentValidated(String templateId) throws IOException {
-        TemplateSnapshot snapshot = repository.readCurrent(templateId);
-        validateReservedPackagePaths(snapshot.parts());
-        validateContract(templateId, snapshot.parts());
-        return toTemplateFile(snapshot);
+        return toTemplateFile(repository.readCurrent(templateId));
     }
 
     public TemplateFile download(String templateId, String revision) throws IOException {
@@ -135,10 +123,8 @@ public class DocumentTemplateService {
         return repository.history(templateId);
     }
 
-    public TemplateDiff diff(
-            String templateId,
-            String fromRevision,
-            String toRevision) throws IOException {
+    public TemplateDiff diff(String templateId, String fromRevision, String toRevision)
+            throws IOException {
         return repository.diff(templateId, fromRevision, toRevision);
     }
 
@@ -151,13 +137,14 @@ public class DocumentTemplateService {
             throw new IllegalArgumentException("Invalid OOXML part path");
         }
         TemplateSnapshot snapshot = repository.read(templateId, revision);
+        validateSnapshot(snapshot);
         byte[] content = snapshot.parts().get(path);
         if (content == null) {
-            throw new TemplateNotFoundException(
-                    templateId + "/" + path, revision);
+            throw new TemplateNotFoundException(templateId + "/" + path, revision);
         }
-        boolean text = path.endsWith(".xml") || path.endsWith(".rels")
-                || path.endsWith(".txt") || path.endsWith(".json");
+        String lower = path.toLowerCase(java.util.Locale.ROOT);
+        boolean text = lower.endsWith(".xml") || lower.endsWith(".rels")
+                || lower.endsWith(".txt") || lower.endsWith(".json");
         String rendered = text && content.length <= 1_048_576
                 ? new String(content, StandardCharsets.UTF_8)
                 : null;
@@ -174,12 +161,11 @@ public class DocumentTemplateService {
             String expectedVersion,
             String actor) throws IOException {
         TemplateSnapshot historical = repository.read(templateId, revision);
+        validateSnapshot(historical);
         OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(
                 new ByteArrayInputStream(codec.pack(historical.parts())));
-        validateReservedPackagePaths(packageData.parts());
-        validateContract(templateId, packageData.parts());
-        String effectiveExpected = resolveExpectedVersion(
-                templateId, expectedVersion);
+        validatePackage(templateId, packageData.parts());
+        String effectiveExpected = resolveExpectedVersion(templateId, expectedVersion);
         String user = actor == null || actor.isBlank() ? "taxonomy" : actor;
         TemplateManifest restored = new TemplateManifest(
                 historical.manifest().schemaVersion(),
@@ -206,19 +192,11 @@ public class DocumentTemplateService {
         return repository.headCommit();
     }
 
-    /**
-     * Resolve an HTTP {@code If-Match} value against the current template version.
-     *
-     * <p>Strong entity-tag comparison is required for {@code If-Match}. A comma-separated
-     * list succeeds when any strong tag matches; {@code *} succeeds only when the resource
-     * exists. Raw 40-character commit IDs remain accepted for internal lock hand-off.</p>
-     */
-    String resolveExpectedVersion(String templateId, String value)
-            throws IOException {
+    /** Resolve a strong HTTP If-Match list against the current per-template version. */
+    String resolveExpectedVersion(String templateId, String value) throws IOException {
         if (value == null || value.isBlank()) {
             return null;
         }
-
         TemplateSnapshot current;
         try {
             current = repository.readCurrent(templateId);
@@ -226,7 +204,6 @@ public class DocumentTemplateService {
             throw new TemplateConflictException(value.strip(), null);
         }
         String currentCommit = current.commitId();
-
         for (String candidate : value.split(",")) {
             String tag = candidate.strip();
             if ("*".equals(tag)) {
@@ -235,12 +212,40 @@ public class DocumentTemplateService {
             if (tag.regionMatches(true, 0, "W/", 0, 2)) {
                 continue;
             }
-            String normalized = stripQuotedEtag(tag);
-            if (currentCommit.equalsIgnoreCase(normalized)) {
+            if (currentCommit.equalsIgnoreCase(stripQuotedEtag(tag))) {
                 return currentCommit;
             }
         }
         throw new TemplateConflictException(value.strip(), currentCommit);
+    }
+
+    private TemplateFile toTemplateFile(TemplateSnapshot snapshot) throws IOException {
+        validateSnapshot(snapshot);
+        byte[] dotx = materializations.packed(
+                snapshot.manifest().templateId(),
+                snapshot.commitId(),
+                () -> codec.pack(snapshot.parts()));
+        return new TemplateFile(
+                snapshot.manifest(),
+                snapshot.commitId(),
+                dotx,
+                parseInstant(snapshot.manifest().updatedAt()));
+    }
+
+    private void validateSnapshot(TemplateSnapshot snapshot) throws IOException {
+        materializations.validateOnce(
+                snapshot.manifest().templateId(),
+                snapshot.commitId(),
+                () -> validatePackage(snapshot.manifest().templateId(), snapshot.parts()));
+    }
+
+    private void validatePackage(String templateId, Map<String, byte[]> packageParts) {
+        validateReservedPackagePaths(packageParts);
+        activeContent.validate(packageParts);
+        DocumentTemplateContract contract = contracts.get(templateId);
+        if (contract != null) {
+            contract.validate(packageParts);
+        }
     }
 
     private static void validateReservedPackagePaths(Map<String, byte[]> packageParts) {
@@ -252,22 +257,6 @@ public class DocumentTemplateService {
                         "OOXML package part uses reserved Taxonomy metadata name: " + path);
             }
         }
-    }
-
-    private void validateContract(String templateId, Map<String, byte[]> packageParts) {
-        DocumentTemplateContract contract = contracts.get(templateId);
-        if (contract != null) {
-            contract.validate(packageParts);
-        }
-    }
-
-    private TemplateFile toTemplateFile(TemplateSnapshot snapshot) throws IOException {
-        byte[] dotx = codec.pack(snapshot.parts());
-        return new TemplateFile(
-                snapshot.manifest(),
-                snapshot.commitId(),
-                dotx,
-                parseInstant(snapshot.manifest().updatedAt()));
     }
 
     private static Map<String, DocumentTemplateContract> indexContracts(
@@ -290,15 +279,9 @@ public class DocumentTemplateService {
     private static TemplateDescriptor descriptor(TemplateSnapshot snapshot) {
         TemplateManifest manifest = snapshot.manifest();
         return new TemplateDescriptor(
-                manifest.templateId(),
-                manifest.displayName(),
-                manifest.fileName(),
-                snapshot.commitId(),
-                manifest.updatedAt(),
-                manifest.updatedBy(),
-                manifest.uncompressedSize(),
-                manifest.partCount(),
-                manifest.packageSha256());
+                manifest.templateId(), manifest.displayName(), manifest.fileName(),
+                snapshot.commitId(), manifest.updatedAt(), manifest.updatedBy(),
+                manifest.uncompressedSize(), manifest.partCount(), manifest.packageSha256());
     }
 
     static String stripEtag(String value) {
@@ -315,8 +298,7 @@ public class DocumentTemplateService {
     private static String stripQuotedEtag(String value) {
         String stripped = value == null ? null : value.strip();
         if (stripped != null && stripped.length() >= 2
-                && stripped.startsWith("\"")
-                && stripped.endsWith("\"")) {
+                && stripped.startsWith("\"") && stripped.endsWith("\"")) {
             return stripped.substring(1, stripped.length() - 1);
         }
         return stripped;
@@ -324,16 +306,13 @@ public class DocumentTemplateService {
 
     static String normalizeDisplayName(String displayName, String templateId) {
         String normalized = displayName == null || displayName.isBlank()
-                ? templateId
-                : displayName.strip();
-        normalized = normalized.replace('\r', ' ')
-                .replace('\n', ' ')
-                .replace('\t', ' ');
+                ? templateId : displayName.strip();
+        normalized = normalized.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');
         for (int offset = 0; offset < normalized.length();) {
             int codePoint = normalized.codePointAt(offset);
             if (!isValidXml10CodePoint(codePoint)) {
                 throw new IllegalArgumentException(
-                        "Template display name contains a character that is not permitted in XML 1.0");
+                        "Template display name contains a character not permitted in XML 1.0");
             }
             offset += Character.charCount(codePoint);
         }
@@ -345,9 +324,7 @@ public class DocumentTemplateService {
     }
 
     static boolean isValidXml10CodePoint(int codePoint) {
-        return codePoint == 0x9
-                || codePoint == 0xA
-                || codePoint == 0xD
+        return codePoint == 0x9 || codePoint == 0xA || codePoint == 0xD
                 || (codePoint >= 0x20 && codePoint <= 0xD7FF)
                 || (codePoint >= 0xE000 && codePoint <= 0xFFFD)
                 || (codePoint >= 0x10000 && codePoint <= 0x10FFFF);
@@ -366,21 +343,13 @@ public class DocumentTemplateService {
             String commitId,
             byte[] content,
             Instant lastModified) {
-
         public TemplateFile {
             Objects.requireNonNull(manifest, "manifest");
             Objects.requireNonNull(commitId, "commitId");
             content = content.clone();
         }
-
-        @Override
-        public byte[] content() {
-            return content.clone();
-        }
-
-        public String etag() {
-            return "\"" + commitId + "\"";
-        }
+        @Override public byte[] content() { return content.clone(); }
+        public String etag() { return "\"" + commitId + "\""; }
     }
 
     public record TemplatePartView(
