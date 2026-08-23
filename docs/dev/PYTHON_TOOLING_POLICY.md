@@ -17,15 +17,15 @@ removed. It is not an allow-list for permanent exceptions.
 3. Shell and GitHub Actions may orchestrate external command-line tools, Git,
    Helm, containers and publication, but must not become a second test or policy
    implementation.
-4. No `.py` file, `python`, `python3`, `pytest`, `pip` or `unittest` invocation
-   may remain in the final release candidate.
+4. No `.py` file, versioned or unversioned `python`/`pip`, `pytest`, `unittest`
+   or `actions/setup-python` invocation may remain in the final release candidate.
 5. A productive adapter is removed only after its positive, negative, failure,
    retry and output contracts are preserved at the real boundary.
 6. New Python is prohibited while the migration is in progress.
 7. Every protected integration must remain green; adapter deletion and the
    relocation of tests that execute it are one atomic transition.
 
-## Policies already owned by Maven/JUnit
+## Policies already owned by Maven/JUnit or dependency-free Java tooling
 
 | Concern | Integration |
 |---|---|
@@ -43,6 +43,7 @@ removed. It is not an allow-list for permanent exceptions.
 | Declared-reactor release-plan validation | #767 |
 | Productive release/version workflow routing | #769 |
 | Release metadata transformation and routing | #771 / #774 |
+| CodeQL SARIF high-severity enforcement | #673 bounded Java slice |
 
 ## Completed Java release-core migration
 
@@ -81,14 +82,51 @@ Java JAR rather than reconstructing these rules in YAML or shell. Historical
 their behavior remains covered beside the Java implementation in
 `taxonomy-tooling`.
 
+## CodeQL SARIF gate
+
+The Java and JavaScript CodeQL jobs build the same dependency-free
+`taxonomy-tooling` JAR and invoke its `check-codeql-sarif` command. The command
+preserves the reviewed threshold contract: a result blocks when its referenced
+rule has `security-severity >= 7.0` or when the result itself explicitly carries
+SARIF level `error`.
+
+Retained CodeQL artifacts prove that GitHub's reports keep query rules under
+`runs[].tool.extensions[].rules` while `tool.driver.rules` is empty. The former
+Python adapter inspected only the driver and therefore resolved those real rule
+severities as zero. The Java gate resolves rule metadata from both the driver and
+every extension and requires every result to reference exactly one known rule.
+Duplicate rule IDs, unsupported SARIF versions, missing/non-regular inputs,
+unknown rule references, malformed messages, invalid levels and non-numeric,
+non-finite or out-of-range severities fail closed.
+
+Missing result levels remain `warning`; the gate deliberately does not reinterpret
+a rule's `defaultConfiguration.level` as an explicit result override. This keeps
+the historical error-level policy stable while correcting high-severity lookup.
+A deterministic JSON evidence file records all supplied reports, result count,
+threshold, blocking findings and PASS/FAIL state. Any controlled failure removes
+stale evidence rather than leaving an earlier PASS file behind.
+
+The workflow contains orchestration only: it discovers SARIF paths in stable,
+NUL-safe order and invokes the immutable Java JAR. Missing-input policy and all
+positive, blocking and malformed-input behavior belong to Java/JUnit. A
+repository contract prevents the deleted Python adapter, a shell duplicate or a
+Python fallback from returning.
+
+This slice reduces the tracked Python inventory from twelve to **eleven** files.
+That count is encoded by the removal-only source ratchet and may only decrease in
+subsequent protected integrations.
+
 ## Removal-only source ratchet
 
 The remaining Python inventory is an upper bound. Later slices may delete an
 allowed path but cannot introduce another `.py` file. Productive XML, workflow
 YAML, shell, Java main source, JavaScript build scripts, properties, Dockerfiles,
 Makefiles and package metadata are diffed against the immutable green
-release-core-removal baseline. New executable `python`, `python3`, `pytest`,
-`pip` or `actions/setup-python` references fail the Maven/JUnit build.
+release-core-removal baseline. New executable versioned or unversioned
+`python`/`pip`, `pytest`, `unittest` or `actions/setup-python` references fail the
+Maven/JUnit build. Token boundaries prevent ordinary shell terms such as
+`pipefail` or application identifiers containing `python` from becoming false
+positives.
 
 The exact file-inventory check runs in every checkout, including source archives
 and intentionally shallow specialized jobs. The ancestry and productive-diff
@@ -115,7 +153,6 @@ bounded shell replacements have equivalent JUnit contracts:
 - `check-delivery-hardening.py`
 - `verify-deployment.py`
 - `verify-quality-publication.py`
-- `check-codeql-sarif.py`
 - `check-observability-performance-scope.py`
 
 ### Duplicate Python test programs to remove with their productive boundary
@@ -131,10 +168,11 @@ No remaining item is an accepted permanent exception.
 1. Release parameter, plan and version-state core in `taxonomy-tooling` — complete.
 2. Release metadata transformation, productive routing and helper removal — complete.
 3. CycloneDX SBOM companion generation and productive routing.
-4. Release/delivery, CodeQL and observability policy checks under JUnit authority.
-5. Quality-site generation and publication verification in Java/Maven-native code.
-6. Deployment verification at its real HTTP/Helm boundary.
-7. Repository-wide absolute source contract rejecting every Python path and
+4. CodeQL SARIF policy gate in dependency-free Java with JUnit contracts — complete.
+5. Remaining release/delivery and observability policy checks under Java/JUnit authority.
+6. Quality-site generation and publication verification in Java/Maven-native code.
+7. Deployment verification at its real HTTP/Helm boundary.
+8. Repository-wide absolute source contract rejecting every Python path and
    invocation.
 
 Each slice must remain bounded, preserve the real behavior before deleting the
