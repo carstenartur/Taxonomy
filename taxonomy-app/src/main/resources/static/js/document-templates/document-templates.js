@@ -243,7 +243,10 @@
         try {
             const saved = await api.upload(url.href, file, headers, text.uploadFailed);
             uploadForm.reset();
-            if (await loadTemplates()) showSuccess(format(text.uploaded, saved.displayName));
+            const refreshed = await loadTemplates();
+            if (refreshed) {
+                showSuccess(format(text.uploaded, saved.displayName));
+            }
         } catch (error) { showError(error.message || text.uploadFailed); }
         finally { setUploadBusy(false); }
     });
