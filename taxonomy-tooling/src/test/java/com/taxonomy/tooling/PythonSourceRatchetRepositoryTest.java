@@ -29,7 +29,6 @@ class PythonSourceRatchetRepositoryTest {
             ".github/scripts/check-release-delivery-contract.py",
             ".github/scripts/check-release-image-gate.py",
             ".github/scripts/generate-quality-site.py",
-            ".github/scripts/generate-vex.py",
             ".github/scripts/test-generate-quality-site.py",
             ".github/scripts/test-verify-deployment.py",
             ".github/scripts/test-verify-quality-publication.py",
