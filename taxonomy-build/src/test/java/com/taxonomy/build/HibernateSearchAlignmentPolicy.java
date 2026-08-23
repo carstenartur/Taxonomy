@@ -28,9 +28,11 @@ final class HibernateSearchAlignmentPolicy {
             String expectedSearchVersion,
             String expectedOrmPrefix,
             String expectedLuceneVersion) {
-        requireText(expectedSearchVersion, "expectedSearchVersion");
-        requireText(expectedOrmPrefix, "expectedOrmPrefix");
-        requireText(expectedLuceneVersion, "expectedLuceneVersion");
+        expectedSearchVersion = requireText(
+                expectedSearchVersion, "expectedSearchVersion");
+        expectedOrmPrefix = requireText(expectedOrmPrefix, "expectedOrmPrefix");
+        expectedLuceneVersion = requireText(
+                expectedLuceneVersion, "expectedLuceneVersion");
 
         final String text;
         try {
@@ -59,10 +61,11 @@ final class HibernateSearchAlignmentPolicy {
         if (searchEntries.isEmpty()) {
             failures.add("No org.hibernate.search artifacts were found in the dependency tree");
         }
+        String normalizedSearchVersion = expectedSearchVersion;
         searchEntries.forEach((artifact, versions) -> {
-            if (!versions.equals(Set.of(expectedSearchVersion))) {
+            if (!versions.equals(Set.of(normalizedSearchVersion))) {
                 failures.add(artifact + " resolved to " + sorted(versions)
-                        + ", expected only " + expectedSearchVersion);
+                        + ", expected only " + normalizedSearchVersion);
             }
         });
         if (ormVersions.size() != 1
