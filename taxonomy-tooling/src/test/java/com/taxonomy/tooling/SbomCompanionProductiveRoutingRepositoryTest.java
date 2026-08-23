@@ -29,8 +29,10 @@ class SbomCompanionProductiveRoutingRepositoryTest {
         assertThat(buildPom)
                 .contains("<id>generate-sbom-companion</id>")
                 .contains("<argument>generate-sbom-companion</argument>")
-                .contains("${project.build.directory}/taxonomy-sbom.json")
-                .contains("${project.build.directory}/taxonomy-vex.json")
+                .contains("<argument>target/taxonomy-sbom.json</argument>")
+                .contains("<argument>target/taxonomy-vex.json</argument>")
+                .doesNotContain("${project.build.directory}/taxonomy-sbom.json")
+                .doesNotContain("${project.build.directory}/taxonomy-vex.json")
                 .doesNotContain("generate-vex.py")
                 .doesNotContain("python3");
 
