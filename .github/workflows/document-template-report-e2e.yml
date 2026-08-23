@@ -53,9 +53,9 @@ jobs:
             libreoffice-writer \
             poppler-utils
 
-      - name: Build and install the packaged application
+      - name: Build and install the packaged application reactor
         run: |
-          ./mvnw -B -pl taxonomy-app -am install \
+          ./mvnw -B -pl taxonomy-build -am install \
             -DskipTests \
             -Dtaxonomy.ui.skip=true \
             -Dtaxonomy.quality.skip=true
