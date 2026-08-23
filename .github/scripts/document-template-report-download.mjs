@@ -30,9 +30,9 @@ const docsImageDir = process.env.TAXONOMY_DOCS_IMAGE_DIR
 const renderPreview =
   String(process.env.TAXONOMY_RENDER_DOCX_PREVIEW || 'false') === 'true';
 const templateId = 'decision-rationale-report';
+const expectedReportFilename = 'taxonomy-decision-rationale-report.docx';
 const docxMediaType =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const expectedReportFilename = 'taxonomy-decision-rationale-report.docx';
 const hospitalRequirement =
   'Ein kommunales Krankenhaus benötigt eine integrierte Kommunikations- und ' +
   'Koordinationsplattform für Pflege, ärztlichen Dienst, Notaufnahme, Radiologie ' +
@@ -42,17 +42,15 @@ const hospitalRequirement =
   'ausfallsicheren Betrieb ermöglichen.';
 
 await mkdir(outputDir, { recursive: true });
-const managementScreenshot = path.join(
-  outputDir, 'document-template-management.png');
-const analysisScreenshot = path.join(
-  outputDir, 'hospital-requirement-analysis.png');
-const graphScreenshot = path.join(
-  outputDir, 'hospital-requirement-architecture-graph.png');
-const reportPath = path.join(outputDir, expectedReportFilename);
-const reportScreenshot = path.join(
-  outputDir, 'decision-rationale-template-test-report.png');
-const reportTextPath = path.join(
-  outputDir, 'taxonomy-decision-rationale-report.txt');
+const files = {
+  management: path.join(outputDir, 'document-template-management.png'),
+  onboarding: path.join(outputDir, 'hospital-requirement-onboarding.png'),
+  analysis: path.join(outputDir, 'hospital-requirement-analysis.png'),
+  graph: path.join(outputDir, 'hospital-requirement-architecture-graph.png'),
+  docx: path.join(outputDir, expectedReportFilename),
+  report: path.join(outputDir, 'decision-rationale-template-test-report.png'),
+  text: path.join(outputDir, 'taxonomy-decision-rationale-report.txt')
+};
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
@@ -65,31 +63,24 @@ const page = await context.newPage();
 try {
   await login(page);
   await waitForSeededTemplate(context);
+  const template = await verifyTemplateManagement(page);
+  const analysis = await evaluateHospitalRequirement(page);
+  const request = await currentReportRequest(page);
+  const reportModel = await verifyDecisionModel(context, request);
+  const download = await downloadDecisionReport(page, files.docx);
+  const rendering = renderPreview
+    ? await renderAndInspectReport(files.docx, files.report, files.text, reportModel)
+    : null;
+  const reportBytes = await readFile(files.docx);
 
-  const templateEvidence = await verifyTemplateManagement(page);
-  const analysisEvidence = await evaluateHospitalRequirement(page);
-  const reportRequest = await currentReportRequest(page);
-  const reportModel = await verifyDecisionModel(context, reportRequest);
-  const downloadEvidence = await downloadDecisionReport(page, reportPath);
-
-  let renderingEvidence = null;
-  if (renderPreview) {
-    renderingEvidence = await renderAndInspectDownloadedReport(
-      reportPath,
-      reportScreenshot,
-      reportTextPath,
-      reportModel);
-  }
-
-  const reportBytes = await readFile(reportPath);
   const evidence = {
     schemaVersion: 2,
     capturedAt: new Date().toISOString(),
     baseUrl,
     templateId,
     requirement: hospitalRequirement,
-    template: templateEvidence,
-    analysis: analysisEvidence,
+    template,
+    analysis,
     reportModel: {
       status: reportModel.status,
       chapterCount: reportModel.chapters.length,
@@ -101,70 +92,49 @@ try {
       warningCount: reportModel.warnings.length
     },
     download: {
-      ...downloadEvidence,
+      ...download,
       downloadedBytes: reportBytes.length,
-      downloadedSha256: createHash('sha256')
-        .update(reportBytes)
-        .digest('hex')
+      downloadedSha256: createHash('sha256').update(reportBytes).digest('hex')
     },
-    rendering: renderingEvidence,
+    rendering,
     screenshots: {
-      management: path.basename(managementScreenshot),
-      analysis: path.basename(analysisScreenshot),
-      architectureGraph: path.basename(graphScreenshot),
-      report: renderPreview ? path.basename(reportScreenshot) : null
+      management: path.basename(files.management),
+      onboarding: path.basename(files.onboarding),
+      analysis: path.basename(files.analysis),
+      architectureGraph: path.basename(files.graph),
+      report: renderPreview ? path.basename(files.report) : null
     }
   };
   await writeFile(
     path.join(outputDir, 'report-download-evidence.json'),
     `${JSON.stringify(evidence, null, 2)}\n`,
     'utf8');
-
-  if (docsImageDir) {
-    if (!renderPreview) {
-      throw new Error(
-        'TAXONOMY_DOCS_IMAGE_DIR requires TAXONOMY_RENDER_DOCX_PREVIEW=true');
-    }
-    await mkdir(docsImageDir, { recursive: true });
-    for (const screenshot of [
-      managementScreenshot,
-      analysisScreenshot,
-      graphScreenshot,
-      reportScreenshot
-    ]) {
-      await copyFile(
-        screenshot,
-        path.join(docsImageDir, path.basename(screenshot)));
-    }
-  }
-
+  await copyDocumentationEvidence();
   console.log(JSON.stringify(evidence, null, 2));
 } finally {
   await context.close();
   await browser.close();
 }
 
-async function login(page) {
-  await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  await page.locator('input[name="username"]').fill(username);
-  await page.locator('input[name="password"]').fill(password);
+async function login(target) {
+  await target.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
+  await target.locator('input[name="username"]').fill(username);
+  await target.locator('input[name="password"]').fill(password);
   await Promise.all([
-    page.waitForURL(url => !url.pathname.endsWith('/login'), {
+    target.waitForURL(url => !url.pathname.endsWith('/login'), {
       timeout: 30_000
     }),
-    page.keyboard.press('Enter')
+    target.keyboard.press('Enter')
   ]);
 }
 
-async function waitForSeededTemplate(context) {
+async function waitForSeededTemplate(requestContext) {
   const deadline = Date.now() + 120_000;
   let lastStatus = null;
   let lastBody = '';
   while (Date.now() < deadline) {
-    const response = await context.request.get(
-      `${baseUrl}/api/admin/document-templates`, {
-        failOnStatusCode: false
-      });
+    const response = await requestContext.request.get(
+      `${baseUrl}/api/admin/document-templates`, { failOnStatusCode: false });
     lastStatus = response.status();
     lastBody = await response.text();
     if (response.ok()) {
@@ -181,160 +151,174 @@ async function waitForSeededTemplate(context) {
       + `last response ${lastStatus}: ${lastBody.slice(0, 500)}`);
 }
 
-async function verifyTemplateManagement(page) {
-  await page.goto(`${baseUrl}/admin/document-templates?lang=de`, {
+async function verifyTemplateManagement(target) {
+  await target.goto(`${baseUrl}/admin/document-templates?lang=de`, {
     waitUntil: 'networkidle'
   });
-  const row = page.locator(`tr[data-template-id="${templateId}"]`);
+  const row = target.locator(`tr[data-template-id="${templateId}"]`);
   await row.waitFor({ state: 'visible', timeout: 60_000 });
-
   const editLink = row.locator('a[href^="ms-word:ofe|u|"]').first();
   await editLink.waitFor({ state: 'visible' });
   const wordEditUri = await editLink.getAttribute('href');
-  if (!wordEditUri?.includes(
-    `/dav/templates/${templateId}.dotx`)) {
+  if (!wordEditUri?.includes(`/dav/templates/${templateId}.dotx`)) {
     throw new Error(`Unexpected Word edit URI: ${wordEditUri}`);
   }
-
-  const webDavAddress = row.locator('code').filter({
+  const webDav = row.locator('code').filter({
     hasText: `/dav/templates/${templateId}.dotx`
   }).first();
-  await webDavAddress.waitFor({ state: 'visible' });
-  const webDavUrl = (await webDavAddress.textContent())?.trim();
+  const webDavUrl = (await webDav.textContent())?.trim();
   if (!webDavUrl?.startsWith('http')) {
     throw new Error(`WebDAV address is not visible: ${webDavUrl}`);
   }
-
   const commit = (await row.locator('td').nth(1).locator('code')
     .first().textContent())?.trim() || null;
-
-  await page.screenshot({
-    path: managementScreenshot,
-    fullPage: true
-  });
+  await target.screenshot({ path: files.management, fullPage: true });
   return {
     commitAbbreviation: commit,
-    managementUrl: page.url(),
+    managementUrl: target.url(),
     wordEditUri,
     webDavUrl
   };
 }
 
-async function evaluateHospitalRequirement(page) {
-  await page.goto(`${baseUrl}/?lang=de`, { waitUntil: 'domcontentloaded' });
-  await page.locator('#businessText').waitFor({
+async function evaluateHospitalRequirement(target) {
+  await target.goto(`${baseUrl}/?lang=de`, { waitUntil: 'domcontentloaded' });
+  await target.locator('#businessText').waitFor({
     state: 'visible',
     timeout: 60_000
   });
-  await page.waitForFunction(() => {
+  await target.waitForFunction(() => {
     const state = window.TaxonomyState;
     return Array.isArray(state?.taxonomyData)
       && state.taxonomyData.length > 0
       && Boolean(document.querySelector('#taxonomyTree[data-view-rendered]'));
   }, null, { timeout: 180_000 });
-  await page.waitForFunction(() => window.TaxonomyI18n?.isLoaded?.() === true,
-    null, { timeout: 30_000 });
+  const onboarding = await completeOnboarding(target);
 
-  const interactive = page.locator('#interactiveMode');
-  if (await interactive.isChecked()) {
-    await interactive.uncheck();
-  }
-  const architectureView = page.locator('#includeArchitectureView');
-  if (!(await architectureView.isChecked())) {
-    await architectureView.check();
-  }
+  const interactive = target.locator('#interactiveMode');
+  if (await interactive.isChecked()) await interactive.uncheck();
+  const architectureView = target.locator('#includeArchitectureView');
+  if (!(await architectureView.isChecked())) await architectureView.check();
+  await target.locator('#viewDecision').click();
+  await target.locator('#businessText').fill(hospitalRequirement);
 
-  // Select a non-list view so the normal all-at-once /api/analyze path is used.
-  await page.locator('#viewDecision').click();
-  await page.locator('#businessText').fill(hospitalRequirement);
-
-  const [analysisResponse] = await Promise.all([
-    page.waitForResponse(response => {
-      const url = new URL(response.url());
+  const [response] = await Promise.all([
+    target.waitForResponse(candidate => {
+      const url = new URL(candidate.url());
       return url.pathname.endsWith('/api/analyze')
-        && response.request().method() === 'POST';
+        && candidate.request().method() === 'POST';
     }, { timeout: 180_000 }),
-    page.locator('#analyzeBtn').click()
+    target.locator('#analyzeBtn').click()
   ]);
-  if (analysisResponse.status() !== 200) {
+  const responseText = await response.text();
+  if (response.status() !== 200) {
     throw new Error(
-      `Hospital requirement analysis failed with HTTP ${analysisResponse.status()}: `
-        + (await analysisResponse.text()).slice(0, 1_000));
+      `Hospital requirement analysis failed with HTTP ${response.status()}: `
+        + responseText.slice(0, 1_000));
   }
-  const analysis = await analysisResponse.json();
-  if (analysis.status !== 'SUCCESS') {
-    throw new Error(`Mock analysis did not complete successfully: ${analysis.status}`);
+  const result = JSON.parse(responseText);
+  if (result.status !== 'SUCCESS') {
+    throw new Error(`Mock analysis did not complete successfully: ${result.status}`);
   }
 
-  const scores = analysis.scores || {};
-  const reasons = analysis.reasons || {};
-  const positiveEntries = Object.entries(scores)
+  const scores = result.scores || {};
+  const reasons = result.reasons || {};
+  const positive = Object.entries(scores)
     .filter(([, value]) => Number(value) > 0)
     .sort((left, right) => Number(right[1]) - Number(left[1]));
-  if (positiveEntries.length < 3) {
-    throw new Error(
-      `Mock hospital analysis returned only ${positiveEntries.length} positive scores`);
+  if (positive.length < 3) {
+    throw new Error(`Mock analysis returned only ${positive.length} positive scores`);
   }
-
-  const architecture = analysis.architectureView || {};
-  const architectureElements = architecture.includedElements || [];
-  const architectureRelationships = architecture.includedRelationships || [];
-  if (architectureElements.length < 3) {
-    throw new Error(
-      `Architecture view contains only ${architectureElements.length} elements`);
+  const architecture = result.architectureView || {};
+  const elements = architecture.includedElements || [];
+  const relationships = architecture.includedRelationships || [];
+  if (elements.length < 3) {
+    throw new Error(`Architecture view contains only ${elements.length} elements`);
   }
-  if (architectureRelationships.length < 1) {
+  if (relationships.length < 1) {
     throw new Error('Architecture view contains no relationships');
   }
 
-  await page.waitForFunction(() =>
+  await target.waitForFunction(() =>
     window.TaxonomyState?.lastAnalysisStatus === 'SUCCESS',
   null, { timeout: 60_000 });
-  await page.locator('#taxonomyTree[data-view-rendered="summary"]').waitFor({
-    state: 'visible',
-    timeout: 60_000
-  });
-  await page.screenshot({ path: analysisScreenshot, fullPage: true });
+  await target.waitForTimeout(1_000);
+  await target.screenshot({ path: files.analysis, fullPage: true });
 
-  await page.locator('a[data-page="architecture"]').click();
-  await page.locator('#architectureViewPanel').waitFor({
+  await target.locator('a[data-page="architecture"]').click();
+  await target.locator('#architectureViewPanel').waitFor({
     state: 'visible',
     timeout: 60_000
   });
-  const graph = page.locator('#impactGraphView svg').first();
+  const graph = target.locator('#impactGraphView svg').first();
   await graph.waitFor({ state: 'visible', timeout: 60_000 });
-  await page.waitForTimeout(1_200);
-  await page.locator('#impactGraphView').screenshot({ path: graphScreenshot });
+  await target.waitForTimeout(1_200);
+  await target.locator('#impactGraphView').screenshot({ path: files.graph });
 
-  await page.locator('a[data-page="analyze"]').click();
-  await page.locator('#exportDecisionReportDocx').waitFor({
+  await target.locator('a[data-page="analyze"]').click();
+  await target.locator('#exportDecisionReportDocx').waitFor({
     state: 'visible',
     timeout: 30_000
   });
-
   return {
-    status: analysis.status,
-    provider: analysis.provider || null,
+    status: result.status,
+    provider: result.provider || null,
+    onboarding,
     evaluatedScoreCount: Object.keys(scores).length,
-    positiveScoreCount: positiveEntries.length,
+    positiveScoreCount: positive.length,
     suppliedReasonCount: Object.keys(reasons).length,
-    leadingScores: Object.fromEntries(positiveEntries.slice(0, 12)),
-    architectureElementCount: architectureElements.length,
-    architectureRelationshipCount: architectureRelationships.length,
+    leadingScores: Object.fromEntries(positive.slice(0, 12)),
+    architectureElementCount: elements.length,
+    architectureRelationshipCount: relationships.length,
     architectureAnchorCount: (architecture.anchors || []).length,
     summaryRendered: true,
     impactGraphRendered: true
   };
 }
 
-async function currentReportRequest(page) {
-  const request = await page.evaluate(() => {
+async function completeOnboarding(target) {
+  const dialog = target.locator('#onboardingOverlay');
+  await dialog.waitFor({ state: 'visible', timeout: 30_000 });
+  const title = (await dialog.locator('#onboardingTitle').textContent())?.trim();
+  const intro = (await dialog.locator('#onboardingIntro').textContent())?.trim();
+  const stepCount = await dialog.locator('.step-item').count();
+  if (!title || !intro || stepCount !== 3) {
+    throw new Error(
+      `Onboarding is incomplete (title=${Boolean(title)}, `
+        + `intro=${Boolean(intro)}, steps=${stepCount})`);
+  }
+  const dismiss = target.locator('#onboardingDismiss');
+  await dismiss.waitFor({ state: 'visible', timeout: 10_000 });
+  await target.waitForFunction(() =>
+    document.activeElement?.id === 'onboardingDismiss',
+  null, { timeout: 10_000 });
+  const overflow = await dialog.evaluate(element => ({
+    horizontal: element.scrollWidth > element.clientWidth + 1,
+    vertical: element.scrollHeight > element.clientHeight + 1
+  }));
+  if (overflow.horizontal) {
+    throw new Error('Onboarding requires horizontal scrolling at 1440×1000');
+  }
+  await dialog.screenshot({ path: files.onboarding });
+  await dismiss.click();
+  await dialog.waitFor({ state: 'detached', timeout: 30_000 });
+  return {
+    title,
+    intro,
+    stepCount,
+    dismissInitiallyFocused: true,
+    horizontalOverflow: overflow.horizontal,
+    verticalOverflow: overflow.vertical
+  };
+}
+
+async function currentReportRequest(target) {
+  const request = await target.evaluate(() => {
     const state = window.TaxonomyState;
-    const text = document.getElementById('businessText')?.value.trim() || '';
     return {
       scores: state?.currentScores || {},
       reasons: state?.currentReasons || {},
-      businessText: text,
+      businessText: document.getElementById('businessText')?.value.trim() || '',
       provider: state?.lastAnalysisProvider || 'MOCK',
       analysisStatus: state?.lastAnalysisStatus || 'UNKNOWN',
       discrepancies: state?.currentDiscrepancies || [],
@@ -349,16 +333,16 @@ async function currentReportRequest(page) {
   return request;
 }
 
-async function verifyDecisionModel(context, reportRequest) {
-  const response = await context.request.post(
+async function verifyDecisionModel(requestContext, request) {
+  const response = await requestContext.request.post(
     `${baseUrl}/api/decision-report/json`, {
-      data: reportRequest,
+      data: request,
       failOnStatusCode: false
     });
   const body = await response.text();
   if (!response.ok()) {
     throw new Error(
-      `Decision report JSON verification failed with HTTP ${response.status()}: `
+      `Decision report JSON failed with HTTP ${response.status()}: `
         + body.slice(0, 1_000));
   }
   const report = JSON.parse(body);
@@ -370,7 +354,7 @@ async function verifyDecisionModel(context, reportRequest) {
   }
   if (Number(report.metadata?.completenessPercent) !== 100) {
     throw new Error(
-      `The deterministic mock analysis is incomplete: `
+      `Deterministic mock analysis is incomplete: `
         + `${report.metadata?.completenessPercent}%`);
   }
   if (report.status === 'DRAFT_INCOMPLETE' || report.status === 'NO_RESULT') {
@@ -379,95 +363,68 @@ async function verifyDecisionModel(context, reportRequest) {
   return report;
 }
 
-async function downloadDecisionReport(page, reportPath) {
-  const endpoint = `${baseUrl}/api/decision-report/docx`;
-  const [download, reportResponse] = await Promise.all([
-    page.waitForEvent('download', { timeout: 120_000 }),
-    page.waitForResponse(response =>
-      response.url() === endpoint
-        && response.request().method() === 'POST',
-    { timeout: 120_000 }),
-    page.locator('#exportDecisionReportDocx').click()
+async function downloadDecisionReport(target, reportPath) {
+  const [download, response] = await Promise.all([
+    target.waitForEvent('download', { timeout: 120_000 }),
+    target.waitForResponse(candidate => {
+      const url = new URL(candidate.url());
+      return url.pathname.endsWith('/api/decision-report/docx')
+        && candidate.request().method() === 'POST';
+    }, { timeout: 120_000 }),
+    target.locator('#exportDecisionReportDocx').click()
   ]);
-  if (reportResponse.status() !== 200) {
+  if (response.status() !== 200) {
     throw new Error(
-      `Decision report download failed with HTTP ${reportResponse.status()}: `
-        + (await reportResponse.text()).slice(0, 1_000));
+      `Decision report download failed with HTTP ${response.status()}: `
+        + (await response.text()).slice(0, 1_000));
   }
-  const downloadFailure = await download.failure();
-  if (downloadFailure) {
-    throw new Error(`Report download failed: ${downloadFailure}`);
+  const failure = await download.failure();
+  if (failure) throw new Error(`Report download failed: ${failure}`);
+  const headers = response.headers();
+  const contentType = String(headers['content-type'] || '').toLowerCase();
+  const disposition = String(headers['content-disposition'] || '');
+  if (!contentType.startsWith(docxMediaType)) {
+    throw new Error(`Unexpected report Content-Type: ${contentType || '<missing>'}`);
   }
-
-  const responseHeaders = reportResponse.headers();
-  const responseContentType = String(
-    responseHeaders['content-type'] || '').toLowerCase();
-  if (!responseContentType.startsWith(docxMediaType)) {
-    throw new Error(
-      `Unexpected report Content-Type: ${responseContentType || '<missing>'}`);
+  if (!disposition.includes(expectedReportFilename)) {
+    throw new Error(`Unexpected Content-Disposition: ${disposition}`);
   }
-  const responseContentDisposition = String(
-    responseHeaders['content-disposition'] || '');
-  if (!responseContentDisposition.includes(expectedReportFilename)) {
-    throw new Error(
-      'Report Content-Disposition does not contain the expected filename: '
-        + responseContentDisposition);
-  }
-
   await download.saveAs(reportPath);
-  const reportBytes = await readFile(reportPath);
-  if (reportBytes.length < 10_000
-      || reportBytes[0] !== 0x50
-      || reportBytes[1] !== 0x4b) {
-    throw new Error(
-      `Downloaded report is not a plausible DOCX ZIP (${reportBytes.length} bytes)`);
+  const bytes = await readFile(reportPath);
+  if (bytes.length < 10_000 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    throw new Error(`Downloaded report is not a plausible DOCX (${bytes.length} bytes)`);
   }
   if (download.suggestedFilename() !== expectedReportFilename) {
-    throw new Error(
-      `Unexpected downloaded filename: ${download.suggestedFilename()}`);
+    throw new Error(`Unexpected downloaded filename: ${download.suggestedFilename()}`);
   }
-
   return {
-    url: endpoint,
-    responseContentType,
-    responseContentDisposition,
+    url: response.url(),
+    responseContentType: contentType,
+    responseContentDisposition: disposition,
     downloadedFilename: download.suggestedFilename()
   };
 }
 
-async function renderAndInspectDownloadedReport(
-  docxPath,
-  pngPath,
-  textPath,
-  reportModel) {
-  const profile = await mkdtemp(
-    path.join(os.tmpdir(), 'taxonomy-libreoffice-'));
-  const profileUrl = pathToFileURL(profile).href;
-  const office = process.env.LIBREOFFICE_EXECUTABLE || 'libreoffice';
-
-  const officeArguments = [
-    `-env:UserInstallation=${profileUrl}`,
+async function renderAndInspectReport(docxPath, screenshotPath, textPath, model) {
+  const profile = await mkdtemp(path.join(os.tmpdir(), 'taxonomy-libreoffice-'));
+  const arguments_ = [
+    `-env:UserInstallation=${pathToFileURL(profile).href}`,
     '--headless',
     '--convert-to', 'pdf',
     '--outdir', outputDir,
     docxPath
   ];
   try {
-    const { stdout, stderr } = await execFileAsync(
-      office,
-      officeArguments,
+    await execFileAsync(
+      process.env.LIBREOFFICE_EXECUTABLE || 'libreoffice',
+      arguments_,
       { timeout: 120_000, maxBuffer: 5 * 1024 * 1024 });
-    if (stdout) process.stdout.write(stdout);
-    if (stderr) process.stderr.write(stderr);
   } catch (error) {
-    if (office === 'libreoffice' && error?.code === 'ENOENT') {
-      await execFileAsync('soffice', officeArguments, {
-        timeout: 120_000,
-        maxBuffer: 5 * 1024 * 1024
-      });
-    } else {
-      throw error;
-    }
+    if (error?.code !== 'ENOENT') throw error;
+    await execFileAsync('soffice', arguments_, {
+      timeout: 120_000,
+      maxBuffer: 5 * 1024 * 1024
+    });
   }
 
   const pdfPath = path.join(
@@ -477,27 +434,21 @@ async function renderAndInspectDownloadedReport(
   if (pdfStats.size < 10_000) {
     throw new Error(`Rendered PDF is unexpectedly small: ${pdfStats.size}`);
   }
-
-  const { stdout: pdfInfo } = await execFileAsync('pdfinfo', [pdfPath], {
+  const { stdout: info } = await execFileAsync('pdfinfo', [pdfPath], {
     timeout: 30_000,
     maxBuffer: 2 * 1024 * 1024
   });
-  const pageMatch = /^Pages:\s+(\d+)$/m.exec(pdfInfo);
-  const pageCount = pageMatch ? Number(pageMatch[1]) : 0;
+  const pageCount = Number(/^Pages:\s+(\d+)$/m.exec(info)?.[1] || 0);
   if (pageCount < 3) {
-    throw new Error(
-      `The evaluated decision report is unexpectedly short (${pageCount} pages)`);
+    throw new Error(`Evaluated decision report has only ${pageCount} pages`);
   }
-
   await execFileAsync('pdftotext', ['-layout', pdfPath, textPath], {
     timeout: 30_000,
     maxBuffer: 5 * 1024 * 1024
   });
   const reportText = await readFile(textPath, 'utf8');
-  assertReportText(reportText, reportModel);
-
-  const screenshotPage = await findDecisionChapterPage(pdfPath, pageCount);
-  const outputPrefix = pngPath.slice(0, -'.png'.length);
+  assertReportText(reportText, model);
+  const screenshotPage = await findDecisionPage(pdfPath, pageCount);
   await execFileAsync('pdftoppm', [
     '-png',
     '-f', String(screenshotPage),
@@ -505,16 +456,14 @@ async function renderAndInspectDownloadedReport(
     '-singlefile',
     '-r', '144',
     pdfPath,
-    outputPrefix
+    screenshotPath.slice(0, -'.png'.length)
   ], {
     timeout: 120_000,
     maxBuffer: 5 * 1024 * 1024
   });
-  const pngStats = await stat(pngPath);
-  if (pngStats.size < 10_000) {
-    throw new Error(`Rendered report screenshot is too small: ${pngStats.size}`);
+  if ((await stat(screenshotPath)).size < 10_000) {
+    throw new Error('Rendered report screenshot is unexpectedly small');
   }
-
   return {
     pdfFilename: path.basename(pdfPath),
     pdfBytes: pdfStats.size,
@@ -528,37 +477,31 @@ async function renderAndInspectDownloadedReport(
   };
 }
 
-function assertReportText(reportText, reportModel) {
-  const normalized = reportText.replace(/\s+/g, ' ');
-  for (const fragment of [
-    'kommunales Krankenhaus',
-    'Patientenübergaben'
-  ]) {
+function assertReportText(text, model) {
+  const normalized = text.replace(/\s+/g, ' ');
+  for (const fragment of ['Krankenhaus', 'Patienten']) {
     if (!normalized.toLocaleLowerCase('de-DE')
       .includes(fragment.toLocaleLowerCase('de-DE'))) {
-      throw new Error(`Rendered report does not contain requirement fragment: ${fragment}`);
+      throw new Error(`Rendered report lacks requirement fragment: ${fragment}`);
     }
   }
   if (/Preview only|no architecture decision was evaluated|template test report/i
     .test(normalized)) {
-    throw new Error('Rendered report still contains synthetic preview-only content');
+    throw new Error('Rendered report still contains preview-only content');
   }
-  const leadingCode = reportModel.executiveSummary?.leadingLeaf?.code;
+  const leadingCode = model.executiveSummary?.leadingLeaf?.code;
   if (!leadingCode || !normalized.includes(leadingCode)) {
-    throw new Error(
-      `Rendered report does not name its leading leaf: ${leadingCode || '<missing>'}`);
+    throw new Error(`Rendered report does not name leading leaf ${leadingCode}`);
   }
-  const percentMatches = normalized.match(/\b\d{1,3}\s*%/g) || [];
-  if (percentMatches.length < 3) {
-    throw new Error(
-      `Rendered report contains only ${percentMatches.length} visible percentage values`);
+  if ((normalized.match(/\b\d{1,3}\s*%/g) || []).length < 3) {
+    throw new Error('Rendered report contains fewer than three percentages');
   }
   if (!/(Entscheidung|Bewertung|Decision)/i.test(normalized)) {
-    throw new Error('Rendered report contains no recognizable decision chapter text');
+    throw new Error('Rendered report contains no decision chapter text');
   }
 }
 
-async function findDecisionChapterPage(pdfPath, pageCount) {
+async function findDecisionPage(pdfPath, pageCount) {
   for (let pageNumber = 2; pageNumber <= pageCount; pageNumber += 1) {
     const { stdout } = await execFileAsync('pdftotext', [
       '-f', String(pageNumber),
@@ -576,4 +519,22 @@ async function findDecisionChapterPage(pdfPath, pageCount) {
     }
   }
   return Math.min(3, pageCount);
+}
+
+async function copyDocumentationEvidence() {
+  if (!docsImageDir) return;
+  if (!renderPreview) {
+    throw new Error(
+      'TAXONOMY_DOCS_IMAGE_DIR requires TAXONOMY_RENDER_DOCX_PREVIEW=true');
+  }
+  await mkdir(docsImageDir, { recursive: true });
+  for (const source of [
+    files.management,
+    files.onboarding,
+    files.analysis,
+    files.graph,
+    files.report
+  ]) {
+    await copyFile(source, path.join(docsImageDir, path.basename(source)));
+  }
 }
