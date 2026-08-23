@@ -1,0 +1,156 @@
+name: One-off migrate observability scope policy to JUnit
+
+on:
+  push:
+    branches:
+      - agent/673-observability-scope-junit
+    paths:
+      - .github/workflows/one-off-migrate-observability-scope.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact migration branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/673-observability-scope-junit
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Replace the Python scope checker atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          ci=.github/workflows/ci-cd.yml
+          ratchet=taxonomy-tooling/src/test/java/com/taxonomy/tooling/PythonSourceRatchetRepositoryTest.java
+          policy=docs/dev/PYTHON_TOOLING_POLICY.md
+          script=.github/scripts/check-observability-performance-scope.py
+          test_file=taxonomy-tooling/src/test/java/com/taxonomy/tooling/ObservabilityPerformanceScopeRepositoryTest.java
+          workflow=.github/workflows/one-off-migrate-observability-scope.yml
+
+          test -f "$script"
+          test "$(grep -Fc 'python3 .github/scripts/check-observability-performance-scope.py' "$ci")" -eq 1
+          sed -i '\#python3 .github/scripts/check-observability-performance-scope.py#d' "$ci"
+          test "$(grep -Fc '".github/scripts/check-observability-performance-scope.py",' "$ratchet")" -eq 1
+          sed -i '\#".github/scripts/check-observability-performance-scope.py",#d' "$ratchet"
+
+          cat > "$test_file" <<'JAVA'
+          package com.taxonomy.tooling;
+
+          import org.junit.jupiter.api.Test;
+
+          import java.nio.charset.StandardCharsets;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+
+          class ObservabilityPerformanceScopeRepositoryTest {
+
+              private static final String STATIC_EXCLUSION =
+                      ":(exclude)taxonomy-app/src/main/resources/static/**";
+              private static final String TEMPLATE_EXCLUSION =
+                      ":(exclude)taxonomy-app/src/main/resources/templates/**";
+
+              @Test
+              void performanceGateUsesTheReviewedRuntimeScopeWithoutPython()
+                      throws Exception {
+                  Path root = findRepositoryRoot();
+                  Path workflowPath = root.resolve(".github/workflows/ci-cd.yml");
+                  Path removedChecker = root.resolve(
+                          ".github/scripts/check-observability-performance-scope.py");
+                  String workflow = Files.readString(
+                          workflowPath, StandardCharsets.UTF_8);
+
+                  assertThat(workflow).contains(
+                          "- name: Detect performance-sensitive changes",
+                          "PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
+                          "PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+                          "git diff --quiet \"${PR_BASE_SHA}...${PR_HEAD_SHA}\" --",
+                          "pom.xml",
+                          "Dockerfile",
+                          "taxonomy-app/pom.xml",
+                          "taxonomy-app/src/main",
+                          STATIC_EXCLUSION,
+                          TEMPLATE_EXCLUSION,
+                          ".github/scripts/run-observability-performance.sh",
+                          "github.event_name != 'pull_request' || "
+                                  + "steps.observability-performance-scope.outputs.run == 'true'",
+                          "TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true'",
+                          "run: bash .github/scripts/run-observability-performance.sh");
+
+                  int scopeStart = workflow.indexOf(
+                          "- name: Detect performance-sensitive changes");
+                  int performanceStart = workflow.indexOf(
+                          "- name: Measure OpenTelemetry performance budget");
+                  int performanceEnd = workflow.indexOf(
+                          "- name: Restore pinned embedding model");
+                  assertThat(scopeStart).isGreaterThanOrEqualTo(0);
+                  assertThat(performanceStart).isGreaterThan(scopeStart);
+                  assertThat(performanceEnd).isGreaterThan(performanceStart);
+
+                  String scopeBlock = workflow.substring(
+                          scopeStart, performanceStart);
+                  String performanceBlock = workflow.substring(
+                          performanceStart, performanceEnd);
+                  assertThat(scopeBlock)
+                          .doesNotContain("...HEAD")
+                          .doesNotContain(".github/workflows/ci-cd.yml")
+                          .contains("taxonomy-app/src/main")
+                          .contains(STATIC_EXCLUSION, TEMPLATE_EXCLUSION)
+                          .doesNotContain("taxonomy-app/src/main/java");
+                  assertThat(performanceBlock)
+                          .contains("github.event_name != 'pull_request'");
+
+                  assertThat(removedChecker).doesNotExist();
+                  assertThat(workflow)
+                          .doesNotContain("check-observability-performance-scope.py");
+              }
+
+              private static Path findRepositoryRoot() {
+                  Path current = Path.of(System.getProperty("user.dir"))
+                          .toAbsolutePath().normalize();
+                  while (current != null) {
+                      if (Files.isRegularFile(current.resolve("pom.xml"))
+                              && Files.isRegularFile(current.resolve(
+                                      "taxonomy-tooling/pom.xml"))) {
+                          return current;
+                      }
+                      current = current.getParent();
+                  }
+                  throw new IllegalStateException(
+                          "Unable to locate Taxonomy repository root");
+              }
+          }
+          JAVA
+
+          sed -i '\#- `check-observability-performance-scope.py`#d' "$policy"
+          perl -0pi -e 's/(\| CodeQL SARIF high-severity enforcement \| #673 bounded Java slice \|\n)/$1| Observability performance-scope policy | #673 bounded JUnit slice |\n/' "$policy"
+          perl -0pi -e 's/\n## Removal-only source ratchet/\n## Observability performance-scope policy\n\nThe pull-request performance budget remains scoped to server and runtime-sensitive changes while pure static and template assets remain excluded. A Maven-owned JUnit repository test now verifies the exact base/head comparison, inclusive runtime paths, UI exclusions, non-PR execution rule, enforcement flag and Bash performance entry point. The former Python checker and its CI invocation are removed atomically.\n\nThis slice reduces the tracked Python inventory from ten to **nine** files after the preceding CodeQL and obsolete-VEX integrations.\n\n## Removal-only source ratchet/' "$policy"
+          perl -0pi -e 's/5\. Remaining release\/delivery and observability policy checks under Java\/JUnit authority\./5. Remaining release\/delivery policy checks under Java\/JUnit authority./' "$policy"
+
+          rm "$script" "$workflow"
+          if git grep -n 'check-observability-performance-scope.py' -- .; then
+            echo '::error::Obsolete observability Python checker is still referenced'
+            exit 1
+          fi
+          git diff --check
+
+          ./mvnw -B -pl taxonomy-tooling test
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- "$ci" "$ratchet" "$policy" "$script" "$test_file" "$workflow"
+          git commit -m 'Move observability performance scope policy to JUnit'
+          git push origin HEAD:agent/673-observability-scope-junit
