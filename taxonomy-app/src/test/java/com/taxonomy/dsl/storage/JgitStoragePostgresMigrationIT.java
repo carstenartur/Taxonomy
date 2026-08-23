@@ -69,6 +69,9 @@ class JgitStoragePostgresMigrationIT {
         if (columnExists(dataSource, "git_reflog", "ref_name_key")) {
             expectedCoreVersions.add("0.9.1");
         }
+        if (columnExists(dataSource, "git_reflog", "delivery_id")) {
+            expectedCoreVersions.add("0.9.2");
+        }
         assertEquals(expectedCoreVersions, coreVersions);
 
         SQLException duplicate = assertThrows(
