@@ -11,31 +11,55 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SbomCompanionProductiveRoutingRepositoryTest {
 
     @Test
-    void productiveMavenAndReleasePathsUseJavaInsteadOfPython() throws Exception {
+    void productiveCallersAndReleaseWorkflowUseOnlyTheJavaImplementation()
+            throws Exception {
         Path root = findRepositoryRoot();
-        String buildPom = Files.readString(
-                root.resolve("taxonomy-build/pom.xml"),
-                StandardCharsets.UTF_8);
+        Path buildPomPath = root.resolve("taxonomy-build/pom.xml");
+        Path releaseScriptPath = root.resolve(".github/scripts/release.sh");
+        Path releaseWorkflowPath = root.resolve(
+                ".github/workflows/deploy-release.yml");
+        Path removedGenerator = root.resolve(
+                ".github/scripts/generate-vex.py");
+        String buildPom = Files.readString(buildPomPath, StandardCharsets.UTF_8);
         String releaseScript = Files.readString(
-                root.resolve(".github/scripts/release.sh"),
-                StandardCharsets.UTF_8);
+                releaseScriptPath, StandardCharsets.UTF_8);
+        String releaseWorkflow = Files.readString(
+                releaseWorkflowPath, StandardCharsets.UTF_8);
 
         assertThat(buildPom)
                 .contains("<id>generate-sbom-companion</id>")
-                .contains("<executable>java</executable>")
-                .contains("taxonomy-tooling-${project.version}.jar")
                 .contains("<argument>generate-sbom-companion</argument>")
-                .contains("target/taxonomy-sbom.json")
-                .contains("target/taxonomy-vex.json")
+                .contains("${project.build.directory}/taxonomy-sbom.json")
+                .contains("${project.build.directory}/taxonomy-vex.json")
                 .doesNotContain("generate-vex.py")
-                .doesNotContain("<executable>python3</executable>");
+                .doesNotContain("python3");
+
         assertThat(releaseScript)
-                .contains("java -jar \"$TOOLING_JAR\" generate-sbom-companion")
-                .contains("--sbom target/taxonomy-sbom.json")
-                .contains("--output target/taxonomy-vex.json")
+                .contains("generate-sbom-companion")
+                .contains("SBOM_FILE")
+                .contains("VEX_FILE")
+                .contains("java -jar \"$TOOLING_JAR\"")
                 .doesNotContain("generate-vex.py")
                 .doesNotContain("VEX_HELPER")
-                .doesNotContain("python3");
+                .doesNotContainPattern(
+                        "(?<![A-Za-z0-9_-])python(?:3)?(?![A-Za-z0-9_-])");
+
+        assertThat(releaseWorkflow)
+                .contains("TOOLING_JAR: ${{ runner.temp }}/taxonomy-tooling.jar")
+                .doesNotContain("generate-vex.py")
+                .doesNotContain("VEX_HELPER");
+        assertThat(removedGenerator).doesNotExist();
+    }
+
+    @Test
+    void sourceRatchetNoLongerAllowsTheRemovedGenerator() throws Exception {
+        Path root = findRepositoryRoot();
+        String ratchet = Files.readString(
+                root.resolve("taxonomy-tooling/src/test/java/com/taxonomy/tooling/"
+                        + "PythonSourceRatchetRepositoryTest.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(ratchet).doesNotContain("generate-vex.py");
     }
 
     private static Path findRepositoryRoot() {
@@ -44,8 +68,7 @@ class SbomCompanionProductiveRoutingRepositoryTest {
         while (current != null) {
             if (Files.isRegularFile(current.resolve("pom.xml"))
                     && Files.isRegularFile(current.resolve(
-                            "taxonomy-tooling/pom.xml"))
-                    && Files.isRegularFile(current.resolve("CITATION.cff"))) {
+                            ".github/scripts/release.sh"))) {
                 return current;
             }
             current = current.getParent();
