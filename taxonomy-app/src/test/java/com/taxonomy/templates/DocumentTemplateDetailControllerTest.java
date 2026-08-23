@@ -1,6 +1,5 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.architecture.decision.DecisionRationaleTemplatePreviewService;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateRevision;
@@ -27,7 +26,7 @@ class DocumentTemplateDetailControllerTest {
     private static final String OLD = "b".repeat(40);
 
     @Mock DocumentTemplateService templates;
-    @Mock DecisionRationaleTemplatePreviewService preview;
+    @Mock DocumentTemplateReportPreview preview;
 
     @Test
     void detailExposesHistoryAndCurrentPerTemplateVersion() throws Exception {
