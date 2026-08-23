@@ -4,6 +4,35 @@ Taxonomy verwaltet Word-Vorlagen als entpackte OOXML-Paketbäume im logischen
 JGit-/Hibernate-Repository `taxonomy-document-templates`. WebDAV und Downloads
 stellen daraus vollständige `.dotx`-Dateien zusammen.
 
+## Oberfläche und automatisierter Downloadtest
+
+Die Administrationsseite `/admin/document-templates` zeigt die beim Erststart
+angelegte Berichtsvorlage, ihre Git-Version, den vollständigen WebDAV-Pfad sowie die
+Aktionen **Vorlage in Word bearbeiten**, **Neues Dokument aus Vorlage**,
+**Herunterladen**, **Historie** und **Vergleichen und wiederherstellen**. Die folgende
+Aufnahme stammt aus dem automatisierten Browsertest und zeigt insbesondere den
+`ms-word:ofe`-Link an der tatsächlich initialisierten Vorlage.
+
+[![Dokumentvorlagenverwaltung mit dem Link „Vorlage in Word bearbeiten“](../images/document-template-management.png)](../images/document-template-management.png)
+
+Der GitHub-Workflow `Document Template Report E2E` startet die paketierte Taxonomy-
+Anwendung über Testcontainers. Playwright meldet sich als Administrator an, wartet auf
+die idempotent erzeugte Standardvorlage, prüft den sichtbaren Word- und WebDAV-Link,
+öffnet die Detailansicht und lädt dort einen datenfreien DOCX-Testbericht herunter.
+Der Test verlangt HTTP 200, den DOCX-Medientyp, den erwarteten Dateinamen in
+`Content-Disposition`, eine plausible ZIP-/DOCX-Signatur und eine Mindestgröße.
+Anschließend rendert LibreOffice den tatsächlich heruntergeladenen Bericht als PDF;
+`pdftoppm` erzeugt daraus die folgende Aufnahme der ersten Seite.
+
+[![Erste Seite des tatsächlich heruntergeladenen Taxonomy-Testberichts](../images/decision-rationale-template-test-report.png)](../images/decision-rationale-template-test-report.png)
+
+Das Testartefakt enthält zusätzlich die heruntergeladene DOCX-Datei, das gerenderte
+PDF, beide Screenshots, den Playwright-Log sowie einen JSON-Nachweis mit URL,
+Medientyp, Dateiname, Dateigröße und SHA-256-Prüfsumme. Dieser Test belegt den
+Containerstart, die Erstanlage der Vorlage, die Browseroberfläche und den
+Berichtsdownload. Er ersetzt nicht die getrennte Abnahme mit einer real installierten
+Microsoft-Word-Version über öffentliches HTTPS und WebDAV.
+
 ## Standardvorlage für den Bewertungsbericht
 
 Die Anwendung liefert die erforderliche Vorlage
