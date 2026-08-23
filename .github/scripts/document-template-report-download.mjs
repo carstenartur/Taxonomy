@@ -30,12 +30,14 @@ const docsImageDir = process.env.TAXONOMY_DOCS_IMAGE_DIR
 const renderPreview =
   String(process.env.TAXONOMY_RENDER_DOCX_PREVIEW || 'false') === 'true';
 const templateId = 'decision-rationale-report';
+const docxMediaType =
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const expectedReportFilename = 'decision-rationale-template-test.docx';
 
 await mkdir(outputDir, { recursive: true });
 const managementScreenshot = path.join(
   outputDir, 'document-template-management.png');
-const reportPath = path.join(
-  outputDir, 'decision-rationale-template-test.docx');
+const reportPath = path.join(outputDir, expectedReportFilename);
 const reportScreenshot = path.join(
   outputDir, 'decision-rationale-template-test-report.png');
 
@@ -93,16 +95,35 @@ try {
   const testReportLink = page.locator('a[href$="/test.docx"]').first();
   await testReportLink.waitFor({ state: 'visible' });
   const downloadUrl = await testReportLink.getAttribute('href');
-  const [download] = await Promise.all([
+  const resolvedDownloadUrl = new URL(downloadUrl, baseUrl).href;
+  const [download, reportResponse] = await Promise.all([
     page.waitForEvent('download', { timeout: 60_000 }),
+    page.waitForResponse(response =>
+      response.url() === resolvedDownloadUrl && response.status() === 200,
+    { timeout: 60_000 }),
     testReportLink.click()
   ]);
   const downloadFailure = await download.failure();
   if (downloadFailure) {
     throw new Error(`Report download failed: ${downloadFailure}`);
   }
-  await download.saveAs(reportPath);
 
+  const responseHeaders = reportResponse.headers();
+  const responseContentType = String(
+    responseHeaders['content-type'] || '').toLowerCase();
+  if (!responseContentType.startsWith(docxMediaType)) {
+    throw new Error(
+      `Unexpected report Content-Type: ${responseContentType || '<missing>'}`);
+  }
+  const responseContentDisposition = String(
+    responseHeaders['content-disposition'] || '');
+  if (!responseContentDisposition.includes(expectedReportFilename)) {
+    throw new Error(
+      'Report Content-Disposition does not contain the expected filename: '
+        + responseContentDisposition);
+  }
+
+  await download.saveAs(reportPath);
   const reportBytes = await readFile(reportPath);
   if (reportBytes.length < 1_000
       || reportBytes[0] !== 0x50
@@ -110,8 +131,7 @@ try {
     throw new Error(
       `Downloaded report is not a plausible DOCX ZIP (${reportBytes.length} bytes)`);
   }
-  if (download.suggestedFilename()
-      !== 'decision-rationale-template-test.docx') {
+  if (download.suggestedFilename() !== expectedReportFilename) {
     throw new Error(
       `Unexpected downloaded filename: ${download.suggestedFilename()}`);
   }
@@ -130,7 +150,9 @@ try {
     detailUrl: page.url(),
     wordEditUri,
     webDavUrl,
-    downloadUrl: new URL(downloadUrl, baseUrl).href,
+    downloadUrl: resolvedDownloadUrl,
+    responseContentType,
+    responseContentDisposition,
     downloadedFilename: download.suggestedFilename(),
     downloadedBytes: reportBytes.length,
     downloadedSha256: createHash('sha256')
