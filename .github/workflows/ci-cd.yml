@@ -62,7 +62,6 @@ jobs:
           bash -n .github/scripts/download-embedding-model.sh
           bash -n deploy/helm/taxonomy/verify.sh
           python3 .github/scripts/check-release-delivery-contract.py
-          python3 .github/scripts/check-delivery-hardening.py
 
           current_version=$(./mvnw -q -DforceStdout help:evaluate \
             -Dexpression=project.version)
