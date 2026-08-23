@@ -73,12 +73,8 @@ jobs:
           TAXONOMY_DOCS_IMAGE_DIR: ${{ github.workspace }}/docs/images
         run: |
           ./mvnw -B -pl taxonomy-build \
+            -Pdocument-template-report-e2e \
             failsafe:integration-test failsafe:verify \
-            -Dtaxonomy.ui.skip=true \
-            -Dtaxonomy.quality.skip=false \
-            -DskipITs=false \
-            -Dit.test=DocumentTemplateReportDownloadIT \
-            -DdocumentTemplateE2E=true \
             -Dtaxonomy.node.executable="${GITHUB_WORKSPACE}/taxonomy-build/target/frontend/node/node"
 
       - name: Upload browser, DOCX, and screenshot evidence
