@@ -26,9 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Browser-level acceptance test for the complete template-backed decision-report workflow.
  *
  * <p>Testcontainers starts the packaged Taxonomy application with deterministic mock scoring.
- * Playwright then follows the regular user path: it enters a civil hospital requirement,
- * performs the analysis, verifies the architecture graph, exports the production decision
- * report and renders the downloaded DOCX for document-level QA.</p>
+ * Playwright then follows the regular first-user path: it reviews and dismisses onboarding,
+ * enters a civil hospital requirement, performs the analysis, verifies the architecture graph,
+ * exports the production decision report and renders the downloaded DOCX for document QA.</p>
  */
 @EnabledIfSystemProperty(named = "documentTemplateE2E", matches = "true")
 class DocumentTemplateReportDownloadIT {
@@ -79,6 +79,8 @@ class DocumentTemplateReportDownloadIT {
 
         Path managementScreenshot =
                 output.resolve("document-template-management.png");
+        Path onboardingScreenshot =
+                output.resolve("hospital-requirement-onboarding.png");
         Path analysisScreenshot =
                 output.resolve("hospital-requirement-analysis.png");
         Path graphScreenshot =
@@ -87,6 +89,7 @@ class DocumentTemplateReportDownloadIT {
         Path evidence = output.resolve("report-download-evidence.json");
 
         assertFile(managementScreenshot, 1_000);
+        assertFile(onboardingScreenshot, 10_000);
         assertFile(analysisScreenshot, 10_000);
         assertFile(graphScreenshot, 10_000);
         assertFile(downloadedReport, 10_000);
@@ -148,6 +151,12 @@ class DocumentTemplateReportDownloadIT {
                 "Evidence must use the evaluated-report schema");
         assertTrue(json.contains("\"requirement\": \"Ein kommunales Krankenhaus"),
                 "Evidence must identify the hospital requirement");
+        assertTrue(json.contains("\"stepCount\": 3"),
+                "Evidence must cover the three-step first-user onboarding");
+        assertTrue(json.contains("\"dismissInitiallyFocused\": true"),
+                "Evidence must prove keyboard focus starts on the onboarding action");
+        assertTrue(json.contains("\"horizontalOverflow\": false"),
+                "Onboarding must not require horizontal scrolling");
         assertTrue(json.contains("\"impactGraphRendered\": true"),
                 "Evidence must prove that the architecture graph was rendered");
         assertTrue(json.contains("\"completenessPercent\": 100"),
@@ -174,6 +183,10 @@ class DocumentTemplateReportDownloadIT {
             assertTrue(document.contains("Patienten")
                             || document.contains("Kommunikations"),
                     "Downloaded report must contain substantive requirement text");
+            assertTrue(document.contains("decision-rationale-report"),
+                    "Visible report metadata must identify the source template");
+            assertFalse(document.contains("{{taxonomy.template."),
+                    "Template provenance tokens must be fully resolved");
             assertFalse(document.contains("Taxonomy template test report"),
                     "Production report must not contain the synthetic preview title");
             assertFalse(document.contains(
@@ -186,12 +199,6 @@ class DocumentTemplateReportDownloadIT {
                     .count();
             assertTrue(embeddedImages > 0,
                     "Evaluated report must embed at least one decision diagram");
-
-            String customProperties = readEntry(zip, "docProps/custom.xml");
-            assertTrue(customProperties.contains("taxonomy.template.id"),
-                    "Downloaded report must contain template provenance");
-            assertTrue(customProperties.contains("taxonomy.template.commit"),
-                    "Downloaded report must contain the full template commit");
         }
     }
 
@@ -230,8 +237,8 @@ class DocumentTemplateReportDownloadIT {
             throw new IllegalStateException(
                     "taxonomy-app/target is missing; build the packaged application first");
         }
-        try (Stream<Path> files = Files.list(target)) {
-            return files
+        try (Stream<Path> candidates = Files.list(target)) {
+            return candidates
                     .filter(Files::isRegularFile)
                     .filter(path -> path.getFileName().toString()
                             .matches("taxonomy-app-.*\\.jar"))
