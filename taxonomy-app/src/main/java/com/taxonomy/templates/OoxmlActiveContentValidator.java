@@ -33,6 +33,8 @@ public final class OoxmlActiveContentValidator {
             "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     private static final Set<String> ALLOWED_HYPERLINK_SCHEMES =
             Set.of("https", "mailto");
+    private static final Pattern URI_SCHEME = Pattern.compile(
+            "^([A-Za-z][A-Za-z0-9+.-]*):");
     private static final Pattern UNSAFE_FIELD = Pattern.compile(
             "(?i)(?<![A-Z0-9_])"
                     + "(DDEAUTO|DDE|INCLUDETEXT|INCLUDEPICTURE|LINK|DATABASE|"
@@ -103,12 +105,22 @@ public final class OoxmlActiveContentValidator {
                 || target.indexOf('\0') >= 0) {
             throw invalid("external hyperlink target is invalid in " + path);
         }
+
+        Matcher schemeMatcher = URI_SCHEME.matcher(target);
+        if (!schemeMatcher.find()) {
+            throw invalid("external hyperlink target is invalid in " + path);
+        }
+        String declaredScheme = schemeMatcher.group(1).toLowerCase(Locale.ROOT);
+        if (!ALLOWED_HYPERLINK_SCHEMES.contains(declaredScheme)) {
+            throw invalid("external hyperlink scheme is not permitted in " + path);
+        }
+
         try {
             URI uri = URI.create(target);
             String scheme = uri.getScheme() == null
                     ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-            if (!ALLOWED_HYPERLINK_SCHEMES.contains(scheme)) {
-                throw invalid("external hyperlink scheme is not permitted in " + path);
+            if (!declaredScheme.equals(scheme)) {
+                throw invalid("external hyperlink target is invalid in " + path);
             }
             if ("https".equals(scheme)
                     && (uri.getHost() == null || uri.getHost().isBlank()
