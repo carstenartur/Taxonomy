@@ -49,6 +49,9 @@ public class CopilotResultPersistenceService {
             throw PortfolioException.conflict(
                     "Selected snapshot is stale for the current requirement version");
         }
+        if (Objects.equals(requirement.getCurrentAnalysisSnapshotId(), snapshotId)) {
+            return snapshotId;
+        }
         requirement.pointToAnalysis(snapshotId, Instant.now());
         requirementRepository.save(requirement);
         return snapshotId;
