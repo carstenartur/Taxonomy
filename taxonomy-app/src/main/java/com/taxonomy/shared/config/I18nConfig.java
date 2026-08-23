@@ -7,22 +7,15 @@ import org.springframework.context.support.ReloadableResourceBundleMessageSource
 
 import java.util.List;
 
-/**
- * Configures the {@link MessageSource} for internationalization.
- * Message bundles are stored under {@code classpath:i18n/}.
- */
+/** Configures the classpath message bundles used by Thymeleaf and the browser API. */
 @Configuration
 public class I18nConfig {
 
-    /**
-     * Canonical default-locale bundle names. The browser translation endpoint
-     * uses the same list to enumerate every key rather than silently exposing
-     * only the original monolithic bundle.
-     */
     public static final List<String> MESSAGE_BASENAMES = List.of(
             "messages",
             "messages_document_import",
             "messages_document_templates",
+            "messages_document_template_detail",
             "messages_jgit_storage",
             "messages_observability",
             "messages_portfolio",
@@ -31,12 +24,13 @@ public class I18nConfig {
 
     @Bean
     public MessageSource messageSource() {
-        ReloadableResourceBundleMessageSource ms = new ReloadableResourceBundleMessageSource();
-        ms.setBasenames(MESSAGE_BASENAMES.stream()
+        ReloadableResourceBundleMessageSource source =
+                new ReloadableResourceBundleMessageSource();
+        source.setBasenames(MESSAGE_BASENAMES.stream()
                 .map(name -> "classpath:i18n/" + name)
                 .toArray(String[]::new));
-        ms.setDefaultEncoding("UTF-8");
-        ms.setFallbackToSystemLocale(false);
-        return ms;
+        source.setDefaultEncoding("UTF-8");
+        source.setFallbackToSystemLocale(false);
+        return source;
     }
 }
