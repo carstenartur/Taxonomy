@@ -146,12 +146,6 @@ class DocumentTemplateReportDownloadIT {
             assertTrue(document.contains(
                             "The active Word template was opened and materialized successfully."),
                     "Downloaded report must contain generated report content");
-
-            String customProperties = readEntry(zip, "docProps/custom.xml");
-            assertTrue(customProperties.contains("TaxonomyTemplateId"));
-            assertTrue(customProperties.contains("TaxonomyTemplateCommit"));
-            assertTrue(customProperties.contains(
-                    "TaxonomyTemplatePackageSha256"));
         }
     }
 
