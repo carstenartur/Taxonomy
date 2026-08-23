@@ -19,14 +19,8 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Runs Taxonomy's application schema migrations after the independently
- * versioned JGit Core schema and before Hibernate validates the persistence unit.
- *
- * <p>The two schemas deliberately use separate Flyway history tables. Existing
- * Taxonomy installations predate the application migration stream, so an exact
- * legacy application shape is baselined at version 1 and advanced to the
- * portfolio schema. A fresh database is baselined at version 0 and receives the
- * complete application baseline followed by all later migrations.</p>
+ * Runs Taxonomy application schema migrations after the independently versioned
+ * JGit Core schema and before Hibernate validates the persistence unit.
  */
 @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "spring.flyway.enabled", havingValue = "true")
@@ -42,7 +36,7 @@ public class TaxonomySchemaMigrationConfig {
             "taxonomy_node",
             "taxonomy_relation");
 
-    /** Every table introduced by the portfolio migration and mapped by JPA. */
+    /** Every post-baseline table required by the current JPA model. */
     private static final Set<String> REQUIRED_PORTFOLIO_TABLES = Set.of(
             "arch_project",
             "project_requirement",
@@ -59,14 +53,9 @@ public class TaxonomySchemaMigrationConfig {
             "product_catalog",
             "product_taxonomy",
             "solution_product",
-            "project_conflict");
+            "project_conflict",
+            "webdav_application_credential");
 
-    /**
-     * The primary Boot strategy composes the released JGit migration stream with
-     * Taxonomy's own application stream. The existing JGit strategy remains
-     * available for focused unit tests, while application startup selects this
-     * primary strategy.
-     */
     @Bean
     @Primary
     public FlywayMigrationStrategy taxonomyFlywayMigrationStrategy(
@@ -82,8 +71,6 @@ public class TaxonomySchemaMigrationConfig {
     static void migrateApplicationSchema(Configuration source) {
         DataSource dataSource = source.getDataSource();
         if (!isPostgreSql(dataSource)) {
-            // Local HSQLDB continues to use Hibernate create/update. The
-            // production contract currently targets PostgreSQL explicitly.
             return;
         }
 
