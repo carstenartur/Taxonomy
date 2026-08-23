@@ -6,6 +6,11 @@ on:
       - qa/795-copilot-review-backlog
     paths:
       - .github/workflows/one-off-fix-copilot-latest-operation.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-off-fix-copilot-latest-operation.yml
 
 permissions:
   contents: write
