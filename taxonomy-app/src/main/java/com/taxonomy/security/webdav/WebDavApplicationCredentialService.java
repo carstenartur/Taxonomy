@@ -39,7 +39,7 @@ public class WebDavApplicationCredentialService {
     private static final Logger log =
             LoggerFactory.getLogger(WebDavApplicationCredentialService.class);
     private static final Pattern TOKEN = Pattern.compile(
-            "^taxdav_([0-9a-f]{24})_([A-Za-z0-9_-]{43})$");
+            "^taxdav_([0-9a-f]{24})_([A-Za-z0-9_-]{39})$");
     private static final Duration LAST_USED_WRITE_INTERVAL = Duration.ofMinutes(5);
     private static final Set<String> RETAINED_ROLES =
             Set.of("ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN");
@@ -88,7 +88,9 @@ public class WebDavApplicationCredentialService {
         Duration lifetime = requestedLifetime(lifetimeDays);
         Instant now = clock.instant();
         String id = randomHex(12);
-        String rawSecret = randomBase64Url(32);
+        // 29 random bytes retain 232 bits of entropy while keeping the complete
+        // ASCII token below BCrypt's strict 72-byte input ceiling.
+        String rawSecret = randomBase64Url(29);
         String token = TOKEN_PREFIX + id + "_" + rawSecret;
 
         WebDavApplicationCredential credential = new WebDavApplicationCredential();
