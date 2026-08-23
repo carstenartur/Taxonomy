@@ -66,7 +66,7 @@ try {
   const template = await verifyTemplateManagement(page);
   const analysis = await evaluateHospitalRequirement(page);
   const request = await currentReportRequest(page);
-  const reportModel = await verifyDecisionModel(context, request);
+  const reportModel = await verifyDecisionModel(page, request);
   const download = await downloadDecisionReport(page, files.docx);
   const rendering = renderPreview
     ? await renderAndInspectReport(files.docx, files.report, files.text, reportModel)
@@ -333,19 +333,37 @@ async function currentReportRequest(target) {
   return request;
 }
 
-async function verifyDecisionModel(requestContext, request) {
-  const response = await requestContext.request.post(
-    `${baseUrl}/api/decision-report/json`, {
-      data: request,
-      failOnStatusCode: false
+async function verifyDecisionModel(target, request) {
+  const result = await target.evaluate(async ({ url, payload }) => {
+    const csrfToken = document.querySelector('meta[name="_csrf"]')?.content;
+    const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content
+      || 'X-CSRF-TOKEN';
+    const headers = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json'
+    };
+    if (csrfToken) headers[csrfHeader] = csrfToken;
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify(payload)
     });
-  const body = await response.text();
-  if (!response.ok()) {
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: await response.text()
+    };
+  }, {
+    url: `${baseUrl}/api/decision-report/json`,
+    payload: request
+  });
+  if (!result.ok) {
     throw new Error(
-      `Decision report JSON failed with HTTP ${response.status()}: `
-        + body.slice(0, 1_000));
+      `Decision report JSON failed with HTTP ${result.status}: `
+        + result.body.slice(0, 1_000));
   }
-  const report = JSON.parse(body);
+  const report = JSON.parse(result.body);
   if (!Array.isArray(report.chapters) || report.chapters.length < 1) {
     throw new Error('The evaluated requirement produced no decision chapters');
   }
