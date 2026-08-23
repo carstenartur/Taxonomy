@@ -3,6 +3,7 @@ package com.taxonomy.portfolio;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -15,11 +16,14 @@ class RequirementCopilotUiContractTest {
     @Test
     void savedRequirementUiUsesPersistentOperationApiInsteadOfBrowserMacro() throws IOException {
         String loader = Files.readString(ROOT.resolve(
-                "taxonomy-app/src/main/resources/static/js/api/portfolio-api.js"));
+                "taxonomy-app/src/main/resources/static/js/api/portfolio-api.js"),
+                StandardCharsets.UTF_8);
         String api = Files.readString(ROOT.resolve(
-                "taxonomy-app/src/main/resources/static/js/api/copilot-api.js"));
+                "taxonomy-app/src/main/resources/static/js/api/copilot-api.js"),
+                StandardCharsets.UTF_8);
         String ui = Files.readString(ROOT.resolve(
-                "taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js"));
+                "taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js"),
+                StandardCharsets.UTF_8);
 
         assertThat(loader).contains("requirement-copilot.js", "copilot-api.js");
         assertThat(api)
@@ -28,6 +32,8 @@ class RequirementCopilotUiContractTest {
         assertThat(ui)
                 .contains("selectedSnapshotId", "verificationPasses", "copilotCancel")
                 .contains("window.location.replace")
+                .contains("running || !manualCopilotReady")
+                .contains("normalized === lastAnnouncement")
                 .doesNotContain("analyzeBtn.click()", "waitForScores");
     }
 
