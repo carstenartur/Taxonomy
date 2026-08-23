@@ -34,6 +34,8 @@ class RequirementCopilotUiContractTest {
                 .contains("window.location.replace")
                 .contains("running || !manualCopilotReady")
                 .contains("normalized === lastAnnouncement")
+                .contains("lastAnnouncement = normalized")
+                .doesNotContain("run.disabled = running;")
                 .doesNotContain("analyzeBtn.click()", "waitForScores");
     }
 
