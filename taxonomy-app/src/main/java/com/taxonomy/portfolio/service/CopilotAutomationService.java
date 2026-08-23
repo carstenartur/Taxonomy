@@ -124,6 +124,7 @@ public class CopilotAutomationService {
                 .map(job -> CopilotOperationKey.parse(job.idempotencyKey())
                         .map(key -> new JobWithKey(job, key)))
                 .flatMap(Optional::stream)
+                .filter(entry -> entry.key().pass() == 1)
                 .max(Comparator.comparing(entry -> entry.job().createdAt()))
                 .map(entry -> getOperation(
                         projectId,
