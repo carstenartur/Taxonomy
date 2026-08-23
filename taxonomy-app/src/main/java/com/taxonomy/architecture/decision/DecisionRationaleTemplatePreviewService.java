@@ -1,5 +1,6 @@
 package com.taxonomy.architecture.decision;
 
+import com.taxonomy.templates.DocumentTemplateReportPreview;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -7,7 +8,8 @@ import java.util.List;
 
 /** Creates a deterministic, non-sensitive sample DOCX for validating the active template. */
 @Service
-public final class DecisionRationaleTemplatePreviewService {
+public final class DecisionRationaleTemplatePreviewService
+        implements DocumentTemplateReportPreview {
 
     private final DecisionRationaleTemplateRenderer templateRenderer;
     private final DecisionRationaleDocxRenderer docxRenderer;
@@ -19,6 +21,7 @@ public final class DecisionRationaleTemplatePreviewService {
         this.docxRenderer = docxRenderer;
     }
 
+    @Override
     public byte[] renderPreview() {
         Instant generatedAt = Instant.parse("2026-01-01T12:00:00Z");
         DecisionRationaleReport.ReportMetadata metadata =
