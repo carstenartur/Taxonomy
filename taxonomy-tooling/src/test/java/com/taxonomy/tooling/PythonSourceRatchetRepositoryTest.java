@@ -24,7 +24,6 @@ class PythonSourceRatchetRepositoryTest {
             "5661bff2ba75288e650b7f4a6cb1cb5364d787c2";
 
     private static final Set<String> ALLOWED_REMAINING_PYTHON_PATHS = Set.of(
-            ".github/scripts/check-delivery-hardening.py",
             ".github/scripts/check-release-delivery-contract.py",
             ".github/scripts/check-release-image-gate.py",
             ".github/scripts/generate-quality-site.py",
