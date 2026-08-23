@@ -1,5 +1,6 @@
 package com.taxonomy.build;
 
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.testcontainers.containers.GenericContainer;
@@ -38,6 +39,10 @@ class DocumentTemplateReportDownloadIT {
                     + "d63bd8d9b171999cbed8576f2c76e874dd4856791a358536e5c4d407e77edc13";
     private static final String REPORT_NAME =
             "taxonomy-decision-rationale-report.docx";
+    private static final String TEMPLATE_ID_PROPERTY = "Taxonomy.Template.Id";
+    private static final String TEMPLATE_COMMIT_PROPERTY = "Taxonomy.Template.Commit";
+    private static final String TEMPLATE_SHA256_PROPERTY =
+            "Taxonomy.Template.PackageSha256";
 
     @Test
     void playwrightEvaluatesHospitalRequirementAndDownloadsDecisionReport()
@@ -200,6 +205,30 @@ class DocumentTemplateReportDownloadIT {
                     .count();
             assertTrue(embeddedImages > 0,
                     "Evaluated report must embed at least one decision diagram");
+        }
+        assertTemplateProvenanceProperties(docx);
+    }
+
+    private static void assertTemplateProvenanceProperties(Path docx)
+            throws IOException {
+        try (var input = Files.newInputStream(docx);
+             XWPFDocument document = new XWPFDocument(input)) {
+            var properties = document.getProperties().getCustomProperties();
+            var templateId = properties.getProperty(TEMPLATE_ID_PROPERTY);
+            var templateCommit = properties.getProperty(TEMPLATE_COMMIT_PROPERTY);
+            var templateSha256 = properties.getProperty(TEMPLATE_SHA256_PROPERTY);
+
+            assertNotNull(templateId,
+                    "DOCX must contain the machine-readable template ID");
+            assertNotNull(templateCommit,
+                    "DOCX must contain the full machine-readable template commit");
+            assertNotNull(templateSha256,
+                    "DOCX must contain the machine-readable template package checksum");
+            assertEquals("decision-rationale-report", templateId.getLpwstr());
+            assertTrue(templateCommit.getLpwstr().matches("[0-9a-f]{40}"),
+                    "Template provenance must use the full Git commit ID");
+            assertTrue(templateSha256.getLpwstr().matches("[0-9a-f]{64}"),
+                    "Template provenance must use a SHA-256 package checksum");
         }
     }
 
