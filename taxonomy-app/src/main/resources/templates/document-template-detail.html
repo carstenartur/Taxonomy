@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="#{document.template.detail.title}">Document template details — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#templateDetail" th:text="#{skip.link}">Skip to main content</a>
+<nav class="navbar navbar-dark bg-dark sticky-top" aria-label="Template detail navigation">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand fw-semibold" th:href="@{/}">🌐 Taxonomy</a>
+        <span class="navbar-text text-white fw-semibold me-auto"
+              th:text="${template.displayName}">Template</span>
+        <a class="btn btn-sm btn-outline-light" th:href="@{/admin/document-templates}"
+           th:text="#{document.template.detail.back}">Back to templates</a>
+    </div>
+</nav>
+<main id="templateDetail" class="container-fluid py-3 px-lg-4">
+    <div th:if="${successMessage}" class="alert alert-success" role="status"
+         th:text="${successMessage}"></div>
+
+    <section class="card shadow-sm mb-3" aria-labelledby="detailHeading">
+        <div class="card-body">
+            <h1 id="detailHeading" class="h2" th:text="${template.displayName}">Template</h1>
+            <dl class="row mb-3">
+                <dt class="col-sm-3" th:text="#{document.template.detail.id}">Template ID</dt>
+                <dd class="col-sm-9"><code th:text="${template.templateId}">id</code></dd>
+                <dt class="col-sm-3" th:text="#{document.template.detail.current}">Current Git version</dt>
+                <dd class="col-sm-9"><code th:text="${template.headCommit}">commit</code></dd>
+                <dt class="col-sm-3" th:text="#{document.template.detail.updated}">Updated</dt>
+                <dd class="col-sm-9"><span th:text="${template.updatedAt}">time</span>
+                    · <span th:text="${template.updatedBy}">author</span></dd>
+                <dt class="col-sm-3" th:text="#{document.template.detail.package}">Package</dt>
+                <dd class="col-sm-9"><span th:text="${template.partCount}">0</span>
+                    <span th:text="#{document.template.detail.parts}">OOXML parts</span>
+                    · <span th:text="${template.uncompressedSize}">0</span> B</dd>
+            </dl>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-primary"
+                   th:href="@{/api/admin/document-templates/{id}/download(id=${template.templateId})}"
+                   th:text="#{document.template.detail.download}">Download current DOTX</a>
+                <a th:if="${decisionReportTemplate}" class="btn btn-outline-primary"
+                   th:href="@{/admin/document-templates/{id}/test.docx(id=${template.templateId})}"
+                   th:text="#{document.template.detail.test}">Generate test report</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm mb-3" aria-labelledby="compareHeading">
+        <div class="card-header"><h2 id="compareHeading" class="h5 mb-0"
+             th:text="#{document.template.detail.compare}">Compare versions</h2></div>
+        <div class="card-body">
+            <form method="get" th:action="@{/admin/document-templates/{id}(id=${template.templateId})}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-5">
+                        <label for="fromRevision" class="form-label"
+                               th:text="#{document.template.detail.from}">From</label>
+                        <select id="fromRevision" name="from" class="form-select" required>
+                            <option value="" th:text="#{document.template.detail.select}">Select a version</option>
+                            <option th:each="revision : ${history}" th:value="${revision.commitId}"
+                                    th:selected="${revision.commitId == fromRevision}"
+                                    th:text="${#strings.substring(revision.commitId,0,12) + ' · ' + revision.committedAt}">
+                                revision
+                            </option>
+                        </select>
+                    </div>
+                    <div class="col-lg-5">
+                        <label for="toRevision" class="form-label"
+                               th:text="#{document.template.detail.to}">To</label>
+                        <select id="toRevision" name="to" class="form-select" required>
+                            <option th:each="revision : ${history}" th:value="${revision.commitId}"
+                                    th:selected="${revision.commitId == toRevision || (toRevision == null && revision.commitId == template.headCommit)}"
+                                    th:text="${#strings.substring(revision.commitId,0,12) + ' · ' + revision.committedAt}">
+                                revision
+                            </option>
+                        </select>
+                    </div>
+                    <div class="col-lg-2 d-grid">
+                        <button class="btn btn-primary" type="submit"
+                                th:text="#{document.template.detail.compare.button}">Compare</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section th:if="${diff}" class="card shadow-sm mb-3" aria-labelledby="diffHeading">
+        <div class="card-header"><h2 id="diffHeading" class="h5 mb-0"
+             th:text="#{document.template.detail.changes}">OOXML changes</h2></div>
+        <div class="card-body p-0">
+            <div th:if="${#maps.isEmpty(diff.changes)}" class="p-3 text-body-secondary"
+                 th:text="#{document.template.detail.nochanges}">No package parts changed.</div>
+            <div th:unless="${#maps.isEmpty(diff.changes)}" class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead><tr><th th:text="#{document.template.detail.part}">Part</th>
+                        <th th:text="#{document.template.detail.change}">Change</th>
+                        <th th:text="#{document.template.detail.inspect}">Inspect</th></tr></thead>
+                    <tbody>
+                    <tr th:each="change : ${diff.changes}">
+                        <td><code th:text="${change.key}">word/document.xml</code></td>
+                        <td><span class="badge"
+                                  th:classappend="${change.value.name() == 'ADDED' ? ' text-bg-success' : (change.value.name() == 'DELETED' ? ' text-bg-danger' : ' text-bg-warning')}"
+                                  th:text="${change.value}">MODIFIED</span></td>
+                        <td><a class="btn btn-sm btn-outline-secondary"
+                               th:with="inspectRevision=${change.value.name() == 'DELETED' ? fromRevision : toRevision}"
+                               th:href="@{/admin/document-templates/{id}(id=${template.templateId},from=${fromRevision},to=${toRevision},partRevision=${inspectRevision},partPath=${change.key})}"
+                               th:text="#{document.template.detail.inspect.button}">Inspect</a></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section th:if="${part}" class="card shadow-sm mb-3" aria-labelledby="partHeading">
+        <div class="card-header"><h2 id="partHeading" class="h5 mb-0">
+            <span th:text="#{document.template.detail.part.content}">Package-part content</span>
+            — <code th:text="${part.path}">part</code></h2></div>
+        <div class="card-body">
+            <p class="small text-body-secondary"><span th:text="${partRevision}">revision</span>
+                · <span th:text="${part.size}">0</span> B
+                · <span th:text="${part.mediaType}">type</span></p>
+            <pre th:if="${part.textContent != null}" class="border rounded bg-body p-3 overflow-auto"
+                 style="max-height:60vh" tabindex="0" th:text="${part.textContent}"></pre>
+            <p th:if="${part.textContent == null}" class="alert alert-info mb-0"
+               th:text="#{document.template.detail.binary}">Binary content is not rendered.</p>
+        </div>
+    </section>
+
+    <section class="card shadow-sm" aria-labelledby="historyHeading">
+        <div class="card-header"><h2 id="historyHeading" class="h5 mb-0"
+             th:text="#{document.template.detail.history}">Version history</h2></div>
+        <div class="table-responsive">
+            <table class="table table-striped align-middle mb-0">
+                <thead><tr><th th:text="#{document.template.detail.version}">Version</th>
+                    <th th:text="#{document.template.detail.author}">Author</th>
+                    <th th:text="#{document.template.detail.message}">Message</th>
+                    <th th:text="#{document.template.detail.actions}">Actions</th></tr></thead>
+                <tbody>
+                <tr th:each="revision : ${history}">
+                    <td><code th:text="${#strings.substring(revision.commitId,0,12)}">commit</code><br/>
+                        <small th:text="${revision.committedAt}">time</small></td>
+                    <td th:text="${revision.author}">author</td>
+                    <td th:text="${revision.message}">message</td>
+                    <td><div class="d-flex flex-wrap gap-2">
+                        <a class="btn btn-sm btn-outline-secondary"
+                           th:href="@{/api/admin/document-templates/{id}/download(id=${template.templateId},revision=${revision.commitId})}"
+                           th:text="#{document.template.detail.download.version}">Download</a>
+                        <form th:if="${revision.commitId != template.headCommit}" method="post"
+                              th:action="@{/admin/document-templates/{id}/restore(id=${template.templateId})}"
+                              onsubmit="return window.confirm('Restore this historical version as a new Git commit?');">
+                            <input type="hidden" name="revision" th:value="${revision.commitId}"/>
+                            <input type="hidden" name="expectedHead" th:value="${template.headCommit}"/>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    th:text="#{document.template.detail.restore}">Restore</button>
+                        </form>
+                    </div></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

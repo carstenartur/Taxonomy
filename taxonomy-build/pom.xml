@@ -15,6 +15,11 @@
     <name>Taxonomy Build Policy</name>
     <description>Authoritative quality gates and browser verification executed after the complete reactor</description>
 
+    <properties>
+        <documentTemplateE2E>false</documentTemplateE2E>
+        <taxonomy.node.executable></taxonomy.node.executable>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>
@@ -30,6 +35,16 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -66,6 +81,8 @@
                                 <hibernate.orm.version.prefix>7.4.</hibernate.orm.version.prefix>
                                 <lucene.version>${lucene.version}</lucene.version>
                                 <pdfbox.version>${pdfbox.version}</pdfbox.version>
+                                <documentTemplateE2E>${documentTemplateE2E}</documentTemplateE2E>
+                                <taxonomy.node.executable>${taxonomy.node.executable}</taxonomy.node.executable>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
@@ -162,6 +179,16 @@
     </build>
 
     <profiles>
+        <profile>
+            <id>document-template-report-e2e</id>
+            <properties>
+                <skipITs>false</skipITs>
+                <taxonomy.quality.skip>false</taxonomy.quality.skip>
+                <taxonomy.ui.skip>true</taxonomy.ui.skip>
+                <it.test>DocumentTemplateReportDownloadIT</it.test>
+                <documentTemplateE2E>true</documentTemplateE2E>
+            </properties>
+        </profile>
         <profile>
             <id>github-actions-playwright-runtime</id>
             <activation>

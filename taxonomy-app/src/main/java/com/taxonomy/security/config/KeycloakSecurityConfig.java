@@ -4,7 +4,9 @@ import com.taxonomy.security.keycloak.KeycloakAuthenticationEntryPoint;
 import com.taxonomy.security.keycloak.KeycloakJwtAuthConverter;
 import com.taxonomy.security.keycloak.KeycloakLogoutHandler;
 import com.taxonomy.security.keycloak.KeycloakOidcUserService;
+import com.taxonomy.security.webdav.WebDavApplicationCredentialFilter;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -12,17 +14,14 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
-/**
- * Spring Security configuration for Keycloak/OIDC mode.
- * Browser OIDC sessions retain CSRF protection; explicit JWT Bearer API clients
- * are stateless and do not require a CSRF token.
- */
+/** Spring Security configuration for Keycloak/OIDC mode. */
 @Configuration
 @EnableMethodSecurity
 @Profile("keycloak")
@@ -33,23 +32,40 @@ public class KeycloakSecurityConfig {
     private final KeycloakOidcUserService oidcUserService;
     private final KeycloakLogoutHandler logoutHandler;
     private final KeycloakAuthenticationEntryPoint authenticationEntryPoint;
+    private final WebDavApplicationCredentialFilter webDavCredentialFilter;
 
-    public KeycloakSecurityConfig(AuthorizationRulesConfigurer authRules,
-                                   KeycloakJwtAuthConverter jwtAuthConverter,
-                                   KeycloakOidcUserService oidcUserService,
-                                   KeycloakLogoutHandler logoutHandler,
-                                   KeycloakAuthenticationEntryPoint authenticationEntryPoint) {
+    @Autowired
+    public KeycloakSecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            KeycloakJwtAuthConverter jwtAuthConverter,
+            KeycloakOidcUserService oidcUserService,
+            KeycloakLogoutHandler logoutHandler,
+            KeycloakAuthenticationEntryPoint authenticationEntryPoint,
+            WebDavApplicationCredentialFilter webDavCredentialFilter) {
         this.authRules = authRules;
         this.jwtAuthConverter = jwtAuthConverter;
         this.oidcUserService = oidcUserService;
         this.logoutHandler = logoutHandler;
         this.authenticationEntryPoint = authenticationEntryPoint;
+        this.webDavCredentialFilter = webDavCredentialFilter;
+    }
+
+    /** Backward-compatible constructor for focused security configuration tests. */
+    public KeycloakSecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            KeycloakJwtAuthConverter jwtAuthConverter,
+            KeycloakOidcUserService oidcUserService,
+            KeycloakLogoutHandler logoutHandler,
+            KeycloakAuthenticationEntryPoint authenticationEntryPoint) {
+        this(authRules, jwtAuthConverter, oidcUserService, logoutHandler,
+                authenticationEntryPoint, null);
     }
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         RequestMatcher csrfExempt = new OrRequestMatcher(
-                KeycloakSecurityConfig::isStatelessBearerApiClient,
+                KeycloakSecurityConfig::isStatelessBearerProtocolClient,
+                KeycloakSecurityConfig::isStatelessWebDavApplicationClient,
                 KeycloakSecurityConfig::isOAuth2Callback);
 
         http
@@ -71,6 +87,10 @@ public class KeycloakSecurityConfig {
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter)))
             .logout(logout -> logout.logoutSuccessHandler(logoutHandler));
 
+        if (webDavCredentialFilter != null) {
+            http.addFilterBefore(
+                    webDavCredentialFilter, BearerTokenAuthenticationFilter.class);
+        }
         return http.build();
     }
 
@@ -84,8 +104,11 @@ public class KeycloakSecurityConfig {
         };
     }
 
-    private static boolean isStatelessBearerApiClient(HttpServletRequest request) {
-        if (!request.getRequestURI().startsWith("/api/")) {
+    private static boolean isStatelessBearerProtocolClient(HttpServletRequest request) {
+        String uri = SecurityConfig.protocolPath(request);
+        if (!uri.startsWith("/api/")
+                && !uri.equals("/dav/templates")
+                && !uri.startsWith("/dav/templates/")) {
             return false;
         }
         String authorization = request.getHeader("Authorization");
@@ -93,7 +116,18 @@ public class KeycloakSecurityConfig {
                 && authorization.regionMatches(true, 0, "Bearer ", 0, 7);
     }
 
+    private static boolean isStatelessWebDavApplicationClient(
+            HttpServletRequest request) {
+        String uri = SecurityConfig.protocolPath(request);
+        if (!uri.equals("/dav/templates") && !uri.startsWith("/dav/templates/")) {
+            return false;
+        }
+        String authorization = request.getHeader("Authorization");
+        return authorization != null
+                && authorization.regionMatches(true, 0, "Basic ", 0, 6);
+    }
+
     private static boolean isOAuth2Callback(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/login/oauth2/code/");
+        return SecurityConfig.protocolPath(request).startsWith("/login/oauth2/code/");
     }
 }

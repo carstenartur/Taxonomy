@@ -1,6 +1,8 @@
 package com.taxonomy.security.config;
 
+import com.taxonomy.security.webdav.WebDavApplicationCredentialFilter;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -14,14 +16,7 @@ import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
-/**
- * Spring Security configuration for form-login mode (default, without Keycloak).
- *
- * <p>The GUI uses form-login sessions and therefore keeps CSRF protection for
- * state-changing API calls. Only programmatic API clients authenticated with an
- * explicit Basic or Bearer Authorization header are treated as stateless and
- * may call the REST API without a CSRF token.</p>
- */
+/** Spring Security configuration for form-login mode. */
 @Configuration
 @EnableMethodSecurity
 @Profile("!keycloak")
@@ -29,20 +24,32 @@ public class SecurityConfig {
 
     private final AuthorizationRulesConfigurer authRules;
     private final PasswordChangeRequiredFilter passwordChangeRequiredFilter;
+    private final WebDavApplicationCredentialFilter webDavCredentialFilter;
 
-    public SecurityConfig(AuthorizationRulesConfigurer authRules,
-                          PasswordChangeRequiredFilter passwordChangeRequiredFilter) {
+    @Autowired
+    public SecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            PasswordChangeRequiredFilter passwordChangeRequiredFilter,
+            WebDavApplicationCredentialFilter webDavCredentialFilter) {
         this.authRules = authRules;
         this.passwordChangeRequiredFilter = passwordChangeRequiredFilter;
+        this.webDavCredentialFilter = webDavCredentialFilter;
+    }
+
+    /** Backward-compatible constructor for focused configuration tests. */
+    SecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            PasswordChangeRequiredFilter passwordChangeRequiredFilter) {
+        this(authRules, passwordChangeRequiredFilter, null);
     }
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        RequestMatcher statelessApiClient = SecurityConfig::isStatelessApiClient;
+        RequestMatcher statelessProtocolClient = SecurityConfig::isStatelessProtocolClient;
 
         http
             .authorizeHttpRequests(auth -> authRules.configure(auth))
-            .csrf(csrf -> csrf.ignoringRequestMatchers(statelessApiClient))
+            .csrf(csrf -> csrf.ignoringRequestMatchers(statelessProtocolClient))
             .headers(headers -> headers
                 .withObjectPostProcessor(eagerHeaderWriter())
                 .contentTypeOptions(Customizer.withDefaults())
@@ -51,13 +58,15 @@ public class SecurityConfig {
                     .includeSubDomains(true)
                     .maxAgeInSeconds(31536000))
                 .referrerPolicy(referrer -> referrer
-                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
-            )
+                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
             .formLogin(Customizer.withDefaults())
             .httpBasic(Customizer.withDefaults())
-            .logout(Customizer.withDefaults())
-            .addFilterAfter(passwordChangeRequiredFilter, BasicAuthenticationFilter.class);
+            .logout(Customizer.withDefaults());
 
+        if (webDavCredentialFilter != null) {
+            http.addFilterBefore(webDavCredentialFilter, BasicAuthenticationFilter.class);
+        }
+        http.addFilterAfter(passwordChangeRequiredFilter, BasicAuthenticationFilter.class);
         return http.build();
     }
 
@@ -71,19 +80,24 @@ public class SecurityConfig {
         };
     }
 
-    /**
-     * A request is stateless only when it carries an explicit HTTP
-     * authentication scheme. The absence of an existing session is not enough:
-     * otherwise a browser request made before session resolution could bypass
-     * CSRF protection.
-     */
-    static boolean isStatelessApiClient(HttpServletRequest request) {
-        if (!request.getRequestURI().startsWith("/api/")) {
+    /** Explicit Basic/Bearer protocol calls are stateless; browser sessions retain CSRF. */
+    static boolean isStatelessProtocolClient(HttpServletRequest request) {
+        String uri = protocolPath(request);
+        if (!uri.startsWith("/api/")
+                && !uri.equals("/dav/templates")
+                && !uri.startsWith("/dav/templates/")) {
             return false;
         }
         String authorization = request.getHeader("Authorization");
         return authorization != null
                 && (authorization.regionMatches(true, 0, "Basic ", 0, 6)
                 || authorization.regionMatches(true, 0, "Bearer ", 0, 7));
+    }
+
+    static String protocolPath(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        String context = request.getContextPath();
+        return context == null || context.isBlank() || !uri.startsWith(context)
+                ? uri : uri.substring(context.length());
     }
 }

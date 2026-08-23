@@ -73,6 +73,56 @@ window.TaxonomyRoleSurface = (function () {
         });
     }
 
+    function translated(key, fallback) {
+        if (!window.TaxonomyI18n) return fallback;
+        var value = window.TaxonomyI18n.t(key);
+        return value === key ? fallback : value;
+    }
+
+    function ensureDocumentTemplateAdminEntry() {
+        if (!isAdministrator()) return;
+        var adminTab = document.getElementById('tab-admin');
+        if (!adminTab || document.getElementById('documentTemplateAdminEntry')) return;
+
+        var card = document.createElement('section');
+        card.id = 'documentTemplateAdminEntry';
+        card.className = 'card shadow-sm mb-3';
+        card.setAttribute('aria-labelledby', 'documentTemplateAdminEntryTitle');
+
+        var body = document.createElement('div');
+        body.className = 'card-body d-flex flex-column flex-lg-row align-items-lg-center gap-3';
+
+        var copy = document.createElement('div');
+        copy.className = 'flex-grow-1';
+        var title = document.createElement('h2');
+        title.id = 'documentTemplateAdminEntryTitle';
+        title.className = 'h5 mb-1';
+        title.textContent = translated(
+            'document.templates.admin.entry.title',
+            'Word document templates');
+        var description = document.createElement('p');
+        description.id = 'documentTemplateAdminEntryDescription';
+        description.className = 'mb-0 text-muted small';
+        description.textContent = translated(
+            'document.templates.admin.entry.description',
+            'Manage versioned DOTX templates, Word editing, downloads, and history.');
+        copy.append(title, description);
+
+        var link = document.createElement('a');
+        link.className = 'btn btn-primary flex-shrink-0';
+        link.href = window.TaxonomyI18n
+            ? window.TaxonomyI18n.resolveUrl('/admin/document-templates')
+            : '/admin/document-templates';
+        link.setAttribute('aria-describedby', description.id);
+        link.textContent = translated(
+            'document.templates.admin.entry.action',
+            'Manage templates');
+
+        body.append(copy, link);
+        card.appendChild(body);
+        adminTab.insertBefore(card, adminTab.firstChild);
+    }
+
     function normalizeGlobalModalPlacement() {
         if (!document.body) return;
         // Malformed legacy template markup can make later modals descendants of
@@ -192,6 +242,11 @@ window.TaxonomyRoleSurface = (function () {
             .then(function (data) {
                 context = data;
                 ensureStableEvidenceAnchors();
+                if (window.TaxonomyI18n) {
+                    window.TaxonomyI18n.ready().then(ensureDocumentTemplateAdminEntry);
+                } else {
+                    ensureDocumentTemplateAdminEntry();
+                }
                 applyStaticSurfaces(document);
                 installMutationObserver();
                 installAccessibleAlertBridge();

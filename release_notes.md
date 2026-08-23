@@ -1,6 +1,6 @@
 # Taxonomy 1.4.0
 
-Taxonomy 1.4.0 is the first published release after 1.3.0. It combines the stabilization work that had been prepared for 1.3.1 with a substantially stronger project-portfolio workbench, deterministic architecture exports, local semantic-search readiness, deployment profiles, and a fail-closed release and quality pipeline.
+Taxonomy 1.4.0 is the first published release after 1.3.0. It introduces versioned Word-template administration and template-backed decision reports, and combines the stabilization work that had been prepared for 1.3.1 with a substantially stronger project-portfolio workbench, deterministic architecture exports, local semantic-search readiness, deployment profiles, and a fail-closed release and quality pipeline.
 
 ## Important release-line note
 
@@ -9,6 +9,23 @@ The immutable `v1.3.1` Git tag exists only to preserve release ancestry. **No Gi
 The 1.3.1 release commit remains reachable from the 1.4.0 history and from the maintenance line; no tag or published history was rewritten.
 
 ## Product highlights
+
+### Versioned Word templates and template-backed decision reports
+
+Administrators can now maintain DOTX templates through the browser or through a virtual WebDAV collection while retaining precise Git history for the package contents. Taxonomy stores every template canonically as an unpacked OOXML tree in a dedicated Hibernate-backed JGit repository and materialises a valid `.dotx` package on demand. The WebDAV view intentionally exposes only complete Office documents, never the unpacked internal tree.
+
+The template workspace includes:
+
+- upload, download, version history, per-part OOXML inspection and diff, and conflict-protected restore;
+- direct Microsoft Word actions for editing a template or creating a new document from it, restricted to public HTTPS or loopback development;
+- revocable, user-bound WebDAV application credentials with read/write scopes, expiry, hashed storage, and one-time secret display;
+- per-template commits and ETags, lock-token handling, conditional writes, stale-write rejection, and concurrent-create protection;
+- fail-closed validation of XML parts, OPC relationships, ZIP paths, manifests, external links, dangerous field instructions, macros, ActiveX, OLE objects, signatures, comments, and tracked changes;
+- deterministic package materialisation and semantic-validation caching by immutable template revision.
+
+A valid macro-free decision-rationale template is bundled and seeded idempotently on first start without overwriting organisation-specific changes. Generated decision reports inherit the selected template's branding, page setup, styles, headers, footers, and static metadata while retaining the existing generated executive summary, decision chapters, diagrams, and appendix. The returned package is converted to a genuine DOCX and records the template ID, Git commit, and package checksum as provenance properties.
+
+The browser/container acceptance path starts the packaged application with Testcontainers, signs in through Playwright, verifies first-start seeding and WebDAV discoverability, downloads the generated DOCX, validates the package, and renders that exact document through LibreOffice for screenshot evidence. See the [English document-template guide](docs/en/DOCUMENT_TEMPLATES.md) and [German document-template guide](docs/de/DOCUMENT_TEMPLATES.md).
 
 ### Complete project and requirement portfolio workflow
 
@@ -108,16 +125,20 @@ Standalone Python remains only where it is useful as a bounded release adapter o
 - The unfinished multi-repository and federated-authority implementation tracked by #609/#610 is **not included** in Taxonomy 1.4.0. It remains on its isolated integration line until its tenancy, recovery, authority, cache, UX, and end-to-end isolation boundaries are complete.
 - The federated authority and collaborative editing document included in this release is a planning baseline, not a claim that those future capabilities are already delivered.
 - The existing published primary-repository/workspace behavior remains the supported product boundary for 1.4.0.
+- WebDAV exposes valid packaged DOTX resources only. The unpacked OOXML representation remains an internal Git and inspection-API concern.
+- Direct Word links require public HTTPS, except for loopback development. Deployments should use scoped application credentials rather than ordinary account passwords for desktop WebDAV clients.
 - No deployment should use the unpublished `v1.3.1` tag as a substitute for the 1.4.0 release assets.
 
 ## Upgrade notes
 
 1. Back up the application database and persistent storage using the normal operational procedure.
 2. Upgrade directly from the published 1.3.0 assets to the 1.4.0 release.
-3. Use the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
-4. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
-5. Local semantic search can remain unavailable until its controlled model/index initialization completes; use the reported readiness state rather than assuming an empty result means a ready index.
-6. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle rather than invoking internal test selectors directly.
+3. After the first 1.4.0 start, verify that `decision-rationale-report.dotx` is present in `/admin/document-templates`. Seeding is idempotent and does not replace an organisation-specific revision.
+4. Configure a trusted external HTTPS origin before offering direct Word/WebDAV actions, and create scoped WebDAV application credentials for the users who require them.
+5. Use the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
+6. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
+7. Local semantic search can remain unavailable until its controlled model/index initialization completes; use the reported readiness state rather than assuming an empty result means a ready index.
+8. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle rather than invoking internal test selectors directly.
 
 ## Verification boundary
 

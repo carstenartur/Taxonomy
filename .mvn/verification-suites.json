@@ -16,6 +16,12 @@
     "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest"},
     "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},
     "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,CatalogFacadeTest"},
+    "document-template-report-e2e": {
+      "purpose": "Packaged application, PostgreSQL Testcontainers, Playwright requirement evaluation, report download and rendered document evidence",
+      "itTest": "DocumentTemplateReportDownloadIT",
+      "systemProperty": "documentTemplateE2E",
+      "requires": ["Java 21", "Docker", "Node 24", "Chromium", "LibreOffice", "Poppler"]
+    },
     "supply-chain-policy": {
       "purpose": "Focused repository scan for immutable external GitHub Action commits and production image digests",
       "test": "SupplyChainPinPolicyRepositoryTest",
@@ -40,6 +46,7 @@
   "workflowResponsibilities": {
     "ci-cd.yml": "authoritative Maven verification and report publication",
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
+    "document-template-report-e2e.yml": "Maven-owned packaged browser and decision-report evidence",
     "jgit-storage-hibernate-contract.yml": "consumer-owned storage compatibility contract with Maven verification catalogue selectors",
     "kubernetes-constrained-smoke.yml": "external kind and Helm constrained-cluster release-floor verification",
     "codeql.yml": "external source analysis",

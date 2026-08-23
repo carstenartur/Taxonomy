@@ -1,0 +1,90 @@
+name: Document Template Report E2E
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/package.json'
+      - '.github/package-lock.json'
+      - '.github/scripts/document-template-report-download.mjs'
+      - '.github/workflows/document-template-report-e2e.yml'
+      - 'taxonomy-app/src/main/**'
+      - 'taxonomy-build/**'
+      - 'docs/de/DOCUMENT_TEMPLATES.md'
+      - 'docs/en/DOCUMENT_TEMPLATES.md'
+      - 'docs/images/document-template-management.png'
+      - 'docs/images/decision-rationale-template-test-report.png'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-document-template-report-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Playwright download through Testcontainers
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Install document rendering tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libreoffice-writer \
+            poppler-utils
+
+      - name: Build and install the packaged application reactor
+        run: |
+          ./mvnw -B -pl taxonomy-tooling,taxonomy-build -am install \
+            -DskipTests \
+            -Dtaxonomy.ui.skip=true \
+            -Dtaxonomy.quality.skip=true
+
+      - name: Install pinned Node and Chromium
+        run: |
+          ./mvnw -B -pl taxonomy-build pre-integration-test \
+            -Dtaxonomy.ui.skip=false \
+            -Dtaxonomy.quality.skip=true \
+            -Dtaxonomy.playwright.install.arguments="exec -- playwright install --with-deps chromium"
+
+      - name: Download the template-backed report in Playwright
+        env:
+          TAXONOMY_RENDER_DOCX_PREVIEW: 'true'
+          TAXONOMY_DOCS_IMAGE_DIR: ${{ github.workspace }}/docs/images
+        run: |
+          ./mvnw -B -pl taxonomy-build \
+            -Pdocument-template-report-e2e \
+            verify \
+            -Dtaxonomy.node.executable="${GITHUB_WORKSPACE}/taxonomy-build/target/frontend/node/node"
+
+      - name: Upload browser, DOCX, and screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: document-template-report-e2e
+          path: |
+            target/ui-verification/document-template-report/**
+            docs/images/document-template-management.png
+            docs/images/decision-rationale-template-test-report.png
+          if-no-files-found: warn
+          retention-days: 90
