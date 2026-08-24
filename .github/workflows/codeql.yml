@@ -7,7 +7,6 @@ on:
       - 'pom.xml'
       - 'taxonomy-*/pom.xml'
       - 'taxonomy-*/src/**'
-      - '.github/scripts/check-codeql-sarif.py'
       - '.github/workflows/codeql.yml'
   push:
     branches: [ main ]
@@ -15,7 +14,6 @@ on:
       - 'pom.xml'
       - 'taxonomy-*/pom.xml'
       - 'taxonomy-*/src/**'
-      - '.github/scripts/check-codeql-sarif.py'
       - '.github/workflows/codeql.yml'
   schedule:
     - cron: '19 3 * * 1'
@@ -55,13 +53,26 @@ jobs:
           build-mode: manual
           queries: security-extended,security-and-quality
 
-      - name: Build Java reactor for CodeQL
+      - name: Build Java reactor and SARIF gate for CodeQL
         run: >-
-          ./mvnw -B -q -pl taxonomy-app -am package
+          ./mvnw -B -q -pl taxonomy-app,taxonomy-tooling -am package
           -Dmaven.test.skip=true
           -Dtaxonomy.model.download.skip=true
           -Dtaxonomy.ui.skip=true
           -Dtaxonomy.quality.skip=true
+
+      - name: Preserve immutable Java SARIF gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          tooling_jar=$(find taxonomy-tooling/target -maxdepth 1 -type f \
+            -name 'taxonomy-tooling-*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)
+          if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
+            echo "::error::Java CodeQL SARIF gate jar was not produced"
+            exit 1
+          fi
+          cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
 
       - name: Analyze Java to local SARIF
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
@@ -71,10 +82,13 @@ jobs:
           output: codeql-java
 
       - name: Enforce high-severity Java findings
+        shell: bash
         run: |
-          mapfile -t reports < <(find codeql-java -type f -name '*.sarif' -print)
-          test "${#reports[@]}" -gt 0
-          python3 .github/scripts/check-codeql-sarif.py \
+          set -euo pipefail
+          mapfile -d '' -t reports < <(
+            find codeql-java -type f -name '*.sarif' -print0 | sort -z
+          )
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-codeql-sarif \
             --report target/codeql-java-gate.json \
             "${reports[@]}"
 
@@ -100,6 +114,27 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Build and preserve Java SARIF gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -q -pl taxonomy-tooling package -DskipTests
+          tooling_jar=$(find taxonomy-tooling/target -maxdepth 1 -type f \
+            -name 'taxonomy-tooling-*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print -quit)
+          if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
+            echo "::error::Java CodeQL SARIF gate jar was not produced"
+            exit 1
+          fi
+          cp "$tooling_jar" "$RUNNER_TEMP/taxonomy-tooling.jar"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
@@ -115,10 +150,13 @@ jobs:
           output: codeql-javascript
 
       - name: Enforce high-severity JavaScript findings
+        shell: bash
         run: |
-          mapfile -t reports < <(find codeql-javascript -type f -name '*.sarif' -print)
-          test "${#reports[@]}" -gt 0
-          python3 .github/scripts/check-codeql-sarif.py \
+          set -euo pipefail
+          mapfile -d '' -t reports < <(
+            find codeql-javascript -type f -name '*.sarif' -print0 | sort -z
+          )
+          java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-codeql-sarif \
             --report target/codeql-javascript-gate.json \
             "${reports[@]}"
 
