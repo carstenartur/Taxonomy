@@ -51,7 +51,7 @@ for required in \
   'type: Recreate' \
   'path: /actuator/health/readiness' \
   'type: Bearer' \
-  'key: "ADMIN_PASSWORD"'; do
+  'key: "ADMIN_TOKEN"'; do
   if ! grep -Fq "${required}" "${OUTPUT_FILE}"; then
     echo "Rendered chart is missing required contract: ${required}" >&2
     exit 1
@@ -222,6 +222,15 @@ expect_failure 'simultaneous image tag and digest' \
     --set image.digest=sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 expect_failure 'missing credentials Secret' \
   helm template taxonomy "${CHART_DIR}" --set "image.tag=${VALID_TAG}"
+expect_failure 'interactive login credential reused as Actuator/admin token' \
+  helm template taxonomy "${CHART_DIR}" \
+    "${COMMON_VALUES[@]}" \
+    --set secretEnv.ADMIN_PASSWORD.key=ADMIN_PASSWORD
+expect_failure 'ServiceMonitor token key diverges from the application token key' \
+  helm template taxonomy "${CHART_DIR}" \
+    "${COMMON_VALUES[@]}" \
+    --set serviceMonitor.enabled=true \
+    --set serviceMonitor.authorization.secretKey=OTHER_TOKEN
 expect_failure 'invalid upgrade strategy' \
   helm template taxonomy "${CHART_DIR}" \
     "${COMMON_VALUES[@]}" --set upgrade.strategy=BlueGreen
@@ -273,5 +282,6 @@ done
 
 grep -Fq 'publish-helm-oci.yml' "${ROOT_DIR}/.mvn/verification-suites.json"
 grep -Fq 'upgrade.strategy' "${CHART_DIR}/questions.yaml"
+grep -Fq 'ADMIN_TOKEN' "${CHART_DIR}/questions.yaml"
 
 printf 'Helm chart verification passed. Rendered evidence: %s\n' "${OUTPUT_FILE}"

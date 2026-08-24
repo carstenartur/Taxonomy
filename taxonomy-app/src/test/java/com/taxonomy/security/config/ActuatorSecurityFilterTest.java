@@ -38,6 +38,18 @@ class ActuatorSecurityFilterTest {
     }
 
     @Test
+    void contextPathCannotBypassSensitiveEndpointProtection() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/taxonomy/actuator/prometheus");
+        request.setContextPath("/taxonomy");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @Test
     void sensitiveEndpointAcceptsLegacyAdminHeader() throws Exception {
         MockHttpServletResponse response = invoke(
                 "/actuator/prometheus", "X-Admin-Token", ADMIN_TOKEN);
@@ -62,7 +74,7 @@ class ActuatorSecurityFilterTest {
     }
 
     @Test
-    void blankAdminTokenPreservesDevelopmentCompatibility() throws Exception {
+    void blankAdminTokenDefersToTheFollowingSecurityChain() throws Exception {
         ReflectionTestUtils.setField(filter, "adminPassword", "");
 
         MockHttpServletResponse response = invoke("/actuator/prometheus", null, null);

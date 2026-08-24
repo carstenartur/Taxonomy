@@ -4,6 +4,8 @@ questions:
     description: >-
       Select a Secret in the target namespace containing SPRING_DATASOURCE_URL,
       SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD and ADMIN_PASSWORD.
+      When the Prometheus ServiceMonitor is enabled, add a distinct ADMIN_TOKEN
+      key; never reuse the interactive ADMIN_PASSWORD value as the machine token.
     type: secret
     required: true
     group: Required configuration
@@ -55,7 +57,9 @@ questions:
 
   - variable: serviceMonitor.enabled
     label: Create Prometheus ServiceMonitor
-    description: Requires Prometheus Operator CRDs in the cluster.
+    description: >-
+      Requires Prometheus Operator CRDs and a distinct ADMIN_TOKEN key in the
+      selected credential Secret.
     type: boolean
     default: false
     group: Observability

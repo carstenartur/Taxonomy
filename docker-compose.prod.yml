@@ -22,6 +22,10 @@ services:
       context: .
     # Or use the published image instead of building locally. Production image
     # references must be digest-pinned before enabling this alternative.
+    # Forward the complete operator-edited file. Explicit values below remain the
+    # production floor and override matching entries from .env where intentional.
+    env_file:
+      - .env
     environment:
       - SPRING_PROFILES_ACTIVE=production,hsqldb
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -53,7 +57,9 @@ services:
       - TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=${TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION:-false}
       - TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem
       - TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index
-      - TAXONOMY_EMBEDDING_ENABLED=${TAXONOMY_EMBEDDING_ENABLED:-true}
+      # Local semantic embeddings are opt-in because they increase memory use and
+      # may otherwise trigger an unexpected model download/network dependency.
+      - TAXONOMY_EMBEDDING_ENABLED=${TAXONOMY_EMBEDDING_ENABLED:-false}
       - TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=${TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD:-false}
       - TAXONOMY_EMBEDDING_MODEL_DIR=${TAXONOMY_EMBEDDING_MODEL_DIR:-}
       - TAXONOMY_THYMELEAF_CACHE=true

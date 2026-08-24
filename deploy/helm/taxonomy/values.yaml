@@ -158,11 +158,18 @@ secretEnv:
   SPRING_DATASOURCE_PASSWORD:
     key: SPRING_DATASOURCE_PASSWORD
     optional: false
-  # Spring maps TAXONOMY_ADMIN_PASSWORD to taxonomy.admin-password. The Secret
-  # key remains ADMIN_PASSWORD for compatibility with existing deployments.
+  # Local form-login bootstrap credential. The Secret key remains ADMIN_PASSWORD
+  # for compatibility with existing chart installations.
   TAXONOMY_ADMIN_PASSWORD:
     key: ADMIN_PASSWORD
     optional: false
+  # Separate Actuator/admin-token credential. It deliberately uses a different
+  # Secret key so the interactive login password is not reused as a machine token.
+  # Existing installations remain compatible while this optional token and the
+  # optional ServiceMonitor are disabled.
+  ADMIN_PASSWORD:
+    key: ADMIN_TOKEN
+    optional: true
   GEMINI_API_KEY:
     key: GEMINI_API_KEY
     optional: true
@@ -194,26 +201,45 @@ config:
   TAXONOMY_SEARCH_SYNC_STRATEGY: write-sync
   TAXONOMY_SPRINGDOC_ENABLED: "false"
   TAXONOMY_FORWARD_HEADERS_STRATEGY: framework
+
+  # Generative providers are fail-closed until a complete configuration is supplied.
+  LLM_PROVIDER: ""
+  CUSTOM_LLM_URL: ""
+  CUSTOM_LLM_MODEL: ""
+
+  # Local semantic embeddings are independent of the chat provider and opt-in.
   TAXONOMY_EMBEDDING_ENABLED: "false"
   TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"
-  # Autopilot is opt-in twice: the operator must enable it and explicitly classify
-  # the selected provider as UNMETERED. These defaults never start unattended work.
+  TAXONOMY_EMBEDDING_MODEL_DIR: ""
+
+  # Copilot can be invoked manually with a configured provider. Autopilot is opt-in
+  # twice: the operator must enable it and classify its explicit provider UNMETERED.
   TAXONOMY_AI_COST_POLICY: METERED
+  TAXONOMY_AI_COPILOT_PROFILE: FULL
+  TAXONOMY_AI_AUTOPILOT_PROFILE: EXHAUSTIVE
   TAXONOMY_AI_AUTOPILOT_ENABLED: "false"
   TAXONOMY_AI_AUTOPILOT_PROVIDER: ""
   TAXONOMY_AI_AUTOPILOT_ON_REQUIREMENT_SAVE: "true"
   TAXONOMY_AI_COPILOT_VERIFICATION_PASSES: "1"
   TAXONOMY_AI_AUTOPILOT_VERIFICATION_PASSES: "2"
+  # Historic name retained: this ceiling applies to both manual Copilot and Autopilot.
   TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES: "50"
+  # The general portfolio ceiling must be at least as high as the AI-specific ceiling.
+  TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES: "50"
+  TAXONOMY_AI_AUTOPILOT_PROPOSE_SOLUTIONS: "true"
+  TAXONOMY_AI_AUTOPILOT_PROPOSE_PRODUCTS: "true"
   TAXONOMY_AI_AUTOPILOT_MAX_PROJECT_REQUIREMENTS: "50"
+  TAXONOMY_AI_PRODUCT_PROPOSALS_MINIMUM_COVERAGE: "25"
+  TAXONOMY_AI_PRODUCT_PROPOSALS_MINIMUM_CONFIDENCE: "0.25"
   TAXONOMY_AI_COORDINATOR_MAX_CONCURRENT_OPERATIONS: "4"
   TAXONOMY_AI_COORDINATOR_QUEUE_CAPACITY: "100"
   TAXONOMY_AI_MAXIMUM_RUNTIME_SECONDS: "1800"
+
   JAVA_OPTS: -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=20.0 -Xss512k -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp
 
-# Prometheus Operator integration. The application accepts the configured local
-# administrator password as a Bearer token for /actuator/prometheus; the
-# ServiceMonitor reads that value from the existing Secret.
+# Prometheus Operator integration. The application receives its ADMIN_PASSWORD
+# Bearer token from the distinct ADMIN_TOKEN Secret key. Do not reuse the local
+# form-login password stored under ADMIN_PASSWORD.
 serviceMonitor:
   enabled: false
   additionalLabels: {}
@@ -222,7 +248,7 @@ serviceMonitor:
   authorization:
     enabled: true
     secretName: ""
-    secretKey: ADMIN_PASSWORD
+    secretKey: ADMIN_TOKEN
   relabelings: []
   metricRelabelings: []
 
