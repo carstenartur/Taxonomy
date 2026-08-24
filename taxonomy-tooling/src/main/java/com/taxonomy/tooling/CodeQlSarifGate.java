@@ -2,21 +2,26 @@ package com.taxonomy.tooling;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /** Fail-closed high-severity gate for one or more CodeQL SARIF reports. */
 final class CodeQlSarifGate {
 
     private static final String SUPPORTED_SARIF_VERSION = "2.1.0";
+    private static final long SUPPORTED_BASELINE_SCHEMA_VERSION = 1L;
     private static final double MAX_SECURITY_SEVERITY = 10.0;
 
     private CodeQlSarifGate() {
@@ -35,11 +40,18 @@ final class CodeQlSarifGate {
                     rawArguments, workingDirectory);
             report = arguments.report();
             Inspection inspection = inspect(
-                    arguments.sarifPaths(), arguments.threshold());
+                    arguments.sarifPaths(),
+                    arguments.threshold(),
+                    arguments.baseline());
             writeReport(report, inspection);
 
             output.println("CodeQL results: " + inspection.resultCount()
                     + "; blocking: " + inspection.blocking().size());
+            if (inspection.baselineFile() != null) {
+                output.println("CodeQL baseline accepted: "
+                        + inspection.acceptedBaseline().size()
+                        + "; unused: " + inspection.unusedBaseline().size());
+            }
             for (Finding finding : inspection.blocking()) {
                 error.println("- [" + finding.level()
                         + "/security-severity="
@@ -56,6 +68,13 @@ final class CodeQlSarifGate {
 
     static Inspection inspect(List<Path> candidates, double threshold)
             throws IOException {
+        return inspect(candidates, threshold, null);
+    }
+
+    static Inspection inspect(
+            List<Path> candidates,
+            double threshold,
+            Path baselinePath) throws IOException {
         if (!Double.isFinite(threshold)
                 || threshold < 0.0
                 || threshold > MAX_SECURITY_SEVERITY) {
@@ -83,6 +102,9 @@ final class CodeQlSarifGate {
                                     .orElse("<unknown>"));
         }
 
+        Baseline baseline = Baseline.load(baselinePath);
+        Set<FindingKey> usedBaseline = new LinkedHashSet<>();
+        List<Finding> acceptedBaseline = new ArrayList<>();
         List<Finding> blocking = new ArrayList<>();
         int resultCount = 0;
         for (Path path : requested) {
@@ -125,12 +147,21 @@ final class CodeQlSarifGate {
                     requireKnownLevel(level);
                     String message = messageText(result);
                     if (severity >= threshold || "error".equals(level)) {
-                        blocking.add(new Finding(
+                        Finding finding = new Finding(
                                 path.toString(),
                                 ruleId,
                                 severity,
                                 level,
-                                message));
+                                message,
+                                primaryArtifactUri(result),
+                                primaryLocationLineHash(result));
+                        FindingKey key = finding.key();
+                        if (key != null && baseline.contains(key)) {
+                            acceptedBaseline.add(finding);
+                            usedBaseline.add(key);
+                        } else {
+                            blocking.add(finding);
+                        }
                     }
                 }
             }
@@ -139,6 +170,9 @@ final class CodeQlSarifGate {
                 List.copyOf(requested),
                 resultCount,
                 threshold,
+                baseline.path(),
+                List.copyOf(acceptedBaseline),
+                baseline.unusedEntries(usedBaseline),
                 List.copyOf(blocking));
     }
 
@@ -245,6 +279,55 @@ final class CodeQlSarifGate {
                 "SARIF result message must contain text or markdown");
     }
 
+    private static String primaryArtifactUri(Map<String, Object> result) {
+        List<?> locations = listField(
+                result,
+                "locations",
+                "result locations");
+        if (locations.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> location = object(
+                locations.get(0),
+                "SARIF result location");
+        Map<String, Object> physicalLocation = optionalObjectField(
+                location,
+                "physicalLocation",
+                "SARIF result physicalLocation");
+        if (physicalLocation == null) {
+            return null;
+        }
+        Map<String, Object> artifactLocation = optionalObjectField(
+                physicalLocation,
+                "artifactLocation",
+                "SARIF result artifactLocation");
+        if (artifactLocation == null
+                || !artifactLocation.containsKey("uri")) {
+            return null;
+        }
+        String uri = requiredStringField(
+                artifactLocation,
+                "uri",
+                "SARIF result artifact URI");
+        return uri.isBlank() ? null : uri;
+    }
+
+    private static String primaryLocationLineHash(Map<String, Object> result) {
+        Map<String, Object> partialFingerprints = optionalObjectField(
+                result,
+                "partialFingerprints",
+                "SARIF result partialFingerprints");
+        if (partialFingerprints == null
+                || !partialFingerprints.containsKey("primaryLocationLineHash")) {
+            return null;
+        }
+        String fingerprint = requiredStringField(
+                partialFingerprints,
+                "primaryLocationLineHash",
+                "SARIF primaryLocationLineHash");
+        return fingerprint.isBlank() ? null : fingerprint;
+    }
+
     private static void writeReport(Path report, Inspection inspection)
             throws IOException {
         Path absolute = report.toAbsolutePath().normalize();
@@ -255,6 +338,14 @@ final class CodeQlSarifGate {
         }
         Files.createDirectories(parent);
 
+        List<Object> accepted = inspection.acceptedBaseline().stream()
+                .map(Finding::toJson)
+                .map(value -> (Object) value)
+                .toList();
+        List<Object> unused = inspection.unusedBaseline().stream()
+                .map(BaselineEntry::toJson)
+                .map(value -> (Object) value)
+                .toList();
         List<Object> findings = inspection.blocking().stream()
                 .map(Finding::toJson)
                 .map(value -> (Object) value)
@@ -265,6 +356,11 @@ final class CodeQlSarifGate {
                 .toList());
         payload.put("resultCount", (long) inspection.resultCount());
         payload.put("threshold", inspection.threshold());
+        if (inspection.baselineFile() != null) {
+            payload.put("baselineFile", inspection.baselineFile().toString());
+            payload.put("acceptedBaseline", accepted);
+            payload.put("unusedBaseline", unused);
+        }
         payload.put("blocking", findings);
         payload.put("status", findings.isEmpty() ? "PASS" : "FAIL");
         Files.writeString(
@@ -383,6 +479,9 @@ final class CodeQlSarifGate {
             List<Path> sarifFiles,
             int resultCount,
             double threshold,
+            Path baselineFile,
+            List<Finding> acceptedBaseline,
+            List<BaselineEntry> unusedBaseline,
             List<Finding> blocking) {
     }
 
@@ -391,7 +490,18 @@ final class CodeQlSarifGate {
             String ruleId,
             double securitySeverity,
             String level,
-            String message) {
+            String message,
+            String artifactUri,
+            String primaryLocationLineHash) {
+        FindingKey key() {
+            return artifactUri == null || primaryLocationLineHash == null
+                    ? null
+                    : new FindingKey(
+                            ruleId,
+                            artifactUri,
+                            primaryLocationLineHash);
+        }
+
         Map<String, Object> toJson() {
             LinkedHashMap<String, Object> value = new LinkedHashMap<>();
             value.put("file", file);
@@ -399,6 +509,171 @@ final class CodeQlSarifGate {
             value.put("securitySeverity", securitySeverity);
             value.put("level", level);
             value.put("message", message);
+            if (artifactUri != null) {
+                value.put("artifactUri", artifactUri);
+            }
+            if (primaryLocationLineHash != null) {
+                value.put(
+                        "primaryLocationLineHash",
+                        primaryLocationLineHash);
+            }
+            return value;
+        }
+    }
+
+    private record FindingKey(
+            String ruleId,
+            String artifactUri,
+            String primaryLocationLineHash) {
+    }
+
+    record BaselineEntry(
+            String ruleId,
+            String artifactUri,
+            String primaryLocationLineHash,
+            String rationale) {
+        FindingKey key() {
+            return new FindingKey(
+                    ruleId,
+                    artifactUri,
+                    primaryLocationLineHash);
+        }
+
+        Map<String, Object> toJson() {
+            LinkedHashMap<String, Object> value = new LinkedHashMap<>();
+            value.put("ruleId", ruleId);
+            value.put("artifactUri", artifactUri);
+            value.put(
+                    "primaryLocationLineHash",
+                    primaryLocationLineHash);
+            value.put("rationale", rationale);
+            return value;
+        }
+    }
+
+    private record Baseline(
+            Path path,
+            Map<FindingKey, BaselineEntry> entries) {
+
+        static Baseline load(Path candidate) throws IOException {
+            if (candidate == null) {
+                return new Baseline(null, Map.of());
+            }
+            Path path = candidate.normalize();
+            if (!Files.isRegularFile(path)) {
+                throw new IllegalArgumentException(
+                        "CodeQL baseline is missing or not a regular file: "
+                                + path);
+            }
+            Map<String, Object> payload = FlatJson.parseObject(
+                    Files.readString(path, StandardCharsets.UTF_8));
+            long schemaVersion = requiredIntegralField(
+                    payload,
+                    "schemaVersion",
+                    "CodeQL baseline schemaVersion");
+            if (schemaVersion != SUPPORTED_BASELINE_SCHEMA_VERSION) {
+                throw new IllegalArgumentException(
+                        "Unsupported CodeQL baseline schemaVersion: "
+                                + schemaVersion);
+            }
+
+            LinkedHashMap<FindingKey, BaselineEntry> entries =
+                    new LinkedHashMap<>();
+            for (Object rawEntry : requiredEntries(payload)) {
+                Map<String, Object> entry = object(
+                        rawEntry,
+                        "CodeQL baseline entry");
+                String ruleId = requiredNonBlankStringField(
+                        entry,
+                        "ruleId",
+                        "CodeQL baseline ruleId");
+                String artifactUri = requiredNonBlankStringField(
+                        entry,
+                        "artifactUri",
+                        "CodeQL baseline artifactUri");
+                String fingerprint = requiredNonBlankStringField(
+                        entry,
+                        "primaryLocationLineHash",
+                        "CodeQL baseline primaryLocationLineHash");
+                String rationale = requiredNonBlankStringField(
+                        entry,
+                        "rationale",
+                        "CodeQL baseline rationale");
+                BaselineEntry baselineEntry = new BaselineEntry(
+                        ruleId,
+                        artifactUri,
+                        fingerprint,
+                        rationale);
+                if (entries.putIfAbsent(
+                        baselineEntry.key(), baselineEntry) != null) {
+                    throw new IllegalArgumentException(
+                            "CodeQL baseline contains duplicate entry for rule '"
+                                    + ruleId + "', artifact '" + artifactUri
+                                    + "' and fingerprint '" + fingerprint
+                                    + "'");
+                }
+            }
+            return new Baseline(
+                    path,
+                    Collections.unmodifiableMap(
+                            new LinkedHashMap<>(entries)));
+        }
+
+        boolean contains(FindingKey key) {
+            return entries.containsKey(key);
+        }
+
+        List<BaselineEntry> unusedEntries(Set<FindingKey> used) {
+            return entries.entrySet().stream()
+                    .filter(entry -> !used.contains(entry.getKey()))
+                    .map(Map.Entry::getValue)
+                    .toList();
+        }
+
+        private static List<?> requiredEntries(
+                Map<String, Object> payload) {
+            if (!payload.containsKey("entries")) {
+                throw new IllegalArgumentException(
+                        "CodeQL baseline entries are required");
+            }
+            Object value = payload.get("entries");
+            if (!(value instanceof List<?> entries)) {
+                throw new IllegalArgumentException(
+                        "CodeQL baseline entries must be an array");
+            }
+            return entries;
+        }
+
+        private static long requiredIntegralField(
+                Map<String, Object> owner,
+                String field,
+                String description) {
+            if (!owner.containsKey(field)) {
+                throw new IllegalArgumentException(
+                        description + " is required");
+            }
+            Object value = owner.get(field);
+            if (!(value instanceof Number number)) {
+                throw new IllegalArgumentException(
+                        description + " must be an integer");
+            }
+            try {
+                return new BigDecimal(number.toString()).longValueExact();
+            } catch (NumberFormatException | ArithmeticException invalid) {
+                throw new IllegalArgumentException(
+                        description + " must be an integer", invalid);
+            }
+        }
+
+        private static String requiredNonBlankStringField(
+                Map<String, Object> owner,
+                String field,
+                String description) {
+            String value = requiredStringField(owner, field, description);
+            if (value.isBlank()) {
+                throw new IllegalArgumentException(
+                        description + " must not be blank");
+            }
             return value;
         }
     }
@@ -406,7 +681,8 @@ final class CodeQlSarifGate {
     private record CommandArguments(
             List<Path> sarifPaths,
             double threshold,
-            Path report) {
+            Path report,
+            Path baseline) {
 
         static CommandArguments parse(
                 String[] rawArguments,
@@ -414,6 +690,7 @@ final class CodeQlSarifGate {
             List<Path> paths = new ArrayList<>();
             double threshold = 7.0;
             Path report = workingDirectory.resolve("target/codeql-gate.json");
+            Path baseline = null;
             for (int index = 0; index < rawArguments.length; index++) {
                 String token = rawArguments[index];
                 if ("--threshold".equals(token)) {
@@ -421,6 +698,10 @@ final class CodeQlSarifGate {
                             requiredValue(rawArguments, ++index, token));
                 } else if ("--report".equals(token)) {
                     report = resolve(
+                            workingDirectory,
+                            requiredValue(rawArguments, ++index, token));
+                } else if ("--baseline".equals(token)) {
+                    baseline = resolve(
                             workingDirectory,
                             requiredValue(rawArguments, ++index, token));
                 } else if (token.startsWith("--")) {
@@ -431,7 +712,7 @@ final class CodeQlSarifGate {
                 }
             }
             return new CommandArguments(
-                    List.copyOf(paths), threshold, report);
+                    List.copyOf(paths), threshold, report, baseline);
         }
 
         static Path reportPath(
@@ -441,7 +722,8 @@ final class CodeQlSarifGate {
             for (int index = 0; index < rawArguments.length - 1; index++) {
                 if ("--report".equals(rawArguments[index])
                         && !rawArguments[index + 1].startsWith("--")) {
-                    report = resolve(workingDirectory, rawArguments[index + 1]);
+                    report = resolve(
+                            workingDirectory, rawArguments[index + 1]);
                 }
             }
             return report;

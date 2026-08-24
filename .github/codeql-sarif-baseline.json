@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "trackingIssue": 857,
+  "entries": [
+    {
+      "ruleId": "java/user-controlled-bypass",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "fddf021f421e71e8:1",
+      "rationale": "Existing bulk-proposal review dataflow tracked for remediation in #857."
+    },
+    {
+      "ruleId": "java/user-controlled-bypass",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "bc1e87a17bceed95:1",
+      "rationale": "Existing bulk-proposal review dataflow tracked for remediation in #857."
+    },
+    {
+      "ruleId": "java/user-controlled-bypass",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "65e7cc55cc484ad9:1",
+      "rationale": "Existing bulk-proposal review dataflow tracked for remediation in #857."
+    },
+    {
+      "ruleId": "java/user-controlled-bypass",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/security/webdav/WebDavApplicationCredentialService.java",
+      "primaryLocationLineHash": "ff38a5229c23de45:1",
+      "rationale": "Existing WebDAV credential authorization dataflow tracked for remediation in #857."
+    },
+    {
+      "ruleId": "java/sensitive-log",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java",
+      "primaryLocationLineHash": "9c9cc85f29714170:1",
+      "rationale": "Existing relation audit-log dataflow tracked for remediation in #857."
+    },
+    {
+      "ruleId": "java/sensitive-log",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java",
+      "primaryLocationLineHash": "435739d0edc19d1e:1",
+      "rationale": "Existing DSL relation warning dataflow tracked for remediation in #857."
+    },
+    {
+      "ruleId": "java/sensitive-log",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java",
+      "primaryLocationLineHash": "64c585095996ba6b:1",
+      "rationale": "Existing DSL hypothesis warning dataflow tracked for remediation in #857."
+    },
+    {
+      "ruleId": "java/sensitive-log",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/security/config/SecurityDataInitializer.java",
+      "primaryLocationLineHash": "960f66a8f61eea7e:1",
+      "rationale": "Existing one-time bootstrap credential delivery is documented and tracked for safer replacement in #857."
+    },
+    {
+      "ruleId": "java/sensitive-log",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/versioning/service/HypothesisService.java",
+      "primaryLocationLineHash": "64d3fb8a5c0e0545:1",
+      "rationale": "Existing hypothesis validation warning dataflow tracked for remediation in #857."
+    },
+    {
+      "ruleId": "java/tainted-arithmetic",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GraphSearchService.java",
+      "primaryLocationLineHash": "e5aab1ae4c4acf21:1",
+      "rationale": "Existing graph-search result-limit arithmetic tracked for bounded-input remediation in #857."
+    },
+    {
+      "ruleId": "java/tainted-arithmetic",
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/shared/service/LocalEmbeddingService.java",
+      "primaryLocationLineHash": "4664648c565ae25f:1",
+      "rationale": "Existing similar-node result-limit arithmetic tracked for bounded-input remediation in #857."
+    },
+    {
+      "ruleId": "js/insecure-temporary-file",
+      "artifactUri": ".github/scripts/accessibility-audit.mjs",
+      "primaryLocationLineHash": "b2951d158917d08c:1",
+      "rationale": "Existing accessibility JSON fallback path tracked for secure temporary-directory remediation in #857."
+    },
+    {
+      "ruleId": "js/insecure-temporary-file",
+      "artifactUri": ".github/scripts/accessibility-audit.mjs",
+      "primaryLocationLineHash": "5f3922a65db94c26:1",
+      "rationale": "Existing accessibility text fallback path tracked for secure temporary-directory remediation in #857."
+    },
+    {
+      "ruleId": "js/insecure-temporary-file",
+      "artifactUri": ".github/scripts/ui-acceptance.mjs",
+      "primaryLocationLineHash": "376d7b76ed98d335:1",
+      "rationale": "Existing UI acceptance fallback path tracked for secure temporary-directory remediation in #857."
+    }
+  ]
+}
