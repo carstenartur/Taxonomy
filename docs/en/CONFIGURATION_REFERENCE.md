@@ -1,515 +1,235 @@
 # Taxonomy Architecture Analyzer — Configuration Reference
 
-This document is the **canonical, complete list** of every environment variable and
-application property recognised by the Taxonomy Architecture Analyzer.  
-Values are set via environment variables (recommended for production) or in
-`src/main/resources/application.properties` for local development.
+This document is the canonical inventory of deployment-facing environment variables recognised by the Taxonomy application. It is generated conceptually from the effective Spring property files, direct `@Value` bindings, feature flags and `@ConfigurationProperties` classes; a contract test keeps this table aligned with those sources.
 
----
+Environment variables have higher precedence than `application*.properties`. Standard Spring variables such as `SPRING_DATASOURCE_URL` therefore override the same property populated through a Taxonomy-specific placeholder such as `TAXONOMY_DATASOURCE_URL`. Do not set both aliases for one deployment.
 
-## Startup and Catalogue Initialization
+The values shown below are application defaults. Profile-specific files may deliberately override them. In particular:
 
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | Boolean | `false` | Load the taxonomy after the HTTP server has opened its port. Useful on constrained PaaS platforms. |
-| `TAXONOMY_INIT_RELOAD_EXISTING` | `taxonomy.init.reload-existing` | Boolean | `false` | Reuse a persisted catalogue on normal restarts. Set to `true` only for an intentional destructive refresh from the bundled Excel catalogue. Relations are removed before nodes and deletes are flushed before inserts. |
-
-Persistent production deployments should leave `TAXONOMY_INIT_RELOAD_EXISTING=false`. Catalogue replacement is an explicit maintenance operation and should be preceded by a database and index backup.
-
----
-
-## LLM Provider Configuration
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `LLM_PROVIDER` | `llm.provider` | Enum | *(auto-detect)* | Force a specific LLM provider. Values: `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `CUSTOM_OPENAI`, `LOCAL_ONNX`. When not set, the provider is auto-detected from the first complete provider configuration (see priority order below). |
-| `LLM_MOCK` | `llm.mock` | Boolean | `false` | When `true`, the LLM service returns hardcoded realistic scores instead of calling a real LLM provider. Intended for CI pipelines, screenshot generation, and offline testing. No API key is required when mock mode is active. |
-| `GEMINI_API_KEY` | `gemini.api.key` | String | *(empty)* | Google Gemini API key. Obtain from [aistudio.google.com](https://aistudio.google.com). |
-| `OPENAI_API_KEY` | `openai.api.key` | String | *(empty)* | OpenAI API key. |
-| `DEEPSEEK_API_KEY` | `deepseek.api.key` | String | *(empty)* | DeepSeek API key. |
-| `DASHSCOPE_API_KEY` | `qwen.api.key` | String | *(empty)* | Alibaba Cloud DashScope API key (Qwen model). |
-| `LLAMA_API_KEY` | `llama.api.key` | String | *(empty)* | Llama API key. |
-| `MISTRAL_API_KEY` | `mistral.api.key` | String | *(empty)* | Mistral API key. |
-| `CUSTOM_LLM_URL` | `custom.llm.url` | URI | *(empty)* | Complete HTTP or HTTPS OpenAI-compatible Chat Completions endpoint. It must end with `/chat/completions`; embedded user-info credentials are rejected. |
-| `CUSTOM_LLM_MODEL` | `custom.llm.model` | String | *(empty)* | Model identifier copied into the `model` field of requests to `CUSTOM_LLM_URL`. Required with `CUSTOM_OPENAI`. |
-| `CUSTOM_LLM_API_KEY` | `custom.llm.api.key` | String | *(empty)* | Optional Bearer token for `CUSTOM_OPENAI`. When empty, Taxonomy sends no `Authorization` header. |
-
-### LLM Provider Auto-Detection Priority Order
-
-When `LLM_PROVIDER` is **not set**, the application checks for complete provider configurations in this order:
-
-1. **Gemini** — if `GEMINI_API_KEY` is set
-2. **OpenAI** — if `OPENAI_API_KEY` is set
-3. **DeepSeek** — if `DEEPSEEK_API_KEY` is set
-4. **Qwen** — if `DASHSCOPE_API_KEY` is set
-5. **Llama** — if `LLAMA_API_KEY` is set
-6. **Mistral** — if `MISTRAL_API_KEY` is set
-7. **Custom OpenAI-compatible** — if both `CUSTOM_LLM_URL` and `CUSTOM_LLM_MODEL` are valid; `CUSTOM_LLM_API_KEY` is optional
-
-The first match wins. If no complete HTTP provider configuration is found and
-`LLM_PROVIDER` is not `LOCAL_ONNX`, the application starts without generative LLM
-analysis. A loaded local embedding model may still provide limited semantic scoring.
-
-Setting `LLM_PROVIDER=LOCAL_ONNX` explicitly activates offline semantic scoring — no API
-key or internet connection is required after the model is available locally.
-
-Setting `LLM_PROVIDER=CUSTOM_OPENAI` selects the operator-defined endpoint. See
-[Custom OpenAI-Compatible LLM](../dev/custom-llm.md) for the request/response contract,
-Docker networking, security guidance, and troubleshooting.
-
-### Adding a New LLM Provider
-
-Before adding Java code, use `CUSTOM_OPENAI` for any service that implements the OpenAI
-Chat Completions request and response contract. A new provider implementation is needed
-only for a different protocol, authentication model, or provider-specific capability.
-Providers are described via the `LlmProviderExtension` SPI (see
-`docs/dev/07-extension-points.md` for the full extension-point documentation). To add one:
-
-1. Add a new constant to the `LlmProvider` enum.
-2. Create a Spring `@Component` implementing `LlmProviderExtension` with a matching
-   `descriptor().providerId()`.
-3. Register a gateway in `LlmGatewayRegistry`.
-4. Add mandatory configuration and availability handling in `LlmProviderConfig`.
-5. Add the new `LLM_PROVIDER` enum value and configuration variables to this table.
-
----
-
-## Local Embedding Model
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `TAXONOMY_EMBEDDING_ENABLED` | `embedding.enabled` | Boolean | `true` | Set to `false` to disable embedding and all semantic search globally. |
-| `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | Path | *(empty)* | Absolute path to a pre-downloaded model directory. When empty, DJL downloads the model automatically on first use. |
-| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | String | `djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5` | DJL model URL or HuggingFace model name. Change only if you want a different embedding model. |
-| `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | String | `Represent this sentence for searching relevant passages: ` | Prefix prepended to query texts for asymmetric retrieval. Set to empty string to disable (e.g. when using a symmetric model). |
-| `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `embedding.allow-download` | Boolean | `true` | Set to `false` to prevent runtime model downloads. When disabled, a local model must be provided via `TAXONOMY_EMBEDDING_MODEL_DIR`. Recommended for CI environments. |
-
-### Pre-Downloading the Embedding Model (Air-Gapped Deployments)
-
-For environments without internet access, pre-download the `bge-small-en-v1.5` model:
-
-```bash
-# 1. On a machine with internet access, run the app once to trigger the download:
-LLM_PROVIDER=LOCAL_ONNX ./mvnw -pl taxonomy-app spring-boot:run
-# The model is cached under ~/.djl.ai/cache/ (approximately 33 MB)
-
-# 2. Copy the cached model directory to the target machine:
-scp -r ~/.djl.ai/cache/repo/model/ai/djl/huggingface/BAAI/bge-small-en-v1.5/ \
-    target-machine:/opt/models/bge-small-en-v1.5/
-
-# 3. Set the environment variable on the target machine:
-export TAXONOMY_EMBEDDING_MODEL_DIR=/opt/models/bge-small-en-v1.5
-```
-
-Alternatively, download the model directly from HuggingFace:
-
-```bash
-# Download model files
-pip install huggingface-hub
-huggingface-cli download BAAI/bge-small-en-v1.5 --local-dir /opt/models/bge-small-en-v1.5
-```
-
----
-
-## Authentication & Security
-
-The application uses **Spring Security** with form-based login (browser) and HTTP Basic authentication (REST clients). A default `admin` user is created on first startup.
-
-### Default User
-
-| Username | Password | Roles |
-|---|---|---|
-| `admin` | Value of `TAXONOMY_ADMIN_PASSWORD` (default: `admin`) | USER, ARCHITECT, ADMIN |
-
-### Roles and Permissions
-
-| Role | Permissions |
+| Active profile | Important effective defaults |
 |---|---|
-| **ROLE_USER** | Read all API endpoints (`GET /api/**`), run analysis (`POST /api/analyze`, `POST /api/justify-leaf`), export (`POST /api/export/**`), access GUI |
-| **ROLE_ARCHITECT** | Everything in ROLE_USER, plus write access to relations (`POST/PUT/DELETE /api/relations/**`), DSL (`POST/PUT/DELETE /api/dsl/**`), and Git operations (`POST/PUT/DELETE /api/git/**`) |
-| **ROLE_ADMIN** | Everything in ROLE_ARCHITECT, plus admin endpoints (`/admin/**`, `/api/admin/**`) |
+| default / `hsqldb` | in-memory HSQLDB, `ddl-auto=create`, heap Lucene, synchronous indexing, SpringDoc enabled |
+| `production` | `ddl-auto=update`, filesystem Lucene, `write-sync`, audit logging and first-login password change enabled, SpringDoc disabled |
+| `kubernetes` | `ddl-auto=validate`, heap Lucene by default, `write-sync`, audit logging enabled, SpringDoc disabled |
+| `keycloak` | local account management and local password changes disabled; direct Word links disabled |
 
-### CSRF Protection
+Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.dsl.*`, `taxonomy.limits.max-*`, `taxonomy.diagram.policy` and the request-rate limit) are committed into the repository-backed preferences store when it is first initialised. After that point, a value changed through the administration UI/API can supersede a changed process environment until the stored preference is changed again.
 
-CSRF protection is **enabled** for browser sessions but **disabled** for `/api/**` paths. This means REST clients authenticated via HTTP Basic do not need to include a CSRF token.
+`DOMAIN`, `JAVA_OPTS`, OpenTelemetry agent variables and other Docker/Helm wrapper settings are not Taxonomy application variables. They remain documented in the corresponding deployment guide. Secrets must be supplied through the platform secret store and must never be committed.
 
-### REST API Authentication
+## Startup, profiles, catalogue and lifecycle
 
-REST clients must authenticate using **HTTP Basic**:
-
-```bash
-curl -u admin:admin http://localhost:8080/api/taxonomy
-```
-
-### Public Endpoints (No Authentication Required)
-
-- `/login`, `/error`
-- `/actuator/health`, `/actuator/health/**`, `/actuator/info`
-- `/v3/api-docs/**`, `/swagger-ui/**`, `/swagger-ui.html`
-- Static assets: `/css/**`, `/js/**`, `/images/**`, `/webjars/**`
-
----
-
-## Administration
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `ADMIN_PASSWORD` | `admin.token` | String | *(must be set for non-local deployments)* | Password to protect admin-only panels (LLM Diagnostics, Prompt Templates, Communication Log). **For any deployment exposed beyond a fully trusted local machine, this MUST be set to a strong, non-empty value.** When left empty, all admin panels are accessible to everyone and this behaviour is intended for isolated development environments only. When set, users must click the 🔒 button and enter the password. |
-| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | String | `admin` | Password for the built-in `admin` user (Spring Security login). Used for form login (browser) and HTTP Basic authentication (REST clients). Change this from the default for any non-local deployment. |
-
-### Configuring the Admin Password
-
-> **Security warning:** Running the application with an empty `ADMIN_PASSWORD` leaves all admin panels unauthenticated. **Do not use an empty admin password on any internet-exposed, shared, or production system.** Always configure a strong, non-empty value for `ADMIN_PASSWORD` in such environments.
-
-**Local development:**
-```bash
-ADMIN_PASSWORD=my-secret ./mvnw -pl taxonomy-app spring-boot:run
-```
-
-**Docker:**
-```bash
-docker run -p 8080:8080 \
-  -e ADMIN_PASSWORD=my-secret \
-  -e GEMINI_API_KEY=your-key \
-  ghcr.io/carstenartur/taxonomy:latest
-```
-
-**Render.com:**
-Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
-(Dashboard → Service → Environment → Add Secret).
-
----
-
-## Server Configuration
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `PORT` | `server.port` | Integer | `8080` | HTTP port the application listens on. Set by Render and similar platforms; falls back to `8080` locally. |
-| — | `spring.application.name` | String | `taxonomy-analyzer` | Application name (used in logs). |
-| `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | Boolean | `true` | Cache compiled Thymeleaf templates. Defaults to `true` (production). Set `TAXONOMY_THYMELEAF_CACHE=false` for local development to pick up template changes without restart. |
-| `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | Boolean | `true` | Lazy bean initialization — beans are created only on first access. Reduces Spring context startup time significantly (typical saving: 30–50 s). `TaxonomyService` is annotated `@Lazy(false)` and is always eagerly initialized regardless of this setting. |
-| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | Boolean | `false` | When `true`, taxonomy data is loaded in a background thread **after** the server starts accepting connections. Recommended for Render and similar PaaS platforms to avoid "No open ports detected" deploy timeouts. Defaults to `false` for backward compatibility (synchronous loading). |
-
----
-
-## Database Configuration
-
-The application uses **Spring profiles** to switch between database backends.
-Set `SPRING_PROFILES_ACTIVE` to select the database; the default is `hsqldb`.
-
-| Profile | Database | Config File |
-|---|---|---|
-| `hsqldb` (default) | HSQLDB (in-memory or file) | `application-hsqldb.properties` |
-| `mssql` | Microsoft SQL Server | `application-mssql.properties` |
-| `postgres` | PostgreSQL | `application-postgres.properties` |
-| `oracle` | Oracle Database | `application-oracle.properties` |
-
-### Common Database Properties
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `SPRING_PROFILES_ACTIVE` | `spring.profiles.active` | String | `hsqldb` | Database profile. Set to `mssql` for SQL Server, `postgres` for PostgreSQL, or `oracle` for Oracle Database. |
-| `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` | String | *(profile-dependent)* | JDBC URL. Each profile provides a sensible default; override for custom hosts. |
-| `SPRING_DATASOURCE_USERNAME` | `spring.datasource.username` | String | *(profile-dependent)* | Database username. Default: `sa` (MSSQL), `taxonomy` (PostgreSQL, Oracle), `sa` (HSQLDB). |
-| `SPRING_DATASOURCE_PASSWORD` | `spring.datasource.password` | String | *(profile-dependent)* | Database password. Default: *(empty)* (HSQLDB), `taxonomy` (PostgreSQL, Oracle). **Required** for MSSQL (must meet complexity rules). |
-| `TAXONOMY_DDL_AUTO` | `spring.jpa.hibernate.ddl-auto` | String | `create` | Schema generation strategy. `create` rebuilds on each start (safe for in-memory default). Set to `update` for file-based deployments so data is not wiped on restart. |
-| — | `spring.jpa.show-sql` | Boolean | `false` | Whether to log SQL statements. |
-
-### HSQLDB Profile (Default)
-
-| Property | Default | Description |
-|---|---|---|
-| `spring.datasource.url` | `jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1` | In-memory HSQLDB. Override for disk-backed storage. |
-| `spring.datasource.driver-class-name` | `org.hsqldb.jdbc.JDBCDriver` | HSQLDB JDBC driver. |
-| `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | Bounded pool used for both in-memory and file HSQLDB. |
-| `spring.datasource.hikari.minimum-idle` | `${TAXONOMY_DB_MIN_IDLE:1}` | Keeps one connection alive; required for file URLs using `shutdown=true`. |
-| `spring.datasource.hikari.maximum-pool-size` | `${TAXONOMY_DB_MAX_POOL_SIZE:4}` | Bounded maximum for embedded HSQLDB. |
-| `spring.datasource.hikari.connection-timeout` | `${TAXONOMY_DB_CONNECTION_TIMEOUT_MS:30000}` | Maximum connection wait in milliseconds. |
-| `spring.jpa.database-platform` | `org.hibernate.dialect.HSQLDialect` | Explicit dialect for deterministic startup. |
-
-### MSSQL Profile
-
-Activate with `SPRING_PROFILES_ACTIVE=mssql`. See [DATABASE_SETUP.md](DATABASE_SETUP.md#microsoft-sql-server-mssql) for details.
-
-| Property | Default | Description |
-|---|---|---|
-| `spring.datasource.url` | `jdbc:sqlserver://localhost:1433;databaseName=taxonomy;encrypt=false;trustServerCertificate=true` | SQL Server JDBC URL. |
-| `spring.datasource.driver-class-name` | `com.microsoft.sqlserver.jdbc.SQLServerDriver` | MSSQL JDBC driver. |
-| `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | HikariCP connection pool. |
-| `spring.jpa.database-platform` | `org.hibernate.dialect.SQLServerDialect` | SQL Server dialect. |
-| `spring.datasource.hikari.maximum-pool-size` | `10` | HikariCP max connections. |
-| `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
-| `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |
-
-### PostgreSQL Profile
-
-Activate with `SPRING_PROFILES_ACTIVE=postgres`. See [DATABASE_SETUP.md](DATABASE_SETUP.md#postgresql) for details.
-
-| Property | Default | Description |
-|---|---|---|
-| `spring.datasource.url` | `jdbc:postgresql://localhost:5432/taxonomy` | PostgreSQL JDBC URL. |
-| `spring.datasource.driver-class-name` | `org.postgresql.Driver` | PostgreSQL JDBC driver. |
-| `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | HikariCP connection pool. |
-| `spring.jpa.database-platform` | `org.hibernate.dialect.PostgreSQLDialect` | PostgreSQL dialect. |
-| `spring.datasource.hikari.maximum-pool-size` | `10` | HikariCP max connections. |
-| `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
-| `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |
-
-### Oracle Profile
-
-Activate with `SPRING_PROFILES_ACTIVE=oracle`. See [DATABASE_SETUP.md](DATABASE_SETUP.md#oracle-database) for details.
-
-| Property | Default | Description |
-|---|---|---|
-| `spring.datasource.url` | `jdbc:oracle:thin:@localhost:1521/taxonomy` | Oracle JDBC URL (thin driver). |
-| `spring.datasource.driver-class-name` | `oracle.jdbc.OracleDriver` | Oracle JDBC driver. |
-| `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | HikariCP connection pool. |
-| `spring.jpa.database-platform` | `org.hibernate.dialect.OracleDialect` | Oracle dialect. |
-| `spring.datasource.hikari.maximum-pool-size` | `10` | HikariCP max connections. |
-| `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
-| `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |
-
----
-
-## Build and integration-test selection
-
-These are Maven properties/tags, not runtime environment variables:
-
-| Property/tag | Default | Effect |
-|---|---|---|
-| `skipITs` | `true` | Keeps the standard lifecycle bounded; set `-DskipITs=false` for Failsafe/Testcontainers tests. |
-| `excludedGroups` | `real-llm,db-postgres,db-mssql,db-oracle` | Excludes live providers and heavyweight database families by default. |
-| `db-postgres` | excluded | PostgreSQL compatibility tests. |
-| `db-mssql` | excluded | Microsoft SQL Server compatibility tests. |
-| `db-oracle` | excluded | Oracle compatibility tests. |
-| `real-llm` | excluded | Live external LLM calls. |
-
-Passing `-DexcludedGroups=real-llm` deliberately includes all database tags
-while still excluding live LLM calls. See
-[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
-
----
-
-## Hibernate Search / Lucene
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| — | `spring.jpa.properties.hibernate.search.enabled` | Boolean | `true` | Enable Hibernate Search integration. |
-| — | `spring.jpa.properties.hibernate.search.backend.type` | String | `lucene` | Search backend type. |
-| `TAXONOMY_SEARCH_DIRECTORY_TYPE` | `spring.jpa.properties.hibernate.search.backend.directory.type` | String | `local-heap` | Index storage. `local-heap` = in-memory (local dev / tests). Set to `local-filesystem` for production disk-backed deployments. |
-| `TAXONOMY_SEARCH_DIRECTORY_ROOT` | `spring.jpa.properties.hibernate.search.backend.directory.root` | String | `/app/data/lucene-index` | Root directory for the Lucene index files (only used when `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`). |
-| — | `spring.jpa.properties.hibernate.search.configuration_property_checking.strategy` | String | `ignore` | Suppresses `HSEARCH000568` warning about `directory.root` being unused when `directory.type=local-heap`. |
-
----
-
-## Rate Limiting
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | `taxonomy.rate-limit.per-minute` | Integer | `10` | Maximum LLM-backed API requests per IP per minute. Protects against provider quota exhaustion. Set to `0` to disable rate limiting. |
-
-Protected endpoints: `POST /api/analyze`, `GET /api/analyze-stream`, `GET /api/analyze-node`, `POST /api/justify-leaf`.
-
-When the limit is exceeded, the server returns HTTP `429 Too Many Requests`. The client IP is extracted from the `X-Forwarded-For` header (with `X-Real-IP` fallback).
-
----
-
-## Login Brute-Force Protection
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `TAXONOMY_LOGIN_RATE_LIMIT` | `taxonomy.security.login-rate-limit.enabled` | Boolean | `true` | Enable/disable login brute-force protection. |
-| `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `taxonomy.security.login-rate-limit.max-attempts` | Integer | `5` | Maximum failed login attempts before lockout. |
-| `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `taxonomy.security.login-rate-limit.lockout-seconds` | Integer | `300` | Lockout duration in seconds after exceeding max attempts. |
-
-When locked out, the server returns HTTP `423 Locked` with a JSON body containing the retry-after time. Disable with `TAXONOMY_LOGIN_RATE_LIMIT=false` for development.
-
----
-
-## Password Policy
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `TAXONOMY_REQUIRE_PASSWORD_CHANGE` | `taxonomy.security.require-password-change` | Boolean | `false` | When `true`, users with the default password are redirected to `/change-password`. |
-
----
-
-## Swagger Access Control
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `TAXONOMY_SWAGGER_PUBLIC` | `taxonomy.security.swagger-public` | Boolean | `true` | When `true`, Swagger UI is accessible without authentication. Set to `false` in production to require authentication. |
-
----
-
-## Security Audit Logging
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `TAXONOMY_AUDIT_LOGGING` | `taxonomy.security.audit-logging` | Boolean | `false` | When `true`, logs authentication events (login success/failure, user management actions). |
-
----
-
-## Keycloak / OIDC Configuration
-
-Keycloak authentication is activated via the `keycloak` Spring profile (`SPRING_PROFILES_ACTIVE=keycloak`). When active, form login and HTTP Basic are replaced by OAuth2 Login (browser) and JWT Bearer tokens (REST API).
-
-| Variable | Property | Default | Description |
+| Variable | Spring property / scope | Default | Meaning |
 |---|---|---|---|
-| `KEYCLOAK_ISSUER_URI` | `spring.security.oauth2.client.provider.keycloak.issuer-uri` | `http://localhost:8180/realms/taxonomy` | Keycloak realm issuer URI. Used for OIDC discovery and JWT validation. |
-| `KEYCLOAK_CLIENT_ID` | `spring.security.oauth2.client.registration.keycloak.client-id` | `taxonomy-app` | OAuth2 client ID registered in Keycloak. |
-| `KEYCLOAK_CLIENT_SECRET` | `spring.security.oauth2.client.registration.keycloak.client-secret` | *(empty)* | OAuth2 client secret. **Must be set for production.** |
-| `KEYCLOAK_JWK_SET_URI` | `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` | `http://localhost:8180/realms/taxonomy/protocol/openid-connect/certs` | JWKS endpoint for JWT signature validation. |
-| `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Base URL of the Keycloak Admin Console (used for password change redirects). |
-| `KEYCLOAK_REALM` | `taxonomy.keycloak.realm` | `taxonomy` | Keycloak realm name. Used for Account Console redirect URLs. |
+| `PORT` | `server.port` | `8080` | HTTP listener port. |
+| `SPRING_PROFILES_ACTIVE` | Spring profile selection | default profile `hsqldb` | Comma-separated profiles, for example `production,postgres` or `postgres,kubernetes`. |
+| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | `false` | Opens the HTTP port before loading the catalogue. Useful on PaaS platforms; readiness remains false until loading completes. |
+| `TAXONOMY_INIT_RELOAD_EXISTING` | `taxonomy.init.reload-existing` | `false` | Destructively reloads the configured catalogue even when persisted nodes already exist. Use only after a restorable backup. |
+| `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | `true` | Defers most Spring beans. `TaxonomyService` remains eager so catalogue readiness is authoritative. |
+| `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | `true` | Caches compiled templates; normally disable only during local UI development. |
+| `TAXONOMY_SPRINGDOC_ENABLED` | SpringDoc API and UI switches | base `true`; production/Kubernetes `false` | Creates or suppresses `/v3/api-docs` and Swagger UI. This is independent of the authorization switch below. |
+| `TAXONOMY_FORWARD_HEADERS_STRATEGY` | `server.forward-headers-strategy` in Kubernetes profile | `framework` | Controls interpretation of trusted ingress `Forwarded`/`X-Forwarded-*` headers. |
+| `TAXONOMY_SHUTDOWN_TIMEOUT` | `spring.lifecycle.timeout-per-shutdown-phase` in Kubernetes profile | `30s` | Maximum graceful shutdown phase duration. |
+| `TAXONOMY_LOG_FILE` | `logging.file.name` in Kubernetes profile | empty | Optional log file. Keep empty with a read-only container filesystem and collect stdout instead. |
+| `TAXONOMY_CATALOGUE_RESOURCE` | `taxonomy.catalogue.resource` | bundled `C3_Taxonomy_Catalogue_25AUG2025.xlsx` | Spring resource used for catalogue loading and report provenance. |
+| `TAXONOMY_REPORT_TIME_ZONE` | `taxonomy.report.time-zone` | `Europe/Berlin` | Zone identifier used when rendering decision-report timestamps. |
+| `GIT_COMMIT` | `git.commit.id` | unset | Preferred build/source commit recorded in decision-report provenance. |
+| `GITHUB_SHA` | fallback for `git.commit.id` | `unknown` | Used only when `GIT_COMMIT` is absent. |
+| `TAXONOMY_SCHEMA_MIGRATION_ENABLED` | `taxonomy.schema-migration.enabled` | `true` | Runs idempotent portable schema-contract migrations. Disable only for controlled diagnostics. |
+| `TAXONOMY_COMMIT_INDEX_SEARCH_REBUILD_EMPTY` | `taxonomy.commit-index.search-rebuild-empty` | `true` | Rebuilds/purges the commit search index when the relational projection is empty. |
+| `TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION` | `taxonomy.jgit-storage.legacy-adoption` | `false` | One-start opt-in for the fail-closed legacy JGit schema adoption path. Requires backup and preflight; reset to `false` afterwards. |
+| `TAXONOMY_GIT_BOOTSTRAP` | `taxonomy.git.bootstrap` | `true` | Creates the initial `draft` commit after catalogue readiness when the system repository is empty. |
+| `TAXONOMY_FEATURES_MULTI_REPOSITORY_API_ENABLED` | `taxonomy.features.multi-repository-api.enabled` | `false` | Enables the currently opt-in `/api/repositories` management surface. It does not weaken repository membership checks. |
 
-**Properties automatically set in `keycloak` profile:**
+## Database and Hibernate Search
 
-| Property | Value | Effect |
-|---|---|---|
-| `taxonomy.security.local-users-enabled` | `false` | Disables `UserManagementController` (user CRUD via REST API) |
-| `taxonomy.security.change-password-enabled` | `false` | Disables local `ChangePasswordController` (redirects to Keycloak) |
+`TAXONOMY_DATASOURCE_URL` is the placeholder used by the supplied database profiles. `SPRING_DATASOURCE_URL` is Spring Boot's direct binding for the same `spring.datasource.url` property and has higher precedence. Choose one. The HSQLDB-specific pool variables below do not currently alter the fixed pool settings in the PostgreSQL, MSSQL or Oracle profile.
 
-See [Keycloak & SSO Setup](KEYCLOAK_SETUP.md) for full setup instructions and [Keycloak Migration Guide](KEYCLOAK_MIGRATION.md) for migrating from form login.
-
----
-
-## OpenAPI / Swagger UI
-
-The application exposes interactive API documentation via [springdoc-openapi](https://springdoc.org/).
-
-| Variable | Property | Type | Default | Description |
-|---|---|---|---|---|
-| `TAXONOMY_SPRINGDOC_ENABLED` | `springdoc.api-docs.enabled` / `springdoc.swagger-ui.enabled` | Boolean | `true` | Enable or disable the `/swagger-ui.html` and `/v3/api-docs` endpoints. Set to `false` in production to save memory and reduce attack surface. |
-
-| URL | Description |
-|---|---|
-| `/swagger-ui.html` | Interactive Swagger UI |
-| `/v3/api-docs` | OpenAPI 3.0 JSON specification |
-
----
-
-## Spring Boot Actuator (Monitoring)
-
-The application includes Spring Boot Actuator with Micrometer Prometheus for HTTP-based monitoring.
-This is the modern replacement for JMX (which is not available on Render Free Tier).
-
-### Available Endpoints
-
-| Endpoint | Auth Required | Description |
-|---|---|---|
-| `GET /actuator/health` | No | Application health status (always public — used by Render health checks) |
-| `GET /actuator/health/liveness` | No | Liveness probe (Kubernetes-compatible) |
-| `GET /actuator/health/readiness` | No | Readiness probe (Kubernetes-compatible) |
-| `GET /actuator/info` | No | Application info (name, version, Java, OS) |
-| `GET /actuator/metrics` | Yes (X-Admin-Token) | List of all available metric names |
-| `GET /actuator/metrics/{name}` | Yes (X-Admin-Token) | Value of a specific metric (e.g. `jvm.memory.used`) |
-| `GET /actuator/prometheus` | Yes (X-Admin-Token) | All metrics in Prometheus text format (for scraping) |
-
-### Accessing Protected Endpoints
-
-Endpoints marked "Yes" require the `X-Admin-Token` header when `ADMIN_PASSWORD` is configured:
-
-```bash
-# Health (public)
-curl https://your-app.onrender.com/actuator/health
-
-# Metrics (requires admin token)
-curl -H "X-Admin-Token: your-admin-password" \
-     https://your-app.onrender.com/actuator/metrics
-
-# Prometheus scrape
-curl -H "X-Admin-Token: your-admin-password" \
-     https://your-app.onrender.com/actuator/prometheus
-
-# Specific metric
-curl -H "X-Admin-Token: your-admin-password" \
-     https://your-app.onrender.com/actuator/metrics/jvm.memory.used
-```
-
-If `ADMIN_PASSWORD` is not set, all actuator endpoints are accessible without authentication
-(backward compatible with local development).
-
-### JMX Equivalents
-
-| JMX MBean | Actuator Equivalent |
-|---|---|
-| `java.lang:type=Memory` | `/actuator/metrics/jvm.memory.used`, `/actuator/metrics/jvm.memory.max` |
-| `java.lang:type=GarbageCollector` | `/actuator/metrics/jvm.gc.pause`, `/actuator/metrics/jvm.gc.memory.promoted` |
-| `java.lang:type=Threading` | `/actuator/metrics/jvm.threads.live`, `/actuator/metrics/jvm.threads.peak` |
-| `java.lang:type=OperatingSystem` | `/actuator/metrics/process.cpu.usage`, `/actuator/metrics/system.cpu.usage` |
-| `java.lang:type=Runtime` | `/actuator/info`, `/actuator/metrics/process.uptime` |
-| Custom MBeans | `/actuator/prometheus` (all metrics in one scrape) |
-
-### Taxonomy Health Indicator
-
-The `/actuator/health` endpoint includes a custom `taxonomy` component that reports:
-
-```json
-{
-  "status": "UP",
-  "components": {
-    "taxonomy": {
-      "status": "UP",
-      "details": {
-        "initStatus": "Async taxonomy initialization complete.",
-        "initialized": true,
-        "heapUsedMB": 256,
-        "heapMaxMB": 512,
-        "heapUsagePercent": 50
-      }
-    }
-  }
-}
-```
-
-Health component details are only shown when `management.endpoint.health.show-components=when-authorized`
-and the request includes a valid `X-Admin-Token` header.
-
----
-
-## Runtime Preferences
-
-In addition to environment variables, several settings can be changed at runtime through the Preferences API without restarting the application:
-
-| Preference Key | Type | Default | Description |
+| Variable | Spring property / scope | Default | Meaning |
 |---|---|---|---|
-| `llm.rpm` | int | `5` | Outgoing Gemini requests per minute |
-| `llm.rpm.custom_openai` | int | `0` | Outgoing custom-provider requests per minute; `0` disables throttling |
-| `llm.timeout.seconds` | int | `30` | HTTP read timeout for LLM calls |
-| `llm.retry.max` | int | `2` | Retry count for retryable LLM server errors and timeouts |
-| `rate-limit.per-minute` | int | `10` | Incoming rate limit for analysis endpoints |
-| `analysis.min-relevance-score` | int | `70` | Minimum score threshold for analysis results |
-| `dsl.default-branch` | string | `draft` | Active DSL branch for materialization |
-| `dsl.project-name` | string | `Taxonomy Architecture` | Project display name |
-| `dsl.auto-save.interval-seconds` | int | `0` | Auto-save frequency (0 = disabled) |
-| `dsl.remote.url` | string | *(empty)* | Remote Git URL for push/pull |
-| `dsl.remote.token` | string | *(empty)* | Remote Git authentication token |
-| `dsl.remote.push-on-commit` | boolean | `false` | Auto-push after local commits |
-| `limits.max-business-text` | int | `5000` | Max characters in requirement text |
-| `limits.max-architecture-nodes` | int | `50` | Max nodes in architecture view |
-| `limits.max-export-nodes` | int | `200` | Max nodes in export |
-| `diagram.policy` | string | `defaultImpact` | Diagram selection policy: `defaultImpact`, `leafOnly`, `clustering`, or `trace` |
+| `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` through supplied DB profiles | profile-dependent | Taxonomy alias for the JDBC URL. |
+| `SPRING_DATASOURCE_URL` | direct Spring binding to `spring.datasource.url` | unset | JDBC URL used by the Helm chart; overrides the Taxonomy alias when both are present. |
+| `SPRING_DATASOURCE_USERNAME` | `spring.datasource.username` | HSQLDB `sa`; PostgreSQL/Oracle `taxonomy`; MSSQL `sa` | Database account. Always use a secret-backed production value. |
+| `SPRING_DATASOURCE_PASSWORD` | `spring.datasource.password` | profile development defaults | Database password. Production must use a secret. |
+| `TAXONOMY_DB_MIN_IDLE` | HSQLDB Hikari `minimum-idle` | `1` | Minimum idle connections for the HSQLDB profile only. |
+| `TAXONOMY_DB_MAX_POOL_SIZE` | HSQLDB Hikari `maximum-pool-size` | `4` | Maximum HSQLDB pool size. |
+| `TAXONOMY_DB_CONNECTION_TIMEOUT_MS` | HSQLDB Hikari connection timeout | `30000` | HSQLDB connection-acquisition timeout in milliseconds. |
+| `TAXONOMY_DDL_AUTO` | `spring.jpa.hibernate.ddl-auto` | base `create`; production `update`; Kubernetes `validate` | Hibernate schema action. Never use `create` against persistent data. PostgreSQL/Flyway deployments should normally use `validate`. |
+| `TAXONOMY_SEARCH_DIRECTORY_TYPE` | Hibernate Search Lucene directory type | base/Kubernetes `local-heap`; production `local-filesystem` | Selects in-memory or filesystem Lucene storage. Multi-replica coordination is not provided by these local modes. |
+| `TAXONOMY_SEARCH_DIRECTORY_ROOT` | Hibernate Search directory root | `/app/data/lucene-index` | Root used by `local-filesystem`; ignored by `local-heap`. |
+| `TAXONOMY_SEARCH_SYNC_STRATEGY` | Hibernate Search indexing-plan synchronization | base `sync`; production/Kubernetes `write-sync` | `sync` waits for reader refresh; `write-sync` waits for writes but improves throughput. |
 
-See [Preferences](PREFERENCES.md) for the REST API and audit trail.
+## Generative LLM providers and analysis preferences
 
----
+A full Copilot run needs a configured generative provider. `LOCAL_ONNX` supplies limited local semantic scoring only; it is not a generative chat model. When `LLM_PROVIDER` is empty, complete providers are detected in this order: Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral, then `CUSTOM_OPENAI`.
 
-## Framework Import Configuration
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `LLM_PROVIDER` | `llm.provider` | empty / auto-detect | `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `CUSTOM_OPENAI` or `LOCAL_ONNX`. |
+| `LLM_MOCK` | `llm.mock` | `false` | Uses deterministic fixture analysis. Intended for CI, screenshots and offline tests, not real architecture decisions. |
+| `GEMINI_API_KEY` | `gemini.api.key` | empty | Gemini credential. |
+| `OPENAI_API_KEY` | `openai.api.key` | empty | OpenAI credential. |
+| `DEEPSEEK_API_KEY` | `deepseek.api.key` | empty | DeepSeek credential. |
+| `DASHSCOPE_API_KEY` | `qwen.api.key` | empty | Alibaba DashScope/Qwen credential. |
+| `LLAMA_API_KEY` | `llama.api.key` | empty | Llama API credential. |
+| `MISTRAL_API_KEY` | `mistral.api.key` | empty | Mistral credential. |
+| `CUSTOM_LLM_URL` | `custom.llm.url` | empty | Full HTTP(S) OpenAI-compatible Chat Completions URL. It must contain a host, no embedded credentials, and end in `/chat/completions`. |
+| `CUSTOM_LLM_MODEL` | `custom.llm.model` | empty | Model identifier sent unchanged to the custom endpoint; required with `CUSTOM_OPENAI`. |
+| `CUSTOM_LLM_API_KEY` | `custom.llm.api.key` | empty | Optional bearer token for the custom endpoint. Empty means no `Authorization` header. |
+| `TAXONOMY_LLM_RPM` | repository-backed preference `taxonomy.llm.rpm` | `5` | Outbound per-provider request budget per minute. |
+| `TAXONOMY_LLM_TIMEOUT_SECONDS` | repository-backed preference `taxonomy.llm.timeout-seconds` | `30` | HTTP timeout for an individual LLM call. |
+| `TAXONOMY_ANALYSIS_MIN_SCORE` | repository-backed preference `taxonomy.analysis.min-score` | `70` | Minimum 0–100 relevance used by ordinary architecture-view selection. |
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | repository-backed preference `taxonomy.rate-limit.per-minute` | `10` | Per-client limit for LLM-backed API requests; `0` disables this limiter. |
 
-The framework import pipeline is configured through mapping profiles. Available profiles can be listed at runtime:
+## LLM record/replay tooling
+
+These switches are for deterministic test evidence. A production process should normally leave all of them disabled.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `LLM_RECORD` | `llm.record` | `false` | Records prompts and raw live responses. |
+| `LLM_REPLAY` | `llm.replay` | `false` | Replays a response whose prompt hash is already recorded. |
+| `LLM_REPLAY_FALLBACK` | `llm.replay.fallback` | `error` | `live` permits a missing recording to call the real provider and record it; any other value remains fail-closed. |
+| `LLM_PRUNE` | `llm.prune` | `false` | Marks manifest entries not replayed in the current JVM as stale. |
+| `LLM_PRUNE_DELETE` | `llm.prune.delete` | `false` | Deletes stale recording files when pruning runs. |
+| `LLM_RECORDINGS_DIR` | `llm.recordings.dir` | auto-detected test resource directory | Explicit recording directory. Its manifest is mutable; do not point production at a committed source tree. |
+
+## Local embeddings and vector indexing
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_EMBEDDING_ENABLED` | `embedding.enabled` | `false` | Enables local embedding inference and semantic search. Independent of the selected chat provider. |
+| `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | empty | Mounted, pre-downloaded model directory. Preferred for offline and Kubernetes deployments. |
+| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | BAAI `bge-small-en-v1.5` Hugging Face URL | Remote model reference or local model path used when no directory is supplied. |
+| `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | BGE retrieval prefix | Text prepended to queries for asymmetric retrieval. Set empty only for a model that does not require it. |
+| `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `embedding.allow-download` | `false` | Explicitly permits runtime model download. Also requires suitable network policy/egress. |
+| `TAXONOMY_EMBEDDING_INDEX_LOADER_THREADS` | `embedding.index.loader-threads` | `2`, clamped to at least `1` | Object-loader threads for each bounded mass-indexing phase. More threads also mean more simultaneous local inference. |
+| `TAXONOMY_EMBEDDING_INDEX_BATCH_SIZE` | `embedding.index.batch-size` | `16`, clamped to at least `1` | Number of entities loaded per indexing batch. |
+
+## Copilot and Autopilot
+
+The historical variable name `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` is retained unchanged. Its property is `taxonomy.ai.max-architecture-nodes`, and it applies to both the manual Copilot and Autopilot. A manual request cannot exceed this operator ceiling. The portfolio analysis service also enforces `TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES`, so the effective ceiling is the lower of the two; keep the AI limit less than or equal to the general limit.
+
+Profiles accept `STANDARD`, `FULL` and `EXHAUSTIVE`. Verification-pass counts must be between 1 and 3; `EXHAUSTIVE` always performs at least two passes. Passes inside one operation run sequentially. Coordinator concurrency controls different operations, not passes within one operation.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_AI_COST_POLICY` | `taxonomy.ai.cost-policy` | `METERED` | Operator declaration. Unattended Autopilot requires `UNMETERED`; manual Copilot works with a configured metered provider. |
+| `TAXONOMY_AI_COPILOT_PROFILE` | `taxonomy.ai.copilot.profile` | `FULL` | Default profile for manually initiated runs. |
+| `TAXONOMY_AI_AUTOPILOT_PROFILE` | `taxonomy.ai.autopilot.profile` | `EXHAUSTIVE` | Default profile for unattended runs. |
+| `TAXONOMY_AI_COPILOT_VERIFICATION_PASSES` | `taxonomy.ai.copilot.verification-passes` | `1` | Manual default, constrained to 1–3 and adjusted upward when required by the profile. |
+| `TAXONOMY_AI_AUTOPILOT_VERIFICATION_PASSES` | `taxonomy.ai.autopilot.verification-passes` | `2` | Autopilot default, constrained to 1–3 and at least 2 for `EXHAUSTIVE`. |
+| `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` | `taxonomy.ai.max-architecture-nodes` | `50`, minimum `1` | Operator ceiling for nodes in architecture views created by manual Copilot and Autopilot. Higher values increase processing, snapshot and diagram size; they do not increase project requirement batches. |
+| `TAXONOMY_AI_AUTOPILOT_ENABLED` | `taxonomy.ai.autopilot.enabled` | `false` | Explicit opt-in to unattended execution. It is insufficient without the cost policy and provider settings. |
+| `TAXONOMY_AI_AUTOPILOT_ON_REQUIREMENT_SAVE` | `taxonomy.ai.autopilot.on-requirement-save` | `true` | Starts Autopilot after saving a new immutable requirement version, but only when Autopilot is otherwise ready. |
+| `TAXONOMY_AI_AUTOPILOT_PROVIDER` | `taxonomy.ai.autopilot.provider` | empty | Explicit provider for unattended work. It must be configured and is never inferred to be unmetered. |
+| `TAXONOMY_AI_AUTOPILOT_PROPOSE_SOLUTIONS` | `taxonomy.ai.autopilot.propose-solutions` | `true` | Creates deterministic `PROPOSED` solution links for non-`STANDARD` Autopilot profiles. |
+| `TAXONOMY_AI_AUTOPILOT_PROPOSE_PRODUCTS` | `taxonomy.ai.autopilot.propose-products` | `true` | Creates `CANDIDATE` product proposals for non-`STANDARD` Autopilot profiles. |
+| `TAXONOMY_AI_AUTOPILOT_MAX_PROJECT_REQUIREMENTS` | `taxonomy.ai.autopilot.max-project-requirements` | `50`; valid 1–500 | Maximum explicit project-level Autopilot batch. Oversized selections are rejected, never silently truncated. |
+| `TAXONOMY_AI_PRODUCT_PROPOSALS_MINIMUM_COVERAGE` | `taxonomy.ai.product-proposals.minimum-coverage` | `25`, clamped to 0–100 | Minimum overlapping confirmed catalogue coverage for deterministic product proposals. |
+| `TAXONOMY_AI_PRODUCT_PROPOSALS_MINIMUM_CONFIDENCE` | `taxonomy.ai.product-proposals.minimum-confidence` | `0.25`, clamped to 0–1 | Minimum fraction of a solution's confirmed nodes covered by a candidate product. |
+| `TAXONOMY_AI_MAXIMUM_RUNTIME_SECONDS` | `taxonomy.ai.maximum-runtime-seconds` | `1800`, minimum effective `60` | How long the coordinator waits for a pass. Persisted jobs remain recoverable after the wait ends. |
+| `TAXONOMY_AI_COORDINATOR_MAX_CONCURRENT_OPERATIONS` | `taxonomy.ai.coordinator.max-concurrent-operations` | `4`; valid 1–64 | Number of Copilot/Autopilot operations coordinated in parallel. Does not parallelise one operation's verification passes. |
+| `TAXONOMY_AI_COORDINATOR_QUEUE_CAPACITY` | `taxonomy.ai.coordinator.queue-capacity` | `100`; valid 1–10000 | In-memory coordinator queue; rejected operations remain persisted and can be resumed. |
+
+Effective policy and readiness can be inspected at `GET /api/ai-automation`. Generated mappings, responsibilities, products, procurement decisions and branch merges still require human approval.
+
+## Portfolio, imports, workers and working state
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_ANALYSIS_DRAFT_MAX_CHARACTERS` | `taxonomy.analysis-draft.max-characters` | `2000000`; minimum effective `10000` | Maximum serialized JSON characters in one workspace/repository/branch-scoped analysis draft. |
+| `TAXONOMY_CONTEXT_MAX_HISTORY` | `taxonomy.context.max-history` | `50` | In-memory navigation-history entries retained for each active workspace state. |
+| `TAXONOMY_PORTFOLIO_MAX_IMPORT_REQUIREMENTS` | `taxonomy.portfolio.max-import-requirements` | `100`, minimum `1` | Maximum requirements accepted by one reviewed import. |
+| `TAXONOMY_PORTFOLIO_MAX_IMPORT_CHARACTERS` | `taxonomy.portfolio.max-import-characters` | `500000`, minimum `1` | Maximum total text characters in one reviewed import. |
+| `TAXONOMY_PORTFOLIO_MAX_ANALYSIS_BATCH` | `taxonomy.portfolio.max-analysis-batch` | `100`, minimum `1` | Maximum requirements in one persisted portfolio analysis job. |
+| `TAXONOMY_PORTFOLIO_ANALYSIS_CLAIM_TIMEOUT_SECONDS` | `taxonomy.portfolio.analysis-claim-timeout-seconds` | `900`, minimum effective `60` | Age after which an unfinished item claim can be recovered/retried. |
+| `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_CONCURRENCY` | `taxonomy.portfolio.analysis-worker-concurrency` | `1`, minimum `1` | Parallel portfolio analysis worker threads. Provider quotas usually limit safe growth. |
+| `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_QUEUE_CAPACITY` | `taxonomy.portfolio.analysis-worker-queue-capacity` | `100`, minimum effective `0` | In-memory dispatch queue. Persisted jobs survive rejection and can be resubmitted. |
+| `TAXONOMY_PORTFOLIO_ANALYSIS_WORKER_SHUTDOWN_SECONDS` | `taxonomy.portfolio.analysis-worker-shutdown-seconds` | `30`, minimum effective `0` | Grace period for worker termination. |
+| `TAXONOMY_PORTFOLIO_SNAPSHOT_STALE_AFTER_DAYS` | `taxonomy.portfolio.snapshot-stale-after-days` | `30`, minimum effective `1` | Age threshold used by portfolio stale-snapshot metrics; a snapshot for an old requirement version is stale regardless of age. |
+
+## Local security, administration and Keycloak
+
+`ADMIN_PASSWORD` and `TAXONOMY_ADMIN_PASSWORD` are deliberately separate. The former is an additional token for sensitive Actuator/admin-token checks. The latter bootstraps the local `admin` account. When local authentication starts outside the production profile without `TAXONOMY_ADMIN_PASSWORD`, the application generates and logs a one-time random bootstrap password and requires it to be changed. The production profile fails startup unless the configured password is non-placeholder and at least 16 characters.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `ADMIN_PASSWORD` | `admin.token` | empty | Optional `X-Admin-Token`/Bearer value for sensitive Actuator and legacy admin-token checks. Empty disables this extra token layer; it does not replace role-based login authorization. |
+| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | empty outside production; required in production | Initial local administrator credential. Empty non-production starts use a one-time random bootstrap password. |
+| `TAXONOMY_LOGIN_RATE_LIMIT` | `taxonomy.security.login-rate-limit.enabled` | `true` | Enables failed-login rate limiting by client address. |
+| `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `taxonomy.security.login-rate-limit.max-attempts` | `5` | Failed attempts allowed before lockout. |
+| `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `taxonomy.security.login-rate-limit.lockout-seconds` | `300` | Lockout duration. |
+| `TAXONOMY_REQUIRE_PASSWORD_CHANGE` | `taxonomy.security.require-password-change` | base `false`; production `true` | Marks new/reset local passwords as temporary and enforces the change page. |
+| `TAXONOMY_SWAGGER_PUBLIC` | `taxonomy.security.swagger-public` | base `true`; production/Kubernetes `false` | When SpringDoc exists, controls whether its UI/API are public or require authentication. |
+| `TAXONOMY_AUDIT_LOGGING` | `taxonomy.security.audit-logging` | base `false`; production/Kubernetes `true` | Logs authentication success/failure events. |
+| `TAXONOMY_SECURITY_LOCAL_USERS_ENABLED` | `taxonomy.security.local-users-enabled` | base `true`; Keycloak `false` | Enables local user/role services. Do not override to true in Keycloak mode without a deliberate mixed-identity design. |
+| `TAXONOMY_SECURITY_CHANGE_PASSWORD_ENABLED` | `taxonomy.security.change-password-enabled` | base `true`; Keycloak `false` | Enables the local password-change surface. Keycloak normally owns credentials. |
+| `TAXONOMY_DIRECT_WORD_ENABLED` | `taxonomy.document-templates.direct-word-enabled` | base `true`; Keycloak `false` | Shows `ms-word:` direct-edit links. Enable only when Word can authenticate to the WebDAV endpoint. |
+| `KEYCLOAK_CLIENT_ID` | OAuth2 client registration | `taxonomy-app` | OIDC browser client ID. |
+| `KEYCLOAK_CLIENT_SECRET` | OAuth2 client registration | empty | Confidential-client secret; provide through a secret store. |
+| `KEYCLOAK_ISSUER_URI` | OAuth2 client and resource-server issuer | local realm URI | Public issuer URI used for discovery and token validation. |
+| `KEYCLOAK_JWK_SET_URI` | resource-server JWK endpoint | local realm certificates URI | Explicit key endpoint, useful when internal and public Keycloak routes differ. |
+| `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Base URL used for account-console redirects. |
+| `KEYCLOAK_REALM` | `taxonomy.keycloak.realm` | `taxonomy` | Realm segment used by account-console redirects. |
+| `TAXONOMY_KEYCLOAK_ROLE_CLAIM_PATH` | `taxonomy.keycloak.role-claim-path` | `realm_access.roles` | Dot-separated JWT claim path. Values are filtered to the fixed application roles `ROLE_USER`, `ROLE_ARCHITECT` and `ROLE_ADMIN`; no configurable prefix transformation exists. |
+
+## DSL, repositories and external Git
+
+The first six settings below initialise repository-backed preferences. The `taxonomy.dsl.remote-*` connection is the historic DSL replication mechanism. External canonical repository credentials are deployment-only secrets read at call time and are not persisted in the Taxonomy database.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_DSL_DEFAULT_BRANCH` | `taxonomy.dsl.default-branch` | `draft` | Initial branch preference for DSL work. |
+| `TAXONOMY_DSL_PROJECT_NAME` | `taxonomy.dsl.project-name` | `Taxonomy Architecture` | Project name in DSL/export metadata. |
+| `TAXONOMY_DSL_AUTO_SAVE_INTERVAL` | `taxonomy.dsl.auto-save-interval` | `0` | Auto-commit interval in seconds; `0` disables it. |
+| `TAXONOMY_DSL_REMOTE_URL` | `taxonomy.dsl.remote-url` | empty | Optional remote used by the historic DSL replication settings. |
+| `TAXONOMY_DSL_REMOTE_TOKEN` | `taxonomy.dsl.remote-token` | empty | Token for the DSL remote. Treat as a secret even though the preferences API masks it. |
+| `TAXONOMY_DSL_REMOTE_PUSH_ON_COMMIT` | `taxonomy.dsl.remote-push-on-commit` | `false` | Pushes after each DSL commit when a remote is configured. |
+| `TAXONOMY_EXTERNAL_GIT_USERNAME` | direct deployment credential | `oauth2` | Username supplied to the administrator-configured canonical external repository. |
+| `TAXONOMY_EXTERNAL_GIT_TOKEN` | direct deployment credential | empty | Write-only token for fetch/push; never persist or log it. |
+
+## Input, architecture, export and document limits
+
+The general architecture limit below applies to all persisted portfolio analyses. The Copilot/Autopilot-specific limit cannot effectively exceed it. Byte values use binary multiples.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_LIMITS_MAX_BUSINESS_TEXT` | repository-backed preference `taxonomy.limits.max-business-text` | `5000` characters | Maximum ordinary business-requirement input length. |
+| `TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES` | repository-backed preference and portfolio operator limit `taxonomy.limits.max-architecture-nodes` | `50` | General maximum architecture-view node count and upper bound accepted by portfolio analysis requests. |
+| `TAXONOMY_LIMITS_MAX_EXPORT_NODES` | repository-backed preference `taxonomy.limits.max-export-nodes` | `200` | Maximum node count in bounded exports. |
+| `TAXONOMY_LIMITS_DOCUMENT_MAX_UPLOAD_BYTES` | `taxonomy.limits.document.max-upload-bytes` | `52428800` (50 MiB) | Maximum uploaded document size. |
+| `TAXONOMY_LIMITS_DOCUMENT_MAX_PDF_PAGES` | `taxonomy.limits.document.max-pdf-pages` | `500` | Maximum PDF pages processed. |
+| `TAXONOMY_LIMITS_DOCUMENT_MAX_EXTRACTED_CHARACTERS` | `taxonomy.limits.document.max-extracted-characters` | `1000000` | Maximum characters retained after extraction. |
+| `TAXONOMY_LIMITS_DOCUMENT_MAX_CANDIDATES` | `taxonomy.limits.document.max-candidates` | `2000` | Maximum provenance/candidate records produced from one document. |
+| `TAXONOMY_LIMITS_DOCUMENT_MAX_LLM_CHARACTERS` | `taxonomy.limits.document.max-llm-characters` | `200000` | Maximum extracted characters sent to the LLM stage. |
+| `TAXONOMY_LIMITS_DOCUMENT_MAX_DOCX_ENTRY_BYTES` | `taxonomy.limits.document.max-docx-entry-bytes` | `67108864` (64 MiB) | Maximum expanded size of one DOCX ZIP entry. |
+| `TAXONOMY_LIMITS_DOCUMENT_MAX_DOCX_TEXT_BYTES` | `taxonomy.limits.document.max-docx-text-bytes` | `134217728` (128 MiB) | Maximum aggregate expanded DOCX text/XML bytes. |
+| `TAXONOMY_LIMITS_DOCUMENT_MIN_DOCX_INFLATE_RATIO` | `taxonomy.limits.document.min-docx-inflate-ratio` | `0.01` | Minimum compressed-to-expanded ratio accepted by the DOCX zip-bomb guard. |
+| `TAXONOMY_DIAGRAM_POLICY` | repository-backed preference `taxonomy.diagram.policy` | `defaultImpact` | Diagram selection policy: `defaultImpact`, `leafOnly`, `clustering` or `trace`. |
+
+## Deployment examples
+
+### Manual Copilot with a cloud provider
 
 ```bash
-curl -u admin:password http://localhost:8080/api/import/profiles
+LLM_PROVIDER=GEMINI
+GEMINI_API_KEY=secret
+TAXONOMY_AI_COPILOT_PROFILE=FULL
+TAXONOMY_AI_COPILOT_VERIFICATION_PASSES=1
+TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES=50
+TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES=50
 ```
 
-| Profile ID | Framework | File Format |
-|---|---|---|
-| `uaf` | UAF / DoDAF | XMI / XML |
-| `apqc` | APQC PCF | CSV |
-| `apqc-excel` | APQC PCF | XLSX (Excel) |
-| `c4` | C4 / Structurizr | DSL |
+### Unattended Autopilot with an explicitly unmetered custom endpoint
 
-No additional environment variables are needed for framework import — profiles are registered automatically at startup.
+```bash
+LLM_PROVIDER=CUSTOM_OPENAI
+CUSTOM_LLM_URL=http://llm-server:8000/v1/chat/completions
+CUSTOM_LLM_MODEL=architecture-model
+TAXONOMY_AI_COST_POLICY=UNMETERED
+TAXONOMY_AI_AUTOPILOT_ENABLED=true
+TAXONOMY_AI_AUTOPILOT_PROVIDER=CUSTOM_OPENAI
+```
 
-See [Framework Import](FRAMEWORK_IMPORT.md) for detailed mapping tables and usage.
+For Docker Compose, copy `.env.example` to `.env`; the production Compose service forwards that file into the application container. For Helm, put non-secret values under `config`, credentials in the referenced Secret, and use `extraEnv` only for settings not promoted into the chart's default values.

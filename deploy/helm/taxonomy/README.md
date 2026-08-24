@@ -21,10 +21,11 @@ kubectl -n taxonomy create secret generic taxonomy-secrets \
   --from-literal=SPRING_DATASOURCE_URL='jdbc:postgresql://postgres.example:5432/taxonomy' \
   --from-literal=SPRING_DATASOURCE_USERNAME='taxonomy' \
   --from-literal=SPRING_DATASOURCE_PASSWORD='replace-me' \
-  --from-literal=ADMIN_PASSWORD='replace-with-a-long-random-value'
+  --from-literal=ADMIN_PASSWORD='replace-with-a-long-random-login-password' \
+  --from-literal=ADMIN_TOKEN='replace-with-a-different-long-random-machine-token'
 ```
 
-Optional LLM keys may be added to the same Secret. Their mappings are marked optional; database and admin credentials are not.
+The Secret key `ADMIN_PASSWORD` is mapped to the application variable `TAXONOMY_ADMIN_PASSWORD` and bootstraps the interactive local administrator account. The distinct `ADMIN_TOKEN` key is mapped to the application variable `ADMIN_PASSWORD` and is used for Actuator/admin-token checks and the optional ServiceMonitor. Never reuse the interactive login credential as the machine token. Existing installations that do not enable the ServiceMonitor may omit the optional `ADMIN_TOKEN` key. Optional LLM keys may be added to the same Secret; database and login credentials remain mandatory.
 
 Install or upgrade a source-tree chart with an immutable image reference:
 
@@ -87,7 +88,8 @@ kubectl -n taxonomy-fresh create secret generic taxonomy-secrets \
   --from-literal=SPRING_DATASOURCE_URL='jdbc:postgresql://postgres.example:5432/taxonomy_fresh' \
   --from-literal=SPRING_DATASOURCE_USERNAME='taxonomy_fresh' \
   --from-literal=SPRING_DATASOURCE_PASSWORD='replace-me' \
-  --from-literal=ADMIN_PASSWORD='replace-with-a-long-random-value'
+  --from-literal=ADMIN_PASSWORD='replace-with-a-long-random-login-password' \
+  --from-literal=ADMIN_TOKEN='replace-with-a-different-long-random-machine-token'
 
 helm upgrade --install taxonomy-fresh deploy/helm/taxonomy \
   --namespace taxonomy-fresh \
@@ -261,7 +263,7 @@ Runtime model download is disabled by default in the chart, and embedding is ini
 
 ## Prometheus metrics
 
-The application protects `/actuator/prometheus` with the admin token. Enable the optional ServiceMonitor as follows:
+The application protects `/actuator/prometheus` with the separate admin token. Enable the optional ServiceMonitor as follows:
 
 ```yaml
 serviceMonitor:
@@ -270,10 +272,10 @@ serviceMonitor:
     release: kube-prometheus-stack
   authorization:
     enabled: true
-    secretKey: ADMIN_PASSWORD
+    secretKey: ADMIN_TOKEN
 ```
 
-The ServiceMonitor reads the Bearer credential from `existingSecret` by default. `serviceMonitor.authorization.secretName` can point to a different Secret. Prometheus must be permitted to read that Secret in the release namespace, and its ServiceMonitor selector must match `additionalLabels`.
+The application and ServiceMonitor read `ADMIN_TOKEN` from `existingSecret` by default. The chart maps that key to the application's historic `ADMIN_PASSWORD` environment variable while keeping the interactive login password under the distinct `ADMIN_PASSWORD` Secret key and `TAXONOMY_ADMIN_PASSWORD` environment variable. `serviceMonitor.authorization.secretName` can point to a different Secret; in that case the operator must ensure that its selected token value exactly matches the application token. Prometheus must be permitted to read the Secret in the release namespace, and its ServiceMonitor selector must match `additionalLabels`.
 
 ## Network policy
 
@@ -339,7 +341,7 @@ For a protected metrics check:
 
 ```bash
 TOKEN=$(kubectl -n taxonomy get secret taxonomy-secrets \
-  -o jsonpath='{.data.ADMIN_PASSWORD}' | base64 --decode)
+  -o jsonpath='{.data.ADMIN_TOKEN}' | base64 --decode)
 curl --fail -H "Authorization: Bearer ${TOKEN}" \
   http://127.0.0.1:8080/actuator/prometheus
 ```

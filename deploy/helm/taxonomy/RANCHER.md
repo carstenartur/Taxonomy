@@ -100,9 +100,26 @@ SPRING_DATASOURCE_PASSWORD
 ADMIN_PASSWORD
 ```
 
-LLM API keys remain optional. Create the Secret in the same namespace in which Rancher installs the chart. Do not place credentials in ordinary chart values.
+`ADMIN_PASSWORD` is the interactive local administrator credential and is injected into the application as `TAXONOMY_ADMIN_PASSWORD`. When the protected Prometheus ServiceMonitor is enabled, add a separate machine credential:
 
-For a new installation, point `SPRING_DATASOURCE_URL` at the empty new database. For an upgrade, retain the existing database URL and backup that database before installing the new chart version.
+```text
+ADMIN_TOKEN
+```
+
+The chart injects `ADMIN_TOKEN` into the application as its historic `ADMIN_PASSWORD` environment variable and configures the ServiceMonitor to read the same Secret key. Never reuse the interactive `ADMIN_PASSWORD` value as `ADMIN_TOKEN`. The chart rejects a configuration that maps both purposes to the same key. LLM API keys remain optional. Create the Secret in the same namespace in which Rancher installs the chart, and do not place credentials in ordinary chart values.
+
+Example:
+
+```bash
+kubectl -n taxonomy create secret generic taxonomy-secrets \
+  --from-literal=SPRING_DATASOURCE_URL='jdbc:postgresql://postgres.example:5432/taxonomy' \
+  --from-literal=SPRING_DATASOURCE_USERNAME='taxonomy' \
+  --from-literal=SPRING_DATASOURCE_PASSWORD='replace-me' \
+  --from-literal=ADMIN_PASSWORD='replace-with-a-long-random-login-password' \
+  --from-literal=ADMIN_TOKEN='replace-with-a-different-long-random-machine-token'
+```
+
+For a new installation, point `SPRING_DATASOURCE_URL` at the empty new database. For an upgrade, retain the existing database URL and backup that database before installing the new chart version. Existing installations that leave `serviceMonitor.enabled=false` may omit the optional `ADMIN_TOKEN` key until another admin-token consumer requires it.
 
 ## 3. Render before installing
 

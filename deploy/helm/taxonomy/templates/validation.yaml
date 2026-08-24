@@ -26,6 +26,13 @@
 {{- if and (gt (len .Values.secretEnv) 0) (empty .Values.existingSecret) -}}
 {{- fail "existingSecret is required while secretEnv contains credential mappings" -}}
 {{- end -}}
+{{- if and (hasKey .Values.secretEnv "TAXONOMY_ADMIN_PASSWORD") (hasKey .Values.secretEnv "ADMIN_PASSWORD") -}}
+{{- $loginCredential := index .Values.secretEnv "TAXONOMY_ADMIN_PASSWORD" -}}
+{{- $adminTokenCredential := index .Values.secretEnv "ADMIN_PASSWORD" -}}
+{{- if eq (index $loginCredential "key") (index $adminTokenCredential "key") -}}
+{{- fail "TAXONOMY_ADMIN_PASSWORD and ADMIN_PASSWORD must use different Secret keys; do not reuse the interactive login password as an Actuator/admin token" -}}
+{{- end -}}
+{{- end -}}
 {{- if ge (int .Values.preStopDelaySeconds) (int .Values.terminationGracePeriodSeconds) -}}
 {{- fail "preStopDelaySeconds must be lower than terminationGracePeriodSeconds" -}}
 {{- end -}}
@@ -75,5 +82,11 @@
 {{- end -}}
 {{- if empty .Values.serviceMonitor.authorization.secretKey -}}
 {{- fail "serviceMonitor.authorization.secretKey is required when authorization is enabled" -}}
+{{- end -}}
+{{- if and (eq $metricsSecret (.Values.existingSecret | trim)) (hasKey .Values.secretEnv "ADMIN_PASSWORD") -}}
+{{- $adminTokenCredential := index .Values.secretEnv "ADMIN_PASSWORD" -}}
+{{- if ne .Values.serviceMonitor.authorization.secretKey (index $adminTokenCredential "key") -}}
+{{- fail "ServiceMonitor and the application must read the Actuator/admin token from the same key when they share existingSecret" -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
