@@ -13,24 +13,34 @@ permissions:
 
 jobs:
   inspect:
-    name: Inspect exact main workflow and check state
+    name: Inspect failing exact-main CodeQL logs
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Print exact main workflow runs and checks
+      - name: Print failed CodeQL logs from exact main
         env:
           GH_TOKEN: ${{ github.token }}
+          FAILED_RUN_ID: '32692941814'
+          JAVA_JOB_ID: '97329087511'
+          JAVASCRIPT_JOB_ID: '97329087687'
         shell: bash
         run: |
           set -euo pipefail
           main_sha=$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')
           printf 'MAIN_SHA\t%s\n' "$main_sha"
-          printf '%s\n' '--- ACTION RUNS ---'
-          gh api \
-            "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${main_sha}&per_page=100" \
-            --jq '.workflow_runs[] | [.id, .name, .run_number, .event, .status, (.conclusion // ""), .head_branch, .head_sha, .created_at, .html_url] | @tsv'
-          printf '%s\n' '--- CHECK RUNS ---'
-          gh api \
-            -H 'Accept: application/vnd.github+json' \
-            "repos/${GITHUB_REPOSITORY}/commits/${main_sha}/check-runs?per_page=100" \
-            --jq '.check_runs[] | [.id, .name, .status, (.conclusion // ""), .started_at, (.completed_at // ""), .html_url] | @tsv'
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" \
+            --jq '[.id, .name, .run_number, .event, .status, .conclusion, .head_branch, .head_sha, .html_url] | @tsv'
+
+          for entry in "java:${JAVA_JOB_ID}" "javascript:${JAVASCRIPT_JOB_ID}"; do
+            language=${entry%%:*}
+            job_id=${entry##*:}
+            log_file="$RUNNER_TEMP/${language}.log"
+            printf '\n===== %s JOB %s =====\n' "$language" "$job_id"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${job_id}/logs" > "$log_file"
+            printf '%s\n' '--- ERROR-FOCUSED EXCERPTS ---'
+            grep -n -E -i -C 8 \
+              '::error::|(^|[^a-z])(error|exception|failed|failure|fatal)([^a-z]|$)|codeql gate|sarif|security-severity|unsupported|unknown rule|no .*file' \
+              "$log_file" | tail -n 500 || true
+            printf '%s\n' '--- FINAL 250 LOG LINES ---'
+            tail -n 250 "$log_file"
+          done
