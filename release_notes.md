@@ -73,6 +73,14 @@ The Helm chart includes:
 
 See the [Rancher/RKE2 deployment guide](deploy/helm/taxonomy/RANCHER.md). The small profile is an evaluation and functional-validation floor, not a measured capacity claim for bulk imports, local model download, or high-concurrency analysis.
 
+### Audited runtime configuration and safer operator defaults
+
+The German and English configuration references now form an executable inventory of deployment-facing settings. A contract test discovers effective Spring placeholders, direct bindings, feature switches, and `@ConfigurationProperties` fields and requires both language references to match. Profile-dependent database, Hibernate Search, LLM, Copilot/Autopilot, portfolio, document-import, security, repository, and lifecycle settings are identified explicitly rather than being presented as one global default.
+
+The historical name `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` remains unchanged, but its actual scope is now explicit: it limits architecture views created by both manual Copilot and Autopilot. The effective ceiling is the lower of that value and `TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES`. Production Compose forwards the operator-maintained `.env` file and no longer enables local embeddings implicitly; embedding inference and runtime model download remain separate opt-ins.
+
+Interactive login and machine monitoring credentials are deliberately separated. `TAXONOMY_ADMIN_PASSWORD` bootstraps the local form-login administrator. The historic application variable `ADMIN_PASSWORD` remains the optional Actuator/admin token. In the supplied Helm chart, the existing Secret key `ADMIN_PASSWORD` continues to supply the login credential for upgrade compatibility, while a distinct optional `ADMIN_TOKEN` key supplies the machine token and protected ServiceMonitor. The chart rejects reuse of one Secret key for both purposes and rejects an application/ServiceMonitor token-key mismatch. Token-authenticated Actuator reads work behind a context path, missing or incorrect tokens are rejected, and CSRF protection remains enabled.
+
 ### Reliability and data integrity
 
 Analysis-draft autosaves are serialized. Multiple browser changes that arrive during an active save are coalesced and persisted with the server-returned optimistic revision, preventing two local PUT requests from racing with the same version. Genuine cross-tab or cross-device conflicts remain visible and require an explicit user decision.
@@ -126,6 +134,8 @@ A bounded set of existing Python release adapters and evidence generators remain
 - WebDAV lock coordination is currently process-local. Multi-replica direct editing requires shared lock coordination and remains follow-up work; Git/ETag preconditions still prevent silent lost updates.
 - DOCX and FOP/PDF decision reports use separate rendering paths. Their end-to-end semantic parity is tracked separately and is not claimed by this release.
 - Autosave-session grouping and long-history/template-count performance work remain follow-up items.
+- `ADMIN_PASSWORD` is a separate machine token and is not the local form-login password; production installations that use both must configure distinct values.
+- Local semantic embeddings and runtime model download are disabled unless explicitly enabled.
 - Complete Python removal is deferred to #673 after 1.4.0.
 - The small Kubernetes profile is not a measured production capacity envelope.
 - The unpublished `v1.3.1` tag must not be used as a substitute for 1.4.0 release assets.
@@ -136,10 +146,12 @@ A bounded set of existing Python release adapters and evidence generators remain
 2. Upgrade directly from the published 1.3.0 assets to 1.4.0.
 3. After the first 1.4.0 start, verify that `decision-rationale-report.dotx` is present in `/admin/document-templates`. Seeding is idempotent and does not replace an organisation-specific revision.
 4. Configure a trusted external HTTPS origin before enabling direct Word/WebDAV actions, and create scoped WebDAV application credentials for users who require them.
-5. Deploy the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
-6. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
-7. Treat the reported semantic-search readiness state as authoritative while model/index initialization is in progress.
-8. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle.
+5. For local form login, configure `TAXONOMY_ADMIN_PASSWORD`. When protected Actuator or ServiceMonitor access is used, configure a distinct machine token. With the supplied Helm chart, keep Secret key `ADMIN_PASSWORD` for the login credential and add `ADMIN_TOKEN` for the machine token; never reuse one value for both. Installations with `serviceMonitor.enabled=false` may omit `ADMIN_TOKEN`.
+6. Review the bilingual configuration reference before carrying forward environment values. Production Compose now forwards `.env`, while local embeddings and runtime model download remain disabled until enabled explicitly.
+7. Deploy the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
+8. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
+9. Treat the reported semantic-search readiness state as authoritative while model/index initialization is in progress.
+10. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle.
 
 ## Verification boundary
 
