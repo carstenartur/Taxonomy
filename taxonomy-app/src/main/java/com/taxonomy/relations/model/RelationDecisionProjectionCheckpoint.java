@@ -24,14 +24,9 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "relation_decision_projection_checkpoint",
-        indexes = {
-                @Index(
-                        name = "idx_rel_projection_checkpoint_repository",
-                        columnList = "repository_id"),
-                @Index(
-                        name = "idx_rel_projection_checkpoint_scope",
-                        columnList = "repository_id, workspace_scope_key, branch")
-        },
+        indexes = @Index(
+                name = "idx_rel_projection_checkpoint_repository",
+                columnList = "repository_id"),
         uniqueConstraints = @UniqueConstraint(
                 name = "uq_rel_projection_checkpoint_scope",
                 columnNames = {
