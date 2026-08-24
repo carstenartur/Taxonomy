@@ -31,6 +31,9 @@
     ].join(', ');
     function openRequirementDialog() { return C.openRequirementDialog.apply(null, arguments); }
 
+    runtime.saveInFlight = runtime.saveInFlight || null;
+    runtime.saveQueued = Boolean(runtime.saveQueued);
+
     function queueSave(delay) {
         if (runtime.restoring || runtime.invalidating || runtime.conflict) return;
         window.clearTimeout(runtime.saveTimer);
@@ -72,14 +75,33 @@
         }, true);
     }
 
+    function finishMutation(operation) {
+        runtime.saveInFlight = operation.then(function (result) {
+            return result;
+        }).finally(function () {
+            runtime.saveInFlight = null;
+            if (runtime.saveQueued) {
+                runtime.saveQueued = false;
+                return saveDraft();
+            }
+            return null;
+        });
+        return runtime.saveInFlight;
+    }
+
     function deleteDraft() {
         window.clearTimeout(runtime.saveTimer);
         runtime.saveTimer = null;
         var endpoint = draftEndpoint();
         if (!endpoint || runtime.version === null) return Promise.resolve();
-        return jsonRequest(endpoint + '?expectedVersion=' + encodeURIComponent(runtime.version), {
-            method: 'DELETE'
-        }).then(function () {
+        if (runtime.saveInFlight) {
+            runtime.saveQueued = true;
+            return runtime.saveInFlight;
+        }
+        var operation = jsonRequest(
+            endpoint + '?expectedVersion=' + encodeURIComponent(runtime.version),
+            { method: 'DELETE' }
+        ).then(function () {
             runtime.version = null;
             runtime.lastSavedComparable = comparable(currentPayload());
             runtime.lastObservedComparable = runtime.lastSavedComparable;
@@ -87,6 +109,7 @@
             if (error.status === 409) showDraftConflict();
             else if (window.console) window.console.warn('[Taxonomy] Draft delete failed', error);
         });
+        return finishMutation(operation);
     }
 
     function saveDraft() {
@@ -95,6 +118,10 @@
         var endpoint = draftEndpoint();
         if (!endpoint || runtime.restoring || runtime.invalidating || runtime.conflict) {
             return Promise.resolve();
+        }
+        if (runtime.saveInFlight) {
+            runtime.saveQueued = true;
+            return runtime.saveInFlight;
         }
 
         var payload = currentPayload();
@@ -106,7 +133,7 @@
             return deleteDraft();
         }
 
-        return jsonRequest(endpoint, {
+        var operation = jsonRequest(endpoint, {
             method: 'PUT',
             body: JSON.stringify({
                 payload: payload,
@@ -129,6 +156,7 @@
                 detail: { message: error.message }
             }));
         });
+        return finishMutation(operation);
     }
 
     function localStateIsPristine() {

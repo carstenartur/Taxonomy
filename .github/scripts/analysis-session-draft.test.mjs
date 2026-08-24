@@ -67,6 +67,8 @@ function createHarness({ inputText = '', payload, request }) {
     invalidating: false,
     conflict: false,
     saveTimer: null,
+    saveInFlight: null,
+    saveQueued: false,
     lastSavedComparable: null,
     lastObservedComparable: null,
     restoredPayload: null
@@ -262,4 +264,53 @@ test('blocks task actions and autosave until resume choice is resolved', async (
   );
   assert.equal(harness.scheduled.length, 1);
   assert.equal(harness.scheduled[0].delay, 0);
+});
+
+test('serializes overlapping autosaves and uses the latest optimistic version', async () => {
+  const first = deferred();
+  const second = deferred();
+  const requests = [];
+  const payload = { current: { businessText: 'First draft' } };
+  const harness = createHarness({
+    inputText: payload.current.businessText,
+    payload,
+    request: async (url, options) => {
+      requests.push({ url, options, body: JSON.parse(options.body) });
+      return requests.length === 1 ? first.promise : second.promise;
+    }
+  });
+
+  const saving = harness.context.saveDraft();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].body.expectedVersion, null);
+  assert.equal(requests[0].body.payload.businessText, 'First draft');
+
+  payload.current = { businessText: 'Second draft' };
+  harness.input.value = payload.current.businessText;
+  const queued = harness.context.saveDraft();
+  payload.current = { businessText: 'Latest draft' };
+  harness.input.value = payload.current.businessText;
+  harness.context.saveDraft();
+
+  assert.equal(requests.length, 1, 'No concurrent PUT may use the same version');
+  assert.equal(harness.runtime.saveQueued, true);
+
+  first.resolve({ version: 1, payload: requests[0].body.payload });
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].body.expectedVersion, 1);
+  assert.equal(requests[1].body.payload.businessText, 'Latest draft');
+
+  second.resolve({ version: 2, payload: requests[1].body.payload });
+  await Promise.all([saving, queued]);
+
+  assert.equal(harness.runtime.version, 2);
+  assert.equal(harness.runtime.conflict, false);
+  assert.equal(harness.runtime.saveInFlight, null);
+  assert.equal(harness.runtime.saveQueued, false);
+  assert.equal(
+    harness.runtime.lastSavedComparable,
+    JSON.stringify({ businessText: 'Latest draft' })
+  );
 });
