@@ -7,6 +7,7 @@ on:
       - 'pom.xml'
       - 'taxonomy-*/pom.xml'
       - 'taxonomy-*/src/**'
+      - '.github/codeql-sarif-baseline.json'
       - '.github/workflows/codeql.yml'
   push:
     branches: [ main ]
@@ -14,6 +15,7 @@ on:
       - 'pom.xml'
       - 'taxonomy-*/pom.xml'
       - 'taxonomy-*/src/**'
+      - '.github/codeql-sarif-baseline.json'
       - '.github/workflows/codeql.yml'
   schedule:
     - cron: '19 3 * * 1'
@@ -34,6 +36,7 @@ jobs:
     permissions:
       contents: read
       packages: read
+      security-events: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -89,6 +92,7 @@ jobs:
             find codeql-java -type f -name '*.sarif' -print0 | sort -z
           )
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-codeql-sarif \
+            --baseline .github/codeql-sarif-baseline.json \
             --report target/codeql-java-gate.json \
             "${reports[@]}"
 
@@ -109,6 +113,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+      security-events: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -157,6 +162,7 @@ jobs:
             find codeql-javascript -type f -name '*.sarif' -print0 | sort -z
           )
           java -jar "$RUNNER_TEMP/taxonomy-tooling.jar" check-codeql-sarif \
+            --baseline .github/codeql-sarif-baseline.json \
             --report target/codeql-javascript-gate.json \
             "${reports[@]}"
 
