@@ -75,6 +75,27 @@ class OoxmlActiveContentValidatorTest {
     }
 
     @Test
+    void rejectsLiteralAndEncodedControlCharactersInAllowedHyperlinkSchemes() {
+        for (String target : new String[]{
+                "mailto:office@example.org?subject=ok%0d%0abcc:attacker@example.org",
+                "https://example.org/help%09hidden",
+                "mailto:office@example.org?subject=ok%250d%250abcc:attacker@example.org",
+                "https://example.org/help\u007fhidden"}) {
+            loadFreshParts();
+            String rels = text("word/_rels/document.xml.rels");
+            String relation = "<Relationship Id=\"unsafe\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\""
+                    + target + "\" TargetMode=\"External\"/>";
+            parts.put("word/_rels/document.xml.rels",
+                    insertBefore(rels, "</Relationships>", relation));
+
+            assertThatThrownBy(() -> validator.validate(parts))
+                    .as(target)
+                    .hasMessageContaining("hyperlink target is invalid")
+                    .hasMessageNotContaining("attacker@example.org");
+        }
+    }
+
+    @Test
     void acceptsOrdinaryFieldsAndHttpsOrMailtoHyperlinks() {
         String xml = text("word/document.xml");
         parts.put("word/document.xml", insertBefore(xml, "</w:body>",
