@@ -19,6 +19,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,6 +28,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -109,6 +112,30 @@ class AnalysisWorkingDraftMvcContractTest {
                 .isEqualTo(1);
         assertThat(request.getValue().payload().path("scores").path("BP-1000").asInt())
                 .isEqualTo(82);
+    }
+
+    @Test
+    @WithMockUser(username = "analyst", roles = "USER")
+    void absentDraftResponseIsExplicitlyNoStore() throws Exception {
+        when(service.read("analyst", "workspace-a")).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/analysis-drafts/{workspaceId}", "workspace-a"))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+
+        verify(service).read("analyst", "workspace-a");
+    }
+
+    @Test
+    @WithMockUser(username = "analyst", roles = "USER")
+    void deleteResponseIsExplicitlyNoStoreAndUsesExpectedRevision() throws Exception {
+        mockMvc.perform(delete("/api/analysis-drafts/{workspaceId}", "workspace-a")
+                        .with(csrf())
+                        .param("expectedVersion", "6"))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+
+        verify(service).delete("analyst", "workspace-a", 6L);
     }
 
     @Test
