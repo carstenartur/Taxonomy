@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -107,13 +106,12 @@ class ProductionPersistenceRestartIT {
     }
 
     private GenericContainer<?> persistentAppContainer(String dataVolume) {
+        // Retain ContainerTestUtils' canonical /actuator/health/readiness wait strategy.
+        // Aggregate health may contain optional capabilities and is not the supported
+        // application-availability boundary for container replacement.
         return ContainerTestUtils.appContainer()
                 .withCreateContainerCmdModifier(command -> command.getHostConfig()
                         .withBinds(new Bind(dataVolume, new Volume("/app/data"))))
-                .waitingFor(Wait.forHttp("/actuator/health")
-                        .forStatusCode(200)
-                        .forPort(8080)
-                        .withStartupTimeout(PRODUCTION_STARTUP_TIMEOUT))
                 .withStartupTimeout(PRODUCTION_STARTUP_TIMEOUT)
                 .withEnv("SPRING_PROFILES_ACTIVE", "production,hsqldb")
                 .withEnv("TAXONOMY_DATASOURCE_URL",
