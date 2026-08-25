@@ -12,13 +12,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.security.Principal;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Simple in-memory rate limiter for LLM-backed API endpoints.
- * Limits requests per IP address per minute to prevent quota exhaustion.
+ * Limits requests per authenticated account per minute, with a direct-peer-address
+ * fallback before authentication is available, to prevent quota exhaustion.
  *
  * <p>Protected endpoints:
  * <ul>
@@ -49,7 +51,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                       FilterChain filterChain) throws ServletException, IOException {
-        String path = request.getRequestURI();
+        String path = requestPath(request);
 
         // Only rate-limit LLM-backed endpoints
         if (!isRateLimitedPath(path)) {
@@ -68,8 +70,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        String clientIp = getClientIp(request);
-        WindowCounter counter = counters.computeIfAbsent(clientIp, k -> new WindowCounter());
+        String clientKey = rateLimitKey(request);
+        WindowCounter counter = counters.computeIfAbsent(clientKey, key -> new WindowCounter());
 
         if (counter.incrementAndCheck(effectiveLimit)) {
             filterChain.doFilter(request, response);
@@ -83,28 +85,40 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
-    /** Visible for testing — clears all per-IP rate limit counters. */
+    /** Visible for testing — clears all rate limit counters. */
     public void clearCounters() {
         counters.clear();
     }
 
-    private boolean isRateLimitedPath(String path) {
+    private static String requestPath(HttpServletRequest request) {
+        String requestUri = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (contextPath != null && !contextPath.isEmpty()
+                && requestUri != null && requestUri.startsWith(contextPath)) {
+            return requestUri.substring(contextPath.length());
+        }
+        return requestUri == null ? "" : requestUri;
+    }
+
+    private static boolean isRateLimitedPath(String path) {
         return path.equals("/api/analyze")
             || path.equals("/api/analyze-stream")
             || path.equals("/api/analyze-node")
             || path.equals("/api/justify-leaf");
     }
 
-    private String getClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
+    private static String rateLimitKey(HttpServletRequest request) {
+        Principal principal = request.getUserPrincipal();
+        if (principal != null && principal.getName() != null
+                && !principal.getName().isBlank()) {
+            return "user:" + principal.getName();
         }
-        return request.getRemoteAddr();
+        String remoteAddress = request.getRemoteAddr();
+        return "ip:" + (remoteAddress == null ? "unknown" : remoteAddress);
     }
 
     /**
-     * Sliding window counter per minute.
+     * Fixed one-minute window counter.
      */
     static class WindowCounter {
         private final AtomicInteger count = new AtomicInteger(0);
@@ -127,4 +141,3 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 }
-
