@@ -108,7 +108,7 @@ graph TB
 | `HypothesisService` | Verwaltet Beziehungshypothesen, die während der Analyse generiert werden. Hypothesen können akzeptiert (erzeugt `TaxonomyRelation`), abgelehnt oder nur für die aktuelle Sitzung angewendet werden. |
 | `LlmResponseParser` | Zustandsloser Parser für LLM-Antworten. Verarbeitet Gemini- und OpenAI-Antwortformate, Bewertungsextraktion (Ganzzahl und Bewertung+Begründung), Bewertungsnormalisierung (Größter-Rest-Methode) und JSON-Extraktion. |
 | `DocumentAnalysisService` | KI-gestützte Dokumentenanalyse. Bietet LLM-gestützte Extraktion von Anforderungskandidaten aus Dokumenttext (`extractWithAi`) und direktes Regulation-zu-Architektur-Taxonomie-Mapping (`mapRegulationToArchitecture`). Verwendet spezialisierte Prompt-Templates (`extract-*`, `reg-map-*`). |
-| `RateLimitFilter` | In-Memory-Ratenbegrenzer pro IP für LLM-gestützte Endpunkte (`/api/analyze`, `/api/analyze-stream`, `/api/analyze-node`, `/api/justify-leaf`). Konfigurierbar über `TAXONOMY_RATE_LIMIT_PER_MINUTE`. |
+| `RateLimitFilter` | Begrenztes In-Memory-Kontingent für zugelassene LLM-Operationen. Es läuft nach der Autorisierung und ordnet lokale Benutzer dem kanonischen Benutzernamen sowie Keycloak-Zugriffe dem unveränderlichen Paar `iss`/`sub` zu, niemals einer IP oder `preferred_username`. Konfigurierbar über `TAXONOMY_RATE_LIMIT_PER_MINUTE`. |
 | `RelationCompatibilityMatrix` | Definiert, welche Beziehungstypen zwischen welchen Taxonomie-Wurzelkategorien gültig sind (z. B. `REALIZES` erfordert CP → CR). Wird vom Validator und Vorschlagsgenerator verwendet. |
 
 ---
@@ -279,14 +279,18 @@ in [Datenbank-Setup](DATABASE_SETUP.md) und
 
 ## Ratenbegrenzung
 
-Der `RateLimitFilter` erzwingt IP-basierte Ratenbegrenzungen auf LLM-gestützten Endpunkten, um Quota-Erschöpfung bei Gemini, OpenAI und anderen Anbietern zu verhindern. Geschützte Endpunkte:
+Der `RateLimitFilter` wird genau einmal innerhalb von Spring Security nach dem `AuthorizationFilter` registriert; seine gewöhnliche Servlet-Container-Registrierung ist deaktiviert. Nur authentifizierte und autorisierte LLM-Operationen können Kontingent verbrauchen oder Identitätszustand anlegen. Geschützte Operationen sind:
 
 - `POST /api/analyze`
 - `GET /api/analyze-stream`
 - `GET /api/analyze-node`
 - `POST /api/justify-leaf`
 
-Standard: **10 Anfragen pro IP pro Minute** (konfigurierbar über `TAXONOMY_RATE_LIMIT_PER_MINUTE`; auf `0` setzen zum Deaktivieren). Wenn das Limit überschritten wird, gibt der Filter HTTP 429 Too Many Requests zurück.
+Lokale Konten verwenden einen Digest des kanonischen authentifizierten Benutzernamens. Browser-OIDC und Bearer-JWT desselben Keycloak-Kontos verwenden einen Digest des exakten unveränderlichen Paares `iss`/`sub`; ein veränderliches `preferred_username`, ein Forwarding-Header oder eine Peer-Adresse kann das Budget daher nicht zurücksetzen. Die gleiche Pfadprüfung gilt unter einem Servlet-Kontextpfad wie `/taxonomy`.
+
+Standard sind **10 zugelassene Aufrufe je stabiler authentifizierter Identität und Minute**. Genau `0` deaktiviert den Begrenzer; negative Werte wirken fehlersicher als ein Aufruf pro Minute. Feste Fenster verwenden monotone Zeit, inaktive Identitäten laufen ab, die Zahl verfolgter Identitäten ist begrenzt, und neue Identitäten oberhalb der Kapazität teilen ein fehlersicheres Overflow-Budget. HTTP `429 Too Many Requests` enthält `Retry-After` und `Cache-Control: no-store`.
+
+Die Zähler liegen im Arbeitsspeicher und gelten daher je Anwendungsinstanz. Mehrere Replikate vervielfachen das Gesamtkontingent, sofern nicht ein Ingress oder eine andere verteilte Schicht ein clusterweites Budget erzwingt.
 
 ## API-Versionierung
 

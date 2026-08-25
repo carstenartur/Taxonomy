@@ -79,7 +79,9 @@ A full Copilot run needs a configured generative provider. `LOCAL_ONNX` supplies
 | `TAXONOMY_LLM_RPM` | repository-backed preference `taxonomy.llm.rpm` | `5` | Outbound per-provider request budget per minute. |
 | `TAXONOMY_LLM_TIMEOUT_SECONDS` | repository-backed preference `taxonomy.llm.timeout-seconds` | `30` | HTTP timeout for an individual LLM call. |
 | `TAXONOMY_ANALYSIS_MIN_SCORE` | repository-backed preference `taxonomy.analysis.min-score` | `70` | Minimum 0–100 relevance used by ordinary architecture-view selection. |
-| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | repository-backed preference `taxonomy.rate-limit.per-minute` | `10` | Per-client limit for LLM-backed API requests; `0` disables this limiter. |
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | repository-backed preference `taxonomy.rate-limit.per-minute` | `10` | Admitted LLM requests per stable authenticated identity and minute; exactly `0` disables, negative values fail closed to `1`. |
+
+The incoming quota runs after authorization. Local users are keyed by canonical username; Keycloak browser and bearer access use the immutable `iss`/`sub` pair and therefore share one budget even when `preferred_username` changes. Forwarding headers and peer addresses are not quota identities. Rejected requests do not allocate state. The bounded in-memory counters expire after inactivity and return HTTP `429` with `Retry-After` and `Cache-Control: no-store`. They are scoped to one application instance, so multi-replica deployments require an outer distributed quota if a cluster-wide budget is required. The same matching contract applies at the root context and below a prefix such as `/taxonomy`.
 
 ## LLM record/replay tooling
 

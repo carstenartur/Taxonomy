@@ -164,7 +164,7 @@ The custom endpoint defaults to `0`, meaning no outgoing RPM throttle. The Gemin
 
 ### Incoming rate limit
 
-`TAXONOMY_RATE_LIMIT_PER_MINUTE` limits incoming LLM-backed requests per client and returns HTTP `429` when exceeded.
+`TAXONOMY_RATE_LIMIT_PER_MINUTE` limits admitted LLM-backed requests per stable authenticated identity. Local accounts use their canonical username; Keycloak browser and bearer access share immutable `iss`/`sub`. Rejected requests, forwarding headers and peer addresses do not define or consume a budget. HTTP `429` includes `Retry-After` and `Cache-Control: no-store`. The in-memory counters are per application instance, not cluster-global.
 
 ---
 
@@ -222,7 +222,7 @@ Self-hosted models may require a longer timeout during first-model load.
 | `CUSTOM_LLM_URL` | Complete custom OpenAI-compatible Chat Completions endpoint |
 | `CUSTOM_LLM_MODEL` | Model identifier sent to the custom endpoint |
 | `CUSTOM_LLM_API_KEY` | Optional Bearer token for the custom endpoint |
-| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Incoming rate limit for LLM-backed endpoints |
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Admitted LLM requests per stable authenticated identity and minute |
 
 See the [Configuration Reference](CONFIGURATION_REFERENCE.md) for the canonical property mapping.
 

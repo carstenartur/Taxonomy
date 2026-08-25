@@ -120,12 +120,14 @@ Klicken Sie auf **↩️ Reset to Defaults**, um alle Einstellungen auf die Wert
 |---|---|---|---|---|
 | `llm.rpm` | int | `5` | ☁️ System | Maximale API-Anfragen pro Minute (ausgehende LLM-Drosselung) |
 | `llm.timeout.seconds` | int | `30` | ☁️ System | HTTP-Lese-Timeout für LLM-API-Aufrufe |
-| `rate-limit.per-minute` | int | `10` | ☁️ System | Eingehende Ratenbegrenzung für Analyse-Endpunkte (pro IP) |
+| `rate-limit.per-minute` | int | `10` | ☁️ System | Eingehendes LLM-Kontingent je authentifizierter Identität und Minute (`0` deaktiviert) |
 | `analysis.min-relevance-score` | int | `70` | ☁️ System | Mindestbewertung, damit Knoten in Analyseergebnissen erscheinen |
 
 Die Einstellung `llm.rpm` steuert die gleitende Fensterdrosselung für ausgehende LLM-API-Aufrufe. Das System verwaltet eine FIFO-Warteschlange von Zeitstempeln und lässt den Thread warten, wenn das Ratenlimit überschritten würde. Eine Toleranz von 50 ms wird für Taktabweichungen hinzugefügt.
 
 Die Einstellung `llm.timeout.seconds` aktualisiert dynamisch das Lese-Timeout des `RestTemplate`, ohne die Anwendung neu starten zu müssen.
+
+Das eingehende Kontingent `rate-limit.per-minute` wird erst nach Authentifizierung und Autorisierung geprüft und gilt je stabiler authentifizierter Identität. Lokale Konten werden über ihren kanonischen authentifizierten Benutzernamen zugeordnet; Browser-OIDC und Bearer-JWT desselben Keycloak-Kontos teilen die unveränderliche Issuer/Subject-Identität (`iss`/`sub`). Forwarding-Header, Peer-Adressen und der veränderliche Claim `preferred_username` erzeugen keine Kontingentidentitäten; abgewiesene Aufrufe belegen oder verbrauchen keinen Kontingentzähler. Genau `0` deaktiviert diesen Begrenzer; negative Werte wirken fehlersicher als ein zugelassener Aufruf pro Minute. Inaktive Identitäten laufen ab, die In-Memory-Menge ist begrenzt, und HTTP-`429`-Antworten enthalten `Retry-After` sowie `Cache-Control: no-store`. Die Zähler gelten je laufender Anwendungsinstanz; bei mehreren Replikaten ist ein verteilter äußerer Begrenzer nötig oder das vervielfachte Gesamtkontingent muss eingeplant werden.
 
 ### DSL- und Git-Konfiguration
 

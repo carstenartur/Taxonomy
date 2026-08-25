@@ -108,7 +108,7 @@ graph TB
 | `HypothesisService` | Manages relation hypotheses generated during analysis. Hypotheses can be accepted (creating `TaxonomyRelation`), rejected, or applied for the current session only. |
 | `LlmResponseParser` | Stateless parser for LLM responses. Handles Gemini and OpenAI response formats, score extraction (integer and score+reason), score normalisation (largest-remainder method), and JSON extraction. |
 | `DocumentAnalysisService` | AI-powered document analysis. Provides LLM-assisted extraction of requirement candidates from document text (`extractWithAi`) and direct regulation-to-architecture taxonomy mapping (`mapRegulationToArchitecture`). Uses specialized prompt templates (`extract-*`, `reg-map-*`). |
-| `RateLimitFilter` | In-memory per-IP rate limiter for LLM-backed endpoints (`/api/analyze`, `/api/analyze-stream`, `/api/analyze-node`, `/api/justify-leaf`). Configurable via `TAXONOMY_RATE_LIMIT_PER_MINUTE`. |
+| `RateLimitFilter` | Bounded in-memory quota for admitted LLM-backed operations. It runs after authorization and keys local users by canonical username and Keycloak access by immutable `iss`/`sub`, never by IP or `preferred_username`. Configurable via `TAXONOMY_RATE_LIMIT_PER_MINUTE`. |
 | `RelationCompatibilityMatrix` | Defines which relation types are valid between which taxonomy root categories (e.g., `REALIZES` requires CP → CR). Used by the validator and proposal generator. |
 
 ---
@@ -283,14 +283,18 @@ are in [Database Setup](DATABASE_SETUP.md) and
 
 ## Rate Limiting
 
-The `RateLimitFilter` enforces per-IP rate limits on LLM-backed endpoints to prevent quota exhaustion on Gemini, OpenAI, and other providers. Protected endpoints:
+`RateLimitFilter` is registered exactly once inside Spring Security, after `AuthorizationFilter`; its ordinary servlet-container registration is disabled. Only authenticated and authorized LLM-backed operations can consume quota or allocate identity state. Protected operations are:
 
 - `POST /api/analyze`
 - `GET /api/analyze-stream`
 - `GET /api/analyze-node`
 - `POST /api/justify-leaf`
 
-Default: **10 requests per IP per minute** (configurable via `TAXONOMY_RATE_LIMIT_PER_MINUTE`; set to `0` to disable). When the limit is exceeded, the filter returns HTTP 429 Too Many Requests.
+Local accounts use a digest of the canonical authenticated username. Keycloak browser OIDC and bearer JWT requests for the same account use a digest of the exact immutable `iss`/`sub` pair, so an editable `preferred_username`, a forwarding header, or a peer address cannot reset the budget. The same route matching applies below a servlet context path such as `/taxonomy`.
+
+The default is **10 admitted requests per stable authenticated identity and minute**. Exactly `0` disables the limiter; negative values fail closed to one request per minute. Fixed windows use monotonic time, inactive identities expire, the tracked identity set is bounded, and new identities beyond capacity share a fail-closed overflow budget. HTTP `429 Too Many Requests` includes `Retry-After` and `Cache-Control: no-store`.
+
+Counters are in-memory and therefore scoped to one application instance. A multi-replica deployment multiplies the aggregate allowance unless an ingress or another distributed layer enforces a cluster-wide quota.
 
 ## API Versioning
 
