@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Fails production startup before any bootstrap account can be persisted when
@@ -28,6 +29,9 @@ public class ProductionSecurityGuard implements ApplicationRunner {
             "password",
             "changeme",
             "change-me");
+    /** Conservative common subset for X-Admin-Token and RFC 6750 Bearer transport. */
+    private static final Pattern HTTP_MACHINE_TOKEN =
+            Pattern.compile("[A-Za-z0-9._~-]+");
 
     private final String adminPassword;
     private final String adminToken;
@@ -85,6 +89,12 @@ public class ProductionSecurityGuard implements ApplicationRunner {
             throw new IllegalStateException(
                     "Production startup refused: ADMIN_PASSWORD must not contain "
                             + "whitespace because it is used as an HTTP machine token.");
+        }
+        if (transportToken && !HTTP_MACHINE_TOKEN.matcher(value).matches()) {
+            throw new IllegalStateException(
+                    "Production startup refused: ADMIN_PASSWORD must contain only "
+                            + "ASCII letters, digits, period, underscore, tilde, or hyphen "
+                            + "for interoperable HTTP Bearer-token transport.");
         }
 
         String normalized = value.toLowerCase(Locale.ROOT);
