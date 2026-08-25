@@ -68,6 +68,18 @@ class ProductionSecurityGuardUnicodeTest {
     }
 
     @Test
+    void rejectsUnicodeAndNonBearerPunctuationInHttpMachineToken() {
+        assertRejected(
+                "Strong local password 2026!",
+                "Monitoring-token-ä-2026",
+                "ASCII letters");
+        assertRejected(
+                "Strong local password 2026!",
+                "Monitoring-token-2026!",
+                "ASCII letters");
+    }
+
+    @Test
     void measuresMinimumLengthInUnicodeCodePointsNotUtf16Units() {
         assertRejected(
                 "😀😀😀😀😀😀😀😀",
@@ -79,7 +91,7 @@ class ProductionSecurityGuardUnicodeTest {
     void permitsAsciiInternalSpacesInPasswordAndTransportSafeDistinctToken() {
         ProductionSecurityGuard guard = new ProductionSecurityGuard(
                 "Strong local password 2026!",
-                "Distinct-monitoring-token-2026!");
+                "Distinct-monitoring-token-2026");
 
         Throwable failure = catchThrowable(() -> guard.run(null));
 
