@@ -117,16 +117,29 @@ class RateLimitFilterTest {
     }
 
     @Test
-    void trackedClientStateHasAHardUpperBound() throws Exception {
+    void trackedClientStateHasAHardUpperBoundAndOverflowFailsClosed()
+            throws Exception {
         AtomicLong now = new AtomicLong(50_000L);
         RateLimitFilter filter = filter(now, 1);
 
-        for (int index = 0; index < 10_050; index++) {
-            perform(filter, "GET", "", "/api/analyze-node",
+        for (int index = 0; index < 10_000; index++) {
+            MockHttpServletResponse response = perform(
+                    filter, "GET", "", "/api/analyze-node",
                     "principal-" + index, "192.0.2.1", null);
+            assertThat(response.getStatus()).isEqualTo(200);
         }
 
+        MockHttpServletResponse firstOverflow = perform(
+                filter, "GET", "", "/api/analyze-node",
+                "overflow-principal-1", "192.0.2.1", null);
+        MockHttpServletResponse secondOverflow = perform(
+                filter, "GET", "", "/api/analyze-node",
+                "overflow-principal-2", "192.0.2.1", null);
+
         assertThat(filter.trackedClientCount()).isEqualTo(10_000);
+        assertThat(firstOverflow.getStatus()).isEqualTo(200);
+        assertThat(secondOverflow.getStatus()).isEqualTo(429);
+        assertThat(secondOverflow.getHeader("Cache-Control")).isEqualTo("no-store");
     }
 
     @Test
