@@ -20,6 +20,20 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
       && state?.restoring === false);
   }, null, { timeout });
 
+  // A new browser context has no in-memory optimistic-lock revision, while the
+  // role-scoped application may still hold a draft written by an earlier profile.
+  // Load that server state first so the subsequent deletion uses its exact version
+  // instead of manufacturing a legitimate HTTP 409 with expectedVersion=null.
+  await page.evaluate(async () => {
+    await window.TaxonomyAnalysisSession.reload();
+  });
+  await page.waitForFunction(() => {
+    const state = window.TaxonomyAnalysisSession?.state?.();
+    return Boolean(state
+      && state.restoring === false
+      && state.conflict === false);
+  }, null, { timeout });
+
   await page.evaluate(async () => {
     const session = window.TaxonomyAnalysisSession;
     session.invalidate({
@@ -49,6 +63,7 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
       && input?.value === ''
       && !input.classList.contains('stale-results')
       && document.querySelector('#taskStageDescribe[data-state="current"]')
-      && state?.restoring === false);
+      && state?.restoring === false
+      && state?.conflict === false);
   }, null, { timeout });
 }
