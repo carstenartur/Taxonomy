@@ -1,5 +1,6 @@
 package com.taxonomy.shared.controller;
 
+import com.taxonomy.preferences.PreferencesSchema;
 import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.preferences.storage.PreferencesCommit;
 import io.swagger.v3.oas.annotations.Operation;
@@ -8,7 +9,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.util.List;
@@ -31,9 +37,13 @@ public class PreferencesController {
     private static final Logger log = LoggerFactory.getLogger(PreferencesController.class);
 
     private final PreferencesService preferencesService;
+    private final PreferencesSchema preferencesSchema;
 
-    public PreferencesController(PreferencesService preferencesService) {
+    public PreferencesController(
+            PreferencesService preferencesService,
+            PreferencesSchema preferencesSchema) {
         this.preferencesService = preferencesService;
+        this.preferencesSchema = preferencesSchema;
     }
 
     /**
@@ -57,6 +67,9 @@ public class PreferencesController {
     public ResponseEntity<Map<String, Object>> update(
             @RequestBody Map<String, Object> changes,
             Authentication authentication) {
+        // Browser input constraints are not an authority boundary. Reject unknown
+        // keys, wrong JSON types and out-of-range values before creating history.
+        preferencesSchema.validateChanges(changes);
         try {
             String author = authentication != null ? authentication.getName() : "unknown";
             preferencesService.update(changes, author);

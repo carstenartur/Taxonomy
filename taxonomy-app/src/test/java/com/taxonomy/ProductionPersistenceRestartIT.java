@@ -110,7 +110,11 @@ class ProductionPersistenceRestartIT {
         return ContainerTestUtils.appContainer()
                 .withCreateContainerCmdModifier(command -> command.getHostConfig()
                         .withBinds(new Bind(dataVolume, new Volume("/app/data"))))
-                .waitingFor(Wait.forHttp("/actuator/health")
+                // Match the production Docker and Kubernetes contract. Aggregate
+                // health may evaluate optional lazy contributors while startup
+                // runners are still completing; readiness becomes accepting only
+                // after the application bootstrap phase has finished.
+                .waitingFor(Wait.forHttp("/actuator/health/readiness")
                         .forStatusCode(200)
                         .forPort(8080)
                         .withStartupTimeout(PRODUCTION_STARTUP_TIMEOUT))

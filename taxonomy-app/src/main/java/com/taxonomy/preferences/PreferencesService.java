@@ -6,12 +6,15 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Service that manages runtime application preferences backed by a dedicated JGit repository.
@@ -28,6 +31,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * is completely separate from the Architecture DSL repository ({@code "taxonomy-dsl"}).
  */
 @Service
+// The first initialization may create a Git commit. Complete it during context
+// bootstrap so an early health request cannot race another ApplicationRunner
+// that writes a different repository through the shared Hibernate pack store.
+@Lazy(false)
 public class PreferencesService {
 
     private static final Logger log = LoggerFactory.getLogger(PreferencesService.class);
@@ -37,8 +44,9 @@ public class PreferencesService {
     private final PreferencesGitRepository gitRepository;
     private final ObjectMapper objectMapper;
 
-    // In-memory cache of the current preferences
-    private final Map<String, Object> cache = new ConcurrentHashMap<>();
+    // Readers see either the complete previous snapshot or the complete committed
+    // successor. A failed Git mutation never becomes visible in process memory.
+    private volatile Map<String, Object> cache = Map.of();
 
     // ── Default values loaded from application.properties ─────────────────────
 
@@ -99,18 +107,20 @@ public class PreferencesService {
             if (json != null) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> loaded = objectMapper.readValue(json, Map.class);
-                cache.putAll(loaded);
+                cache = immutableSnapshot(loaded);
                 log.info("Preferences loaded from JGit repository ({} entries)", cache.size());
             } else {
-                // No commits yet — initialise from property defaults and commit
-                cache.putAll(buildDefaults());
-                String initialJson = objectMapper.writeValueAsString(cache);
-                gitRepository.commit(initialJson, "system", "Initial preferences from application.properties");
+                // No commits yet — initialise from property defaults and commit.
+                Map<String, Object> defaults = buildDefaults();
+                String initialJson = objectMapper.writeValueAsString(defaults);
+                gitRepository.commit(initialJson, "system",
+                        "Initial preferences from application.properties");
+                cache = immutableSnapshot(defaults);
                 log.info("Preferences initialised from defaults and committed to JGit");
             }
         } catch (IOException e) {
             log.warn("Could not load preferences from JGit, using defaults: {}", e.getMessage());
-            cache.putAll(buildDefaults());
+            cache = immutableSnapshot(buildDefaults());
         }
     }
 
@@ -167,33 +177,36 @@ public class PreferencesService {
 
     /**
      * Merge the provided changes into the current preferences, commit to JGit, and update
-     * the in-memory cache. Each call creates a new Git commit with the full preferences JSON.
+     * the in-memory snapshot. Mutations are serialized and become visible only after the
+     * authoritative ref update succeeds.
      *
      * @param changes   partial map of settings to update
      * @param author    the user making the change (for the Git commit author)
      * @throws IOException if the JGit commit fails
      */
-    public void update(Map<String, Object> changes, String author) throws IOException {
-        cache.putAll(changes);
-        String json = objectMapper.writeValueAsString(cache);
+    public synchronized void update(Map<String, Object> changes, String author)
+            throws IOException {
+        Map<String, Object> candidate = new LinkedHashMap<>(cache);
+        candidate.putAll(changes);
+        String json = objectMapper.writeValueAsString(candidate);
         String commitMsg = "Preferences updated: " + String.join(", ", changes.keySet());
         gitRepository.commit(json, author, commitMsg);
+        cache = immutableSnapshot(candidate);
         log.info("Preferences updated by '{}': {}", author, changes.keySet());
     }
 
     /**
      * Resets all preferences to their default values (from application.properties),
-     * commits to JGit, and updates the in-memory cache.
+     * commits to JGit, and atomically publishes the committed snapshot.
      *
      * @param author the user requesting the reset
      * @throws IOException if the JGit commit fails
      */
-    public void resetToDefaults(String author) throws IOException {
+    public synchronized void resetToDefaults(String author) throws IOException {
         Map<String, Object> defaults = buildDefaults();
-        cache.clear();
-        cache.putAll(defaults);
-        String json = objectMapper.writeValueAsString(cache);
+        String json = objectMapper.writeValueAsString(defaults);
         gitRepository.commit(json, author, "Preferences reset to defaults");
+        cache = immutableSnapshot(defaults);
         log.info("Preferences reset to defaults by '{}'", author);
     }
 
@@ -227,6 +240,10 @@ public class PreferencesService {
         // Diagram Configuration
         defaults.put("diagram.policy", defaultDiagramPolicy);
         return defaults;
+    }
+
+    private static Map<String, Object> immutableSnapshot(Map<String, Object> values) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
     private void maskToken(Map<String, Object> prefs) {
