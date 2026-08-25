@@ -43,7 +43,7 @@ public class AnalysisWorkingDraftController {
         requireMatchingExplicitPin(request, workspaceId);
         return service.read(workspaceResolver.resolveCurrentUsername(), workspaceId)
                 .map(this::versionedResponse)
-                .orElseGet(() -> ResponseEntity.noContent().build());
+                .orElseGet(AnalysisWorkingDraftController::noContentResponse);
     }
 
     @PutMapping("/{workspaceId}")
@@ -67,7 +67,7 @@ public class AnalysisWorkingDraftController {
         requireMatchingExplicitPin(request, workspaceId);
         service.delete(
                 workspaceResolver.resolveCurrentUsername(), workspaceId, expectedVersion);
-        return ResponseEntity.noContent().build();
+        return noContentResponse();
     }
 
     private static void requireMatchingExplicitPin(
@@ -94,5 +94,11 @@ public class AnalysisWorkingDraftController {
                 .cacheControl(CacheControl.noStore())
                 .eTag("\"" + view.version() + "\"")
                 .body(view);
+    }
+
+    private static <T> ResponseEntity<T> noContentResponse() {
+        return ResponseEntity.noContent()
+                .cacheControl(CacheControl.noStore())
+                .build();
     }
 }
