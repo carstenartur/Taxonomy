@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 
-test('clears a restored draft and normalizes the role task to the list view', async () => {
+test('reloads the authoritative draft version before clearing the role scenario', async () => {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
   const previousEvent = globalThis.Event;
   const calls = [];
   let stale = true;
   let currentStage = 'analyze';
+  let authoritativeVersion = null;
 
   const input = {
     value: 'Restored requirement from another browser profile',
@@ -54,12 +55,20 @@ test('clears a restored draft and normalizes the role task to the list view', as
     },
     TaxonomyAnalysisSession: {
       state: () => ({ restoring: false }),
+      async reload() {
+        calls.push('reload');
+        authoritativeVersion = 7;
+      },
       invalidate(options) {
+        assert.equal(authoritativeVersion, 7,
+          'the server draft version must be loaded before invalidation');
         calls.push({ invalidate: options });
         input.value = '';
         stale = false;
       },
       async saveNow() {
+        assert.equal(authoritativeVersion, 7,
+          'the authoritative version must still own the clearing mutation');
         calls.push('save');
       }
     }
@@ -96,6 +105,7 @@ test('clears a restored draft and normalizes the role task to the list view', as
   }
 
   assert.deepEqual(calls, [
+    'reload',
     {
       invalidate: {
         keepText: false,

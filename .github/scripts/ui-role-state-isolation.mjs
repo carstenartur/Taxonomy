@@ -8,6 +8,10 @@ const DEFAULT_TIMEOUT_MS = 90_000;
  * the previous profile's text, scores and selected visualization. That behaviour
  * is correct for the product, but it must not leak between otherwise independent
  * acceptance scenarios.
+ *
+ * Synchronize the server draft first so clearing it uses the authoritative
+ * optimistic-lock version. Otherwise a later profile can start with version null,
+ * issue a PUT against an existing draft and manufacture a 409 conflict itself.
  */
 export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_MS) {
   await page.waitForFunction(() => {
@@ -19,6 +23,13 @@ export async function isolateRoleStateScenario(page, timeout = DEFAULT_TIMEOUT_M
       && window.TaxonomyState.taxonomyData.length > 0
       && state?.restoring === false);
   }, null, { timeout });
+
+  await page.evaluate(async () => {
+    await window.TaxonomyAnalysisSession.reload();
+  });
+  await page.waitForFunction(() =>
+    window.TaxonomyAnalysisSession?.state?.().restoring === false,
+  null, { timeout });
 
   await page.evaluate(async () => {
     const session = window.TaxonomyAnalysisSession;
