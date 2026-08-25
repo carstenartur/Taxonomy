@@ -1,0 +1,40 @@
+name: Temporary issue 888 source export
+
+on:
+  push:
+    branches:
+      - qa/login-lockout-888-prep
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact preparation source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Export login-security sources and contracts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: issue-888-source
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            pom.xml
+            taxonomy-app/pom.xml
+            docs/en/SECURITY.md
+            docs/de/SECURITY.md
+            docs/en/CONFIGURATION_REFERENCE.md
+            docs/de/CONFIGURATION_REFERENCE.md
+            docs/en/DEPLOYMENT_CHECKLIST.md
+            taxonomy-app/src/main/resources/application.properties
+            taxonomy-app/src/main/java/com/taxonomy/security/config/LoginRateLimitFilter.java
+            taxonomy-app/src/main/java/com/taxonomy/security/config/SecurityConfig.java
+            taxonomy-app/src/main/java/com/taxonomy/security/config/AuthorizationRulesConfigurer.java
+            taxonomy-app/src/test/java/com/taxonomy/SecurityImprovementTests.java
+            taxonomy-app/src/test/java/com/taxonomy/security/PasswordChangeEnforcementTest.java
+            taxonomy-app/src/test/java/com/taxonomy/security/config/**
