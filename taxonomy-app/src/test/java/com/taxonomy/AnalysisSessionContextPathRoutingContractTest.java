@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AnalysisSessionContextPathRoutingContractTest {
 
     @Test
-    void loadsTheContextPathAdapterBeforeWorkspaceSessionStartup()
+    void loadsTheFetchAdapterBetweenCoreAndCanonicalApiRouting()
             throws IOException {
         String loader = Files.readString(findRepositoryFile(
                 "taxonomy-app/src/main/resources/static/js/core/"
@@ -21,19 +21,23 @@ class AnalysisSessionContextPathRoutingContractTest {
         int core = loader.indexOf("taxonomy-analysis-session-core.js");
         int adapter = loader.indexOf(
                 "taxonomy-analysis-session-context-path-routing.js");
+        int apiRouting = loader.indexOf("taxonomy-analysis-session-api-routing.js");
         int projects = loader.indexOf("taxonomy-analysis-session-projects.js");
 
         assertThat(core).isGreaterThanOrEqualTo(0);
         assertThat(adapter)
-                .as("the adapter requires the shared runtime exported by the core")
+                .as("the fetch adapter requires the shared runtime exported by the core")
                 .isGreaterThan(core);
-        assertThat(projects)
-                .as("workspace startup must capture the decorated transport installers")
+        assertThat(apiRouting)
+                .as("the canonical API adapter remains the single SSE routing owner")
                 .isGreaterThan(adapter);
+        assertThat(projects)
+                .as("workspace startup must capture the final transport installers")
+                .isGreaterThan(apiRouting);
     }
 
     @Test
-    void routesFetchAndEventSourceThroughOneIdempotentResolvedPrefixAdapter()
+    void decoratesOnlyAlreadyPrefixedFetchCallsAndLeavesSseToApiRouting()
             throws IOException {
         String adapter = Files.readString(findRepositoryFile(
                 "taxonomy-app/src/main/resources/static/js/core/"
@@ -43,14 +47,14 @@ class AnalysisSessionContextPathRoutingContractTest {
                 .contains("window.TaxonomyI18n.resolveUrl('/api/')")
                 .contains("url.origin !== window.location.origin")
                 .contains("headers.set(WORKSPACE_HEADER, runtime.workspaceId)")
-                .contains("resolved.searchParams.set('workspaceId', runtime.workspaceId)")
                 .contains("installRootFetchRouting()")
-                .contains("installRootEventSourceRouting()")
                 .contains("if (prefix === '/api/') return false")
                 .contains("ROOT_MARKER = '__taxonomyWorkspaceRouting'")
                 .contains("CONTEXT_PATH_MARKER = '__taxonomyContextPathWorkspaceRouting'")
                 .contains("markRoutingInstalled(routedFetch)")
-                .contains("markRoutingInstalled(RoutedEventSource)");
+                .contains("SSE remains owned by taxonomy-analysis-session-api-routing.js")
+                .doesNotContain("installRootEventSourceRouting")
+                .doesNotContain("RoutedEventSource");
     }
 
     private static Path findRepositoryFile(String relativePath) {
