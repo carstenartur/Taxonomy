@@ -1,4 +1,4 @@
-/* Context-path adapter for the analysis-session workspace transport. */
+/* Context-path adapter for analysis-session workspace fetch transport. */
 (function () {
     'use strict';
     var C = window.__TaxonomyAnalysisSessionContext;
@@ -9,7 +9,6 @@
     var ROOT_MARKER = '__taxonomyWorkspaceRouting';
     var CONTEXT_PATH_MARKER = '__taxonomyContextPathWorkspaceRouting';
     var installRootFetchRouting = C.installWorkspaceFetchRouting;
-    var installRootEventSourceRouting = C.installWorkspaceEventSourceRouting;
 
     function requestUrl(input) {
         try {
@@ -52,6 +51,9 @@
     }
 
     C.installWorkspaceFetchRouting = function installWorkspaceFetchRouting() {
+        // Preserve the core route for ordinary /api/** callers. This additional
+        // wrapper covers callers that already resolved the servlet prefix before
+        // invoking fetch, for example Request objects created with /taxonomy/api/**.
         installRootFetchRouting();
         if (window.fetch[CONTEXT_PATH_MARKER] === true) return;
         var previousFetch = window.fetch.bind(window);
@@ -74,29 +76,6 @@
         window.fetch = routedFetch;
     };
 
-    C.installWorkspaceEventSourceRouting = function installWorkspaceEventSourceRouting() {
-        installRootEventSourceRouting();
-        var PreviousEventSource = window.EventSource;
-        if (typeof PreviousEventSource !== 'function'
-                || PreviousEventSource[CONTEXT_PATH_MARKER] === true) return;
-
-        function RoutedEventSource(url, configuration) {
-            var resolved = requestUrl(url);
-            var target = url;
-            if (runtime.workspaceId && isPrefixedApplicationApiUrl(resolved)) {
-                resolved.searchParams.set('workspaceId', runtime.workspaceId);
-                target = resolved.href;
-            }
-            return new PreviousEventSource(target, configuration);
-        }
-
-        RoutedEventSource.prototype = PreviousEventSource.prototype;
-        ['CONNECTING', 'OPEN', 'CLOSED'].forEach(function (constant) {
-            if (constant in PreviousEventSource) {
-                RoutedEventSource[constant] = PreviousEventSource[constant];
-            }
-        });
-        markRoutingInstalled(RoutedEventSource);
-        window.EventSource = RoutedEventSource;
-    };
+    // SSE remains owned by taxonomy-analysis-session-api-routing.js, which loads
+    // next and already resolves the base path plus the workspace query parameter.
 }());
