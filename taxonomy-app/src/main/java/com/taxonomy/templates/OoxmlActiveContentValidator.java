@@ -35,6 +35,9 @@ public final class OoxmlActiveContentValidator {
             Set.of("https", "mailto");
     private static final Pattern URI_SCHEME = Pattern.compile(
             "^([A-Za-z][A-Za-z0-9+.-]*):");
+    private static final Pattern ENCODED_CONTROL = Pattern.compile(
+            "(?i)%(?:0[0-9a-f]|1[0-9a-f]|7f)");
+    private static final Pattern ENCODED_PERCENT = Pattern.compile("(?i)%25");
     private static final Pattern UNSAFE_FIELD = Pattern.compile(
             "(?i)(?<![A-Z0-9_])"
                     + "(DDEAUTO|DDE|INCLUDETEXT|INCLUDEPICTURE|LINK|DATABASE|"
@@ -101,8 +104,8 @@ public final class OoxmlActiveContentValidator {
 
     private static void validateExternalHyperlink(String path, String target) {
         if (target == null || target.isBlank()
-                || target.indexOf('\r') >= 0 || target.indexOf('\n') >= 0
-                || target.indexOf('\0') >= 0) {
+                || containsControlCharacter(target)
+                || containsEncodedControlCharacter(target)) {
             throw invalid("external hyperlink target is invalid in " + path);
         }
 
@@ -138,6 +141,25 @@ public final class OoxmlActiveContentValidator {
                 throw exception;
             }
             throw invalid("external hyperlink target is invalid in " + path, exception);
+        }
+    }
+
+    private static boolean containsControlCharacter(String value) {
+        return value.chars().anyMatch(character ->
+                character < 0x20 || character == 0x7f);
+    }
+
+    private static boolean containsEncodedControlCharacter(String value) {
+        String normalized = value;
+        while (true) {
+            if (ENCODED_CONTROL.matcher(normalized).find()) {
+                return true;
+            }
+            String decodedPercent = ENCODED_PERCENT.matcher(normalized).replaceAll("%");
+            if (decodedPercent.equals(normalized)) {
+                return false;
+            }
+            normalized = decodedPercent;
         }
     }
 
