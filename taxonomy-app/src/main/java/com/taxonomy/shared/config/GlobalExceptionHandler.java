@@ -34,6 +34,8 @@ import java.util.Map;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String DEFAULT_INTERNAL_MESSAGE =
+            "An internal error occurred. Please try again or check the server logs.";
 
     private final MessageSource messageSource;
 
@@ -45,17 +47,27 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * Handles IllegalArgumentException (bad input from client).
      */
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException ex, WebRequest request) {
-        log.warn("Bad request: {}", ex.getMessage());
-        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    public ResponseEntity<Map<String, Object>> handleBadRequest(
+            IllegalArgumentException ex,
+            WebRequest request) {
+        log.warn("Bad request on {} ({})", requestPath(request), ex.getClass().getSimpleName());
+        return buildErrorResponse(
+                HttpStatus.BAD_REQUEST,
+                clientMessage(ex.getMessage(), HttpStatus.BAD_REQUEST),
+                request);
     }
 
     /** Return malformed or oversized working drafts as a stable client error. */
     @ExceptionHandler(AnalysisDraftValidationException.class)
     public ResponseEntity<Map<String, Object>> handleAnalysisDraftValidation(
-            AnalysisDraftValidationException ex, WebRequest request) {
-        log.warn("Invalid analysis draft on {}: {}", request.getDescription(false), ex.getMessage());
-        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+            AnalysisDraftValidationException ex,
+            WebRequest request) {
+        log.warn("Invalid analysis draft on {} ({})",
+                requestPath(request), ex.getClass().getSimpleName());
+        return buildErrorResponse(
+                HttpStatus.BAD_REQUEST,
+                clientMessage(ex.getMessage(), HttpStatus.BAD_REQUEST),
+                request);
     }
 
     /**
@@ -64,9 +76,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(AnalysisDraftConflictException.class)
     public ResponseEntity<Map<String, Object>> handleAnalysisDraftConflict(
-            AnalysisDraftConflictException ex, WebRequest request) {
-        log.warn("Analysis draft conflict on {}: {}", request.getDescription(false), ex.getMessage());
-        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+            AnalysisDraftConflictException ex,
+            WebRequest request) {
+        log.warn("Analysis draft conflict on {} ({})",
+                requestPath(request), ex.getClass().getSimpleName());
+        return buildErrorResponse(
+                HttpStatus.CONFLICT,
+                clientMessage(ex.getMessage(), HttpStatus.CONFLICT),
+                request);
     }
 
     /**
@@ -75,8 +92,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> handleAccessDenied(
-            AccessDeniedException ex, WebRequest request) {
-        log.warn("Access denied on {}: {}", request.getDescription(false), ex.getMessage());
+            AccessDeniedException ex,
+            WebRequest request) {
+        log.warn("Access denied on {} ({})",
+                requestPath(request), ex.getClass().getSimpleName());
         Locale locale = LocaleContextHolder.getLocale();
         String message = messageSource.getMessage(
                 "error.forbidden", null, "Access denied.", locale);
@@ -88,46 +107,89 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * Logs the full stack trace server-side but only returns a safe message to the client.
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex, WebRequest request) {
-        log.error("Unhandled exception on {}: {}", request.getDescription(false), ex.getMessage(), ex);
-        Locale locale = LocaleContextHolder.getLocale();
-        String message = messageSource.getMessage("error.internal", null,
-                "An internal error occurred. Please try again or check the server logs.", locale);
-        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, message, request);
+    public ResponseEntity<Map<String, Object>> handleGenericException(
+            Exception ex,
+            WebRequest request) {
+        log.error("Unhandled exception on {} ({})",
+                requestPath(request), ex.getClass().getName(), ex);
+        return buildErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                internalMessage(),
+                request);
     }
 
     /**
      * Override the Spring MVC base handler to return our consistent JSON format
      * for framework-level exceptions (missing params, type mismatches, etc.).
+     * Framework-originated 5xx exceptions must not copy their internal message
+     * into the response body.
      */
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
-            Exception ex, Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {
+            Exception ex,
+            Object body,
+            HttpHeaders headers,
+            HttpStatusCode statusCode,
+            WebRequest request) {
         HttpStatus status = HttpStatus.resolve(statusCode.value());
         if (status == null) {
             status = HttpStatus.INTERNAL_SERVER_ERROR;
         }
+
+        String message;
         if (status.is5xxServerError()) {
-            log.error("Spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage(), ex);
+            log.error("Spring MVC exception on {} ({})",
+                    requestPath(request), ex.getClass().getName(), ex);
+            message = internalMessage();
         } else {
-            log.warn("Spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage());
+            log.warn("Spring MVC client exception on {}: {} ({})",
+                    requestPath(request), status.value(), ex.getClass().getSimpleName());
+            message = clientMessage(ex.getMessage(), status);
         }
-        Map<String, Object> errorBody = new LinkedHashMap<>();
-        errorBody.put("timestamp", Instant.now().toString());
-        errorBody.put("status", status.value());
-        errorBody.put("error", status.getReasonPhrase());
-        errorBody.put("message", ex.getMessage());
-        errorBody.put("path", request.getDescription(false).replace("uri=", ""));
+
+        Map<String, Object> errorBody = errorBody(status, message, request);
         return ResponseEntity.status(status).headers(headers).body(errorBody);
     }
 
-    private ResponseEntity<Map<String, Object>> buildErrorResponse(HttpStatus status, String message, WebRequest request) {
+    private String internalMessage() {
+        Locale locale = LocaleContextHolder.getLocale();
+        return messageSource.getMessage(
+                "error.internal",
+                null,
+                DEFAULT_INTERNAL_MESSAGE,
+                locale);
+    }
+
+    private static String clientMessage(String message, HttpStatus fallbackStatus) {
+        return message == null || message.isBlank()
+                ? fallbackStatus.getReasonPhrase()
+                : message;
+    }
+
+    private static String requestPath(WebRequest request) {
+        String description = request.getDescription(false);
+        return description.startsWith("uri=")
+                ? description.substring("uri=".length())
+                : description;
+    }
+
+    private ResponseEntity<Map<String, Object>> buildErrorResponse(
+            HttpStatus status,
+            String message,
+            WebRequest request) {
+        return ResponseEntity.status(status).body(errorBody(status, message, request));
+    }
+
+    private static Map<String, Object> errorBody(
+            HttpStatus status,
+            String message,
+            WebRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());
         body.put("status", status.value());
         body.put("error", status.getReasonPhrase());
         body.put("message", message);
-        body.put("path", request.getDescription(false).replace("uri=", ""));
-        return ResponseEntity.status(status).body(body);
+        body.put("path", requestPath(request));
+        return body;
     }
 }
