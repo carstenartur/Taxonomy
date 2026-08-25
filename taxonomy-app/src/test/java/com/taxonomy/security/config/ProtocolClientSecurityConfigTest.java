@@ -4,6 +4,7 @@ import com.taxonomy.security.keycloak.KeycloakAuthenticationEntryPoint;
 import com.taxonomy.security.keycloak.KeycloakJwtAuthConverter;
 import com.taxonomy.security.keycloak.KeycloakLogoutHandler;
 import com.taxonomy.security.keycloak.KeycloakOidcUserService;
+import com.taxonomy.shared.config.RateLimitFilter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
@@ -21,6 +22,7 @@ import org.springframework.security.config.annotation.web.configurers.oauth2.cli
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.resource.OAuth2ResourceServerConfigurer;
 import org.springframework.security.web.DefaultSecurityFilterChain;
 import org.springframework.security.web.header.HeaderWriterFilter;
+import org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter;
 
 import java.lang.reflect.Method;
 
@@ -46,6 +48,8 @@ class ProtocolClientSecurityConfigTest {
     private KeycloakLogoutHandler logoutHandler;
     @Mock
     private KeycloakAuthenticationEntryPoint authenticationEntryPoint;
+    @Mock
+    private RateLimitFilter rateLimitFilter;
 
     @Test
     void formLoginTreatsOnlyExplicitlyAuthenticatedApiAndWebDavCallsAsStateless() {
@@ -66,7 +70,7 @@ class ProtocolClientSecurityConfigTest {
     }
 
     @Test
-    void keycloakChainConfiguresBearerWebDavAndBrowserCallbackRules() throws Exception {
+    void keycloakChainConfiguresBearerWebDavBrowserAndRateLimitRules() throws Exception {
         StaticApplicationContext context = new StaticApplicationContext();
         HttpSecurity http = mock(HttpSecurity.class, Answers.RETURNS_SELF);
         DefaultSecurityFilterChain chain = mock(DefaultSecurityFilterChain.class);
@@ -91,10 +95,15 @@ class ProtocolClientSecurityConfigTest {
                 jwtAuthConverter,
                 oidcUserService,
                 logoutHandler,
-                authenticationEntryPoint);
+                authenticationEntryPoint,
+                null,
+                rateLimitFilter);
 
         assertThat(config.securityFilterChain(http)).isSameAs(chain);
         verify(authorizationRules).configure(null);
+        verify(http).addFilterAfter(
+                rateLimitFilter,
+                SecurityContextHolderAwareRequestFilter.class);
 
         assertThat(invokeBoolean(
                 "isStatelessBearerProtocolClient",
