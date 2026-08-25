@@ -110,7 +110,7 @@ class ProductionPersistenceRestartIT {
         return ContainerTestUtils.appContainer()
                 .withCreateContainerCmdModifier(command -> command.getHostConfig()
                         .withBinds(new Bind(dataVolume, new Volume("/app/data"))))
-                .waitingFor(Wait.forHttp("/actuator/health")
+                .waitingFor(Wait.forHttp("/actuator/health/readiness")
                         .forStatusCode(200)
                         .forPort(8080)
                         .withStartupTimeout(PRODUCTION_STARTUP_TIMEOUT))
