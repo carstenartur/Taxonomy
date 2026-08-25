@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 
-test('clears a restored draft and normalizes the role task to the list view', async () => {
+test('loads the server revision before clearing a restored draft and normalizes the role task', async () => {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
   const previousEvent = globalThis.Event;
   const calls = [];
   let stale = true;
   let currentStage = 'analyze';
+  let restoring = false;
+  let conflict = false;
 
   const input = {
     value: 'Restored requirement from another browser profile',
@@ -53,7 +55,13 @@ test('clears a restored draft and normalizes the role task to the list view', as
       }
     },
     TaxonomyAnalysisSession: {
-      state: () => ({ restoring: false }),
+      state: () => ({ restoring, conflict }),
+      async reload() {
+        calls.push('reload');
+        restoring = true;
+        conflict = false;
+        restoring = false;
+      },
       invalidate(options) {
         calls.push({ invalidate: options });
         input.value = '';
@@ -96,6 +104,7 @@ test('clears a restored draft and normalizes the role task to the list view', as
   }
 
   assert.deepEqual(calls, [
+    'reload',
     {
       invalidate: {
         keepText: false,
