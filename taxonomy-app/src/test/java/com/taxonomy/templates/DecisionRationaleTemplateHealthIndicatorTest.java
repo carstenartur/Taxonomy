@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 class DecisionRationaleTemplateHealthIndicatorTest {
 
     @Test
-    void invalidTemplateDegradesOnlyTheReportCapability() {
+    void invalidTemplateDegradesOnlyTheReportCapability() throws Exception {
         DocumentTemplateService templates = mock(DocumentTemplateService.class);
         when(templates.downloadCurrentValidated(
                 DecisionRationaleTemplateContract.TEMPLATE_ID))
