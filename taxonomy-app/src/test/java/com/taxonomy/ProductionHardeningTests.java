@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Tests for {@link com.taxonomy.shared.config.RateLimitFilter} and
+ * Integration tests for {@link RateLimitFilter} and
  * {@link com.taxonomy.shared.config.GlobalExceptionHandler}.
  */
 @SpringBootTest
@@ -58,26 +58,19 @@ class ProductionHardeningTests {
 
     @BeforeEach
     void resetCounters() {
-        // Preserve normal fallback behaviour for unrelated preference lookups.
         when(preferencesService.getInt(anyString(), anyInt()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
         when(preferencesService.getString(anyString(), anyString()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
         when(preferencesService.getBoolean(anyString(), anyBoolean()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
-        // Pin the runtime preference that has precedence over the test property.
         when(preferencesService.getInt("rate-limit.per-minute", 3)).thenReturn(3);
-
-        // Clear the per-IP counters between tests to avoid cross-test interference.
         rateLimitFilter.clearCounters();
     }
 
-    // ── RateLimitFilter Tests ────────────────────────────────────────────────
-
     @Test
     void rateLimitFilterAllowsRequestsUnderLimit() throws Exception {
-        // With limit=3, first 3 requests should succeed
-        for (int i = 0; i < 3; i++) {
+        for (int index = 0; index < 3; index++) {
             mockMvc.perform(get("/api/analyze-node")
                             .param("parentCode", "BP")
                             .param("businessText", "test requirement")
@@ -88,38 +81,34 @@ class ProductionHardeningTests {
 
     @Test
     void rateLimitFilterBlocks429AfterLimitExceeded() throws Exception {
-        // Exhaust the limit (3 requests)
-        for (int i = 0; i < 3; i++) {
+        for (int index = 0; index < 3; index++) {
             mockMvc.perform(get("/api/analyze-node")
                             .param("parentCode", "BP")
                             .param("businessText", "test requirement")
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk());
         }
-        // 4th request should be rate limited
         mockMvc.perform(get("/api/analyze-node")
                         .param("parentCode", "BP")
                         .param("businessText", "test requirement")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().is(429));
+                .andExpect(status().isTooManyRequests());
     }
 
     @Test
     void rateLimitFilter429ResponseContainsJsonError() throws Exception {
-        // Exhaust the limit
-        for (int i = 0; i < 3; i++) {
+        for (int index = 0; index < 3; index++) {
             mockMvc.perform(get("/api/analyze-node")
                             .param("parentCode", "BP")
                             .param("businessText", "test")
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk());
         }
-        // 4th should be rate limited with JSON body
         mockMvc.perform(get("/api/analyze-node")
                         .param("parentCode", "BP")
                         .param("businessText", "test")
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().is(429))
+                .andExpect(status().isTooManyRequests())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.error").isString())
                 .andExpect(jsonPath("$.status").value(429));
@@ -127,35 +116,19 @@ class ProductionHardeningTests {
 
     @Test
     void rateLimitFilterDoesNotAffectNonLlmEndpoints() throws Exception {
-        // Non-LLM endpoints like /api/taxonomy should never be rate-limited
-        // even when the limit has been exhausted for LLM endpoints
-        for (int i = 0; i < 5; i++) {
+        for (int index = 0; index < 5; index++) {
             mockMvc.perform(get("/api/taxonomy").accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk());
         }
     }
 
     @Test
-    void rateLimitWindowCounterResetsAfterMinute() {
-        // Rate limit is 3 in this test context. Exhaust the limit.
-        // Then verify the /api/taxonomy endpoint (not rate-limited) still works to confirm
-        // other endpoints are unaffected regardless of counter state.
-        assertThat(rateLimitFilter).isNotNull();
-        // Verify the filter is properly configured with the test property value
-        // (indirectly verified by the 429 test above passing with limit=3)
-    }
-
-    @Test
     void rateLimitFilterBeanIsRegistered() {
-        // Verify the filter bean is properly instantiated in the application context
         assertThat(rateLimitFilter).isNotNull();
     }
-
-    // ── GlobalExceptionHandler Tests ─────────────────────────────────────────
 
     @Test
     void illegalArgumentExceptionReturnsBadRequestJson() throws Exception {
-        // /api/search with blank query triggers IllegalArgumentException in SearchService
         mockMvc.perform(get("/api/search")
                         .param("q", "")
                         .accept(MediaType.APPLICATION_JSON))
@@ -164,7 +137,6 @@ class ProductionHardeningTests {
 
     @Test
     void analyzeEndpointReturnsBadRequestForEmptyText() throws Exception {
-        // Empty businessText should return 400 (not a stack trace)
         mockMvc.perform(post("/api/analyze")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"businessText\":\"\"}"))
