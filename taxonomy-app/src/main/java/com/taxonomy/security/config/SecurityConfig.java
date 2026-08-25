@@ -1,6 +1,7 @@
 package com.taxonomy.security.config;
 
 import com.taxonomy.security.webdav.WebDavApplicationCredentialFilter;
+import com.taxonomy.shared.config.RateLimitFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -11,6 +12,7 @@ import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -25,22 +27,33 @@ public class SecurityConfig {
     private final AuthorizationRulesConfigurer authRules;
     private final PasswordChangeRequiredFilter passwordChangeRequiredFilter;
     private final WebDavApplicationCredentialFilter webDavCredentialFilter;
+    private final RateLimitFilter rateLimitFilter;
 
     @Autowired
     public SecurityConfig(
             AuthorizationRulesConfigurer authRules,
             PasswordChangeRequiredFilter passwordChangeRequiredFilter,
-            WebDavApplicationCredentialFilter webDavCredentialFilter) {
+            WebDavApplicationCredentialFilter webDavCredentialFilter,
+            RateLimitFilter rateLimitFilter) {
         this.authRules = authRules;
         this.passwordChangeRequiredFilter = passwordChangeRequiredFilter;
         this.webDavCredentialFilter = webDavCredentialFilter;
+        this.rateLimitFilter = rateLimitFilter;
     }
 
     /** Backward-compatible constructor for focused configuration tests. */
     SecurityConfig(
             AuthorizationRulesConfigurer authRules,
             PasswordChangeRequiredFilter passwordChangeRequiredFilter) {
-        this(authRules, passwordChangeRequiredFilter, null);
+        this(authRules, passwordChangeRequiredFilter, null, null);
+    }
+
+    /** Backward-compatible constructor for tests of the WebDAV filter boundary. */
+    SecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            PasswordChangeRequiredFilter passwordChangeRequiredFilter,
+            WebDavApplicationCredentialFilter webDavCredentialFilter) {
+        this(authRules, passwordChangeRequiredFilter, webDavCredentialFilter, null);
     }
 
     @Bean
@@ -67,6 +80,11 @@ public class SecurityConfig {
             http.addFilterBefore(webDavCredentialFilter, BasicAuthenticationFilter.class);
         }
         http.addFilterAfter(passwordChangeRequiredFilter, BasicAuthenticationFilter.class);
+        if (rateLimitFilter != null) {
+            // Authorization must succeed before a request may consume quota or
+            // allocate per-principal state.
+            http.addFilterAfter(rateLimitFilter, AuthorizationFilter.class);
+        }
         return http.build();
     }
 
