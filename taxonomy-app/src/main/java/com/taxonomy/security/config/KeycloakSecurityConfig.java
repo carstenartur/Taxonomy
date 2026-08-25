@@ -5,6 +5,7 @@ import com.taxonomy.security.keycloak.KeycloakJwtAuthConverter;
 import com.taxonomy.security.keycloak.KeycloakLogoutHandler;
 import com.taxonomy.security.keycloak.KeycloakOidcUserService;
 import com.taxonomy.security.webdav.WebDavApplicationCredentialFilter;
+import com.taxonomy.shared.config.RateLimitFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +19,7 @@ import org.springframework.security.oauth2.server.resource.web.authentication.Be
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.HeaderWriterFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
@@ -33,6 +35,7 @@ public class KeycloakSecurityConfig {
     private final KeycloakLogoutHandler logoutHandler;
     private final KeycloakAuthenticationEntryPoint authenticationEntryPoint;
     private final WebDavApplicationCredentialFilter webDavCredentialFilter;
+    private final RateLimitFilter rateLimitFilter;
 
     @Autowired
     public KeycloakSecurityConfig(
@@ -41,13 +44,15 @@ public class KeycloakSecurityConfig {
             KeycloakOidcUserService oidcUserService,
             KeycloakLogoutHandler logoutHandler,
             KeycloakAuthenticationEntryPoint authenticationEntryPoint,
-            WebDavApplicationCredentialFilter webDavCredentialFilter) {
+            WebDavApplicationCredentialFilter webDavCredentialFilter,
+            RateLimitFilter rateLimitFilter) {
         this.authRules = authRules;
         this.jwtAuthConverter = jwtAuthConverter;
         this.oidcUserService = oidcUserService;
         this.logoutHandler = logoutHandler;
         this.authenticationEntryPoint = authenticationEntryPoint;
         this.webDavCredentialFilter = webDavCredentialFilter;
+        this.rateLimitFilter = rateLimitFilter;
     }
 
     /** Backward-compatible constructor for focused security configuration tests. */
@@ -58,7 +63,19 @@ public class KeycloakSecurityConfig {
             KeycloakLogoutHandler logoutHandler,
             KeycloakAuthenticationEntryPoint authenticationEntryPoint) {
         this(authRules, jwtAuthConverter, oidcUserService, logoutHandler,
-                authenticationEntryPoint, null);
+                authenticationEntryPoint, null, null);
+    }
+
+    /** Backward-compatible constructor for WebDAV security tests. */
+    public KeycloakSecurityConfig(
+            AuthorizationRulesConfigurer authRules,
+            KeycloakJwtAuthConverter jwtAuthConverter,
+            KeycloakOidcUserService oidcUserService,
+            KeycloakLogoutHandler logoutHandler,
+            KeycloakAuthenticationEntryPoint authenticationEntryPoint,
+            WebDavApplicationCredentialFilter webDavCredentialFilter) {
+        this(authRules, jwtAuthConverter, oidcUserService, logoutHandler,
+                authenticationEntryPoint, webDavCredentialFilter, null);
     }
 
     @Bean
@@ -90,6 +107,13 @@ public class KeycloakSecurityConfig {
         if (webDavCredentialFilter != null) {
             http.addFilterBefore(
                     webDavCredentialFilter, BearerTokenAuthenticationFilter.class);
+        }
+        if (rateLimitFilter != null) {
+            // This point is after session/OIDC/Bearer authentication and after the
+            // request wrapper that exposes the SecurityContext principal.
+            http.addFilterAfter(
+                    rateLimitFilter,
+                    SecurityContextHolderAwareRequestFilter.class);
         }
         return http.build();
     }
