@@ -3,9 +3,9 @@ package com.taxonomy.security.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -41,11 +41,13 @@ public class ProductionSecurityGuard implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments arguments) {
-        requireStrongSecret(adminPassword, "TAXONOMY_ADMIN_PASSWORD");
+        String canonicalAdminPassword = requireStrongSecret(
+                adminPassword, "TAXONOMY_ADMIN_PASSWORD");
 
         if (adminToken != null && !adminToken.isBlank()) {
-            requireStrongSecret(adminToken, "ADMIN_PASSWORD");
-            if (constantTimeEquals(adminPassword, adminToken)) {
+            String canonicalAdminToken = requireStrongSecret(
+                    adminToken, "ADMIN_PASSWORD");
+            if (constantTimeEquals(canonicalAdminPassword, canonicalAdminToken)) {
                 throw new IllegalStateException(
                         "Production startup refused: ADMIN_PASSWORD must be a distinct "
                                 + "machine token and must not reuse TAXONOMY_ADMIN_PASSWORD.");
@@ -53,24 +55,36 @@ public class ProductionSecurityGuard implements ApplicationRunner {
         }
     }
 
-    private static void requireStrongSecret(
+    private static String requireStrongSecret(
             String value,
             String environmentVariable) {
-        String normalized = value == null
-                ? ""
-                : value.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isEmpty()
-                || FORBIDDEN_PASSWORDS.contains(normalized)
+        if (value == null) {
+            throw unsafeSecret(environmentVariable);
+        }
+
+        String canonical = value.strip();
+        if (canonical.isEmpty()) {
+            throw unsafeSecret(environmentVariable);
+        }
+        if (!canonical.equals(value)) {
+            throw new IllegalStateException(
+                    "Production startup refused: " + environmentVariable
+                            + " must not start or end with whitespace.");
+        }
+
+        String normalized = canonical.toLowerCase(Locale.ROOT);
+        if (FORBIDDEN_PASSWORDS.contains(normalized)
                 || normalized.startsWith("replace-with-")
                 || normalized.startsWith("change-me-to-")) {
             throw unsafeSecret(environmentVariable);
         }
-        if (value.length() < MINIMUM_SECRET_LENGTH) {
+        if (canonical.length() < MINIMUM_SECRET_LENGTH) {
             throw new IllegalStateException(
                     "Production startup refused: " + environmentVariable
                             + " must contain at least " + MINIMUM_SECRET_LENGTH
                             + " characters.");
         }
+        return canonical;
     }
 
     private static IllegalStateException unsafeSecret(String environmentVariable) {
