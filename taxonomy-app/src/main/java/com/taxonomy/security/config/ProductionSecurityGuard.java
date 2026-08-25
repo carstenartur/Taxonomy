@@ -3,9 +3,9 @@ package com.taxonomy.security.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -41,11 +41,17 @@ public class ProductionSecurityGuard implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments arguments) {
-        requireStrongSecret(adminPassword, "TAXONOMY_ADMIN_PASSWORD");
+        String canonicalAdminPassword = requireStrongSecret(
+                adminPassword,
+                "TAXONOMY_ADMIN_PASSWORD",
+                false);
 
-        if (adminToken != null && !adminToken.isBlank()) {
-            requireStrongSecret(adminToken, "ADMIN_PASSWORD");
-            if (constantTimeEquals(adminPassword, adminToken)) {
+        if (adminToken != null && !adminToken.isEmpty()) {
+            String canonicalAdminToken = requireStrongSecret(
+                    adminToken,
+                    "ADMIN_PASSWORD",
+                    true);
+            if (constantTimeEquals(canonicalAdminPassword, canonicalAdminToken)) {
                 throw new IllegalStateException(
                         "Production startup refused: ADMIN_PASSWORD must be a distinct "
                                 + "machine token and must not reuse TAXONOMY_ADMIN_PASSWORD.");
@@ -53,24 +59,72 @@ public class ProductionSecurityGuard implements ApplicationRunner {
         }
     }
 
-    private static void requireStrongSecret(
+    private static String requireStrongSecret(
             String value,
-            String environmentVariable) {
-        String normalized = value == null
-                ? ""
-                : value.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isEmpty()
-                || FORBIDDEN_PASSWORDS.contains(normalized)
+            String environmentVariable,
+            boolean transportToken) {
+        if (value == null || value.isEmpty()) {
+            throw unsafeSecret(environmentVariable);
+        }
+        if (hasUnsafeEdgeCharacter(value)) {
+            throw new IllegalStateException(
+                    "Production startup refused: " + environmentVariable
+                            + " must not start or end with whitespace, control, "
+                            + "or formatting characters.");
+        }
+        if (value.codePoints().anyMatch(
+                codePoint -> isInvisibleOrLineBreaking(codePoint)
+                        || isNonAsciiSeparator(codePoint))) {
+            throw new IllegalStateException(
+                    "Production startup refused: " + environmentVariable
+                            + " must not contain control, formatting, line-breaking, "
+                            + "or non-ASCII separator characters.");
+        }
+        if (transportToken && value.codePoints().anyMatch(
+                codePoint -> codePoint == ' ' || Character.isWhitespace(codePoint))) {
+            throw new IllegalStateException(
+                    "Production startup refused: ADMIN_PASSWORD must not contain "
+                            + "whitespace because it is used as an HTTP machine token.");
+        }
+
+        String normalized = value.toLowerCase(Locale.ROOT);
+        if (FORBIDDEN_PASSWORDS.contains(normalized)
                 || normalized.startsWith("replace-with-")
                 || normalized.startsWith("change-me-to-")) {
             throw unsafeSecret(environmentVariable);
         }
-        if (value.length() < MINIMUM_SECRET_LENGTH) {
+        if (value.codePointCount(0, value.length()) < MINIMUM_SECRET_LENGTH) {
             throw new IllegalStateException(
                     "Production startup refused: " + environmentVariable
                             + " must contain at least " + MINIMUM_SECRET_LENGTH
                             + " characters.");
         }
+        return value;
+    }
+
+    private static boolean hasUnsafeEdgeCharacter(String value) {
+        int first = value.codePointAt(0);
+        int last = value.codePointBefore(value.length());
+        return first == ' '
+                || last == ' '
+                || Character.isWhitespace(first)
+                || Character.isWhitespace(last)
+                || Character.isSpaceChar(first)
+                || Character.isSpaceChar(last)
+                || isInvisibleOrLineBreaking(first)
+                || isInvisibleOrLineBreaking(last);
+    }
+
+    private static boolean isInvisibleOrLineBreaking(int codePoint) {
+        int type = Character.getType(codePoint);
+        return Character.isISOControl(codePoint)
+                || type == Character.FORMAT
+                || type == Character.LINE_SEPARATOR
+                || type == Character.PARAGRAPH_SEPARATOR;
+    }
+
+    private static boolean isNonAsciiSeparator(int codePoint) {
+        return codePoint != ' ' && Character.getType(codePoint) == Character.SPACE_SEPARATOR;
     }
 
     private static IllegalStateException unsafeSecret(String environmentVariable) {
