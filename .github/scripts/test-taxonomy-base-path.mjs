@@ -20,6 +20,14 @@ const sessionLoaderSource = await readFile(
   ),
   'utf8'
 );
+const sessionContextPathRoutingSource = await readFile(
+  new URL(
+    '../../taxonomy-app/src/main/resources/static/js/core/' +
+      'taxonomy-analysis-session-context-path-routing.js',
+    import.meta.url
+  ),
+  'utf8'
+);
 const sessionProjectsSource = await readFile(
   new URL(
     '../../taxonomy-app/src/main/resources/static/js/core/' +
@@ -152,6 +160,54 @@ function loadOrderedSessionParts() {
   return appendedScripts;
 }
 
+function contextPathRoutingRuntime() {
+  const fetchCalls = [];
+  const eventSourceCalls = [];
+  const nativeFetch = async (input, init) => {
+    fetchCalls.push({ input, init });
+    return { ok: true };
+  };
+
+  class NativeEventSource {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSED = 2;
+
+    constructor(url, configuration) {
+      this.url = url;
+      this.configuration = configuration;
+      eventSourceCalls.push({ url, configuration });
+    }
+  }
+
+  const analysisContext = {
+    runtime: { workspaceId: 'workspace-42' },
+    installWorkspaceFetchRouting: () => undefined,
+    installWorkspaceEventSourceRouting: () => undefined
+  };
+  const window = {
+    __TaxonomyAnalysisSessionContext: analysisContext,
+    TaxonomyI18n: { resolveUrl: resolvePrefixed },
+    location: {
+      href: 'https://taxonomy.example.test/taxonomy/',
+      origin: 'https://taxonomy.example.test'
+    },
+    fetch: nativeFetch,
+    EventSource: NativeEventSource,
+    console
+  };
+  vm.runInNewContext(sessionContextPathRoutingSource, {
+    window,
+    console,
+    URL,
+    Headers,
+    Request,
+    Object,
+    String
+  }, { filename: 'taxonomy-analysis-session-context-path-routing.js' });
+  return { window, analysisContext, fetchCalls, eventSourceCalls };
+}
+
 async function promotedNavigationTarget() {
   const assigned = [];
   const invalidations = [];
@@ -258,6 +314,62 @@ async function promotedNavigationTarget() {
     '/taxonomy/js/core/taxonomy-analysis-session-draft.js',
     '/taxonomy/js/core/taxonomy-analysis-session-projects.js'
   ]);
+}
+
+{
+  const runtime = contextPathRoutingRuntime();
+  runtime.analysisContext.installWorkspaceFetchRouting();
+  const installedFetch = runtime.window.fetch;
+  runtime.analysisContext.installWorkspaceFetchRouting();
+  assert.equal(runtime.window.fetch, installedFetch);
+  assert.equal(installedFetch.__taxonomyWorkspaceRouting, true);
+  assert.equal(installedFetch.__taxonomyContextPathWorkspaceRouting, true);
+
+  await runtime.window.fetch('/taxonomy/api/status', {
+    headers: { 'X-Caller': 'preserved' }
+  });
+  const request = new Request(
+    'https://taxonomy.example.test/taxonomy/api/request', {
+      headers: { 'X-Request': 'request-header' }
+    }
+  );
+  await runtime.window.fetch(request, {
+    headers: { 'X-Init': 'init-header' }
+  });
+  await runtime.window.fetch('/api/status', {
+    headers: { 'X-Root': 'root-header' }
+  });
+  await runtime.window.fetch('https://provider.example.test/v1/status');
+
+  const prefixedHeaders = new Headers(runtime.fetchCalls[0].init.headers);
+  assert.equal(prefixedHeaders.get('X-Taxonomy-Workspace-Id'), 'workspace-42');
+  assert.equal(prefixedHeaders.get('X-Caller'), 'preserved');
+  const requestHeaders = new Headers(runtime.fetchCalls[1].init.headers);
+  assert.equal(requestHeaders.get('X-Taxonomy-Workspace-Id'), 'workspace-42');
+  assert.equal(requestHeaders.get('X-Request'), 'request-header');
+  assert.equal(requestHeaders.get('X-Init'), 'init-header');
+  assert.equal(
+    new Headers(runtime.fetchCalls[2].init.headers).get('X-Taxonomy-Workspace-Id'),
+    null
+  );
+  assert.equal(runtime.fetchCalls[3].init.headers, undefined);
+
+  runtime.analysisContext.installWorkspaceEventSourceRouting();
+  const InstalledEventSource = runtime.window.EventSource;
+  runtime.analysisContext.installWorkspaceEventSourceRouting();
+  assert.equal(runtime.window.EventSource, InstalledEventSource);
+  assert.equal(InstalledEventSource.__taxonomyWorkspaceRouting, true);
+  assert.equal(InstalledEventSource.__taxonomyContextPathWorkspaceRouting, true);
+
+  new runtime.window.EventSource('/taxonomy/api/analyze-stream?existing=1');
+  new runtime.window.EventSource('/api/analyze-stream');
+  new runtime.window.EventSource('https://provider.example.test/events');
+  const prefixedEventUrl = new URL(runtime.eventSourceCalls[0].url);
+  assert.equal(prefixedEventUrl.pathname, '/taxonomy/api/analyze-stream');
+  assert.equal(prefixedEventUrl.searchParams.get('existing'), '1');
+  assert.equal(prefixedEventUrl.searchParams.get('workspaceId'), 'workspace-42');
+  assert.equal(runtime.eventSourceCalls[1].url, '/api/analyze-stream');
+  assert.equal(runtime.eventSourceCalls[2].url, 'https://provider.example.test/events');
 }
 
 {
