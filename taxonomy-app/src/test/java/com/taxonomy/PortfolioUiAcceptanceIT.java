@@ -456,7 +456,10 @@ class PortfolioUiAcceptanceIT {
     }
 
     private static void waitUntilPortfolioIdle() {
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("portfolioBusy")));
+        wait.until(browser -> {
+            String classes = browser.findElement(By.id("portfolioBusy")).getAttribute("class");
+            return classes != null && classes.contains("d-none");
+        });
     }
 
     /**
