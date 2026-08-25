@@ -61,7 +61,8 @@ public class ProductionSecurityGuard implements ApplicationRunner {
                 : value.trim().toLowerCase(Locale.ROOT);
         if (normalized.isEmpty()
                 || FORBIDDEN_PASSWORDS.contains(normalized)
-                || normalized.startsWith("replace-with-")) {
+                || normalized.startsWith("replace-with-")
+                || normalized.startsWith("change-me-to-")) {
             throw unsafeSecret(environmentVariable);
         }
         if (value.length() < MINIMUM_SECRET_LENGTH) {

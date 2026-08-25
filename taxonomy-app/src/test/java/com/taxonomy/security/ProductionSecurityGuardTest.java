@@ -25,6 +25,8 @@ class ProductionSecurityGuardTest {
             "password",
             "changeme",
             "change-me",
+            "change-me-to-a-strong-password",
+            "CHANGE-ME-TO-ANOTHER-DOCUMENTED-PLACEHOLDER",
             "replace-with-a-long-random-password",
             "replace-with-a-unique-random-password",
             "replace-with-a-long-random-login-password",
@@ -40,6 +42,7 @@ class ProductionSecurityGuardTest {
     @ValueSource(strings = {
             "admin",
             "password",
+            "change-me-to-a-strong-machine-token",
             "replace-with-a-different-long-random-machine-token",
             "REPLACE-WITH-ANOTHER-MACHINE-TOKEN"
     })
