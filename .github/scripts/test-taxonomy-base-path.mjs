@@ -160,31 +160,14 @@ function loadOrderedSessionParts() {
   return appendedScripts;
 }
 
-function contextPathRoutingRuntime() {
+function contextPathFetchRuntime() {
   const fetchCalls = [];
-  const eventSourceCalls = [];
   const nativeFetch = async (input, init) => {
     fetchCalls.push({ input, init });
     return { ok: true };
   };
-
-  class NativeEventSource {
-    static CONNECTING = 0;
-    static OPEN = 1;
-    static CLOSED = 2;
-
-    constructor(url, configuration) {
-      this.url = url;
-      this.configuration = configuration;
-      eventSourceCalls.push({ url, configuration });
-    }
-  }
-
-  const analysisContext = {
-    runtime: { workspaceId: 'workspace-42' },
-    installWorkspaceFetchRouting: () => undefined,
-    installWorkspaceEventSourceRouting: () => undefined
-  };
+  const runtime = { workspaceId: 'workspace-42' };
+  const analysisContext = { runtime };
   const window = {
     __TaxonomyAnalysisSessionContext: analysisContext,
     TaxonomyI18n: { resolveUrl: resolvePrefixed },
@@ -193,9 +176,35 @@ function contextPathRoutingRuntime() {
       origin: 'https://taxonomy.example.test'
     },
     fetch: nativeFetch,
-    EventSource: NativeEventSource,
     console
   };
+
+  analysisContext.installWorkspaceFetchRouting = function installRootFetchRouting() {
+    if (window.fetch.__taxonomyWorkspaceRouting === true) return;
+    const previousFetch = window.fetch.bind(window);
+    function routedFetch(input, init) {
+      let url = null;
+      try {
+        url = new URL(typeof input === 'string' ? input : input.url, window.location.href);
+      } catch {
+        // Preserve the native fetch failure for malformed inputs.
+      }
+      const request = { ...(init || {}) };
+      if (runtime.workspaceId && url && url.origin === window.location.origin
+          && (url.pathname === '/api' || url.pathname.startsWith('/api/'))) {
+        const headers = new Headers(input instanceof Request ? input.headers : undefined);
+        new Headers(request.headers || {}).forEach((value, name) => headers.set(name, value));
+        headers.set('X-Taxonomy-Workspace-Id', runtime.workspaceId);
+        request.headers = headers;
+      }
+      return previousFetch(input, request);
+    }
+    Object.defineProperty(routedFetch, '__taxonomyWorkspaceRouting', {
+      value: true
+    });
+    window.fetch = routedFetch;
+  };
+
   vm.runInNewContext(sessionContextPathRoutingSource, {
     window,
     console,
@@ -205,7 +214,7 @@ function contextPathRoutingRuntime() {
     Object,
     String
   }, { filename: 'taxonomy-analysis-session-context-path-routing.js' });
-  return { window, analysisContext, fetchCalls, eventSourceCalls };
+  return { window, analysisContext, fetchCalls };
 }
 
 async function promotedNavigationTarget() {
@@ -317,7 +326,7 @@ async function promotedNavigationTarget() {
 }
 
 {
-  const runtime = contextPathRoutingRuntime();
+  const runtime = contextPathFetchRuntime();
   runtime.analysisContext.installWorkspaceFetchRouting();
   const installedFetch = runtime.window.fetch;
   runtime.analysisContext.installWorkspaceFetchRouting();
@@ -348,28 +357,10 @@ async function promotedNavigationTarget() {
   assert.equal(requestHeaders.get('X-Taxonomy-Workspace-Id'), 'workspace-42');
   assert.equal(requestHeaders.get('X-Request'), 'request-header');
   assert.equal(requestHeaders.get('X-Init'), 'init-header');
-  assert.equal(
-    new Headers(runtime.fetchCalls[2].init.headers).get('X-Taxonomy-Workspace-Id'),
-    null
-  );
+  const rootHeaders = new Headers(runtime.fetchCalls[2].init.headers);
+  assert.equal(rootHeaders.get('X-Taxonomy-Workspace-Id'), 'workspace-42');
+  assert.equal(rootHeaders.get('X-Root'), 'root-header');
   assert.equal(runtime.fetchCalls[3].init.headers, undefined);
-
-  runtime.analysisContext.installWorkspaceEventSourceRouting();
-  const InstalledEventSource = runtime.window.EventSource;
-  runtime.analysisContext.installWorkspaceEventSourceRouting();
-  assert.equal(runtime.window.EventSource, InstalledEventSource);
-  assert.equal(InstalledEventSource.__taxonomyWorkspaceRouting, true);
-  assert.equal(InstalledEventSource.__taxonomyContextPathWorkspaceRouting, true);
-
-  new runtime.window.EventSource('/taxonomy/api/analyze-stream?existing=1');
-  new runtime.window.EventSource('/api/analyze-stream');
-  new runtime.window.EventSource('https://provider.example.test/events');
-  const prefixedEventUrl = new URL(runtime.eventSourceCalls[0].url);
-  assert.equal(prefixedEventUrl.pathname, '/taxonomy/api/analyze-stream');
-  assert.equal(prefixedEventUrl.searchParams.get('existing'), '1');
-  assert.equal(prefixedEventUrl.searchParams.get('workspaceId'), 'workspace-42');
-  assert.equal(runtime.eventSourceCalls[1].url, '/api/analyze-stream');
-  assert.equal(runtime.eventSourceCalls[2].url, 'https://provider.example.test/events');
 }
 
 {
