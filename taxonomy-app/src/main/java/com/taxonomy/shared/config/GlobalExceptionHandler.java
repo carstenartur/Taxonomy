@@ -23,7 +23,7 @@ import java.util.Map;
 
 /**
  * Global exception handler for all REST controllers.
- * Prevents stack traces from leaking to clients and returns
+ * Prevents stack traces and internal exception details from leaking to clients and returns
  * consistent JSON error responses.
  *
  * <p>Extends {@link ResponseEntityExceptionHandler} so that Spring MVC binding
@@ -90,10 +90,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex, WebRequest request) {
         log.error("Unhandled exception on {}: {}", request.getDescription(false), ex.getMessage(), ex);
-        Locale locale = LocaleContextHolder.getLocale();
-        String message = messageSource.getMessage("error.internal", null,
-                "An internal error occurred. Please try again or check the server logs.", locale);
-        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, message, request);
+        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, internalErrorMessage(), request);
     }
 
     /**
@@ -107,18 +104,29 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (status == null) {
             status = HttpStatus.INTERNAL_SERVER_ERROR;
         }
+
+        String message;
         if (status.is5xxServerError()) {
             log.error("Spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage(), ex);
+            message = internalErrorMessage();
         } else {
             log.warn("Spring MVC exception on {}: {}", request.getDescription(false), ex.getMessage());
+            message = ex.getMessage();
         }
+
         Map<String, Object> errorBody = new LinkedHashMap<>();
         errorBody.put("timestamp", Instant.now().toString());
         errorBody.put("status", status.value());
         errorBody.put("error", status.getReasonPhrase());
-        errorBody.put("message", ex.getMessage());
+        errorBody.put("message", message);
         errorBody.put("path", request.getDescription(false).replace("uri=", ""));
         return ResponseEntity.status(status).headers(headers).body(errorBody);
+    }
+
+    private String internalErrorMessage() {
+        Locale locale = LocaleContextHolder.getLocale();
+        return messageSource.getMessage("error.internal", null,
+                "An internal error occurred. Please try again or check the server logs.", locale);
     }
 
     private ResponseEntity<Map<String, Object>> buildErrorResponse(HttpStatus status, String message, WebRequest request) {
