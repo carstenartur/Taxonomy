@@ -251,6 +251,7 @@ async function promotedNavigationTarget() {
   assert.deepEqual(parts.map(script => script.src), [
     '/taxonomy/js/api/analysis-session-api.js',
     '/taxonomy/js/core/taxonomy-analysis-session-core.js',
+    '/taxonomy/js/core/taxonomy-analysis-session-context-path-routing.js',
     '/taxonomy/js/core/taxonomy-analysis-session-api-routing.js',
     '/taxonomy/js/core/taxonomy-analysis-session-transport.js',
     '/taxonomy/js/core/taxonomy-analysis-session-ui.js',
