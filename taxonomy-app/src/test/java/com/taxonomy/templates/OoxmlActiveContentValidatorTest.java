@@ -75,12 +75,14 @@ class OoxmlActiveContentValidatorTest {
     }
 
     @Test
-    void rejectsLiteralAndEncodedControlCharactersInAllowedHyperlinkSchemes() {
+    void rejectsLiteralEncodedAndDeeplyNestedControlsInAllowedSchemes() {
         for (String target : new String[]{
                 "mailto:office@example.org?subject=ok%0d%0abcc:attacker@example.org",
                 "https://example.org/help%09hidden",
                 "mailto:office@example.org?subject=ok%250d%250abcc:attacker@example.org",
-                "https://example.org/help\u007fhidden"}) {
+                "https://example.org/help%C2%85hidden",
+                "https://example.org/help\u007fhidden",
+                deeplyNestedControlTarget()}) {
             loadFreshParts();
             String rels = text("word/_rels/document.xml.rels");
             String relation = "<Relationship Id=\"unsafe\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\""
@@ -96,7 +98,7 @@ class OoxmlActiveContentValidatorTest {
     }
 
     @Test
-    void acceptsOrdinaryFieldsAndHttpsOrMailtoHyperlinks() {
+    void acceptsOrdinaryFieldsAndHttpsMailtoOrEncodedUnicodeHyperlinks() {
         String xml = text("word/document.xml");
         parts.put("word/document.xml", insertBefore(xml, "</w:body>",
                 "<w:p><w:fldSimple w:instr=\" PAGE \"/><w:fldSimple w:instr=\" NUMPAGES \"/>"
@@ -104,11 +106,20 @@ class OoxmlActiveContentValidatorTest {
                         + "<w:fldSimple w:instr=\" REF internalBookmark \"/></w:p>"));
         String rels = text("word/_rels/document.xml.rels");
         String links = "<Relationship Id=\"https\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"https://example.org/help\" TargetMode=\"External\"/>"
+                + "<Relationship Id=\"unicode\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"https://example.org/%C3%A4\" TargetMode=\"External\"/>"
                 + "<Relationship Id=\"mail\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"mailto:office@example.org\" TargetMode=\"External\"/>";
         parts.put("word/_rels/document.xml.rels",
                 insertBefore(rels, "</Relationships>", links));
 
         validator.validate(parts);
+    }
+
+    private static String deeplyNestedControlTarget() {
+        String encoded = "%0d";
+        for (int level = 0; level < 16; level++) {
+            encoded = encoded.replace("%", "%25");
+        }
+        return "https://example.org/help" + encoded;
     }
 
     private void loadFreshParts() {
