@@ -10,8 +10,13 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -35,9 +40,7 @@ public final class OoxmlActiveContentValidator {
             Set.of("https", "mailto");
     private static final Pattern URI_SCHEME = Pattern.compile(
             "^([A-Za-z][A-Za-z0-9+.-]*):");
-    private static final Pattern ENCODED_CONTROL = Pattern.compile(
-            "(?i)%(?:0[0-9a-f]|1[0-9a-f]|7f)");
-    private static final Pattern ENCODED_PERCENT = Pattern.compile("(?i)%25");
+    private static final int MAX_PERCENT_DECODE_ROUNDS = 8;
     private static final Pattern UNSAFE_FIELD = Pattern.compile(
             "(?i)(?<![A-Z0-9_])"
                     + "(DDEAUTO|DDE|INCLUDETEXT|INCLUDEPICTURE|LINK|DATABASE|"
@@ -105,7 +108,7 @@ public final class OoxmlActiveContentValidator {
     private static void validateExternalHyperlink(String path, String target) {
         if (target == null || target.isBlank()
                 || containsControlCharacter(target)
-                || containsEncodedControlCharacter(target)) {
+                || containsUnsafePercentEncoding(target)) {
             throw invalid("external hyperlink target is invalid in " + path);
         }
 
@@ -145,22 +148,73 @@ public final class OoxmlActiveContentValidator {
     }
 
     private static boolean containsControlCharacter(String value) {
-        return value.chars().anyMatch(character ->
-                character < 0x20 || character == 0x7f);
+        return value.codePoints().anyMatch(Character::isISOControl);
     }
 
-    private static boolean containsEncodedControlCharacter(String value) {
+    /**
+     * Decode valid percent-octet runs as strict UTF-8 and inspect every resulting layer.
+     * The bounded loop handles intentionally nested encodings without allowing an
+     * attacker-controlled quadratic decode chain. A ninth layer is rejected fail-closed.
+     */
+    private static boolean containsUnsafePercentEncoding(String value) {
         String normalized = value;
-        while (true) {
-            if (ENCODED_CONTROL.matcher(normalized).find()) {
+        for (int round = 0; round < MAX_PERCENT_DECODE_ROUNDS; round++) {
+            PercentDecodeResult decoded = decodePercentEscapes(normalized);
+            if (!decoded.valid()) {
                 return true;
             }
-            String decodedPercent = ENCODED_PERCENT.matcher(normalized).replaceAll("%");
-            if (decodedPercent.equals(normalized)) {
+            if (!decoded.changed()) {
                 return false;
             }
-            normalized = decodedPercent;
+            normalized = decoded.value();
+            if (containsControlCharacter(normalized)) {
+                return true;
+            }
         }
+        return decodePercentEscapes(normalized).changed();
+    }
+
+    private static PercentDecodeResult decodePercentEscapes(String value) {
+        StringBuilder decoded = new StringBuilder(value.length());
+        boolean changed = false;
+        for (int index = 0; index < value.length();) {
+            if (!isEncodedOctet(value, index)) {
+                decoded.append(value.charAt(index));
+                index++;
+                continue;
+            }
+
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            while (isEncodedOctet(value, index)) {
+                bytes.write((hex(value.charAt(index + 1)) << 4)
+                        | hex(value.charAt(index + 2)));
+                index += 3;
+            }
+            try {
+                decoded.append(StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                        .decode(ByteBuffer.wrap(bytes.toByteArray())));
+            } catch (CharacterCodingException exception) {
+                return new PercentDecodeResult(value, changed, false);
+            }
+            changed = true;
+        }
+        return new PercentDecodeResult(decoded.toString(), changed, true);
+    }
+
+    private static boolean isEncodedOctet(String value, int index) {
+        return index + 2 < value.length()
+                && value.charAt(index) == '%'
+                && hex(value.charAt(index + 1)) >= 0
+                && hex(value.charAt(index + 2)) >= 0;
+    }
+
+    private static int hex(char value) {
+        return Character.digit(value, 16);
+    }
+
+    private record PercentDecodeResult(String value, boolean changed, boolean valid) {
     }
 
     private static void validateWordFields(String path, byte[] content) {
