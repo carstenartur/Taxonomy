@@ -118,7 +118,8 @@ cannot be admitted share a fail-closed overflow budget instead of clearing exist
 lockouts. A blocked request receives UTF-8 JSON with HTTP 429, `Retry-After`, and
 `Cache-Control: no-store`. Operators must configure forwarding-header processing only
 behind a trusted ingress because the filter deliberately relies on the framework's
-`getRemoteAddr()` result and never parses forwarding headers itself.
+`getRemoteAddr()` result and never parses forwarding headers itself. The filter never
+logs the supplied Basic Authorization header or its credential contents.
 
 Taxonomy rejects macros, ActiveX, embedded OLE objects, signatures, unsafe ZIP paths,
 case-colliding package parts, malformed XML, external non-hyperlink relationships,
