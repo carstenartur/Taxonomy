@@ -53,7 +53,7 @@ Wenn `TAXONOMY_AUDIT_LOGGING=true` (Standard im Produktionsprofil):
 | Datenfeld | Zweck | Speicherort | Aufbewahrung |
 |---|---|---|---|
 | **Benutzername** | Zuordnung von Sicherheitsereignissen | Anwendungsprotokolle | Konfigurierbar |
-| **IP-Adresse** | Sicherheitsforensik, Brute-Force-Erkennung | Anwendungsprotokolle, In-Memory (Rate Limiter) | Log-Rotationsrichtlinie |
+| **IP-Adresse** | Sicherheitsforensik sowie Brute-Force-Erkennung für Anmeldung/WebDAV | Anwendungsprotokolle und flüchtiger Peer-Sperrzustand; das eingehende LLM-Kontingent verwendet keine IP-Adressen | Log-Rotationsrichtlinie / flüchtiger Speicher |
 | **Zeitstempel** | Ereignisreihenfolge | Anwendungsprotokolle | Log-Rotationsrichtlinie |
 | **Ereignistyp** | Compliance-Berichterstattung | Anwendungsprotokolle | Log-Rotationsrichtlinie |
 

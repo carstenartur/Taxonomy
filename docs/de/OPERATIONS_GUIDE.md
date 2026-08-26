@@ -321,8 +321,10 @@ Die Anwendung ist für den Betrieb als Einzelinstanz konzipiert. Die Mehrbenutze
 |---|---|---|---|
 | JVM-Heap | `JAVA_OPTS` | 220 MB | 1–2 GB für Produktion |
 | LLM-Ratenlimit | `TAXONOMY_LLM_RPM` | 5 | An Anbieterkontingent anpassen |
-| API-Ratenlimit | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | 10 | Bei hohem Datenverkehr erhöhen |
+| Eingehendes LLM-Kontingent | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | 10 | Je authentifizierter Identität und Anwendungsinstanz dimensionieren |
 | JDBC-Batch-Größe | `spring.jpa.properties.hibernate.jdbc.batch_size` | 50 | Für die meisten Workloads geeignet |
+
+Das eingehende LLM-Kontingent wird je Anwendungsinstanz im Arbeitsspeicher geführt. Lokale Benutzernamen und unveränderliche Keycloak-Identitäten aus `iss`/`sub` erhalten getrennte Budgets. Bei mehreren Replikaten ist für eine clusterweite Obergrenze ein verteilter Ingress-Begrenzer nötig; andernfalls wächst das Gesamtkontingent mit der Replikazahl.
 
 ### Reverse Proxy
 

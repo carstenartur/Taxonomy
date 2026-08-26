@@ -164,7 +164,7 @@ Der Standardwert für den eigenen Endpunkt ist `0`, also keine ausgehende RPM-Be
 
 ### Eingehende Ratenbegrenzung
 
-`TAXONOMY_RATE_LIMIT_PER_MINUTE` begrenzt eingehende LLM-gestützte Aufrufe pro Client und liefert bei Überschreitung HTTP `429`.
+`TAXONOMY_RATE_LIMIT_PER_MINUTE` begrenzt zugelassene LLM-gestützte Aufrufe je stabiler authentifizierter Identität. Lokale Konten verwenden ihren kanonischen Benutzernamen; Keycloak-Browser- und Bearer-Zugriffe teilen `iss`/`sub`. Abgewiesene Aufrufe, Forwarding-Header und Peer-Adressen definieren oder verbrauchen kein Budget. HTTP `429` enthält `Retry-After` und `Cache-Control: no-store`. Die In-Memory-Zähler gelten je Anwendungsinstanz, nicht clusterweit.
 
 ---
 
@@ -222,7 +222,7 @@ Selbst betriebene Modelle können beim erstmaligen Laden ein längeres Timeout b
 | `CUSTOM_LLM_URL` | Vollständiger eigener OpenAI-kompatibler Chat-Completions-Endpunkt |
 | `CUSTOM_LLM_MODEL` | An den eigenen Endpunkt gesendete Modellkennung |
 | `CUSTOM_LLM_API_KEY` | Optionaler Bearer-Token für den eigenen Endpunkt |
-| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Eingehendes Rate Limit für LLM-gestützte Endpunkte |
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Zugelassene LLM-Aufrufe je stabiler authentifizierter Identität und Minute |
 
 Die [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) enthält die maßgebliche Zuordnung zu Spring-Properties.
 

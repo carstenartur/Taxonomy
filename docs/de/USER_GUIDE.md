@@ -275,7 +275,7 @@ Wenn das LLM während der Analyse auf einen Fehler stößt, behandelt die Anwend
 | Fehler | Was Sie sehen | Was zu tun ist |
 |---|---|---|
 | **Verbindungs-Timeout** | Status zeigt „LLM-Verbindung abgelaufen" mit Teilergebnissen | Erneut versuchen — der LLM-Server kann vorübergehend überlastet sein |
-| **Ratenlimit (HTTP 429)** | Status zeigt „Ratenlimit überschritten" | 60 Sekunden warten und erneut versuchen |
+| **Ratenlimit (HTTP 429)** | Status zeigt „Ratenlimit überschritten" | Nach der im Antwort-Header `Retry-After` angegebenen Sekundenzahl erneut versuchen |
 | **Ungültiger API-Schlüssel** | Status zeigt „Authentifizierung fehlgeschlagen" | Überprüfen Sie Ihren API-Schlüssel in den Umgebungsvariablen |
 | **Teilweiser Fehler** | Einige Stämme wurden bewertet, andere zeigen Warnungen | Überprüfen Sie die Warnungen im Analyseprotokoll; Bewertungen für abgeschlossene Stämme sind weiterhin gültig |
 

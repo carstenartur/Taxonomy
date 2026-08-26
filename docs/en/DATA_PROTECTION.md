@@ -53,7 +53,7 @@ When `TAXONOMY_AUDIT_LOGGING=true` (default in production profile):
 | Data Field | Purpose | Storage | Retention |
 |---|---|---|---|
 | **Username** | Attribution of security events | Application logs | Configurable |
-| **IP address** | Security forensics, brute-force detection | Application logs, in-memory (rate limiter) | Log rotation policy |
+| **IP address** | Security forensics and authentication/WebDAV brute-force detection | Application logs and transient peer-lockout state; the incoming LLM quota does not use IP addresses | Log rotation policy / volatile memory |
 | **Timestamp** | Event ordering | Application logs | Log rotation policy |
 | **Event type** | Compliance reporting | Application logs | Log rotation policy |
 
