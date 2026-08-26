@@ -108,6 +108,26 @@ einen WebDAV-kompatiblen, begrenzten Zugang wie ein App-Passwort implementiert u
 getestet hat. WebDAV-Clients mit Bearer-Token-Unterstützung können den Endpunkt weiter
 verwenden.
 
+Taxonomy-App-Zugangsdaten haben genau ein 71 Zeichen langes ASCII-Format. Der
+WebDAV-Filter weist zu große Basic-Header, ungültiges UTF-8, zu lange decodierte
+Benutzernamen oder Passwörter sowie fehlerhafte `taxdav_`-Kandidaten vor
+Repository-Zugriff oder BCrypt zurück. Normale Kontopasswörter, die nicht mit
+`taxdav_` beginnen, laufen weiterhin durch den gewöhnlichen HTTP-Basic-Pfad von
+Spring Security.
+
+Fehlgeschlagene App-Anmeldungen werden über einen SHA-256-Digest fester Länge aus dem
+vom Framework aufgelösten Peer und dem normalisierten übermittelten Benutzernamen
+gezählt; rohe Identitäten bleiben nicht in der Sperrtabelle. Zehn Fehlversuche innerhalb
+einer Minute sperren diese Identität. Die reguläre Tabelle ist pro Anwendungsinstanz
+hart auf 10.000 Schlüssel begrenzt. Nicht mehr aufnehmbare Identitäten teilen ein
+fehlgeschlossenes Überlaufkontingent, statt bestehende Sperren zu löschen. Eine
+gesperrte Anfrage erhält UTF-8-JSON mit HTTP 429, `Retry-After` und
+`Cache-Control: no-store`. Die Verarbeitung von Weiterleitungs-Headern darf nur hinter
+einem vertrauenswürdigen Ingress aktiviert werden, weil der Filter bewusst das
+Framework-Ergebnis `getRemoteAddr()` verwendet und Weiterleitungs-Header niemals
+selbst auswertet. Der Filter protokolliert weder den übermittelten Basic-Authorization-
+Header noch dessen Zugangsdateninhalt.
+
 Taxonomy weist Makros, ActiveX, eingebettete OLE-Objekte, Signaturen, unsichere
 ZIP-Pfade, nur in Groß-/Kleinschreibung kollidierende Paketbestandteile, fehlerhaftes
 XML, externe Beziehungen außer Hyperlinks, fehlende interne Beziehungsziele, Pakete
