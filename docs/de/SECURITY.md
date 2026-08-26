@@ -93,6 +93,10 @@ Wichtige Einstellungen:
 | `TAXONOMY_AUDIT_LOGGING` | Aktiviert Security-Ereignisprotokollierung. |
 | `TAXONOMY_SWAGGER_PUBLIC` | Erlaubt öffentlichen Swagger-Zugriff, sofern SpringDoc aktiv ist. |
 
+Der verpflichtende Passwortwechsel berücksichtigt den Servlet-Kontextpfad. Eine Root-Bereitstellung verwendet `/change-password` und `/api/account/change-password`; unter `/taxonomy` lauten die Pfade `/taxonomy/change-password` und `/taxonomy/api/account/change-password`. Login, Logout, Fehlerbehandlung, Passwortwechsel-Seite und -API, CSS, JavaScript, Bilder und Webjars bleiben während der Einschränkung erreichbar.
+
+Eine eingeschränkte API-Anfrage erhält HTTP `428 Precondition Required`, `Cache-Control: no-store`, den Fehlercode `PASSWORD_CHANGE_REQUIRED` und den Passwortwechsel-Endpunkt innerhalb des aktiven Kontextpfads. Der Erzwingungsfilter ist genau einmal in der lokalen Spring-Security-Kette registriert; die gewöhnliche Servlet-Registrierung ist deaktiviert. Im Keycloak-Profil bleibt dieser Lebenszyklus beim Identitätsanbieter.
+
 ## Zugangsdaten für externes Git
 
 Zugangsdaten eines externen kanonischen Git-Repositorys sind Deployment-Secrets und keine Repository-Daten.
