@@ -93,6 +93,10 @@ Relevant settings include:
 | `TAXONOMY_AUDIT_LOGGING` | Enable security event logging. |
 | `TAXONOMY_SWAGGER_PUBLIC` | Permit unauthenticated Swagger access when SpringDoc is enabled. |
 
+Mandatory password replacement is servlet-context aware. A root deployment uses `/change-password` and `/api/account/change-password`; a deployment below `/taxonomy` uses `/taxonomy/change-password` and `/taxonomy/api/account/change-password`. Login, logout, error handling, the replacement page and API, CSS, JavaScript, images, and webjars remain reachable while the account is restricted.
+
+A restricted API request returns HTTP `428 Precondition Required`, `Cache-Control: no-store`, error code `PASSWORD_CHANGE_REQUIRED`, and the replacement endpoint inside the active context path. The enforcement filter is registered exactly once in the local-user Spring Security chain; ordinary servlet registration is disabled. Keycloak continues to own this lifecycle when its profile is active.
+
 ## External Git credentials
 
 External canonical-repository credentials are deployment secrets, not repository data.
