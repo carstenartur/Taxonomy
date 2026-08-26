@@ -33,6 +33,7 @@ import java.util.regex.Pattern;
 public class WebDavApplicationCredentialService {
 
     public static final String TOKEN_PREFIX = "taxdav_";
+    public static final int TOKEN_LENGTH = 71;
     public static final Duration DEFAULT_LIFETIME = Duration.ofDays(30);
     public static final Duration MAX_LIFETIME = Duration.ofDays(90);
 
@@ -184,6 +185,12 @@ public class WebDavApplicationCredentialService {
 
     public static boolean isApplicationSecret(String value) {
         return value != null && value.startsWith(TOKEN_PREFIX);
+    }
+
+    public static boolean hasExactApplicationSecretFormat(String value) {
+        return value != null
+                && value.length() == TOKEN_LENGTH
+                && TOKEN.matcher(value).matches();
     }
 
     private void updateLastUsedIfNeeded(

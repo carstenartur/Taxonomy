@@ -104,6 +104,22 @@ must not re-enable the links until they provide and test a WebDAV-compatible cre
 flow such as a scoped application password. Bearer-capable WebDAV clients can continue
 to use the endpoint directly.
 
+Taxonomy application credentials have one exact 71-character ASCII format. The WebDAV
+filter rejects oversized Basic headers, invalid UTF-8, overlong decoded usernames or
+passwords, and malformed `taxdav_` candidates before repository lookup or BCrypt.
+Ordinary account passwords that do not start with `taxdav_` continue to the normal
+Spring Security HTTP-Basic flow.
+
+Failed application-credential attempts are tracked by a fixed-size SHA-256 digest of
+the framework-resolved peer and normalized supplied username; raw identities are not
+retained in the lockout table. Ten failures within one minute lock that identity. The
+regular table is capped at 10,000 keys per application instance, and identities that
+cannot be admitted share a fail-closed overflow budget instead of clearing existing
+lockouts. A blocked request receives UTF-8 JSON with HTTP 429, `Retry-After`, and
+`Cache-Control: no-store`. Operators must configure forwarding-header processing only
+behind a trusted ingress because the filter deliberately relies on the framework's
+`getRemoteAddr()` result and never parses forwarding headers itself.
+
 Taxonomy rejects macros, ActiveX, embedded OLE objects, signatures, unsafe ZIP paths,
 case-colliding package parts, malformed XML, external non-hyperlink relationships,
 missing internal relationship targets, packages without exactly one root
