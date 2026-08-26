@@ -79,7 +79,9 @@ Die HSQLDB-Poolvariablen gelten nur im HSQLDB-Profil; PostgreSQL, MSSQL und Orac
 | `TAXONOMY_LLM_RPM` | Git-Einstellung `taxonomy.llm.rpm` | `5` | Ausgehende Requests je Anbieter und Minute. |
 | `TAXONOMY_LLM_TIMEOUT_SECONDS` | Git-Einstellung `taxonomy.llm.timeout-seconds` | `30` | Timeout eines LLM-Aufrufs. |
 | `TAXONOMY_ANALYSIS_MIN_SCORE` | Git-Einstellung `taxonomy.analysis.min-score` | `70` | Mindestwert 0–100 für gewöhnliche Architektursichten. |
-| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Git-Einstellung `taxonomy.rate-limit.per-minute` | `10` | Clientlimit LLM-gestützter API-Aufrufe; `0` deaktiviert. |
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Git-Einstellung `taxonomy.rate-limit.per-minute` | `10` | Zugelassene LLM-Aufrufe je stabiler authentifizierter Identität und Minute; genau `0` deaktiviert, negative Werte wirken fehlersicher als `1`. |
+
+Das eingehende Kontingent wird nach der Autorisierung geprüft. Lokale Benutzer werden über den kanonischen Benutzernamen zugeordnet; Keycloak-Browser- und Bearer-Zugriffe verwenden das unveränderliche Paar `iss`/`sub` und teilen daher auch nach einer Änderung von `preferred_username` dasselbe Budget. Forwarding-Header und Peer-Adressen sind keine Kontingentidentitäten; abgewiesene Aufrufe erzeugen keinen Zustand. Die begrenzten In-Memory-Zähler laufen bei Inaktivität ab und liefern HTTP `429` mit `Retry-After` und `Cache-Control: no-store`. Sie gelten je Anwendungsinstanz; für ein clusterweites Budget bei mehreren Replikaten ist deshalb ein verteilter äußerer Begrenzer erforderlich. Der gleiche Pfadvertrag gilt am Root-Kontext und unter einem Präfix wie `/taxonomy`.
 
 ## LLM Record/Replay
 

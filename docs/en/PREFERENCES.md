@@ -120,12 +120,14 @@ Click **↩️ Reset to Defaults** to restore all settings to the values from `a
 |---|---|---|---|---|
 | `llm.rpm` | int | `5` | ☁️ System | Maximum API requests per minute (outgoing LLM throttle) |
 | `llm.timeout.seconds` | int | `30` | ☁️ System | HTTP read timeout for LLM API calls |
-| `rate-limit.per-minute` | int | `10` | ☁️ System | Incoming rate limit for analysis endpoints (per IP) |
+| `rate-limit.per-minute` | int | `10` | ☁️ System | Incoming LLM quota per authenticated identity and minute (`0` disables) |
 | `analysis.min-relevance-score` | int | `70` | ☁️ System | Minimum score for nodes to appear in analysis results |
 
 The `llm.rpm` setting controls the sliding-window throttle for outgoing LLM API calls. The system maintains a FIFO queue of timestamps and sleeps the thread if the rate limit would be exceeded. A 50ms grace period is added for clock drift.
 
 The `llm.timeout.seconds` setting dynamically updates the `RestTemplate` read timeout without restarting the application.
+
+The incoming `rate-limit.per-minute` quota is evaluated only after authentication and authorization and applies to each stable authenticated identity. Local accounts are keyed by their canonical authenticated username; Keycloak browser OIDC and bearer JWT access for one account share the immutable issuer/subject (`iss`/`sub`) identity. Forwarding headers, peer addresses, and the editable `preferred_username` claim do not create quota identities, and rejected requests do not allocate or consume quota state. Exactly `0` disables this limiter; negative values fail closed to one admitted request per minute. Inactive identities expire, the in-memory identity set is bounded, and HTTP `429` responses include `Retry-After` and `Cache-Control: no-store`. Counters are in-memory per application instance; multi-replica deployments need a distributed outer quota or must account for the multiplied aggregate allowance.
 
 ### DSL and Git Configuration
 

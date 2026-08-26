@@ -68,7 +68,7 @@ class ProductionHardeningTests {
         // Pin the runtime preference that has precedence over the test property.
         when(preferencesService.getInt("rate-limit.per-minute", 3)).thenReturn(3);
 
-        // Clear the per-IP counters between tests to avoid cross-test interference.
+        // Clear the per-authenticated-identity counters between tests to avoid cross-test interference.
         rateLimitFilter.clearCounters();
     }
 

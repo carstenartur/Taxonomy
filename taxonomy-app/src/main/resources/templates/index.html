@@ -1306,7 +1306,7 @@
                                        data-pref-key="llm.timeout.seconds" min="5" max="600"/>
                             </div>
                             <div class="col-md-6">
-                                <label for="pref-rate-limit" class="form-label" th:text="#{preferences.llm.ratelimit}">Server Rate Limit (requests/IP/minute)</label>
+                                <label for="pref-rate-limit" class="form-label" th:text="#{preferences.llm.ratelimit}">LLM Quota per Authenticated Identity (requests/minute)</label>
                                 <input type="number" class="form-control" id="pref-rate-limit"
                                        data-pref-key="rate-limit.per-minute" min="0" max="1000"/>
                             </div>

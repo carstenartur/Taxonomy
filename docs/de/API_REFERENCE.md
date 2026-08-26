@@ -503,7 +503,7 @@ curl -u admin:admin "http://localhost:8080/api/diagnostics"
 | `403` | Verboten | Unzureichende Rolle (z. B. USER versucht, eine Beziehung zu löschen) |
 | `404` | Nicht gefunden | Ungültiger Knotencode oder Vorschlags-ID |
 | `423` | Gesperrt | Zu viele fehlgeschlagene Anmeldeversuche — IP ist vorübergehend gesperrt |
-| `429` | Zu viele Anfragen | Ratenbegrenzung überschritten (konfigurierbar über `TAXONOMY_RATE_LIMIT_PER_MINUTE`) |
+| `429` | Zu viele Anfragen | Eingehendes LLM-Kontingent der stabilen authentifizierten Identität überschritten; nach dem Intervall aus `Retry-After` erneut versuchen |
 | `503` | Dienst nicht verfügbar | Taxonomie wird noch geladen — `/api/status/startup` abfragen |
 | `500` | Serverfehler | LLM-Timeout, Export-E/A-Fehler |
 

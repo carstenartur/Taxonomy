@@ -543,7 +543,7 @@ curl -u admin:admin "http://localhost:8080/api/diagnostics"
 | `403` | Forbidden | Insufficient role (e.g., USER trying to delete a relation) |
 | `404` | Not Found | Invalid node code or proposal ID |
 | `423` | Locked | Too many failed login attempts — IP is temporarily locked out |
-| `429` | Too Many Requests | Rate limit exceeded (configurable via `TAXONOMY_RATE_LIMIT_PER_MINUTE`) |
+| `429` | Too Many Requests | Incoming LLM quota for the stable authenticated identity exceeded; retry after the `Retry-After` interval |
 | `503` | Service Unavailable | Taxonomy still loading — poll `/api/status/startup` |
 | `500` | Server Error | LLM timeout, export I/O error |
 

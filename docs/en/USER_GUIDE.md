@@ -279,7 +279,7 @@ If the LLM encounters an error during analysis, the application handles it grace
 | Error | What You See | What to Do |
 |---|---|---|
 | **Connection timeout** | Status shows "LLM connection timed out" with partial scores | Retry — the LLM server may be temporarily overloaded |
-| **Rate limit (HTTP 429)** | Status shows "Rate limit exceeded" | Wait 60 seconds and retry |
+| **Rate limit (HTTP 429)** | Status shows "Rate limit exceeded" | Retry after the number of seconds given by the `Retry-After` response header |
 | **Invalid API key** | Status shows "Authentication failed" | Check your API key in environment variables |
 | **Partial failure** | Some roots scored, others show warnings | Review the warnings in the Analysis Log; scores for completed roots are still valid |
 
