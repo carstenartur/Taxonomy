@@ -125,7 +125,8 @@ gesperrte Anfrage erhält UTF-8-JSON mit HTTP 429, `Retry-After` und
 `Cache-Control: no-store`. Die Verarbeitung von Weiterleitungs-Headern darf nur hinter
 einem vertrauenswürdigen Ingress aktiviert werden, weil der Filter bewusst das
 Framework-Ergebnis `getRemoteAddr()` verwendet und Weiterleitungs-Header niemals
-selbst auswertet.
+selbst auswertet. Der Filter protokolliert weder den übermittelten Basic-Authorization-
+Header noch dessen Zugangsdateninhalt.
 
 Taxonomy weist Makros, ActiveX, eingebettete OLE-Objekte, Signaturen, unsichere
 ZIP-Pfade, nur in Groß-/Kleinschreibung kollidierende Paketbestandteile, fehlerhaftes
