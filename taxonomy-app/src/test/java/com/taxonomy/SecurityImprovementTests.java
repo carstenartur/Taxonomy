@@ -2,7 +2,6 @@ package com.taxonomy;
 
 import com.taxonomy.security.config.LoginRateLimitFilter;
 import com.taxonomy.security.model.AppUser;
-import com.taxonomy.security.repository.RoleRepository;
 import com.taxonomy.security.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,12 +13,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -51,9 +51,6 @@ class SecurityImprovementTests {
     private UserRepository userRepository;
 
     @Autowired
-    private RoleRepository roleRepository;
-
-    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired(required = false)
@@ -73,32 +70,29 @@ class SecurityImprovementTests {
 
     @Test
     void loginRateLimitFilterTrackerIsInitiallyEmpty() {
-        assertThat(loginRateLimitFilter.getTrackers()).isEmpty();
+        assertThat(loginRateLimitFilter.trackedPeerCount()).isZero();
     }
 
     @Test
-    void authenticatedUserIsNotBlockedByLockout() throws Exception {
+    void authenticatedUserIsNotBlockedByAnonymousPeerLockout() throws Exception {
         assertThat(loginRateLimitFilter)
                 .as("LoginRateLimitFilter bean must be present")
                 .isNotNull();
+        String peer = "10.99.99.99";
 
-        int maxAttempts = (int) ReflectionTestUtils.getField(
-                loginRateLimitFilter, "maxAttempts");
-        for (int index = 0; index < maxAttempts; index++) {
-            ReflectionTestUtils.invokeMethod(
-                    loginRateLimitFilter, "recordFailure", "10.99.99.99");
+        for (int index = 0; index < 3; index++) {
+            mockMvc.perform(get("/api/taxonomy")
+                            .accept(MediaType.APPLICATION_JSON)
+                            .with(remoteAddress(peer))
+                            .with(httpBasic("admin", "wrong-password")))
+                    .andExpect(status().isUnauthorized());
         }
-        assertThat(loginRateLimitFilter.getTrackers()).containsKey("10.99.99.99");
+        assertThat(loginRateLimitFilter.trackedPeerCount()).isEqualTo(1);
 
         mockMvc.perform(get("/api/taxonomy")
                         .accept(MediaType.APPLICATION_JSON)
-                        .header("X-Forwarded-For", "10.99.99.99"))
-                .andExpect(status().isUnauthorized());
-
-        mockMvc.perform(get("/api/taxonomy")
-                        .accept(MediaType.APPLICATION_JSON)
-                        .with(user("admin").roles("USER"))
-                        .header("X-Forwarded-For", "10.99.99.99"))
+                        .with(remoteAddress(peer))
+                        .with(user("admin").roles("USER")))
                 .andExpect(status().isOk());
     }
 
@@ -221,5 +215,12 @@ class SecurityImprovementTests {
         assertThat(admin).isPresent();
         assertThat(admin.get().isMustChangePassword()).isTrue();
         assertThat(passwordEncoder.matches("admin", admin.get().getPasswordHash())).isFalse();
+    }
+
+    private static RequestPostProcessor remoteAddress(String address) {
+        return request -> {
+            request.setRemoteAddr(address);
+            return request;
+        };
     }
 }
