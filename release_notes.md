@@ -1,10 +1,10 @@
 # Taxonomy 1.4.0
 
-Taxonomy 1.4.0 is the first published release after 1.3.0. It combines the stabilization work prepared for the unpublished 1.3.1 line with a substantially stronger requirements and architecture workbench, versioned Word-template administration, deterministic architecture exports, local semantic-search readiness, constrained-cluster deployment profiles, and a fail-closed release pipeline.
+Taxonomy 1.4.0 is the first published release after 1.3.0. It combines the stabilization prepared for the unpublished 1.3.1 line with a substantially stronger requirements and architecture workbench, versioned Word-template administration, deterministic architecture exports, local semantic-search readiness, constrained-cluster deployment profiles, bounded authentication controls, and a fail-closed release pipeline.
 
 ## Important release-line note
 
-The immutable `v1.3.1` Git tag remains only as release-ancestry evidence. No GitHub Release was published for 1.3.1, and 1.3.1 is not a supported deployment target. Existing installations should upgrade directly from the published 1.3.0 assets to 1.4.0. No tag or published history was rewritten.
+The immutable `v1.3.1` Git tag remains release-ancestry evidence only. No GitHub Release was published for 1.3.1, and 1.3.1 is not a supported deployment target. Existing installations should upgrade directly from the published 1.3.0 assets to 1.4.0. No tag or published history was rewritten.
 
 ## Product highlights
 
@@ -15,13 +15,13 @@ Administrators can maintain DOTX templates through the browser or a virtual WebD
 The template workspace provides:
 
 - upload, download, history, per-part OOXML inspection and diff, conflict-protected restore, and test export;
-- revocable, user-bound WebDAV application credentials with read/write scopes, expiry, hashed storage, and one-time secret display;
+- revocable, user-bound WebDAV application credentials with read/write scopes, expiry, hashed storage, one-time secret display, exact token parsing, and bounded fail-closed authentication lockout;
 - ETags, lock tokens, conditional writes, stale-write rejection, and concurrent-create protection;
 - fail-closed validation of XML parts, OPC relationships, ZIP paths, manifests, external links, dangerous field instructions, macros, ActiveX, OLE objects, signatures, comments, and tracked changes;
 - deterministic package materialisation and semantic-validation caching by immutable template revision;
 - direct Microsoft Word actions where a public HTTPS origin, or loopback development origin, makes those links safe to expose.
 
-A valid macro-free decision-rationale template is bundled and seeded idempotently without overwriting organisation-specific changes. Generated reports inherit the chosen template's branding, page setup, styles, headers, footers, and static metadata while retaining the generated executive summary, decision chapters, diagrams, and appendix. The produced DOCX records the template identity, Git revision, and package checksum as provenance.
+A valid macro-free decision-rationale template is bundled and seeded idempotently without overwriting organisation-specific changes. Generated reports inherit the selected template's branding, page setup, styles, headers, footers, and static metadata while retaining the generated executive summary, decision chapters, diagrams, and appendix. The produced DOCX records the template identity, Git revision, and package checksum as provenance.
 
 The browser/container acceptance path starts the packaged application with Testcontainers, signs in through Playwright, verifies first-start seeding and WebDAV discovery, downloads the generated DOCX, validates the package, and renders that exact document through LibreOffice. See the [English document-template guide](docs/en/DOCUMENT_TEMPLATES.md) and [German document-template guide](docs/de/DOCUMENT_TEMPLATES.md).
 
@@ -52,7 +52,7 @@ The local ONNX path has an explicit, fail-closed lifecycle:
 
 - the pinned embedding model is restored or downloaded deterministically;
 - catalogue nodes are available before the semantic index is rebuilt;
-- the application reports readiness instead of exposing a partially initialized index;
+- the application reports readiness instead of exposing a partially initialised index;
 - stale or missing indexes are rebuilt through the controlled initializer;
 - real-model and browser tests cover startup, readiness, rebuild, and interaction behaviour.
 
@@ -75,9 +75,9 @@ See the [Rancher/RKE2 deployment guide](deploy/helm/taxonomy/RANCHER.md). The sm
 
 ### Audited runtime configuration and safer operator defaults
 
-The German and English configuration references now form an executable inventory of deployment-facing settings. A contract test discovers effective Spring placeholders, direct bindings, feature switches, and `@ConfigurationProperties` fields and requires both language references to match. Profile-dependent database, Hibernate Search, LLM, Copilot/Autopilot, portfolio, document-import, security, repository, and lifecycle settings are identified explicitly rather than being presented as one global default.
+The German and English configuration references form an executable inventory of deployment-facing settings. A contract test discovers effective Spring placeholders, direct bindings, feature switches, and `@ConfigurationProperties` fields and requires both language references to match. Profile-dependent database, Hibernate Search, LLM, Copilot/Autopilot, portfolio, document-import, security, repository, and lifecycle settings are identified explicitly rather than being presented as one global default.
 
-The historical name `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` remains unchanged, but its actual scope is now explicit: it limits architecture views created by both manual Copilot and Autopilot. The effective ceiling is the lower of that value and `TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES`. Production Compose forwards the operator-maintained `.env` file and no longer enables local embeddings implicitly; embedding inference and runtime model download remain separate opt-ins.
+The historical name `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` remains unchanged, but its actual scope is explicit: it limits architecture views created by both manual Copilot and Autopilot. The effective ceiling is the lower of that value and `TAXONOMY_LIMITS_MAX_ARCHITECTURE_NODES`. Production Compose forwards the operator-maintained `.env` file and no longer enables local embeddings implicitly; embedding inference and runtime model download remain separate opt-ins.
 
 Interactive login and machine monitoring credentials are deliberately separated. `TAXONOMY_ADMIN_PASSWORD` bootstraps the local form-login administrator. The historic application variable `ADMIN_PASSWORD` remains the optional Actuator/admin token. In the supplied Helm chart, the existing Secret key `ADMIN_PASSWORD` continues to supply the login credential for upgrade compatibility, while a distinct optional `ADMIN_TOKEN` key supplies the machine token and protected ServiceMonitor. The chart rejects reuse of one Secret key for both purposes and rejects an application/ServiceMonitor token-key mismatch. Token-authenticated Actuator reads work behind a context path, missing or incorrect tokens are rejected, and CSRF protection remains enabled.
 
@@ -91,7 +91,39 @@ The PostgreSQL schema removes the redundant non-unique relation-projection check
 
 Taxonomy 1.4.0 includes the repository-scoped storage, context, and service foundation needed for future multi-repository operation. This is not yet a generally supported public multi-repository product surface. The `/api/repositories/**` API remains disabled by default, and the broader tenancy, recovery, authority, cache, UX, and end-to-end isolation programme remains tracked separately. The established primary-repository/workspace behaviour is the supported default for 1.4.0.
 
-## Release, security, and reproducibility
+## Security and bounded runtime state
+
+### Stable LLM quotas after authorization
+
+LLM-backed operations consume quota only after Spring Security has authenticated and authorized the request. Local accounts are keyed by a digest of the canonical authenticated username. Keycloak browser OIDC and bearer JWT access for the same account share the exact immutable issuer/subject identity; editable display names, forwarding headers, and peer addresses do not create fresh budgets.
+
+The in-memory principal table is capped at 10,000 entries per running application instance, inactive entries expire, and identities above the cap share a fail-closed overflow budget. Exactly `0` disables the LLM quota; a negative value fails closed to one request per minute. HTTP 429 responses are UTF-8 JSON with `Retry-After` and `Cache-Control: no-store`. The same route contract applies at root and below a servlet context such as `/taxonomy`.
+
+### Authoritative login lockout
+
+The local-user login limiter is registered exactly once inside Spring Security, after trusted session restoration and before form-login and HTTP-Basic authentication. It counts only genuine downstream credential failures: a form-login error redirect or HTTP 401 after an explicit Basic API attempt. Missing credentials, bearer credentials, unrelated authorization failures, and an already authenticated session do not allocate or increment peer state.
+
+Peer identities use fixed-size SHA-256 digests of the framework-resolved remote address. The filter never parses client-controlled forwarding headers itself. State uses monotonic time, global expiry, a hard 10,000-peer cap per running instance, and a shared fail-closed overflow budget that cannot erase existing lockouts. Blocked attempts receive non-cacheable UTF-8 JSON HTTP 423 with `Retry-After`. Deployments must enable forwarded-address processing only behind a trusted ingress and prevent direct access to the application port.
+
+### Context-path-safe required password replacement
+
+Bootstrap and administrator-reset local credentials can be marked for mandatory replacement. The enforcement filter is registered only once in the local Spring Security chain. It compares application paths after removing the servlet context, so `/taxonomy/change-password`, its API, and required CSS, JavaScript, image, and webjar resources remain reachable instead of entering a redirect loop.
+
+Browser redirects stay inside the active context. Restricted API calls return non-cacheable UTF-8 JSON HTTP 428 with the stable `PASSWORD_CHANGE_REQUIRED` code and a context-aware replacement endpoint. The existing root deployment and real HTTP-Basic password-replacement flow remain unchanged. Keycloak deployments continue to delegate password lifecycle policy to the identity provider.
+
+### Bounded WebDAV application-credential authentication
+
+The WebDAV credential boundary rejects oversized Basic headers before Base64 decoding, bounds decoded credential material, requires strict UTF-8, limits username and password code points, and invokes the credential service only for the exact productive 71-character `taxdav_…` syntax. Malformed or oversized application-token candidates receive the same generic Basic challenge without reaching BCrypt. Ordinary local-account Basic authentication still falls through to Spring Security.
+
+Failure state stores only a digest of the framework-resolved peer and normalized supplied username. Admission, cleanup, and overflow selection are serialized; the regular table is capped at 10,000 identities per running instance; inactive entries expire; and excess identities share one fail-closed overflow tracker instead of clearing active lockouts. After ten failures, the next attempt receives non-cacheable UTF-8 JSON HTTP 429 with `Retry-After`. Read/write scope enforcement and conditional WebDAV operations are unchanged.
+
+### Sanitized expected failures
+
+Repairable decision-report template unavailability has a stable, non-sensitive HTTP 503 contract. Framework-level and generic HTTP 5xx responses no longer copy arbitrary exception messages to clients; complete exceptions remain available in server logs. The release candidate also retains sanitized diagnostics, secret-safe health checks, and explicit fail-closed startup validation for unsafe production credentials.
+
+All LLM quota, login-lockout, and WebDAV credential-failure counters are process-local. Multi-replica deployments multiply aggregate allowance and keep separate lockout tables unless an outer distributed control is supplied.
+
+## Release and reproducibility
 
 ### One exact release candidate
 
@@ -105,7 +137,7 @@ Every release request is bound to one exact reviewed parent commit and may chang
 - Security Scan;
 - relevant constrained-Kubernetes, document-template, and consumer contracts.
 
-Missing, failed, cancelled, skipped, timed-out, mismatched, or unreliable exact-SHA evidence stops publication.
+Missing, failed, cancelled, unexpectedly skipped, timed-out, mismatched, or unreliable exact-SHA evidence stops publication.
 
 ### Immutable, digest-bound delivery
 
@@ -131,7 +163,8 @@ A bounded set of existing Python release adapters and evidence generators remain
 - WebDAV exposes valid packaged DOTX resources only; unpacked OOXML remains an internal Git and inspection concern.
 - Direct Word links require public HTTPS except for loopback development. Deployments should use scoped application credentials rather than ordinary account passwords for desktop WebDAV clients.
 - Direct desktop-Word editing is not certified as generally compatible across Microsoft 365 versions, operating systems, reverse proxies, credential managers, and recovery/autosave flows. Ordinary HTTPS download and upload remain the supported fallback.
-- WebDAV lock coordination is currently process-local. Multi-replica direct editing requires shared lock coordination and remains follow-up work; Git/ETag preconditions still prevent silent lost updates.
+- WebDAV lock coordination is process-local. Multi-replica direct editing requires shared lock coordination and remains follow-up work; Git/ETag preconditions still prevent silent lost updates.
+- LLM quota, login-lockout, and WebDAV authentication-failure state is process-local rather than cluster-global.
 - DOCX and FOP/PDF decision reports use separate rendering paths. Their end-to-end semantic parity is tracked separately and is not claimed by this release.
 - Autosave-session grouping and long-history/template-count performance work remain follow-up items.
 - `ADMIN_PASSWORD` is a separate machine token and is not the local form-login password; production installations that use both must configure distinct values.
@@ -146,12 +179,13 @@ A bounded set of existing Python release adapters and evidence generators remain
 2. Upgrade directly from the published 1.3.0 assets to 1.4.0.
 3. After the first 1.4.0 start, verify that `decision-rationale-report.dotx` is present in `/admin/document-templates`. Seeding is idempotent and does not replace an organisation-specific revision.
 4. Configure a trusted external HTTPS origin before enabling direct Word/WebDAV actions, and create scoped WebDAV application credentials for users who require them.
-5. For local form login, configure `TAXONOMY_ADMIN_PASSWORD`. When protected Actuator or ServiceMonitor access is used, configure a distinct machine token. With the supplied Helm chart, keep Secret key `ADMIN_PASSWORD` for the login credential and add `ADMIN_TOKEN` for the machine token; never reuse one value for both. Installations with `serviceMonitor.enabled=false` may omit `ADMIN_TOKEN`.
-6. Review the bilingual configuration reference before carrying forward environment values. Production Compose now forwards `.env`, while local embeddings and runtime model download remain disabled until enabled explicitly.
-7. Deploy the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
-8. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml` and verify `/taxonomy/actuator/health/readiness`.
-9. Treat the reported semantic-search readiness state as authoritative while model/index initialization is in progress.
-10. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle.
+5. For local form login, configure `TAXONOMY_ADMIN_PASSWORD`. Review `TAXONOMY_REQUIRE_PASSWORD_CHANGE`, `TAXONOMY_LOGIN_RATE_LIMIT`, `TAXONOMY_LOGIN_MAX_ATTEMPTS`, and `TAXONOMY_LOGIN_LOCKOUT_SECONDS` before production rollout. Forwarded peer addresses are trustworthy only behind a controlled ingress.
+6. When protected Actuator or ServiceMonitor access is used, configure a distinct machine token. With the supplied Helm chart, keep Secret key `ADMIN_PASSWORD` for the login credential and add `ADMIN_TOKEN` for the machine token; never reuse one value for both. Installations with `serviceMonitor.enabled=false` may omit `ADMIN_TOKEN`.
+7. Review the bilingual configuration reference before carrying forward environment values. Production Compose forwards `.env`, while local embeddings and runtime model download remain disabled until enabled explicitly.
+8. Deploy the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
+9. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml`, verify `/taxonomy/actuator/health/readiness`, and exercise the prefixed login/password-replacement path.
+10. Treat the reported semantic-search readiness state as authoritative while model/index initialization is in progress.
+11. Contributors and downstream verifiers should use the repository-owned Maven wrapper and canonical verification lifecycle.
 
 ## Verification boundary
 
