@@ -247,8 +247,11 @@ class ReleasePlanValidatorTest {
     }
 
     @Test
-    void enforcesCleanOrdinaryAndLinkedWorktreeCheckouts(@TempDir Path root)
-            throws Exception {
+    void enforcesCleanOrdinaryAndLinkedWorktreeCheckouts(
+            @TempDir Path temporaryDirectory) throws Exception {
+        // Both checkouts stay below the invocation-specific TempDir. Its parent
+        // may be the shared system /tmp directory and must never own test state.
+        Path root = temporaryDirectory.resolve("repository");
         writeProject(root, "1.3.0-SNAPSHOT", "1.0.0", List.of("module-a"), "", "");
         commitProject(root);
         assertThat(ReleasePlanValidator.validate(
@@ -262,7 +265,7 @@ class ReleasePlanValidatorTest {
                 .hasMessageContaining("clean checkout");
 
         Files.delete(root.resolve("untracked.txt"));
-        Path worktree = root.getParent().resolve("linked-worktree");
+        Path worktree = temporaryDirectory.resolve("linked-worktree");
         TestGit.run(root, "worktree", "add", "-q", "-b", "qa-worktree",
                 worktree.toString());
         Files.writeString(worktree.resolve("untracked.txt"), "dirty");
