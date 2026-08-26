@@ -186,6 +186,10 @@ public class WebDavApplicationCredentialService {
         return value != null && value.startsWith(TOKEN_PREFIX);
     }
 
+    public static boolean hasExactApplicationSecretSyntax(String value) {
+        return value != null && TOKEN.matcher(value).matches();
+    }
+
     private void updateLastUsedIfNeeded(
             WebDavApplicationCredential credential,
             Instant now) {

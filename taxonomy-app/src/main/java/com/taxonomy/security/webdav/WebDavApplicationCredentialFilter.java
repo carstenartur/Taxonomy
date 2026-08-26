@@ -14,17 +14,19 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Base64;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 /** Authenticates revocable WebDAV app credentials without exposing account passwords. */
 public final class WebDavApplicationCredentialFilter extends OncePerRequestFilter {
@@ -32,24 +34,35 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
     private static final Logger log =
             LoggerFactory.getLogger(WebDavApplicationCredentialFilter.class);
     private static final String BASIC_PREFIX = "Basic ";
+    private static final String OVERFLOW_BUCKET = "overflow";
     private static final int MAX_FAILURES = 10;
     private static final Duration FAILURE_WINDOW = Duration.ofMinutes(1);
     private static final int MAX_TRACKED_FAILURE_KEYS = 10_000;
+    private static final int MAX_TRACKED_IDENTITY_KEYS = MAX_TRACKED_FAILURE_KEYS - 1;
+    private static final int MAX_AUTHORIZATION_HEADER_LENGTH = 1024;
+    private static final int MAX_USERNAME_LENGTH = 256;
+    private static final int MAX_PASSWORD_LENGTH = 128;
+    private static final long FAILURE_WINDOW_NANOS = FAILURE_WINDOW.toNanos();
+    private static final long PURGE_INTERVAL_NANOS = Duration.ofSeconds(1).toNanos();
+    private static final ThreadLocal<MessageDigest> SHA_256 =
+            ThreadLocal.withInitial(WebDavApplicationCredentialFilter::newSha256);
 
     private final WebDavApplicationCredentialService credentials;
-    private final Clock clock;
-    private final Map<String, Deque<Instant>> failures = new ConcurrentHashMap<>();
+    private final LongSupplier nanoTime;
+    private final Object failureLock = new Object();
+    private final Map<String, Deque<Long>> failures = new HashMap<>();
+    private long lastGlobalPurgeNanos = Long.MIN_VALUE;
 
     public WebDavApplicationCredentialFilter(
             WebDavApplicationCredentialService credentials) {
-        this(credentials, Clock.systemUTC());
+        this(credentials, System::nanoTime);
     }
 
     WebDavApplicationCredentialFilter(
             WebDavApplicationCredentialService credentials,
-            Clock clock) {
-        this.credentials = credentials;
-        this.clock = clock;
+            LongSupplier nanoTime) {
+        this.credentials = Objects.requireNonNull(credentials, "credentials");
+        this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
     }
 
     @Override
@@ -63,6 +76,10 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
             HttpServletResponse response,
             FilterChain chain) throws ServletException, IOException {
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authorization != null && authorization.length() > MAX_AUTHORIZATION_HEADER_LENGTH) {
+            unauthorized(response);
+            return;
+        }
         Optional<BasicCredential> basic = parseBasic(authorization);
 
         if (basic.isEmpty()) {
@@ -75,15 +92,28 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
             return;
         }
         BasicCredential supplied = basic.orElseThrow();
+        if (supplied.username().length() > MAX_USERNAME_LENGTH
+                || supplied.password().length() > MAX_PASSWORD_LENGTH) {
+            if (WebDavApplicationCredentialService.isApplicationSecret(supplied.password())) {
+                failedApplicationCredential(request, supplied.username(), response);
+                return;
+            }
+            chain.doFilter(request, response);
+            return;
+        }
         if (!WebDavApplicationCredentialService.isApplicationSecret(supplied.password())) {
             chain.doFilter(request, response);
+            return;
+        }
+        if (!WebDavApplicationCredentialService.hasExactApplicationSecretSyntax(
+                supplied.password())) {
+            failedApplicationCredential(request, supplied.username(), response);
             return;
         }
 
         String failureKey = failureKey(request, supplied.username());
         if (isRateLimited(failureKey)) {
-            response.setHeader("Retry-After", Long.toString(FAILURE_WINDOW.toSeconds()));
-            response.sendError(429, "Too many failed WebDAV authentication attempts");
+            tooManyRequests(response);
             return;
         }
 
@@ -117,6 +147,19 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
         } finally {
             SecurityContextHolder.setContext(previous);
         }
+    }
+
+    private void failedApplicationCredential(
+            HttpServletRequest request,
+            String username,
+            HttpServletResponse response) throws IOException {
+        String failureKey = failureKey(request, username);
+        if (isRateLimited(failureKey)) {
+            tooManyRequests(response);
+            return;
+        }
+        recordFailure(failureKey);
+        unauthorized(response);
     }
 
     private static boolean allowedForMethod(
@@ -162,55 +205,105 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
     }
 
     private boolean isRateLimited(String key) {
-        Instant cutoff = clock.instant().minus(FAILURE_WINDOW);
-        Deque<Instant> attempts = failures.get(key);
-        if (attempts == null) {
-            return false;
-        }
-        synchronized (attempts) {
-            purge(attempts, cutoff);
+        synchronized (failureLock) {
+            long now = nanoTime.getAsLong();
+            purgeGlobalIfDue(now);
+            Deque<Long> attempts = failures.get(rateLimitBucket(key));
+            if (attempts == null) {
+                return false;
+            }
+            purge(attempts, now - FAILURE_WINDOW_NANOS);
             return attempts.size() >= MAX_FAILURES;
         }
     }
 
     private void recordFailure(String key) {
-        if (failures.size() >= MAX_TRACKED_FAILURE_KEYS) {
-            purgeGlobal();
-            if (failures.size() >= MAX_TRACKED_FAILURE_KEYS) {
-                failures.clear();
-            }
-        }
-        Deque<Instant> attempts = failures.computeIfAbsent(key,
-                ignored -> new ArrayDeque<>());
-        synchronized (attempts) {
-            purge(attempts, clock.instant().minus(FAILURE_WINDOW));
-            attempts.addLast(clock.instant());
+        synchronized (failureLock) {
+            long now = nanoTime.getAsLong();
+            purgeGlobalIfDue(now);
+            String bucket = admissionBucket(key);
+            Deque<Long> attempts = failures.computeIfAbsent(bucket,
+                    ignored -> new ArrayDeque<>());
+            purge(attempts, now - FAILURE_WINDOW_NANOS);
+            attempts.addLast(now);
         }
     }
 
     private void clearFailures(String key) {
-        failures.remove(key);
+        synchronized (failureLock) {
+            failures.remove(key);
+        }
     }
 
-    private void purgeGlobal() {
-        Instant cutoff = clock.instant().minus(FAILURE_WINDOW);
+    private void purgeGlobal(long now) {
+        long cutoff = now - FAILURE_WINDOW_NANOS;
         failures.entrySet().removeIf(entry -> {
-            Deque<Instant> attempts = entry.getValue();
-            synchronized (attempts) {
-                purge(attempts, cutoff);
-                return attempts.isEmpty();
-            }
+            Deque<Long> attempts = entry.getValue();
+            purge(attempts, cutoff);
+            return attempts.isEmpty();
         });
     }
 
-    private static void purge(Deque<Instant> attempts, Instant cutoff) {
-        while (!attempts.isEmpty() && attempts.peekFirst().isBefore(cutoff)) {
+    private void purgeGlobalIfDue(long now) {
+        if (lastGlobalPurgeNanos != Long.MIN_VALUE
+                && now - lastGlobalPurgeNanos < PURGE_INTERVAL_NANOS) {
+            return;
+        }
+        purgeGlobal(now);
+        lastGlobalPurgeNanos = now;
+    }
+
+    private String admissionBucket(String key) {
+        if (failures.containsKey(key)) {
+            return key;
+        }
+        return regularKeyCount() < MAX_TRACKED_IDENTITY_KEYS ? key : OVERFLOW_BUCKET;
+    }
+
+    private String rateLimitBucket(String key) {
+        if (failures.containsKey(key)) {
+            return key;
+        }
+        return regularKeyCount() >= MAX_TRACKED_IDENTITY_KEYS ? OVERFLOW_BUCKET : key;
+    }
+
+    private int regularKeyCount() {
+        return failures.size() - (failures.containsKey(OVERFLOW_BUCKET) ? 1 : 0);
+    }
+
+    private static void purge(Deque<Long> attempts, long cutoff) {
+        while (!attempts.isEmpty() && attempts.peekFirst() < cutoff) {
             attempts.removeFirst();
         }
     }
 
     private static String failureKey(HttpServletRequest request, String username) {
-        return String.valueOf(request.getRemoteAddr()) + "|" + username;
+        return digest(String.valueOf(request.getRemoteAddr()))
+                + ":" + digest(normalizeUsername(username));
+    }
+
+    private static String normalizeUsername(String username) {
+        return username == null ? "" : username.strip().toLowerCase(Locale.ROOT);
+    }
+
+    private static String digest(String value) {
+        MessageDigest sha256 = SHA_256.get();
+        sha256.reset();
+        byte[] hash = sha256.digest(value.getBytes(StandardCharsets.UTF_8));
+        StringBuilder encoded = new StringBuilder(hash.length * 2);
+        for (byte b : hash) {
+            encoded.append(Character.forDigit((b >>> 4) & 0xF, 16));
+            encoded.append(Character.forDigit(b & 0xF, 16));
+        }
+        return encoded.toString();
+    }
+
+    private static MessageDigest newSha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException missingAlgorithm) {
+            throw new IllegalStateException("SHA-256 is not available", missingAlgorithm);
+        }
     }
 
     private static void unauthorized(HttpServletResponse response) throws IOException {
@@ -218,6 +311,22 @@ public final class WebDavApplicationCredentialFilter extends OncePerRequestFilte
                 "Basic realm=\"Taxonomy WebDAV\", charset=\"UTF-8\"");
         response.sendError(HttpServletResponse.SC_UNAUTHORIZED,
                 "A valid WebDAV application credential is required");
+    }
+
+    private static void tooManyRequests(HttpServletResponse response) throws IOException {
+        response.setStatus(429);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setContentType("application/json;charset=UTF-8");
+        response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(FAILURE_WINDOW.toSeconds()));
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+        response.getWriter().write(
+                "{\"error\":\"too_many_failed_webdav_authentication_attempts\"}");
+    }
+
+    int trackedFailureKeyCount() {
+        synchronized (failureLock) {
+            return failures.size();
+        }
     }
 
     private record BasicCredential(String username, String password) {
