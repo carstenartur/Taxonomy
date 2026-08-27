@@ -158,6 +158,33 @@ test('serializes simultaneous draft writes and advances the optimistic version b
   assert.equal(harness.runtime.version, 1);
 });
 
+test('serializes draft reads with writes so a late reload cannot regress the acknowledged version', async () => {
+  const loading = deferred();
+  const calls = [];
+  const loaded = { version: 0, payload: { businessText: 'Loaded draft' } };
+  const updated = { version: 1, payload: { businessText: 'Updated draft' } };
+  const harness = createHarness((url, options) => {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ method: options.method, body });
+    if (calls.length === 1) return loading.promise;
+    return Promise.resolve(updated);
+  });
+
+  const reading = harness.C.jsonRequest('/api/analysis-drafts/workspace-1', { method: 'GET' });
+  const writing = harness.C.jsonRequest(
+    '/api/analysis-drafts/workspace-1', put(updated.payload));
+  await flush();
+
+  assert.deepEqual(calls.map(call => call.method), ['GET']);
+  loading.resolve(loaded);
+  await flush();
+
+  assert.deepEqual(calls.map(call => call.method), ['GET', 'PUT']);
+  assert.equal(calls[1].body.expectedVersion, 0);
+  await Promise.all([reading, writing]);
+  assert.equal(harness.runtime.version, 1);
+});
+
 test('repairs a stale same-browser version after a 409 only from an acknowledged remote revision', async () => {
   const payloadA = { businessText: 'Version zero' };
   const payloadB = { businessText: 'Version one' };
