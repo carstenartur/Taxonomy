@@ -22,12 +22,14 @@ class ParallelCiEvidenceContractTest {
                 StandardCharsets.UTF_8);
 
         assertThat(workflow)
+                .contains("application:\n    name: Commit-bound UI application")
                 .contains("core:\n    name: Core reactor verification")
                 .contains("observability:\n    name: OpenTelemetry performance budget")
                 .contains("ui-contracts:\n    name: UI contract verification")
                 .contains("ui-shards:\n    name: UI shard / ${{ matrix.shard }}")
                 .contains("verify:\n    name: Maven verification")
-                .contains("needs: [core, observability, ui-contracts, ui-shards]")
+                .contains("needs: [application, ui-plan, ui-contracts]")
+                .contains("needs: [application, core, observability, ui-contracts, ui-shards]")
                 .contains("if: always()")
                 .contains("name: taxonomy-ui-application")
                 .contains("name: quality-reports-core")
@@ -36,12 +38,22 @@ class ParallelCiEvidenceContractTest {
                 .contains("name: quality-reports")
                 .contains("name: ui-verification");
 
+        int applicationStart = workflow.indexOf("  application:");
         int coreStart = workflow.indexOf("  core:");
         int observabilityStart = workflow.indexOf("  observability:");
+        int uiShardsStart = workflow.indexOf("  ui-shards:");
         int finalGateStart = workflow.indexOf("  verify:");
-        assertThat(coreStart).isGreaterThanOrEqualTo(0);
+        assertThat(applicationStart).isGreaterThanOrEqualTo(0);
+        assertThat(coreStart).isGreaterThan(applicationStart);
         assertThat(observabilityStart).isGreaterThan(coreStart);
-        assertThat(finalGateStart).isGreaterThan(observabilityStart);
+        assertThat(uiShardsStart).isGreaterThan(observabilityStart);
+        assertThat(finalGateStart).isGreaterThan(uiShardsStart);
+
+        String application = workflow.substring(applicationStart, coreStart);
+        assertThat(application)
+                .contains("./mvnw -B -ntp -DskipTests package")
+                .contains("run: bash .github/scripts/stage-ui-application.sh")
+                .contains("name: taxonomy-ui-application");
 
         String core = workflow.substring(coreStart, observabilityStart);
         assertThat(core)
@@ -49,10 +61,17 @@ class ParallelCiEvidenceContractTest {
                 .contains("-Dtaxonomy.ui.skip=true")
                 .contains("::error::Docker image revision label")
                 .contains("::error::Docker image runtime user")
+                .doesNotContain("Stage commit-bound UI application")
                 .doesNotContain("Measure OpenTelemetry performance budget");
+
+        String uiShards = workflow.substring(uiShardsStart, finalGateStart);
+        assertThat(uiShards)
+                .contains("needs: [application, ui-plan, ui-contracts]")
+                .doesNotContain("needs: [core");
 
         String finalGate = workflow.substring(finalGateStart);
         assertThat(finalGate)
+                .contains("APPLICATION_RESULT: ${{ needs.application.result }}")
                 .contains("Require every authoritative lane")
                 .contains("Verify complete digest-bound UI evidence")
                 .contains("run: bash .github/scripts/finalize-quality-evidence.sh");
