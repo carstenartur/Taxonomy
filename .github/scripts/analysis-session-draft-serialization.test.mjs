@@ -185,6 +185,30 @@ test('serializes draft reads with writes so a late reload cannot regress the ack
   assert.equal(harness.runtime.version, 1);
 });
 
+test('clears acknowledged write evidence when a draft read reports no current draft', async () => {
+  const oldPayload = { businessText: 'Expired draft' };
+  const newPayload = { businessText: 'New lifecycle' };
+  const conflict = conflictError('new-lifecycle-conflict');
+  let phase = 0;
+  const harness = createHarness(async (url, options) => {
+    phase += 1;
+    if (phase === 1) return { version: 0, payload: oldPayload };
+    if (phase === 2) return null;
+    if (phase === 3) throw conflict;
+    if (phase === 4) return { version: 0, payload: oldPayload };
+    throw new Error(`Unexpected request phase ${phase}`);
+  });
+
+  await harness.C.jsonRequest('/api/analysis-drafts/workspace-1', put(oldPayload));
+  await harness.C.jsonRequest('/api/analysis-drafts/workspace-1', { method: 'GET' });
+
+  await assert.rejects(
+    harness.C.jsonRequest('/api/analysis-drafts/workspace-1', put(newPayload)),
+    error => error === conflict
+  );
+  assert.equal(harness.runtime.version, null);
+});
+
 test('repairs a stale same-browser version after a 409 only from an acknowledged remote revision', async () => {
   const payloadA = { businessText: 'Version zero' };
   const payloadB = { businessText: 'Version one' };
