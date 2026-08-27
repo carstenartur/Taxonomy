@@ -8,7 +8,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -70,7 +74,38 @@ class PythonSourceRatchetRepositoryTest {
     }
 
     @Test
-    void productiveRuntimeReferencesCanOnlyBeRemoved() throws Exception {
+    void relocationMatchingPreservesCommandIdentityAndMultiplicity() {
+        String relocation = """
+                diff --git a/old.yml b/new.sh
+                --- a/old.yml
+                +++ b/new.sh
+                @@ -1 +1 @@
+                -python3 .github/scripts/check.py
+                +python3 .github/scripts/check.py
+                """;
+        assertThat(unmatchedPythonAdditions(relocation)).isEmpty();
+
+        String duplicate = relocation + """
+                @@ -2,0 +2 @@
+                +python3 .github/scripts/check.py
+                """;
+        assertThat(unmatchedPythonAdditions(duplicate))
+                .containsExactly("new.sh: python3 .github/scripts/check.py");
+
+        String replacement = """
+                diff --git a/old.yml b/new.sh
+                --- a/old.yml
+                +++ b/new.sh
+                @@ -1 +1 @@
+                -python3 .github/scripts/old.py
+                +python3 .github/scripts/new.py
+                """;
+        assertThat(unmatchedPythonAdditions(replacement))
+                .containsExactly("new.sh: python3 .github/scripts/new.py");
+    }
+
+    @Test
+    void productiveRuntimeReferencesCanOnlyBeRemovedOrRelocated() throws Exception {
         Path root = findRepositoryRoot();
         GitSupport.Result worktree = GitSupport.run(
                 root, "rev-parse", "--is-inside-work-tree");
@@ -136,32 +171,65 @@ class PythonSourceRatchetRepositoryTest {
                 "package.json",
                 ":(glob)**/package.json");
 
-        Set<String> additions = new LinkedHashSet<>();
+        assertThat(unmatchedPythonAdditions(diff))
+                .as("new executable Python references after %s; exact relocations may "
+                                + "consume one matching removal each",
+                        RELEASE_CORE_REMOVAL_BASELINE)
+                .isEmpty();
+    }
+
+    private static List<String> unmatchedPythonAdditions(String diff) {
+        Map<String, Integer> removals = new LinkedHashMap<>();
+        List<RuntimeReference> additions = new ArrayList<>();
         String currentFile = "<unknown>";
+
         for (String line : diff.lines().toList()) {
+            if (line.startsWith("--- a/")) {
+                currentFile = line.substring("--- a/".length());
+                continue;
+            }
             if (line.startsWith("+++ b/")) {
                 currentFile = line.substring("+++ b/".length());
                 continue;
             }
-            if (!line.startsWith("+") || line.startsWith("+++")) {
+            if (line.isEmpty()
+                    || (line.charAt(0) != '+' && line.charAt(0) != '-')) {
                 continue;
             }
-            String added = line.substring(1).stripLeading();
-            if (added.startsWith("#")
-                    || added.startsWith("<!--")
-                    || added.startsWith("//")
-                    || added.startsWith("*")) {
+            String reference = executableReference(line.substring(1));
+            if (reference == null) {
                 continue;
             }
-            if (EXECUTABLE_PYTHON_REFERENCE.matcher(added).find()) {
-                additions.add(currentFile + ": " + added);
+            if (line.charAt(0) == '-') {
+                removals.merge(reference, 1, Integer::sum);
+            } else {
+                additions.add(new RuntimeReference(currentFile, reference));
             }
         }
 
-        assertThat(additions)
-                .as("new executable Python references after %s",
-                        RELEASE_CORE_REMOVAL_BASELINE)
-                .isEmpty();
+        List<String> unmatched = new ArrayList<>();
+        for (RuntimeReference addition : additions) {
+            int available = removals.getOrDefault(addition.command(), 0);
+            if (available == 0) {
+                unmatched.add(addition.file() + ": " + addition.command());
+            } else {
+                removals.put(addition.command(), available - 1);
+            }
+        }
+        return unmatched;
+    }
+
+    private static String executableReference(String source) {
+        String candidate = source.strip();
+        if (candidate.startsWith("#")
+                || candidate.startsWith("<!--")
+                || candidate.startsWith("//")
+                || candidate.startsWith("*")) {
+            return null;
+        }
+        return EXECUTABLE_PYTHON_REFERENCE.matcher(candidate).find()
+                ? candidate
+                : null;
     }
 
     private static boolean matches(String source) {
@@ -235,5 +303,8 @@ class PythonSourceRatchetRepositoryTest {
             current = current.getParent();
         }
         throw new IllegalStateException("Unable to locate Taxonomy repository root");
+    }
+
+    private record RuntimeReference(String file, String command) {
     }
 }

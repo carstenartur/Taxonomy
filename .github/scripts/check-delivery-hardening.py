@@ -92,16 +92,21 @@ def main() -> int:
         "set -euo pipefail",
         "taxonomy-coverage/target/site/jacoco-aggregate",
         "Aggregate JaCoCo XML is missing",
-        "python3 .github/scripts/generate-quality-site.py",
-        "python3 .github/scripts/verify-quality-publication.py",
-        '--commit "$GITHUB_SHA"',
-        '--source-tree "$source_tree"',
-        '--build-id "$build_id"',
-        '--tool "java=$(java -version 2>&1 | sed -n \'1p\')"',
-        '--tool "maven=$(./mvnw -version 2>&1 | sed -n \'1p\')"',
-        '--expected-commit "$GITHUB_SHA"',
+        'source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")',
+        'build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.core"',
+        "Staged core evidence",
+        "Core build ID",
     ):
         require(stage_core_reports, needle, STAGE_CORE_REPORTS, failures)
+    for final_only in (
+        "generate-quality-site.py",
+        "verify-quality-publication.py",
+    ):
+        if final_only in stage_core_reports:
+            failures.append(
+                f"{STAGE_CORE_REPORTS.relative_to(ROOT)} must leave {final_only} "
+                "to the final evidence gate"
+            )
 
     for needle in (
         "set -euo pipefail",
@@ -116,6 +121,8 @@ def main() -> int:
         '--tool "java=$(java -version 2>&1 | sed -n \'1p\')"',
         '--tool "maven=$(./mvnw -version 2>&1 | sed -n \'1p\')"',
         '--root target/quality-reports --expected-commit "$GITHUB_SHA"',
+        "Verified commit:",
+        "Build ID:",
     ):
         require(finalizer, needle, FINALIZE_QUALITY_EVIDENCE, failures)
 
@@ -256,12 +263,12 @@ def main() -> int:
     print(
         "Delivery hardening contract passed: CI delegates to fail-closed repository "
         "scripts whose report tests, aggregate coverage staging, commit/tree/build/tool "
-        "provenance and final UI/observability consolidation are all verified; reports "
-        "are atomically published and remotely re-verified; Render is pinned to the "
-        "verified commit, records explicit disabled/triggered/verifying/succeeded/failed "
-        "evidence, archives hook transport failures and can poll platform status; "
-        "responsive tree height remains bounded, the container exposes its build commit, "
-        "and the Rancher prefix profile is explicit."
+        "provenance and final-only UI/observability consolidation, publication generation "
+        "and verification are all checked; reports are atomically published and remotely "
+        "re-verified; Render is pinned to the verified commit, records explicit "
+        "disabled/triggered/verifying/succeeded/failed evidence, archives hook transport "
+        "failures and can poll platform status; responsive tree height remains bounded, "
+        "the container exposes its build commit, and the Rancher prefix profile is explicit."
     )
     return 0
 

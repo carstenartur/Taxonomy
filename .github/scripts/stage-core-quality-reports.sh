@@ -30,13 +30,5 @@ done
 
 source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
 build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.core"
-python3 .github/scripts/generate-quality-site.py \
-  --root target/quality-reports --commit "$GITHUB_SHA" \
-  --source-tree "$source_tree" --build-id "$build_id" \
-  --tool "java=$(java -version 2>&1 | sed -n '1p')" \
-  --tool "maven=$(./mvnw -version 2>&1 | sed -n '1p')" \
-  --tool 'codeql-action=v4.37.6' --tool 'trivy-action=v0.36.0'
-python3 .github/scripts/verify-quality-publication.py \
-  --root target/quality-reports --expected-commit "$GITHUB_SHA"
-printf 'Verified commit: %s\nSource tree: %s\nBuild ID: %s\n' \
+printf 'Staged core evidence\nCommit: %s\nSource tree: %s\nCore build ID: %s\n' \
   "$GITHUB_SHA" "$source_tree" "$build_id" > target/quality-reports/README.txt

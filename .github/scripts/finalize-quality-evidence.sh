@@ -21,3 +21,5 @@ python3 .github/scripts/generate-quality-site.py \
   --tool 'codeql-action=v4.37.6' --tool 'trivy-action=v0.36.0'
 python3 .github/scripts/verify-quality-publication.py \
   --root target/quality-reports --expected-commit "$GITHUB_SHA"
+printf 'Verified commit: %s\nSource tree: %s\nBuild ID: %s\n' \
+  "$GITHUB_SHA" "$source_tree" "$build_id" > target/quality-reports/README.txt
