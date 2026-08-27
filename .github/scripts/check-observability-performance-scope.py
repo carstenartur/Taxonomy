@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep the performance gate scoped to server/runtime-sensitive PR changes."""
+"""Keep the performance gate scoped and independent from the core CI lane."""
 
 from pathlib import Path
 import sys
@@ -16,7 +16,9 @@ def main() -> int:
     failures: list[str] = []
 
     required = (
+        "observability:\n    name: OpenTelemetry performance budget",
         "- name: Detect performance-sensitive changes",
+        "id: observability-performance-scope",
         "PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
         "PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
         'git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" --',
@@ -27,25 +29,49 @@ def main() -> int:
         STATIC_EXCLUSION,
         TEMPLATE_EXCLUSION,
         ".github/scripts/run-observability-performance.sh",
-        "github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true'",
+        "github.event_name != 'pull_request' || "
+        "steps.observability-performance-scope.outputs.run == 'true'",
         "TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true'",
         "run: bash .github/scripts/run-observability-performance.sh",
+        "- name: Record observability lane scope",
     )
     for needle in required:
         if needle not in workflow:
             failures.append(f"ci-cd.yml is missing {needle!r}")
 
     try:
-        start = workflow.index("- name: Detect performance-sensitive changes")
-        end = workflow.index("- name: Measure OpenTelemetry performance budget")
+        core_start = workflow.index("  core:")
+        observability_start = workflow.index("  observability:")
+        ui_plan_start = workflow.index("  ui-plan:")
+        start = workflow.index(
+            "- name: Detect performance-sensitive changes",
+            observability_start,
+        )
+        end = workflow.index(
+            "- name: Measure OpenTelemetry performance budget",
+            start,
+        )
+        performance_end = workflow.index(
+            "- name: Record observability lane scope",
+            end,
+        )
+        core_block = workflow[core_start:observability_start]
+        observability_block = workflow[observability_start:ui_plan_start]
         scope_block = workflow[start:end]
-        performance_end = workflow.index("- name: Restore pinned embedding model")
         performance_block = workflow[end:performance_end]
     except ValueError as error:
-        failures.append(f"Could not locate performance scope steps: {error}")
+        failures.append(f"Could not locate parallel performance lane: {error}")
+        core_block = ""
+        observability_block = ""
         scope_block = ""
         performance_block = ""
 
+    if "Measure OpenTelemetry performance budget" in core_block:
+        failures.append(
+            "The expensive performance budget must not extend the core reactor critical path"
+        )
+    if "Measure OpenTelemetry performance budget" not in observability_block:
+        failures.append("The parallel observability job must own the performance budget")
     if "...HEAD" in scope_block:
         failures.append(
             "Scope detection must compare base.sha with head.sha, not the synthetic PR merge HEAD"
@@ -64,7 +90,8 @@ def main() -> int:
         )
     if "taxonomy-app/src/main/java" in scope_block:
         failures.append(
-            "Do not replace the inclusive src/main path with Java-only matching; runtime configuration and resources must stay covered"
+            "Do not replace the inclusive src/main path with Java-only matching; "
+            "runtime configuration and resources must stay covered"
         )
     if "github.event_name != 'pull_request'" not in performance_block:
         failures.append(
@@ -79,7 +106,7 @@ def main() -> int:
 
     print(
         "Performance scope covers server/runtime-sensitive PR changes, excludes pure UI assets, "
-        "and always runs on non-PR CI."
+        "always runs on non-PR CI, and executes independently from the core reactor."
     )
     return 0
 

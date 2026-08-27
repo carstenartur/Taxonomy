@@ -8,11 +8,34 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 CI = ROOT / ".github" / "workflows" / "ci-cd.yml"
+CORE_CONTRACT = ROOT / ".github" / "scripts" / "ci-core-contracts.sh"
+STAGE_CORE_REPORTS = ROOT / ".github" / "scripts" / "stage-core-quality-reports.sh"
+FINALIZE_QUALITY_EVIDENCE = (
+    ROOT / ".github" / "scripts" / "finalize-quality-evidence.sh"
+)
 DELIVERY = ROOT / ".github" / "workflows" / "delivery.yml"
 QUALITY_VERIFY = ROOT / ".github" / "scripts" / "verify-quality-publication.py"
 DEPLOY_VERIFY = ROOT / ".github" / "scripts" / "verify-deployment.py"
-CSS = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "css" / "taxonomy-ergonomics.css"
-I18N = ROOT / "taxonomy-app" / "src" / "main" / "resources" / "static" / "js" / "taxonomy-i18n.js"
+CSS = (
+    ROOT
+    / "taxonomy-app"
+    / "src"
+    / "main"
+    / "resources"
+    / "static"
+    / "css"
+    / "taxonomy-ergonomics.css"
+)
+I18N = (
+    ROOT
+    / "taxonomy-app"
+    / "src"
+    / "main"
+    / "resources"
+    / "static"
+    / "js"
+    / "taxonomy-i18n.js"
+)
 UI_EVIDENCE = ROOT / ".github" / "scripts" / "ui-role-state-evidence.mjs"
 RANCHER = ROOT / "deploy" / "helm" / "taxonomy" / "values-rancher-rke2.yaml"
 SMALL = ROOT / "deploy" / "helm" / "taxonomy" / "values-small.yaml"
@@ -27,6 +50,9 @@ def require(text: str, needle: str, source: Path, failures: list[str]) -> None:
 
 def main() -> int:
     ci = CI.read_text(encoding="utf-8")
+    core_contract = CORE_CONTRACT.read_text(encoding="utf-8")
+    stage_core_reports = STAGE_CORE_REPORTS.read_text(encoding="utf-8")
+    finalizer = FINALIZE_QUALITY_EVIDENCE.read_text(encoding="utf-8")
     delivery = DELIVERY.read_text(encoding="utf-8")
     quality_verify = QUALITY_VERIFY.read_text(encoding="utf-8")
     deploy_verify = DEPLOY_VERIFY.read_text(encoding="utf-8")
@@ -39,24 +65,66 @@ def main() -> int:
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     failures: list[str] = []
 
+    # The workflow owns orchestration. Repository scripts own the delegated
+    # verification and evidence-building details, so validate both sides of
+    # every delegation rather than duplicating implementation strings in YAML.
     for needle in (
+        "core_contract=.github/scripts/ci-core-contracts.sh",
+        'bash "$core_contract"',
+        "run: bash .github/scripts/stage-core-quality-reports.sh",
+        "run: bash .github/scripts/finalize-quality-evidence.sh",
+        "Restore pinned embedding model",
+        "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+    ):
+        require(ci, needle, CI, failures)
+
+    for needle in (
+        "set -euo pipefail",
         "python3 .github/scripts/test-generate-quality-site.py",
         "python3 .github/scripts/test-verify-quality-publication.py",
         "python3 .github/scripts/test-verify-deployment.py",
         "node .github/scripts/test-taxonomy-base-path.mjs",
         "python3 .github/scripts/check-delivery-hardening.py",
+    ):
+        require(core_contract, needle, CORE_CONTRACT, failures)
+
+    for needle in (
+        "set -euo pipefail",
+        "taxonomy-coverage/target/site/jacoco-aggregate",
+        "Aggregate JaCoCo XML is missing",
+        'source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")',
+        'build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}.core"',
+        "Staged core evidence",
+        "Core build ID",
+    ):
+        require(stage_core_reports, needle, STAGE_CORE_REPORTS, failures)
+    for final_only in (
+        "generate-quality-site.py",
+        "verify-quality-publication.py",
+    ):
+        if final_only in stage_core_reports:
+            failures.append(
+                f"{STAGE_CORE_REPORTS.relative_to(ROOT)} must leave {final_only} "
+                "to the final evidence gate"
+            )
+
+    for needle in (
+        "set -euo pipefail",
+        "target/observability-performance",
+        "target/ui-verification/summary.json",
+        'source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")',
+        'build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"',
         "python3 .github/scripts/generate-quality-site.py",
         "python3 .github/scripts/verify-quality-publication.py",
-        '--commit "$GITHUB_SHA"',
-        '--source-tree "$source_tree"',
-        '--build-id "$build_id"',
-        '--tool "java=$java_version"',
-        '--tool "maven=$maven_version"',
-        "taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml",
-        "Restore pinned embedding model",
-        "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+        '--root target/quality-reports --commit "$GITHUB_SHA"',
+        '--source-tree "$source_tree" --build-id "$build_id"',
+        '--tool "java=$(java -version 2>&1 | sed -n \'1p\')"',
+        '--tool "maven=$(./mvnw -version 2>&1 | sed -n \'1p\')"',
+        '--root target/quality-reports --expected-commit "$GITHUB_SHA"',
+        "Verified commit:",
+        "Build ID:",
     ):
-        require(ci, needle, CI, failures)
+        require(finalizer, needle, FINALIZE_QUALITY_EVIDENCE, failures)
 
     for needle in (
         "Checkout verified quality tooling",
@@ -90,10 +158,17 @@ def main() -> int:
     ):
         require(delivery, needle, DELIVERY, failures)
     if "keep_files: true" in delivery:
-        failures.append("delivery.yml must replace the report tree atomically, not retain stale files")
-    if "RENDER_DEPLOY_HOOK_URL is not configured; Render deployment is disabled." in delivery:
-        failures.append("enabled Render delivery must fail closed when its hook secret is missing")
-    if 'if-no-files-found: warn' in delivery.split("  deploy-render:", 1)[-1]:
+        failures.append(
+            "delivery.yml must replace the report tree atomically, not retain stale files"
+        )
+    if (
+        "RENDER_DEPLOY_HOOK_URL is not configured; Render deployment is disabled."
+        in delivery
+    ):
+        failures.append(
+            "enabled Render delivery must fail closed when its hook secret is missing"
+        )
+    if "if-no-files-found: warn" in delivery.split("  deploy-render:", 1)[-1]:
         failures.append("Render delivery evidence must never be optional")
 
     for needle in (
@@ -122,8 +197,8 @@ def main() -> int:
 
     for needle in (
         '.card-body[style*="max-height"]:not(:has(> #taxonomyTree))',
-        '.card-body:has(> #taxonomyTree)',
-        'max-height: min(65vh, 42rem) !important;',
+        ".card-body:has(> #taxonomyTree)",
+        "max-height: min(65vh, 42rem) !important;",
     ):
         require(css, needle, CSS, failures)
     for needle in (
@@ -142,14 +217,14 @@ def main() -> int:
         require(ui_evidence, needle, UI_EVIDENCE, failures)
 
     for needle in (
-        'cpu: 100m',
+        "cpu: 100m",
         'cpu: "500m"',
-        'memory: 768Mi',
-        'memory: 1536Mi',
+        "memory: 768Mi",
+        "memory: 1536Mi",
         'TAXONOMY_EMBEDDING_ENABLED: "false"',
         'TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: "false"',
-        'TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap',
-        'MaxRAMPercentage=65.0',
+        "TAXONOMY_SEARCH_DIRECTORY_TYPE: local-heap",
+        "MaxRAMPercentage=65.0",
     ):
         require(small, needle, SMALL, failures)
     if 'cpu: "2"' in small:
@@ -186,10 +261,13 @@ def main() -> int:
         return 1
 
     print(
-        "Delivery hardening contract passed: reports are commit-bound, internally consistent, "
-        "atomically published and remotely re-verified; Render is pinned to the verified commit, "
-        "records explicit disabled/triggered/verifying/succeeded/failed evidence, archives hook "
-        "transport failures and can poll platform status; responsive tree height remains bounded, "
+        "Delivery hardening contract passed: CI delegates to fail-closed repository "
+        "scripts whose report tests, aggregate coverage staging, commit/tree/build/tool "
+        "provenance and final-only UI/observability consolidation, publication generation "
+        "and verification are all checked; reports are atomically published and remotely "
+        "re-verified; Render is pinned to the verified commit, records explicit "
+        "disabled/triggered/verifying/succeeded/failed evidence, archives hook transport "
+        "failures and can poll platform status; responsive tree height remains bounded, "
         "the container exposes its build commit, and the Rancher prefix profile is explicit."
     )
     return 0
