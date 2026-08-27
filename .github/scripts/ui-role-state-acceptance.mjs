@@ -39,6 +39,7 @@ const consoleErrors = [];
 const externalRequests = [];
 const httpFailures = [];
 const draftReconciliations = [];
+const reconciledHttpFailures = [];
 let auditError = null;
 let browser;
 let context;
@@ -65,6 +66,31 @@ let taskMeasurements = {
 let failureEvidence = null;
 await mkdir(outputDir, { recursive: true });
 
+function draftConflictMatches(failure, reconciliation) {
+  return failure?.status === 409
+    && /^\/api\/analysis-drafts\/[^/]+$/.test(failure.path || '')
+    && Boolean(failure.requestId)
+    && failure.requestId === reconciliation?.requestId
+    && ['stale-local-version', 'write-already-committed'].includes(reconciliation?.reason);
+}
+
+function recordDraftReconciliation(detail) {
+  const reconciliation = {
+    mutationId: detail?.mutationId ?? null,
+    reason: detail?.reason || null,
+    expectedVersion: detail?.expectedVersion ?? null,
+    version: detail?.version ?? null,
+    requestId: detail?.requestId || null
+  };
+  draftReconciliations.push(reconciliation);
+  const failureIndex = httpFailures.findIndex(failure =>
+    draftConflictMatches(failure, reconciliation));
+  if (failureIndex >= 0) {
+    const [failure] = httpFailures.splice(failureIndex, 1);
+    reconciledHttpFailures.push({ ...failure, reconciliation });
+  }
+}
+
 try {
   ({ browser, context, page } = await openRoleSession({
     baseUrl, role, browserName, viewport: effectiveViewport,
@@ -76,13 +102,7 @@ try {
   const baseOrigin = new URL(baseUrl).origin;
 
   await page.exposeFunction('__taxonomyQaRecordDraftReconciliation', detail => {
-    draftReconciliations.push({
-      mutationId: detail?.mutationId ?? null,
-      reason: detail?.reason || null,
-      expectedVersion: detail?.expectedVersion ?? null,
-      version: detail?.version ?? null,
-      requestId: detail?.requestId || null
-    });
+    recordDraftReconciliation(detail);
   });
   await page.evaluate(() => {
     document.addEventListener('taxonomy:analysis-draft-write-reconciled', event => {
@@ -100,7 +120,7 @@ try {
     if (url.origin === baseOrigin && response.status() >= 400) {
       const responseHeaders = response.headers();
       const requestHeaders = response.request().headers();
-      httpFailures.push({
+      const failure = {
         path: url.pathname,
         status: response.status(),
         method: response.request().method(),
@@ -109,7 +129,14 @@ try {
           || requestHeaders['x-request-id']
           || requestHeaders['x-correlation-id']
           || null
-      });
+      };
+      const reconciliation = draftReconciliations.find(item =>
+        draftConflictMatches(failure, item));
+      if (reconciliation) {
+        reconciledHttpFailures.push({ ...failure, reconciliation });
+      } else {
+        httpFailures.push(failure);
+      }
     }
   });
   page.on('console', message => {
@@ -127,7 +154,7 @@ try {
   taskMeasurements.failedStep = 'role task and state flow';
   taskMeasurements = await runRoleStateFlow({
     page, role, zoom, forcedColors, checks, httpFailures,
-    draftReconciliations, externalRequests, consoleErrors, evidence
+    externalRequests, consoleErrors, evidence
   });
   taskMeasurements.schemaVersion = 1;
   taskMeasurements.failedStep = null;
@@ -155,7 +182,7 @@ try {
     states: evidence?.states || [],
     taskMeasurements,
     checks, findings, externalRequests, httpFailures,
-    draftReconciliations, consoleErrors,
+    draftReconciliations, reconciledHttpFailures, consoleErrors,
     auditError, failureEvidence
   };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
