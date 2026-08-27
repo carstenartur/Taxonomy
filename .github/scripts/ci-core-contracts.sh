@@ -5,10 +5,10 @@ set -euo pipefail
 tooling_jar=$(find taxonomy-tooling/target -maxdepth 1 -type f \
   -name 'taxonomy-tooling-*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' \
   | head -n 1)
-[[ -n "$tooling_jar" && -f "$tooling_jar" ]] || {
+if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
   echo '::error::Java release tooling jar was not produced'
   exit 1
-}
+fi
 
 python3 .github/scripts/test-generate-quality-site.py
 python3 .github/scripts/test-verify-quality-publication.py

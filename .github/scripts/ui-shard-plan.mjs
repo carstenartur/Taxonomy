@@ -26,7 +26,7 @@ export function validateShardPlan(plan, expectedScenarioKeys) {
       throw new Error(`UI shard ${shard.id} must contain at least one scenario`);
     }
     for (const key of shard.scenarios) {
-      if (typeof key !== 'string' || !expected.has(key) {
+      if (typeof key !== 'string' || !expected.has(key)) {
         throw new Error(`UI shard ${shard.id} references unknown scenario ${String(key)}`);
       }
       if (assigned.has(key)) {

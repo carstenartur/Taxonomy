@@ -32,7 +32,25 @@ jobs:
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with: { java-version: '21', distribution: temurin, cache: maven }
       - name: Verify release and delivery contracts
-        run: bash .github/scripts/ci-core-contracts.sh
+        run: |
+          set -euo pipefail
+          core_contract=.github/scripts/ci-core-contracts.sh
+          required_contracts=(
+            './mvnw -B -pl taxonomy-tooling -am package -DskipTests'
+            "-name 'taxonomy-tooling-*.jar'"
+            'if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]'
+            '::error::Java release tooling jar was not produced'
+            'java -jar "$tooling_jar" check-release-plan'
+            '--state development'
+            '--require-clean true'
+          )
+          for required in "${required_contracts[@]}"; do
+            if ! grep -F -- "$required" "$core_contract" >/dev/null; then
+              echo "::error::$core_contract is missing delegated contract: $required"
+              exit 1
+            fi
+          done
+          bash "$core_contract"
       - name: Install verified Helm 3.21.0
         env: { HELM_VERSION: v3.21.0 }
         run: bash .github/scripts/install-helm.sh
@@ -45,7 +63,18 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- Dockerfile .dockerignore pom.xml mvnw .mvn/wrapper 'taxonomy-*/pom.xml' docs LICENSE NOTICE THIRD-PARTY-NOTICES.md observability/javaagent.properties; then
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
+              Dockerfile \
+              .dockerignore \
+              pom.xml \
+              mvnw \
+              .mvn/wrapper \
+              'taxonomy-*/pom.xml' \
+              docs \
+              LICENSE \
+              NOTICE \
+              THIRD-PARTY-NOTICES.md \
+              observability/javaagent.properties; then
             echo 'run=false' >> "$GITHUB_OUTPUT"
           else
             echo 'run=true' >> "$GITHUB_OUTPUT"
@@ -55,7 +84,12 @@ jobs:
         env: { IMAGE_TAG: 'taxonomy-ci:${{ github.event.pull_request.head.sha }}' }
         run: |
           set -euo pipefail
-          docker build --progress=plain --build-arg BUILD_DATE=1970-01-01T00:00:00Z --build-arg VCS_REF="$GITHUB_SHA" --build-arg VERSION="ci-${GITHUB_SHA}" --tag "$IMAGE_TAG" .
+          docker build \
+            --progress=plain \
+            --build-arg BUILD_DATE=1970-01-01T00:00:00Z \
+            --build-arg VCS_REF="$GITHUB_SHA" \
+            --build-arg VERSION="ci-${GITHUB_SHA}" \
+            --tag "$IMAGE_TAG" .
           [[ "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE_TAG")" == "$GITHUB_SHA" ]]
           [[ "$(docker image inspect --format '{{ .Config.User }}' "$IMAGE_TAG")" == '10001:10001' ]]
       - name: Validate production and Rancher Helm profiles

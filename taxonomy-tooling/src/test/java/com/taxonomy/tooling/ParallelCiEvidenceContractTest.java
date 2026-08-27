@@ -17,6 +17,9 @@ class ParallelCiEvidenceContractTest {
         String workflow = Files.readString(
                 root.resolve(".github/workflows/ci-cd.yml"),
                 StandardCharsets.UTF_8);
+        String finalizer = Files.readString(
+                root.resolve(".github/scripts/finalize-quality-evidence.sh"),
+                StandardCharsets.UTF_8);
 
         assertThat(workflow)
                 .contains("core:\n    name: Core reactor verification")
@@ -28,7 +31,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("if: always()")
                 .contains("name: taxonomy-ui-application")
                 .contains("name: quality-reports-core")
-                .contains("pattern: ui-verification-*")
+                .contains("pattern: 'ui-verification-*'")
                 .contains("merge-multiple: true")
                 .contains("name: quality-reports")
                 .contains("name: ui-verification");
@@ -50,6 +53,8 @@ class ParallelCiEvidenceContractTest {
         assertThat(finalGate)
                 .contains("Require every authoritative lane")
                 .contains("Verify complete digest-bound UI evidence")
+                .contains("run: bash .github/scripts/finalize-quality-evidence.sh");
+        assertThat(finalizer)
                 .contains("verify-quality-publication.py")
                 .contains("--expected-commit \"$GITHUB_SHA\"");
     }
