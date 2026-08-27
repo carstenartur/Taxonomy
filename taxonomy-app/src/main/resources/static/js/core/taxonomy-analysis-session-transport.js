@@ -157,10 +157,10 @@
         return resolved;
     }
 
-    function isDraftMutation(url, options) {
+    function isDraftOperation(url, options) {
         if (!draftEndpoint(url)) return false;
         var method = methodOf(url, options);
-        return method === 'PUT' || method === 'DELETE';
+        return method === 'GET' || method === 'PUT' || method === 'DELETE';
     }
 
     function numericVersion(value) {
@@ -331,6 +331,9 @@
             if (method === 'PUT' && view && view.version !== undefined) {
                 runtime.version = numericVersion(view.version);
                 rememberAcknowledgedDraft(view);
+            } else if (method === 'GET') {
+                runtime.version = view && view.version !== undefined
+                    ? numericVersion(view.version) : null;
             } else if (method === 'DELETE') {
                 runtime.version = null;
                 runtime.acknowledgedDraftWrites = [];
@@ -362,7 +365,7 @@
         if (C.nativeJsonRequest) return;
         C.nativeJsonRequest = C.jsonRequest;
         C.jsonRequest = function (url, options) {
-            if (!isDraftMutation(url, options)) {
+            if (!isDraftOperation(url, options)) {
                 return C.nativeJsonRequest(url, options);
             }
             var execute = function () {
