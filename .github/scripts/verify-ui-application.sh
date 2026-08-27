@@ -3,6 +3,7 @@ set -euo pipefail
 
 manifest=target/ui-application/manifest.json
 source_commit=$(jq -r '.sourceCommit' "$manifest")
+source_tree=$(jq -r '.sourceTree' "$manifest")
 jar_name=$(jq -r '.jarName' "$manifest")
 expected_sha=$(jq -r '.sha256' "$manifest")
 [[ "$jar_name" =~ ^taxonomy-app-[A-Za-z0-9._+-]+\.jar$ ]] || {
@@ -11,6 +12,11 @@ expected_sha=$(jq -r '.sha256' "$manifest")
 }
 [[ "$source_commit" == "$GITHUB_SHA" ]] || {
   echo "::error::UI application belongs to $source_commit, not $GITHUB_SHA"
+  exit 1
+}
+expected_source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+[[ "$source_tree" == "$expected_source_tree" ]] || {
+  echo "::error::UI application source tree is $source_tree, not $expected_source_tree"
   exit 1
 }
 actual_sha=$(sha256sum "target/ui-application/${jar_name}" | awk '{print $1}')
