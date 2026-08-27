@@ -1,11 +1,15 @@
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import { validateShardPlan } from './ui-shard-plan.mjs';
 
+const execFileAsync = promisify(execFile);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..', '..');
 const resultsRoot = path.resolve(
@@ -19,6 +23,14 @@ const expectedCommit = process.env.TAXONOMY_UI_EXPECTED_COMMIT || '';
 
 if (!/^[0-9a-f]{40}$/.test(expectedCommit)) {
   throw new Error('TAXONOMY_UI_EXPECTED_COMMIT must be one full Git commit SHA');
+}
+
+async function sha256File(file) {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(file)) {
+    hash.update(chunk);
+  }
+  return hash.digest('hex');
 }
 
 const plan = JSON.parse(await readFile(
@@ -49,10 +61,19 @@ if (application.schemaVersion !== 1
     || !/^[0-9a-f]{64}$/.test(application.sha256 || '')) {
   throw new Error('UI application manifest is not bound to the expected commit and digest');
 }
+const { stdout: sourceTreeOutput } = await execFileAsync(
+  'git',
+  ['rev-parse', `${expectedCommit}^{tree}`],
+  { cwd: repoRoot, encoding: 'utf8' });
+const expectedSourceTree = sourceTreeOutput.trim();
+if (application.sourceTree !== expectedSourceTree) {
+  throw new Error(
+    `UI application source tree mismatch; expected ${expectedSourceTree}, `
+    + `actual ${application.sourceTree}`);
+}
+
 const applicationJarPath = path.join(path.dirname(manifestPath), application.jarName);
-const actualApplicationSha256 = createHash('sha256')
-  .update(await readFile(applicationJarPath))
-  .digest('hex');
+const actualApplicationSha256 = await sha256File(applicationJarPath);
 if (actualApplicationSha256 !== application.sha256) {
   throw new Error(
     `UI application digest mismatch; expected ${application.sha256}, `
