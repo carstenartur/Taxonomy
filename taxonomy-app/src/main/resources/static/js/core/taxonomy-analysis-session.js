@@ -9,6 +9,7 @@
         '/js/core/taxonomy-analysis-session-core.js',
         '/js/core/taxonomy-analysis-session-api-routing.js',
         '/js/core/taxonomy-analysis-session-transport.js',
+        '/js/core/taxonomy-copilot-terminal-state.js',
         '/js/core/taxonomy-analysis-session-ui.js',
         '/js/core/taxonomy-analysis-session-draft.js',
         '/js/core/taxonomy-analysis-session-projects.js'

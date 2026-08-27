@@ -111,8 +111,17 @@
         parts.submit.textContent = busy ? text('saving') : text('create');
     }
 
+    function safeDialogErrorMessage(error) {
+        var message = error && error.message ? String(error.message) : '';
+        if (!message) return text('createFailed');
+        if (/JSON parse error|Cannot deserialize|PortfolioTypes\$|com\.taxonomy\./i.test(message)) {
+            return text('createFailed');
+        }
+        return message;
+    }
+
     function showDialogError(parts, error) {
-        parts.error.textContent = error && error.message ? error.message : text('createFailed');
+        parts.error.textContent = safeDialogErrorMessage(error);
         parts.error.classList.remove('d-none');
         parts.error.focus();
     }
@@ -282,7 +291,7 @@
                     projectKey: keyInput.value.trim(),
                     title: titleInput.value.trim(),
                     description: descriptionInput.value.trim(),
-                    status: 'DRAFT',
+                    status: 'PLANNING',
                     targetArchitecture: null,
                     targetDate: null,
                     budgetAmount: null,
@@ -476,6 +485,7 @@
         createDialog: createDialog,
         field: field,
         setDialogBusy: setDialogBusy,
+        safeDialogErrorMessage: safeDialogErrorMessage,
         showDialogError: showDialogError,
         createRequirement: createRequirement,
         discardDraftAndNavigate: discardDraftAndNavigate,
