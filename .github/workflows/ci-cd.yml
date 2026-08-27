@@ -90,8 +90,18 @@ jobs:
             --build-arg VCS_REF="$GITHUB_SHA" \
             --build-arg VERSION="ci-${GITHUB_SHA}" \
             --tag "$IMAGE_TAG" .
-          [[ "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE_TAG")" == "$GITHUB_SHA" ]]
-          [[ "$(docker image inspect --format '{{ .Config.User }}' "$IMAGE_TAG")" == '10001:10001' ]]
+          image_revision=$(docker image inspect \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            "$IMAGE_TAG")
+          if [[ "$image_revision" != "$GITHUB_SHA" ]]; then
+            echo "::error::Docker image revision label is '$image_revision'; expected '$GITHUB_SHA'."
+            exit 1
+          fi
+          image_user=$(docker image inspect --format '{{ .Config.User }}' "$IMAGE_TAG")
+          if [[ "$image_user" != '10001:10001' ]]; then
+            echo "::error::Docker image runtime user is '$image_user'; expected '10001:10001'."
+            exit 1
+          fi
       - name: Validate production and Rancher Helm profiles
         run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
       - name: Restore pinned embedding model
