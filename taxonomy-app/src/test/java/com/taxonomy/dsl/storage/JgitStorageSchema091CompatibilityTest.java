@@ -33,8 +33,7 @@ class JgitStorageSchema091CompatibilityTest {
     }
 
     @Test
-    void acceptsPre091ShapeWithLegacyShortIndexBecauseReleasedMigrationReplacesIt()
-            throws Exception {
+    void rejectsPre091ShapeWithoutReleasedIdOrderingColumn() throws Exception {
         DataSource dataSource = dataSource("reflog-pre-091-short-index");
         Flyway flyway = flyway(dataSource);
         flyway.migrate();
@@ -46,8 +45,14 @@ class JgitStorageSchema091CompatibilityTest {
                 "create index idx_reflog_repo_ref_id "
                         + "on git_reflog (repository_name, ref_name)");
 
-        assertDoesNotThrow(
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
                 () -> JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false));
+
+        assertTrue(error.getMessage().contains(
+                "REPOSITORY_NAME, REF_NAME, ID"));
+        assertTrue(error.getMessage().contains(
+                "IDX_REFLOG_REPO_REF_ID"));
     }
 
     @Test
