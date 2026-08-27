@@ -5,7 +5,7 @@
     if (!C) throw new Error('Analysis session core must load before transport lifecycle');
 
     var runtime = C.runtime;
-    var DRAFT_WRITE_HISTORY_LIMIT = 16;
+    var DRAFT_WRITE_HISTORY_LIMIT = 1;
     var DRAFT_TRACE_LIMIT = 48;
     runtime.analysisGeneration = Number(runtime.analysisGeneration) || 0;
     runtime.activeAnalysisControllers = runtime.activeAnalysisControllers || new Set();
