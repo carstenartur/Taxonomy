@@ -253,6 +253,7 @@ async function promotedNavigationTarget() {
     '/taxonomy/js/core/taxonomy-analysis-session-core.js',
     '/taxonomy/js/core/taxonomy-analysis-session-api-routing.js',
     '/taxonomy/js/core/taxonomy-analysis-session-transport.js',
+    '/taxonomy/js/core/taxonomy-copilot-terminal-state.js',
     '/taxonomy/js/core/taxonomy-analysis-session-ui.js',
     '/taxonomy/js/core/taxonomy-analysis-session-draft.js',
     '/taxonomy/js/core/taxonomy-analysis-session-projects.js'
