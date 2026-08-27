@@ -3,7 +3,7 @@
     'use strict';
     var C = window.__TaxonomyAnalysisSessionContext;
     if (!C) throw new Error('Analysis session core must load before Copilot authority');
-    var runtime = C.runtime;
+    var runtime = C.runtime || (C.runtime = {});
 
     function analysisRunning() {
         var button = document.getElementById('analyzeBtn');
