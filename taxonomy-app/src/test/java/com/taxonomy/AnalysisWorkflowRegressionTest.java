@@ -38,11 +38,12 @@ class AnalysisWorkflowRegressionTest {
     }
 
     @Test
-    void completeAnalysisRoutingIsIndependentFromTheCurrentRendering() throws IOException {
-        String transport = resource(
-                "/static/js/core/taxonomy-analysis-session-transport.js");
+    void copilotAuthorityRoutesCompleteAnalysisIndependentlyFromRendering()
+            throws IOException {
+        String authority = resource(
+                "/static/js/core/taxonomy-copilot-terminal-state.js");
 
-        assertThat(transport)
+        assertThat(authority)
                 .contains("function installCompleteAnalysisRouting()")
                 .contains("var completeRequested = copilotRunning()")
                 .contains("interactive.checked === false")
@@ -51,25 +52,26 @@ class AnalysisWorkflowRegressionTest {
     }
 
     @Test
-    void completeAnalysisRoutingPreservesAndReusesManualScoring() throws IOException {
-        String transport = resource(
-                "/static/js/core/taxonomy-analysis-session-transport.js");
+    void copilotAuthorityPreservesAndReusesManualScoring() throws IOException {
+        String authority = resource(
+                "/static/js/core/taxonomy-copilot-terminal-state.js");
 
-        assertThat(transport)
+        assertThat(authority)
                 .contains("function hasCurrentScores()")
-                .contains("provider.value === 'MANUAL'")
+                .contains("selectedProvider.value === 'MANUAL'")
                 .contains("if (!copilotRunning()) return;")
-                .contains("!existingScores && selectedProvider")
-                .contains("already completed manual scoring result");
+                .contains("already completed manual scoring result")
+                .contains("lastAnalysisProvider = 'MANUAL'")
+                .contains("lastAnalysisStatus = 'SUCCESS'");
     }
 
     @Test
-    void copilotPreflightRejectsUnavailableAnalysisWithoutStartingItsTimeout()
+    void copilotPreflightRejectsUnavailableAnalysisBeforeStartingItsTimeout()
             throws IOException {
-        String transport = resource(
-                "/static/js/core/taxonomy-analysis-session-transport.js");
+        String authority = resource(
+                "/static/js/core/taxonomy-copilot-terminal-state.js");
 
-        assertThat(transport)
+        assertThat(authority)
                 .contains("var copilotTarget = closest('#copilotBtn')")
                 .contains("analyzeAction.disabled")
                 .contains("elementAriaDisabled(analyzeAction)")
@@ -78,16 +80,16 @@ class AnalysisWorkflowRegressionTest {
     }
 
     @Test
-    void copilotWaitsForTheMainAnalysisTerminalState() throws IOException {
-        String transport = resource(
-                "/static/js/core/taxonomy-analysis-session-transport.js");
+    void copilotWaitsForAnExactSuccessfulTerminalState() throws IOException {
+        String authority = resource(
+                "/static/js/core/taxonomy-copilot-terminal-state.js");
 
-        assertThat(transport)
+        assertThat(authority)
                 .contains("var tracked = copilotRunning() && analysisRunning();")
                 .contains("if (tracked && analysisRunning()) return;")
-                .contains("C.S.lastAnalysisStatus === 'ERROR'")
-                .contains("showCopilotAnalysisFailure();")
-                .contains("resetBusyControls();");
+                .contains("C.S.lastAnalysisStatus !== 'SUCCESS'")
+                .contains("showIncompleteAnalysis();")
+                .contains("resetCopilotControls();");
     }
 
     private static String resource(String path) throws IOException {

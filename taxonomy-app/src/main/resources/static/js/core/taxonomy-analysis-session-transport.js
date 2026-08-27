@@ -5,10 +5,17 @@
     if (!C) throw new Error('Analysis session core must load before transport lifecycle');
 
     var runtime = C.runtime;
+    var DRAFT_WRITE_HISTORY_LIMIT = 1;
+    var DRAFT_TRACE_LIMIT = 48;
     runtime.analysisGeneration = Number(runtime.analysisGeneration) || 0;
     runtime.activeAnalysisControllers = runtime.activeAnalysisControllers || new Set();
     runtime.copilotIntervals = runtime.copilotIntervals || new Set();
     runtime.draftMutationQueue = runtime.draftMutationQueue || Promise.resolve();
+    runtime.draftMutationSequence = Number(runtime.draftMutationSequence) || 0;
+    runtime.acknowledgedDraftWrites = Array.isArray(runtime.acknowledgedDraftWrites)
+        ? runtime.acknowledgedDraftWrites : [];
+    runtime.draftMutationTrace = Array.isArray(runtime.draftMutationTrace)
+        ? runtime.draftMutationTrace : [];
 
     function methodOf(input, init) {
         return String((init && init.method)
@@ -36,69 +43,6 @@
 
     function isCurrent(generation) {
         return generation === runtime.analysisGeneration && !runtime.invalidating;
-    }
-
-    function analysisRunning() {
-        var button = document.getElementById('analyzeBtn');
-        var spinner = document.getElementById('analyzeSpinner');
-        return Boolean(button && button.disabled && spinner
-            && !spinner.classList.contains('d-none'));
-    }
-
-    function copilotRunning() {
-        var button = document.getElementById('copilotBtn');
-        var spinner = document.getElementById('copilotSpinner');
-        return Boolean(button && button.disabled && spinner
-            && !spinner.classList.contains('d-none'));
-    }
-
-    function hasCurrentScores() {
-        var scores = window._taxonomyCurrentScores;
-        return Boolean(scores && typeof scores === 'object'
-            && Object.keys(scores).length > 0);
-    }
-
-    function showCopilotMessage(kind, german, english) {
-        var panel = document.getElementById('copilotPanel');
-        if (panel) panel.style.display = '';
-        var content = document.getElementById('copilotContent');
-        if (!content) return;
-        var alert = document.createElement('div');
-        alert.className = 'alert alert-' + kind + ' py-1 px-2 small mb-0';
-        alert.textContent = C.language() === 'de' ? german : english;
-        content.replaceChildren(alert);
-    }
-
-    function showCopilotAnalysisFailure() {
-        showCopilotMessage(
-            'danger',
-            'Die Hauptanalyse ist fehlgeschlagen. Die konkrete Ursache steht im Analysestatus. '
-                + 'Beheben Sie sie und starten Sie den Copilot erneut.',
-            'The main analysis failed. The concrete cause is shown in the analysis status. '
-                + 'Resolve it and run Copilot again.'
-        );
-    }
-
-    function showCopilotManualProviderFailure() {
-        showCopilotMessage(
-            'warning',
-            'Für eine noch nicht bewertete Anforderung benötigt der Copilot einen KI-Anbieter. '
-                + 'Wählen Sie einen konfigurierten Anbieter oder den Serverstandard; eine bereits '
-                + 'abgeschlossene manuelle Bewertung kann der Copilot dagegen weiterverwenden.',
-            'Copilot requires an AI provider when the requirement has not been scored yet. '
-                + 'Select a configured provider or the server default; Copilot can reuse an '
-                + 'already completed manual scoring result.'
-        );
-    }
-
-    function showCopilotUnavailableFailure() {
-        showCopilotMessage(
-            'warning',
-            'Der Copilot kann noch nicht gestartet werden. Warten Sie, bis die Taxonomie und der '
-                + 'Analyseknopf verfügbar sind, oder beenden Sie zuerst die laufende Analyse.',
-            'Copilot cannot start yet. Wait until the taxonomy and Analyze action are available, '
-                + 'or finish the analysis that is already running.'
-        );
     }
 
     function guardedResponse(response, generation) {
@@ -177,28 +121,20 @@
         var nativeSetInterval = window.setInterval.bind(window);
         var nativeClearInterval = window.clearInterval.bind(window);
 
+        function guardedSetInterval(callback, delay) {
+            var id = nativeSetInterval(callback, delay);
+            var button = document.getElementById('copilotBtn');
+            var spinner = document.getElementById('copilotSpinner');
+            if (button && button.disabled && spinner
+                    && !spinner.classList.contains('d-none')) {
+                runtime.copilotIntervals.add(id);
+            }
+            return id;
+        }
+
         function guardedClearInterval(id) {
             runtime.copilotIntervals.delete(id);
             return nativeClearInterval(id);
-        }
-
-        function guardedSetInterval(callback, delay) {
-            // The legacy Copilot uses a 60-tick score poll. Do not consume those
-            // ticks while the authoritative main analysis is still running and do
-            // not release dependent steps on the first streaming/intermediate score.
-            var tracked = copilotRunning() && analysisRunning();
-            var id = nativeSetInterval(function () {
-                if (tracked && analysisRunning()) return;
-                if (tracked && C.S.lastAnalysisStatus === 'ERROR') {
-                    guardedClearInterval(id);
-                    resetBusyControls();
-                    showCopilotAnalysisFailure();
-                    return;
-                }
-                callback();
-            }, delay);
-            if (tracked) runtime.copilotIntervals.add(id);
-            return id;
         }
 
         Object.defineProperty(guardedSetInterval, '__taxonomyCopilotGuard', {
@@ -212,124 +148,219 @@
         runtime.nativeClearInterval = nativeClearInterval;
     }
 
-    function elementAriaDisabled(element) {
-        return Boolean(element && typeof element.getAttribute === 'function'
-            && element.getAttribute('aria-disabled') === 'true');
-    }
-
-    function installCompleteAnalysisRouting() {
-        if (runtime.completeAnalysisRoutingInstalled) return;
-        runtime.completeAnalysisRoutingInstalled = true;
-
-        document.addEventListener('click', function (event) {
-            var closest = event.target && typeof event.target.closest === 'function'
-                ? event.target.closest.bind(event.target) : null;
-            if (!closest) return;
-
-            var copilotTarget = closest('#copilotBtn');
-            if (copilotTarget) {
-                // Leave draft/conflict guards authoritative. They own the pending
-                // business decision and will stop this event in their own listener.
-                if (runtime.draftDecisionPending || runtime.conflict || runtime.invalidating) return;
-
-                if (analysisRunning()) {
-                    event.preventDefault();
-                    event.stopImmediatePropagation();
-                    showCopilotUnavailableFailure();
-                    return;
-                }
-
-                var existingScores = hasCurrentScores();
-                var analyzeAction = document.getElementById('analyzeBtn');
-                if (!existingScores && (!analyzeAction || analyzeAction.disabled
-                        || elementAriaDisabled(analyzeAction))) {
-                    event.preventDefault();
-                    event.stopImmediatePropagation();
-                    showCopilotUnavailableFailure();
-                    return;
-                }
-
-                var selectedProvider = document.getElementById('providerSelect');
-                if (!existingScores && selectedProvider
-                        && selectedProvider.value === 'MANUAL') {
-                    event.preventDefault();
-                    event.stopImmediatePropagation();
-                    showCopilotManualProviderFailure();
-                }
-                return;
-            }
-
-            var target = closest('#analyzeBtn');
-            if (!target || target.disabled || elementAriaDisabled(target)
-                    || runtime.draftDecisionPending || runtime.conflict
-                    || runtime.invalidating) {
-                return;
-            }
-
-            var provider = document.getElementById('providerSelect');
-            if (provider && provider.value === 'MANUAL') {
-                // Preserve the existing Manual Scoring branch for ordinary Analyze.
-                // Copilot can reuse completed manual scores, but cannot create the
-                // missing score set by issuing a real LLM request.
-                if (!copilotRunning()) return;
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                resetBusyControls();
-                showCopilotManualProviderFailure();
-                return;
-            }
-
-            var interactive = document.getElementById('interactiveMode');
-            var completeRequested = copilotRunning()
-                || !interactive || interactive.checked === false;
-            if (!completeRequested) return;
-
-            var scoring = window.TaxonomyScoring;
-            if (!scoring || typeof scoring.runAnalysis !== 'function') return;
-
-            // The existing target listener selects SSE solely from the current
-            // rendering (list/tabs). A complete analysis is a business choice, not
-            // a rendering choice. Route it through one authoritative response.
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            scoring.runAnalysis();
-        }, true);
-    }
-
-    function isDraftMutation(url, options) {
+    function draftEndpoint(url) {
         var resolved = C.requestUrl(url);
         if (!resolved || resolved.origin !== window.location.origin
-                || resolved.pathname.indexOf('/api/analysis-drafts/') !== 0) {
-            return false;
+                || !/\/api\/analysis-drafts\/[^/]+$/.test(resolved.pathname)) {
+            return null;
         }
+        return resolved;
+    }
+
+    function isDraftOperation(url, options) {
+        if (!draftEndpoint(url)) return false;
         var method = methodOf(url, options);
-        return method === 'PUT' || method === 'DELETE';
+        return method === 'GET' || method === 'PUT' || method === 'DELETE';
+    }
+
+    function numericVersion(value) {
+        if (value === null || value === undefined || value === '') return null;
+        var version = Number(value);
+        return Number.isFinite(version) ? version : null;
+    }
+
+    function comparablePayload(payload) {
+        return payload === null || payload === undefined ? null : C.comparable(payload);
+    }
+
+    function traceDraftMutation(mutationId, phase, details) {
+        var entry = Object.assign({
+            mutationId: mutationId,
+            phase: phase,
+            recordedAt: new Date().toISOString()
+        }, details || {});
+        runtime.draftMutationTrace.push(entry);
+        if (runtime.draftMutationTrace.length > DRAFT_TRACE_LIMIT) {
+            runtime.draftMutationTrace.splice(
+                0, runtime.draftMutationTrace.length - DRAFT_TRACE_LIMIT);
+        }
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-mutation', {
+            detail: entry
+        }));
+    }
+
+    function rememberAcknowledgedDraft(view) {
+        if (!view || !view.payload) return;
+        var version = numericVersion(view.version);
+        if (version === null) return;
+        var serialized = comparablePayload(view.payload);
+        runtime.acknowledgedDraftWrites = runtime.acknowledgedDraftWrites.filter(
+            function (entry) {
+                return entry.version !== version || entry.serialized !== serialized;
+            });
+        runtime.acknowledgedDraftWrites.push({
+            version: version,
+            serialized: serialized
+        });
+        if (runtime.acknowledgedDraftWrites.length > DRAFT_WRITE_HISTORY_LIMIT) {
+            runtime.acknowledgedDraftWrites.splice(
+                0,
+                runtime.acknowledgedDraftWrites.length - DRAFT_WRITE_HISTORY_LIMIT);
+        }
+    }
+
+    function wasAcknowledgedLocally(view) {
+        if (!view || !view.payload) return false;
+        var version = numericVersion(view.version);
+        var serialized = comparablePayload(view.payload);
+        if (version === null) return false;
+        return runtime.acknowledgedDraftWrites.some(function (entry) {
+            return entry.version === version && entry.serialized === serialized;
+        });
+    }
+
+    function dispatchDraftReconciled(mutationId, reason, expectedVersion, view, error) {
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-write-reconciled', {
+            detail: {
+                mutationId: mutationId,
+                workspaceId: runtime.workspaceId,
+                reason: reason,
+                expectedVersion: expectedVersion,
+                version: view && view.version !== undefined ? view.version : null,
+                requestId: error && error.requestId ? error.requestId : null
+            }
+        }));
+    }
+
+    function reconcileDraftConflict(
+            url, request, body, serializedPayload,
+            expectedVersion, originalError, mutationId) {
+        var endpoint = draftEndpoint(url);
+        var readUrl = endpoint ? endpoint.pathname : url;
+        traceDraftMutation(mutationId, 'conflict', {
+            expectedVersion: expectedVersion,
+            currentVersion: null,
+            requestId: originalError.requestId || null
+        });
+        return C.nativeJsonRequest(readUrl, { method: 'GET' }).then(function (remote) {
+            var remoteVersion = remote ? numericVersion(remote.version) : null;
+            var remotePayload = remote && remote.payload
+                ? comparablePayload(remote.payload) : null;
+            traceDraftMutation(mutationId, 'conflict-read', {
+                expectedVersion: expectedVersion,
+                currentVersion: remoteVersion,
+                requestId: originalError.requestId || null
+            });
+
+            if (remote && remotePayload === serializedPayload) {
+                runtime.version = remoteVersion;
+                rememberAcknowledgedDraft(remote);
+                dispatchDraftReconciled(
+                    mutationId, 'write-already-committed',
+                    expectedVersion, remote, originalError);
+                return remote;
+            }
+
+            if (!remote || remoteVersion === null
+                    || remoteVersion === numericVersion(expectedVersion)
+                    || !wasAcknowledgedLocally(remote)) {
+                throw originalError;
+            }
+
+            runtime.version = remoteVersion;
+            var retryBody = Object.assign({}, body, {
+                expectedVersion: remoteVersion
+            });
+            var retryRequest = Object.assign({}, request, {
+                body: JSON.stringify(retryBody)
+            });
+            traceDraftMutation(mutationId, 'retry', {
+                expectedVersion: remoteVersion,
+                currentVersion: remoteVersion,
+                requestId: originalError.requestId || null
+            });
+            return C.nativeJsonRequest(url, retryRequest).then(function (view) {
+                runtime.version = view && view.version !== undefined
+                    ? numericVersion(view.version) : runtime.version;
+                rememberAcknowledgedDraft(view);
+                traceDraftMutation(mutationId, 'reconciled', {
+                    expectedVersion: remoteVersion,
+                    currentVersion: runtime.version,
+                    requestId: originalError.requestId || null
+                });
+                dispatchDraftReconciled(
+                    mutationId, 'stale-local-version',
+                    expectedVersion, view, originalError);
+                return view;
+            });
+        });
     }
 
     function currentDraftMutation(url, options) {
         var request = Object.assign({}, options || {});
         var method = methodOf(url, request);
-        var target = C.requestUrl(url);
+        var target = draftEndpoint(url);
+        var mutationId = ++runtime.draftMutationSequence;
+        var expectedVersion = numericVersion(runtime.version);
+        var body = null;
+        var serializedPayload = null;
         if (method === 'PUT') {
-            var body = request.body ? JSON.parse(request.body) : {};
-            body.expectedVersion = runtime.version;
+            body = request.body ? JSON.parse(request.body) : {};
+            body.expectedVersion = expectedVersion;
+            serializedPayload = comparablePayload(body.payload);
             request.body = JSON.stringify(body);
         } else if (method === 'DELETE') {
-            if (runtime.version === null) return Promise.resolve(null);
+            if (runtime.version === null) {
+                runtime.acknowledgedDraftWrites = [];
+                return Promise.resolve(null);
+            }
             if (target) {
-                target.searchParams.set('expectedVersion', runtime.version);
+                target.searchParams.set('expectedVersion', expectedVersion);
                 url = target.pathname + target.search;
             }
         }
+        traceDraftMutation(mutationId, 'started', {
+            method: method,
+            expectedVersion: expectedVersion,
+            currentVersion: expectedVersion,
+            requestId: null
+        });
         return C.nativeJsonRequest(url, request).then(function (view) {
             // The queue owns revision advancement. Callers may mirror this state,
             // but the next queued mutation cannot start before this update.
             if (method === 'PUT' && view && view.version !== undefined) {
-                runtime.version = view.version;
+                runtime.version = numericVersion(view.version);
+                rememberAcknowledgedDraft(view);
+            } else if (method === 'GET') {
+                runtime.version = view && view.version !== undefined
+                    ? numericVersion(view.version) : null;
+                if (runtime.version === null) {
+                    runtime.acknowledgedDraftWrites = [];
+                }
             } else if (method === 'DELETE') {
                 runtime.version = null;
+                runtime.acknowledgedDraftWrites = [];
             }
+            traceDraftMutation(mutationId, 'succeeded', {
+                method: method,
+                expectedVersion: expectedVersion,
+                currentVersion: runtime.version,
+                requestId: null
+            });
             return view;
+        }).catch(function (error) {
+            if (method === 'PUT' && error && error.status === 409) {
+                return reconcileDraftConflict(
+                    url, request, body, serializedPayload,
+                    expectedVersion, error, mutationId);
+            }
+            traceDraftMutation(mutationId, 'failed', {
+                method: method,
+                expectedVersion: expectedVersion,
+                currentVersion: runtime.version,
+                requestId: error && error.requestId ? error.requestId : null
+            });
+            throw error;
         });
     }
 
@@ -337,7 +368,7 @@
         if (C.nativeJsonRequest) return;
         C.nativeJsonRequest = C.jsonRequest;
         C.jsonRequest = function (url, options) {
-            if (!isDraftMutation(url, options)) {
+            if (!isDraftOperation(url, options)) {
                 return C.nativeJsonRequest(url, options);
             }
             var execute = function () {
@@ -431,7 +462,6 @@
     C.installWorkspaceEventSourceRouting();
     installDerivedFetchGuard();
     installCopilotIntervalGuard();
-    installCompleteAnalysisRouting();
     installDraftMutationQueue();
     installPayloadOptions();
 
@@ -448,10 +478,9 @@
     Object.assign(C, {
         analysisOptions: analysisOptions,
         restoreOptions: restoreOptions,
-        analysisRunning: analysisRunning,
-        copilotRunning: copilotRunning,
-        hasCurrentScores: hasCurrentScores,
-        installCompleteAnalysisRouting: installCompleteAnalysisRouting,
-        cancelDerivedRequests: cancelDerivedRequests
+        cancelDerivedRequests: cancelDerivedRequests,
+        draftMutationDiagnostics: function () {
+            return runtime.draftMutationTrace.slice();
+        }
     });
 }());

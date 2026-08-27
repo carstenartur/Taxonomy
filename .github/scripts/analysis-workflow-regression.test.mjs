@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
-const transportSource = await readFile(
+const authoritySource = await readFile(
   new URL(
     '../../taxonomy-app/src/main/resources/static/js/core/'
-      + 'taxonomy-analysis-session-transport.js',
+      + 'taxonomy-copilot-terminal-state.js',
     import.meta.url
   ),
   'utf8'
@@ -15,15 +15,9 @@ const transportSource = await readFile(
 function mutableClassList(initial = []) {
   const values = new Set(initial);
   return {
-    add(value) {
-      values.add(value);
-    },
-    remove(value) {
-      values.delete(value);
-    },
-    contains(value) {
-      return values.has(value);
-    }
+    add(value) { values.add(value); },
+    remove(value) { values.delete(value); },
+    contains(value) { return values.has(value); }
   };
 }
 
@@ -31,98 +25,48 @@ function createHarness({
   interactive = true,
   provider = '',
   currentScores = null,
-  copilotBusy = false,
   analysisBusy = false,
-  lastAnalysisStatus = null
+  copilotBusy = false,
+  status = null
 } = {}) {
   const listeners = new Map();
   const intervals = new Map();
-  const clearedIntervals = [];
+  const cleared = [];
   let nextIntervalId = 1;
   let analysisCalls = 0;
 
   const elements = {
     analyzeBtn: {
-      id: 'analyzeBtn',
-      disabled: analysisBusy
+      disabled: analysisBusy,
+      getAttribute() { return null; }
     },
     analyzeSpinner: {
       classList: mutableClassList(analysisBusy ? [] : ['d-none'])
     },
     copilotBtn: {
-      id: 'copilotBtn',
-      disabled: copilotBusy
+      disabled: copilotBusy,
+      getAttribute() { return null; }
     },
     copilotSpinner: {
       classList: mutableClassList(copilotBusy ? [] : ['d-none'])
     },
-    copilotPanel: {
-      style: {
-        display: 'none'
-      }
-    },
+    copilotPanel: { style: { display: 'none' } },
     copilotContent: {
       rendered: null,
-      replaceChildren(node) {
-        this.rendered = node;
-      }
+      replaceChildren(node) { this.rendered = node; }
     },
-    interactiveMode: {
-      checked: interactive
-    },
-    includeArchitectureView: {
-      checked: false
-    },
-    providerSelect: {
-      value: provider,
-      options: []
-    }
-  };
-
-  const runtime = {
-    analysisGeneration: 0,
-    activeAnalysisControllers: new Set(),
-    copilotIntervals: new Set(),
-    draftMutationQueue: Promise.resolve(),
-    invalidating: false,
-    conflict: false,
-    draftDecisionPending: false,
-    version: null
-  };
-
-  const context = {
-    runtime,
-    S: {
-      lastAnalysisStatus
-    },
-    requestUrl(input) {
-      const value = typeof input === 'string' ? input : input.url;
-      return new URL(value, 'https://taxonomy.example/');
-    },
-    installWorkspaceFetchRouting() {},
-    installWorkspaceEventSourceRouting() {},
-    jsonRequest: async () => null,
-    currentPayload: () => ({}),
-    language: () => 'en'
+    interactiveMode: { checked: interactive },
+    providerSelect: { value: provider },
+    manualApplyBtn: { disabled: false }
   };
 
   const document = {
-    addEventListener(type, listener) {
+    addEventListener(type, listener, capture = false) {
       if (!listeners.has(type)) listeners.set(type, []);
-      listeners.get(type).push(listener);
+      listeners.get(type).push({ listener, capture });
     },
-    getElementById(id) {
-      return elements[id] || null;
-    },
-    querySelectorAll() {
-      return [];
-    },
-    createElement() {
-      return {
-        className: '',
-        textContent: ''
-      };
-    }
+    getElementById(id) { return elements[id] || null; },
+    createElement() { return { className: '', textContent: '' }; }
   };
 
   function nativeSetInterval(callback) {
@@ -133,243 +77,150 @@ function createHarness({
 
   function nativeClearInterval(id) {
     intervals.delete(id);
-    clearedIntervals.push(id);
+    cleared.push(id);
   }
 
-  const window = {
-    location: {
-      origin: 'https://taxonomy.example',
-      href: 'https://taxonomy.example/'
+  const context = {
+    runtime: {
+      draftDecisionPending: false,
+      conflict: false,
+      invalidating: false
     },
-    fetch: async () => ({ ok: true }),
+    S: {
+      currentScores: currentScores,
+      lastAnalysisStatus: status
+    },
+    language: () => 'en'
+  };
+
+  const window = {
     setInterval: nativeSetInterval,
     clearInterval: nativeClearInterval,
-    setTimeout() {
-      return 1;
-    },
     _taxonomyCurrentScores: currentScores,
     TaxonomyScoring: {
-      runAnalysis() {
-        analysisCalls += 1;
-      },
-      setAnalyzing(on) {
-        elements.analyzeBtn.disabled = on;
-        if (on) elements.analyzeSpinner.classList.remove('d-none');
-        else elements.analyzeSpinner.classList.add('d-none');
-      }
+      runAnalysis() { analysisCalls += 1; }
     },
     __TaxonomyAnalysisSessionContext: context
   };
 
-  vm.runInNewContext(transportSource, {
+  vm.runInNewContext(authoritySource, {
     window,
     document,
-    console,
-    AbortController,
-    Array,
     Boolean,
-    JSON,
-    Map,
     Object,
-    Promise,
-    Proxy,
-    Reflect,
-    Set,
-    String,
-    URL
-  }, { filename: 'taxonomy-analysis-session-transport.js' });
+    String
+  }, { filename: 'taxonomy-copilot-terminal-state.js' });
 
-  function dispatchClick(selector, element) {
+  function dispatch(selector, element, targetAction) {
     const event = {
       target: {
-        closest(requested) {
-          return requested === selector ? element : null;
-        }
+        closest(requested) { return requested === selector ? element : null; }
       },
       defaultPrevented: false,
       immediatePropagationStopped: false,
-      preventDefault() {
-        this.defaultPrevented = true;
-      },
-      stopImmediatePropagation() {
-        this.immediatePropagationStopped = true;
-      }
+      preventDefault() { this.defaultPrevented = true; },
+      stopImmediatePropagation() { this.immediatePropagationStopped = true; }
     };
     const clickListeners = listeners.get('click') || [];
-    assert.equal(clickListeners.length, 1);
-    clickListeners[0](event);
+    clickListeners.filter(entry => entry.capture).forEach(entry => entry.listener(event));
+    if (!event.immediatePropagationStopped && targetAction) targetAction();
+    if (!event.immediatePropagationStopped) {
+      clickListeners.filter(entry => !entry.capture).forEach(entry => entry.listener(event));
+    }
     return event;
   }
 
   return {
+    window,
     context,
-    runtime,
     elements,
     intervals,
-    clearedIntervals,
-    window,
-    dispatchAnalyzeClick() {
-      return dispatchClick('#analyzeBtn', elements.analyzeBtn);
+    cleared,
+    analysisCalls: () => analysisCalls,
+    clickAnalyze() { return dispatch('#analyzeBtn', elements.analyzeBtn); },
+    clickCopilot() { return dispatch('#copilotBtn', elements.copilotBtn); },
+    applyManualScores(scores) {
+      return dispatch('#manualApplyBtn', elements.manualApplyBtn, () => {
+        context.S.currentScores = scores;
+        window._taxonomyCurrentScores = scores;
+      });
     },
-    dispatchCopilotClick() {
-      return dispatchClick('#copilotBtn', elements.copilotBtn);
-    },
-    analysisCalls: () => analysisCalls
+    finishAnalysis(nextStatus) {
+      elements.analyzeBtn.disabled = false;
+      elements.analyzeSpinner.classList.add('d-none');
+      context.S.lastAnalysisStatus = nextStatus;
+    }
   };
 }
 
-test('interactive drill-down remains on the legacy target listener', () => {
+test('ordinary interactive analysis remains on its existing listener', () => {
   const harness = createHarness({ interactive: true });
-
-  const event = harness.dispatchAnalyzeClick();
-
+  const event = harness.clickAnalyze();
   assert.equal(harness.analysisCalls(), 0);
   assert.equal(event.defaultPrevented, false);
-  assert.equal(event.immediatePropagationStopped, false);
 });
 
-test('manual scoring remains on the legacy provider branch', () => {
-  const harness = createHarness({
-    interactive: false,
-    provider: 'MANUAL'
-  });
-
-  const event = harness.dispatchAnalyzeClick();
-
+test('ordinary manual scoring remains on its existing provider branch', () => {
+  const harness = createHarness({ interactive: false, provider: 'MANUAL' });
+  const event = harness.clickAnalyze();
   assert.equal(harness.analysisCalls(), 0);
   assert.equal(event.defaultPrevented, false);
-  assert.equal(event.immediatePropagationStopped, false);
 });
 
-test('manual non-interactive analysis is complete regardless of list rendering', () => {
+test('ordinary non-interactive analysis uses one complete response', () => {
   const harness = createHarness({ interactive: false });
-
-  const event = harness.dispatchAnalyzeClick();
-
+  const event = harness.clickAnalyze();
   assert.equal(harness.analysisCalls(), 1);
   assert.equal(event.defaultPrevented, true);
-  assert.equal(event.immediatePropagationStopped, true);
 });
 
-test('Copilot forces complete analysis without changing the interactive preference', () => {
-  const harness = createHarness({
-    interactive: true,
-    copilotBusy: true
-  });
-
-  const event = harness.dispatchAnalyzeClick();
-
+test('Copilot forces complete analysis without changing interactive preference', () => {
+  const harness = createHarness({ interactive: true, copilotBusy: true });
+  const event = harness.clickAnalyze();
   assert.equal(harness.analysisCalls(), 1);
   assert.equal(harness.elements.interactiveMode.checked, true);
   assert.equal(event.defaultPrevented, true);
 });
 
-test('Copilot preflight rejects manual scoring when no scores exist', () => {
-  const harness = createHarness({
-    provider: 'MANUAL'
-  });
+test('Copilot preflight rejects manual provider only when scores are missing', () => {
+  const missing = createHarness({ provider: 'MANUAL' });
+  const blocked = missing.clickCopilot();
+  assert.equal(blocked.defaultPrevented, true);
+  assert.match(missing.elements.copilotContent.rendered.textContent, /requires an AI provider/i);
 
-  const event = harness.dispatchCopilotClick();
-
-  assert.equal(harness.analysisCalls(), 0);
-  assert.equal(event.defaultPrevented, true);
-  assert.equal(event.immediatePropagationStopped, true);
-  assert.equal(harness.elements.copilotPanel.style.display, '');
-  assert.match(
-    harness.elements.copilotContent.rendered.textContent,
-    /requires an AI provider/i
-  );
+  const completed = createHarness({ provider: 'MANUAL', currentScores: { IP: 100 } });
+  const allowed = completed.clickCopilot();
+  assert.equal(allowed.defaultPrevented, false);
 });
 
-test('Copilot can reuse an existing manual score set', () => {
-  const harness = createHarness({
-    provider: 'MANUAL',
-    currentScores: { IP: 100 }
-  });
-
-  const event = harness.dispatchCopilotClick();
-
-  assert.equal(harness.analysisCalls(), 0);
-  assert.equal(event.defaultPrevented, false);
-  assert.equal(event.immediatePropagationStopped, false);
-});
-
-test('Copilot preflight rejects a disabled or already-running Analyze action', () => {
+test('Copilot preflight rejects a disabled or running analysis', () => {
   const harness = createHarness({ analysisBusy: true });
-
-  const event = harness.dispatchCopilotClick();
-
-  assert.equal(harness.analysisCalls(), 0);
+  const event = harness.clickCopilot();
   assert.equal(event.defaultPrevented, true);
-  assert.equal(event.immediatePropagationStopped, true);
-  assert.match(
-    harness.elements.copilotContent.rendered.textContent,
-    /cannot start yet/i
-  );
+  assert.match(harness.elements.copilotContent.rendered.textContent, /cannot start yet/i);
 });
 
-test('programmatic Copilot flow with manual scoring cannot issue an LLM request', () => {
-  const harness = createHarness({
-    provider: 'MANUAL',
-    copilotBusy: true
-  });
+test('score poll waits for success and rejects partial completion', () => {
+  const success = createHarness({ analysisBusy: true, copilotBusy: true, status: 'IN_PROGRESS' });
+  let released = 0;
+  const successId = success.window.setInterval(() => { released += 1; }, 1000);
+  success.intervals.get(successId)();
+  assert.equal(released, 0);
+  success.finishAnalysis('SUCCESS');
+  success.intervals.get(successId)();
+  assert.equal(released, 1);
 
-  const event = harness.dispatchAnalyzeClick();
-
-  assert.equal(harness.analysisCalls(), 0);
-  assert.equal(event.defaultPrevented, true);
-  assert.equal(event.immediatePropagationStopped, true);
-  assert.equal(harness.elements.copilotBtn.disabled, false);
-  assert.equal(harness.elements.copilotSpinner.classList.contains('d-none'), true);
-  assert.match(
-    harness.elements.copilotContent.rendered.textContent,
-    /requires an AI provider/i
-  );
+  const partial = createHarness({ analysisBusy: true, copilotBusy: true, status: 'IN_PROGRESS' });
+  const partialId = partial.window.setInterval(() => { throw new Error('must not run'); }, 1000);
+  partial.finishAnalysis('PARTIAL');
+  partial.intervals.get(partialId)();
+  assert.ok(partial.cleared.includes(partialId));
+  assert.match(partial.elements.copilotContent.rendered.textContent, /did not complete successfully/i);
 });
 
-test('Copilot score poll does not advance while the main analysis is busy', () => {
-  const harness = createHarness({
-    copilotBusy: true,
-    analysisBusy: true,
-    lastAnalysisStatus: 'IN_PROGRESS'
-  });
-  let polls = 0;
-
-  const id = harness.window.setInterval(() => {
-    polls += 1;
-  }, 1000);
-  harness.intervals.get(id)();
-  assert.equal(polls, 0);
-
-  harness.elements.analyzeBtn.disabled = false;
-  harness.elements.analyzeSpinner.classList.add('d-none');
-  harness.context.S.lastAnalysisStatus = 'SUCCESS';
-  harness.intervals.get(id)();
-  assert.equal(polls, 1);
-});
-
-test('main-analysis failure terminates Copilot without waiting for score timeout', () => {
-  const harness = createHarness({
-    copilotBusy: true,
-    analysisBusy: true,
-    lastAnalysisStatus: 'IN_PROGRESS'
-  });
-  let polls = 0;
-
-  const id = harness.window.setInterval(() => {
-    polls += 1;
-  }, 1000);
-  harness.elements.analyzeBtn.disabled = false;
-  harness.elements.analyzeSpinner.classList.add('d-none');
-  harness.context.S.lastAnalysisStatus = 'ERROR';
-  harness.intervals.get(id)();
-
-  assert.equal(polls, 0);
-  assert.ok(harness.clearedIntervals.includes(id));
-  assert.equal(harness.elements.copilotBtn.disabled, false);
-  assert.equal(harness.elements.copilotSpinner.classList.contains('d-none'), true);
-  assert.match(
-    harness.elements.copilotContent.rendered.textContent,
-    /main analysis failed/i
-  );
+test('manual scores explicitly replace an earlier failed AI authority', () => {
+  const harness = createHarness({ status: 'PARTIAL' });
+  harness.applyManualScores({ IP: 100 });
+  assert.equal(harness.context.S.lastAnalysisProvider, 'MANUAL');
+  assert.equal(harness.context.S.lastAnalysisStatus, 'SUCCESS');
 });
