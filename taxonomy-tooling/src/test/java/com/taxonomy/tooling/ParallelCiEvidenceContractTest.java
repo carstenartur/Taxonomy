@@ -47,6 +47,8 @@ class ParallelCiEvidenceContractTest {
         assertThat(core)
                 .contains("./mvnw -B verify -Pci")
                 .contains("-Dtaxonomy.ui.skip=true")
+                .contains("::error::Docker image revision label")
+                .contains("::error::Docker image runtime user")
                 .doesNotContain("Measure OpenTelemetry performance budget");
 
         String finalGate = workflow.substring(finalGateStart);
@@ -72,6 +74,9 @@ class ParallelCiEvidenceContractTest {
         String shardPlan = Files.readString(
                 root.resolve(".github/ui-shards.json"),
                 StandardCharsets.UTF_8);
+        String applicationVerifier = Files.readString(
+                root.resolve(".github/scripts/verify-ui-application.sh"),
+                StandardCharsets.UTF_8);
         String verifier = Files.readString(
                 root.resolve(".github/scripts/verify-ui-shards.mjs"),
                 StandardCharsets.UTF_8);
@@ -92,8 +97,14 @@ class ParallelCiEvidenceContractTest {
                 .contains("\"shards\"")
                 .contains("role-state/mobile-admin-webkit")
                 .contains("special-modes/text-spacing-and-offline");
+        assertThat(applicationVerifier)
+                .contains("expected_source_tree=$(git rev-parse")
+                .contains("UI application source tree is");
         assertThat(verifier)
                 .contains("applicationArtifactSha256")
+                .contains("createReadStream")
+                .contains("execFileAsync")
+                .contains("UI application source tree mismatch")
                 .contains("UI shard evidence directory mismatch")
                 .contains("Consolidated UI scenario inventory mismatch")
                 .contains("appears in both")
