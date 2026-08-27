@@ -5,10 +5,47 @@ parallel while keeping one fail-closed required result. The optimisation changes
 scheduling and evidence transport, not the set of product, quality or browser
 checks.
 
+## Validated result
+
+The first complete green run of the parallel architecture was pull-request run
+[`33057152744`](https://github.com/carstenartur/Taxonomy/actions/runs/33057152744)
+on commit `06fa842a27935ef886fabce5ab3f9c3085ec7ce3`.
+
+| Measurement | Sequential baseline | Parallel run | Change |
+| --- | ---: | ---: | ---: |
+| Complete `CI / CD` workflow | 75m 42s | 28m 43s | **46m 59s faster** |
+| Relative wall-clock duration | 100% | 37.9% | **62.1% shorter** |
+| Effective workflow speed | 1.00x | **2.64x** | — |
+| Browser/UI critical path | about 45m 30s | 11m 40s | **about 74.4% shorter** |
+
+The parallel run remained fully green. Its authoritative paths measured:
+
+- commit-bound UI application package and upload: **1m 48s**;
+- all six UI shards from workflow start through the last completed shard:
+  **11m 40s**;
+- core reactor verification: **27m 29s**;
+- canonical Maven verification within the core lane: **24m 05s**;
+- final fail-closed `Maven verification` gate: **56s**.
+
+The core and UI lanes overlapped. Consequently, the complete workflow followed
+the slower core path plus the short final evidence gate instead of adding the UI
+matrix after the core reactor.
+
+The same head also passed Database Compatibility, CodeQL Source Analysis,
+Security Scan, Document Template Report E2E and Kubernetes Constrained Smoke.
+The final gate accepted the complete 18-scenario inventory, application commit,
+source tree, JAR digest and consolidated quality and coverage evidence.
+
+This run proves the implemented topology and the material wall-clock reduction.
+Median and p95 values still require multiple comparable green runs; hosted-runner
+load and cache state can vary.
+
 ## Measured baseline
 
-The successful `main` run `33010052124` took 75 minutes and 38 seconds in the
-`Maven verification` job. Its two dominant serial steps were:
+The successful `main` run
+[`33010052124`](https://github.com/carstenartur/Taxonomy/actions/runs/33010052124)
+took 75 minutes and 42 seconds overall and 75 minutes and 38 seconds in the
+required `Maven verification` job. Its two dominant serial steps were:
 
 - OpenTelemetry performance budget: 4 minutes and 5 seconds;
 - canonical Maven verification: 70 minutes and 36 seconds.
@@ -22,21 +59,24 @@ for every hosted runner.
 
 ## Parallel evidence architecture
 
-The `CI / CD` workflow now separates work that has no correctness dependency:
+The `CI / CD` workflow separates work that has no correctness dependency:
 
-1. **Core reactor verification** runs the canonical Maven reactor with browser
+1. **Commit-bound UI application** packages the executable application early and
+   publishes a manifest containing the exact source commit, source tree, filename
+   and SHA-256 digest.
+2. **Core reactor verification** runs the canonical Maven reactor with browser
    execution disabled. Unit, Spring, architecture, container, ONNX, coverage,
    dependency, supply-chain and other Maven-owned checks remain enabled.
-2. **OpenTelemetry performance budget** runs the existing Maven-owned script and
+3. **OpenTelemetry performance budget** runs the existing Maven-owned script and
    thresholds in a parallel job. The existing path-scope rule is unchanged for
    pull requests; `main` and tag runs still execute the measurement.
-3. **UI contract verification** runs the non-browser Node contracts through a
+4. **UI contract verification** runs the non-browser Node contracts through a
    standalone Maven POM and prepares the pinned browser binary cache while the
-   core reactor is still running.
-4. **UI shards** consume one executable application JAR produced by the core
-   reactor. Every shard verifies the JAR SHA-256 and source commit before starting
-   the application.
-5. **Maven verification** is the final required job. It succeeds only after every
+   application and core jobs are running.
+5. **UI shards** start as soon as the application artifact and UI contracts are
+   ready; they do not wait for the core reactor. Every shard verifies the JAR
+   SHA-256, source commit and source tree before starting the application.
+6. **Maven verification** is the final required job. It succeeds only after every
    lane succeeds and after the UI evidence gate proves complete, exact-once,
    commit-bound and JAR-digest-bound coverage.
 
@@ -62,10 +102,10 @@ isolation remains unchanged: scenarios within a shard are still grouped by
 `ui-suite-plan.mjs`, and groups that require separate application state keep
 separate application starts.
 
-## Build-once application contract
+## Commit-bound application contract
 
-The core job stages exactly one executable `taxonomy-app-*.jar` and creates a
-manifest containing:
+The independent application job stages one executable `taxonomy-app-*.jar` for
+all UI shards and creates a manifest containing:
 
 - the full source commit;
 - the source tree ID;
@@ -74,16 +114,18 @@ manifest containing:
 
 Each shard recalculates the digest before execution. The final evidence gate
 recalculates it again and rejects unsafe filenames, a mismatched commit, a
-mismatched tree or a mismatched digest.
+mismatched tree or a mismatched digest. The core lane remains independently
+authoritative for its Maven, Docker, coverage and delivery evidence.
 
 ## Fail-closed UI evidence gate
 
 Each shard writes its normal scenario evidence plus `timings.json`. The final
 Maven-owned gate verifies:
 
+- every authoritative lane completed successfully;
 - every planned shard directory exists and no unexpected shard exists;
 - every shard reports `passed`;
-- every shard identifies the same source commit and JAR digest;
+- every shard identifies the same source commit, source tree and JAR digest;
 - every expected scenario reports `passed` exactly once;
 - no scenario is missing, duplicated or unexpected;
 - the per-shard scenario list equals the repository plan.
@@ -110,6 +152,10 @@ The traditional complete local command remains valid and sequential:
 The new lanes can also be reproduced independently:
 
 ```bash
+# Package the commit-bound UI application
+./mvnw -B -ntp -DskipTests package
+bash .github/scripts/stage-ui-application.sh
+
 # Core reactor without browser execution
 ./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true
 
@@ -134,9 +180,8 @@ TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE=true \
 
 ## Performance acceptance
 
-The change is accepted only if the full workflow remains green and the final
-evidence inventory is unchanged. Wall-clock improvement is evaluated over
-multiple comparable runs using median and p95 durations. Parallelism may increase
-aggregate hosted-runner minutes; build-once artifacts, fewer application starts
-per critical path and later removal of verified duplicate work are separate cost
-optimisations.
+The first complete green comparison satisfies issue #906's material-speedup
+criterion without reducing verification inventory. Future comparable runs should
+be tracked for median and p95 durations. Parallelism may increase aggregate
+hosted-runner minutes; further optimisation should target the current critical
+path: the 27m 29s core lane, especially its 24m 05s canonical Maven verification.
