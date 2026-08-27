@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.taxonomy</groupId>
+    <artifactId>taxonomy-ui-verification</artifactId>
+    <version>1</version>
+    <packaging>pom</packaging>
+    <name>Taxonomy UI Verification Authority</name>
+
+    <properties>
+        <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
+        <node.version>v24.18.0</node.version>
+    </properties>
+
+    <profiles>
+        <profile>
+            <id>contracts</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.eirslett</groupId>
+                        <artifactId>frontend-maven-plugin</artifactId>
+                        <version>${frontend-maven-plugin.version}</version>
+                        <configuration>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <installDirectory>${project.basedir}/../.cache/ui-frontend</installDirectory>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>install-pinned-node</id>
+                                <phase>generate-resources</phase>
+                                <goals><goal>install-node-and-npm</goal></goals>
+                                <configuration><nodeVersion>${node.version}</nodeVersion></configuration>
+                            </execution>
+                            <execution>
+                                <id>install-pinned-contract-dependencies</id>
+                                <phase>process-resources</phase>
+                                <goals><goal>npm</goal></goals>
+                                <configuration><arguments>ci --ignore-scripts --no-audit --no-fund</arguments></configuration>
+                            </execution>
+                            <execution>
+                                <id>run-api-transport-contract</id>
+                                <phase>test</phase>
+                                <goals><goal>npm</goal></goals>
+                                <configuration><arguments>run test:api-transport</arguments></configuration>
+                            </execution>
+                            <execution>
+                                <id>run-ui-contracts</id>
+                                <phase>test</phase>
+                                <goals><goal>npm</goal></goals>
+                                <configuration><arguments>run verify:ui-contracts</arguments></configuration>
+                            </execution>
+                            <execution>
+                                <id>prepare-pinned-playwright-runtime</id>
+                                <phase>pre-integration-test</phase>
+                                <goals><goal>npm</goal></goals>
+                                <configuration><arguments>run install:playwright:github</arguments></configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>shard</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.eirslett</groupId>
+                        <artifactId>frontend-maven-plugin</artifactId>
+                        <version>${frontend-maven-plugin.version}</version>
+                        <configuration>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <installDirectory>${project.basedir}/../.cache/ui-frontend</installDirectory>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>install-pinned-node</id>
+                                <phase>generate-resources</phase>
+                                <goals><goal>install-node-and-npm</goal></goals>
+                                <configuration><nodeVersion>${node.version}</nodeVersion></configuration>
+                            </execution>
+                            <execution>
+                                <id>install-pinned-browser-dependencies</id>
+                                <phase>process-resources</phase>
+                                <goals><goal>npm</goal></goals>
+                                <configuration><arguments>ci --ignore-scripts --no-audit --no-fund</arguments></configuration>
+                            </execution>
+                            <execution>
+                                <id>install-pinned-playwright-browsers</id>
+                                <phase>pre-integration-test</phase>
+                                <goals><goal>npm</goal></goals>
+                                <configuration><arguments>run install:playwright:github</arguments></configuration>
+                            </execution>
+                            <execution>
+                                <id>run-authoritative-ui-shard</id>
+                                <phase>integration-test</phase>
+                                <goals><goal>npm</goal></goals>
+                                <configuration><arguments>run verify:ui-shard</arguments></configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>evidence-gate</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.eirslett</groupId>
+                        <artifactId>frontend-maven-plugin</artifactId>
+                        <version>${frontend-maven-plugin.version}</version>
+                        <configuration>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <installDirectory>${project.basedir}/../.cache/ui-frontend</installDirectory>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>install-pinned-node</id>
+                                <phase>generate-resources</phase>
+                                <goals><goal>install-node-and-npm</goal></goals>
+                                <configuration><nodeVersion>${node.version}</nodeVersion></configuration>
+                            </execution>
+                            <execution>
+                                <id>verify-complete-ui-shard-evidence</id>
+                                <phase>test</phase>
+                                <goals><goal>npm</goal></goals>
+                                <configuration><arguments>run verify:ui-shards</arguments></configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

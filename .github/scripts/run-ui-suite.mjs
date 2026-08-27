@@ -7,13 +7,24 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { groupScenarios } from './ui-suite-plan.mjs';
+import {
+  scenarioKey,
+  shardScenarioKeys,
+  validateShardPlan
+} from './ui-shard-plan.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..', '..');
 const matrix = JSON.parse(await readFile(
   path.join(repoRoot, '.github', 'ui-acceptance-matrix.json'), 'utf8'));
+const shardPlan = JSON.parse(await readFile(
+  path.join(repoRoot, '.github', 'ui-shards.json'), 'utf8'));
 const requestedSuite = process.env.TAXONOMY_UI_SUITE || 'all';
 const requestedProfile = process.env.TAXONOMY_UI_PROFILE_FILTER || '';
+const requestedShard = process.env.TAXONOMY_UI_SHARD || '';
+const sourceCommit = process.env.TAXONOMY_UI_SOURCE_SHA || null;
+const applicationArtifactSha256 =
+  process.env.TAXONOMY_UI_ARTIFACT_SHA256 || null;
 const adminPassword = process.env.TAXONOMY_ADMIN_PASSWORD || 'ui-primary-admin-password';
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const outputRoot = path.resolve(
@@ -30,8 +41,35 @@ const accessibilityProfiles = [
   { id: 'tablet', width: 1024, height: 768 },
   { id: 'mobile', width: 390, height: 844 }
 ];
+const completeScenarioInventory = [
+  ...uiProfiles.map(profile => scenarioKey('ui', profile.id)),
+  ...accessibilityProfiles.map(profile => scenarioKey('accessibility', profile.id)),
+  ...matrix.primaryWorkflowProfiles.map(profile => scenarioKey('primary', profile.id)),
+  ...matrix.profiles
+    .filter(profile => !profile.textSpacing)
+    .map(profile => scenarioKey('role-state', profile.id)),
+  scenarioKey('special-modes', 'text-spacing-and-offline')
+];
+validateShardPlan(shardPlan, completeScenarioInventory);
+
+if (requestedShard && (requestedSuite !== 'all' || requestedProfile)) {
+  throw new Error(
+    'TAXONOMY_UI_SHARD cannot be combined with suite or profile filters');
+}
+if (requestedShard
+    && (!/^[0-9a-f]{40}$/.test(sourceCommit || '')
+      || !/^[0-9a-f]{64}$/.test(applicationArtifactSha256 || ''))) {
+  throw new Error(
+    'Sharded UI verification requires canonical source and application artifact digests');
+}
+const selectedShardScenarios = requestedShard
+  ? shardScenarioKeys(shardPlan, requestedShard)
+  : null;
 
 function selected(suite, id) {
+  if (selectedShardScenarios) {
+    return selectedShardScenarios.has(scenarioKey(suite, id));
+  }
   return (requestedSuite === 'all' || requestedSuite === suite)
     && (!requestedProfile || requestedProfile === id);
 }
@@ -263,7 +301,16 @@ if (selected('special-modes', 'text-spacing-and-offline')) scenarios.push({
 
 if (scenarios.length === 0) {
   throw new Error(
-    `No UI scenario matches suite=${requestedSuite}, profile=${requestedProfile || '<all>'}`);
+    `No UI scenario matches shard=${requestedShard || '<none>'}, `
+    + `suite=${requestedSuite}, profile=${requestedProfile || '<all>'}`);
+}
+if (selectedShardScenarios) {
+  const selectedKeys = scenarios.map(scenario => scenarioKey(scenario.suite, scenario.id));
+  const expectedKeys = [...selectedShardScenarios];
+  if (JSON.stringify([...selectedKeys].sort()) !== JSON.stringify([...expectedKeys].sort())) {
+    throw new Error(
+      `Runtime UI shard ${requestedShard} does not match its authoritative scenario plan`);
+  }
 }
 
 const groups = groupScenarios(scenarios);
@@ -271,6 +318,9 @@ const report = {
   schemaVersion: 1,
   requestedSuite,
   requestedProfile: requestedProfile || null,
+  requestedShard: requestedShard || null,
+  sourceCommit,
+  applicationArtifactSha256,
   startedAt: new Date().toISOString(),
   scenarioCount: scenarios.length,
   applicationStartCount: groups.length,
@@ -299,4 +349,5 @@ try {
 if (failure) throw failure;
 console.log(
   `\nMaven-owned UI verification passed: ${scenarios.length} scenario(s) `
-  + `in ${groups.length} application start(s), ${report.durationMs} ms total.`);
+  + `in ${groups.length} application start(s), ${report.durationMs} ms total`
+  + `${requestedShard ? `, shard ${requestedShard}` : ''}.`);

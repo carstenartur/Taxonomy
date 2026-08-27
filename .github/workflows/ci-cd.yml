@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Maven verification
+  core:
+    name: Core reactor verification
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -27,168 +27,44 @@ jobs:
       checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
+        with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          java-version: '21'
-          distribution: temurin
-          cache: maven
-
+        with: { java-version: '21', distribution: temurin, cache: maven }
       - name: Verify release and delivery contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./mvnw -B -pl taxonomy-tooling -am package -DskipTests
-          tooling_jar=$(find taxonomy-tooling/target -maxdepth 1 -type f \
-            -name 'taxonomy-tooling-*.jar' \
-            ! -name '*-sources.jar' \
-            ! -name '*-javadoc.jar' \
-            | head -n 1)
-          if [[ -z "$tooling_jar" || ! -f "$tooling_jar" ]]; then
-            echo "::error::Java release tooling jar was not produced"
-            exit 1
-          fi
-
-          python3 .github/scripts/test-generate-quality-site.py
-          python3 .github/scripts/test-verify-quality-publication.py
-          python3 .github/scripts/test-verify-deployment.py
-          node .github/scripts/test-taxonomy-base-path.mjs
-          bash -n .github/scripts/release.sh
-          bash -n .github/scripts/install-helm.sh
-          bash -n .github/scripts/download-embedding-model.sh
-          bash -n deploy/helm/taxonomy/verify.sh
-          python3 .github/scripts/check-release-delivery-contract.py
-          python3 .github/scripts/check-delivery-hardening.py
-          python3 .github/scripts/check-observability-performance-scope.py
-
-          current_version=$(./mvnw -q -DforceStdout help:evaluate \
-            -Dexpression=project.version)
-          if [[ "$current_version" == *-SNAPSHOT ]]; then
-            release_version=${current_version%-SNAPSHOT}
-            IFS='.' read -r major minor patch <<< "$release_version"
-            next_version="${major}.${minor}.$((patch + 1))-SNAPSHOT"
-            java -jar "$tooling_jar" check-release-plan \
-              --root . \
-              --current-version "$current_version" \
-              --release-version "$release_version" \
-              --next-development-version "$next_version" \
-              --state development \
-              --require-clean true
-          fi
-
+        run: bash .github/scripts/ci-core-contracts.sh
       - name: Install verified Helm 3.21.0
-        env:
-          HELM_VERSION: v3.21.0
-        shell: bash
+        env: { HELM_VERSION: v3.21.0 }
         run: bash .github/scripts/install-helm.sh
-
       - name: Verify Docker availability
         run: docker info
-
       - name: Detect production-image changes
         id: production-image-scope
         if: github.event_name == 'pull_request'
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        shell: bash
         run: |
-          set -euo pipefail
-          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
-            Dockerfile \
-            .dockerignore \
-            pom.xml \
-            mvnw \
-            .mvn/wrapper \
-            'taxonomy-*/pom.xml' \
-            docs \
-            LICENSE \
-            NOTICE \
-            THIRD-PARTY-NOTICES.md \
-            observability/javaagent.properties; then
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- Dockerfile .dockerignore pom.xml mvnw .mvn/wrapper 'taxonomy-*/pom.xml' docs LICENSE NOTICE THIRD-PARTY-NOTICES.md observability/javaagent.properties; then
             echo 'run=false' >> "$GITHUB_OUTPUT"
           else
             echo 'run=true' >> "$GITHUB_OUTPUT"
           fi
-
       - name: Verify production Docker image build
         if: steps.production-image-scope.outputs.run == 'true'
-        env:
-          IMAGE_TAG: taxonomy-ci:${{ github.event.pull_request.head.sha }}
-        shell: bash
+        env: { IMAGE_TAG: 'taxonomy-ci:${{ github.event.pull_request.head.sha }}' }
         run: |
           set -euo pipefail
-          docker build \
-            --progress=plain \
-            --build-arg BUILD_DATE=1970-01-01T00:00:00Z \
-            --build-arg VCS_REF="$GITHUB_SHA" \
-            --build-arg VERSION="ci-${GITHUB_SHA}" \
-            --tag "$IMAGE_TAG" \
-            .
-
-          revision=$(docker image inspect \
-            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
-            "$IMAGE_TAG")
-          image_user=$(docker image inspect \
-            --format '{{ .Config.User }}' \
-            "$IMAGE_TAG")
-          if [[ "$revision" != "$GITHUB_SHA" ]]; then
-            echo "::error::Production image revision label does not match the tested commit"
-            exit 1
-          fi
-          if [[ "$image_user" != "10001:10001" ]]; then
-            echo "::error::Production image must retain the non-root 10001:10001 identity"
-            exit 1
-          fi
-
+          docker build --progress=plain --build-arg BUILD_DATE=1970-01-01T00:00:00Z --build-arg VCS_REF="$GITHUB_SHA" --build-arg VERSION="ci-${GITHUB_SHA}" --tag "$IMAGE_TAG" .
+          [[ "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE_TAG")" == "$GITHUB_SHA" ]]
+          [[ "$(docker image inspect --format '{{ .Config.User }}' "$IMAGE_TAG")" == '10001:10001' ]]
       - name: Validate production and Rancher Helm profiles
-        shell: bash
         run: bash deploy/helm/taxonomy/verify.sh target/taxonomy-helm-rendered.yaml
-
-      - name: Detect performance-sensitive changes
-        id: observability-performance-scope
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- \
-            pom.xml \
-            Dockerfile \
-            taxonomy-app/pom.xml \
-            taxonomy-app/src/main \
-            ':(exclude)taxonomy-app/src/main/resources/static/**' \
-            ':(exclude)taxonomy-app/src/main/resources/templates/**' \
-            taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java \
-            taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java \
-            taxonomy-app/src/test/resources/observability \
-            observability \
-            .github/scripts/run-observability-performance.sh \
-            docs/dev/OBSERVABILITY_PERFORMANCE.md; then
-            echo 'run=false' >> "$GITHUB_OUTPUT"
-          else
-            echo 'run=true' >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Measure OpenTelemetry performance budget
-        if: github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true'
-        env:
-          TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true'
-        shell: bash
-        run: bash .github/scripts/run-observability-performance.sh
-
       - name: Restore pinned embedding model
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: models/bge-small-en-v1.5
           key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
-
       - name: Run the canonical Maven verification suite
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -197,12 +73,15 @@ jobs:
           FRONTEND_API_BASE_REF: ${{ github.event.pull_request.base.sha }}
           VERSION_STATE_MODE: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'development' }}
           VERSION_STATE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-        shell: bash
         run: |
           mkdir -p target
           set -o pipefail
-          ./mvnw -B verify -Pci -DrunOnnxTests=true 2>&1 | tee target/maven-verification.log
-
+          ./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true 2>&1 | tee target/maven-verification.log
+      - name: Stage commit-bound UI application
+        run: bash .github/scripts/stage-ui-application.sh
+      - name: Upload commit-bound UI application
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with: { name: taxonomy-ui-application, path: 'target/ui-application/**', if-no-files-found: error, retention-days: 7 }
       - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3
         if: always()
@@ -213,83 +92,174 @@ jobs:
           reporter: java-junit
           fail-on-error: false
           max-annotations: '50'
-
       - name: Stage commit-bound verified reports
         if: always()
-        shell: bash
+        run: bash .github/scripts/stage-core-quality-reports.sh
+      - name: Upload core verified reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with: { name: quality-reports-core, path: 'target/quality-reports/**', if-no-files-found: warn, include-hidden-files: true, retention-days: 7 }
+
+  observability:
+    name: OpenTelemetry performance budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Detect performance-sensitive changes
+        id: observability-performance-scope
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          set -euo pipefail
-          rm -rf target/quality-reports
-          mkdir -p target/quality-reports/tests target/quality-reports/coverage target/quality-reports/evidence
-          while IFS= read -r -d '' report; do
-            relative=${report#./}
-            destination="target/quality-reports/tests/${relative}"
-            mkdir -p "$(dirname "$destination")"
-            cp "$report" "$destination"
-          done < <(find . -type f \
-            \( -path '*/target/surefire-reports/*' -o -path '*/target/failsafe-reports/*' \) \
-            \( -name 'TEST-*.xml' -o -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) \
-            -print0)
-          if [ ! -f taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml ]; then
-            echo "::error::Aggregate JaCoCo XML is missing; refusing to publish a stale coverage badge."
-            exit 1
+          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- pom.xml Dockerfile taxonomy-app/pom.xml taxonomy-app/src/main ':(exclude)taxonomy-app/src/main/resources/static/**' ':(exclude)taxonomy-app/src/main/resources/templates/**' taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java taxonomy-app/src/test/resources/observability observability .github/scripts/run-observability-performance.sh docs/dev/OBSERVABILITY_PERFORMANCE.md; then
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=true' >> "$GITHUB_OUTPUT"
           fi
-          cp -a taxonomy-coverage/target/site/jacoco-aggregate/. target/quality-reports/coverage/
-          for evidence in \
-            target/maven-verification.log \
-            target/version-state-report.txt \
-            target/coverage-gate.txt \
-            target/dependency-hygiene-report.txt \
-            target/frontend-api-boundary-report.txt \
-            target/hibernate-search-dependencies.txt \
-            target/supply-chain-pins.json \
-            target/taxonomy-sbom.json \
-            target/taxonomy-sbom.xml \
-            target/taxonomy-vex.json \
-            target/taxonomy-helm-rendered.yaml \
-            target/taxonomy-helm-rancher-rke2-rendered.yaml; do
-            if [ -f "$evidence" ]; then cp "$evidence" target/quality-reports/evidence/; fi
+      - name: Measure OpenTelemetry performance budget
+        if: github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true'
+        env: { TAXONOMY_OBSERVABILITY_PERFORMANCE_ENFORCE: 'true' }
+        run: bash .github/scripts/run-observability-performance.sh
+      - name: Record observability lane scope
+        if: always()
+        env:
+          EXECUTED: ${{ github.event_name != 'pull_request' || steps.observability-performance-scope.outputs.run == 'true' }}
+        run: bash .github/scripts/record-observability-evidence.sh
+      - name: Upload observability evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with: { name: observability-performance, path: 'target/observability-performance/**', if-no-files-found: error, retention-days: 7 }
+
+  ui-plan:
+    name: Plan authoritative UI shards
+    runs-on: ubuntu-latest
+    outputs: { matrix: '${{ steps.matrix.outputs.matrix }}' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Export repository-owned UI shard matrix
+        id: matrix
+        run: |
+          jq -e '.schemaVersion == 1 and (.shards | length > 0)' .github/ui-shards.json >/dev/null
+          echo "matrix=$(jq -c '{shard:[.shards[].id]}' .github/ui-shards.json)" >> "$GITHUB_OUTPUT"
+
+  ui-contracts:
+    name: UI contract verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.npm
+            .cache/ui-frontend
+          key: ${{ runner.os }}-taxonomy-ui-node-${{ hashFiles('.github/package-lock.json', '.github/ui-verification-pom.xml') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}
+      - name: Run Maven-owned UI contracts and prepare browser runtime
+        run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts
+
+  ui-shards:
+    name: UI shard / ${{ matrix.shard }}
+    needs: [core, ui-plan, ui-contracts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.ui-plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.npm
+            .cache/ui-frontend
+          key: ${{ runner.os }}-taxonomy-ui-node-${{ hashFiles('.github/package-lock.json', '.github/ui-verification-pom.xml') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-taxonomy-playwright-${{ hashFiles('.github/package-lock.json', '.github/scripts/install-playwright-github.sh') }}
+      - name: Download commit-bound UI application
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: taxonomy-ui-application, path: target/ui-application }
+      - name: Verify and stage the UI application
+        run: bash .github/scripts/verify-ui-application.sh
+      - name: Run Maven-owned authoritative UI shard
+        env:
+          TAXONOMY_UI_SHARD: ${{ matrix.shard }}
+          TAXONOMY_UI_OUTPUT_ROOT: ${{ github.workspace }}/target/ui-verification/${{ matrix.shard }}
+        run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pshard
+      - name: Upload UI shard evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with: { name: 'ui-verification-${{ matrix.shard }}', path: 'target/ui-verification/**', if-no-files-found: error, retention-days: 7 }
+
+  verify:
+    name: Maven verification
+    needs: [core, observability, ui-contracts, ui-shards]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Require every authoritative lane
+        env:
+          CORE_RESULT: ${{ needs.core.result }}
+          OBSERVABILITY_RESULT: ${{ needs.observability.result }}
+          UI_CONTRACTS_RESULT: ${{ needs.ui-contracts.result }}
+          UI_SHARDS_RESULT: ${{ needs.ui-shards.result }}
+        run: |
+          for lane in CORE_RESULT OBSERVABILITY_RESULT UI_CONTRACTS_RESULT UI_SHARDS_RESULT; do
+            [[ "${!lane}" == success ]] || { echo "::error::$lane ended with ${!lane}"; exit 1; }
           done
-          if [ -d target/observability-performance ]; then
-            mkdir -p target/quality-reports/evidence/observability-performance
-            cp -a target/observability-performance/. \
-              target/quality-reports/evidence/observability-performance/
-          fi
-
-          source_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
-          build_id="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
-          java_version=$(java -version 2>&1 | sed -n '1p')
-          maven_version=$(./mvnw -version 2>&1 | sed -n '1p')
-          python3 .github/scripts/generate-quality-site.py \
-            --root target/quality-reports \
-            --commit "$GITHUB_SHA" \
-            --source-tree "$source_tree" \
-            --build-id "$build_id" \
-            --tool "java=$java_version" \
-            --tool "maven=$maven_version" \
-            --tool "codeql-action=v4.37.6" \
-            --tool "trivy-action=v0.36.0"
-          python3 .github/scripts/verify-quality-publication.py \
-            --root target/quality-reports \
-            --expected-commit "$GITHUB_SHA"
-          printf 'Verified commit: %s\nSource tree: %s\nBuild ID: %s\n' \
-            "$GITHUB_SHA" "$source_tree" "$build_id" > target/quality-reports/README.txt
-
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/ui-frontend
+          key: ${{ runner.os }}-taxonomy-ui-node-${{ hashFiles('.github/package-lock.json', '.github/ui-verification-pom.xml') }}
+      - name: Download commit-bound UI application manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: taxonomy-ui-application, path: target/ui-application }
+      - name: Download all UI shard evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { pattern: 'ui-verification-*', path: target/ui-verification, merge-multiple: true }
+      - name: Download observability evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: observability-performance, path: target/observability-performance }
+      - name: Download core quality reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: quality-reports-core, path: target/quality-reports }
+      - name: Verify complete digest-bound UI evidence
+        env:
+          TAXONOMY_UI_EXPECTED_COMMIT: ${{ github.sha }}
+          TAXONOMY_UI_SHARD_RESULTS_ROOT: ${{ github.workspace }}/target/ui-verification
+          TAXONOMY_UI_APPLICATION_MANIFEST: ${{ github.workspace }}/target/ui-application/manifest.json
+        run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pevidence-gate
+      - name: Finalize commit-bound quality evidence
+        run: bash .github/scripts/finalize-quality-evidence.sh
       - name: Upload verified reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: quality-reports
-          path: target/quality-reports/**
-          if-no-files-found: warn
-          include-hidden-files: true
-          retention-days: 90
-
-      - name: Upload UI verification evidence
+        with: { name: quality-reports, path: 'target/quality-reports/**', if-no-files-found: error, include-hidden-files: true, retention-days: 90 }
+      - name: Upload consolidated UI verification evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: always()
-        with:
-          name: ui-verification
-          path: target/ui-verification/**
-          if-no-files-found: warn
-          retention-days: 90
+        with: { name: ui-verification, path: 'target/ui-verification/**', if-no-files-found: error, retention-days: 90 }

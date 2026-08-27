@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "shards": [
+    {
+      "id": "mobile-admin-and-browser",
+      "scenarios": [
+        "role-state/mobile-admin-webkit",
+        "ui/desktop-chromium",
+        "ui/desktop-firefox",
+        "ui/tablet-chromium",
+        "ui/mobile-chromium"
+      ]
+    },
+    {
+      "id": "landscape-special-and-primary-user",
+      "scenarios": [
+        "role-state/landscape-user-firefox",
+        "special-modes/text-spacing-and-offline",
+        "primary/primary-user-chromium"
+      ]
+    },
+    {
+      "id": "architect-and-a11y-desktop",
+      "scenarios": [
+        "role-state/desktop-architect-firefox",
+        "accessibility/desktop"
+      ]
+    },
+    {
+      "id": "zoom-200-a11y-tablet-and-primary-architect",
+      "scenarios": [
+        "role-state/zoom-200-user-chromium",
+        "accessibility/tablet",
+        "primary/primary-architect-chromium"
+      ]
+    },
+    {
+      "id": "zoom-400-a11y-mobile-and-primary-admin",
+      "scenarios": [
+        "role-state/zoom-400-user-chromium",
+        "accessibility/mobile",
+        "primary/primary-admin-chromium"
+      ]
+    },
+    {
+      "id": "desktop-user-and-forced-colors",
+      "scenarios": [
+        "role-state/desktop-user-chromium",
+        "role-state/forced-colors-architect-chromium"
+      ]
+    }
+  ]
+}
