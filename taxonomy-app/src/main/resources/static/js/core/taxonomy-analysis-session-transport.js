@@ -5,10 +5,17 @@
     if (!C) throw new Error('Analysis session core must load before transport lifecycle');
 
     var runtime = C.runtime;
+    var DRAFT_WRITE_HISTORY_LIMIT = 16;
+    var DRAFT_TRACE_LIMIT = 48;
     runtime.analysisGeneration = Number(runtime.analysisGeneration) || 0;
     runtime.activeAnalysisControllers = runtime.activeAnalysisControllers || new Set();
     runtime.copilotIntervals = runtime.copilotIntervals || new Set();
     runtime.draftMutationQueue = runtime.draftMutationQueue || Promise.resolve();
+    runtime.draftMutationSequence = Number(runtime.draftMutationSequence) || 0;
+    runtime.acknowledgedDraftWrites = Array.isArray(runtime.acknowledgedDraftWrites)
+        ? runtime.acknowledgedDraftWrites : [];
+    runtime.draftMutationTrace = Array.isArray(runtime.draftMutationTrace)
+        ? runtime.draftMutationTrace : [];
 
     function methodOf(input, init) {
         return String((init && init.method)
@@ -141,40 +148,213 @@
         runtime.nativeClearInterval = nativeClearInterval;
     }
 
-    function isDraftMutation(url, options) {
+    function draftEndpoint(url) {
         var resolved = C.requestUrl(url);
         if (!resolved || resolved.origin !== window.location.origin
-                || resolved.pathname.indexOf('/api/analysis-drafts/') !== 0) {
-            return false;
+                || !/\/api\/analysis-drafts\/[^/]+$/.test(resolved.pathname)) {
+            return null;
         }
+        return resolved;
+    }
+
+    function isDraftMutation(url, options) {
+        if (!draftEndpoint(url)) return false;
         var method = methodOf(url, options);
         return method === 'PUT' || method === 'DELETE';
+    }
+
+    function numericVersion(value) {
+        if (value === null || value === undefined || value === '') return null;
+        var version = Number(value);
+        return Number.isFinite(version) ? version : null;
+    }
+
+    function comparablePayload(payload) {
+        return payload === null || payload === undefined ? null : C.comparable(payload);
+    }
+
+    function traceDraftMutation(mutationId, phase, details) {
+        var entry = Object.assign({
+            mutationId: mutationId,
+            phase: phase,
+            recordedAt: new Date().toISOString()
+        }, details || {});
+        runtime.draftMutationTrace.push(entry);
+        if (runtime.draftMutationTrace.length > DRAFT_TRACE_LIMIT) {
+            runtime.draftMutationTrace.splice(
+                0, runtime.draftMutationTrace.length - DRAFT_TRACE_LIMIT);
+        }
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-mutation', {
+            detail: entry
+        }));
+    }
+
+    function rememberAcknowledgedDraft(view) {
+        if (!view || !view.payload) return;
+        var version = numericVersion(view.version);
+        if (version === null) return;
+        var serialized = comparablePayload(view.payload);
+        runtime.acknowledgedDraftWrites = runtime.acknowledgedDraftWrites.filter(
+            function (entry) {
+                return entry.version !== version || entry.serialized !== serialized;
+            });
+        runtime.acknowledgedDraftWrites.push({
+            version: version,
+            serialized: serialized
+        });
+        if (runtime.acknowledgedDraftWrites.length > DRAFT_WRITE_HISTORY_LIMIT) {
+            runtime.acknowledgedDraftWrites.splice(
+                0,
+                runtime.acknowledgedDraftWrites.length - DRAFT_WRITE_HISTORY_LIMIT);
+        }
+    }
+
+    function wasAcknowledgedLocally(view) {
+        if (!view || !view.payload) return false;
+        var version = numericVersion(view.version);
+        var serialized = comparablePayload(view.payload);
+        if (version === null) return false;
+        return runtime.acknowledgedDraftWrites.some(function (entry) {
+            return entry.version === version && entry.serialized === serialized;
+        });
+    }
+
+    function dispatchDraftReconciled(mutationId, reason, expectedVersion, view, error) {
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-write-reconciled', {
+            detail: {
+                mutationId: mutationId,
+                workspaceId: runtime.workspaceId,
+                reason: reason,
+                expectedVersion: expectedVersion,
+                version: view && view.version !== undefined ? view.version : null,
+                requestId: error && error.requestId ? error.requestId : null
+            }
+        }));
+    }
+
+    function reconcileDraftConflict(
+            url, request, body, serializedPayload,
+            expectedVersion, originalError, mutationId) {
+        var endpoint = draftEndpoint(url);
+        var readUrl = endpoint ? endpoint.pathname : url;
+        traceDraftMutation(mutationId, 'conflict', {
+            expectedVersion: expectedVersion,
+            currentVersion: null,
+            requestId: originalError.requestId || null
+        });
+        return C.nativeJsonRequest(readUrl, { method: 'GET' }).then(function (remote) {
+            var remoteVersion = remote ? numericVersion(remote.version) : null;
+            var remotePayload = remote && remote.payload
+                ? comparablePayload(remote.payload) : null;
+            traceDraftMutation(mutationId, 'conflict-read', {
+                expectedVersion: expectedVersion,
+                currentVersion: remoteVersion,
+                requestId: originalError.requestId || null
+            });
+
+            if (remote && remotePayload === serializedPayload) {
+                runtime.version = remoteVersion;
+                rememberAcknowledgedDraft(remote);
+                dispatchDraftReconciled(
+                    mutationId, 'write-already-committed',
+                    expectedVersion, remote, originalError);
+                return remote;
+            }
+
+            if (!remote || remoteVersion === null
+                    || remoteVersion === numericVersion(expectedVersion)
+                    || !wasAcknowledgedLocally(remote)) {
+                throw originalError;
+            }
+
+            runtime.version = remoteVersion;
+            var retryBody = Object.assign({}, body, {
+                expectedVersion: remoteVersion
+            });
+            var retryRequest = Object.assign({}, request, {
+                body: JSON.stringify(retryBody)
+            });
+            traceDraftMutation(mutationId, 'retry', {
+                expectedVersion: remoteVersion,
+                currentVersion: remoteVersion,
+                requestId: originalError.requestId || null
+            });
+            return C.nativeJsonRequest(url, retryRequest).then(function (view) {
+                runtime.version = view && view.version !== undefined
+                    ? numericVersion(view.version) : runtime.version;
+                rememberAcknowledgedDraft(view);
+                traceDraftMutation(mutationId, 'reconciled', {
+                    expectedVersion: remoteVersion,
+                    currentVersion: runtime.version,
+                    requestId: originalError.requestId || null
+                });
+                dispatchDraftReconciled(
+                    mutationId, 'stale-local-version',
+                    expectedVersion, view, originalError);
+                return view;
+            });
+        });
     }
 
     function currentDraftMutation(url, options) {
         var request = Object.assign({}, options || {});
         var method = methodOf(url, request);
-        var target = C.requestUrl(url);
+        var target = draftEndpoint(url);
+        var mutationId = ++runtime.draftMutationSequence;
+        var expectedVersion = numericVersion(runtime.version);
+        var body = null;
+        var serializedPayload = null;
         if (method === 'PUT') {
-            var body = request.body ? JSON.parse(request.body) : {};
-            body.expectedVersion = runtime.version;
+            body = request.body ? JSON.parse(request.body) : {};
+            body.expectedVersion = expectedVersion;
+            serializedPayload = comparablePayload(body.payload);
             request.body = JSON.stringify(body);
         } else if (method === 'DELETE') {
-            if (runtime.version === null) return Promise.resolve(null);
+            if (runtime.version === null) {
+                runtime.acknowledgedDraftWrites = [];
+                return Promise.resolve(null);
+            }
             if (target) {
-                target.searchParams.set('expectedVersion', runtime.version);
+                target.searchParams.set('expectedVersion', expectedVersion);
                 url = target.pathname + target.search;
             }
         }
+        traceDraftMutation(mutationId, 'started', {
+            method: method,
+            expectedVersion: expectedVersion,
+            currentVersion: expectedVersion,
+            requestId: null
+        });
         return C.nativeJsonRequest(url, request).then(function (view) {
             // The queue owns revision advancement. Callers may mirror this state,
             // but the next queued mutation cannot start before this update.
             if (method === 'PUT' && view && view.version !== undefined) {
-                runtime.version = view.version;
+                runtime.version = numericVersion(view.version);
+                rememberAcknowledgedDraft(view);
             } else if (method === 'DELETE') {
                 runtime.version = null;
+                runtime.acknowledgedDraftWrites = [];
             }
+            traceDraftMutation(mutationId, 'succeeded', {
+                method: method,
+                expectedVersion: expectedVersion,
+                currentVersion: runtime.version,
+                requestId: null
+            });
             return view;
+        }).catch(function (error) {
+            if (method === 'PUT' && error && error.status === 409) {
+                return reconcileDraftConflict(
+                    url, request, body, serializedPayload,
+                    expectedVersion, error, mutationId);
+            }
+            traceDraftMutation(mutationId, 'failed', {
+                method: method,
+                expectedVersion: expectedVersion,
+                currentVersion: runtime.version,
+                requestId: error && error.requestId ? error.requestId : null
+            });
+            throw error;
         });
     }
 
@@ -292,6 +472,9 @@
     Object.assign(C, {
         analysisOptions: analysisOptions,
         restoreOptions: restoreOptions,
-        cancelDerivedRequests: cancelDerivedRequests
+        cancelDerivedRequests: cancelDerivedRequests,
+        draftMutationDiagnostics: function () {
+            return runtime.draftMutationTrace.slice();
+        }
     });
 }());
