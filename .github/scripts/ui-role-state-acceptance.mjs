@@ -38,6 +38,7 @@ const findings = [];
 const consoleErrors = [];
 const externalRequests = [];
 const httpFailures = [];
+const draftReconciliations = [];
 let auditError = null;
 let browser;
 let context;
@@ -73,6 +74,22 @@ try {
   taskMeasurements.failedStep = 'authenticated application startup';
   checks.push('keyboard authentication');
   const baseOrigin = new URL(baseUrl).origin;
+
+  await page.exposeFunction('__taxonomyQaRecordDraftReconciliation', detail => {
+    draftReconciliations.push({
+      mutationId: detail?.mutationId ?? null,
+      reason: detail?.reason || null,
+      expectedVersion: detail?.expectedVersion ?? null,
+      version: detail?.version ?? null,
+      requestId: detail?.requestId || null
+    });
+  });
+  await page.evaluate(() => {
+    document.addEventListener('taxonomy:analysis-draft-write-reconciled', event => {
+      window.__taxonomyQaRecordDraftReconciliation(event.detail || {});
+    });
+  });
+
   page.on('request', requestEvent => {
     const url = requestEvent.url();
     if (url.startsWith('data:') || url.startsWith('blob:')) return;
@@ -81,8 +98,18 @@ try {
   page.on('response', response => {
     const url = new URL(response.url());
     if (url.origin === baseOrigin && response.status() >= 400) {
-      httpFailures.push({ path: url.pathname, status: response.status(),
-        method: response.request().method() });
+      const responseHeaders = response.headers();
+      const requestHeaders = response.request().headers();
+      httpFailures.push({
+        path: url.pathname,
+        status: response.status(),
+        method: response.request().method(),
+        requestId: responseHeaders['x-request-id']
+          || responseHeaders['x-correlation-id']
+          || requestHeaders['x-request-id']
+          || requestHeaders['x-correlation-id']
+          || null
+      });
     }
   });
   page.on('console', message => {
@@ -100,7 +127,7 @@ try {
   taskMeasurements.failedStep = 'role task and state flow';
   taskMeasurements = await runRoleStateFlow({
     page, role, zoom, forcedColors, checks, httpFailures,
-    externalRequests, consoleErrors, evidence
+    draftReconciliations, externalRequests, consoleErrors, evidence
   });
   taskMeasurements.schemaVersion = 1;
   taskMeasurements.failedStep = null;
@@ -127,7 +154,8 @@ try {
     curatedStates: evidence?.curatedStates || [],
     states: evidence?.states || [],
     taskMeasurements,
-    checks, findings, externalRequests, httpFailures, consoleErrors,
+    checks, findings, externalRequests, httpFailures,
+    draftReconciliations, consoleErrors,
     auditError, failureEvidence
   };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
