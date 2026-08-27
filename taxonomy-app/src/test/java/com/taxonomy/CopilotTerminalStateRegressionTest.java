@@ -18,10 +18,11 @@ class CopilotTerminalStateRegressionTest {
                 .contains("taxonomy-analysis-session-transport.js")
                 .contains("taxonomy-copilot-terminal-state.js");
         assertThat(guard)
+                .contains("if (tracked && analysisRunning()) return;")
                 .contains("C.S.lastAnalysisStatus !== 'SUCCESS'")
                 .contains("hasKnownNonAuthoritativeStatus")
                 .contains("status !== 'SUCCESS' && status !== 'IMPORTED'")
-                .contains("legacy hasScores() shortcut")
+                .contains("!target || !hasCurrentScores() || !hasKnownNonAuthoritativeStatus()")
                 .contains("lastAnalysisProvider = 'MANUAL'")
                 .contains("did not complete successfully");
     }
