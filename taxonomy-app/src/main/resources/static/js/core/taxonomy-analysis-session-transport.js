@@ -334,6 +334,9 @@
             } else if (method === 'GET') {
                 runtime.version = view && view.version !== undefined
                     ? numericVersion(view.version) : null;
+                if (runtime.version === null) {
+                    runtime.acknowledgedDraftWrites = [];
+                }
             } else if (method === 'DELETE') {
                 runtime.version = null;
                 runtime.acknowledgedDraftWrites = [];
