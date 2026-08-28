@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.CatalogueOverlayService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.AnalysisResult;
@@ -14,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
@@ -41,6 +43,7 @@ class LlmServiceBranchCoverageTest {
     @Mock private PromptTemplateService promptTemplateService;
     @Mock private LocalEmbeddingService localEmbeddingService;
     @Mock private SavedAnalysisService savedAnalysisService;
+    @Mock private CatalogueOverlayService catalogueOverlayService;
     @Mock private LlmGateway gateway;
     @Mock private AnalysisEventCallback callback;
 
@@ -50,6 +53,7 @@ class LlmServiceBranchCoverageTest {
     void setUp() {
         service = new LlmService(providerConfig, gatewayRegistry, new ObjectMapper(), taxonomyService,
                 promptTemplateService, localEmbeddingService, savedAnalysisService);
+        ReflectionTestUtils.setField(service, "catalogueOverlayService", catalogueOverlayService);
         lenient().when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.OPENAI);
         lenient().when(providerConfig.getActiveProviderName()).thenReturn("OpenAI");
         lenient().when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn("test-key");
@@ -61,6 +65,8 @@ class LlmServiceBranchCoverageTest {
                 .thenReturn("rendered prompt");
         lenient().when(promptTemplateService.renderLeafJustificationPrompt(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn("leaf prompt");
+        lenient().when(promptTemplateService.renderProductPrompt(anyString(), anyString(), anyString(), anyInt()))
+                .thenReturn("product prompt");
         lenient().when(taxonomyService.getPathToRoot(anyString())).thenReturn(List.of());
     }
 
@@ -228,12 +234,14 @@ class LlmServiceBranchCoverageTest {
         service.analyzeStreaming("requirement", callback);
         verify(callback).onPhase(anyString(), anyInt());
         verify(callback).onExpanding("R", List.of("C"));
-        verify(callback).onComplete(anyString(), any(), anyList(), anyList());
-        verify(callback, never()).onError(anyString(), anyString(), any(), anyList(), anyList());
+        verify(callback).onComplete(anyString(), any(), anyList(), anyList(), anyList());
+        verify(callback, never()).onError(
+                anyString(), anyString(), any(), anyList(), anyList(), anyList());
 
         when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new IllegalStateException("stream failed"));
         service.analyzeStreaming("requirement", callback);
-        verify(callback).onError(anyString(), anyString(), any(), anyList(), anyList());
+        verify(callback).onError(
+                anyString(), anyString(), any(), anyList(), anyList(), anyList());
     }
 
     @Test
@@ -304,6 +312,59 @@ class LlmServiceBranchCoverageTest {
         when(gateway.sendHttpRequest("prompt", "test-key")).thenThrow(new IllegalStateException("broken"));
         assertThat(service.callLlmRaw("prompt")).isNull();
         assertThat(service.getDiagnostics()).containsEntry("lastError", "broken");
+    }
+
+    @Test
+    void concreteProductsAreScoredIndependentlyInBoundedBatches() throws Exception {
+        when(providerConfig.isMockMode()).thenReturn(true);
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
+        saved.setScores(Map.of("IP-P1", 80, "IP-P2", 70));
+        saved.setReasons(Map.of("IP-P1", "first", "IP-P2", "second"));
+        when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
+        ReflectionTestUtils.setField(service, "productBatchSize", 1);
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        LlmCallDetail detail = service.analyzeSingleBatchDetailed(
+                "requirement", List.of(first, second), 40);
+
+        assertThat(detail.getScores()).containsEntry("IP-P1", 80).containsEntry("IP-P2", 70);
+        assertThat(detail.getScores().values().stream().mapToInt(Integer::intValue).sum())
+                .isEqualTo(150);
+        assertThat(detail.getPrompt()).contains("call 1", "call 2");
+    }
+
+    @Test
+    void relevantProductFamilyWithoutSuitableProductCreatesStructuredGap() throws Exception {
+        when(providerConfig.isMockMode()).thenReturn(true);
+        TaxonomyNode root = node("IP", null, "IP");
+        root.setNameEn("Information Products");
+        TaxonomyNode family = node("IP-F", "IP", "IP");
+        family.setNameEn("Product family");
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family));
+        when(taxonomyService.getChildrenOf("IP-F")).thenReturn(List.of(first, second));
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
+        com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
+        saved.setScores(Map.of("IP", 100, "IP-F", 80, "IP-P1", 30, "IP-P2", 20));
+        saved.setReasons(Map.of());
+        when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+
+        assertThat(result.getProductCoverageGaps()).hasSize(1);
+        assertThat(result.getProductCoverageGaps().get(0).productFamilyCode()).isEqualTo("IP-F");
+        assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
+                .containsExactly("IP-P1", "IP-P2");
     }
 
     private static TaxonomyNode node(String code, String parentCode, String root) {

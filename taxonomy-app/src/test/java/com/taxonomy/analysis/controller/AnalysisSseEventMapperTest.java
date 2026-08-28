@@ -47,12 +47,14 @@ class AnalysisSseEventMapperTest {
                 "SUCCESS",
                 Map.of("CP", 80, "CR", 0),
                 List.of("warn"),
+                List.of(),
                 List.of()));
         AnalysisSseEventMapper.MappedEvent error = mapper.map(new AnalysisStreamEvent.Error(
                 "PARTIAL",
                 "boom",
                 Map.of("CP", 80),
                 List.of("warn"),
+                List.of(),
                 List.of()));
 
         assertThat(complete.name()).isEqualTo("complete");
@@ -61,13 +63,15 @@ class AnalysisSseEventMapperTest {
                 Map.entry("totalScores", Map.of("CP", 80, "CR", 0)),
                 Map.entry("totalMatched", 1),
                 Map.entry("warnings", List.of("warn")),
-                Map.entry("discrepancies", List.of())));
+                Map.entry("discrepancies", List.of()),
+                Map.entry("productCoverageGaps", List.of())));
         assertThat(error.name()).isEqualTo("error");
         assertThat(error.payload()).isEqualTo(Map.ofEntries(
                 Map.entry("status", "PARTIAL"),
                 Map.entry("errorMessage", "boom"),
                 Map.entry("partialScores", Map.of("CP", 80)),
                 Map.entry("warnings", List.of("warn")),
-                Map.entry("discrepancies", List.of())));
+                Map.entry("discrepancies", List.of()),
+                Map.entry("productCoverageGaps", List.of())));
     }
 }

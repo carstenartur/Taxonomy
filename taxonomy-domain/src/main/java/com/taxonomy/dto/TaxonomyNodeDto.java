@@ -21,6 +21,11 @@ public class TaxonomyNodeDto {
     private String reference;
     private Integer sortOrder;
     private String state;
+    private String analysisRole = "CATEGORY";
+    private List<String> secondaryClassificationCodes = new ArrayList<>();
+    private Double classificationConfidence;
+    private boolean classificationReviewRequired;
+    private String classificationJustification;
     private List<TaxonomyNodeDto> children = new ArrayList<>();
     private Integer matchPercentage;
     private List<TaxonomyRelationDto> outgoingRelations = new ArrayList<>();
@@ -81,6 +86,30 @@ public class TaxonomyNodeDto {
 
     public String getState() { return state; }
     public void setState(String state) { this.state = state; }
+
+    public String getAnalysisRole() { return analysisRole; }
+    public void setAnalysisRole(String analysisRole) { this.analysisRole = analysisRole; }
+
+    public List<String> getSecondaryClassificationCodes() { return secondaryClassificationCodes; }
+    public void setSecondaryClassificationCodes(List<String> secondaryClassificationCodes) {
+        this.secondaryClassificationCodes = secondaryClassificationCodes != null
+                ? secondaryClassificationCodes : new ArrayList<>();
+    }
+
+    public Double getClassificationConfidence() { return classificationConfidence; }
+    public void setClassificationConfidence(Double classificationConfidence) {
+        this.classificationConfidence = classificationConfidence;
+    }
+
+    public boolean isClassificationReviewRequired() { return classificationReviewRequired; }
+    public void setClassificationReviewRequired(boolean classificationReviewRequired) {
+        this.classificationReviewRequired = classificationReviewRequired;
+    }
+
+    public String getClassificationJustification() { return classificationJustification; }
+    public void setClassificationJustification(String classificationJustification) {
+        this.classificationJustification = classificationJustification;
+    }
 
     public List<TaxonomyNodeDto> getChildren() { return children; }
     public void setChildren(List<TaxonomyNodeDto> children) { this.children = children; }

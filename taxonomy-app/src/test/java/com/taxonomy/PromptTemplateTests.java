@@ -46,7 +46,7 @@ class PromptTemplateTests {
     @Test
     void taxonomySpecificTemplatesAreLoaded() {
         List<String> codes = promptTemplateService.getAllTemplateCodes();
-        assertThat(codes).contains("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA");
+        assertThat(codes).contains("BP", "BR", "CP", "CI", "CO", "CR", "IP", "IP-product", "UA");
     }
 
     @Test
@@ -309,4 +309,18 @@ class PromptTemplateTests {
                 .andExpect(jsonPath("$.REGULATION_MAPPING").isArray())
                 .andExpect(jsonPath("$.JUSTIFICATION").isArray());
     }
+    @Test
+    void productPromptUsesIndependentScoringContract() {
+        String rendered = promptTemplateService.renderProductPrompt(
+                "Need a shared situation report",
+                "IP-1: Product one\nIP-2: Product two",
+                "IP-1, IP-2",
+                50);
+
+        assertThat(rendered).contains("MUST NOT").contains("sum to any total");
+        assertThat(rendered).contains("IP-1, IP-2");
+        assertThat(rendered).contains("50");
+        assertThat(rendered).doesNotContain("{{MIN_SCORE}}", "{{EXPECTED_KEYS}}");
+    }
+
 }

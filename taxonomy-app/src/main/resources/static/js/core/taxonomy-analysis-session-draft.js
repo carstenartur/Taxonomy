@@ -181,6 +181,7 @@
         S.currentScores = payload.scores || null;
         S.currentReasons = payload.reasons || {};
         S.currentDiscrepancies = payload.discrepancies || [];
+        S.currentProductCoverageGaps = payload.productCoverageGaps || [];
         S.currentArchView = payload.architectureView || null;
         S.storedBusinessText = payload.storedBusinessText || null;
         S.lastAnalyzedText = payload.lastAnalyzedText === undefined

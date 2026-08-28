@@ -286,6 +286,8 @@
         return hasScores()
             || Boolean(S.currentArchView)
             || (Array.isArray(S.currentDiscrepancies) && S.currentDiscrepancies.length > 0)
+            || (Array.isArray(S.currentProductCoverageGaps)
+                && S.currentProductCoverageGaps.length > 0)
             || (Array.isArray(window._currentProvisionalRelations)
                 && window._currentProvisionalRelations.length > 0);
     }
@@ -306,6 +308,7 @@
             scores: S.currentScores,
             reasons: S.currentReasons || {},
             discrepancies: S.currentDiscrepancies || [],
+            productCoverageGaps: S.currentProductCoverageGaps || [],
             architectureView: S.currentArchView,
             provisionalRelations: Array.isArray(window._currentProvisionalRelations)
                 ? window._currentProvisionalRelations : [],
@@ -328,6 +331,7 @@
             || (payload.scores && Object.keys(payload.scores).length > 0)
             || payload.architectureView
             || (payload.discrepancies && payload.discrepancies.length > 0)
+            || (payload.productCoverageGaps && payload.productCoverageGaps.length > 0)
             || (payload.provisionalRelations && payload.provisionalRelations.length > 0)
         ));
     }

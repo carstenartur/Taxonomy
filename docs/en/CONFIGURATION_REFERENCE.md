@@ -31,7 +31,9 @@ Several preferences (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `taxonomy.
 | `TAXONOMY_FORWARD_HEADERS_STRATEGY` | `server.forward-headers-strategy` in Kubernetes profile | `framework` | Controls interpretation of trusted ingress `Forwarded`/`X-Forwarded-*` headers. |
 | `TAXONOMY_SHUTDOWN_TIMEOUT` | `spring.lifecycle.timeout-per-shutdown-phase` in Kubernetes profile | `30s` | Maximum graceful shutdown phase duration. |
 | `TAXONOMY_LOG_FILE` | `logging.file.name` in Kubernetes profile | empty | Optional log file. Keep empty with a read-only container filesystem and collect stdout instead. |
-| `TAXONOMY_CATALOGUE_RESOURCE` | `taxonomy.catalogue.resource` | bundled `C3_Taxonomy_Catalogue_25AUG2025.xlsx` | Spring resource used for catalogue loading and report provenance. |
+| `TAXONOMY_CATALOGUE_RESOURCE` | `taxonomy.catalogue.resource` | bundled `C3_Taxonomy_Catalogue_25AUG2025.xlsx` | Excel baseline used for catalogue loading and report provenance. |
+| `TAXONOMY_CATALOGUE_OVERLAY_ENABLED` | `taxonomy.catalogue.overlay.enabled` | `true` | Applies the versioned, fail-closed JSON overlay to the Excel baseline and reconciles persisted rows idempotently. |
+| `TAXONOMY_CATALOGUE_OVERLAY_RESOURCE` | `taxonomy.catalogue.overlay-resource` | `classpath:data/nato-taxonomy.json` | Overlay resource containing explicit parent corrections, product roles, secondary classifications and review metadata. |
 | `TAXONOMY_REPORT_TIME_ZONE` | `taxonomy.report.time-zone` | `Europe/Berlin` | Zone identifier used when rendering decision-report timestamps. |
 | `GIT_COMMIT` | `git.commit.id` | unset | Preferred build/source commit recorded in decision-report provenance. |
 | `GITHUB_SHA` | fallback for `git.commit.id` | `unknown` | Used only when `GIT_COMMIT` is absent. |
@@ -79,6 +81,8 @@ A full Copilot run needs a configured generative provider. `LOCAL_ONNX` supplies
 | `TAXONOMY_LLM_RPM` | repository-backed preference `taxonomy.llm.rpm` | `5` | Outbound per-provider request budget per minute. |
 | `TAXONOMY_LLM_TIMEOUT_SECONDS` | repository-backed preference `taxonomy.llm.timeout-seconds` | `30` | HTTP timeout for an individual LLM call. |
 | `TAXONOMY_ANALYSIS_MIN_SCORE` | repository-backed preference `taxonomy.analysis.min-score` | `70` | Minimum 0–100 relevance used by ordinary architecture-view selection. |
+| `TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE` | `taxonomy.analysis.product.batch-size` | `10` | Maximum concrete Information Products in one independent suitability request; values are sorted deterministically before batching. |
+| `TAXONOMY_ANALYSIS_PRODUCT_MIN_SCORE` | `taxonomy.analysis.product.min-score` | `50` | Independent 0–100 suitability threshold for concrete products. Lower values become explicit zeroes and can create a structured product-coverage gap. |
 | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | repository-backed preference `taxonomy.rate-limit.per-minute` | `10` | Admitted LLM requests per stable authenticated identity and minute; exactly `0` disables, negative values fail closed to `1`. |
 
 The incoming quota runs after authorization. Local users are keyed by canonical username; Keycloak browser and bearer access use the immutable `iss`/`sub` pair and therefore share one budget even when `preferred_username` changes. Forwarding headers and peer addresses are not quota identities. Rejected requests do not allocate state. The bounded in-memory counters expire after inactivity and return HTTP `429` with `Retry-After` and `Cache-Control: no-store`. They are scoped to one application instance, so multi-replica deployments require an outer distributed quota if a cluster-wide budget is required. The same matching contract applies at the root context and below a prefix such as `/taxonomy`.

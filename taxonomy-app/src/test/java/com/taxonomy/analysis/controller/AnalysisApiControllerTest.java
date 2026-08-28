@@ -246,7 +246,7 @@ class AnalysisApiControllerTest {
                     Map.of("CP", 80), Map.of("CP", "reason"),
                     "Capabilities scored 80/100", detail));
             handler.handle(new AnalysisStreamEvent.Complete(
-                    "SUCCESS", Map.of("CP", 80), List.of(), List.of()));
+                    "SUCCESS", Map.of("CP", 80), List.of(), List.of(), List.of()));
             return null;
         }).when(streamRequirementAnalysisUseCase).stream(any(), any());
 
@@ -272,7 +272,7 @@ class AnalysisApiControllerTest {
             AnalysisStreamEventHandler handler = invocation.getArgument(1);
             handler.handle(new AnalysisStreamEvent.Phase("Working", 12));
             handler.handle(new AnalysisStreamEvent.Complete(
-                    "SUCCESS", Map.of("CP", 80), List.of(), List.of()));
+                    "SUCCESS", Map.of("CP", 80), List.of(), List.of(), List.of()));
             return null;
         }).when(streamRequirementAnalysisUseCase).stream(any(), any());
 

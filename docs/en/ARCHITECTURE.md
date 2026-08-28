@@ -199,7 +199,9 @@ DSL documents are stored under the filename `architecture.taxdsl`. The `DslApiCo
 
 ## Data Loading
 
-When the catalogue is empty—or when `TAXONOMY_INIT_RELOAD_EXISTING=true` explicitly requests replacement—`TaxonomyService` imports the bundled C3 workbook (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) through Apache POI. Otherwise persisted catalogue rows are reused. A CSV fallback (`relations.csv`) provides seed relations when no Relations sheet is present.
+When the catalogue is empty—or when `TAXONOMY_INIT_RELOAD_EXISTING=true` explicitly requests replacement—`TaxonomyService` imports the bundled C3 workbook (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) through Apache POI. Before persistence, `CatalogueOverlayService` applies the versioned JSON overlay in `src/main/resources/data/nato-taxonomy.json`, validates every patched identity and parent, rejects cross-root links, self-references, cycles and incomplete strict coverage, and recalculates levels from the effective hierarchy. On a normal restart the same overlay is reconciled idempotently with persisted nodes, so catalogue corrections do not require deleting relations or analysis history. A CSV fallback (`relations.csv`) provides seed relations when no Relations sheet is present.
+
+The overlay currently classifies the concrete draft Information Products beneath the approved product families. Category levels retain hierarchical parent-budget scoring; concrete `PRODUCT` leaves use independent 0–100 suitability scoring in deterministic bounded batches and may all receive zero. A positive product family without any product above the configured threshold produces a structured product-coverage gap instead of inventing a catalogue node. See [Information Product catalogue overlay](../dev/INFORMATION_PRODUCT_OVERLAY.md).
 
 ### Relation Seed Model
 
@@ -273,8 +275,8 @@ between Spring startup phases.
 
 The development default is an in-memory URL. Production Docker configuration
 uses file-backed HSQLDB and filesystem Lucene storage. Existing persisted
-catalogue rows are reused on restart. `TAXONOMY_INIT_RELOAD_EXISTING=true`
-performs an intentional destructive catalogue reload from the bundled workbook.
+catalogue rows are retained on restart and reconciled with the checked-in JSON overlay; changed parent and level values are updated without deleting relations.
+`TAXONOMY_INIT_RELOAD_EXISTING=true` performs an intentional destructive catalogue reload from the bundled workbook followed by the same strict overlay application.
 
 PostgreSQL, Microsoft SQL Server, and Oracle use dedicated profiles and the
 bounded Testcontainers compatibility matrix. Detailed setup and test commands

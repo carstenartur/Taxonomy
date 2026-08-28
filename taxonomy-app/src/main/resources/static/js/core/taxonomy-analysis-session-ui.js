@@ -133,6 +133,7 @@
         S.currentScores = null;
         S.currentReasons = {};
         S.currentDiscrepancies = [];
+        S.currentProductCoverageGaps = [];
         S.currentArchView = null;
         S.storedBusinessText = null;
         S.evaluatedNodes = new Set();

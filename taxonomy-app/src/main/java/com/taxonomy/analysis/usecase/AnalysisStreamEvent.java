@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.usecase;
 
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 
 import java.util.List;
@@ -28,13 +29,15 @@ public sealed interface AnalysisStreamEvent
     record Complete(String status,
                     Map<String, Integer> allScores,
                     List<String> warnings,
-                    List<TaxonomyDiscrepancy> discrepancies) implements AnalysisStreamEvent {
+                    List<TaxonomyDiscrepancy> discrepancies,
+                    List<ProductCoverageGap> productCoverageGaps) implements AnalysisStreamEvent {
     }
 
     record Error(String status,
                  String errorMessage,
                  Map<String, Integer> partialScores,
                  List<String> warnings,
-                 List<TaxonomyDiscrepancy> discrepancies) implements AnalysisStreamEvent {
+                 List<TaxonomyDiscrepancy> discrepancies,
+                 List<ProductCoverageGap> productCoverageGaps) implements AnalysisStreamEvent {
     }
 }
