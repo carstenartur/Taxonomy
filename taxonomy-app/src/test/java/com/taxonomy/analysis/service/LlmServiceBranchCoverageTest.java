@@ -25,9 +25,11 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -243,6 +245,45 @@ class LlmServiceBranchCoverageTest {
         verify(callback).onError(
                 anyString(), anyString(), any(), anyList(), anyList(), anyList());
     }
+
+    @Test
+    void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {
+        TaxonomyNode root = node("IP", null, "IP");
+        root.setNameEn("Information Products");
+        TaxonomyNode product = node("IP-P1", "IP", "IP");
+        product.setNameEn("Concrete product");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(product));
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenReturn("root-body");
+        when(gateway.extractResponseText("root-body")).thenReturn("{\"IP\":100}");
+        when(gateway.sendHttpRequest("product prompt", "test-key"))
+                .thenThrow(new LlmTimeoutException("product provider timed out"));
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getWarnings())
+                .anyMatch(warning -> warning.contains("IP")
+                        && warning.contains("product provider timed out"));
+        assertThat(result.getProductCoverageGaps()).isEmpty();
+
+        service.analyzeStreaming("requirement", callback);
+
+        verify(callback).onComplete(
+                eq("PARTIAL"),
+                any(),
+                argThat((List<String> warningList) -> warningList.stream()
+                        .anyMatch(warning -> warning.contains("product provider timed out"))),
+                anyList(),
+                anyList());
+        verify(callback, never()).onError(
+                anyString(), anyString(), any(), anyList(), anyList(), anyList());
+    }
+
 
     @Test
     void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {

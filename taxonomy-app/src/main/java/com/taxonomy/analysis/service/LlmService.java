@@ -351,6 +351,7 @@ public class LlmService {
                 if (rootDetail.getDiscrepancy() != null) {
                     allDiscrepancies.add(rootDetail.getDiscrepancy());
                 }
+                    addAnalysisWarning(warnings, root.getCode(), rootDetail);
                 int score = rootScore.getOrDefault(root.getCode(), 0);
 
                 if (score > 0) {
@@ -359,7 +360,7 @@ public class LlmService {
                     if (!level1Children.isEmpty()) {
                         analyzeNodesPropagating(
                                 businessText, level1Children, allScores, allReasons,
-                                allDiscrepancies, productCoverageGaps, score);
+                                allDiscrepancies, productCoverageGaps, warnings, score);
                     }
                 }
 
@@ -398,8 +399,7 @@ public class LlmService {
             result.setErrorMessage(msg);
             result.getWarnings().add(0, msg);
         } else if (!warnings.isEmpty()) {
-            // Some roots had errors but we continued — still treat as PARTIAL if no scores
-            result.setStatus(allScores.values().stream().anyMatch(v -> v > 0) ? "SUCCESS" : "PARTIAL");
+            result.setStatus("PARTIAL");
         } else {
             result.setStatus("SUCCESS");
         }
@@ -413,6 +413,7 @@ public class LlmService {
                                           Map<String, String> allReasons,
                                           List<TaxonomyDiscrepancy> allDiscrepancies,
                                           List<ProductCoverageGap> productCoverageGaps,
+                                          List<String> warnings,
                                           int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
@@ -425,6 +426,7 @@ public class LlmService {
         if (detail.getDiscrepancy() != null) {
             allDiscrepancies.add(detail.getDiscrepancy());
         }
+            addAnalysisWarning(warnings, siblingScope(nodes), detail);
 
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
         if (!productNodes.isEmpty() && !hasError(detail)
@@ -439,7 +441,7 @@ public class LlmService {
                 if (!children.isEmpty()) {
                     analyzeNodesPropagating(
                             businessText, children, allScores, allReasons,
-                            allDiscrepancies, productCoverageGaps, entry.getValue());
+                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue());
                 }
             }
         }
@@ -459,6 +461,7 @@ public class LlmService {
         Map<String, Integer> allScores = new HashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
         try {
             List<TaxonomyNode> roots = taxonomyService.getRootNodes();
 
@@ -476,6 +479,7 @@ public class LlmService {
                 if (rootDetail.getDiscrepancy() != null) {
                     allDiscrepancies.add(rootDetail.getDiscrepancy());
                 }
+                    addAnalysisWarning(warnings, root.getCode(), rootDetail);
                 callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),
                         root.getName() + " scored " + rootScore + "/100", rootDetail);
 
@@ -486,17 +490,17 @@ public class LlmService {
                         callback.onExpanding(root.getCode(),
                                 level1Children.stream().map(TaxonomyNode::getCode).toList());
                         analyzeStreamingNodes(businessText, level1Children, allScores,
-                                allDiscrepancies, productCoverageGaps, callback, rootScore);
+                                allDiscrepancies, productCoverageGaps, warnings, callback, rootScore);
                     }
                 }
             }
 
-            callback.onComplete("SUCCESS", allScores, List.of(), allDiscrepancies,
-                    productCoverageGaps);
+            callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,
+                    warnings, allDiscrepancies, productCoverageGaps);
         } catch (Exception e) {
             log.error("Streaming analysis failed", e);
             callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-                    allScores, List.of(), allDiscrepancies, productCoverageGaps);
+                    allScores, warnings, allDiscrepancies, productCoverageGaps);
         }
     }
 
@@ -505,6 +509,7 @@ public class LlmService {
                                         Map<String, Integer> allScores,
                                         List<TaxonomyDiscrepancy> allDiscrepancies,
                                         List<ProductCoverageGap> productCoverageGaps,
+                                        List<String> warnings,
                                         AnalysisEventCallback callback,
                                         int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
@@ -514,6 +519,7 @@ public class LlmService {
         if (detail.getDiscrepancy() != null) {
             allDiscrepancies.add(detail.getDiscrepancy());
         }
+            addAnalysisWarning(warnings, siblingScope(nodes), detail);
         callback.onScores(detail.getScores(), detail.getReasons(),
                 "Evaluated " + nodes.size() + " node(s)", detail);
 
@@ -531,7 +537,8 @@ public class LlmService {
                     callback.onExpanding(entry.getKey(),
                             children.stream().map(TaxonomyNode::getCode).toList());
                     analyzeStreamingNodes(businessText, children, allScores,
-                            allDiscrepancies, productCoverageGaps, callback, entry.getValue());
+                            allDiscrepancies, productCoverageGaps, warnings, callback,
+                            entry.getValue());
                 }
             }
         }
@@ -832,6 +839,31 @@ public class LlmService {
         }
         return merged;
     }
+
+    private void addAnalysisWarning(List<String> warnings,
+                                    String scopeCode,
+                                    LlmCallDetail detail) {
+        if (!hasError(detail)) {
+            return;
+        }
+        String scope = scopeCode == null || scopeCode.isBlank()
+                ? "unknown taxonomy scope" : scopeCode;
+        String warning = "Incomplete analysis for " + scope + ": "
+                + detail.getError().strip();
+        if (!warnings.contains(warning)) {
+            warnings.add(warning);
+        }
+    }
+
+    private String siblingScope(List<TaxonomyNode> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return "unknown taxonomy scope";
+        }
+        String parentCode = nodes.get(0).getParentCode();
+        return parentCode == null || parentCode.isBlank()
+                ? nodes.get(0).getCode() : parentCode;
+    }
+
 
     private boolean hasError(LlmCallDetail detail) {
         return detail != null && detail.getError() != null && !detail.getError().isBlank();
