@@ -448,6 +448,46 @@ class LlmServiceBranchCoverageTest {
     }
 
     @Test
+    void mixedCategoryFailureDoesNotSuppressCompletedProductCoverageGap() {
+        TaxonomyNode root = node("IP", null, "IP");
+        root.setNameEn("Information Products");
+        TaxonomyNode family = node("IP-F", "IP", "IP");
+        family.setNameEn("Product family");
+        TaxonomyNode category = node("IP-C", "IP-F", "IP");
+        TaxonomyNode product = node("IP-P1", "IP-F", "IP");
+        product.setNameEn("Concrete product");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family));
+        when(taxonomyService.getChildrenOf("IP-F")).thenReturn(List.of(category, product));
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenReturn("root-body", "family-body")
+                .thenReturn((String) null);
+        when(gateway.extractResponseText("root-body")).thenReturn("{\"IP\":100}");
+        when(gateway.extractResponseText("family-body"))
+                .thenReturn("{\"IP-F\":100}");
+        when(gateway.sendHttpRequest("product prompt", "test-key"))
+                .thenReturn("product-body");
+        when(gateway.extractResponseText("product-body")).thenReturn(
+                "{\"IP-P1\":{\"score\":20,\"reason\":\"below threshold\"}}");
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getWarnings())
+                .anyMatch(warning -> warning.contains("IP-F")
+                        && warning.contains("returned no response"));
+        assertThat(result.getProductCoverageGaps()).hasSize(1);
+        assertThat(result.getProductCoverageGaps().get(0).productFamilyCode())
+                .isEqualTo("IP-F");
+        assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
+                .containsExactly("IP-P1");
+    }
+
+    @Test
     void concreteProductBatchSizeCannotExceedTen() {
         ReflectionTestUtils.setField(service, "productBatchSize", 10);
         ReflectionTestUtils.setField(service, "productMinimumScore", 50);

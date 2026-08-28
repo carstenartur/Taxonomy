@@ -351,7 +351,7 @@ public class LlmService {
                 if (rootDetail.getDiscrepancy() != null) {
                     allDiscrepancies.add(rootDetail.getDiscrepancy());
                 }
-                    addAnalysisWarning(warnings, root.getCode(), rootDetail);
+                addAnalysisWarning(warnings, root.getCode(), rootDetail);
                 int score = rootScore.getOrDefault(root.getCode(), 0);
 
                 if (score > 0) {
@@ -417,7 +417,8 @@ public class LlmService {
                                           int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        LlmCallDetail detail = scoreSiblingBatchDetailed(businessText, nodes, parentScore);
+        SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
+        LlmCallDetail detail = batch.detail();
         Map<String, Integer> scores = detail.getScores();
         allScores.putAll(scores);
         if (detail.getReasons() != null) {
@@ -426,10 +427,10 @@ public class LlmService {
         if (detail.getDiscrepancy() != null) {
             allDiscrepancies.add(detail.getDiscrepancy());
         }
-            addAnalysisWarning(warnings, siblingScope(nodes), detail);
+        addAnalysisWarning(warnings, siblingScope(nodes), detail);
 
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
-        if (!productNodes.isEmpty() && !hasError(detail)
+        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
                 && productNodes.stream().noneMatch(
                         node -> scores.getOrDefault(node.getCode(), 0) > 0)) {
             addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
@@ -479,7 +480,7 @@ public class LlmService {
                 if (rootDetail.getDiscrepancy() != null) {
                     allDiscrepancies.add(rootDetail.getDiscrepancy());
                 }
-                    addAnalysisWarning(warnings, root.getCode(), rootDetail);
+                addAnalysisWarning(warnings, root.getCode(), rootDetail);
                 callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),
                         root.getName() + " scored " + rootScore + "/100", rootDetail);
 
@@ -514,17 +515,18 @@ public class LlmService {
                                         int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        LlmCallDetail detail = scoreSiblingBatchDetailed(businessText, nodes, parentScore);
+        SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
+        LlmCallDetail detail = batch.detail();
         allScores.putAll(detail.getScores());
         if (detail.getDiscrepancy() != null) {
             allDiscrepancies.add(detail.getDiscrepancy());
         }
-            addAnalysisWarning(warnings, siblingScope(nodes), detail);
+        addAnalysisWarning(warnings, siblingScope(nodes), detail);
         callback.onScores(detail.getScores(), detail.getReasons(),
                 "Evaluated " + nodes.size() + " node(s)", detail);
 
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
-        if (!productNodes.isEmpty() && !hasError(detail)
+        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
                 && productNodes.stream().noneMatch(
                         node -> detail.getScores().getOrDefault(node.getCode(), 0) > 0)) {
             addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
@@ -595,7 +597,17 @@ public class LlmService {
      * semantically separate. Categories consume the parent budget; concrete products are scored
      * independently in deterministic bounded batches.
      */
+    private record SiblingBatchResult(
+            LlmCallDetail detail,
+            boolean productEvaluationComplete) {
+    }
+
     private LlmCallDetail scoreSiblingBatchDetailed(
+            String businessText, List<TaxonomyNode> nodes, int parentScore) {
+        return scoreSiblingBatch(businessText, nodes, parentScore).detail();
+    }
+
+    private SiblingBatchResult scoreSiblingBatch(
             String businessText, List<TaxonomyNode> nodes, int parentScore) {
         if (nodes == null || nodes.isEmpty()) {
             LlmCallDetail empty = new LlmCallDetail();
@@ -604,7 +616,7 @@ public class LlmService {
             empty.setReasons(Map.of());
             empty.setPrompt("");
             empty.setRawResponse("");
-            return empty;
+            return new SiblingBatchResult(empty, true);
         }
 
         List<TaxonomyNode> categories = nodes.stream()
@@ -617,16 +629,21 @@ public class LlmService {
                 .toList();
 
         if (products.isEmpty()) {
-            return callLlmPropagatingDetailed(businessText, categories, parentScore);
+            return new SiblingBatchResult(
+                    callLlmPropagatingDetailed(businessText, categories, parentScore),
+                    true);
         }
         if (categories.isEmpty()) {
-            return callProductBatchesDetailed(businessText, products);
+            LlmCallDetail productDetail = callProductBatchesDetailed(businessText, products);
+            return new SiblingBatchResult(productDetail, !hasError(productDetail));
         }
 
         LlmCallDetail categoryDetail =
                 callLlmPropagatingDetailed(businessText, categories, parentScore);
         LlmCallDetail productDetail = callProductBatchesDetailed(businessText, products);
-        return mergeDetails(List.of(categoryDetail, productDetail));
+        return new SiblingBatchResult(
+                mergeDetails(List.of(categoryDetail, productDetail)),
+                !hasError(productDetail));
     }
 
     private LlmCallDetail callProductBatchesDetailed(

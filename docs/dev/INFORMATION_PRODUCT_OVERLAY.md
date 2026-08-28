@@ -98,6 +98,9 @@ Concrete products use a different contract:
 A failed or incomplete concrete-product batch makes the overall analysis `PARTIAL` and
 adds an explicit warning. Its zero placeholders are not treated as evidence of an actual
 catalogue gap, so no confirmed `productCoverageGaps` entry is emitted for that batch.
+A failure in a separate category call still makes the overall result `PARTIAL`, but it
+does not discard completed product evidence or suppress a product gap established by a
+successfully completed concrete-product batch.
 
 A parent may contain both category and product children. Categories are evaluated with the parent
 budget, while direct product children are evaluated independently. This preserves a genuine source
