@@ -23,6 +23,19 @@ public final class CopilotDtos {
             Boolean proposeSolutions,
             Boolean proposeProducts) {
 
+        /** Source-compatible constructor for clients that still select by provider name. */
+        public CopilotRunRequest(
+                String provider,
+                Integer maxArchitectureNodes,
+                AnalysisAutomationProfile profile,
+                Integer verificationPasses,
+                Boolean force,
+                Boolean proposeSolutions,
+                Boolean proposeProducts) {
+            this(null, provider, maxArchitectureNodes, profile, verificationPasses,
+                    force, proposeSolutions, proposeProducts);
+        }
+
         public boolean forceRun() {
             return Boolean.TRUE.equals(force);
         }
