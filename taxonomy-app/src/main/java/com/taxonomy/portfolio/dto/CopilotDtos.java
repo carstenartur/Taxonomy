@@ -1,6 +1,5 @@
 package com.taxonomy.portfolio.dto;
 
-import com.taxonomy.portfolio.dto.AiTargetDtos.AiTargetDescriptor;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
@@ -77,7 +76,6 @@ public final class CopilotDtos {
             AiCostPolicy costPolicy,
             boolean autopilot,
             String provider,
-            AiTargetDescriptor target,
             int maxArchitectureNodes,
             int verificationPasses,
             int completedPasses,
