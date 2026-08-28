@@ -1,0 +1,131 @@
+name: Finalize PR 917 scope
+
+on:
+  push:
+    branches:
+      - fix/repeatable-analysis-reset-and-lifecycle-menu
+    paths:
+      - .github/workflows/pr917-finalize-scope.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/repeatable-analysis-reset-and-lifecycle-menu
+          fetch-depth: 0
+      - name: Remove catalogue-quality material and finalize reset behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          cp taxonomy-app/src/main/resources/i18n/messages.properties /tmp/messages.properties
+          cp taxonomy-app/src/main/resources/i18n/messages_de.properties /tmp/messages_de.properties
+
+          rm -f \
+            docs/data/C3_Taxonomy_Catalogue_25AUG2025_audit.csv \
+            docs/en/C3_TAXONOMY_CATALOGUE_DATA_QUALITY.md \
+            docs/de/C3_TAXONOMY_CATALOGUE_DATA_QUALITY.md \
+            docs/de/C3_TAXONOMY_EXCEL_FEHLERBERICHT.md \
+            docs/de/.analysis-reset-delivery-marker \
+            taxonomy-app/src/test/java/com/taxonomy/catalog/CatalogueWorkbookDataQualityDocumentationTest.java \
+            .github/pr917-ci-trigger
+          rm -f .github/workflows/codex-pr917-*.yml
+
+          git checkout origin/main -- \
+            taxonomy-app/src/main/java/com/taxonomy/shared/controller/HelpController.java \
+            taxonomy-app/pom.xml \
+            taxonomy-app/src/main/resources/i18n/messages.properties \
+            taxonomy-app/src/main/resources/i18n/messages_de.properties
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          template = (root / 'taxonomy-app/src/main/resources/templates/index.html').read_text(encoding='utf-8')
+          referenced = set(re.findall(r'#\{([A-Za-z0-9_.-]+)', template))
+
+          def props(text):
+              result = {}
+              for line in text.splitlines():
+                  stripped = line.strip()
+                  if not stripped or stripped.startswith(('#', '!')) or '=' not in line:
+                      continue
+                  result[line.split('=', 1)[0].strip()] = line
+              return result
+
+          for rel, saved in [
+              ('taxonomy-app/src/main/resources/i18n/messages.properties', '/tmp/messages.properties'),
+              ('taxonomy-app/src/main/resources/i18n/messages_de.properties', '/tmp/messages_de.properties')
+          ]:
+              path = root / rel
+              base = path.read_text(encoding='utf-8')
+              old = Path(saved).read_text(encoding='utf-8')
+              base_props = props(base)
+              old_props = props(old)
+              additions = []
+              for key in sorted(referenced):
+                  if key not in base_props and key in old_props:
+                      line = old_props[key]
+                      if not re.search(r'(catalog|audit|quality|datenqualit|excel)', line, re.I):
+                          additions.append(line)
+              path.write_text(base.rstrip('\n') + '\n' + '\n'.join(additions) + ('\n' if additions else ''), encoding='utf-8')
+
+          projects = root / 'taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-projects.js'
+          text = projects.read_text(encoding='utf-8')
+          needle = "        return resetDraft().then(function (view) {\n            invalidate({\n"
+          replacement = "        return resetDraft().then(function (view) {\n            if (!view) {\n                throw new Error(text('workspaceNotReady'));\n            }\n            invalidate({\n"
+          if needle in text:
+              text = text.replace(needle, replacement, 1)
+          elif "throw new Error(text('workspaceNotReady'))" not in text:
+              raise SystemExit('startNewAnalysis reset callback not found')
+          projects.write_text(text, encoding='utf-8')
+
+          core = root / 'taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js'
+          text = core.read_text(encoding='utf-8')
+          if 'workspaceNotReady:' not in text:
+              text = text.replace(
+                  "            newAnalysisFailed: 'The working draft could not be reset.',\n",
+                  "            newAnalysisFailed: 'The working draft could not be reset.',\n"
+                  "            workspaceNotReady: 'The workspace is still being prepared. Please wait a moment and try again.',\n",
+                  1)
+              text = text.replace(
+                  "            newAnalysisFailed: 'Der Arbeitsentwurf konnte nicht zurückgesetzt werden.',\n",
+                  "            newAnalysisFailed: 'Der Arbeitsentwurf konnte nicht zurückgesetzt werden.',\n"
+                  "            workspaceNotReady: 'Der Workspace wird noch vorbereitet. Bitte warten Sie einen Moment und versuchen Sie es erneut.',\n",
+                  1)
+          core.write_text(text, encoding='utf-8')
+
+          contract = root / 'taxonomy-app/src/test/java/com/taxonomy/AnalysisSessionFrontendContractTest.java'
+          text = contract.read_text(encoding='utf-8')
+          old = '                .contains("resetDraft().then");'
+          new = ('                .contains("resetDraft().then")\n'
+                 '                .contains("if (!view)")\n'
+                 '                .contains("workspaceNotReady");')
+          if old in text:
+              text = text.replace(old, new, 1)
+          contract.write_text(text, encoding='utf-8')
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js
+          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js
+          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-projects.js
+          node --test \
+            .github/scripts/analysis-session-draft.test.mjs \
+            .github/scripts/analysis-session-draft-serialization.test.mjs
+          git diff --check
+
+          git rm .github/workflows/pr917-finalize-scope.yml
+          git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix: finalize repeatable analysis reset"
+          git push origin HEAD:fix/repeatable-analysis-reset-and-lifecycle-menu
