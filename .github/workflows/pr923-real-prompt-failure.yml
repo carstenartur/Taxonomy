@@ -1,0 +1,171 @@
+name: PR 923 real prompt failure integration
+
+on:
+  push:
+    branches:
+      - qa/922-complete-ai-session
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr923-real-prompt-failure
+  cancel-in-progress: true
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Replace browser-fabricated prompt failure with the real server contract
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/patch-pr923.pl <<'PERL'
+          use strict;
+          use warnings;
+          use Path::Tiny;
+
+          my $test_path = path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java');
+          my $test = $test_path->slurp_utf8;
+          $test =~ s/\.withEnv\("TAXONOMY_AI_MAX_ARCHITECTURE_NODES", "100"\)/.withEnv("TAXONOMY_AI_MAX_ARCHITECTURE_NODES", "100")\n                .withEnv("TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS", "256")\n                .withEnv("TAXONOMY_AI_PROMPT_MAX_INPUT_BYTES", "1024")\n                .withEnv("TAXONOMY_AI_PROMPT_ESTIMATED_MAX_INPUT_TOKENS", "64")/ or die "test environment anchor not found\n";
+
+          my $real_failure = <<'JAVA';
+              private static void assertOneConsolidatedProviderFailure() {
+                  String oversizedText = REQUIREMENT_SENTENCE + " "
+                          + "Additional operational context that deliberately exceeds the configured "
+                          .repeat(8);
+
+                  click(By.id("newVersionButton"));
+                  WebElement modal = wait.until(
+                          ExpectedConditions.visibilityOfElementLocated(By.id("newVersionModal")));
+                  fill(modal, "versionText", oversizedText);
+                  fill(modal, "changeReason", "Exercise the real prompt-budget rejection contract.");
+                  modal.findElement(By.cssSelector("button[type='submit']")).click();
+                  waitForModalClosed("newVersionModal");
+                  wait.until(textPresent(By.id("detailInfo"), "immutable version"));
+                  wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
+
+                  String previousOperationId = driver.findElement(By.id("copilotOperation"))
+                          .getAttribute("data-operation-id");
+                  setChecked("copilotForce", true);
+                  click(By.id("copilotRun"));
+                  wait.until(browser -> {
+                      String current = browser.findElement(By.id("copilotOperation"))
+                              .getAttribute("data-operation-id");
+                      return current != null && !current.isBlank()
+                              && !current.equals(previousOperationId);
+                  });
+                  wait.until(attributeEquals(By.id("copilotOperation"),
+                          "data-operation-status", "FAILED"));
+
+                  WebElement operation = driver.findElement(By.id("copilotOperation"));
+                  assertThat(operation.getAttribute("role")).isEqualTo("alert");
+                  assertThat(driver.findElement(By.id("copilotOperationMessage")).getText())
+                          .contains("PROMPT_BUDGET_EXCEEDED")
+                          .containsIgnoringCase("AI target");
+                  assertThat(driver.findElement(By.id("copilotError")).isDisplayed()).isFalse();
+
+                  long visibleErrors = ((Number) javascript().executeScript("""
+                          return Array.from(document.querySelectorAll('[role="alert"]'))
+                              .filter(element => {
+                                  const style = getComputedStyle(element);
+                                  return style.display !== 'none' && style.visibility !== 'hidden'
+                                      && element.getBoundingClientRect().height > 0;
+                              }).length;
+                          """)).longValue();
+                  assertThat(visibleErrors).isEqualTo(1L);
+                  assertThat(driver.findElement(By.id("copilotRun")).isEnabled()).isTrue();
+              }
+
+          JAVA
+          $test =~ s/    private static void assertOneConsolidatedProviderFailure\(\) \{.*?(?=    private static Map<String, byte\[]> unzip)/$real_failure/s
+              or die "provider failure method not found\n";
+          $test_path->spew_utf8($test);
+
+          my $ui_path = path('taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js');
+          my $ui = $ui_path->slurp_utf8;
+          my $old = <<'OLD';
+                  setText('copilotOperationStatus', humanize(operation.status));
+                  setText('copilotOperationMessage', operation.message || '');
+                  setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));
+          OLD
+          my $new = <<'NEW';
+                  const status = String(operation.status || '');
+                  const message = primaryOperationMessage(operation);
+                  if (panel) {
+                      panel.setAttribute('role', status === 'FAILED' ? 'alert' : 'status');
+                      panel.setAttribute('aria-live', status === 'FAILED' ? 'assertive' : 'polite');
+                  }
+                  if (status === 'FAILED') clearError();
+                  setText('copilotOperationStatus', humanize(status));
+                  setText('copilotOperationMessage', message);
+                  setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));
+          NEW
+          index($ui, $old) >= 0 or die "render operation anchor not found\n";
+          $ui =~ s/\Q$old\E/$new/;
+          $ui =~ s/announce\(\(operation\.message \|\| ''\) \+ ' ' \+ operation\.completedPasses/announce(message + ' ' + operation.completedPasses/
+              or die "announcement anchor not found\n";
+
+          my $helper = <<'HELPER';
+              function primaryOperationMessage(operation) {
+                  if (!operation) return '';
+                  const status = String(operation.status || '').toUpperCase();
+                  if (status !== 'FAILED' && status !== 'PARTIAL') {
+                      return operation.message || '';
+                  }
+                  const evidence = [];
+                  (Array.isArray(operation.jobs) ? operation.jobs : []).forEach(job => {
+                      (Array.isArray(job.items) ? job.items : []).forEach(item => {
+                          if (item && item.errorMessage) evidence.push(String(item.errorMessage));
+                      });
+                      if (job && job.errorSummary) evidence.push(String(job.errorSummary));
+                  });
+                  if (operation.message) evidence.push(String(operation.message));
+                  const unique = evidence.map(value => value.trim()).filter(Boolean)
+                      .filter((value, index, values) => values.indexOf(value) === index);
+                  return unique.find(value => value.includes('PROMPT_BUDGET_EXCEEDED'))
+                      || unique[0] || t('failed');
+              }
+
+          HELPER
+          $ui =~ s/(?=    function renderOperation\(operation\) \{)/$helper/
+              or die "render function insertion point not found\n";
+          $ui_path->spew_utf8($ui);
+
+          my $contract_path = path('taxonomy-app/src/test/java/com/taxonomy/portfolio/RequirementCopilotUiContractTest.java');
+          my $contract = $contract_path->slurp_utf8;
+          $contract =~ s/\.contains\("dataset\.sessionControl", "dataset\.sessionTestOutcome"\)/.contains("dataset.sessionControl", "dataset.sessionTestOutcome")\n                .contains("primaryOperationMessage")\n                .contains("item.errorMessage", "job.errorSummary")\n                .contains("status === 'FAILED' ? 'alert' : 'status'")/
+              or die "UI contract assertion anchor not found\n";
+          $contract_path->spew_utf8($contract);
+          PERL
+
+          perl /tmp/patch-pr923.pl
+
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -Dtest=RequirementCopilotUiContractTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,PortfolioExceptionHandlerTest,ConfigurationReferenceContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          ./mvnw -B -ntp -pl taxonomy-app -am -DskipTests package
+          ./mvnw -B -ntp -pl taxonomy-app -DskipTests -DskipITs test-compile
+
+          rm .github/workflows/pr923-real-prompt-failure.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Exercise real prompt-budget failure in the complete session'
+          git push origin HEAD:qa/922-complete-ai-session
