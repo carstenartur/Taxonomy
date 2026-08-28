@@ -31,229 +31,275 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
-          git apply <<'PATCH'
-          diff --git a/taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java b/taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java
-          --- a/taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java
-          +++ b/taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java
-          @@ -347,6 +347,7 @@ public class LlmService {
-                   if (rootDetail.getDiscrepancy() != null) {
-                       allDiscrepancies.add(rootDetail.getDiscrepancy());
-                   }
-          +        addAnalysisWarning(warnings, root.getCode(), rootDetail);
-                   int score = rootScore.getOrDefault(root.getCode(), 0);
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          function replaceOnce(text, before, after, label) {
+            const first = text.indexOf(before);
+            const last = text.lastIndexOf(before);
+            if (first < 0 || first !== last) {
+              throw new Error(`${label}: expected exactly one match`);
+            }
+            return text.slice(0, first) + after + text.slice(first + before.length);
+          }
+
+          const servicePath = 'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java';
+          let service = fs.readFileSync(servicePath, 'utf8');
+
+          service = replaceOnce(service,
+          `                if (rootDetail.getDiscrepancy() != null) {
+                              allDiscrepancies.add(rootDetail.getDiscrepancy());
+                          }
+                          int score = rootScore.getOrDefault(root.getCode(), 0);`,
+          `                if (rootDetail.getDiscrepancy() != null) {
+                              allDiscrepancies.add(rootDetail.getDiscrepancy());
+                          }
+                          addAnalysisWarning(warnings, root.getCode(), rootDetail);
+                          int score = rootScore.getOrDefault(root.getCode(), 0);`,
+          'non-stream root warning');
+
+          service = replaceOnce(service,
+          `                        analyzeNodesPropagating(
+                                  businessText, level1Children, allScores, allReasons,
+                                  allDiscrepancies, productCoverageGaps, score);`,
+          `                        analyzeNodesPropagating(
+                                  businessText, level1Children, allScores, allReasons,
+                                  allDiscrepancies, productCoverageGaps, warnings, score);`,
+          'non-stream first recursive call');
+
+          service = replaceOnce(service,
+          `        } else if (!warnings.isEmpty()) {
+                      // Some roots had errors but we continued — still treat as PARTIAL if no scores
+                      result.setStatus(allScores.values().stream().anyMatch(v -> v > 0) ? "SUCCESS" : "PARTIAL");
+                  } else {`,
+          `        } else if (!warnings.isEmpty()) {
+                      result.setStatus("PARTIAL");
+                  } else {`,
+          'partial result status');
+
+          service = replaceOnce(service,
+          `                                          List<TaxonomyDiscrepancy> allDiscrepancies,
+                                          List<ProductCoverageGap> productCoverageGaps,
+                                          int parentScore) {`,
+          `                                          List<TaxonomyDiscrepancy> allDiscrepancies,
+                                          List<ProductCoverageGap> productCoverageGaps,
+                                          List<String> warnings,
+                                          int parentScore) {`,
+          'non-stream recursive signature');
+
+          service = replaceOnce(service,
+          `        if (detail.getDiscrepancy() != null) {
+                      allDiscrepancies.add(detail.getDiscrepancy());
+                  }
           
-                   if (score > 0) {
-          @@ -357,7 +358,7 @@ public class LlmService {
-                           analyzeNodesPropagating(
-                                   businessText, level1Children, allScores, allReasons,
-          -                        allDiscrepancies, productCoverageGaps, score);
-          +                        allDiscrepancies, productCoverageGaps, warnings, score);
-                       }
-                   }
+                  List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();`,
+          `        if (detail.getDiscrepancy() != null) {
+                      allDiscrepancies.add(detail.getDiscrepancy());
+                  }
+                  addAnalysisWarning(warnings, siblingScope(nodes), detail);
           
-          @@ -402,8 +403,7 @@ public class LlmService {
-               result.getWarnings().add(0, msg);
-           } else if (!warnings.isEmpty()) {
-          -    // Some roots had errors but we continued — still treat as PARTIAL if no scores
-          -    result.setStatus(allScores.values().stream().anyMatch(v -> v > 0) ? "SUCCESS" : "PARTIAL");
-          +    result.setStatus("PARTIAL");
-           } else {
-               result.setStatus("SUCCESS");
-           }
-          @@ -416,6 +416,7 @@ public class LlmService {
-                                         Map<String, String> allReasons,
-                                         List<TaxonomyDiscrepancy> allDiscrepancies,
-                                         List<ProductCoverageGap> productCoverageGaps,
-          +                              List<String> warnings,
-                                         int parentScore) {
-               if (nodes == null || nodes.isEmpty()) return;
+                  List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();`,
+          'non-stream child warning');
+
+          service = replaceOnce(service,
+          `                    analyzeNodesPropagating(
+                              businessText, children, allScores, allReasons,
+                              allDiscrepancies, productCoverageGaps, entry.getValue());`,
+          `                    analyzeNodesPropagating(
+                              businessText, children, allScores, allReasons,
+                              allDiscrepancies, productCoverageGaps, warnings, entry.getValue());`,
+          'non-stream nested recursive call');
+
+          service = replaceOnce(service,
+          `        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
+                  List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
+                  try {`,
+          `        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
+                  List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
+                  List<String> warnings = new ArrayList<>();
+                  try {`,
+          'stream warnings declaration');
+
+          service = replaceOnce(service,
+          `                if (rootDetail.getDiscrepancy() != null) {
+                              allDiscrepancies.add(rootDetail.getDiscrepancy());
+                          }
+                          callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),`,
+          `                if (rootDetail.getDiscrepancy() != null) {
+                              allDiscrepancies.add(rootDetail.getDiscrepancy());
+                          }
+                          addAnalysisWarning(warnings, root.getCode(), rootDetail);
+                          callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),`,
+          'stream root warning');
+
+          service = replaceOnce(service,
+          `                        analyzeStreamingNodes(businessText, level1Children, allScores,
+                                  allDiscrepancies, productCoverageGaps, callback, rootScore);`,
+          `                        analyzeStreamingNodes(businessText, level1Children, allScores,
+                                  allDiscrepancies, productCoverageGaps, warnings, callback,
+                                  rootScore);`,
+          'stream first recursive call');
+
+          service = replaceOnce(service,
+          `            callback.onComplete("SUCCESS", allScores, List.of(), allDiscrepancies,
+                              productCoverageGaps);
+                  } catch (Exception e) {
+                      log.error("Streaming analysis failed", e);
+                      callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
+                              allScores, List.of(), allDiscrepancies, productCoverageGaps);`,
+          `            callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,
+                              warnings, allDiscrepancies, productCoverageGaps);
+                  } catch (Exception e) {
+                      log.error("Streaming analysis failed", e);
+                      callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
+                              allScores, warnings, allDiscrepancies, productCoverageGaps);`,
+          'stream completion status and warnings');
+
+          service = replaceOnce(service,
+          `                                        List<TaxonomyDiscrepancy> allDiscrepancies,
+                                        List<ProductCoverageGap> productCoverageGaps,
+                                        AnalysisEventCallback callback,`,
+          `                                        List<TaxonomyDiscrepancy> allDiscrepancies,
+                                        List<ProductCoverageGap> productCoverageGaps,
+                                        List<String> warnings,
+                                        AnalysisEventCallback callback,`,
+          'stream recursive signature');
+
+          service = replaceOnce(service,
+          `        if (detail.getDiscrepancy() != null) {
+                      allDiscrepancies.add(detail.getDiscrepancy());
+                  }
+                  callback.onScores(detail.getScores(), detail.getReasons(),`,
+          `        if (detail.getDiscrepancy() != null) {
+                      allDiscrepancies.add(detail.getDiscrepancy());
+                  }
+                  addAnalysisWarning(warnings, siblingScope(nodes), detail);
+                  callback.onScores(detail.getScores(), detail.getReasons(),`,
+          'stream child warning');
+
+          service = replaceOnce(service,
+          `                    analyzeStreamingNodes(businessText, children, allScores,
+                              allDiscrepancies, productCoverageGaps, callback, entry.getValue());`,
+          `                    analyzeStreamingNodes(businessText, children, allScores,
+                              allDiscrepancies, productCoverageGaps, warnings, callback,
+                              entry.getValue());`,
+          'stream nested recursive call');
+
+          service = replaceOnce(service,
+          `    private boolean hasError(LlmCallDetail detail) {
+                  return detail != null && detail.getError() != null && !detail.getError().isBlank();
+              }`,
+          `    private void addAnalysisWarning(List<String> warnings,
+                                              String scopeCode,
+                                              LlmCallDetail detail) {
+                  if (!hasError(detail)) {
+                      return;
+                  }
+                  String scope = scopeCode == null || scopeCode.isBlank()
+                          ? "unknown taxonomy scope" : scopeCode;
+                  String warning = "Incomplete analysis for " + scope + ": "
+                          + detail.getError().strip();
+                  if (!warnings.contains(warning)) {
+                      warnings.add(warning);
+                  }
+              }
           
-          @@ -429,6 +430,7 @@ public class LlmService {
-               if (detail.getDiscrepancy() != null) {
-                   allDiscrepancies.add(detail.getDiscrepancy());
-               }
-          +    addAnalysisWarning(warnings, siblingScope(nodes), detail);
+              private String siblingScope(List<TaxonomyNode> nodes) {
+                  if (nodes == null || nodes.isEmpty()) {
+                      return "unknown taxonomy scope";
+                  }
+                  String parentCode = nodes.get(0).getParentCode();
+                  return parentCode == null || parentCode.isBlank()
+                          ? nodes.get(0).getCode() : parentCode;
+              }
           
-               List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
-               if (!productNodes.isEmpty() && !hasError(detail)
-          @@ -446,7 +448,7 @@ public class LlmService {
-                       analyzeNodesPropagating(
-                               businessText, children, allScores, allReasons,
-          -                    allDiscrepancies, productCoverageGaps, entry.getValue());
-          +                    allDiscrepancies, productCoverageGaps, warnings, entry.getValue());
-                   }
-               }
-           }
-          @@ -466,6 +468,7 @@ public class LlmService {
-               Map<String, Integer> allScores = new HashMap<>();
-               List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
-               List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
-          +    List<String> warnings = new ArrayList<>();
-               try {
-                   List<TaxonomyNode> roots = taxonomyService.getRootNodes();
+              private boolean hasError(LlmCallDetail detail) {
+                  return detail != null && detail.getError() != null && !detail.getError().isBlank();
+              }`,
+          'warning helpers');
+
+          fs.writeFileSync(servicePath, service);
+
+          const testPath = 'taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java';
+          let test = fs.readFileSync(testPath, 'utf8');
+          test = replaceOnce(test,
+          `import static org.mockito.ArgumentMatchers.any;
+          import static org.mockito.ArgumentMatchers.anyInt;`,
+          `import static org.mockito.ArgumentMatchers.any;
+          import static org.mockito.ArgumentMatchers.argThat;
+          import static org.mockito.ArgumentMatchers.anyInt;`,
+          'argThat import');
+          test = replaceOnce(test,
+          `import static org.mockito.ArgumentMatchers.anyString;
+          import static org.mockito.Mockito.lenient;`,
+          `import static org.mockito.ArgumentMatchers.anyString;
+          import static org.mockito.ArgumentMatchers.eq;
+          import static org.mockito.Mockito.lenient;`,
+          'eq import');
+
+          const newTest = `    @Test
+              void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {
+                  TaxonomyNode root = node("IP", null, "IP");
+                  root.setNameEn("Information Products");
+                  TaxonomyNode product = node("IP-P1", "IP", "IP");
+                  product.setNameEn("Concrete product");
+                  when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+                  when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+                  when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(product));
+                  when(taxonomyService.getFullTree()).thenReturn(List.of());
+                  when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                          .thenReturn("root-body");
+                  when(gateway.extractResponseText("root-body")).thenReturn("{\\"IP\\":100}");
+                  when(gateway.sendHttpRequest("product prompt", "test-key"))
+                          .thenThrow(new LlmTimeoutException("product provider timed out"));
+                  ReflectionTestUtils.setField(service, "productMinimumScore", 50);
           
-          @@ -484,6 +487,7 @@ public class LlmService {
-                   if (rootDetail.getDiscrepancy() != null) {
-                       allDiscrepancies.add(rootDetail.getDiscrepancy());
-                   }
-          +        addAnalysisWarning(warnings, root.getCode(), rootDetail);
-                   callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),
-                           root.getName() + " scored " + rootScore + "/100", rootDetail);
+                  AnalysisResult result = service.analyzeWithBudget("requirement");
           
-          @@ -495,18 +499,20 @@ public class LlmService {
-                           callback.onExpanding(root.getCode(),
-                                   level1Children.stream().map(TaxonomyNode::getCode).toList());
-                           analyzeStreamingNodes(businessText, level1Children, allScores,
-          -                        allDiscrepancies, productCoverageGaps, callback, rootScore);
-          +                        allDiscrepancies, productCoverageGaps, warnings, callback,
-          +                        rootScore);
-                       }
-                   }
-               }
+                  assertThat(result.getStatus()).isEqualTo("PARTIAL");
+                  assertThat(result.getWarnings())
+                          .anyMatch(warning -> warning.contains("IP")
+                                  && warning.contains("product provider timed out"));
+                  assertThat(result.getProductCoverageGaps()).isEmpty();
           
-          -    callback.onComplete("SUCCESS", allScores, List.of(), allDiscrepancies,
-          +    callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,
-          +            warnings, allDiscrepancies,
-                       productCoverageGaps);
-           } catch (Exception e) {
-               log.error("Streaming analysis failed", e);
-               callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-          -            allScores, List.of(), allDiscrepancies, productCoverageGaps);
-          +            allScores, warnings, allDiscrepancies, productCoverageGaps);
-           }
-           }
+                  service.analyzeStreaming("requirement", callback);
           
-          @@ -515,6 +521,7 @@ public class LlmService {
-                                           Map<String, Integer> allScores,
-                                           List<TaxonomyDiscrepancy> allDiscrepancies,
-                                           List<ProductCoverageGap> productCoverageGaps,
-          +                                List<String> warnings,
-                                           AnalysisEventCallback callback,
-                                           int parentScore) {
-               if (nodes == null || nodes.isEmpty()) return;
-          @@ -525,6 +532,7 @@ public class LlmService {
-               if (detail.getDiscrepancy() != null) {
-                   allDiscrepancies.add(detail.getDiscrepancy());
-               }
-          +    addAnalysisWarning(warnings, siblingScope(nodes), detail);
-               callback.onScores(detail.getScores(), detail.getReasons(),
-                       "Evaluated " + nodes.size() + " node(s)", detail);
+                  verify(callback).onComplete(
+                          eq("PARTIAL"),
+                          any(),
+                          argThat((List<String> warnings) -> warnings.stream()
+                                  .anyMatch(warning -> warning.contains("product provider timed out"))),
+                          anyList(),
+                          anyList());
+                  verify(callback, never()).onError(
+                          anyString(), anyString(), any(), anyList(), anyList(), anyList());
+              }
           
-          @@ -544,7 +552,8 @@ public class LlmService {
-                       callback.onExpanding(entry.getKey(),
-                               children.stream().map(TaxonomyNode::getCode).toList());
-                       analyzeStreamingNodes(businessText, children, allScores,
-          -                    allDiscrepancies, productCoverageGaps, callback, entry.getValue());
-          +                    allDiscrepancies, productCoverageGaps, warnings, callback,
-          +                    entry.getValue());
-                   }
-               }
-           }
-          @@ -847,6 +856,28 @@ public class LlmService {
-               return merged;
-           }
+          `;
+          test = replaceOnce(test,
+          `    @Test
+              void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {`,
+          newTest + `    @Test
+              void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {`,
+          'partial product failure test');
+          fs.writeFileSync(testPath, test);
+
+          const docsPath = 'docs/dev/INFORMATION_PRODUCT_OVERLAY.md';
+          let docs = fs.readFileSync(docsPath, 'utf8');
+          docs = replaceOnce(docs,
+          `    structured \`productCoverageGaps\` entry.
           
-          +private void addAnalysisWarning(List<String> warnings,
-          +                                String scopeCode,
-          +                                LlmCallDetail detail) {
-          +    if (!hasError(detail)) {
-          +        return;
-          +    }
-          +    String scope = scopeCode == null || scopeCode.isBlank()
-          +            ? "unknown taxonomy scope" : scopeCode;
-          +    String warning = "Incomplete analysis for " + scope + ": "
-          +            + detail.getError().strip();
-          +    if (!warnings.contains(warning)) {
-          +        warnings.add(warning);
-          +    }
-          +}
-          +
-          +private String siblingScope(List<TaxonomyNode> nodes) {
-          +    if (nodes == null || nodes.isEmpty()) {
-          +        return "unknown taxonomy scope";
-          +    }
-          +    String parentCode = nodes.get(0).getParentCode();
-          +    return parentCode == null || parentCode.isBlank()
-          +            ? nodes.get(0).getCode() : parentCode;
-          +}
-          +
-           private boolean hasError(LlmCallDetail detail) {
-               return detail != null && detail.getError() != null && !detail.getError().isBlank();
-           }
-          diff --git a/taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java b/taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java
-          --- a/taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java
-          +++ b/taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java
-          @@ -25,10 +25,12 @@ import java.util.Map;
-           import static org.assertj.core.api.Assertions.assertThat;
-           import static org.assertj.core.api.Assertions.assertThatThrownBy;
-           import static org.mockito.ArgumentMatchers.any;
-          +import static org.mockito.ArgumentMatchers.argThat;
-           import static org.mockito.ArgumentMatchers.anyInt;
-           import static org.mockito.ArgumentMatchers.anyList;
-           import static org.mockito.ArgumentMatchers.anyString;
-          +import static org.mockito.ArgumentMatchers.eq;
-           import static org.mockito.Mockito.lenient;
-           import static org.mockito.Mockito.never;
-           import static org.mockito.Mockito.verify;
-          @@ -277,6 +279,42 @@ class LlmServiceBranchCoverageTest {
-                   anyString(), anyString(), any(), anyList(), anyList(), anyList());
-           }
+          A parent may contain both category and product children.`,
+          `    structured \`productCoverageGaps\` entry.
           
-          +@Test
-          +void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {
-          +    TaxonomyNode root = node("IP", null, "IP");
-          +    root.setNameEn("Information Products");
-          +    TaxonomyNode product = node("IP-P1", "IP", "IP");
-          +    product.setNameEn("Concrete product");
-          +    when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
-          +    when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
-          +    when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(product));
-          +    when(taxonomyService.getFullTree()).thenReturn(List.of());
-          +    when(gateway.sendHttpRequest("rendered prompt", "test-key"))
-          +            .thenReturn("root-body");
-          +    when(gateway.extractResponseText("root-body")).thenReturn("{\"IP\":100}");
-          +    when(gateway.sendHttpRequest("product prompt", "test-key"))
-          +            .thenThrow(new LlmTimeoutException("product provider timed out"));
-          +    ReflectionTestUtils.setField(service, "productMinimumScore", 50);
-          +
-          +    AnalysisResult result = service.analyzeWithBudget("requirement");
-          +
-          +    assertThat(result.getStatus()).isEqualTo("PARTIAL");
-          +    assertThat(result.getWarnings())
-          +            .anyMatch(warning -> warning.contains("IP")
-          +                    && warning.contains("product provider timed out"));
-          +    assertThat(result.getProductCoverageGaps()).isEmpty();
-          +
-          +    service.analyzeStreaming("requirement", callback);
-          +
-          +    verify(callback).onComplete(
-          +            eq("PARTIAL"),
-          +            any(),
-          +            argThat(warnings -> warnings.stream()
-          +                    .anyMatch(warning -> warning.contains("product provider timed out"))),
-          +            anyList(),
-          +            argThat(List::isEmpty));
-          +    verify(callback, never()).onError(
-          +            anyString(), anyString(), any(), anyList(), anyList(), anyList());
-          +}
-          +
-           @Test
-           void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {
-               TaxonomyNode leaf = node("A", "P", "R");
-          diff --git a/docs/dev/INFORMATION_PRODUCT_OVERLAY.md b/docs/dev/INFORMATION_PRODUCT_OVERLAY.md
-          --- a/docs/dev/INFORMATION_PRODUCT_OVERLAY.md
-          +++ b/docs/dev/INFORMATION_PRODUCT_OVERLAY.md
-          @@ -89,6 +89,10 @@ Concrete products use a different contract:
-               structured `productCoverageGaps` entry.
+          A failed or incomplete concrete-product batch makes the overall analysis \`PARTIAL\` and
+          adds an explicit warning. Its zero placeholders are not treated as evidence of an actual
+          catalogue gap, so no confirmed \`productCoverageGaps\` entry is emitted for that batch.
           
-          +A failed or incomplete concrete-product batch makes the overall analysis `PARTIAL` and
-          +adds an explicit warning. Its zero placeholders are not treated as evidence of an actual
-          +catalogue gap, so no confirmed `productCoverageGaps` entry is emitted for that batch.
-          +
-           A parent may contain both category and product children. Categories are evaluated with the parent
-           budget, while direct product children are evaluated independently. This preserves a genuine source
-           hierarchy without inventing artificial groups solely to satisfy prompt-size limits.
-          PATCH
+          A parent may contain both category and product children.`,
+          'partial product failure documentation');
+          fs.writeFileSync(docsPath, docs);
+          NODE
 
           git rm .github/workflows/pr913-report-partial-product-failures.yml
           git diff --check
