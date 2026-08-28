@@ -1,6 +1,6 @@
 package com.taxonomy.analysis.service;
 
-import com.taxonomy.portfolio.dto.AiTargetDtos.AiTargetDescriptor;
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
 
 /** Raised before provider dispatch when the selected AI target cannot accept the input. */
 public class PromptBudgetExceededException extends IllegalArgumentException {
