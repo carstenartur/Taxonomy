@@ -1,0 +1,193 @@
+name: Repair PR 913 mock hierarchy fixtures
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-repair-mock-hierarchy.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Regenerate hierarchy-bound mock evidence and verify contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          # These one-shot workflows must not become part of the product or the
+          # repository-owned workflow catalogue. Remove this workflow before
+          # executing the workflow-authority test as well.
+          git rm -f --ignore-unmatch \
+            .github/workflows/pr913-repair-mock-hierarchy.yml \
+            .github/workflows/pr913-finalize-current-main.yml \
+            .github/workflows/pr913-refresh-after-storage.yml
+
+          cat > taxonomy-app/src/test/java/com/taxonomy/LlmMockScoringTests.java <<'JAVA'
+          package com.taxonomy;
+
+          import com.taxonomy.analysis.service.LlmService;
+          import com.taxonomy.catalog.model.TaxonomyNode;
+          import com.taxonomy.catalog.service.CatalogueOverlayService;
+          import com.taxonomy.catalog.service.TaxonomyService;
+          import com.taxonomy.dto.AnalysisResult;
+          import org.junit.jupiter.api.Test;
+          import org.springframework.beans.factory.annotation.Autowired;
+          import org.springframework.boot.test.context.SpringBootTest;
+          import org.springframework.test.context.TestPropertySource;
+
+          import java.util.List;
+          import java.util.Map;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+
+          /**
+           * Verifies the two distinct mock-scoring contracts:
+           * hierarchical category children consume their parent's budget, while concrete
+           * product leaves retain independent suitability scores and are therefore excluded
+           * from parent-budget and child-not-greater-than-parent assertions.
+           */
+          @SpringBootTest
+          @TestPropertySource(properties = {"llm.mock=true"})
+          class LlmMockScoringTests {
+
+              @Autowired
+              private LlmService llmService;
+
+              @Autowired
+              private TaxonomyService taxonomyService;
+
+              @Autowired
+              private CatalogueOverlayService catalogueOverlayService;
+
+              @Test
+              void mockModeHierarchicalChildrenSumToParentScore() {
+                  AnalysisResult result = llmService.analyzeWithBudget(
+                          "Provide secure voice communications between HQ and deployed forces");
+
+                  assertThat(result).isNotNull();
+                  assertThat(result.getStatus()).isEqualTo("SUCCESS");
+
+                  Map<String, Integer> scores = result.getScores();
+                  assertThat(scores).isNotEmpty();
+
+                  verifyHierarchicalChildrenSumToParent(taxonomyService.getRootNodes(), scores);
+              }
+
+              @Test
+              void mockModeNoHierarchicalChildExceedsParent() {
+                  AnalysisResult result = llmService.analyzeWithBudget(
+                          "Provide secure voice communications between HQ and deployed forces");
+
+                  verifyNoHierarchicalChildExceedsParent(
+                          taxonomyService.getRootNodes(), result.getScores());
+              }
+
+              private void verifyHierarchicalChildrenSumToParent(
+                      List<TaxonomyNode> nodes,
+                      Map<String, Integer> scores) {
+                  for (TaxonomyNode parent : nodes) {
+                      int parentScore = scores.getOrDefault(parent.getCode(), 0);
+                      List<TaxonomyNode> children = taxonomyService.getChildrenOf(parent.getCode());
+                      List<TaxonomyNode> hierarchicalChildren = hierarchicalChildren(children);
+
+                      if (parentScore > 0 && !hierarchicalChildren.isEmpty()) {
+                          int childSum = hierarchicalChildren.stream()
+                                  .mapToInt(child -> scores.getOrDefault(child.getCode(), 0))
+                                  .sum();
+                          assertThat(childSum)
+                                  .as("Hierarchical children of %s (score=%d) must sum to the parent score, but summed to %d",
+                                          parent.getCode(), parentScore, childSum)
+                                  .isEqualTo(parentScore);
+                      }
+                      if (!children.isEmpty()) {
+                          verifyHierarchicalChildrenSumToParent(children, scores);
+                      }
+                  }
+              }
+
+              private void verifyNoHierarchicalChildExceedsParent(
+                      List<TaxonomyNode> nodes,
+                      Map<String, Integer> scores) {
+                  for (TaxonomyNode parent : nodes) {
+                      int parentScore = scores.getOrDefault(parent.getCode(), 0);
+                      List<TaxonomyNode> children = taxonomyService.getChildrenOf(parent.getCode());
+                      for (TaxonomyNode child : hierarchicalChildren(children)) {
+                          int childScore = scores.getOrDefault(child.getCode(), 0);
+                          assertThat(childScore)
+                                  .as("Hierarchical child %s (score=%d) must not exceed parent %s (score=%d)",
+                                          child.getCode(), childScore, parent.getCode(), parentScore)
+                                  .isLessThanOrEqualTo(parentScore);
+                      }
+                      if (!children.isEmpty()) {
+                          verifyNoHierarchicalChildExceedsParent(children, scores);
+                      }
+                  }
+              }
+
+              private List<TaxonomyNode> hierarchicalChildren(List<TaxonomyNode> children) {
+                  return children.stream()
+                          .filter(child -> !catalogueOverlayService.isProduct(child.getCode()))
+                          .toList();
+              }
+          }
+          JAVA
+
+          retry_maven() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then
+                return 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                return 1
+              fi
+              sleep $((attempt * 10))
+            done
+          }
+
+          # The checked-in files are deterministic analysis fixtures tied to the
+          # effective taxonomy hierarchy. Rebuild them with the existing Java owner.
+          retry_maven ./mvnw -B -ntp -pl taxonomy-app -am \
+            -DgenerateMockScores=true \
+            -Dtest=MockScoreGeneratorIT \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -DskipITs \
+            test
+
+          test -f taxonomy-app/src/main/resources/mock-scores/secure-voice-comms.json
+          test -f taxonomy-app/src/main/resources/mock-scores/logistics-supply-chain.json
+          test -f taxonomy-app/src/main/resources/mock-scores/cyber-defence-monitoring.json
+          test ! -e src/main/resources/mock-scores
+
+          retry_maven ./mvnw -B -ntp -pl taxonomy-app -am \
+            -Dtest=LlmMockScoringTests,DecisionRationaleReportTests,WorkflowTestAuthorityPolicyTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -DskipITs \
+            test
+
+          git diff --check
+          git add -A
+          git diff --cached --stat
+          git commit -m "fix: align mock scoring evidence with product hierarchy"
+          git push origin HEAD:codex/json-catalogue-overlay
