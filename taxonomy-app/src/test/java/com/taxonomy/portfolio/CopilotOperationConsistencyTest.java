@@ -137,12 +137,13 @@ class CopilotOperationConsistencyTest {
     @Test
     void saturatedCoordinatorLeavesThePersistedJobRecoverable() {
         CopilotRunRequest request = new CopilotRunRequest(
-                "CUSTOM_OPENAI", 50, AnalysisAutomationProfile.FULL,
+                null, "CUSTOM_OPENAI", 50, AnalysisAutomationProfile.FULL,
                 1, false, true, true);
         AiAutomationPolicy.RunSettings settings = new AiAutomationPolicy.RunSettings(
                 false,
                 AnalysisAutomationProfile.FULL,
                 "CUSTOM_OPENAI",
+                mock(com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor.class),
                 50,
                 1,
                 true,
