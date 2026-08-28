@@ -29,8 +29,9 @@ jobs:
 
           grep -F '<version>4.1.1</version>' pom.xml
           grep -F '<jgit-storage-hibernate.version>0.11.2</jgit-storage-hibernate.version>' pom.xml
-          test "$(git diff --name-only origin/main...HEAD | sort | tr '\n' ' ')" = 'pom.xml taxonomy-app/src/test/java/com/taxonomy/dsl/storage/JgitStorageSchema091CompatibilityTest.java '
 
           git rm .github/workflows/pr896-refresh-after-917.yml
+          test "$(git diff --name-only origin/main...HEAD | grep -v '^.github/workflows/pr896-refresh-after-917.yml$' | sort | tr '\n' ' ')" = 'pom.xml taxonomy-app/src/test/java/com/taxonomy/dsl/storage/JgitStorageSchema091CompatibilityTest.java '
+
           git commit -m 'chore: remove completed PR 896 refresh workflow'
           git push origin HEAD:dependabot/maven/io.github.carstenartur-jgit-storage-hibernate-core-0.11.2
