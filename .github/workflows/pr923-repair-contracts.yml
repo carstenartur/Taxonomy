@@ -1,0 +1,89 @@
+name: PR 923 contract repair
+
+on:
+  push:
+    branches:
+      - qa/922-complete-ai-session
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr923-contract-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out the working branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Repair the exact failing contracts and verify them
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          analyze_test='taxonomy-app/src/test/java/com/taxonomy/analysis/usecase/AnalyzeRequirementUseCaseTest.java'
+          stream_test='taxonomy-app/src/test/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCaseTest.java'
+          ui_contract='taxonomy-app/src/test/java/com/taxonomy/portfolio/RequirementCopilotUiContractTest.java'
+          exception_handler='taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/PortfolioExceptionHandler.java'
+          exception_test='taxonomy-app/src/test/java/com/taxonomy/portfolio/controller/PortfolioExceptionHandlerTest.java'
+          config_en='docs/en/CONFIGURATION_REFERENCE.md'
+          config_de='docs/de/CONFIGURATION_REFERENCE.md'
+          env_example='.env.example'
+
+          grep -q 'private AiPromptBudgetPolicy promptBudgetPolicy;' "$analyze_test" || {
+            sed -i '/import com.taxonomy.analysis.service.AnalysisRelationGenerator;/i import com.taxonomy.analysis.service.AiPromptBudgetPolicy;' "$analyze_test"
+            perl -0pi -e 's/(@Mock\n    private LlmService llmService;\n)/$1\n    @Mock\n    private AiPromptBudgetPolicy promptBudgetPolicy;\n/' "$analyze_test"
+          }
+
+          grep -q 'private AiPromptBudgetPolicy promptBudgetPolicy;' "$stream_test" || {
+            sed -i '/import com.taxonomy.analysis.service.LlmService;/i import com.taxonomy.analysis.service.AiPromptBudgetPolicy;' "$stream_test"
+            perl -0pi -e 's/(@Mock\n    private LlmService llmService;\n)/$1\n    @Mock\n    private AiPromptBudgetPolicy promptBudgetPolicy;\n/' "$stream_test"
+          }
+
+          sed -i 's/\.contains("data-session-control", "data-session-test-outcome")/.contains("dataset.sessionControl", "dataset.sessionTestOutcome")/' "$ui_contract"
+          sed -i "s/\.name()\.toLowerCase()\.replace('_', '-')/.name().toLowerCase()/" "$exception_handler"
+
+          grep -q 'PortfolioException.Kind.PAYLOAD_TOO_LARGE' "$exception_test" || perl -0pi -e 's/(PortfolioException\.Kind\.VALIDATION,\n\s+new ExpectedProblem\(HttpStatus\.BAD_REQUEST, "Invalid portfolio request"\),\n)/$1                PortfolioException.Kind.PAYLOAD_TOO_LARGE,\n                new ExpectedProblem(\n                        HttpStatus.PAYLOAD_TOO_LARGE,\n                        "AI prompt budget exceeded"),\n/' "$exception_test"
+
+          grep -q 'TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS' "$config_en" || sed -i '/| `TAXONOMY_LLM_TIMEOUT_SECONDS` |/a\
+          | `TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS` | `taxonomy.ai.prompt.max-input-characters` | `120000`, minimum `1` | Maximum Unicode code points accepted before an AI request is created. |\
+          | `TAXONOMY_AI_PROMPT_MAX_INPUT_BYTES` | `taxonomy.ai.prompt.max-input-bytes` | `262144`, minimum `1` | Maximum UTF-8 request-text bytes accepted before an AI request is created. |\
+          | `TAXONOMY_AI_PROMPT_ESTIMATED_MAX_INPUT_TOKENS` | `taxonomy.ai.prompt.estimated-max-input-tokens` | `30000`, minimum `1` | Conservative preflight token ceiling, estimated at four Unicode code points per token. |' "$config_en"
+
+          grep -q 'TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS' "$config_de" || sed -i '/| `TAXONOMY_LLM_TIMEOUT_SECONDS` |/a\
+          | `TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS` | `taxonomy.ai.prompt.max-input-characters` | `120000`, mindestens `1` | Maximale Zahl von Unicode-Codepoints, die vor dem Aufbau eines KI-Aufrufs zugelassen wird. |\
+          | `TAXONOMY_AI_PROMPT_MAX_INPUT_BYTES` | `taxonomy.ai.prompt.max-input-bytes` | `262144`, mindestens `1` | Maximale Zahl von UTF-8-Bytes des Anforderungstexts vor dem Aufbau eines KI-Aufrufs. |\
+          | `TAXONOMY_AI_PROMPT_ESTIMATED_MAX_INPUT_TOKENS` | `taxonomy.ai.prompt.estimated-max-input-tokens` | `30000`, mindestens `1` | Konservative Token-Obergrenze der Vorprüfung bei einer Schätzung von vier Unicode-Codepoints je Token. |' "$config_de"
+
+          grep -q '^TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS=' "$env_example" || sed -i '/^LLM_PROVIDER=$/a\
+          \
+          # Fail-fast prompt preflight. Requests above any ceiling are rejected once, before a provider call.\
+          TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS=120000\
+          TAXONOMY_AI_PROMPT_MAX_INPUT_BYTES=262144\
+          TAXONOMY_AI_PROMPT_ESTIMATED_MAX_INPUT_TOKENS=30000' "$env_example"
+
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -Dtest=ConfigurationReferenceContractTest,PortfolioApiContractTest,RequirementCopilotUiContractTest,PortfolioExceptionHandlerTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+          rm .github/workflows/pr923-repair-contracts.yml
+          git diff --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Repair prompt-budget and operation contract verification'
+          git push origin HEAD:qa/922-complete-ai-session
