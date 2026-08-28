@@ -8,6 +8,7 @@ import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.ViewContext;
@@ -101,6 +102,9 @@ class DecisionRationaleSnapshotReportTest {
         assertThat(input.provider()).isEqualTo("MOCK");
         assertThat(input.analysisStatus()).isEqualTo("SUCCESS");
         assertThat(input.scores()).containsEntry("CP", 100);
+        assertThat(input.productCoverageGaps())
+                .extracting(ProductCoverageGap::productFamilyCode)
+                .containsExactly("CP");
         assertThat(input.taxonomyTree()).hasSize(1);
         assertThat(input.snapshotProvenance().snapshotId()).isEqualTo("snapshot-1");
         assertThat(input.snapshotProvenance().requirementVersionNumber()).isEqualTo(7);
@@ -342,6 +346,9 @@ class DecisionRationaleSnapshotReportTest {
         AnalysisResult analysis = new AnalysisResult();
         analysis.setScores(Map.of("CP", 100));
         analysis.setReasons(Map.of("CP", "The requirement directly needs this capability."));
+        analysis.setProductCoverageGaps(List.of(new ProductCoverageGap(
+                "CP", "Capability", 100, List.of("CP-P1"),
+                "No suitable product reached the threshold.")));
         analysis.setTree(List.of(root));
         analysis.setStatus("SUCCESS");
         return analysis;
@@ -393,6 +400,7 @@ class DecisionRationaleSnapshotReportTest {
                 ReportStatus.FINAL,
                 metadata,
                 null,
+                List.of(),
                 List.of(),
                 List.of(),
                 List.of(),

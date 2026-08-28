@@ -1,5 +1,6 @@
 package com.taxonomy.architecture.decision;
 
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.ViewContext;
 
@@ -23,6 +24,7 @@ public record DecisionRationaleReport(
         List<DecisionChapter> chapters,
         List<LeafCandidate> leadingLeaves,
         List<String> warnings,
+        List<ProductCoverageGap> productCoverageGaps,
         List<TaxonomyDiscrepancy> discrepancies,
         ViewContext viewContext) {
 
@@ -33,6 +35,7 @@ public record DecisionRationaleReport(
         chapters = immutable(chapters);
         leadingLeaves = immutable(leadingLeaves);
         warnings = immutable(warnings);
+        productCoverageGaps = immutable(productCoverageGaps);
         discrepancies = immutable(discrepancies);
     }
 

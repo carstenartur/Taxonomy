@@ -26,7 +26,7 @@ The values are **relevance and allocation scores**, not statistical probabilitie
 
 ## Completeness and status
 
-A report is final only when all root areas were evaluated and every positive inner node has a score for each of its direct children. A positive parent whose children are missing, or whose analysis ended before reaching a real leaf, produces a clearly marked draft report. Positive parents whose evaluated children all scored zero are reported as unresolved classifications.
+A report is final only when all root areas were evaluated and every positive inner node has a score for each of its direct children. A positive parent whose children are missing, or whose analysis ended before reaching a real leaf, produces a clearly marked draft report. Positive parents whose evaluated children all scored zero are unresolved unless the analysis carries a validated structured `productCoverageGap`: in that case, the absence of a suitable concrete product is a completed finding and the report becomes `FINAL_WITH_WARNINGS` rather than an incomplete draft.
 
 Possible statuses are:
 
@@ -51,7 +51,7 @@ The taxonomy fingerprint and prompt fingerprint recorded in the snapshot are sho
 separate evidence. A mismatch between the frozen hierarchy and the recorded taxonomy
 fingerprint produces an explicit review warning.
 
-The analysis fingerprint covers the requirement, provider, status, sorted scores, sorted reasons, and discrepancies. The same taxonomy and analysis snapshot therefore yield the same decision content; only generation metadata such as timestamp and account changes.
+The analysis fingerprint covers the requirement, provider, status, sorted scores, sorted reasons, discrepancies, and validated product coverage gaps. The same taxonomy and analysis snapshot therefore yield the same decision content; only generation metadata such as timestamp and account changes.
 
 ## Extension architecture
 
@@ -102,6 +102,7 @@ Example request:
   "provider": "GEMINI",
   "analysisStatus": "SUCCESS",
   "discrepancies": [],
+  "productCoverageGaps": [],
   "language": "en"
 }
 ```

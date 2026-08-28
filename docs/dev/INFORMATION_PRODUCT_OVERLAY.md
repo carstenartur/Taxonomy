@@ -100,7 +100,9 @@ adds an explicit warning. Its zero placeholders are not treated as evidence of a
 catalogue gap, so no confirmed `productCoverageGaps` entry is emitted for that batch.
 A failure in a separate category call still makes the overall result `PARTIAL`, but it
 does not discard completed product evidence or suppress a product gap established by a
-successfully completed concrete-product batch.
+successfully completed concrete-product batch. Ad-hoc and immutable-snapshot decision reports
+carry the validated structured gap, include it in the analysis fingerprint, and classify the
+otherwise complete document as `FINAL_WITH_WARNINGS` rather than `DRAFT_INCOMPLETE`.
 
 A parent may contain both category and product children. Categories are evaluated with the parent
 budget, while direct product children are evaluated independently. This preserves a genuine source

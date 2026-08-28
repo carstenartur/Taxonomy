@@ -78,6 +78,7 @@ public final class DecisionRationaleTemplatePreviewService
                 List.of(),
                 List.of("Preview only — no architecture decision was evaluated."),
                 List.of(),
+                List.of(),
                 null);
         return templateRenderer.render(docxRenderer, report);
     }

@@ -8,6 +8,7 @@ import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.extension.api.report.ReportRenderContext;
@@ -87,6 +88,46 @@ class DecisionRationaleReportTests {
         assertThat(report.metadata().taxonomyDataFingerprintSha256()).hasSize(64);
         assertThat(report.metadata().analysisSnapshotFingerprintSha256()).hasSize(64);
         assertThat(report.metadata().completenessPercent()).isEqualTo(100.0);
+    }
+
+    @Test
+    void evaluatedProductCoverageGapIsCompleteAndFinalWithWarnings() {
+        Fixture fixture = completeFixture();
+        Map<String, List<TaxonomyNode>> childrenMap = taxonomyService.getChildrenMap();
+        Map<String, Integer> scores = new LinkedHashMap<>(fixture.scores());
+        TaxonomyNode productFamily = taxonomyService.getRootNodes().stream()
+      .filter(root -> scores.getOrDefault(root.getCode(), 0) == 0)
+      .filter(root -> !childrenMap.getOrDefault(root.getCode(), List.of()).isEmpty())
+      .findFirst()
+      .orElseThrow();
+        List<String> candidateCodes = childrenMap.get(productFamily.getCode()).stream()
+      .map(TaxonomyNode::getCode)
+      .toList();
+        scores.put(productFamily.getCode(), 40);
+        candidateCodes.forEach(code -> scores.put(code, 0));
+        ProductCoverageGap gap = new ProductCoverageGap(
+      productFamily.getCode(),
+      productFamily.getName(),
+      40,
+      candidateCodes,
+      "Every concrete candidate remained below the suitability threshold.");
+
+        DecisionRationaleReport report = reportService.generate(
+      new DecisionRationaleReportService.DecisionAnalysisInput(
+              fixture.requirement(), scores, fixture.reasons(),
+              "MOCK", "SUCCESS", List.of(), List.of(gap)),
+      new WorkspaceContext(
+              "decision-auditor", "test-workspace", "main", "test-repository"),
+      viewContext(),
+      Locale.GERMAN);
+
+        assertThat(report.status()).isEqualTo(
+      DecisionRationaleReport.ReportStatus.FINAL_WITH_WARNINGS);
+        assertThat(report.metadata().completenessPercent()).isEqualTo(100.0);
+        assertThat(report.productCoverageGaps()).containsExactly(gap);
+        assertThat(report.warnings())
+      .anyMatch(warning -> warning.contains(productFamily.getCode())
+              && warning.contains("Produktabdeckungslücke"));
     }
 
     @Test
@@ -302,6 +343,21 @@ class DecisionRationaleReportTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(oversizedReason)))
                 .andExpect(status().isBadRequest());
+
+
+        Map<String, Object> invalidGap = new LinkedHashMap<>();
+        invalidGap.put("scores", Map.of("CP", 100));
+        invalidGap.put("businessText", "bounded requirement");
+        invalidGap.put("productCoverageGaps", List.of(Map.of(
+      "productFamilyCode", "CP",
+      "productFamilyName", "Capability",
+      "familyScore", 100,
+      "candidateCodes", List.of(),
+      "reason", "No suitable product")));
+        mockMvc.perform(post("/api/decision-report/json")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(invalidGap)))
+      .andExpect(status().isBadRequest());
 
         Map<String, Object> oversizedNodeCode = new LinkedHashMap<>();
         oversizedNodeCode.put("scores", Map.of("X".repeat(257), 100));
