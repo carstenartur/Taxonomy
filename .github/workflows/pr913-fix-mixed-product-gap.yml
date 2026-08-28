@@ -1,0 +1,101 @@
+name: Fix mixed Information Product coverage gap handling
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-fix-mixed-product-gap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+      - name: Correct mixed category/product gap semantics and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          service='taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java'
+          test_file='taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java'
+
+          test "$(grep -c 'categoryNodes.isEmpty()' "$service")" -eq 2
+          sed -i '/List<TaxonomyNode> categoryNodes = nodes.stream().filter(node -> !isProduct(node)).toList();/d' "$service"
+          sed -i 's/!productNodes.isEmpty() && categoryNodes.isEmpty() && !hasError(detail)/!productNodes.isEmpty() \&\& !hasError(detail)/g' "$service"
+
+          cat > /tmp/mixed-gap-test.java <<'EOF'
+              @Test
+              void mixedCategoryAndProductChildrenStillCreateCoverageGap() throws Exception {
+                  when(providerConfig.isMockMode()).thenReturn(true);
+                  TaxonomyNode root = node("IP", null, "IP");
+                  root.setNameEn("Information Products");
+                  TaxonomyNode family = node("IP-F", "IP", "IP");
+                  family.setNameEn("Product family");
+                  TaxonomyNode category = node("IP-C", "IP-F", "IP");
+                  TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+                  TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+                  when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+                  when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+                  when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+                  when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family));
+                  when(taxonomyService.getChildrenOf("IP-F"))
+                          .thenReturn(List.of(category, first, second));
+                  when(taxonomyService.getChildrenOf("IP-C")).thenReturn(List.of());
+                  when(taxonomyService.getFullTree()).thenReturn(List.of());
+                  when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
+                  com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
+                  saved.setScores(Map.of(
+                          "IP", 100,
+                          "IP-F", 80,
+                          "IP-C", 20,
+                          "IP-P1", 30,
+                          "IP-P2", 20));
+                  saved.setReasons(Map.of());
+                  when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
+                  ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+                  AnalysisResult result = service.analyzeWithBudget("requirement");
+
+                  assertThat(result.getProductCoverageGaps()).hasSize(1);
+                  assertThat(result.getProductCoverageGaps().get(0).productFamilyCode())
+                          .isEqualTo("IP-F");
+                  assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
+                          .containsExactly("IP-P1", "IP-P2");
+              }
+
+          EOF
+
+          awk '
+            NR == FNR { block = block $0 ORS; next }
+            /^    private static TaxonomyNode node/ && !inserted {
+              printf "%s", block
+              inserted = 1
+            }
+            { print }
+            END { if (!inserted) exit 42 }
+          ' /tmp/mixed-gap-test.java "$test_file" > "$test_file.tmp"
+          mv "$test_file.tmp" "$test_file"
+
+          test "$(grep -c 'mixedCategoryAndProductChildrenStillCreateCoverageGap' "$test_file")" -eq 1
+          test "$(grep -c 'categoryNodes.isEmpty()' "$service")" -eq 0
+
+          git rm .github/workflows/pr913-fix-mixed-product-gap.yml
+          git diff --check
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=LlmServiceBranchCoverageTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+          git add -A
+          git commit -m 'fix: report product gaps for mixed sibling sets'
+          git push origin HEAD:codex/json-catalogue-overlay
