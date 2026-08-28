@@ -18,6 +18,12 @@ jobs:
         with:
           ref: codex/json-catalogue-overlay
           fetch-depth: 0
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
       - name: Correct mixed category/product gap semantics and verify
         shell: bash
         run: |
