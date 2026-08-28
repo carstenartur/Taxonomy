@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.AnalysisRelationGenerator;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
@@ -19,19 +20,23 @@ import java.util.Locale;
 public class AnalyzeRequirementUseCase {
 
     private final LlmService llmService;
+    private final AiPromptBudgetPolicy promptBudgetPolicy;
     private final RequirementArchitectureViewService architectureViewService;
     private final AnalysisRelationGenerator analysisRelationGenerator;
     private final HypothesisService hypothesisService;
     private final RepositoryStateService repositoryStateService;
     private final PreferencesService preferencesService;
 
-    public AnalyzeRequirementUseCase(LlmService llmService,
-                                     RequirementArchitectureViewService architectureViewService,
-                                     AnalysisRelationGenerator analysisRelationGenerator,
-                                     HypothesisService hypothesisService,
-                                     RepositoryStateService repositoryStateService,
-                                     PreferencesService preferencesService) {
+    public AnalyzeRequirementUseCase(
+            LlmService llmService,
+            AiPromptBudgetPolicy promptBudgetPolicy,
+            RequirementArchitectureViewService architectureViewService,
+            AnalysisRelationGenerator analysisRelationGenerator,
+            HypothesisService hypothesisService,
+            RepositoryStateService repositoryStateService,
+            PreferencesService preferencesService) {
         this.llmService = llmService;
+        this.promptBudgetPolicy = promptBudgetPolicy;
         this.architectureViewService = architectureViewService;
         this.analysisRelationGenerator = analysisRelationGenerator;
         this.hypothesisService = hypothesisService;
@@ -53,6 +58,8 @@ public class AnalyzeRequirementUseCase {
                                              boolean persistHypotheses) {
         try {
             applyProviderOverride(command.provider());
+            promptBudgetPolicy.requireWithinBudget(
+                    command.businessText(), command.provider());
 
             AnalysisResult result = llmService.analyzeWithBudget(command.businessText());
             enrichWithRelationHypotheses(command, result, persistHypotheses);
@@ -65,7 +72,8 @@ public class AnalyzeRequirementUseCase {
     }
 
     private void applyProviderOverride(String provider) {
-        if (provider == null || provider.isBlank()) {
+        if (provider == null || provider.isBlank()
+                || "MOCK".equalsIgnoreCase(provider)) {
             return;
         }
         try {
