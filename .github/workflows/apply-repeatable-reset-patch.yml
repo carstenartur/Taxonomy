@@ -1,0 +1,41 @@
+name: Apply repeatable reset implementation
+
+on:
+  push:
+    branches:
+      - fix/repeatable-analysis-reset-and-lifecycle-menu
+    paths:
+      - '.github/workflows/apply-repeatable-reset-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply prepared source patch
+        run: |
+          set -euo pipefail
+          cat .github/patches/repeatable-reset/part-*.txt \
+            | tr -d '\n' > /tmp/repeatable-reset.patch.xz.b64
+          python3 - <<'PY'
+          import base64
+          import lzma
+          from pathlib import Path
+          encoded = Path('/tmp/repeatable-reset.patch.xz.b64').read_bytes()
+          Path('/tmp/repeatable-reset.patch').write_bytes(
+              lzma.decompress(base64.b64decode(encoded)))
+          PY
+          git apply --index --whitespace=error-all /tmp/repeatable-reset.patch
+          rm -rf .github/patches/repeatable-reset
+          rm -f .github/workflows/apply-repeatable-reset-patch.yml
+          git add -A
+          git config user.name 'Taxonomy automation'
+          git config user.email 'noreply@github.com'
+          git commit -m 'Document catalogue defects and make analysis reset repeatable'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
