@@ -367,6 +367,45 @@ class LlmServiceBranchCoverageTest {
                 .containsExactly("IP-P1", "IP-P2");
     }
 
+    @Test
+    void mixedCategoryAndProductChildrenStillCreateCoverageGap() throws Exception {
+        when(providerConfig.isMockMode()).thenReturn(true);
+        TaxonomyNode root = node("IP", null, "IP");
+        root.setNameEn("Information Products");
+        TaxonomyNode family = node("IP-F", "IP", "IP");
+        family.setNameEn("Product family");
+        TaxonomyNode category = node("IP-C", "IP-F", "IP");
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family));
+        when(taxonomyService.getChildrenOf("IP-F"))
+                .thenReturn(List.of(category, first, second));
+        when(taxonomyService.getChildrenOf("IP-C")).thenReturn(List.of());
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
+        com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
+        saved.setScores(Map.of(
+                "IP", 100,
+                "IP-F", 80,
+                "IP-C", 20,
+                "IP-P1", 30,
+                "IP-P2", 20));
+        saved.setReasons(Map.of());
+        when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+
+        assertThat(result.getProductCoverageGaps()).hasSize(1);
+        assertThat(result.getProductCoverageGaps().get(0).productFamilyCode())
+                .isEqualTo("IP-F");
+        assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
+                .containsExactly("IP-P1", "IP-P2");
+    }
+
     private static TaxonomyNode node(String code, String parentCode, String root) {
         TaxonomyNode node = new TaxonomyNode();
         node.setCode(code);

@@ -427,8 +427,7 @@ public class LlmService {
         }
 
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
-        List<TaxonomyNode> categoryNodes = nodes.stream().filter(node -> !isProduct(node)).toList();
-        if (!productNodes.isEmpty() && categoryNodes.isEmpty() && !hasError(detail)
+        if (!productNodes.isEmpty() && !hasError(detail)
                 && productNodes.stream().noneMatch(
                         node -> scores.getOrDefault(node.getCode(), 0) > 0)) {
             addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
@@ -519,8 +518,7 @@ public class LlmService {
                 "Evaluated " + nodes.size() + " node(s)", detail);
 
         List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
-        List<TaxonomyNode> categoryNodes = nodes.stream().filter(node -> !isProduct(node)).toList();
-        if (!productNodes.isEmpty() && categoryNodes.isEmpty() && !hasError(detail)
+        if (!productNodes.isEmpty() && !hasError(detail)
                 && productNodes.stream().noneMatch(
                         node -> detail.getScores().getOrDefault(node.getCode(), 0) > 0)) {
             addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
