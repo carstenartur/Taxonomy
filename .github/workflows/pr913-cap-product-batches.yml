@@ -1,0 +1,90 @@
+name: Enforce the ten-product analysis batch ceiling
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-cap-product-batches.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Enforce and verify the product batch ceiling
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          service='taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java'
+          test_file='taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java'
+          de_docs='docs/de/CONFIGURATION_REFERENCE.md'
+          en_docs='docs/en/CONFIGURATION_REFERENCE.md'
+          overlay_docs='docs/dev/INFORMATION_PRODUCT_OVERLAY.md'
+
+          test "$(grep -c 'productBatchSize > 100' "$service")" -eq 1
+          test "$(grep -c 'Math.min(100, productBatchSize)' "$service")" -eq 1
+          sed -i 's/productBatchSize > 100/productBatchSize > 10/' "$service"
+          sed -i 's/between 1 and 100/between 1 and 10/' "$service"
+          sed -i 's/Math.min(100, productBatchSize)/Math.min(10, productBatchSize)/' "$service"
+
+          sed -i 's/Maximale Zahl konkreter Information Products je unabhängiger Eignungsanfrage; vor der Batchbildung wird deterministisch sortiert./Zahl konkreter Information Products je unabhängiger Eignungsanfrage (1–10); vor der Batchbildung wird deterministisch sortiert. Höhere Werte stoppen den Start fehlersicher./' "$de_docs"
+          sed -i 's/Maximum concrete Information Products in one independent suitability request; values are sorted deterministically before batching./Concrete Information Products in one independent suitability request (1–10); values are sorted deterministically before batching. Higher values fail startup closed./' "$en_docs"
+          sed -i 's/they are sent in bounded batches (`TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE`, default 10);/they are sent in deterministic batches of at most ten (`TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE`, default 10);/' "$overlay_docs"
+
+          cat > /tmp/product-batch-ceiling-test.java <<'EOF'
+              @Test
+              void concreteProductBatchSizeCannotExceedTen() {
+                  ReflectionTestUtils.setField(service, "productBatchSize", 10);
+                  ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+                  service.validateProductScoringConfiguration();
+
+                  ReflectionTestUtils.setField(service, "productBatchSize", 11);
+                  assertThatThrownBy(service::validateProductScoringConfiguration)
+                          .isInstanceOf(IllegalStateException.class)
+                          .hasMessageContaining("between 1 and 10");
+              }
+
+          EOF
+
+          awk '
+            NR == FNR { block = block $0 ORS; next }
+            /^    private static TaxonomyNode node/ && !inserted {
+              printf "%s", block
+              inserted = 1
+            }
+            { print }
+            END { if (!inserted) exit 42 }
+          ' /tmp/product-batch-ceiling-test.java "$test_file" > "$test_file.tmp"
+          mv "$test_file.tmp" "$test_file"
+
+          test "$(grep -c 'concreteProductBatchSizeCannotExceedTen' "$test_file")" -eq 1
+          test "$(grep -c 'productBatchSize > 10' "$service")" -eq 1
+          test "$(grep -c 'Math.min(10, productBatchSize)' "$service")" -eq 1
+
+          git rm .github/workflows/pr913-cap-product-batches.yml
+          git diff --check
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=LlmServiceBranchCoverageTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+          git add -A
+          git commit -m 'fix: cap concrete product batches at ten'
+          git push origin HEAD:codex/json-catalogue-overlay
