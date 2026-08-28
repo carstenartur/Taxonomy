@@ -56,9 +56,10 @@ public class AiTargetCatalogService {
             AiTargetDescriptor mock = mockTarget();
             byId.put(mock.targetId(), mock);
         }
+        LlmProvider activeProvider = providerConfig.getActiveProvider();
         for (LlmProvider provider : LlmProvider.values()) {
             AiTargetDescriptor descriptor = describe(provider);
-            if (descriptor.available() || provider == providerConfig.getActiveProvider()) {
+            if (descriptor.available() || provider == activeProvider) {
                 byId.put(descriptor.targetId(), descriptor);
             }
         }
@@ -73,7 +74,11 @@ public class AiTargetCatalogService {
 
     public AiTargetDescriptor activeTarget() {
         if (providerConfig.isMockMode()) return mockTarget();
-        return describe(providerConfig.getActiveProvider());
+        LlmProvider provider = providerConfig.getActiveProvider();
+        if (provider == null) {
+            throw new IllegalStateException("No active AI provider is configured");
+        }
+        return describe(provider);
     }
 
     public AiTargetDescriptor resolve(String targetId, String legacyProvider) {
@@ -180,11 +185,15 @@ public class AiTargetCatalogService {
 
     private String endpointIdentity(LlmProvider provider) {
         return switch (provider) {
-            case GEMINI -> providerConfig.getGeminiUrl().replaceAll("\\?key=$", "");
+            case GEMINI -> withoutTrailingEmptyGeminiKey(providerConfig.getGeminiUrl());
             case LOCAL_ONNX -> "local:" + LOCAL_MODEL;
             case OPENAI, DEEPSEEK, QWEN, LLAMA, MISTRAL, CUSTOM_OPENAI ->
                     providerConfig.getOpenAiCompatibleUrl(provider);
         };
+    }
+
+    private static String withoutTrailingEmptyGeminiKey(String url) {
+        return url == null ? "" : url.replaceAll("\\?key=$", "");
     }
 
     private static String displayProvider(String provider) {
