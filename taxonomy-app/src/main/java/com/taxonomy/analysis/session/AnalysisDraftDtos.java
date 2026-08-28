@@ -15,6 +15,18 @@ public final class AnalysisDraftDtos {
             Long expectedVersion) {
     }
 
+    /**
+     * Explicitly starts a new ad-hoc analysis lifecycle.
+     *
+     * <p>The reset is an intentional destructive user command and therefore
+     * does not use the caller's optimistic-lock version. Keeping an empty,
+     * versioned tombstone prevents another stale tab from silently restoring
+     * the discarded requirement text.</p>
+     */
+    public record ResetAnalysisDraftRequest(
+            JsonNode analysisOptions) {
+    }
+
     public record AnalysisDraftView(
             String workspaceId,
             String branch,

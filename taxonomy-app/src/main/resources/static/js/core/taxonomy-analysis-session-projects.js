@@ -16,13 +16,14 @@
     var installWorkspaceEventSourceRouting = C.installWorkspaceEventSourceRouting;
     var currentPayload = C.currentPayload;
     var comparable = C.comparable;
+    var meaningful = C.meaningful;
     var isStale = C.isStale;
     var statusArea = C.statusArea;
     var showActionAlert = C.showActionAlert;
     var invalidate = C.invalidate;
     var queueStaleActions = C.queueStaleActions;
     var queueSave = C.queueSave;
-    var deleteDraft = C.deleteDraft;
+    var resetDraft = C.resetDraft;
     var saveDraft = C.saveDraft;
     var loadDraft = C.loadDraft;
     var setDraftDecisionPending = C.setDraftDecisionPending;
@@ -153,10 +154,112 @@
     }
 
     function discardDraftAndNavigate(url) {
-        invalidate({ keepText: false, silent: true, reason: 'promoted-to-project' });
-        return deleteDraft().finally(function () {
+        return resetDraft().finally(function () {
+            invalidate({
+                keepText: false,
+                silent: true,
+                skipSave: true,
+                reason: 'promoted-to-project'
+            });
             window.location.assign(applicationUrl(url));
         });
+    }
+
+    function startNewAnalysis() {
+        var payload = currentPayload();
+        if (meaningful(payload) && !window.confirm(text('newAnalysisConfirm'))) {
+            return Promise.resolve(false);
+        }
+
+        if (window.TaxonomyScoring
+                && typeof window.TaxonomyScoring.cancelStreamingAnalysis === 'function') {
+            window.TaxonomyScoring.cancelStreamingAnalysis();
+        }
+        if (typeof C.cancelDerivedRequests === 'function') {
+            C.cancelDerivedRequests('new-analysis');
+        }
+
+        return resetDraft().then(function (view) {
+            if (!view) {
+                throw new Error(text('newAnalysisWorkspaceUnavailable'));
+            }
+            invalidate({
+                keepText: false,
+                silent: true,
+                skipSave: true,
+                reason: 'new-analysis'
+            });
+            if (view) runtime.version = view.version;
+            var emptyComparable = comparable(currentPayload());
+            runtime.lastSavedComparable = emptyComparable;
+            runtime.lastObservedComparable = emptyComparable;
+            showActionAlert('success', text('newAnalysisReadyTitle'),
+                text('newAnalysisReadyBody'), [], 'new-analysis');
+            if (typeof C.updateAnalysisLifecycleControls === 'function') {
+                C.updateAnalysisLifecycleControls();
+            }
+            var input = businessTextElement();
+            if (input) input.focus();
+            return true;
+        }).catch(function (error) {
+            showActionAlert('danger', text('newAnalysisFailed'),
+                error && error.message ? error.message : '', [], 'new-analysis-error');
+            return false;
+        });
+    }
+
+    function saveDraftNow() {
+        return saveDraft().then(function (saved) {
+            if (saved !== true || runtime.conflict) {
+                if (!runtime.conflict) {
+                    showActionAlert('danger', text('draftSaveFailed'), '', [],
+                        'draft-save-failed');
+                }
+                return false;
+            }
+            showActionAlert('success', text('draftSavedNowTitle'),
+                text('draftSavedNowBody'), [], 'draft-saved-now');
+            return true;
+        });
+    }
+
+    function installLifecycleCommands() {
+        var commands = {
+            fileNewAnalysisAction: startNewAnalysis,
+            fileCancelAnalysisAction: function () {
+                return C.cancelCurrentAnalysis();
+            },
+            cancelAnalysisBtn: function () {
+                return C.cancelCurrentAnalysis();
+            },
+            fileSaveDraftAction: saveDraftNow,
+            projectNewAction: function () {
+                return openNewProjectDialog({ seedRequirementText: null });
+            },
+            projectAddRequirementAction: function () {
+                var input = businessTextElement();
+                return openRequirementDialog(input ? input.value : '');
+            }
+        };
+        Object.keys(commands).forEach(function (id) {
+            var control = document.getElementById(id);
+            if (!control || control.dataset.analysisLifecycleBound === 'true') return;
+            control.dataset.analysisLifecycleBound = 'true';
+            control.addEventListener('click', commands[id]);
+        });
+
+        ['analyzeSpinner', 'copilotSpinner'].forEach(function (id) {
+            var spinner = document.getElementById(id);
+            if (!spinner) return;
+            new MutationObserver(function () {
+                if (typeof C.updateAnalysisLifecycleControls === 'function') {
+                    C.updateAnalysisLifecycleControls();
+                }
+            }).observe(spinner, { attributes: true, attributeFilter: ['class'] });
+        });
+        if (typeof C.updateAnalysisLifecycleControls === 'function') {
+            C.updateAnalysisLifecycleControls();
+        }
     }
 
     function openRequirementDialog(requirementText) {
@@ -427,12 +530,13 @@
             queueSave();
             queueStaleActions();
         });
-        document.addEventListener('taxonomy:analysis-invalidated', function () {
-            queueSave(0);
+        document.addEventListener('taxonomy:analysis-invalidated', function (event) {
+            if (!event.detail || event.detail.skipSave !== true) queueSave(0);
         });
 
         window.setInterval(function () {
-            if (runtime.restoring || runtime.invalidating || runtime.conflict) return;
+            if (runtime.restoring || runtime.invalidating || runtime.resetting
+                    || runtime.conflict) return;
             var serialized = comparable(currentPayload());
             if (serialized !== runtime.lastObservedComparable) {
                 runtime.lastObservedComparable = serialized;
@@ -449,6 +553,7 @@
     function initialize() {
         if (runtime.initialized) return;
         runtime.initialized = true;
+        installLifecycleCommands();
         installObservers();
         resolveWorkspaceAndLoad();
     }
@@ -456,6 +561,8 @@
     window.TaxonomyAnalysisSession = Object.freeze({
         invalidate: invalidate,
         saveNow: saveDraft,
+        startNewAnalysis: startNewAnalysis,
+        cancelCurrentAnalysis: function () { return C.cancelCurrentAnalysis(); },
         reload: function () { runtime.conflict = false; return loadDraft({ force: true }); },
         addAsRequirement: function () {
             var input = businessTextElement();
@@ -492,6 +599,9 @@
         openRequirementDialog: openRequirementDialog,
         openNewProjectDialog: openNewProjectDialog,
         saveAsRequirementVersion: saveAsRequirementVersion,
+        startNewAnalysis: startNewAnalysis,
+        saveDraftNow: saveDraftNow,
+        installLifecycleCommands: installLifecycleCommands,
         resolveWorkspaceAndLoad: resolveWorkspaceAndLoad,
         resolveActiveWorkspaceAndLoad: resolveActiveWorkspaceAndLoad,
         installObservers: installObservers,

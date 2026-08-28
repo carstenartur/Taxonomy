@@ -35,7 +35,8 @@
     runtime.saveQueued = Boolean(runtime.saveQueued);
 
     function queueSave(delay) {
-        if (runtime.restoring || runtime.invalidating || runtime.conflict) return;
+        if (runtime.restoring || runtime.invalidating || runtime.resetting
+                || runtime.conflict) return;
         window.clearTimeout(runtime.saveTimer);
         runtime.saveTimer = window.setTimeout(saveDraft, delay === undefined
             ? AUTOSAVE_DELAY_MS : delay);
@@ -112,12 +113,58 @@
         return finishMutation(operation);
     }
 
+    function performResetDraft() {
+        var endpoint = draftEndpoint();
+        if (!endpoint) {
+            runtime.resetting = false;
+            return Promise.resolve(null);
+        }
+        var options = typeof C.analysisOptions === 'function'
+            ? C.analysisOptions() : null;
+        var operation = jsonRequest(endpoint + '/reset', {
+            method: 'POST',
+            body: JSON.stringify({ analysisOptions: options })
+        }).then(function (view) {
+            runtime.version = view.version;
+            runtime.restoredPayload = view.payload;
+            runtime.lastSavedComparable = comparable(view.payload);
+            runtime.lastObservedComparable = runtime.lastSavedComparable;
+            runtime.conflict = false;
+            document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-reset', {
+                detail: { workspaceId: runtime.workspaceId, version: runtime.version }
+            }));
+            return view;
+        }).finally(function () {
+            runtime.resetting = false;
+        });
+        return finishMutation(operation);
+    }
+
+    /**
+     * Starts a new versioned draft lifecycle without deleting the persisted row.
+     * The server-side empty revision prevents another stale tab from silently
+     * resurrecting the discarded requirement text.
+     */
+    function resetDraft() {
+        window.clearTimeout(runtime.saveTimer);
+        runtime.saveTimer = null;
+        runtime.saveQueued = false;
+        runtime.resetting = true;
+        runtime.conflict = false;
+        if (runtime.saveInFlight) {
+            return runtime.saveInFlight.catch(function () { return null; })
+                .then(performResetDraft);
+        }
+        return performResetDraft();
+    }
+
     function saveDraft() {
         window.clearTimeout(runtime.saveTimer);
         runtime.saveTimer = null;
         var endpoint = draftEndpoint();
-        if (!endpoint || runtime.restoring || runtime.invalidating || runtime.conflict) {
-            return Promise.resolve();
+        if (!endpoint || runtime.restoring || runtime.invalidating || runtime.resetting
+                || runtime.conflict) {
+            return Promise.resolve(false);
         }
         if (runtime.saveInFlight) {
             runtime.saveQueued = true;
@@ -127,10 +174,12 @@
         var payload = currentPayload();
         var serialized = comparable(payload);
         runtime.lastObservedComparable = serialized;
-        if (serialized === runtime.lastSavedComparable) return Promise.resolve();
+        if (serialized === runtime.lastSavedComparable) return Promise.resolve(true);
 
-        if (!meaningful(payload)) {
-            return deleteDraft();
+        if (!meaningful(payload) && runtime.version === null) {
+            runtime.lastSavedComparable = serialized;
+            runtime.lastObservedComparable = serialized;
+            return Promise.resolve(true);
         }
 
         var operation = jsonRequest(endpoint, {
@@ -146,15 +195,17 @@
             document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-saved', {
                 detail: { workspaceId: runtime.workspaceId, version: runtime.version }
             }));
+            return true;
         }).catch(function (error) {
             if (error.status === 409) {
                 showDraftConflict();
-                return;
+                return false;
             }
             if (window.console) window.console.warn('[Taxonomy] Draft save failed', error);
             document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-save-failed', {
                 detail: { message: error.message }
             }));
+            return false;
         });
         return finishMutation(operation);
     }
@@ -206,6 +257,22 @@
                 runtime.restoring = false;
                 setDraftDecisionPending(false);
             }
+            return;
+        }
+
+        if (payload.draftState === 'EMPTY') {
+            if (typeof C.clearDerivedUi === 'function') C.clearDerivedUi();
+            runtime.restoring = false;
+            setDraftDecisionPending(false);
+            runtime.conflict = false;
+            var emptyArea = document.getElementById('statusArea');
+            if (emptyArea) {
+                emptyArea.replaceChildren();
+                delete emptyArea.dataset.analysisSessionMessage;
+            }
+            document.dispatchEvent(new CustomEvent('taxonomy:analysis-draft-restored', {
+                detail: { workspaceId: runtime.workspaceId, version: runtime.version }
+            }));
             return;
         }
 
@@ -342,6 +409,7 @@
         queueSave: queueSave,
         setDraftDecisionPending: setDraftDecisionPending,
         deleteDraft: deleteDraft,
+        resetDraft: resetDraft,
         saveDraft: saveDraft,
         localStateIsPristine: localStateIsPristine,
         applyDraft: applyDraft,

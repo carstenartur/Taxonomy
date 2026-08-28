@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
 import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -194,6 +195,67 @@ class AnalysisWorkingDraftServiceTest {
 
         assertThat(view.payload().path("businessText").asText()).isEqualTo("changed");
         verify(repository).saveAndFlush(existing);
+    }
+
+    @Test
+    void resetCreatesAVersionedEmptyTombstoneWithoutAnObservedVersion() {
+        when(repository.findByScopeKeyAndUsername(any(), any())).thenReturn(Optional.empty());
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        ObjectNode options = objectMapper.createObjectNode()
+                .put("provider", "OPENAI")
+                .put("interactiveMode", true);
+
+        var view = service.reset(
+                "Alice", "ws-1", new ResetAnalysisDraftRequest(options));
+
+        ArgumentCaptor<AnalysisWorkingDraft> captor =
+                ArgumentCaptor.forClass(AnalysisWorkingDraft.class);
+        verify(repository).saveAndFlush(captor.capture());
+        assertThat(view.payload().path("draftState").asText()).isEqualTo("EMPTY");
+        assertThat(view.payload().path("businessText").asText()).isEmpty();
+        assertThat(view.payload().path("scores").isNull()).isTrue();
+        assertThat(view.payload().path("analysisOptions").path("provider").asText())
+                .isEqualTo("OPENAI");
+        assertThat(captor.getValue().getPayloadJson()).contains("\"draftState\":\"EMPTY\"");
+    }
+
+    @Test
+    void resetOverwritesAnExistingDraftRegardlessOfAStaleBrowserRevision() {
+        AnalysisWorkingDraft existing = existingDraft();
+        when(repository.findByScopeKeyAndUsername(any(), any()))
+                .thenReturn(Optional.of(existing));
+        when(repository.saveAndFlush(existing)).thenReturn(existing);
+
+        var view = service.reset("Alice", "ws-1", new ResetAnalysisDraftRequest(null));
+
+        assertThat(view.payload().path("draftState").asText()).isEqualTo("EMPTY");
+        assertThat(view.payload().path("businessText").asText()).isEmpty();
+        verify(repository).saveAndFlush(existing);
+    }
+
+    @Test
+    void resetRejectsNonObjectAnalysisOptions() {
+        assertThatThrownBy(() -> service.reset(
+                "Alice",
+                "ws-1",
+                new ResetAnalysisDraftRequest(objectMapper.createArrayNode())))
+                .isInstanceOf(AnalysisDraftValidationException.class)
+                .hasMessageContaining("reset options must be a JSON object");
+
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void resetAppliesTheSamePayloadLimitAsRegularDraftSaves() {
+        ObjectNode options = objectMapper.createObjectNode()
+                .put("opaque", "x".repeat(60_000));
+
+        assertThatThrownBy(() -> service.reset(
+                "Alice", "ws-1", new ResetAnalysisDraftRequest(options)))
+                .isInstanceOf(AnalysisDraftValidationException.class)
+                .hasMessageContaining("reset exceeds 50000 characters");
+
+        verify(repository, never()).saveAndFlush(any());
     }
 
     @Test

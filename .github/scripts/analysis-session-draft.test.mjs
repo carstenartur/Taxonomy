@@ -314,3 +314,55 @@ test('serializes overlapping autosaves and uses the latest optimistic version', 
     JSON.stringify({ businessText: 'Latest draft' })
   );
 });
+
+test('persists an empty tombstone instead of deleting an existing draft row', async () => {
+  const requests = [];
+  const payload = {
+    current: { draftState: 'EMPTY', businessText: '' }
+  };
+  const harness = createHarness({
+    payload,
+    request: async (url, options) => {
+      requests.push({ url, method: options.method, body: JSON.parse(options.body) });
+      return { version: 3, payload: payload.current };
+    }
+  });
+  harness.runtime.version = 2;
+  harness.runtime.lastSavedComparable = JSON.stringify({
+    draftState: 'ACTIVE', businessText: 'Old requirement'
+  });
+
+  await harness.context.saveDraft();
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].method, 'PUT');
+  assert.equal(requests[0].body.expectedVersion, 2);
+  assert.equal(requests[0].body.payload.draftState, 'EMPTY');
+  assert.equal(harness.runtime.version, 3);
+});
+
+test('explicit reset remains repeatable and uses the server reset command', async () => {
+  const requests = [];
+  const payload = { current: { draftState: 'EMPTY', businessText: '' } };
+  const harness = createHarness({
+    payload,
+    request: async (url, options) => {
+      requests.push({ url, method: options.method, body: JSON.parse(options.body) });
+      const version = requests.length;
+      return { version, payload: payload.current };
+    }
+  });
+  harness.context.analysisOptions = () => ({ provider: 'OPENAI' });
+
+  await harness.context.resetDraft();
+  await harness.context.resetDraft();
+
+  assert.deepEqual(requests.map(request => request.method), ['POST', 'POST']);
+  assert.deepEqual(requests.map(request => request.url), [
+    '/api/analysis-drafts/ws-1/reset',
+    '/api/analysis-drafts/ws-1/reset'
+  ]);
+  assert.equal(requests[1].body.analysisOptions.provider, 'OPENAI');
+  assert.equal(harness.runtime.version, 2);
+  assert.equal(harness.runtime.resetting, false);
+});
