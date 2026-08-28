@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - qa/922-complete-ai-session
+  workflow_dispatch:
 
 permissions:
   contents: write
