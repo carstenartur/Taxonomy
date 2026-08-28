@@ -81,7 +81,7 @@ Die HSQLDB-Poolvariablen gelten nur im HSQLDB-Profil; PostgreSQL, MSSQL und Orac
 | `TAXONOMY_LLM_RPM` | Git-Einstellung `taxonomy.llm.rpm` | `5` | Ausgehende Requests je Anbieter und Minute. |
 | `TAXONOMY_LLM_TIMEOUT_SECONDS` | Git-Einstellung `taxonomy.llm.timeout-seconds` | `30` | Timeout eines LLM-Aufrufs. |
 | `TAXONOMY_ANALYSIS_MIN_SCORE` | Git-Einstellung `taxonomy.analysis.min-score` | `70` | Mindestwert 0–100 für gewöhnliche Architektursichten. |
-| `TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE` | `taxonomy.analysis.product.batch-size` | `10` | Maximale Zahl konkreter Information Products je unabhängiger Eignungsanfrage; vor der Batchbildung wird deterministisch sortiert. |
+| `TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE` | `taxonomy.analysis.product.batch-size` | `10` | Zahl konkreter Information Products je unabhängiger Eignungsanfrage (1–10); vor der Batchbildung wird deterministisch sortiert. Höhere Werte stoppen den Start fehlersicher. |
 | `TAXONOMY_ANALYSIS_PRODUCT_MIN_SCORE` | `taxonomy.analysis.product.min-score` | `50` | Unabhängige Eignungsschwelle 0–100 für konkrete Produkte. Niedrigere Werte werden zu expliziten Nullen und können eine strukturierte Produktabdeckungslücke erzeugen. |
 | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Git-Einstellung `taxonomy.rate-limit.per-minute` | `10` | Zugelassene LLM-Aufrufe je stabiler authentifizierter Identität und Minute; genau `0` deaktiviert, negative Werte wirken fehlersicher als `1`. |
 

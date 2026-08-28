@@ -88,7 +88,7 @@ the parent score.
 Concrete products use a different contract:
 
 1. products are sorted by code;
-2. they are sent in bounded batches (`TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE`, default 10);
+2. they are sent in deterministic batches of at most ten (`TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE`, default 10);
 3. every product receives an independent 0–100 suitability score;
 4. values are never normalized or forced to sum to a parent budget;
 5. values below `TAXONOMY_ANALYSIS_PRODUCT_MIN_SCORE` become explicit zeroes;

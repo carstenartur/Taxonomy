@@ -81,7 +81,7 @@ A full Copilot run needs a configured generative provider. `LOCAL_ONNX` supplies
 | `TAXONOMY_LLM_RPM` | repository-backed preference `taxonomy.llm.rpm` | `5` | Outbound per-provider request budget per minute. |
 | `TAXONOMY_LLM_TIMEOUT_SECONDS` | repository-backed preference `taxonomy.llm.timeout-seconds` | `30` | HTTP timeout for an individual LLM call. |
 | `TAXONOMY_ANALYSIS_MIN_SCORE` | repository-backed preference `taxonomy.analysis.min-score` | `70` | Minimum 0–100 relevance used by ordinary architecture-view selection. |
-| `TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE` | `taxonomy.analysis.product.batch-size` | `10` | Maximum concrete Information Products in one independent suitability request; values are sorted deterministically before batching. |
+| `TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE` | `taxonomy.analysis.product.batch-size` | `10` | Concrete Information Products in one independent suitability request (1–10); values are sorted deterministically before batching. Higher values fail startup closed. |
 | `TAXONOMY_ANALYSIS_PRODUCT_MIN_SCORE` | `taxonomy.analysis.product.min-score` | `50` | Independent 0–100 suitability threshold for concrete products. Lower values become explicit zeroes and can create a structured product-coverage gap. |
 | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | repository-backed preference `taxonomy.rate-limit.per-minute` | `10` | Admitted LLM requests per stable authenticated identity and minute; exactly `0` disables, negative values fail closed to `1`. |
 

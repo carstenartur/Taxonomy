@@ -406,6 +406,18 @@ class LlmServiceBranchCoverageTest {
                 .containsExactly("IP-P1", "IP-P2");
     }
 
+    @Test
+    void concreteProductBatchSizeCannotExceedTen() {
+        ReflectionTestUtils.setField(service, "productBatchSize", 10);
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+        service.validateProductScoringConfiguration();
+
+        ReflectionTestUtils.setField(service, "productBatchSize", 11);
+        assertThatThrownBy(service::validateProductScoringConfiguration)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("between 1 and 10");
+    }
+
     private static TaxonomyNode node(String code, String parentCode, String root) {
         TaxonomyNode node = new TaxonomyNode();
         node.setCode(code);

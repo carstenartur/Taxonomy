@@ -88,9 +88,9 @@ public class LlmService {
 
     @PostConstruct
     void validateProductScoringConfiguration() {
-        if (productBatchSize < 1 || productBatchSize > 100) {
+        if (productBatchSize < 1 || productBatchSize > 10) {
             throw new IllegalStateException(
-                    "taxonomy.analysis.product.batch-size must be between 1 and 100");
+                    "taxonomy.analysis.product.batch-size must be between 1 and 10");
         }
         if (productMinimumScore < 0 || productMinimumScore > 100) {
             throw new IllegalStateException(
@@ -624,7 +624,7 @@ public class LlmService {
 
     private LlmCallDetail callProductBatchesDetailed(
             String businessText, List<TaxonomyNode> products) {
-        int batchSize = Math.max(1, Math.min(100, productBatchSize));
+        int batchSize = Math.max(1, Math.min(10, productBatchSize));
         List<LlmCallDetail> details = new ArrayList<>();
         for (int from = 0; from < products.size(); from += batchSize) {
             int to = Math.min(products.size(), from + batchSize);
