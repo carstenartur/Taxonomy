@@ -1,0 +1,248 @@
+name: Separate product and category failure evidence in PR 913
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-separate-product-error-origin.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Keep completed product evidence independent from category failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          function replaceOnce(text, before, after, label) {
+            const first = text.indexOf(before);
+            const last = text.lastIndexOf(before);
+            if (first < 0 || first !== last) {
+              throw new Error(`${label}: expected exactly one match`);
+            }
+            return text.slice(0, first) + after + text.slice(first + before.length);
+          }
+
+          function replaceExactCount(text, before, after, expected, label) {
+            let count = 0;
+            let offset = 0;
+            while (true) {
+              const index = text.indexOf(before, offset);
+              if (index < 0) break;
+              count += 1;
+              offset = index + before.length;
+            }
+            if (count !== expected) {
+              throw new Error(`${label}: expected ${expected} matches, found ${count}`);
+            }
+            return text.split(before).join(after);
+          }
+
+          const servicePath = 'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java';
+          let service = fs.readFileSync(servicePath, 'utf8');
+
+          service = replaceOnce(
+              service,
+              `        LlmCallDetail detail = scoreSiblingBatchDetailed(businessText, nodes, parentScore);
+                  Map<String, Integer> scores = detail.getScores();`,
+              `        SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
+                  LlmCallDetail detail = batch.detail();
+                  Map<String, Integer> scores = detail.getScores();`,
+              'non-stream sibling result');
+
+          service = replaceOnce(
+              service,
+              `        LlmCallDetail detail = scoreSiblingBatchDetailed(businessText, nodes, parentScore);
+                  allScores.putAll(detail.getScores());`,
+              `        SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
+                  LlmCallDetail detail = batch.detail();
+                  allScores.putAll(detail.getScores());`,
+              'stream sibling result');
+
+          service = replaceExactCount(
+              service,
+              `        if (!productNodes.isEmpty() && !hasError(detail)
+          `,
+              `        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
+          `,
+              2,
+              'product gap completeness condition');
+
+          service = replaceExactCount(
+              service,
+              `                }
+                              addAnalysisWarning(warnings, root.getCode(), rootDetail);`,
+              `                }
+                          addAnalysisWarning(warnings, root.getCode(), rootDetail);`,
+              2,
+              'root warning indentation');
+
+          service = replaceExactCount(
+              service,
+              `        }
+                      addAnalysisWarning(warnings, siblingScope(nodes), detail);`,
+              `        }
+                  addAnalysisWarning(warnings, siblingScope(nodes), detail);`,
+              2,
+              'sibling warning indentation');
+
+          const methodStart = service.indexOf(
+              '    private LlmCallDetail scoreSiblingBatchDetailed(');
+          const methodEnd = service.indexOf(
+              '\n    private LlmCallDetail callProductBatchesDetailed(', methodStart);
+          if (methodStart < 0 || methodEnd < 0) {
+            throw new Error('sibling scoring method boundaries not found');
+          }
+
+          const siblingMethods = `    private record SiblingBatchResult(
+                  LlmCallDetail detail,
+                  boolean productEvaluationComplete) {
+              }
+          
+              private LlmCallDetail scoreSiblingBatchDetailed(
+                      String businessText, List<TaxonomyNode> nodes, int parentScore) {
+                  return scoreSiblingBatch(businessText, nodes, parentScore).detail();
+              }
+          
+              private SiblingBatchResult scoreSiblingBatch(
+                      String businessText, List<TaxonomyNode> nodes, int parentScore) {
+                  if (nodes == null || nodes.isEmpty()) {
+                      LlmCallDetail empty = new LlmCallDetail();
+                      empty.setProvider(getActiveProviderName());
+                      empty.setScores(Map.of());
+                      empty.setReasons(Map.of());
+                      empty.setPrompt("");
+                      empty.setRawResponse("");
+                      return new SiblingBatchResult(empty, true);
+                  }
+          
+                  List<TaxonomyNode> categories = nodes.stream()
+                          .filter(node -> !isProduct(node))
+                          .sorted(Comparator.comparing(TaxonomyNode::getCode))
+                          .toList();
+                  List<TaxonomyNode> products = nodes.stream()
+                          .filter(this::isProduct)
+                          .sorted(Comparator.comparing(TaxonomyNode::getCode))
+                          .toList();
+          
+                  if (products.isEmpty()) {
+                      return new SiblingBatchResult(
+                              callLlmPropagatingDetailed(businessText, categories, parentScore),
+                              true);
+                  }
+                  if (categories.isEmpty()) {
+                      LlmCallDetail productDetail = callProductBatchesDetailed(businessText, products);
+                      return new SiblingBatchResult(productDetail, !hasError(productDetail));
+                  }
+          
+                  LlmCallDetail categoryDetail =
+                          callLlmPropagatingDetailed(businessText, categories, parentScore);
+                  LlmCallDetail productDetail = callProductBatchesDetailed(businessText, products);
+                  return new SiblingBatchResult(
+                          mergeDetails(List.of(categoryDetail, productDetail)),
+                          !hasError(productDetail));
+              }
+          `;
+          service = service.slice(0, methodStart) + siblingMethods + service.slice(methodEnd);
+          fs.writeFileSync(servicePath, service);
+
+          const testPath = 'taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java';
+          let test = fs.readFileSync(testPath, 'utf8');
+          const regression = `    @Test
+              void mixedCategoryFailureDoesNotSuppressCompletedProductCoverageGap() {
+                  TaxonomyNode root = node("IP", null, "IP");
+                  root.setNameEn("Information Products");
+                  TaxonomyNode family = node("IP-F", "IP", "IP");
+                  family.setNameEn("Product family");
+                  TaxonomyNode category = node("IP-C", "IP-F", "IP");
+                  TaxonomyNode product = node("IP-P1", "IP-F", "IP");
+                  product.setNameEn("Concrete product");
+                  when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+                  when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+                  when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family));
+                  when(taxonomyService.getChildrenOf("IP-F")).thenReturn(List.of(category, product));
+                  when(taxonomyService.getFullTree()).thenReturn(List.of());
+                  when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
+                  when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                          .thenReturn("root-body", "family-body")
+                          .thenReturn((String) null);
+                  when(gateway.extractResponseText("root-body")).thenReturn("{\\"IP\\":100}");
+                  when(gateway.extractResponseText("family-body"))
+                          .thenReturn("{\\"IP-F\\":100}");
+                  when(gateway.sendHttpRequest("product prompt", "test-key"))
+                          .thenReturn("product-body");
+                  when(gateway.extractResponseText("product-body")).thenReturn(
+                          "{\\"IP-P1\\":{\\"score\\":20,\\"reason\\":\\"below threshold\\"}}");
+                  ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+          
+                  AnalysisResult result = service.analyzeWithBudget("requirement");
+          
+                  assertThat(result.getStatus()).isEqualTo("PARTIAL");
+                  assertThat(result.getWarnings())
+                          .anyMatch(warning -> warning.contains("IP-F")
+                                  && warning.contains("returned no response"));
+                  assertThat(result.getProductCoverageGaps()).hasSize(1);
+                  assertThat(result.getProductCoverageGaps().get(0).productFamilyCode())
+                          .isEqualTo("IP-F");
+                  assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
+                          .containsExactly("IP-P1");
+              }
+          
+          `;
+          test = replaceOnce(
+              test,
+              `    @Test
+              void concreteProductBatchSizeCannotExceedTen() {`,
+              regression + `    @Test
+              void concreteProductBatchSizeCannotExceedTen() {`,
+              'mixed category failure regression');
+          fs.writeFileSync(testPath, test);
+
+          const docsPath = 'docs/dev/INFORMATION_PRODUCT_OVERLAY.md';
+          let docs = fs.readFileSync(docsPath, 'utf8');
+          docs = replaceOnce(
+              docs,
+              `catalogue gap, so no confirmed \`productCoverageGaps\` entry is emitted for that batch.
+          
+          A parent may contain both category and product children.`,
+              `catalogue gap, so no confirmed \`productCoverageGaps\` entry is emitted for that batch.
+          A failure in a separate category call still makes the overall result \`PARTIAL\`, but it
+          does not discard completed product evidence or suppress a product gap established by a
+          successfully completed concrete-product batch.
+          
+          A parent may contain both category and product children.`,
+              'independent failure provenance documentation');
+          fs.writeFileSync(docsPath, docs);
+          NODE
+
+          git rm .github/workflows/pr913-separate-product-error-origin.yml
+          git diff --check
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=LlmServiceBranchCoverageTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+          git add -A
+          git commit -m 'fix: keep product gap evidence independent from category failures'
+          git push origin HEAD:codex/json-catalogue-overlay
