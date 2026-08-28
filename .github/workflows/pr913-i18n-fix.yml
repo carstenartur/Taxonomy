@@ -26,16 +26,16 @@ jobs:
 
           replacements = {
               Path("taxonomy-app/src/main/resources/i18n/messages.properties"): {
-                  "analyze.discrepancies=⚠️ {0} scoring discrepancy requires review.":
-                      "analyze.discrepancies=⚠️ Scoring discrepancies requiring review: {0}.",
-                  "analyze.product.coverage.gaps=⚠️ {0} relevant product family has no suitable catalogued product.":
-                      "analyze.product.coverage.gaps=⚠️ Relevant product families without a suitable catalogued product: {0}.",
+                  r"analyze.discrepancies=\u26A0\uFE0F {0} scoring discrepancy/discrepancies detected.":
+                      r"analyze.discrepancies=\u26A0\uFE0F Scoring discrepancies requiring review: {0}.",
+                  r"analyze.product.coverage.gaps=\u26A0\uFE0F {0} relevant product family/families have no suitable catalogued product.":
+                      r"analyze.product.coverage.gaps=\u26A0\uFE0F Relevant product families without a suitable catalogued product: {0}.",
               },
               Path("taxonomy-app/src/main/resources/i18n/messages_de.properties"): {
-                  "analyze.discrepancies=⚠️ {0} Bewertungsabweichung muss geprüft werden.":
-                      "analyze.discrepancies=⚠️ Zu prüfende Bewertungsabweichungen: {0}.",
-                  "analyze.product.coverage.gaps=⚠️ {0} relevante Produktfamilie hat kein geeignetes katalogisiertes Produkt.":
-                      "analyze.product.coverage.gaps=⚠️ Relevante Produktfamilien ohne geeignetes katalogisiertes Produkt: {0}.",
+                  r"analyze.discrepancies=\u26A0\uFE0F {0} Abweichung(en) zwischen Rohbewertung und Elternbudget erkannt.":
+                      r"analyze.discrepancies=\u26A0\uFE0F Zu pr\u00FCfende Bewertungsabweichungen: {0}.",
+                  r"analyze.product.coverage.gaps=\u26A0\uFE0F F\u00FCr {0} relevante Produktfamilie(n) wurde kein geeignetes Katalogprodukt gefunden.":
+                      r"analyze.product.coverage.gaps=\u26A0\uFE0F Relevante Produktfamilien ohne geeignetes katalogisiertes Produkt: {0}.",
               },
           }
 
