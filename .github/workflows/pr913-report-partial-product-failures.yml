@@ -1,0 +1,268 @@
+name: Report partial concrete-product analysis failures
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-report-partial-product-failures.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Preserve and expose partial product-scoring failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          git apply <<'PATCH'
+          diff --git a/taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java b/taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java
+          --- a/taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java
+          +++ b/taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java
+          @@ -347,6 +347,7 @@ public class LlmService {
+                   if (rootDetail.getDiscrepancy() != null) {
+                       allDiscrepancies.add(rootDetail.getDiscrepancy());
+                   }
+          +        addAnalysisWarning(warnings, root.getCode(), rootDetail);
+                   int score = rootScore.getOrDefault(root.getCode(), 0);
+          
+                   if (score > 0) {
+          @@ -357,7 +358,7 @@ public class LlmService {
+                           analyzeNodesPropagating(
+                                   businessText, level1Children, allScores, allReasons,
+          -                        allDiscrepancies, productCoverageGaps, score);
+          +                        allDiscrepancies, productCoverageGaps, warnings, score);
+                       }
+                   }
+          
+          @@ -402,8 +403,7 @@ public class LlmService {
+               result.getWarnings().add(0, msg);
+           } else if (!warnings.isEmpty()) {
+          -    // Some roots had errors but we continued — still treat as PARTIAL if no scores
+          -    result.setStatus(allScores.values().stream().anyMatch(v -> v > 0) ? "SUCCESS" : "PARTIAL");
+          +    result.setStatus("PARTIAL");
+           } else {
+               result.setStatus("SUCCESS");
+           }
+          @@ -416,6 +416,7 @@ public class LlmService {
+                                         Map<String, String> allReasons,
+                                         List<TaxonomyDiscrepancy> allDiscrepancies,
+                                         List<ProductCoverageGap> productCoverageGaps,
+          +                              List<String> warnings,
+                                         int parentScore) {
+               if (nodes == null || nodes.isEmpty()) return;
+          
+          @@ -429,6 +430,7 @@ public class LlmService {
+               if (detail.getDiscrepancy() != null) {
+                   allDiscrepancies.add(detail.getDiscrepancy());
+               }
+          +    addAnalysisWarning(warnings, siblingScope(nodes), detail);
+          
+               List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
+               if (!productNodes.isEmpty() && !hasError(detail)
+          @@ -446,7 +448,7 @@ public class LlmService {
+                       analyzeNodesPropagating(
+                               businessText, children, allScores, allReasons,
+          -                    allDiscrepancies, productCoverageGaps, entry.getValue());
+          +                    allDiscrepancies, productCoverageGaps, warnings, entry.getValue());
+                   }
+               }
+           }
+          @@ -466,6 +468,7 @@ public class LlmService {
+               Map<String, Integer> allScores = new HashMap<>();
+               List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
+               List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
+          +    List<String> warnings = new ArrayList<>();
+               try {
+                   List<TaxonomyNode> roots = taxonomyService.getRootNodes();
+          
+          @@ -484,6 +487,7 @@ public class LlmService {
+                   if (rootDetail.getDiscrepancy() != null) {
+                       allDiscrepancies.add(rootDetail.getDiscrepancy());
+                   }
+          +        addAnalysisWarning(warnings, root.getCode(), rootDetail);
+                   callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),
+                           root.getName() + " scored " + rootScore + "/100", rootDetail);
+          
+          @@ -495,18 +499,20 @@ public class LlmService {
+                           callback.onExpanding(root.getCode(),
+                                   level1Children.stream().map(TaxonomyNode::getCode).toList());
+                           analyzeStreamingNodes(businessText, level1Children, allScores,
+          -                        allDiscrepancies, productCoverageGaps, callback, rootScore);
+          +                        allDiscrepancies, productCoverageGaps, warnings, callback,
+          +                        rootScore);
+                       }
+                   }
+               }
+          
+          -    callback.onComplete("SUCCESS", allScores, List.of(), allDiscrepancies,
+          +    callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,
+          +            warnings, allDiscrepancies,
+                       productCoverageGaps);
+           } catch (Exception e) {
+               log.error("Streaming analysis failed", e);
+               callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
+          -            allScores, List.of(), allDiscrepancies, productCoverageGaps);
+          +            allScores, warnings, allDiscrepancies, productCoverageGaps);
+           }
+           }
+          
+          @@ -515,6 +521,7 @@ public class LlmService {
+                                           Map<String, Integer> allScores,
+                                           List<TaxonomyDiscrepancy> allDiscrepancies,
+                                           List<ProductCoverageGap> productCoverageGaps,
+          +                                List<String> warnings,
+                                           AnalysisEventCallback callback,
+                                           int parentScore) {
+               if (nodes == null || nodes.isEmpty()) return;
+          @@ -525,6 +532,7 @@ public class LlmService {
+               if (detail.getDiscrepancy() != null) {
+                   allDiscrepancies.add(detail.getDiscrepancy());
+               }
+          +    addAnalysisWarning(warnings, siblingScope(nodes), detail);
+               callback.onScores(detail.getScores(), detail.getReasons(),
+                       "Evaluated " + nodes.size() + " node(s)", detail);
+          
+          @@ -544,7 +552,8 @@ public class LlmService {
+                       callback.onExpanding(entry.getKey(),
+                               children.stream().map(TaxonomyNode::getCode).toList());
+                       analyzeStreamingNodes(businessText, children, allScores,
+          -                    allDiscrepancies, productCoverageGaps, callback, entry.getValue());
+          +                    allDiscrepancies, productCoverageGaps, warnings, callback,
+          +                    entry.getValue());
+                   }
+               }
+           }
+          @@ -847,6 +856,28 @@ public class LlmService {
+               return merged;
+           }
+          
+          +private void addAnalysisWarning(List<String> warnings,
+          +                                String scopeCode,
+          +                                LlmCallDetail detail) {
+          +    if (!hasError(detail)) {
+          +        return;
+          +    }
+          +    String scope = scopeCode == null || scopeCode.isBlank()
+          +            ? "unknown taxonomy scope" : scopeCode;
+          +    String warning = "Incomplete analysis for " + scope + ": "
+          +            + detail.getError().strip();
+          +    if (!warnings.contains(warning)) {
+          +        warnings.add(warning);
+          +    }
+          +}
+          +
+          +private String siblingScope(List<TaxonomyNode> nodes) {
+          +    if (nodes == null || nodes.isEmpty()) {
+          +        return "unknown taxonomy scope";
+          +    }
+          +    String parentCode = nodes.get(0).getParentCode();
+          +    return parentCode == null || parentCode.isBlank()
+          +            ? nodes.get(0).getCode() : parentCode;
+          +}
+          +
+           private boolean hasError(LlmCallDetail detail) {
+               return detail != null && detail.getError() != null && !detail.getError().isBlank();
+           }
+          diff --git a/taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java b/taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java
+          --- a/taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java
+          +++ b/taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java
+          @@ -25,10 +25,12 @@ import java.util.Map;
+           import static org.assertj.core.api.Assertions.assertThat;
+           import static org.assertj.core.api.Assertions.assertThatThrownBy;
+           import static org.mockito.ArgumentMatchers.any;
+          +import static org.mockito.ArgumentMatchers.argThat;
+           import static org.mockito.ArgumentMatchers.anyInt;
+           import static org.mockito.ArgumentMatchers.anyList;
+           import static org.mockito.ArgumentMatchers.anyString;
+          +import static org.mockito.ArgumentMatchers.eq;
+           import static org.mockito.Mockito.lenient;
+           import static org.mockito.Mockito.never;
+           import static org.mockito.Mockito.verify;
+          @@ -277,6 +279,42 @@ class LlmServiceBranchCoverageTest {
+                   anyString(), anyString(), any(), anyList(), anyList(), anyList());
+           }
+          
+          +@Test
+          +void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {
+          +    TaxonomyNode root = node("IP", null, "IP");
+          +    root.setNameEn("Information Products");
+          +    TaxonomyNode product = node("IP-P1", "IP", "IP");
+          +    product.setNameEn("Concrete product");
+          +    when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+          +    when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+          +    when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(product));
+          +    when(taxonomyService.getFullTree()).thenReturn(List.of());
+          +    when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+          +            .thenReturn("root-body");
+          +    when(gateway.extractResponseText("root-body")).thenReturn("{\"IP\":100}");
+          +    when(gateway.sendHttpRequest("product prompt", "test-key"))
+          +            .thenThrow(new LlmTimeoutException("product provider timed out"));
+          +    ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+          +
+          +    AnalysisResult result = service.analyzeWithBudget("requirement");
+          +
+          +    assertThat(result.getStatus()).isEqualTo("PARTIAL");
+          +    assertThat(result.getWarnings())
+          +            .anyMatch(warning -> warning.contains("IP")
+          +                    && warning.contains("product provider timed out"));
+          +    assertThat(result.getProductCoverageGaps()).isEmpty();
+          +
+          +    service.analyzeStreaming("requirement", callback);
+          +
+          +    verify(callback).onComplete(
+          +            eq("PARTIAL"),
+          +            any(),
+          +            argThat(warnings -> warnings.stream()
+          +                    .anyMatch(warning -> warning.contains("product provider timed out"))),
+          +            anyList(),
+          +            argThat(List::isEmpty));
+          +    verify(callback, never()).onError(
+          +            anyString(), anyString(), any(), anyList(), anyList(), anyList());
+          +}
+          +
+           @Test
+           void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {
+               TaxonomyNode leaf = node("A", "P", "R");
+          diff --git a/docs/dev/INFORMATION_PRODUCT_OVERLAY.md b/docs/dev/INFORMATION_PRODUCT_OVERLAY.md
+          --- a/docs/dev/INFORMATION_PRODUCT_OVERLAY.md
+          +++ b/docs/dev/INFORMATION_PRODUCT_OVERLAY.md
+          @@ -89,6 +89,10 @@ Concrete products use a different contract:
+               structured `productCoverageGaps` entry.
+          
+          +A failed or incomplete concrete-product batch makes the overall analysis `PARTIAL` and
+          +adds an explicit warning. Its zero placeholders are not treated as evidence of an actual
+          +catalogue gap, so no confirmed `productCoverageGaps` entry is emitted for that batch.
+          +
+           A parent may contain both category and product children. Categories are evaluated with the parent
+           budget, while direct product children are evaluated independently. This preserves a genuine source
+           hierarchy without inventing artificial groups solely to satisfy prompt-size limits.
+          PATCH
+
+          git rm .github/workflows/pr913-report-partial-product-failures.yml
+          git diff --check
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=LlmServiceBranchCoverageTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+          git add -A
+          git commit -m 'fix: expose partial concrete-product failures'
+          git push origin HEAD:codex/json-catalogue-overlay
