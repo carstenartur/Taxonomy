@@ -402,7 +402,6 @@
                                     <includes>
                                         <include>**/*.md</include>
                                         <include>images/**</include>
-                                        <include>data/**</include>
                                     </includes>
                                 </resource>
                             </resources>

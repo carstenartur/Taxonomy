@@ -180,6 +180,9 @@
         }
 
         return resetDraft().then(function (view) {
+            if (!view) {
+                throw new Error(text('newAnalysisWorkspaceUnavailable'));
+            }
             invalidate({
                 keepText: false,
                 silent: true,

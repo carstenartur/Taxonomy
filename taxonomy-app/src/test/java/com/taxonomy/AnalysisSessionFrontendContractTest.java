@@ -105,7 +105,9 @@ class AnalysisSessionFrontendContractTest {
         assertThat(projects)
                 .contains("startNewAnalysis")
                 .contains("skipSave: true")
-                .contains("resetDraft().then");
+                .contains("resetDraft().then")
+                .contains("if (!view)")
+                .contains("newAnalysisWorkspaceUnavailable");
     }
 
     @Test
