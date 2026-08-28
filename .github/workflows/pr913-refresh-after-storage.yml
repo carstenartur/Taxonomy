@@ -1,0 +1,77 @@
+name: Refresh PR 913 after storage upgrade
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-refresh-after-storage.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Merge current main, clean warning propagation and verify focused contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin main
+          git merge --no-edit origin/main
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java';
+          let text = fs.readFileSync(path, 'utf8');
+
+          function replaceCount(before, after, expected, label) {
+            const count = text.split(before).length - 1;
+            if (count !== expected) {
+              throw new Error(`${label}: expected ${expected} occurrences, found ${count}`);
+            }
+            text = text.split(before).join(after);
+          }
+
+          replaceCount(
+            '\n                    addAnalysisWarning(warnings, root.getCode(), rootDetail);',
+            '\n                addAnalysisWarning(warnings, root.getCode(), rootDetail);',
+            2,
+            'root warning indentation');
+          replaceCount(
+            '\n            addAnalysisWarning(warnings, siblingScope(nodes), detail);',
+            '\n        addAnalysisWarning(warnings, siblingScope(nodes), detail);',
+            2,
+            'child warning indentation');
+
+          fs.writeFileSync(path, text);
+          NODE
+
+          git rm .github/workflows/pr913-refresh-after-storage.yml
+          git diff --check
+
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=CatalogueOverlayServiceTest,LlmServiceBranchCoverageTest,AnalysisApiControllerTest,AnalysisSseEventMapperTest,StreamRequirementAnalysisUseCaseTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+          git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'chore: refresh information-product overlay against current main'
+          git push origin HEAD:codex/json-catalogue-overlay
