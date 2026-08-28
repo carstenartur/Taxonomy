@@ -32,20 +32,17 @@ jobs:
             exit 0
           fi
 
-          cat "$payload_dir"/part-* > /tmp/taxonomy-overlay-payload.b64
-          base64 -d /tmp/taxonomy-overlay-payload.b64 > /tmp/taxonomy-overlay-payload.tar.gz
+          cat "$payload_dir"/part-* > /tmp/taxonomy-overlay.patch.xz.b64
+          base64 -d /tmp/taxonomy-overlay.patch.xz.b64 > /tmp/taxonomy-overlay.patch.xz
           expected_sha=$(tr -d '[:space:]' < "$payload_dir/READY")
-          echo "$expected_sha  /tmp/taxonomy-overlay-payload.tar.gz" | sha256sum -c -
+          echo "$expected_sha  /tmp/taxonomy-overlay.patch.xz" | sha256sum -c -
+          xz -d -c /tmp/taxonomy-overlay.patch.xz > /tmp/taxonomy-overlay.patch
 
-          tar -xzf /tmp/taxonomy-overlay-payload.tar.gz
+          git apply --index --binary --whitespace=error-all /tmp/taxonomy-overlay.patch
           rm -rf "$payload_dir"
+          git add -A
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          if git diff --cached --quiet; then
-            echo 'Payload produced no repository changes.'
-            exit 0
-          fi
           git commit -m 'Implement versioned catalogue overlay and product scoring'
           git push origin "HEAD:${GITHUB_REF_NAME}"
