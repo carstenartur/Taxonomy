@@ -34,164 +34,178 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
 
-          function replaceOnce(text, before, after, label) {
-            const first = text.indexOf(before);
-            const last = text.lastIndexOf(before);
-            if (first < 0 || first !== last) {
-              throw new Error(`${label}: expected exactly one match`);
+          const servicePath = 'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java';
+          let lines = fs.readFileSync(servicePath, 'utf8').split('\n');
+
+          const indent = line => line.match(/^\s*/)[0];
+          const trimmed = line => line.trim();
+
+          function methodRange(startToken, endToken) {
+            const start = lines.findIndex(line => line.includes(startToken));
+            const end = lines.findIndex((line, index) => index > start && line.includes(endToken));
+            if (start < 0 || end < 0) {
+              throw new Error(`Cannot locate method range ${startToken} .. ${endToken}`);
             }
-            return text.slice(0, first) + after + text.slice(first + before.length);
+            return { start, end };
           }
 
-          const servicePath = 'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java';
-          let service = fs.readFileSync(servicePath, 'utf8');
+          function uniqueTrimmed(range, value, label) {
+            const matches = [];
+            for (let index = range.start; index < range.end; index++) {
+              if (trimmed(lines[index]) === value) matches.push(index);
+            }
+            if (matches.length !== 1) {
+              throw new Error(`${label}: expected one line, found ${matches.length}`);
+            }
+            return matches[0];
+          }
 
-          service = replaceOnce(service,
-          `                if (rootDetail.getDiscrepancy() != null) {
-                              allDiscrepancies.add(rootDetail.getDiscrepancy());
-                          }
-                          int score = rootScore.getOrDefault(root.getCode(), 0);`,
-          `                if (rootDetail.getDiscrepancy() != null) {
-                              allDiscrepancies.add(rootDetail.getDiscrepancy());
-                          }
-                          addAnalysisWarning(warnings, root.getCode(), rootDetail);
-                          int score = rootScore.getOrDefault(root.getCode(), 0);`,
-          'non-stream root warning');
+          function replaceTrimmed(range, before, after, label) {
+            const index = uniqueTrimmed(range, before, label);
+            lines[index] = indent(lines[index]) + after;
+          }
 
-          service = replaceOnce(service,
-          `                        analyzeNodesPropagating(
-                                  businessText, level1Children, allScores, allReasons,
-                                  allDiscrepancies, productCoverageGaps, score);`,
-          `                        analyzeNodesPropagating(
-                                  businessText, level1Children, allScores, allReasons,
-                                  allDiscrepancies, productCoverageGaps, warnings, score);`,
-          'non-stream first recursion');
+          function insertAfterBlockLine(range, bodyLine, insertedLine, label) {
+            const bodyIndex = uniqueTrimmed(range, bodyLine, label);
+            let closeIndex = bodyIndex + 1;
+            while (closeIndex < range.end && trimmed(lines[closeIndex]) !== '}') closeIndex++;
+            if (closeIndex >= range.end) throw new Error(`${label}: closing brace not found`);
+            lines.splice(closeIndex + 1, 0, indent(lines[bodyIndex]) + insertedLine);
+          }
 
-          service = replaceOnce(service,
-          `        } else if (!warnings.isEmpty()) {
-                      // Some roots had errors but we continued — still treat as PARTIAL if no scores
-                      result.setStatus(allScores.values().stream().anyMatch(v -> v > 0) ? "SUCCESS" : "PARTIAL");
-                  } else {`,
-          `        } else if (!warnings.isEmpty()) {
-                      result.setStatus("PARTIAL");
-                  } else {`,
-          'non-stream final status');
+          let range = methodRange('public AnalysisResult analyzeWithBudget(', 'private void analyzeNodesPropagating(');
+          insertAfterBlockLine(
+            range,
+            'allDiscrepancies.add(rootDetail.getDiscrepancy());',
+            'addAnalysisWarning(warnings, root.getCode(), rootDetail);',
+            'non-stream root warning'
+          );
+          range = methodRange('public AnalysisResult analyzeWithBudget(', 'private void analyzeNodesPropagating(');
+          replaceTrimmed(
+            range,
+            'allDiscrepancies, productCoverageGaps, score);',
+            'allDiscrepancies, productCoverageGaps, warnings, score);',
+            'non-stream first recursion'
+          );
+          range = methodRange('public AnalysisResult analyzeWithBudget(', 'private void analyzeNodesPropagating(');
+          const commentIndex = uniqueTrimmed(
+            range,
+            '// Some roots had errors but we continued — still treat as PARTIAL if no scores',
+            'obsolete success comment'
+          );
+          lines.splice(commentIndex, 1);
+          range = methodRange('public AnalysisResult analyzeWithBudget(', 'private void analyzeNodesPropagating(');
+          replaceTrimmed(
+            range,
+            'result.setStatus(allScores.values().stream().anyMatch(v -> v > 0) ? "SUCCESS" : "PARTIAL");',
+            'result.setStatus("PARTIAL");',
+            'non-stream final status'
+          );
 
-          service = replaceOnce(service,
-          `                                          List<TaxonomyDiscrepancy> allDiscrepancies,
-                                          List<ProductCoverageGap> productCoverageGaps,
-                                          int parentScore) {`,
-          `                                          List<TaxonomyDiscrepancy> allDiscrepancies,
-                                          List<ProductCoverageGap> productCoverageGaps,
-                                          List<String> warnings,
-                                          int parentScore) {`,
-          'non-stream recursive signature');
+          range = methodRange('private void analyzeNodesPropagating(', 'public void analyzeStreaming(');
+          const nonStreamGapParameter = uniqueTrimmed(
+            range,
+            'List<ProductCoverageGap> productCoverageGaps,',
+            'non-stream gap parameter'
+          );
+          lines.splice(nonStreamGapParameter + 1, 0,
+            indent(lines[nonStreamGapParameter]) + 'List<String> warnings,');
+          range = methodRange('private void analyzeNodesPropagating(', 'public void analyzeStreaming(');
+          insertAfterBlockLine(
+            range,
+            'allDiscrepancies.add(detail.getDiscrepancy());',
+            'addAnalysisWarning(warnings, siblingScope(nodes), detail);',
+            'non-stream child warning'
+          );
+          range = methodRange('private void analyzeNodesPropagating(', 'public void analyzeStreaming(');
+          replaceTrimmed(
+            range,
+            'allDiscrepancies, productCoverageGaps, entry.getValue());',
+            'allDiscrepancies, productCoverageGaps, warnings, entry.getValue());',
+            'non-stream nested recursion'
+          );
 
-          service = replaceOnce(service,
-          `        if (detail.getDiscrepancy() != null) {
-                      allDiscrepancies.add(detail.getDiscrepancy());
-                  }
-          
-                  List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();`,
-          `        if (detail.getDiscrepancy() != null) {
-                      allDiscrepancies.add(detail.getDiscrepancy());
-                  }
-                  addAnalysisWarning(warnings, siblingScope(nodes), detail);
-          
-                  List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();`,
-          'non-stream child warning');
+          range = methodRange('public void analyzeStreaming(', 'private void analyzeStreamingNodes(');
+          const streamGapDeclaration = uniqueTrimmed(
+            range,
+            'List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();',
+            'stream gap declaration'
+          );
+          lines.splice(streamGapDeclaration + 1, 0,
+            indent(lines[streamGapDeclaration]) + 'List<String> warnings = new ArrayList<>();');
+          range = methodRange('public void analyzeStreaming(', 'private void analyzeStreamingNodes(');
+          insertAfterBlockLine(
+            range,
+            'allDiscrepancies.add(rootDetail.getDiscrepancy());',
+            'addAnalysisWarning(warnings, root.getCode(), rootDetail);',
+            'stream root warning'
+          );
+          range = methodRange('public void analyzeStreaming(', 'private void analyzeStreamingNodes(');
+          replaceTrimmed(
+            range,
+            'allDiscrepancies, productCoverageGaps, callback, rootScore);',
+            'allDiscrepancies, productCoverageGaps, warnings, callback, rootScore);',
+            'stream first recursion'
+          );
+          range = methodRange('public void analyzeStreaming(', 'private void analyzeStreamingNodes(');
+          const completeIndex = uniqueTrimmed(
+            range,
+            'callback.onComplete("SUCCESS", allScores, List.of(), allDiscrepancies,',
+            'stream completion'
+          );
+          if (trimmed(lines[completeIndex + 1]) !== 'productCoverageGaps);') {
+            throw new Error('stream completion continuation changed');
+          }
+          lines.splice(
+            completeIndex,
+            2,
+            indent(lines[completeIndex])
+              + 'callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,',
+            indent(lines[completeIndex + 1])
+              + 'warnings, allDiscrepancies, productCoverageGaps);'
+          );
+          range = methodRange('public void analyzeStreaming(', 'private void analyzeStreamingNodes(');
+          replaceTrimmed(
+            range,
+            'allScores, List.of(), allDiscrepancies, productCoverageGaps);',
+            'allScores, warnings, allDiscrepancies, productCoverageGaps);',
+            'stream error warnings'
+          );
 
-          service = replaceOnce(service,
-          `                    analyzeNodesPropagating(
-                              businessText, children, allScores, allReasons,
-                              allDiscrepancies, productCoverageGaps, entry.getValue());`,
-          `                    analyzeNodesPropagating(
-                              businessText, children, allScores, allReasons,
-                              allDiscrepancies, productCoverageGaps, warnings, entry.getValue());`,
-          'non-stream nested recursion');
+          range = methodRange('private void analyzeStreamingNodes(', 'public Map<String, Integer> analyzeSingleBatch(');
+          const streamGapParameter = uniqueTrimmed(
+            range,
+            'List<ProductCoverageGap> productCoverageGaps,',
+            'stream gap parameter'
+          );
+          lines.splice(streamGapParameter + 1, 0,
+            indent(lines[streamGapParameter]) + 'List<String> warnings,');
+          range = methodRange('private void analyzeStreamingNodes(', 'public Map<String, Integer> analyzeSingleBatch(');
+          insertAfterBlockLine(
+            range,
+            'allDiscrepancies.add(detail.getDiscrepancy());',
+            'addAnalysisWarning(warnings, siblingScope(nodes), detail);',
+            'stream child warning'
+          );
+          range = methodRange('private void analyzeStreamingNodes(', 'public Map<String, Integer> analyzeSingleBatch(');
+          const streamNestedTail = uniqueTrimmed(
+            range,
+            'allDiscrepancies, productCoverageGaps, callback, entry.getValue());',
+            'stream nested recursion'
+          );
+          lines.splice(
+            streamNestedTail,
+            1,
+            indent(lines[streamNestedTail])
+              + 'allDiscrepancies, productCoverageGaps, warnings, callback,',
+            indent(lines[streamNestedTail]) + 'entry.getValue());'
+          );
 
-          service = replaceOnce(service,
-          `        Map<String, Integer> allScores = new HashMap<>();
-                  List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
-                  List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
-                  try {`,
-          `        Map<String, Integer> allScores = new HashMap<>();
-                  List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
-                  List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
-                  List<String> warnings = new ArrayList<>();
-                  try {`,
-          'stream warning accumulator');
-
-          service = replaceOnce(service,
-          `                if (rootDetail.getDiscrepancy() != null) {
-                              allDiscrepancies.add(rootDetail.getDiscrepancy());
-                          }
-                          callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),`,
-          `                if (rootDetail.getDiscrepancy() != null) {
-                              allDiscrepancies.add(rootDetail.getDiscrepancy());
-                          }
-                          addAnalysisWarning(warnings, root.getCode(), rootDetail);
-                          callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),`,
-          'stream root warning');
-
-          service = replaceOnce(service,
-          `                        analyzeStreamingNodes(businessText, level1Children, allScores,
-                                  allDiscrepancies, productCoverageGaps, callback, rootScore);`,
-          `                        analyzeStreamingNodes(businessText, level1Children, allScores,
-                                  allDiscrepancies, productCoverageGaps, warnings, callback,
-                                  rootScore);`,
-          'stream first recursion');
-
-          service = replaceOnce(service,
-          `            callback.onComplete("SUCCESS", allScores, List.of(), allDiscrepancies,
-                              productCoverageGaps);
-                  } catch (Exception e) {
-                      log.error("Streaming analysis failed", e);
-                      callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-                              allScores, List.of(), allDiscrepancies, productCoverageGaps);`,
-          `            callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,
-                              warnings, allDiscrepancies, productCoverageGaps);
-                  } catch (Exception e) {
-                      log.error("Streaming analysis failed", e);
-                      callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-                              allScores, warnings, allDiscrepancies, productCoverageGaps);`,
-          'stream completion contract');
-
-          service = replaceOnce(service,
-          `                                        List<TaxonomyDiscrepancy> allDiscrepancies,
-                                        List<ProductCoverageGap> productCoverageGaps,
-                                        AnalysisEventCallback callback,`,
-          `                                        List<TaxonomyDiscrepancy> allDiscrepancies,
-                                        List<ProductCoverageGap> productCoverageGaps,
-                                        List<String> warnings,
-                                        AnalysisEventCallback callback,`,
-          'stream recursive signature');
-
-          service = replaceOnce(service,
-          `        if (detail.getDiscrepancy() != null) {
-                      allDiscrepancies.add(detail.getDiscrepancy());
-                  }
-                  callback.onScores(detail.getScores(), detail.getReasons(),`,
-          `        if (detail.getDiscrepancy() != null) {
-                      allDiscrepancies.add(detail.getDiscrepancy());
-                  }
-                  addAnalysisWarning(warnings, siblingScope(nodes), detail);
-                  callback.onScores(detail.getScores(), detail.getReasons(),`,
-          'stream child warning');
-
-          service = replaceOnce(service,
-          `                    analyzeStreamingNodes(businessText, children, allScores,
-                              allDiscrepancies, productCoverageGaps, callback, entry.getValue());`,
-          `                    analyzeStreamingNodes(businessText, children, allScores,
-                              allDiscrepancies, productCoverageGaps, warnings, callback,
-                              entry.getValue());`,
-          'stream nested recursion');
-
-          service = replaceOnce(service,
-          `    private boolean hasError(LlmCallDetail detail) {
-                  return detail != null && detail.getError() != null && !detail.getError().isBlank();
-              }`,
-          `    private void addAnalysisWarning(List<String> warnings,
+          const hasErrorIndex = lines.findIndex(
+            line => trimmed(line) === 'private boolean hasError(LlmCallDetail detail) {'
+          );
+          if (hasErrorIndex < 0) throw new Error('hasError helper not found');
+          const helperLines = `    private void addAnalysisWarning(List<String> warnings,
                                               String scopeCode,
                                               LlmCallDetail detail) {
                   if (!hasError(detail)) {
@@ -215,31 +229,40 @@ jobs:
                           ? nodes.get(0).getCode() : parentCode;
               }
           
-              private boolean hasError(LlmCallDetail detail) {
-                  return detail != null && detail.getError() != null && !detail.getError().isBlank();
-              }`,
-          'warning helpers');
-
-          fs.writeFileSync(servicePath, service);
+          `.split('\n');
+          lines.splice(hasErrorIndex, 0, ...helperLines);
+          fs.writeFileSync(servicePath, lines.join('\n'));
 
           const testPath = 'taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java';
-          let test = fs.readFileSync(testPath, 'utf8');
-          test = replaceOnce(test,
-          `import static org.mockito.ArgumentMatchers.any;
-          import static org.mockito.ArgumentMatchers.anyInt;`,
-          `import static org.mockito.ArgumentMatchers.any;
-          import static org.mockito.ArgumentMatchers.argThat;
-          import static org.mockito.ArgumentMatchers.anyInt;`,
-          'argThat import');
-          test = replaceOnce(test,
-          `import static org.mockito.ArgumentMatchers.anyString;
-          import static org.mockito.Mockito.lenient;`,
-          `import static org.mockito.ArgumentMatchers.anyString;
-          import static org.mockito.ArgumentMatchers.eq;
-          import static org.mockito.Mockito.lenient;`,
-          'eq import');
+          let testLines = fs.readFileSync(testPath, 'utf8').split('\n');
+          function uniqueTestLine(value, label) {
+            const matches = testLines
+              .map((line, index) => trimmed(line) === value ? index : -1)
+              .filter(index => index >= 0);
+            if (matches.length !== 1) throw new Error(`${label}: found ${matches.length}`);
+            return matches[0];
+          }
+          let importIndex = uniqueTestLine(
+            'import static org.mockito.ArgumentMatchers.any;',
+            'any import'
+          );
+          testLines.splice(importIndex + 1, 0,
+            'import static org.mockito.ArgumentMatchers.argThat;');
+          importIndex = uniqueTestLine(
+            'import static org.mockito.ArgumentMatchers.anyString;',
+            'anyString import'
+          );
+          testLines.splice(importIndex + 1, 0,
+            'import static org.mockito.ArgumentMatchers.eq;');
 
-          const regression = `    @Test
+          const leafMethod = uniqueTestLine(
+            'void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {',
+            'leaf test'
+          );
+          if (trimmed(testLines[leafMethod - 1]) !== '@Test') {
+            throw new Error('leaf test annotation changed');
+          }
+          const regressionLines = `    @Test
               void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {
                   TaxonomyNode root = node("IP", null, "IP");
                   root.setNameEn("Information Products");
@@ -269,7 +292,7 @@ jobs:
                   verify(callback).onComplete(
                           eq("PARTIAL"),
                           any(),
-                          argThat((List<String> warnings) -> warnings.stream()
+                          argThat((List<String> warningList) -> warningList.stream()
                                   .anyMatch(warning -> warning.contains("product provider timed out"))),
                           anyList(),
                           anyList());
@@ -277,32 +300,22 @@ jobs:
                           anyString(), anyString(), any(), anyList(), anyList(), anyList());
               }
           
-          `;
-          test = replaceOnce(test,
-          `    @Test
-              void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {`,
-          regression + `    @Test
-              void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {`,
-          'partial product failure regression');
-          fs.writeFileSync(testPath, test);
+          `.split('\n');
+          testLines.splice(leafMethod - 1, 0, ...regressionLines);
+          fs.writeFileSync(testPath, testLines.join('\n'));
 
           const docsPath = 'docs/dev/INFORMATION_PRODUCT_OVERLAY.md';
-          let docs = fs.readFileSync(docsPath, 'utf8');
-          docs = replaceOnce(docs,
-          `6. when a relevant product family has no product above that threshold, the analysis returns a
-             structured \`productCoverageGaps\` entry.
-          
-          A parent may contain both category and product children.`,
-          `6. when a relevant product family has no product above that threshold, the analysis returns a
-             structured \`productCoverageGaps\` entry.
-          
-          A failed or incomplete concrete-product batch makes the overall analysis \`PARTIAL\` and
-          adds an explicit warning. Its zero placeholders are not treated as evidence of an actual
-          catalogue gap, so no confirmed \`productCoverageGaps\` entry is emitted for that batch.
-          
-          A parent may contain both category and product children.`,
-          'partial product failure documentation');
-          fs.writeFileSync(docsPath, docs);
+          let docLines = fs.readFileSync(docsPath, 'utf8').split('\n');
+          const parentLine = docLines.findIndex(
+            line => line === 'A parent may contain both category and product children. Categories are evaluated with the parent'
+          );
+          if (parentLine < 0) throw new Error('analysis semantics paragraph not found');
+          docLines.splice(parentLine, 0,
+            'A failed or incomplete concrete-product batch makes the overall analysis `PARTIAL` and',
+            'adds an explicit warning. Its zero placeholders are not treated as evidence of an actual',
+            'catalogue gap, so no confirmed `productCoverageGaps` entry is emitted for that batch.',
+            '');
+          fs.writeFileSync(docsPath, docLines.join('\n'));
           NODE
 
           git rm .github/workflows/pr913-report-partial-product-failures.yml
