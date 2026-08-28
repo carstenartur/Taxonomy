@@ -21,6 +21,7 @@ public class PortfolioExceptionHandler {
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
             case CONFLICT -> HttpStatus.CONFLICT;
             case VALIDATION -> HttpStatus.BAD_REQUEST;
+            case PAYLOAD_TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE;
             case ANALYSIS_FAILED -> HttpStatus.UNPROCESSABLE_ENTITY;
             case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
         };
@@ -29,10 +30,15 @@ public class PortfolioExceptionHandler {
             case NOT_FOUND -> "Portfolio resource not found";
             case CONFLICT -> "Portfolio state conflict";
             case VALIDATION -> "Invalid portfolio request";
+            case PAYLOAD_TOO_LARGE -> "AI prompt budget exceeded";
             case ANALYSIS_FAILED -> "Portfolio analysis payload failure";
             case UNAVAILABLE -> "Portfolio analysis capacity unavailable";
         });
-        problem.setType(URI.create("urn:taxonomy:portfolio:" + exception.getKind().name().toLowerCase()));
+        problem.setType(URI.create("urn:taxonomy:portfolio:"
+                + exception.getKind().name().toLowerCase().replace('_', '-')));
+        if (exception.getCode() != null) {
+            problem.setProperty("code", exception.getCode());
+        }
         return ResponseEntity.status(status).body(problem);
     }
 
