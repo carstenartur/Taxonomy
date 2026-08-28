@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.AnalysisEventCallback;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
@@ -16,9 +17,13 @@ import java.util.Map;
 public class StreamRequirementAnalysisUseCase {
 
     private final LlmService llmService;
+    private final AiPromptBudgetPolicy promptBudgetPolicy;
 
-    public StreamRequirementAnalysisUseCase(LlmService llmService) {
+    public StreamRequirementAnalysisUseCase(
+            LlmService llmService,
+            AiPromptBudgetPolicy promptBudgetPolicy) {
         this.llmService = llmService;
+        this.promptBudgetPolicy = promptBudgetPolicy;
     }
 
     public void stream(StreamRequirementAnalysisCommand command, AnalysisStreamEventHandler handler) {
@@ -26,6 +31,8 @@ public class StreamRequirementAnalysisUseCase {
         try {
             applyRequestLocale(command.requestLocale());
             applyProviderOverride(command.provider());
+            promptBudgetPolicy.requireWithinBudget(
+                    command.businessText(), command.provider());
             llmService.analyzeStreaming(command.businessText(), new AnalysisEventCallback() {
                 @Override
                 public void onPhase(String message, int progressPercent) {
@@ -77,7 +84,8 @@ public class StreamRequirementAnalysisUseCase {
     }
 
     private void applyProviderOverride(String provider) {
-        if (provider == null || provider.isBlank()) {
+        if (provider == null || provider.isBlank()
+                || "MOCK".equalsIgnoreCase(provider)) {
             return;
         }
         try {
