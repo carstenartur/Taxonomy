@@ -1,7 +1,6 @@
 package com.taxonomy.analysis.service;
 
-import com.taxonomy.portfolio.dto.AiTargetDtos.AiTargetDescriptor;
-import com.taxonomy.portfolio.service.AiTargetCatalogService;
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
