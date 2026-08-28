@@ -142,7 +142,7 @@ class AiAutomationPolicyTest {
             String autopilotProvider) {
         return new AiAutomationPolicy(
                 providers,
-                new AiTargetCatalogService(providers, 120_000, 262_144, 30_000),
+                new AiTargetCatalogService(providers),
                 costPolicy,
                 "FULL",
                 "EXHAUSTIVE",
