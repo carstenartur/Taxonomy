@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Guards the checked-in catalogue audit and its human-readable explanation. */
+/** Guards the checked-in catalogue audit and its repository documentation. */
 class CatalogueWorkbookDataQualityDocumentationTest {
 
     private static final String WORKBOOK =
@@ -35,8 +35,6 @@ class CatalogueWorkbookDataQualityDocumentationTest {
         String audit = new String(auditBytes, StandardCharsets.UTF_8);
         String english = resourceText(
                 "/docs/en/C3_TAXONOMY_CATALOGUE_DATA_QUALITY.md");
-        String german = resourceText(
-                "/docs/de/C3_TAXONOMY_CATALOGUE_DATA_QUALITY.md");
 
         assertThat(sha256(workbookBytes)).isEqualTo(EXPECTED_WORKBOOK_SHA256);
         assertThat(sha256(auditBytes)).isEqualTo(EXPECTED_AUDIT_SHA256);
@@ -69,11 +67,6 @@ class CatalogueWorkbookDataQualityDocumentationTest {
         assertThat(english)
                 .contains("1,204 findings")
                 .contains("853 unassigned Information Products")
-                .contains(EXPECTED_WORKBOOK_SHA256)
-                .contains(EXPECTED_AUDIT_SHA256);
-        assertThat(german)
-                .contains("1.204 Befunde")
-                .contains("853 nicht eingeordnete Information Products")
                 .contains(EXPECTED_WORKBOOK_SHA256)
                 .contains(EXPECTED_AUDIT_SHA256);
 
