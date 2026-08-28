@@ -1,0 +1,59 @@
+name: PR 913 i18n review fix
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-i18n-fix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+      - name: Make count-bearing messages plural-safe
+        shell: python
+        run: |
+          from pathlib import Path
+
+          replacements = {
+              Path("taxonomy-app/src/main/resources/i18n/messages.properties"): {
+                  "analyze.discrepancies=⚠️ {0} scoring discrepancy requires review.":
+                      "analyze.discrepancies=⚠️ Scoring discrepancies requiring review: {0}.",
+                  "analyze.product.coverage.gaps=⚠️ {0} relevant product family has no suitable catalogued product.":
+                      "analyze.product.coverage.gaps=⚠️ Relevant product families without a suitable catalogued product: {0}.",
+              },
+              Path("taxonomy-app/src/main/resources/i18n/messages_de.properties"): {
+                  "analyze.discrepancies=⚠️ {0} Bewertungsabweichung muss geprüft werden.":
+                      "analyze.discrepancies=⚠️ Zu prüfende Bewertungsabweichungen: {0}.",
+                  "analyze.product.coverage.gaps=⚠️ {0} relevante Produktfamilie hat kein geeignetes katalogisiertes Produkt.":
+                      "analyze.product.coverage.gaps=⚠️ Relevante Produktfamilien ohne geeignetes katalogisiertes Produkt: {0}.",
+              },
+          }
+
+          for path, changes in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              for old, new in changes.items():
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f"Expected exactly one occurrence in {path}: {old!r}; found {count}")
+                  text = text.replace(old, new)
+              path.write_text(text, encoding="utf-8")
+      - name: Remove temporary workflow and commit
+        run: |
+          git rm .github/workflows/pr913-i18n-fix.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add taxonomy-app/src/main/resources/i18n/messages.properties \
+                  taxonomy-app/src/main/resources/i18n/messages_de.properties
+          git diff --cached --check
+          git commit -m "fix: make count-bearing review messages plural-safe"
+          git push origin HEAD:codex/json-catalogue-overlay
