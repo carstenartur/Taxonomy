@@ -1,0 +1,68 @@
+name: Rerun decision report gap integration with request fixture update
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-rerun-report-gap-tests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Apply the report integration and update the direct request fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          node .github/scripts/pr913-decision-report-product-gaps.mjs
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'taxonomy-app/src/test/java/com/taxonomy/versioning/controller/DecisionRationaleReportControllerValidationTest.java';
+          let text = fs.readFileSync(path, 'utf8');
+          const before = `                discrepancies,
+                          "en");`;
+          const after = `                discrepancies,
+                          List.of(),
+                          "en");`;
+          const first = text.indexOf(before);
+          const last = text.lastIndexOf(before);
+          if (first < 0 || first !== last) {
+            throw new Error('direct DecisionReportRequest fixture was not found exactly once');
+          }
+          text = text.slice(0, first) + after + text.slice(first + before.length);
+          fs.writeFileSync(path, text);
+          NODE
+
+          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
+          node --check .github/scripts/document-template-report-download.mjs
+          git diff --check
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=DecisionRationaleReportTests,DecisionRationaleSnapshotReportTest,DecisionRationaleTemplateRendererTest,DecisionRationaleReportControllerValidationTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+          git rm \
+            .github/scripts/pr913-decision-report-product-gaps.mjs \
+            .github/workflows/pr913-rerun-report-gap-tests.yml
+          git add -A
+          git commit -m 'fix: preserve product coverage gaps in decision reports'
+          git push origin HEAD:codex/json-catalogue-overlay
