@@ -1,0 +1,35 @@
+name: Refresh PR 913 against current main
+
+on:
+  push:
+    branches:
+      - codex/json-catalogue-overlay
+    paths:
+      - .github/workflows/pr913-refresh-current-main.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: codex/json-catalogue-overlay
+          fetch-depth: 0
+      - name: Merge current main and remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin main
+          git merge --no-ff --no-commit origin/main
+
+          grep -F '<jgit-storage-hibernate.version>0.11.2</jgit-storage-hibernate.version>' pom.xml
+          git rm .github/workflows/pr913-refresh-current-main.yml
+          git diff --cached --check
+
+          git commit -m 'chore: refresh PR 913 against current main'
+          git push origin HEAD:codex/json-catalogue-overlay
