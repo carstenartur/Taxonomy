@@ -32,10 +32,16 @@ jobs:
             exit 0
           fi
 
+          wc -c "$payload_dir"/part-* "$payload_dir/READY"
           cat "$payload_dir"/part-* > /tmp/taxonomy-overlay.patch.xz.b64
+          wc -c /tmp/taxonomy-overlay.patch.xz.b64
           base64 -d /tmp/taxonomy-overlay.patch.xz.b64 > /tmp/taxonomy-overlay.patch.xz
           expected_sha=$(tr -d '[:space:]' < "$payload_dir/READY")
-          echo "$expected_sha  /tmp/taxonomy-overlay.patch.xz" | sha256sum -c -
+          actual_sha=$(sha256sum /tmp/taxonomy-overlay.patch.xz | cut -d' ' -f1)
+          echo "Expected payload SHA-256: $expected_sha"
+          echo "Actual payload SHA-256:   $actual_sha"
+          [[ "$actual_sha" == "$expected_sha" ]]
+          xz -t /tmp/taxonomy-overlay.patch.xz
           xz -d -c /tmp/taxonomy-overlay.patch.xz > /tmp/taxonomy-overlay.patch
 
           git apply --index --binary --whitespace=error-all /tmp/taxonomy-overlay.patch
