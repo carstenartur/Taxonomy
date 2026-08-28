@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.service;
 
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
+import com.taxonomy.portfolio.dto.AiTargetDtos.AiTargetDescriptor;
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
 import com.taxonomy.portfolio.model.AiCostPolicy;
@@ -16,10 +17,10 @@ import java.util.Locale;
 /**
  * Central, fail-closed policy for user-triggered Copilot and unattended Autopilot work.
  *
- * <p>A custom provider is never assumed to be free. Autopilot requires an explicit
+ * <p>A custom target is never assumed to be free. Autopilot requires an explicit
  * provider, an explicit enable flag and the operator declaration {@code UNMETERED}.
- * Manual Copilot remains available for any configured provider because every run is
- * explicitly requested.</p>
+ * Manual Copilot remains available for any configured addressable target because
+ * every run is explicitly requested.</p>
  */
 @Component
 public class AiAutomationPolicy {
@@ -45,6 +46,7 @@ public class AiAutomationPolicy {
             "merge the draft architecture into an approved branch");
 
     private final LlmProviderConfig providerConfig;
+    private final AiTargetCatalogService targetCatalog;
     private final AiCostPolicy costPolicy;
     private final AnalysisAutomationProfile copilotProfile;
     private final AnalysisAutomationProfile autopilotProfile;
@@ -60,6 +62,7 @@ public class AiAutomationPolicy {
 
     public AiAutomationPolicy(
             LlmProviderConfig providerConfig,
+            AiTargetCatalogService targetCatalog,
             @Value("${taxonomy.ai.cost-policy:METERED}") String costPolicy,
             @Value("${taxonomy.ai.copilot.profile:FULL}") String copilotProfile,
             @Value("${taxonomy.ai.autopilot.profile:EXHAUSTIVE}") String autopilotProfile,
@@ -73,6 +76,7 @@ public class AiAutomationPolicy {
             @Value("${taxonomy.ai.autopilot.propose-products:true}") boolean autopilotProducts,
             @Value("${taxonomy.ai.maximum-runtime-seconds:1800}") long maximumRuntimeSeconds) {
         this.providerConfig = providerConfig;
+        this.targetCatalog = targetCatalog;
         this.costPolicy = enumValue(AiCostPolicy.class, costPolicy, "taxonomy.ai.cost-policy");
         this.copilotProfile = enumValue(
                 AnalysisAutomationProfile.class, copilotProfile, "taxonomy.ai.copilot.profile");
@@ -93,14 +97,16 @@ public class AiAutomationPolicy {
 
     public RunSettings manual(CopilotRunRequest request) {
         CopilotRunRequest effective = request != null
-                ? request : new CopilotRunRequest(null, null, null, null, null, null, null);
+                ? request : new CopilotRunRequest(
+                        null, null, null, null, null, null, null, null);
         AnalysisAutomationProfile profile = effective.profile() != null
                 ? effective.profile() : copilotProfile;
         int passes = effective.verificationPasses() != null
                 ? boundedPasses(effective.verificationPasses(), "verificationPasses")
                 : defaultPasses(profile, copilotPasses);
-        String provider = resolveProvider(effective.provider());
-        requireProviderReady(provider);
+        AiTargetDescriptor target = targetCatalog.resolve(
+                effective.targetId(), effective.provider());
+        requireTargetReady(target);
         int nodes = effective.maxArchitectureNodes() != null
                 ? positive(effective.maxArchitectureNodes(), "maxArchitectureNodes")
                 : maximumArchitectureNodes;
@@ -116,7 +122,8 @@ public class AiAutomationPolicy {
         return new RunSettings(
                 false,
                 profile,
-                provider,
+                target.provider(),
+                target,
                 nodes,
                 passes,
                 proposeSolutions,
@@ -129,10 +136,13 @@ public class AiAutomationPolicy {
             throw PortfolioException.validation(autopilotReason());
         }
         AnalysisAutomationProfile profile = autopilotProfile;
+        AiTargetDescriptor target = targetCatalog.resolve(
+                null, explicitAutopilotProvider());
         return new RunSettings(
                 true,
                 profile,
-                explicitAutopilotProvider(),
+                target.provider(),
+                target,
                 maximumArchitectureNodes,
                 defaultPasses(profile, autopilotPasses),
                 autopilotSolutions && profile != AnalysisAutomationProfile.STANDARD,
@@ -201,6 +211,10 @@ public class AiAutomationPolicy {
         return maximumRuntime;
     }
 
+    public AiTargetDescriptor targetForProvider(String provider) {
+        return targetCatalog.describeProvider(provider);
+    }
+
     private String resolveProvider(String requested) {
         String normalized = normalizeOptional(requested);
         if (normalized != null) {
@@ -240,9 +254,11 @@ public class AiAutomationPolicy {
         }
     }
 
-    private void requireProviderReady(String provider) {
-        if (!isProviderReady(provider)) {
-            throw PortfolioException.validation(providerError(provider));
+    private void requireTargetReady(AiTargetDescriptor target) {
+        if (!target.available()) {
+            throw PortfolioException.validation(target.unavailableReason() != null
+                    ? target.unavailableReason()
+                    : "The selected AI target is unavailable: " + target.targetId());
         }
     }
 
@@ -299,6 +315,7 @@ public class AiAutomationPolicy {
             boolean autopilot,
             AnalysisAutomationProfile profile,
             String provider,
+            AiTargetDescriptor target,
             int maxArchitectureNodes,
             int verificationPasses,
             boolean proposeSolutions,
