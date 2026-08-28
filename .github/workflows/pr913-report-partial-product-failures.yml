@@ -34,270 +34,150 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
 
-          function replaceOnce(text, before, after, label) {
-            const first = text.indexOf(before);
-            const last = text.lastIndexOf(before);
-            if (first < 0 || first !== last) {
-              throw new Error(`${label}: expected exactly one match`);
+          function replaceRegexOnce(text, pattern, replacement, label) {
+            const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+            const matches = [...text.matchAll(new RegExp(pattern.source, flags))];
+            if (matches.length !== 1) {
+              throw new Error(`${label}: expected exactly one match, found ${matches.length}`);
             }
-            return text.slice(0, first) + after + text.slice(first + before.length);
+            return text.replace(pattern, replacement);
           }
 
           const servicePath = 'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java';
           let service = fs.readFileSync(servicePath, 'utf8');
 
-          service = replaceOnce(service,
-          `                if (rootDetail.getDiscrepancy() != null) {
-                              allDiscrepancies.add(rootDetail.getDiscrepancy());
-                          }
-                          int score = rootScore.getOrDefault(root.getCode(), 0);`,
-          `                if (rootDetail.getDiscrepancy() != null) {
-                              allDiscrepancies.add(rootDetail.getDiscrepancy());
-                          }
-                          addAnalysisWarning(warnings, root.getCode(), rootDetail);
-                          int score = rootScore.getOrDefault(root.getCode(), 0);`,
-          'non-stream root warning');
+          service = replaceRegexOnce(
+            service,
+            /(if \(rootDetail\.getDiscrepancy\(\) != null\) \{\s*allDiscrepancies\.add\(rootDetail\.getDiscrepancy\(\)\);\s*\})\s*(int score = rootScore\.getOrDefault\(root\.getCode\(\), 0\);)/,
+            `$1\n                addAnalysisWarning(warnings, root.getCode(), rootDetail);\n                $2`,
+            'non-stream root warning'
+          );
 
-          service = replaceOnce(service,
-          `                        analyzeNodesPropagating(
-                                  businessText, level1Children, allScores, allReasons,
-                                  allDiscrepancies, productCoverageGaps, score);`,
-          `                        analyzeNodesPropagating(
-                                  businessText, level1Children, allScores, allReasons,
-                                  allDiscrepancies, productCoverageGaps, warnings, score);`,
-          'non-stream first recursive call');
+          service = replaceRegexOnce(
+            service,
+            /analyzeNodesPropagating\(\s*businessText,\s*level1Children,\s*allScores,\s*allReasons,\s*allDiscrepancies,\s*productCoverageGaps,\s*score\);/,
+            `analyzeNodesPropagating(\n                            businessText, level1Children, allScores, allReasons,\n                            allDiscrepancies, productCoverageGaps, warnings, score);`,
+            'non-stream first recursive call'
+          );
 
-          service = replaceOnce(service,
-          `        } else if (!warnings.isEmpty()) {
-                      // Some roots had errors but we continued — still treat as PARTIAL if no scores
-                      result.setStatus(allScores.values().stream().anyMatch(v -> v > 0) ? "SUCCESS" : "PARTIAL");
-                  } else {`,
-          `        } else if (!warnings.isEmpty()) {
-                      result.setStatus("PARTIAL");
-                  } else {`,
-          'partial result status');
+          service = replaceRegexOnce(
+            service,
+            /\} else if \(!warnings\.isEmpty\(\)\) \{[\s\S]*?result\.setStatus\(allScores\.values\(\)\.stream\(\)\.anyMatch\(v -> v > 0\) \? "SUCCESS" : "PARTIAL"\);\s*\} else \{/,
+            `} else if (!warnings.isEmpty()) {\n            result.setStatus("PARTIAL");\n        } else {`,
+            'partial result status'
+          );
 
-          service = replaceOnce(service,
-          `                                          List<TaxonomyDiscrepancy> allDiscrepancies,
-                                          List<ProductCoverageGap> productCoverageGaps,
-                                          int parentScore) {`,
-          `                                          List<TaxonomyDiscrepancy> allDiscrepancies,
-                                          List<ProductCoverageGap> productCoverageGaps,
-                                          List<String> warnings,
-                                          int parentScore) {`,
-          'non-stream recursive signature');
+          service = replaceRegexOnce(
+            service,
+            /private void analyzeNodesPropagating\(String businessText,\s*List<TaxonomyNode> nodes,\s*Map<String, Integer> allScores,\s*Map<String, String> allReasons,\s*List<TaxonomyDiscrepancy> allDiscrepancies,\s*List<ProductCoverageGap> productCoverageGaps,\s*int parentScore\) \{/,
+            `private void analyzeNodesPropagating(String businessText,\n                                         List<TaxonomyNode> nodes,\n                                         Map<String, Integer> allScores,\n                                         Map<String, String> allReasons,\n                                         List<TaxonomyDiscrepancy> allDiscrepancies,\n                                         List<ProductCoverageGap> productCoverageGaps,\n                                         List<String> warnings,\n                                         int parentScore) {`,
+            'non-stream recursive signature'
+          );
 
-          service = replaceOnce(service,
-          `        if (detail.getDiscrepancy() != null) {
-                      allDiscrepancies.add(detail.getDiscrepancy());
-                  }
-          
-                  List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();`,
-          `        if (detail.getDiscrepancy() != null) {
-                      allDiscrepancies.add(detail.getDiscrepancy());
-                  }
-                  addAnalysisWarning(warnings, siblingScope(nodes), detail);
-          
-                  List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();`,
-          'non-stream child warning');
+          service = replaceRegexOnce(
+            service,
+            /(LlmCallDetail detail = callLlmPropagatingDetailed\(businessText, nodes, parentScore\);[\s\S]*?if \(detail\.getDiscrepancy\(\) != null\) \{\s*allDiscrepancies\.add\(detail\.getDiscrepancy\(\)\);\s*\})(\s*List<TaxonomyNode> productNodes = nodes\.stream\(\)\.filter\(this::isProduct\)\.toList\(\);)/,
+            `$1\n        addAnalysisWarning(warnings, siblingScope(nodes), detail);$2`,
+            'non-stream child warning'
+          );
 
-          service = replaceOnce(service,
-          `                    analyzeNodesPropagating(
-                              businessText, children, allScores, allReasons,
-                              allDiscrepancies, productCoverageGaps, entry.getValue());`,
-          `                    analyzeNodesPropagating(
-                              businessText, children, allScores, allReasons,
-                              allDiscrepancies, productCoverageGaps, warnings, entry.getValue());`,
-          'non-stream nested recursive call');
+          service = replaceRegexOnce(
+            service,
+            /analyzeNodesPropagating\(\s*businessText,\s*children,\s*allScores,\s*allReasons,\s*allDiscrepancies,\s*productCoverageGaps,\s*entry\.getValue\(\)\);/,
+            `analyzeNodesPropagating(\n                        businessText, children, allScores, allReasons,\n                        allDiscrepancies, productCoverageGaps, warnings, entry.getValue());`,
+            'non-stream nested recursive call'
+          );
 
-          service = replaceOnce(service,
-          `        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
-                  List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
-                  try {`,
-          `        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
-                  List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
-                  List<String> warnings = new ArrayList<>();
-                  try {`,
-          'stream warnings declaration');
+          service = replaceRegexOnce(
+            service,
+            /(public void analyzeStreaming\(String businessText, AnalysisEventCallback callback\) \{\s*Map<String, Integer> allScores = new HashMap<>\(\);\s*List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>\(\);\s*List<ProductCoverageGap> productCoverageGaps = new ArrayList<>\(\);)(\s*try \{)/,
+            `$1\n        List<String> warnings = new ArrayList<>();$2`,
+            'stream warnings declaration'
+          );
 
-          service = replaceOnce(service,
-          `                if (rootDetail.getDiscrepancy() != null) {
-                              allDiscrepancies.add(rootDetail.getDiscrepancy());
-                          }
-                          callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),`,
-          `                if (rootDetail.getDiscrepancy() != null) {
-                              allDiscrepancies.add(rootDetail.getDiscrepancy());
-                          }
-                          addAnalysisWarning(warnings, root.getCode(), rootDetail);
-                          callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),`,
-          'stream root warning');
+          service = replaceRegexOnce(
+            service,
+            /(if \(rootDetail\.getDiscrepancy\(\) != null\) \{\s*allDiscrepancies\.add\(rootDetail\.getDiscrepancy\(\)\);\s*\})(\s*callback\.onScores\(rootDetail\.getScores\(\), rootDetail\.getReasons\(\),)/,
+            `$1\n                addAnalysisWarning(warnings, root.getCode(), rootDetail);$2`,
+            'stream root warning'
+          );
 
-          service = replaceOnce(service,
-          `                        analyzeStreamingNodes(businessText, level1Children, allScores,
-                                  allDiscrepancies, productCoverageGaps, callback, rootScore);`,
-          `                        analyzeStreamingNodes(businessText, level1Children, allScores,
-                                  allDiscrepancies, productCoverageGaps, warnings, callback,
-                                  rootScore);`,
-          'stream first recursive call');
+          service = replaceRegexOnce(
+            service,
+            /analyzeStreamingNodes\(businessText,\s*level1Children,\s*allScores,\s*allDiscrepancies,\s*productCoverageGaps,\s*callback,\s*rootScore\);/,
+            `analyzeStreamingNodes(businessText, level1Children, allScores,\n                            allDiscrepancies, productCoverageGaps, warnings, callback,\n                            rootScore);`,
+            'stream first recursive call'
+          );
 
-          service = replaceOnce(service,
-          `            callback.onComplete("SUCCESS", allScores, List.of(), allDiscrepancies,
-                              productCoverageGaps);
-                  } catch (Exception e) {
-                      log.error("Streaming analysis failed", e);
-                      callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-                              allScores, List.of(), allDiscrepancies, productCoverageGaps);`,
-          `            callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,
-                              warnings, allDiscrepancies, productCoverageGaps);
-                  } catch (Exception e) {
-                      log.error("Streaming analysis failed", e);
-                      callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-                              allScores, warnings, allDiscrepancies, productCoverageGaps);`,
-          'stream completion status and warnings');
+          service = replaceRegexOnce(
+            service,
+            /callback\.onComplete\("SUCCESS", allScores, List\.of\(\), allDiscrepancies,\s*productCoverageGaps\);\s*\} catch \(Exception e\) \{\s*log\.error\("Streaming analysis failed", e\);\s*callback\.onError\("PARTIAL", "Analysis failed: " \+ e\.getMessage\(\),\s*allScores, List\.of\(\), allDiscrepancies, productCoverageGaps\);/,
+            `callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,\n                    warnings, allDiscrepancies, productCoverageGaps);\n        } catch (Exception e) {\n            log.error("Streaming analysis failed", e);\n            callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),\n                    allScores, warnings, allDiscrepancies, productCoverageGaps);`,
+            'stream completion status and warnings'
+          );
 
-          service = replaceOnce(service,
-          `                                        List<TaxonomyDiscrepancy> allDiscrepancies,
-                                        List<ProductCoverageGap> productCoverageGaps,
-                                        AnalysisEventCallback callback,`,
-          `                                        List<TaxonomyDiscrepancy> allDiscrepancies,
-                                        List<ProductCoverageGap> productCoverageGaps,
-                                        List<String> warnings,
-                                        AnalysisEventCallback callback,`,
-          'stream recursive signature');
+          service = replaceRegexOnce(
+            service,
+            /private void analyzeStreamingNodes\(String businessText,\s*List<TaxonomyNode> nodes,\s*Map<String, Integer> allScores,\s*List<TaxonomyDiscrepancy> allDiscrepancies,\s*List<ProductCoverageGap> productCoverageGaps,\s*AnalysisEventCallback callback,\s*int parentScore\) \{/,
+            `private void analyzeStreamingNodes(String businessText,\n                                       List<TaxonomyNode> nodes,\n                                       Map<String, Integer> allScores,\n                                       List<TaxonomyDiscrepancy> allDiscrepancies,\n                                       List<ProductCoverageGap> productCoverageGaps,\n                                       List<String> warnings,\n                                       AnalysisEventCallback callback,\n                                       int parentScore) {`,
+            'stream recursive signature'
+          );
 
-          service = replaceOnce(service,
-          `        if (detail.getDiscrepancy() != null) {
-                      allDiscrepancies.add(detail.getDiscrepancy());
-                  }
-                  callback.onScores(detail.getScores(), detail.getReasons(),`,
-          `        if (detail.getDiscrepancy() != null) {
-                      allDiscrepancies.add(detail.getDiscrepancy());
-                  }
-                  addAnalysisWarning(warnings, siblingScope(nodes), detail);
-                  callback.onScores(detail.getScores(), detail.getReasons(),`,
-          'stream child warning');
+          service = replaceRegexOnce(
+            service,
+            /(LlmCallDetail detail = callLlmPropagatingDetailed\(businessText, nodes, parentScore\);[\s\S]*?if \(detail\.getDiscrepancy\(\) != null\) \{\s*allDiscrepancies\.add\(detail\.getDiscrepancy\(\)\);\s*\})(\s*callback\.onScores\(detail\.getScores\(\), detail\.getReasons\(\),)/,
+            `$1\n        addAnalysisWarning(warnings, siblingScope(nodes), detail);$2`,
+            'stream child warning'
+          );
 
-          service = replaceOnce(service,
-          `                    analyzeStreamingNodes(businessText, children, allScores,
-                              allDiscrepancies, productCoverageGaps, callback, entry.getValue());`,
-          `                    analyzeStreamingNodes(businessText, children, allScores,
-                              allDiscrepancies, productCoverageGaps, warnings, callback,
-                              entry.getValue());`,
-          'stream nested recursive call');
+          service = replaceRegexOnce(
+            service,
+            /analyzeStreamingNodes\(businessText,\s*children,\s*allScores,\s*allDiscrepancies,\s*productCoverageGaps,\s*callback,\s*entry\.getValue\(\)\);/,
+            `analyzeStreamingNodes(businessText, children, allScores,\n                        allDiscrepancies, productCoverageGaps, warnings, callback,\n                        entry.getValue());`,
+            'stream nested recursive call'
+          );
 
-          service = replaceOnce(service,
-          `    private boolean hasError(LlmCallDetail detail) {
-                  return detail != null && detail.getError() != null && !detail.getError().isBlank();
-              }`,
-          `    private void addAnalysisWarning(List<String> warnings,
-                                              String scopeCode,
-                                              LlmCallDetail detail) {
-                  if (!hasError(detail)) {
-                      return;
-                  }
-                  String scope = scopeCode == null || scopeCode.isBlank()
-                          ? "unknown taxonomy scope" : scopeCode;
-                  String warning = "Incomplete analysis for " + scope + ": "
-                          + detail.getError().strip();
-                  if (!warnings.contains(warning)) {
-                      warnings.add(warning);
-                  }
-              }
-          
-              private String siblingScope(List<TaxonomyNode> nodes) {
-                  if (nodes == null || nodes.isEmpty()) {
-                      return "unknown taxonomy scope";
-                  }
-                  String parentCode = nodes.get(0).getParentCode();
-                  return parentCode == null || parentCode.isBlank()
-                          ? nodes.get(0).getCode() : parentCode;
-              }
-          
-              private boolean hasError(LlmCallDetail detail) {
-                  return detail != null && detail.getError() != null && !detail.getError().isBlank();
-              }`,
-          'warning helpers');
+          service = replaceRegexOnce(
+            service,
+            /\n    private boolean hasError\(LlmCallDetail detail\) \{/,
+            `\n    private void addAnalysisWarning(List<String> warnings,\n                                    String scopeCode,\n                                    LlmCallDetail detail) {\n        if (!hasError(detail)) {\n            return;\n        }\n        String scope = scopeCode == null || scopeCode.isBlank()\n                ? "unknown taxonomy scope" : scopeCode;\n        String warning = "Incomplete analysis for " + scope + ": "\n                + detail.getError().strip();\n        if (!warnings.contains(warning)) {\n            warnings.add(warning);\n        }\n    }\n\n    private String siblingScope(List<TaxonomyNode> nodes) {\n        if (nodes == null || nodes.isEmpty()) {\n            return "unknown taxonomy scope";\n        }\n        String parentCode = nodes.get(0).getParentCode();\n        return parentCode == null || parentCode.isBlank()\n                ? nodes.get(0).getCode() : parentCode;\n    }\n\n    private boolean hasError(LlmCallDetail detail) {`,
+            'warning helpers'
+          );
 
           fs.writeFileSync(servicePath, service);
 
           const testPath = 'taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java';
           let test = fs.readFileSync(testPath, 'utf8');
-          test = replaceOnce(test,
-          `import static org.mockito.ArgumentMatchers.any;
-          import static org.mockito.ArgumentMatchers.anyInt;`,
-          `import static org.mockito.ArgumentMatchers.any;
-          import static org.mockito.ArgumentMatchers.argThat;
-          import static org.mockito.ArgumentMatchers.anyInt;`,
-          'argThat import');
-          test = replaceOnce(test,
-          `import static org.mockito.ArgumentMatchers.anyString;
-          import static org.mockito.Mockito.lenient;`,
-          `import static org.mockito.ArgumentMatchers.anyString;
-          import static org.mockito.ArgumentMatchers.eq;
-          import static org.mockito.Mockito.lenient;`,
-          'eq import');
+          test = replaceRegexOnce(
+            test,
+            /import static org\.mockito\.ArgumentMatchers\.any;\s*import static org\.mockito\.ArgumentMatchers\.anyInt;/,
+            `import static org.mockito.ArgumentMatchers.any;\nimport static org.mockito.ArgumentMatchers.argThat;\nimport static org.mockito.ArgumentMatchers.anyInt;`,
+            'argThat import'
+          );
+          test = replaceRegexOnce(
+            test,
+            /import static org\.mockito\.ArgumentMatchers\.anyString;\s*import static org\.mockito\.Mockito\.lenient;/,
+            `import static org.mockito.ArgumentMatchers.anyString;\nimport static org.mockito.ArgumentMatchers.eq;\nimport static org.mockito.Mockito.lenient;`,
+            'eq import'
+          );
 
-          const newTest = `    @Test
-              void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {
-                  TaxonomyNode root = node("IP", null, "IP");
-                  root.setNameEn("Information Products");
-                  TaxonomyNode product = node("IP-P1", "IP", "IP");
-                  product.setNameEn("Concrete product");
-                  when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
-                  when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
-                  when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(product));
-                  when(taxonomyService.getFullTree()).thenReturn(List.of());
-                  when(gateway.sendHttpRequest("rendered prompt", "test-key"))
-                          .thenReturn("root-body");
-                  when(gateway.extractResponseText("root-body")).thenReturn("{\\"IP\\":100}");
-                  when(gateway.sendHttpRequest("product prompt", "test-key"))
-                          .thenThrow(new LlmTimeoutException("product provider timed out"));
-                  ReflectionTestUtils.setField(service, "productMinimumScore", 50);
-          
-                  AnalysisResult result = service.analyzeWithBudget("requirement");
-          
-                  assertThat(result.getStatus()).isEqualTo("PARTIAL");
-                  assertThat(result.getWarnings())
-                          .anyMatch(warning -> warning.contains("IP")
-                                  && warning.contains("product provider timed out"));
-                  assertThat(result.getProductCoverageGaps()).isEmpty();
-          
-                  service.analyzeStreaming("requirement", callback);
-          
-                  verify(callback).onComplete(
-                          eq("PARTIAL"),
-                          any(),
-                          argThat((List<String> warnings) -> warnings.stream()
-                                  .anyMatch(warning -> warning.contains("product provider timed out"))),
-                          anyList(),
-                          anyList());
-                  verify(callback, never()).onError(
-                          anyString(), anyString(), any(), anyList(), anyList(), anyList());
-              }
-          
-          `;
-          test = replaceOnce(test,
-          `    @Test
-              void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {`,
-          newTest + `    @Test
-              void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {`,
-          'partial product failure test');
+          const newTest = `    @Test\n    void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {\n        TaxonomyNode root = node("IP", null, "IP");\n        root.setNameEn("Information Products");\n        TaxonomyNode product = node("IP-P1", "IP", "IP");\n        product.setNameEn("Concrete product");\n        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);\n        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));\n        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(product));\n        when(taxonomyService.getFullTree()).thenReturn(List.of());\n        when(gateway.sendHttpRequest("rendered prompt", "test-key"))\n                .thenReturn("root-body");\n        when(gateway.extractResponseText("root-body")).thenReturn("{\\"IP\\":100}");\n        when(gateway.sendHttpRequest("product prompt", "test-key"))\n                .thenThrow(new LlmTimeoutException("product provider timed out"));\n        ReflectionTestUtils.setField(service, "productMinimumScore", 50);\n\n        AnalysisResult result = service.analyzeWithBudget("requirement");\n\n        assertThat(result.getStatus()).isEqualTo("PARTIAL");\n        assertThat(result.getWarnings())\n                .anyMatch(warning -> warning.contains("IP")\n                        && warning.contains("product provider timed out"));\n        assertThat(result.getProductCoverageGaps()).isEmpty();\n\n        service.analyzeStreaming("requirement", callback);\n\n        verify(callback).onComplete(\n                eq("PARTIAL"),\n                any(),\n                argThat((List<String> warnings) -> warnings.stream()\n                        .anyMatch(warning -> warning.contains("product provider timed out"))),\n                anyList(),\n                anyList());\n        verify(callback, never()).onError(\n                anyString(), anyString(), any(), anyList(), anyList(), anyList());\n    }\n\n`;
+          test = replaceRegexOnce(
+            test,
+            /    @Test\s*void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure\(\) \{/,
+            `${newTest}    @Test\n    void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {`,
+            'partial product failure test'
+          );
           fs.writeFileSync(testPath, test);
 
           const docsPath = 'docs/dev/INFORMATION_PRODUCT_OVERLAY.md';
           let docs = fs.readFileSync(docsPath, 'utf8');
-          docs = replaceOnce(docs,
-          `    structured \`productCoverageGaps\` entry.
-          
-          A parent may contain both category and product children.`,
-          `    structured \`productCoverageGaps\` entry.
-          
-          A failed or incomplete concrete-product batch makes the overall analysis \`PARTIAL\` and
-          adds an explicit warning. Its zero placeholders are not treated as evidence of an actual
-          catalogue gap, so no confirmed \`productCoverageGaps\` entry is emitted for that batch.
-          
-          A parent may contain both category and product children.`,
-          'partial product failure documentation');
+          docs = replaceRegexOnce(
+            docs,
+            /    structured `productCoverageGaps` entry\.\s*\n\s*A parent may contain both category and product children\./,
+            `    structured \`productCoverageGaps\` entry.\n\nA failed or incomplete concrete-product batch makes the overall analysis \`PARTIAL\` and\nadds an explicit warning. Its zero placeholders are not treated as evidence of an actual\ncatalogue gap, so no confirmed \`productCoverageGaps\` entry is emitted for that batch.\n\nA parent may contain both category and product children.`,
+            'partial product failure documentation'
+          );
           fs.writeFileSync(docsPath, docs);
           NODE
 
