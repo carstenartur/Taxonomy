@@ -5,6 +5,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -33,6 +34,17 @@ public class PortfolioExceptionHandler {
         });
         problem.setType(URI.create("urn:taxonomy:portfolio:" + exception.getKind().name().toLowerCase()));
         return ResponseEntity.status(status).body(problem);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ProblemDetail> handleMalformedRequest(
+            HttpMessageNotReadableException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "The portfolio request body is malformed or contains an unsupported value.");
+        problem.setTitle("Invalid portfolio request body");
+        problem.setType(URI.create("urn:taxonomy:portfolio:malformed-request"));
+        return ResponseEntity.badRequest().body(problem);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
