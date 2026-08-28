@@ -326,5 +326,19 @@ public class AiAutomationPolicy {
             boolean proposeSolutions,
             boolean proposeProducts,
             boolean force) {
+
+        /** Source-compatible constructor for tests and callers that predate target descriptors. */
+        public RunSettings(
+                boolean autopilot,
+                AnalysisAutomationProfile profile,
+                String provider,
+                int maxArchitectureNodes,
+                int verificationPasses,
+                boolean proposeSolutions,
+                boolean proposeProducts,
+                boolean force) {
+            this(autopilot, profile, provider, null, maxArchitectureNodes,
+                    verificationPasses, proposeSolutions, proposeProducts, force);
+        }
     }
 }
