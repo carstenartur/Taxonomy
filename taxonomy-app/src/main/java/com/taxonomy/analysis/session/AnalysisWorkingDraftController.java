@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -13,6 +14,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -54,6 +56,18 @@ public class AnalysisWorkingDraftController {
             HttpServletRequest request) {
         requireMatchingExplicitPin(request, workspaceId);
         AnalysisDraftView view = service.save(
+                workspaceResolver.resolveCurrentUsername(), workspaceId, requestBody);
+        return versionedResponse(view);
+    }
+
+    @PostMapping("/{workspaceId}/reset")
+    @Operation(summary = "Start a new empty ad-hoc analysis lifecycle")
+    public ResponseEntity<AnalysisDraftView> reset(
+            @PathVariable String workspaceId,
+            @RequestBody(required = false) ResetAnalysisDraftRequest requestBody,
+            HttpServletRequest request) {
+        requireMatchingExplicitPin(request, workspaceId);
+        AnalysisDraftView view = service.reset(
                 workspaceResolver.resolveCurrentUsername(), workspaceId, requestBody);
         return versionedResponse(view);
     }

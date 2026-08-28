@@ -319,3 +319,77 @@ test('diagnostics remain bounded and omit draft payload contents', async () => {
   assert.ok(diagnostics.length <= 48);
   assert.equal(JSON.stringify(diagnostics).includes(secretText), false);
 });
+
+test('serializes explicit reset commands and advances to the empty tombstone revision', async () => {
+  const calls = [];
+  const empty = {
+    version: 4,
+    payload: { draftState: 'EMPTY', businessText: '' }
+  };
+  const harness = createHarness(async (url, options) => {
+    calls.push({ url, method: options.method, body: JSON.parse(options.body) });
+    return empty;
+  });
+  harness.runtime.version = 3;
+
+  const result = await harness.C.jsonRequest(
+    '/api/analysis-drafts/workspace-1/reset',
+    {
+      method: 'POST',
+      body: JSON.stringify({ analysisOptions: { provider: 'OPENAI' } })
+    }
+  );
+
+  assert.deepEqual(result, empty);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].body.expectedVersion, undefined,
+    'Reset is an intentional command and must not depend on a stale browser version');
+  assert.equal(calls[0].body.analysisOptions.provider, 'OPENAI');
+  assert.equal(harness.runtime.version, 4);
+});
+
+test('retries one concurrent reset conflict because reset remains authoritative from every tab', async () => {
+  const calls = [];
+  const conflict = conflictError('concurrent-reset-conflict');
+  const empty = {
+    version: 6,
+    payload: { draftState: 'EMPTY', businessText: '' }
+  };
+  const harness = createHarness(async (url, options) => {
+    calls.push(options.method);
+    if (calls.length === 1) throw conflict;
+    return empty;
+  });
+
+  const result = await harness.C.jsonRequest(
+    '/api/analysis-drafts/workspace-1/reset',
+    { method: 'POST', body: JSON.stringify({ analysisOptions: null }) }
+  );
+
+  assert.deepEqual(result, empty);
+  assert.deepEqual(calls, ['POST', 'POST']);
+  assert.equal(harness.runtime.version, 6);
+  const reconciled = harness.dispatched.find(event =>
+    event.type === 'taxonomy:analysis-draft-write-reconciled');
+  assert.equal(reconciled?.detail.reason, 'concurrent-reset');
+});
+
+test('recognizes reset below a servlet context path', async () => {
+  const calls = [];
+  const empty = { version: 1, payload: { draftState: 'EMPTY', businessText: '' } };
+  const harness = createHarness(async (url, options) => {
+    calls.push({ url, method: options.method });
+    return empty;
+  }, { basePath: '/taxonomy' });
+
+  await harness.C.jsonRequest(
+    '/taxonomy/api/analysis-drafts/workspace-1/reset',
+    { method: 'POST', body: '{}' }
+  );
+
+  assert.deepEqual(calls, [{
+    url: '/taxonomy/api/analysis-drafts/workspace-1/reset',
+    method: 'POST'
+  }]);
+});

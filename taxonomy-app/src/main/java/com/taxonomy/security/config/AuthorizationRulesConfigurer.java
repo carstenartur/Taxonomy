@@ -96,6 +96,8 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.GET, "/api/analysis-drafts/**").authenticated();
         auth.requestMatchers(HttpMethod.PUT, "/api/analysis-drafts/**")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/analysis-drafts/**")
+                .hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/analysis-drafts/**")
                 .hasAnyRole("USER", "ARCHITECT", "ADMIN");
 

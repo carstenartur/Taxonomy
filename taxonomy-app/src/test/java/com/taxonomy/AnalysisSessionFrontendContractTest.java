@@ -29,7 +29,7 @@ class AnalysisSessionFrontendContractTest {
                 .contains("suggestedRelationsPanel")
                 .contains("taxonomy:analysis-invalidated")
                 .contains("activeAnalysisControllers")
-                .contains("controller.abort('analysis-invalidated')")
+                .contains("controller.abort(cancellationReason)")
                 .contains("analysisGeneration += 1")
                 .doesNotContain("/api/projects/**/delete")
                 .doesNotContain("/api/relations/**/delete");
@@ -88,6 +88,52 @@ class AnalysisSessionFrontendContractTest {
     }
 
     @Test
+    void repeatableResetUsesAVersionedEmptyTombstoneInsteadOfDeletingTheDraft()
+            throws IOException {
+        String core = resource("/static/js/core/taxonomy-analysis-session-core.js");
+        String draft = resource("/static/js/core/taxonomy-analysis-session-draft.js");
+        String projects = resource("/static/js/core/taxonomy-analysis-session-projects.js");
+
+        assertThat(core)
+                .contains("payload.draftState = meaningful(payload) ? 'ACTIVE' : 'EMPTY'");
+        assertThat(draft)
+                .contains("function resetDraft()")
+                .contains("endpoint + '/reset'")
+                .contains("taxonomy:analysis-draft-reset")
+                .contains("if (!meaningful(payload) && runtime.version === null)")
+                .doesNotContain("if (!meaningful(payload)) {\n            return deleteDraft();");
+        assertThat(projects)
+                .contains("startNewAnalysis")
+                .contains("skipSave: true")
+                .contains("resetDraft().then")
+                .contains("if (!view)")
+                .contains("newAnalysisWorkspaceUnavailable");
+    }
+
+    @Test
+    void fileAndProjectMenusExposeNewSaveCancelAndPromotionCommands()
+            throws IOException {
+        String template = resource("/templates/index.html");
+        String session = sessionSources();
+
+        assertThat(template)
+                .contains("id=\"fileMenuButton\"")
+                .contains("id=\"fileNewAnalysisAction\"")
+                .contains("id=\"fileCancelAnalysisAction\"")
+                .contains("id=\"fileSaveDraftAction\"")
+                .contains("id=\"projectMenuButton\"")
+                .contains("id=\"projectNewAction\"")
+                .contains("id=\"projectAddRequirementAction\"")
+                .contains("id=\"projectOpenAction\"")
+                .contains("id=\"cancelAnalysisBtn\"");
+        assertThat(session)
+                .contains("cancelCurrentAnalysis")
+                .contains("user-cancelled")
+                .contains("analysisCancelledBody")
+                .contains("installLifecycleCommands");
+    }
+
+    @Test
     void workingDraftIsWorkspacePinnedSerializedAndOptimisticallyVersioned()
             throws IOException {
         String session = sessionSources();
@@ -96,6 +142,7 @@ class AnalysisSessionFrontendContractTest {
 
         assertThat(session)
                 .contains("/api/analysis-drafts/")
+                .contains("/reset")
                 .contains("expectedVersion: runtime.version")
                 .contains("draftMutationQueue")
                 .contains("var expectedVersion = numericVersion(runtime.version)")

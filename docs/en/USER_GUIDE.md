@@ -175,6 +175,8 @@ The right panel (narrower column) contains all interactive tools:
 The navigation bar at the top of the page contains:
 
 - **Application title / logo**
+- **File menu** — start a new analysis, cancel a running analysis, or save the current working draft immediately
+- **Project menu** — create a project, save the current text as a requirement, or open the project overview
 - **AI Status badge** (🟢 green or 🔴 red)
 - **🔒 Admin mode button** — click to open the Admin Mode password modal
 
@@ -210,6 +212,20 @@ Tips for good requirements:
 5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
 
 ![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
+
+### Starting over, cancelling, and saving the working draft
+
+The **File** menu provides explicit lifecycle commands for the ad-hoc analysis workspace:
+
+| Command | Effect | What is preserved |
+|---|---|---|
+| **New analysis** | Stops any running analysis, replaces the shared working draft with an empty versioned state, clears the requirement text and every derived view, and focuses the text area. A confirmation is shown when the draft contains work. | Saved projects, requirement versions, and confirmed relations |
+| **Cancel running analysis** | Stops the current streaming request, Copilot sequence, or derived analysis request. | The requirement text and all results already received |
+| **Save draft now** | Saves the current text, scores, options, and derived working state immediately instead of waiting for autosave. | The complete current working draft |
+
+The same **Cancel** command is available directly next to **Analyze with AI** and **Copilot** while work is running. Cancelling is different from starting over: cancellation preserves the current text and partial results, whereas **New analysis** deliberately clears the working draft.
+
+A working draft is shared by the same user and workspace across browser tabs or devices. **New analysis** therefore creates an explicit empty revision rather than merely deleting local browser state. This makes the command repeatable and prevents an older tab from silently restoring discarded requirement text. A stale tab may still show a conflict when it tries to save old content; reload the current draft or use **File → New analysis** to establish a new empty state deliberately.
 
 The fully expanded tree shows scores at every level, making it easy to identify which branches are most relevant:
 
