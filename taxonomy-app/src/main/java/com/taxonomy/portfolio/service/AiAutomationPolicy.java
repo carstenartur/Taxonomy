@@ -1,8 +1,9 @@
 package com.taxonomy.portfolio.service;
 
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
+import com.taxonomy.analysis.service.AiTargetCatalogService;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
-import com.taxonomy.portfolio.dto.AiTargetDtos.AiTargetDescriptor;
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
 import com.taxonomy.portfolio.model.AiCostPolicy;
@@ -104,8 +105,12 @@ public class AiAutomationPolicy {
         int passes = effective.verificationPasses() != null
                 ? boundedPasses(effective.verificationPasses(), "verificationPasses")
                 : defaultPasses(profile, copilotPasses);
-        AiTargetDescriptor target = targetCatalog.resolve(
-                effective.targetId(), effective.provider());
+        AiTargetDescriptor target;
+        try {
+            target = targetCatalog.resolve(effective.targetId(), effective.provider());
+        } catch (IllegalArgumentException exception) {
+            throw PortfolioException.validation(exception.getMessage());
+        }
         requireTargetReady(target);
         int nodes = effective.maxArchitectureNodes() != null
                 ? positive(effective.maxArchitectureNodes(), "maxArchitectureNodes")
