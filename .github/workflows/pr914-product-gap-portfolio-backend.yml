@@ -1,0 +1,768 @@
+name: Implement product coverage gap portfolio backend
+
+on:
+  push:
+    branches:
+      - feat/product-coverage-gap-portfolio
+    paths:
+      - .github/workflows/pr914-product-gap-portfolio-backend.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/product-coverage-gap-portfolio
+          fetch-depth: 0
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Implement structured portfolio aggregation and review provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          function replaceOnce(text, before, after, label) {
+            const first = text.indexOf(before);
+            const last = text.lastIndexOf(before);
+            if (first < 0 || first !== last) {
+              throw new Error(`${label}: expected exactly one match, found ${first < 0 ? 0 : 2}`);
+            }
+            return text.slice(0, first) + after + text.slice(first + before.length);
+          }
+
+          function write(path, text) {
+            fs.writeFileSync(path, text);
+          }
+
+          const gapPath = 'taxonomy-domain/src/main/java/com/taxonomy/dto/ProductCoverageGap.java';
+          write(gapPath, `package com.taxonomy.dto;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Signals that a relevant product family was evaluated but none of its catalogued products
+ * reached the configured suitability threshold.
+ *
+ * <p>The candidate list, threshold and final evaluated scores are immutable snapshot evidence.
+ * A score of zero means that the product was processed and did not reach the threshold; it must
+ * never be used for a failed or unprocessed product batch.</p>
+ */
+public record ProductCoverageGap(
+        String productFamilyCode,
+        String productFamilyName,
+        int familyScore,
+        List<String> candidateCodes,
+        int suitabilityThreshold,
+        Map<String, Integer> evaluatedProductScores,
+        String reason) {
+
+    public ProductCoverageGap {
+        candidateCodes = candidateCodes == null ? List.of() : List.copyOf(candidateCodes);
+        Map<String, Integer> immutableScores = new LinkedHashMap<>();
+        if (evaluatedProductScores != null) {
+            evaluatedProductScores.forEach((code, score) -> {
+                if (code != null && !code.isBlank() && score != null) {
+                    immutableScores.put(code.strip(), score);
+                }
+            });
+        }
+        for (String candidateCode : candidateCodes) {
+            if (candidateCode != null && !candidateCode.isBlank()) {
+                immutableScores.putIfAbsent(candidateCode.strip(), 0);
+            }
+        }
+        evaluatedProductScores = Map.copyOf(immutableScores);
+    }
+
+    /** Backward-compatible constructor for historical snapshots created before score evidence. */
+    public ProductCoverageGap(
+            String productFamilyCode,
+            String productFamilyName,
+            int familyScore,
+            List<String> candidateCodes,
+            String reason) {
+        this(productFamilyCode, productFamilyName, familyScore, candidateCodes,
+                0, Map.of(), reason);
+    }
+}
+`);
+
+          const llmPath = 'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java';
+          let llm = fs.readFileSync(llmPath, 'utf8');
+          llm = replaceOnce(llm,
+`        List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
+        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
+                && productNodes.stream().noneMatch(
+                        node -> scores.getOrDefault(node.getCode(), 0) > 0)) {
+            addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
+        }`,
+`        List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
+        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
+                && productNodes.stream().noneMatch(
+                        node -> scores.getOrDefault(node.getCode(), 0) > 0)) {
+            addProductCoverageGap(
+                    productCoverageGaps, productNodes, scores, parentScore);
+        }`,
+          'non-stream product gap evidence');
+          llm = replaceOnce(llm,
+`        List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
+        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
+                && productNodes.stream().noneMatch(
+                        node -> detail.getScores().getOrDefault(node.getCode(), 0) > 0)) {
+            addProductCoverageGap(productCoverageGaps, productNodes, parentScore);
+        }`,
+`        List<TaxonomyNode> productNodes = nodes.stream().filter(this::isProduct).toList();
+        if (!productNodes.isEmpty() && batch.productEvaluationComplete()
+                && productNodes.stream().noneMatch(
+                        node -> detail.getScores().getOrDefault(node.getCode(), 0) > 0)) {
+            addProductCoverageGap(
+                    productCoverageGaps, productNodes, detail.getScores(), parentScore);
+        }`,
+          'stream product gap evidence');
+          llm = replaceOnce(llm,
+`    private void addProductCoverageGap(List<ProductCoverageGap> gaps,
+                                       List<TaxonomyNode> products,
+                                       int familyScore) {
+        String parentCode = products.get(0).getParentCode();
+        if (gaps.stream().anyMatch(gap -> Objects.equals(gap.productFamilyCode(), parentCode))) {
+            return;
+        }
+        TaxonomyNode parent = taxonomyService.getNodeByCode(parentCode);
+        String parentName = parent != null ? parent.getName() : parentCode;
+        List<String> candidateCodes = products.stream()
+                .map(TaxonomyNode::getCode)
+                .sorted()
+                .toList();
+        gaps.add(new ProductCoverageGap(
+                parentCode,
+                parentName,
+                familyScore,
+                candidateCodes,
+                "The product family is relevant, but none of its " + candidateCodes.size()
+                        + " catalogued products reached the suitability threshold of "
+                        + minimumProductScore() + "."));
+    }`,
+`    private void addProductCoverageGap(List<ProductCoverageGap> gaps,
+                                       List<TaxonomyNode> products,
+                                       Map<String, Integer> evaluatedScores,
+                                       int familyScore) {
+        String parentCode = products.get(0).getParentCode();
+        if (gaps.stream().anyMatch(gap -> Objects.equals(gap.productFamilyCode(), parentCode))) {
+            return;
+        }
+        TaxonomyNode parent = taxonomyService.getNodeByCode(parentCode);
+        String parentName = parent != null ? parent.getName() : parentCode;
+        List<String> candidateCodes = products.stream()
+                .map(TaxonomyNode::getCode)
+                .sorted()
+                .toList();
+        Map<String, Integer> productScores = new LinkedHashMap<>();
+        for (String candidateCode : candidateCodes) {
+            productScores.put(candidateCode,
+                    evaluatedScores == null ? 0 : evaluatedScores.getOrDefault(candidateCode, 0));
+        }
+        int threshold = minimumProductScore();
+        gaps.add(new ProductCoverageGap(
+                parentCode,
+                parentName,
+                familyScore,
+                candidateCodes,
+                threshold,
+                productScores,
+                "The product family is relevant, but none of its " + candidateCodes.size()
+                        + " catalogued products reached the suitability threshold of "
+                        + threshold + "."));
+    }`,
+          'structured product gap creation');
+          write(llmPath, llm);
+
+          const decisionPath = 'taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportService.java';
+          let decision = fs.readFileSync(decisionPath, 'utf8');
+          decision = replaceOnce(decision,
+`  if (candidateCodes.stream().anyMatch(code ->
+          !scores.containsKey(code) || scores.get(code) != 0)) {
+      throw new IllegalArgumentException(
+              "Product coverage gap candidates must be explicitly evaluated at 0 for "
+                      + familyCode);
+  }
+
+  ProductCoverageGap normalizedGap = new ProductCoverageGap(
+          familyCode,
+          firstNonBlank(gap.productFamilyName(), family.getName(), familyCode),
+          gap.familyScore(),
+          candidateCodes,
+          gap.reason().strip());`,
+`  if (candidateCodes.stream().anyMatch(code ->
+          !scores.containsKey(code) || scores.get(code) != 0)) {
+      throw new IllegalArgumentException(
+              "Product coverage gap candidates must be explicitly evaluated at 0 for "
+                      + familyCode);
+  }
+  if (gap.suitabilityThreshold() < 0 || gap.suitabilityThreshold() > 100) {
+      throw new IllegalArgumentException(
+              "Product coverage gap suitability threshold must be between 0 and 100 for "
+                      + familyCode);
+  }
+  Map<String, Integer> evaluatedProductScores = new LinkedHashMap<>();
+  for (String candidateCode : candidateCodes) {
+      Integer evaluatedScore = gap.evaluatedProductScores().get(candidateCode);
+      if (evaluatedScore == null || evaluatedScore != scores.get(candidateCode)) {
+          throw new IllegalArgumentException(
+                  "Product coverage gap score evidence does not match analysis score for "
+                          + candidateCode);
+      }
+      evaluatedProductScores.put(candidateCode, evaluatedScore);
+  }
+
+  ProductCoverageGap normalizedGap = new ProductCoverageGap(
+          familyCode,
+          firstNonBlank(gap.productFamilyName(), family.getName(), familyCode),
+          gap.familyScore(),
+          candidateCodes,
+          gap.suitabilityThreshold(),
+          evaluatedProductScores,
+          gap.reason().strip());`,
+          'decision report product gap validation');
+          decision = replaceOnce(decision,
+`        for (ProductCoverageGap gap : productCoverageGaps) {
+  String candidates = String.join(", ", gap.candidateCodes());
+  warnings.add(german
+          ? "Produktabdeckungslücke für " + gap.productFamilyCode() + " ("
+              + gap.productFamilyName() + ", " + gap.familyScore()
+              + " %): Keines der " + gap.candidateCodes().size()
+              + " vollständig bewerteten Katalogprodukte erreichte den Eignungsschwellenwert. Kandidaten: "
+              + candidates + "."
+          : "Product coverage gap for " + gap.productFamilyCode() + " ("
+              + gap.productFamilyName() + ", " + gap.familyScore()
+              + "%): None of the " + gap.candidateCodes().size()
+              + " fully evaluated catalogue products reached the suitability threshold. Candidates: "
+              + candidates + ".");
+        }`,
+`        for (ProductCoverageGap gap : productCoverageGaps) {
+  String candidates = gap.candidateCodes().stream()
+          .map(code -> code + "=" + gap.evaluatedProductScores().getOrDefault(code, 0) + "%")
+          .collect(Collectors.joining(", "));
+  warnings.add(german
+          ? "Produktabdeckungslücke für " + gap.productFamilyCode() + " ("
+              + gap.productFamilyName() + ", " + gap.familyScore()
+              + " %): Keines der " + gap.candidateCodes().size()
+              + " vollständig bewerteten Katalogprodukte erreichte den Eignungsschwellenwert von "
+              + gap.suitabilityThreshold() + " %. Kandidaten: " + candidates + "."
+          : "Product coverage gap for " + gap.productFamilyCode() + " ("
+              + gap.productFamilyName() + ", " + gap.familyScore()
+              + "%): None of the " + gap.candidateCodes().size()
+              + " fully evaluated catalogue products reached the suitability threshold of "
+              + gap.suitabilityThreshold() + "%. Candidates: " + candidates + ".");
+        }`,
+          'decision report gap warning evidence');
+          decision = replaceOnce(decision,
+`            for (ProductCoverageGap gap : productCoverageGaps) {
+                updateDigest(digest, "product-gap:" + gap.productFamilyCode(),
+                        gap.familyScore() + "|" + String.join(",", gap.candidateCodes())
+                                + "|" + gap.reason());
+            }`,
+`            for (ProductCoverageGap gap : productCoverageGaps) {
+                updateDigest(digest, "product-gap:" + gap.productFamilyCode(),
+                        gap.familyScore() + "|" + gap.suitabilityThreshold()
+                                + "|" + String.join(",", gap.candidateCodes())
+                                + "|" + gap.evaluatedProductScores()
+                                + "|" + gap.reason());
+            }`,
+          'decision report gap fingerprint');
+          write(decisionPath, decision);
+
+          const dtoPath = 'taxonomy-app/src/main/java/com/taxonomy/portfolio/dto/PortfolioDtos.java';
+          let dto = fs.readFileSync(dtoPath, 'utf8');
+          dto = replaceOnce(dto,
+`    public record AggregatedTaxonomyNode(
+            String nodeCode,
+            String title,
+            String taxonomyRoot,
+            int requirementCount,
+            double averageRelevance,
+            int maximumDirectScore,
+            List<String> requirementKeys,
+            List<String> snapshotIds,
+            Map<ActionStatus, Integer> actionStatusCounts) {
+    }
+
+    public record ConflictView(`,
+`    public record AggregatedTaxonomyNode(
+            String nodeCode,
+            String title,
+            String taxonomyRoot,
+            int requirementCount,
+            double averageRelevance,
+            int maximumDirectScore,
+            List<String> requirementKeys,
+            List<String> snapshotIds,
+            Map<ActionStatus, Integer> actionStatusCounts) {
+    }
+
+    public record ProductCoverageGapOccurrenceView(
+            Long requirementId,
+            String requirementKey,
+            String snapshotId,
+            AnalysisStatus analysisStatus,
+            String taxonomyFingerprint,
+            String promptFingerprint,
+            String branchName,
+            String commitSha,
+            Long mappingId,
+            String productFamilyCode,
+            String productFamilyName,
+            int familyScore,
+            int suitabilityThreshold,
+            Map<String, Integer> evaluatedProductScores,
+            String reason,
+            ReviewStatus reviewStatus,
+            ActionStatus actionStatus,
+            String actionEvidence,
+            String decisionBy,
+            Instant decisionAt,
+            String decisionComment) {
+    }
+
+    public record AggregatedProductCoverageGapView(
+            String productFamilyCode,
+            String productFamilyName,
+            int requirementCount,
+            int maximumFamilyScore,
+            List<Integer> suitabilityThresholds,
+            List<String> candidateCodes,
+            List<String> requirementKeys,
+            List<String> snapshotIds,
+            int unresolvedDecisionCount,
+            Map<ActionStatus, Integer> actionStatusCounts,
+            List<ProductCoverageGapOccurrenceView> occurrences) {
+    }
+
+    public record ConflictView(`,
+          'portfolio product gap DTOs');
+          dto = replaceOnce(dto,
+`    public record ProjectPortfolioView(
+            ProjectView project,
+            PortfolioMetrics metrics,
+            List<RequirementView> requirements,
+            List<AggregatedTaxonomyNode> taxonomyNodes,
+            List<ProjectSolutionView> solutions,
+            List<ConflictView> conflicts,
+            MatrixView requirementTaxonomyMatrix,
+            MatrixView requirementSolutionMatrix,
+            MatrixView solutionProductMatrix) {
+    }`,
+`    public record ProjectPortfolioView(
+            ProjectView project,
+            PortfolioMetrics metrics,
+            List<RequirementView> requirements,
+            List<AggregatedTaxonomyNode> taxonomyNodes,
+            List<AggregatedProductCoverageGapView> productCoverageGaps,
+            List<ProjectSolutionView> solutions,
+            List<ConflictView> conflicts,
+            MatrixView requirementTaxonomyMatrix,
+            MatrixView requirementSolutionMatrix,
+            MatrixView solutionProductMatrix) {
+    }`,
+          'project portfolio gap field');
+          write(dtoPath, dto);
+
+          const aggregationPath = 'taxonomy-app/src/main/java/com/taxonomy/portfolio/service/PortfolioAggregationService.java';
+          let aggregation = fs.readFileSync(aggregationPath, 'utf8');
+          aggregation = replaceOnce(aggregation,
+`import com.taxonomy.portfolio.dto.PortfolioDtos.AggregatedTaxonomyNode;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictView;`,
+`import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AggregatedProductCoverageGapView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AggregatedTaxonomyNode;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictView;`,
+          'aggregation imports 1');
+          aggregation = replaceOnce(aggregation,
+`import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectPortfolioView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectSolutionView;`,
+`import com.taxonomy.portfolio.dto.PortfolioDtos.ProductCoverageGapOccurrenceView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectPortfolioView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectSolutionView;`,
+          'aggregation imports 2');
+          aggregation = replaceOnce(aggregation,
+`    private final RequirementAnalysisSnapshotRepository snapshotRepository;
+    private final int staleAfterDays;`,
+`    private final RequirementAnalysisSnapshotRepository snapshotRepository;
+    private final PortfolioJsonCodec jsonCodec;
+    private final int staleAfterDays;`,
+          'aggregation codec field');
+          aggregation = replaceOnce(aggregation,
+`                                       SolutionProductCandidateRepository productCandidateRepository,
+                                       RequirementAnalysisSnapshotRepository snapshotRepository,
+                                       @Value("\${taxonomy.portfolio.snapshot-stale-after-days:30}")
+                                       int staleAfterDays) {`,
+`                                       SolutionProductCandidateRepository productCandidateRepository,
+                                       RequirementAnalysisSnapshotRepository snapshotRepository,
+                                       PortfolioJsonCodec jsonCodec,
+                                       @Value("\${taxonomy.portfolio.snapshot-stale-after-days:30}")
+                                       int staleAfterDays) {`,
+          'aggregation constructor signature');
+          aggregation = replaceOnce(aggregation,
+`        this.productCandidateRepository = productCandidateRepository;
+        this.snapshotRepository = snapshotRepository;
+        this.staleAfterDays = Math.max(1, staleAfterDays);`,
+`        this.productCandidateRepository = productCandidateRepository;
+        this.snapshotRepository = snapshotRepository;
+        this.jsonCodec = jsonCodec;
+        this.staleAfterDays = Math.max(1, staleAfterDays);`,
+          'aggregation constructor body');
+          aggregation = replaceOnce(aggregation,
+`        ProjectView project = projectService.getProject(projectId, username, context);
+        List<RequirementView> requirements = projectService.listRequirements(projectId, username, context);
+        List<RequirementElementMapping> mappings = elementRepository.findCurrentMappingsForProject(projectId);`,
+`        String scopeKey = PortfolioScope.key(username, context);
+        ProjectView project = projectService.getProject(projectId, username, context);
+        List<RequirementView> requirements = projectService.listRequirements(projectId, username, context);
+        List<RequirementElementMapping> mappings = elementRepository
+                .findCurrentMappingsForProject(projectId, scopeKey);`,
+          'aggregation exact tenant mappings');
+          aggregation = replaceOnce(aggregation,
+`        List<AggregatedTaxonomyNode> taxonomyNodes = aggregateTaxonomy(mappings);
+        MatrixView requirementTaxonomy = requirementTaxonomyMatrix(requirements, mappings);`,
+`        List<AggregatedTaxonomyNode> taxonomyNodes = aggregateTaxonomy(mappings);
+        List<AggregatedProductCoverageGapView> productCoverageGaps =
+                aggregateProductCoverageGaps(projectId, requirements, mappings, scopeKey);
+        MatrixView requirementTaxonomy = requirementTaxonomyMatrix(requirements, mappings);`,
+          'aggregate product gaps');
+          aggregation = replaceOnce(aggregation,
+`        PortfolioMetrics metrics = metrics(
+                requirements, solutions, conflicts, solutionLinks, productCandidates);`,
+`        PortfolioMetrics metrics = metrics(
+                projectId, scopeKey, requirements, solutions, conflicts,
+                solutionLinks, productCandidates);`,
+          'scoped metrics');
+          aggregation = replaceOnce(aggregation,
+`                requirements,
+                taxonomyNodes,
+                solutions,`,
+`                requirements,
+                taxonomyNodes,
+                productCoverageGaps,
+                solutions,`,
+          'portfolio gap output');
+
+          const gapAggregationMethods = `
+    private List<AggregatedProductCoverageGapView> aggregateProductCoverageGaps(
+            Long projectId,
+            List<RequirementView> requirements,
+            List<RequirementElementMapping> mappings,
+            String scopeKey) {
+        Map<GapMappingKey, RequirementElementMapping> mappingIndex = new LinkedHashMap<>();
+        for (RequirementElementMapping mapping : mappings) {
+            mappingIndex.putIfAbsent(
+                    new GapMappingKey(mapping.getSnapshotId(), mapping.getNodeCode()), mapping);
+        }
+
+        Map<String, ProductGapAccumulator> byFamily = new LinkedHashMap<>();
+        for (RequirementView requirement : requirements) {
+            String snapshotId = requirement.currentAnalysisSnapshotId();
+            if (snapshotId == null || snapshotId.isBlank()) {
+                continue;
+            }
+            RequirementAnalysisSnapshot snapshot = snapshotRepository
+                    .findByIdAndProjectIdAndScopeKey(snapshotId, projectId, scopeKey)
+                    .orElse(null);
+            if (snapshot == null) {
+                continue;
+            }
+            AnalysisResult analysis = jsonCodec.read(snapshot.getAnalysisPayload(), AnalysisResult.class);
+            if (analysis == null || analysis.getProductCoverageGaps() == null
+                    || analysis.getProductCoverageGaps().isEmpty()) {
+                continue;
+            }
+            Map<String, Integer> analysisScores = analysis.getScores() == null
+                    ? Map.of() : analysis.getScores();
+            for (ProductCoverageGap gap : analysis.getProductCoverageGaps()) {
+                if (gap == null || gap.productFamilyCode() == null
+                        || gap.productFamilyCode().isBlank()) {
+                    continue;
+                }
+                String familyCode = gap.productFamilyCode().strip();
+                RequirementElementMapping mapping = mappingIndex.get(
+                        new GapMappingKey(snapshotId, familyCode));
+                Map<String, Integer> evaluatedProductScores = new LinkedHashMap<>();
+                for (String candidateCode : gap.candidateCodes()) {
+                    if (candidateCode == null || candidateCode.isBlank()) {
+                        continue;
+                    }
+                    String normalizedCode = candidateCode.strip();
+                    evaluatedProductScores.put(normalizedCode,
+                            gap.evaluatedProductScores().getOrDefault(
+                                    normalizedCode,
+                                    analysisScores.getOrDefault(normalizedCode, 0)));
+                }
+                ActionStatus actionStatus = mapping == null || mapping.getActionStatus() == null
+                        ? ActionStatus.UNDECIDED : mapping.getActionStatus();
+                ReviewStatus reviewStatus = mapping == null || mapping.getReviewStatus() == null
+                        ? ReviewStatus.PROPOSED : mapping.getReviewStatus();
+                ProductCoverageGapOccurrenceView occurrence =
+                        new ProductCoverageGapOccurrenceView(
+                                requirement.id(),
+                                requirement.requirementKey(),
+                                snapshotId,
+                                snapshot.getStatus(),
+                                snapshot.getTaxonomyFingerprint(),
+                                snapshot.getPromptFingerprint(),
+                                snapshot.getBranchName(),
+                                snapshot.getCommitSha(),
+                                mapping != null ? mapping.getId() : null,
+                                familyCode,
+                                gap.productFamilyName(),
+                                gap.familyScore(),
+                                gap.suitabilityThreshold(),
+                                Map.copyOf(evaluatedProductScores),
+                                gap.reason(),
+                                reviewStatus,
+                                actionStatus,
+                                mapping != null ? mapping.getActionEvidence() : null,
+                                mapping != null ? mapping.getDecisionBy() : null,
+                                mapping != null ? mapping.getDecisionAt() : null,
+                                mapping != null ? mapping.getDecisionComment() : null);
+                byFamily.computeIfAbsent(
+                        familyCode,
+                        ignored -> new ProductGapAccumulator(
+                                familyCode, gap.productFamilyName()))
+                        .add(occurrence);
+            }
+        }
+        return byFamily.values().stream()
+                .map(ProductGapAccumulator::toView)
+                .sorted(Comparator.comparing(
+                        AggregatedProductCoverageGapView::productFamilyCode))
+                .toList();
+    }
+
+    private record GapMappingKey(String snapshotId, String nodeCode) {
+    }
+
+    private static final class ProductGapAccumulator {
+        private final String productFamilyCode;
+        private String productFamilyName;
+        private int maximumFamilyScore;
+        private final Set<Integer> suitabilityThresholds = new TreeSet<>();
+        private final Set<String> candidateCodes = new TreeSet<>();
+        private final Set<String> requirementKeys = new TreeSet<>();
+        private final Set<String> snapshotIds = new TreeSet<>();
+        private final Map<ActionStatus, Integer> actionStatusCounts =
+                new EnumMap<>(ActionStatus.class);
+        private final List<ProductCoverageGapOccurrenceView> occurrences = new ArrayList<>();
+
+        private ProductGapAccumulator(String productFamilyCode, String productFamilyName) {
+            this.productFamilyCode = productFamilyCode;
+            this.productFamilyName = productFamilyName;
+        }
+
+        private void add(ProductCoverageGapOccurrenceView occurrence) {
+            if ((productFamilyName == null || productFamilyName.isBlank())
+                    && occurrence.productFamilyName() != null
+                    && !occurrence.productFamilyName().isBlank()) {
+                productFamilyName = occurrence.productFamilyName();
+            }
+            maximumFamilyScore = Math.max(maximumFamilyScore, occurrence.familyScore());
+            suitabilityThresholds.add(occurrence.suitabilityThreshold());
+            candidateCodes.addAll(occurrence.evaluatedProductScores().keySet());
+            requirementKeys.add(occurrence.requirementKey());
+            snapshotIds.add(occurrence.snapshotId());
+            actionStatusCounts.merge(occurrence.actionStatus(), 1, Integer::sum);
+            occurrences.add(occurrence);
+        }
+
+        private AggregatedProductCoverageGapView toView() {
+            List<ProductCoverageGapOccurrenceView> orderedOccurrences = occurrences.stream()
+                    .sorted(Comparator
+                            .comparing(ProductCoverageGapOccurrenceView::requirementKey)
+                            .thenComparing(ProductCoverageGapOccurrenceView::snapshotId))
+                    .toList();
+            int unresolved = (int) orderedOccurrences.stream()
+                    .filter(occurrence -> occurrence.mappingId() == null
+                            || occurrence.actionStatus() == ActionStatus.UNDECIDED)
+                    .count();
+            return new AggregatedProductCoverageGapView(
+                    productFamilyCode,
+                    productFamilyName,
+                    requirementKeys.size(),
+                    maximumFamilyScore,
+                    List.copyOf(suitabilityThresholds),
+                    List.copyOf(candidateCodes),
+                    List.copyOf(requirementKeys),
+                    List.copyOf(snapshotIds),
+                    unresolved,
+                    Map.copyOf(actionStatusCounts),
+                    orderedOccurrences);
+        }
+    }
+
+`;
+          aggregation = replaceOnce(aggregation,
+`    private PortfolioMetrics metrics(List<RequirementView> requirements,`,
+          gapAggregationMethods + `    private PortfolioMetrics metrics(
+                                     Long projectId,
+                                     String scopeKey,
+                                     List<RequirementView> requirements,`,
+          'product gap aggregation methods');
+          aggregation = replaceOnce(aggregation,
+`        int staleSnapshots = countStaleSnapshots(requirements);`,
+`        int staleSnapshots = countStaleSnapshots(requirements, projectId, scopeKey);`,
+          'scoped stale snapshot count');
+          aggregation = replaceOnce(aggregation,
+`    private int countStaleSnapshots(List<RequirementView> requirements) {`,
+`    private int countStaleSnapshots(List<RequirementView> requirements,
+                                    Long projectId,
+                                    String scopeKey) {`,
+          'scoped stale signature');
+          aggregation = replaceOnce(aggregation,
+`            RequirementAnalysisSnapshot snapshot = snapshotRepository
+                    .findById(requirement.currentAnalysisSnapshotId()).orElse(null);`,
+`            RequirementAnalysisSnapshot snapshot = snapshotRepository
+                    .findByIdAndProjectIdAndScopeKey(
+                            requirement.currentAnalysisSnapshotId(), projectId, scopeKey)
+                    .orElse(null);`,
+          'scoped stale lookup');
+          write(aggregationPath, aggregation);
+
+          const testPath = 'taxonomy-app/src/test/java/com/taxonomy/portfolio/SolutionProductPortfolioIntegrationTest.java';
+          let test = fs.readFileSync(testPath, 'utf8');
+          test = replaceOnce(test,
+`import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.dto.RequirementArchitectureView;`,
+`import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.RequirementArchitectureView;`,
+          'test product gap import');
+          test = replaceOnce(test,
+`import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewConflictRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectSolutionRequest;`,
+`import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewConflictRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ReviewElementMappingRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectSolutionRequest;`,
+          'test review request import');
+          test = replaceOnce(test,
+`import com.taxonomy.portfolio.service.PortfolioAggregationService;
+import com.taxonomy.portfolio.service.PortfolioFingerprintService;`,
+`import com.taxonomy.portfolio.service.PortfolioAggregationService;
+import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
+import com.taxonomy.portfolio.service.PortfolioFingerprintService;`,
+          'test persistence service import');
+          test = replaceOnce(test,
+`    @Autowired private PortfolioAggregationService aggregationService;
+
+    @MockitoBean private AnalyzeRequirementUseCase analyzeRequirementUseCase;`,
+`    @Autowired private PortfolioAggregationService aggregationService;
+    @Autowired private PortfolioAnalysisPersistenceService persistenceService;
+
+    @MockitoBean private AnalyzeRequirementUseCase analyzeRequirementUseCase;`,
+          'test persistence service field');
+          test = replaceOnce(test,
+`        assertThat(portfolio.taxonomyNodes()).singleElement()
+                .satisfies(node -> {
+                    assertThat(node.nodeCode()).isEqualTo("CP");
+                    assertThat(node.requirementCount()).isEqualTo(2);
+                    assertThat(node.requirementKeys()).containsExactly("REQ-001", "REQ-002");
+                });
+        assertThat(portfolio.requirementTaxonomyMatrix().values().get("REQ-001"))`,
+`        assertThat(portfolio.taxonomyNodes()).singleElement()
+                .satisfies(node -> {
+                    assertThat(node.nodeCode()).isEqualTo("CP");
+                    assertThat(node.requirementCount()).isEqualTo(2);
+                    assertThat(node.requirementKeys()).containsExactly("REQ-001", "REQ-002");
+                });
+        assertThat(portfolio.productCoverageGaps()).singleElement()
+                .satisfies(gap -> {
+                    assertThat(gap.productFamilyCode()).isEqualTo("CP");
+                    assertThat(gap.requirementCount()).isEqualTo(2);
+                    assertThat(gap.requirementKeys()).containsExactly("REQ-001", "REQ-002");
+                    assertThat(gap.candidateCodes())
+                            .containsExactly("CP-PRODUCT-A", "CP-PRODUCT-B");
+                    assertThat(gap.suitabilityThresholds()).containsExactly(50);
+                    assertThat(gap.unresolvedDecisionCount()).isEqualTo(2);
+                    assertThat(gap.occurrences())
+                            .allSatisfy(occurrence -> {
+                                assertThat(occurrence.mappingId()).isNotNull();
+                                assertThat(occurrence.taxonomyFingerprint())
+                                        .isEqualTo("taxonomy-v1");
+                                assertThat(occurrence.evaluatedProductScores())
+                                        .containsEntry("CP-PRODUCT-A", 0)
+                                        .containsEntry("CP-PRODUCT-B", 0);
+                            });
+                });
+        for (var occurrence : portfolio.productCoverageGaps().get(0).occurrences()) {
+            persistenceService.reviewElementMapping(
+                    project.id(),
+                    occurrence.mappingId(),
+                    new ReviewElementMappingRequest(
+                            ReviewStatus.CONFIRMED,
+                            ActionStatus.PROCURE,
+                            "No suitable catalogue product met the recorded threshold.",
+                            "Procurement investigation required"),
+                    context.username(),
+                    context);
+        }
+        var decidedPortfolio = aggregationService.build(
+                project.id(), context.username(), context);
+        assertThat(decidedPortfolio.productCoverageGaps()).singleElement()
+                .satisfies(gap -> {
+                    assertThat(gap.unresolvedDecisionCount()).isZero();
+                    assertThat(gap.actionStatusCounts())
+                            .containsEntry(ActionStatus.PROCURE, 2);
+                    assertThat(gap.occurrences())
+                            .allSatisfy(occurrence -> {
+                                assertThat(occurrence.reviewStatus())
+                                        .isEqualTo(ReviewStatus.CONFIRMED);
+                                assertThat(occurrence.actionStatus())
+                                        .isEqualTo(ActionStatus.PROCURE);
+                            });
+                });
+        assertThat(portfolio.requirementTaxonomyMatrix().values().get("REQ-001"))`,
+          'test portfolio product gap assertions');
+          test = replaceOnce(test,
+`        AnalysisResult result = new AnalysisResult(Map.of("CP", 80), List.of());
+        result.setStatus("SUCCESS");
+        result.setArchitectureView(architecture);`,
+`        AnalysisResult result = new AnalysisResult(
+                Map.of("CP", 80, "CP-PRODUCT-A", 0, "CP-PRODUCT-B", 0),
+                List.of());
+        result.setStatus("SUCCESS");
+        result.setProductCoverageGaps(List.of(new ProductCoverageGap(
+                "CP",
+                "Capabilities",
+                80,
+                List.of("CP-PRODUCT-A", "CP-PRODUCT-B"),
+                50,
+                Map.of("CP-PRODUCT-A", 0, "CP-PRODUCT-B", 0),
+                "No catalogued product met the suitability threshold.")));
+        result.setArchitectureView(architecture);`,
+          'test product gap snapshot');
+          write(testPath, test);
+          NODE
+
+          git rm .github/workflows/pr914-product-gap-portfolio-backend.yml
+          git diff --check
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -DskipITs \
+            -Dtest=SolutionProductPortfolioIntegrationTest,DecisionRationaleReportTests,DecisionRationaleSnapshotReportTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            test
+
+          git add -A
+          git commit -m 'feat: aggregate actionable product coverage gaps'
+          git push origin HEAD:feat/product-coverage-gap-portfolio
