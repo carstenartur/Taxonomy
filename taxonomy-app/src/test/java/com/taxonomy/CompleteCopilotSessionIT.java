@@ -11,6 +11,7 @@ import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.support.ui.ExpectedCondition;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -22,7 +23,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -126,8 +126,7 @@ class CompleteCopilotSessionIT {
                     .getAttribute("data-operation-status");
             return "SUCCESS".equals(status) || "PARTIAL".equals(status);
         });
-        wait.until(browser -> new java.net.URI(browser.getCurrentUrl()).getQuery() != null
-                && new java.net.URI(browser.getCurrentUrl()).getQuery().contains("snapshot="));
+        wait.until(browser -> browser.getCurrentUrl().contains("snapshot="));
 
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotDetail")));
         wait.until(browser -> browser.findElements(
@@ -521,14 +520,13 @@ class CompleteCopilotSessionIT {
         element.sendKeys(value);
     }
 
-    private static ExpectedConditions.AttributeToBe attributeEquals(By locator,
-                                                                     String attribute,
-                                                                     String value) {
-        return new ExpectedConditions.AttributeToBe(locator, attribute, value);
+    private static ExpectedCondition<Boolean> attributeEquals(By locator,
+                                                               String attribute,
+                                                               String value) {
+        return ExpectedConditions.attributeToBe(locator, attribute, value);
     }
 
-    private static org.openqa.selenium.support.ui.ExpectedCondition<Boolean> textPresent(
-            By locator, String expectedText) {
+    private static ExpectedCondition<Boolean> textPresent(By locator, String expectedText) {
         return browser -> {
             List<WebElement> elements = browser.findElements(locator);
             return !elements.isEmpty()
