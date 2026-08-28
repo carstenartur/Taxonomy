@@ -139,6 +139,7 @@
         S.evaluatedNodes = new Set();
         S.lastAnalyzedText = null;
         S.pendingProposalNodeCode = null;
+        if (options.keepText === false) S.currentView = 'list';
         window._taxonomyCurrentScores = null;
         window._currentProvisionalRelations = [];
 
@@ -155,14 +156,15 @@
         document.dispatchEvent(new CustomEvent('taxonomy:analysis-invalidated', {
             detail: {
                 reason: options.reason || 'user',
-                keptRequirementText: options.keepText !== false
+                keptRequirementText: options.keepText !== false,
+                skipSave: options.skipSave === true
             }
         }));
 
         if (!options.silent) {
             showActionAlert('info', text('discarded'), '', [], 'discarded');
         }
-        queueSave(0);
+        if (!options.skipSave) queueSave(0);
     }
 
     function discardTextChange() {
@@ -189,10 +191,47 @@
     }
 
     function analysisRunning() {
-        var button = document.getElementById('analyzeBtn');
-        var spinner = document.getElementById('analyzeSpinner');
-        return Boolean(button && button.disabled && spinner
-            && !spinner.classList.contains('d-none'));
+        function spinnerActive(id) {
+            var spinner = document.getElementById(id);
+            return Boolean(spinner && !spinner.classList.contains('d-none'));
+        }
+        return spinnerActive('analyzeSpinner')
+            || spinnerActive('copilotSpinner')
+            || Boolean(runtime.activeAnalysisControllers
+                && runtime.activeAnalysisControllers.size > 0)
+            || Boolean(runtime.copilotIntervals && runtime.copilotIntervals.size > 0);
+    }
+
+    function updateAnalysisLifecycleControls() {
+        var running = analysisRunning();
+        ['cancelAnalysisBtn', 'fileCancelAnalysisAction'].forEach(function (id) {
+            var control = document.getElementById(id);
+            if (!control) return;
+            control.disabled = !running;
+            if (running) control.removeAttribute('aria-disabled');
+            else control.setAttribute('aria-disabled', 'true');
+        });
+    }
+
+    function cancelCurrentAnalysis() {
+        if (!analysisRunning()) {
+            showActionAlert('info', text('noAnalysisRunning'), '', [], 'analysis-idle');
+            updateAnalysisLifecycleControls();
+            return false;
+        }
+        if (window.TaxonomyScoring
+                && typeof window.TaxonomyScoring.cancelStreamingAnalysis === 'function') {
+            window.TaxonomyScoring.cancelStreamingAnalysis();
+        }
+        if (typeof C.cancelDerivedRequests === 'function') {
+            C.cancelDerivedRequests('user-cancelled');
+        }
+        showActionAlert('warning', text('analysisCancelledTitle'),
+            text('analysisCancelledBody'), [], 'analysis-cancelled');
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-cancelled'));
+        queueSave(0);
+        updateAnalysisLifecycleControls();
+        return true;
     }
 
     function showStaleActions() {
@@ -265,12 +304,21 @@
         }, 340);
     }
 
+    document.addEventListener(
+        'taxonomy:analysis-running-changed', updateAnalysisLifecycleControls);
+    document.addEventListener(
+        'taxonomy:analysis-invalidated', updateAnalysisLifecycleControls);
+    document.addEventListener(
+        'taxonomy:analysis-cancelled', updateAnalysisLifecycleControls);
+
     Object.assign(C, {
         clearDerivedUi: clearDerivedUi,
         invalidate: invalidate,
         discardTextChange: discardTextChange,
         projectContextFromUrl: projectContextFromUrl,
         analysisRunning: analysisRunning,
+        updateAnalysisLifecycleControls: updateAnalysisLifecycleControls,
+        cancelCurrentAnalysis: cancelCurrentAnalysis,
         showStaleActions: showStaleActions,
         queueStaleActions: queueStaleActions
     });

@@ -33,7 +33,12 @@ class TaxonomyResponsiveNavigationContractTest {
                 .containsPattern("(?s)#mainNavTabs\\s*\\{[^}]*display:\\s*none\\s*!important;")
                 .containsPattern("(?s)\\.mobile-main-navigation\\s*\\{[^}]*display:\\s*grid;")
                 .contains("min-height: 44px")
-                .contains("grid-template-columns: 1fr");
+                .contains("@media (max-width: 30rem) and (min-height: 31rem)")
+                .contains("grid-template-columns: 1fr")
+                .contains(".navbar .btn-outline-light")
+                .contains("color: ButtonText !important")
+                .contains("background-color: ButtonFace !important")
+                .contains("border-color: ButtonText !important");
     }
 
     @Test

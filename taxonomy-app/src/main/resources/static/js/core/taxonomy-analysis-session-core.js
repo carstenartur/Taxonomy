@@ -17,6 +17,7 @@
         version: null,
         restoring: false,
         invalidating: false,
+        resetting: false,
         conflict: false,
         initialized: false,
         saveTimer: null,
@@ -67,7 +68,17 @@
             draftSaveFailed: 'The draft could not be saved.',
             currentQuickAnalysis: 'Quick analysis (working draft)',
             versionReason: 'Requirement text changed in the analysis workspace',
-            requirementReason: 'Created from the ad-hoc analysis workspace'
+            requirementReason: 'Created from the ad-hoc analysis workspace',
+            newAnalysisConfirm: 'Start a new analysis? The current requirement text, scores and every derived view in this working draft will be discarded. Saved projects and requirements are not deleted.',
+            newAnalysisReadyTitle: 'New analysis ready',
+            newAnalysisReadyBody: 'The working draft was reset. You can enter a new requirement now.',
+            newAnalysisFailed: 'The working draft could not be reset.',
+            newAnalysisWorkspaceUnavailable: 'The analysis workspace is not ready yet. Wait for initialization and try again.',
+            analysisCancelledTitle: 'Analysis cancelled',
+            analysisCancelledBody: 'The current request was stopped. The requirement text and results already received remain available.',
+            noAnalysisRunning: 'No analysis is currently running.',
+            draftSavedNowTitle: 'Draft saved',
+            draftSavedNowBody: 'The current working state was saved in this workspace.'
         },
         de: {
             staleTitle: 'Der Anforderungstext wurde geändert',
@@ -109,7 +120,17 @@
             draftSaveFailed: 'Der Entwurf konnte nicht gespeichert werden.',
             currentQuickAnalysis: 'Schnellanalyse (Arbeitsentwurf)',
             versionReason: 'Anforderungstext im Analysearbeitsbereich geändert',
-            requirementReason: 'Aus dem Ad-hoc-Analysearbeitsbereich angelegt'
+            requirementReason: 'Aus dem Ad-hoc-Analysearbeitsbereich angelegt',
+            newAnalysisConfirm: 'Neue Analyse beginnen? Der aktuelle Anforderungstext, die Bewertungen und alle daraus abgeleiteten Ansichten dieses Arbeitsentwurfs werden verworfen. Gespeicherte Projekte und Anforderungen werden nicht gelöscht.',
+            newAnalysisReadyTitle: 'Neue Analyse bereit',
+            newAnalysisReadyBody: 'Der Arbeitsentwurf wurde zurückgesetzt. Sie können jetzt eine neue Anforderung eingeben.',
+            newAnalysisFailed: 'Der Arbeitsentwurf konnte nicht zurückgesetzt werden.',
+            newAnalysisWorkspaceUnavailable: 'Der Analyse-Workspace ist noch nicht bereit. Warten Sie die Initialisierung ab und versuchen Sie es erneut.',
+            analysisCancelledTitle: 'Analyse abgebrochen',
+            analysisCancelledBody: 'Die laufende Anfrage wurde gestoppt. Der Anforderungstext und bereits empfangene Ergebnisse bleiben erhalten.',
+            noAnalysisRunning: 'Zurzeit läuft keine Analyse.',
+            draftSavedNowTitle: 'Entwurf gespeichert',
+            draftSavedNowBody: 'Der aktuelle Arbeitsstand wurde in diesem Workspace gespeichert.'
         }
     };
 
@@ -300,7 +321,7 @@
 
     function currentPayload() {
         var input = businessTextElement();
-        return {
+        var payload = {
             schemaVersion: SCHEMA_VERSION,
             businessText: input ? input.value : '',
             lastAnalyzedText: S.lastAnalyzedText,
@@ -317,6 +338,8 @@
             currentView: S.currentView || 'list',
             savedAt: new Date().toISOString()
         };
+        payload.draftState = meaningful(payload) ? 'ACTIVE' : 'EMPTY';
+        return payload;
     }
 
     function comparable(payload) {

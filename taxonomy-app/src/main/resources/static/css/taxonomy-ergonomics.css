@@ -456,6 +456,14 @@
 }
 
 @media (forced-colors: active) {
+    /* Bootstrap's light outline buttons otherwise remain light-on-light in
+       Windows high-contrast mode. Use system colors so File, Project and the
+       compact navbar controls retain a visible foreground and boundary. */
+    .navbar .btn-outline-light {
+        color: ButtonText !important;
+        background-color: ButtonFace !important;
+        border-color: ButtonText !important;
+    }
     .analysis-task-stages li[data-state="current"],
     .analysis-task-stages li[data-state="complete"],
     .analysis-task-stages li[data-state="error"] {
@@ -644,7 +652,11 @@ dialog.onboarding-overlay .onboarding-card {
     }
 }
 
-@media (max-width: 30rem), (max-height: 30rem) {
+/* A single-column selector is easier to read on a narrow phone when enough
+   vertical space exists. Short viewports (including 400 % browser zoom) keep
+   the select and task jump on one row so both controls remain discoverable
+   before any scroll. */
+@media (max-width: 30rem) and (min-height: 31rem) {
     .mobile-main-navigation {
         grid-template-columns: 1fr;
     }

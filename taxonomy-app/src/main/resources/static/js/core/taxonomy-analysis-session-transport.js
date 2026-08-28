@@ -17,6 +17,15 @@
     runtime.draftMutationTrace = Array.isArray(runtime.draftMutationTrace)
         ? runtime.draftMutationTrace : [];
 
+    function notifyAnalysisRunningChanged() {
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-running-changed', {
+            detail: {
+                activeRequests: runtime.activeAnalysisControllers.size,
+                activeCopilotTimers: runtime.copilotIntervals.size
+            }
+        }));
+    }
+
     function methodOf(input, init) {
         return String((init && init.method)
             || (input && typeof input === 'object' && input.method)
@@ -92,14 +101,17 @@
             }
             request.signal = controller.signal;
             runtime.activeAnalysisControllers.add(controller);
+            notifyAnalysisRunningChanged();
 
             return nativeFetch(input, request).then(function (response) {
                 runtime.activeAnalysisControllers.delete(controller);
+                notifyAnalysisRunningChanged();
                 return isCurrent(generation)
                     ? guardedResponse(response, generation)
                     : neverSettles();
             }, function (error) {
                 runtime.activeAnalysisControllers.delete(controller);
+                notifyAnalysisRunningChanged();
                 if (!isCurrent(generation) || controller.signal.aborted) {
                     return neverSettles();
                 }
@@ -128,12 +140,14 @@
             if (button && button.disabled && spinner
                     && !spinner.classList.contains('d-none')) {
                 runtime.copilotIntervals.add(id);
+                notifyAnalysisRunningChanged();
             }
             return id;
         }
 
         function guardedClearInterval(id) {
             runtime.copilotIntervals.delete(id);
+            notifyAnalysisRunningChanged();
             return nativeClearInterval(id);
         }
 
@@ -151,16 +165,24 @@
     function draftEndpoint(url) {
         var resolved = C.requestUrl(url);
         if (!resolved || resolved.origin !== window.location.origin
-                || !/\/api\/analysis-drafts\/[^/]+$/.test(resolved.pathname)) {
+                || !/\/api\/analysis-drafts\/[^/]+(?:\/reset)?$/.test(resolved.pathname)) {
             return null;
         }
         return resolved;
     }
 
+    function isDraftReset(url) {
+        var endpoint = draftEndpoint(url);
+        return Boolean(endpoint && /\/reset$/.test(endpoint.pathname));
+    }
+
     function isDraftOperation(url, options) {
-        if (!draftEndpoint(url)) return false;
+        var endpoint = draftEndpoint(url);
+        if (!endpoint) return false;
         var method = methodOf(url, options);
-        return method === 'GET' || method === 'PUT' || method === 'DELETE';
+        return /\/reset$/.test(endpoint.pathname)
+            ? method === 'POST'
+            : method === 'GET' || method === 'PUT' || method === 'DELETE';
     }
 
     function numericVersion(value) {
@@ -328,7 +350,8 @@
         return C.nativeJsonRequest(url, request).then(function (view) {
             // The queue owns revision advancement. Callers may mirror this state,
             // but the next queued mutation cannot start before this update.
-            if (method === 'PUT' && view && view.version !== undefined) {
+            if ((method === 'PUT' || method === 'POST')
+                    && view && view.version !== undefined) {
                 runtime.version = numericVersion(view.version);
                 rememberAcknowledgedDraft(view);
             } else if (method === 'GET') {
@@ -353,6 +376,29 @@
                 return reconcileDraftConflict(
                     url, request, body, serializedPayload,
                     expectedVersion, error, mutationId);
+            }
+            if (method === 'POST' && isDraftReset(url)
+                    && error && error.status === 409) {
+                traceDraftMutation(mutationId, 'reset-retry', {
+                    method: method,
+                    expectedVersion: null,
+                    currentVersion: runtime.version,
+                    requestId: error.requestId || null
+                });
+                return C.nativeJsonRequest(url, request).then(function (view) {
+                    runtime.version = view && view.version !== undefined
+                        ? numericVersion(view.version) : runtime.version;
+                    rememberAcknowledgedDraft(view);
+                    traceDraftMutation(mutationId, 'reconciled', {
+                        method: method,
+                        expectedVersion: null,
+                        currentVersion: runtime.version,
+                        requestId: error.requestId || null
+                    });
+                    dispatchDraftReconciled(
+                        mutationId, 'concurrent-reset', null, view, error);
+                    return view;
+                });
             }
             traceDraftMutation(mutationId, 'failed', {
                 method: method,
@@ -443,16 +489,19 @@
         });
     }
 
-    function cancelDerivedRequests() {
+    function cancelDerivedRequests(reason) {
+        var cancellationReason = typeof reason === 'string' && reason
+            ? reason : 'analysis-invalidated';
         runtime.analysisGeneration += 1;
         runtime.activeAnalysisControllers.forEach(function (controller) {
-            try { controller.abort('analysis-invalidated'); } catch (error) { /* no-op */ }
+            try { controller.abort(cancellationReason); } catch (error) { /* no-op */ }
         });
         runtime.activeAnalysisControllers.clear();
         var clearInterval = runtime.nativeClearInterval || window.clearInterval.bind(window);
         runtime.copilotIntervals.forEach(function (id) { clearInterval(id); });
         runtime.copilotIntervals.clear();
         resetBusyControls();
+        notifyAnalysisRunningChanged();
     }
 
     // Install workspace routing before the pre-existing streaming guard captures
@@ -465,7 +514,10 @@
     installDraftMutationQueue();
     installPayloadOptions();
 
-    document.addEventListener('taxonomy:analysis-invalidated', cancelDerivedRequests);
+    document.addEventListener('taxonomy:analysis-invalidated', function (event) {
+        cancelDerivedRequests(event && event.detail && event.detail.reason
+            ? event.detail.reason : 'analysis-invalidated');
+    });
     document.addEventListener('taxonomy:analysis-draft-restored', function () {
         restoreOptions(runtime.restoredPayload, 0);
     });
@@ -479,6 +531,7 @@
         analysisOptions: analysisOptions,
         restoreOptions: restoreOptions,
         cancelDerivedRequests: cancelDerivedRequests,
+        notifyAnalysisRunningChanged: notifyAnalysisRunningChanged,
         draftMutationDiagnostics: function () {
             return runtime.draftMutationTrace.slice();
         }

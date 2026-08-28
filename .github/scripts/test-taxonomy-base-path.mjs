@@ -175,7 +175,10 @@ async function promotedNavigationTarget() {
     invalidate: options => invalidations.push(options),
     queueStaleActions: () => undefined,
     queueSave: () => undefined,
-    deleteDraft: () => Promise.resolve(),
+    resetDraft: () => Promise.resolve({
+      version: 1,
+      payload: { draftState: 'EMPTY', businessText: '' }
+    }),
     saveDraft: () => Promise.resolve(),
     loadDraft: () => Promise.resolve(null)
   };

@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
@@ -30,6 +31,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -84,6 +86,24 @@ class AnalysisWorkingDraftMvcContractTest {
                             request.payload(),
                             7L,
                             Instant.parse("2026-08-20T12:00:00Z"));
+                });
+        when(service.reset(eq("analyst"), eq("workspace-a"), any()))
+                .thenAnswer(invocation -> {
+                    ResetAnalysisDraftRequest request = invocation.getArgument(2);
+                    var payload = tools.jackson.databind.json.JsonMapper.builder().build()
+                            .createObjectNode()
+                            .put("schemaVersion", 1)
+                            .put("draftState", "EMPTY")
+                            .put("businessText", "");
+                    if (request != null && request.analysisOptions() != null) {
+                        payload.set("analysisOptions", request.analysisOptions());
+                    }
+                    return new AnalysisDraftView(
+                            "workspace-a",
+                            "feature/architecture",
+                            payload,
+                            8L,
+                            Instant.parse("2026-08-20T12:05:00Z"));
                 });
     }
 
@@ -140,6 +160,34 @@ class AnalysisWorkingDraftMvcContractTest {
 
     @Test
     @WithMockUser(username = "analyst", roles = "USER")
+    void resetStartsANewVersionedEmptyLifecycleWithoutExpectedRevision() throws Exception {
+        mockMvc.perform(post("/api/analysis-drafts/{workspaceId}/reset", "workspace-a")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "analysisOptions": {
+                                    "provider": "OPENAI",
+                                    "interactiveMode": true
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"8\""))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.payload.draftState").value("EMPTY"))
+                .andExpect(jsonPath("$.payload.businessText").value(""))
+                .andExpect(jsonPath("$.payload.analysisOptions.provider").value("OPENAI"));
+
+        ArgumentCaptor<ResetAnalysisDraftRequest> request =
+                ArgumentCaptor.forClass(ResetAnalysisDraftRequest.class);
+        verify(service).reset(eq("analyst"), eq("workspace-a"), request.capture());
+        assertThat(request.getValue().analysisOptions().path("interactiveMode").asBoolean())
+                .isTrue();
+    }
+
+    @Test
+    @WithMockUser(username = "analyst", roles = "USER")
     void optimisticDraftConflictRemainsHttp409AcrossGlobalExceptionHandling() throws Exception {
         when(service.save(eq("analyst"), eq("workspace-a"), any()))
                 .thenThrow(new AnalysisDraftConflictException(
@@ -190,5 +238,18 @@ class AnalysisWorkingDraftMvcContractTest {
                 .andExpect(status().isForbidden());
 
         verify(service, never()).save(any(), any(), any());
+    }
+
+    @Test
+    @WithMockUser(username = "analyst", roles = "USER")
+    void resetCannotAddressAWorkspaceDifferentFromTheExplicitPin() throws Exception {
+        mockMvc.perform(post("/api/analysis-drafts/{workspaceId}/reset", "workspace-a")
+                        .with(csrf())
+                        .header(WorkspaceContextResolver.WORKSPACE_HEADER, "workspace-b")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+
+        verify(service, never()).reset(any(), any(), any());
     }
 }

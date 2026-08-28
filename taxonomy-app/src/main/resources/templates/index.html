@@ -24,10 +24,55 @@
      role="alert" aria-live="assertive" aria-atomic="true"></div>
 
 <nav class="navbar navbar-dark bg-dark mb-0" aria-label="Main navigation">
-    <div class="container-fluid">
+    <div class="container-fluid flex-wrap gap-2">
         <span class="navbar-brand fw-bold">
             &#127756; <span th:text="#{app.title}">Taxonomy Architecture Analyzer</span> &mdash; <span id="navbarVersion" th:text="'v' + ${appVersion}">v0.0.0</span>
         </span>
+        <div class="d-flex gap-2 ms-3 flex-wrap">
+            <div class="dropdown">
+                <button id="fileMenuButton" class="btn btn-sm btn-outline-light dropdown-toggle"
+                        type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                        th:text="#{navbar.file.menu}">File</button>
+                <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="fileMenuButton">
+                    <li>
+                        <button id="fileNewAnalysisAction" class="dropdown-item" type="button"
+                                th:text="#{navbar.file.new_analysis}">New analysis</button>
+                    </li>
+                    <li>
+                        <button id="fileCancelAnalysisAction" class="dropdown-item" type="button"
+                                disabled aria-disabled="true"
+                                th:text="#{navbar.file.cancel_analysis}">Cancel running analysis</button>
+                    </li>
+                    <li><hr class="dropdown-divider"/></li>
+                    <li>
+                        <button id="fileSaveDraftAction" class="dropdown-item" type="button"
+                                th:text="#{navbar.file.save_draft}">Save draft now</button>
+                    </li>
+                </ul>
+            </div>
+            <div class="dropdown">
+                <button id="projectMenuButton" class="btn btn-sm btn-outline-light dropdown-toggle"
+                        type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                        th:text="#{navbar.project.menu}">Project</button>
+                <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="projectMenuButton">
+                    <li>
+                        <button id="projectNewAction" class="dropdown-item" type="button"
+                                data-analysis-session-action="new-project"
+                                th:text="#{navbar.project.new}">New project</button>
+                    </li>
+                    <li>
+                        <button id="projectAddRequirementAction" class="dropdown-item" type="button"
+                                data-analysis-session-action="add-requirement"
+                                th:text="#{navbar.project.save_requirement}">Save as requirement</button>
+                    </li>
+                    <li><hr class="dropdown-divider"/></li>
+                    <li>
+                        <a id="projectOpenAction" class="dropdown-item" th:href="@{/projects}"
+                           href="/projects" th:text="#{navbar.project.open}">Open projects</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
         <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" th:title="#{navbar.ai.status.title}" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
         <span id="embeddingStatusBadge" class="badge bg-secondary ms-2 d-none" th:title="#{navbar.embedding.status.title}" title="Embedding model status for semantic search"></span>
         <span id="workspaceUserBadge" class="badge bg-info text-dark ms-2 d-none" th:title="#{navbar.workspace.title}" title="Current workspace / user"></span>
@@ -160,7 +205,7 @@
                         </label>
                         <textarea id="businessText" class="form-control mb-3" rows="7"
                                   th:placeholder="#{analyze.placeholder}" placeholder="e.g. We need a system to manage and display real-time air tracks, integrate radar data, and provide a common operational picture to commanders at brigade and above level..."></textarea>
-                        <div class="d-flex gap-2 align-items-center">
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
                             <select id="providerSelect" class="form-select form-select-sm"
                                     style="width: auto; min-width: 160px;"
                                     th:title="#{analyze.provider.title}" title="Choose AI provider for this analysis">
@@ -173,6 +218,11 @@
                             <button id="copilotBtn" class="btn btn-success" th:title="#{analyze.btn.copilot.title}" title="One-click AI Architecture Copilot: Analyze → Gap Analysis → Pattern Detection → Recommendation">
                                 <span id="copilotSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"><span class="visually-hidden" th:text="#{analyze.loading}">Loading...</span></span>
                                 <span th:text="#{analyze.btn.copilot.text}">&#128640; Copilot</span>
+                            </button>
+                            <button id="cancelAnalysisBtn" class="btn btn-outline-danger" type="button"
+                                    disabled aria-disabled="true"
+                                    th:title="#{analyze.btn.cancel.title}" title="Cancel the running analysis and keep the requirement text and results received so far">
+                                <span th:text="#{analyze.btn.cancel.text}">Cancel</span>
                             </button>
                         </div>
                         <div id="aiUnavailableWarning" class="mt-2 d-none" th:utext="#{analyze.ai.unavailable}">

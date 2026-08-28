@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.session;
 
 import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
 import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -28,6 +30,9 @@ import java.util.Optional;
  */
 @Service
 public class AnalysisWorkingDraftService {
+
+    private static final int PAYLOAD_SCHEMA_VERSION = 1;
+    private static final String EMPTY_DRAFT_STATE = "EMPTY";
 
     private final AnalysisWorkingDraftRepository repository;
     private final WorkspaceManager workspaceManager;
@@ -95,6 +100,46 @@ public class AnalysisWorkingDraftService {
         } catch (OptimisticLockingFailureException | DataIntegrityViolationException exception) {
             throw new AnalysisDraftConflictException(
                     "The analysis draft was changed by another session", exception);
+        }
+    }
+
+    /**
+     * Replaces the current working draft with a versioned empty tombstone.
+     *
+     * <p>This command deliberately ignores a browser-supplied expected version:
+     * a user must be able to start over from any logged-in tab. The persisted
+     * empty revision is important because deleting the row makes an older tab
+     * look like the first writer again and allows stale requirement text to be
+     * recreated accidentally.</p>
+     */
+    @Transactional
+    public AnalysisDraftView reset(String username,
+                                   String workspaceId,
+                                   ResetAnalysisDraftRequest request) {
+        DraftScope scope = resolveScope(username, workspaceId);
+        JsonNode payload = emptyPayload(request);
+        String payloadJson = serialize(payload);
+        if (payloadJson.length() > maximumPayloadCharacters) {
+            throw new AnalysisDraftValidationException(
+                    "Analysis draft reset exceeds " + maximumPayloadCharacters + " characters");
+        }
+
+        AnalysisWorkingDraft draft = repository
+                .findByScopeKeyAndUsername(scope.scopeKey(), scope.username())
+                .orElse(null);
+        Instant now = Instant.now();
+        if (draft == null) {
+            draft = new AnalysisWorkingDraft(
+                    scope.scopeKey(), scope.workspaceId(), scope.username(), payloadJson, now);
+        } else {
+            draft.replacePayload(payloadJson, now);
+        }
+
+        try {
+            return toView(repository.saveAndFlush(draft), scope.branch());
+        } catch (OptimisticLockingFailureException | DataIntegrityViolationException exception) {
+            throw new AnalysisDraftConflictException(
+                    "The analysis draft changed while it was being reset", exception);
         }
     }
 
@@ -184,6 +229,33 @@ public class AnalysisWorkingDraftService {
             throw new AnalysisDraftValidationException(
                     "Analysis draft payload is not valid JSON", exception);
         }
+    }
+
+    private JsonNode emptyPayload(ResetAnalysisDraftRequest request) {
+        JsonNode analysisOptions = request != null ? request.analysisOptions() : null;
+        if (analysisOptions != null && !analysisOptions.isNull()
+                && !analysisOptions.isObject()) {
+            throw new AnalysisDraftValidationException(
+                    "Analysis draft reset options must be a JSON object");
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("schemaVersion", PAYLOAD_SCHEMA_VERSION);
+        payload.put("draftState", EMPTY_DRAFT_STATE);
+        payload.put("businessText", "");
+        payload.putNull("lastAnalyzedText");
+        payload.putNull("storedBusinessText");
+        payload.putNull("scores");
+        payload.set("reasons", objectMapper.createObjectNode());
+        payload.set("discrepancies", objectMapper.createArrayNode());
+        payload.putNull("architectureView");
+        payload.set("provisionalRelations", objectMapper.createArrayNode());
+        payload.set("evaluatedNodes", objectMapper.createArrayNode());
+        payload.put("currentView", "list");
+        if (analysisOptions != null && !analysisOptions.isNull()) {
+            payload.set("analysisOptions", analysisOptions.deepCopy());
+        }
+        return payload;
     }
 
     private AnalysisDraftView toView(AnalysisWorkingDraft draft, String branch) {

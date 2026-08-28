@@ -172,6 +172,8 @@ Die Navigationsleiste am oberen Rand der Seite enthält:
 
 - **Anwendungstitel / Logo**
 - **AI Status Badge** (🟢 grün oder 🔴 rot)
+- **Datei-Menü** — eine neue Analyse beginnen, eine laufende Analyse abbrechen oder den aktuellen Arbeitsentwurf sofort speichern
+- **Projekt-Menü** — ein Projekt anlegen, den aktuellen Text als Anforderung speichern oder die Projektübersicht öffnen
 - **🔒 Admin-Modus-Schaltfläche** — klicken Sie, um das Admin-Modus-Passwort-Modal zu öffnen
 
 ### Dunkelmodus
@@ -206,6 +208,20 @@ Tipps für gute Anforderungen:
 5. Wenn die Analyse abgeschlossen ist, zeigt der Statusbereich eine Zusammenfassung an und die Export-Schaltflächen werden verfügbar.
 
 ![Bewerteter Taxonomiebaum](../images/15-scored-taxonomy-tree.png)
+
+### Neu beginnen, abbrechen und den Arbeitsentwurf speichern
+
+Das Menü **Datei** enthält eindeutige Befehle für den Lebenszyklus der Ad-hoc-Analyse:
+
+| Befehl | Wirkung | Was erhalten bleibt |
+|---|---|---|
+| **Neue Analyse** | Stoppt eine laufende Analyse, ersetzt den gemeinsamen Arbeitsentwurf durch einen leeren versionierten Stand, löscht Anforderungstext und alle abgeleiteten Ansichten und setzt den Fokus in das Textfeld. Enthält der Entwurf Arbeit, erscheint vorher eine Bestätigung. | Gespeicherte Projekte, Anforderungsversionen und bestätigte Relationen |
+| **Laufende Analyse abbrechen** | Stoppt die aktuelle Streaming-Anfrage, den Copilot-Ablauf oder eine abgeleitete Analyseanfrage. | Anforderungstext und alle bereits empfangenen Ergebnisse |
+| **Entwurf jetzt speichern** | Speichert Text, Bewertungen, Analyseoptionen und den abgeleiteten Arbeitsstand sofort, ohne auf das automatische Speichern zu warten. | Der vollständige aktuelle Arbeitsentwurf |
+
+Derselbe Befehl **Abbrechen** steht während einer laufenden Verarbeitung direkt neben **Analyze with AI** und **Copilot** zur Verfügung. Abbrechen und Neu beginnen sind bewusst verschieden: Beim Abbrechen bleiben Text und Teilergebnisse erhalten; **Neue Analyse** leert den Arbeitsentwurf absichtlich.
+
+Ein Arbeitsentwurf wird für denselben Benutzer und Workspace über Browser-Tabs und Geräte hinweg gemeinsam verwendet. **Neue Analyse** erzeugt deshalb einen ausdrücklich leeren, versionierten Stand, statt nur den lokalen Browserzustand zu löschen. Dadurch ist der Befehl wiederholbar und ein älterer Tab kann verworfenen Anforderungstext nicht unbemerkt wiederherstellen. Versucht ein veralteter Tab anschließend alte Inhalte zu speichern, kann weiterhin ein Konflikthinweis erscheinen; laden Sie den aktuellen Entwurf oder verwenden Sie bewusst **Datei → Neue Analyse**.
 
 Der vollständig aufgeklappte Baum zeigt Bewertungen auf jeder Ebene und macht es leicht zu erkennen, welche Zweige am relevantesten sind:
 
