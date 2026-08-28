@@ -1,8 +1,8 @@
 package com.taxonomy.portfolio.controller;
 
-import com.taxonomy.portfolio.dto.AiTargetDtos.AiTargetCatalogView;
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetCatalogView;
+import com.taxonomy.analysis.service.AiTargetCatalogService;
 import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
-import com.taxonomy.portfolio.service.AiTargetCatalogService;
 import com.taxonomy.portfolio.service.CopilotAutomationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
