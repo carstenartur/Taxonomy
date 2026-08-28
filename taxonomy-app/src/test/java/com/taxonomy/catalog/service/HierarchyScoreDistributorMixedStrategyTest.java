@@ -101,7 +101,7 @@ class HierarchyScoreDistributorMixedStrategyTest {
     private TaxonomyNode node(String code, String parentCode, int level) {
         TaxonomyNode node = new TaxonomyNode();
         node.setCode(code);
-        node.setName(code);
+        node.setNameEn(code);
         node.setParentCode(parentCode);
         node.setTaxonomyRoot("RT");
         node.setLevel(level);
