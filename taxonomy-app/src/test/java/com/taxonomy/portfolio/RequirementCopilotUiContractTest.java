@@ -40,7 +40,7 @@ class RequirementCopilotUiContractTest {
                 .contains("progress.removeAttribute('aria-valuenow')")
                 .contains("taxonomy:export-operation-state")
                 .contains("blob.size < 1", "Unexpected content type", "Unexpected export filename")
-                .contains("data-session-control", "data-session-test-outcome")
+                .contains("dataset.sessionControl", "dataset.sessionTestOutcome")
                 .doesNotContain("run.disabled = running;")
                 .doesNotContain("analyzeBtn.click()", "waitForScores");
     }

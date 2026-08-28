@@ -35,7 +35,7 @@ public class PortfolioExceptionHandler {
             case UNAVAILABLE -> "Portfolio analysis capacity unavailable";
         });
         problem.setType(URI.create("urn:taxonomy:portfolio:"
-                + exception.getKind().name().toLowerCase().replace('_', '-')));
+                + exception.getKind().name().toLowerCase()));
         if (exception.getCode() != null) {
             problem.setProperty("code", exception.getCode());
         }

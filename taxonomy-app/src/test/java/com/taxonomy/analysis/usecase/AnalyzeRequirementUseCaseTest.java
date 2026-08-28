@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.AnalysisRelationGenerator;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
@@ -36,6 +37,9 @@ class AnalyzeRequirementUseCaseTest {
 
     @Mock
     private LlmService llmService;
+
+    @Mock
+    private AiPromptBudgetPolicy promptBudgetPolicy;
 
     @Mock
     private RequirementArchitectureViewService architectureViewService;
@@ -91,6 +95,8 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(architectureView.getActiveRules()).isEmpty();
         assertThat(analysisResult.getViewContext()).isSameAs(viewContext);
 
+        verify(promptBudgetPolicy).requireWithinBudget(
+                command.businessText(), command.provider());
         verify(llmService).setRequestProvider(LlmProvider.GEMINI);
         verify(hypothesisService).persistFromAnalysis(
                 provisionalRelations, null, command.workspaceContext());
@@ -132,6 +138,8 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(result.analysisResult().getProvisionalRelations())
                 .isEqualTo(provisionalRelations);
         assertThat(result.analysisResult().getViewContext()).isSameAs(viewContext);
+        verify(promptBudgetPolicy).requireWithinBudget(
+                command.businessText(), command.provider());
         verify(hypothesisService, never()).persistFromAnalysis(
                 any(), any(), any(WorkspaceContext.class));
         verifyNoInteractions(architectureViewService, preferencesService);
@@ -156,6 +164,8 @@ class AnalyzeRequirementUseCaseTest {
 
         assertThat(result.analysisResult().getArchitectureView()).isNull();
         assertThat(result.analysisResult().getProvisionalRelations()).isEmpty();
+        verify(promptBudgetPolicy).requireWithinBudget(
+                command.businessText(), command.provider());
         verify(hypothesisService, never()).persistFromAnalysis(
                 any(), any(), any(WorkspaceContext.class));
         verifyNoInteractions(architectureViewService, preferencesService);
@@ -173,7 +183,8 @@ class AnalyzeRequirementUseCaseTest {
                 .hasMessage("Unknown provider: unknown");
 
         verify(llmService).clearRequestProvider();
-        verifyNoInteractions(analysisRelationGenerator, architectureViewService, hypothesisService,
+        verifyNoInteractions(promptBudgetPolicy, analysisRelationGenerator,
+                architectureViewService, hypothesisService,
                 repositoryStateService, preferencesService);
     }
 
@@ -194,6 +205,8 @@ class AnalyzeRequirementUseCaseTest {
         AnalyzeRequirementResult result = useCase.analyze(command);
 
         assertThat(result.analysisResult().getViewContext()).isSameAs(viewContext);
+        verify(promptBudgetPolicy).requireWithinBudget(
+                command.businessText(), command.provider());
         verify(repositoryStateService).resolveWorkspaceBranch("system");
         verify(repositoryStateService).getViewContext("system", "draft", WorkspaceContext.SHARED);
         verify(llmService).clearRequestProvider();

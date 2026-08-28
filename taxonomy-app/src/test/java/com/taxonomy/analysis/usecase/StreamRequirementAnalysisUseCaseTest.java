@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.usecase;
 
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.dto.LlmCallDetail;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,6 +29,9 @@ class StreamRequirementAnalysisUseCaseTest {
 
     @Mock
     private LlmService llmService;
+
+    @Mock
+    private AiPromptBudgetPolicy promptBudgetPolicy;
 
     @InjectMocks
     private StreamRequirementAnalysisUseCase useCase;
@@ -75,6 +80,8 @@ class StreamRequirementAnalysisUseCaseTest {
                 List.of("warn"),
                 List.of()));
 
+        verify(promptBudgetPolicy).requireWithinBudget(
+                command.businessText(), command.provider());
         verify(llmService).setRequestProvider(com.taxonomy.analysis.service.LlmProvider.GEMINI);
         verify(llmService).analyzeStreaming(eq(command.businessText()), any());
         verify(llmService).clearRequestProvider();
@@ -102,6 +109,8 @@ class StreamRequirementAnalysisUseCaseTest {
                 Map.of("CP", 80),
                 List.of("warn"),
                 List.of()));
+        verify(promptBudgetPolicy).requireWithinBudget(
+                command.businessText(), command.provider());
         verify(llmService).analyzeStreaming(eq(command.businessText()), any());
         verify(llmService).clearRequestProvider();
     }
@@ -116,6 +125,7 @@ class StreamRequirementAnalysisUseCaseTest {
                 .hasMessage("Unknown provider: unknown");
 
         verify(llmService).clearRequestProvider();
+        verifyNoInteractions(promptBudgetPolicy);
         verifyNoMoreInteractions(llmService);
     }
 }

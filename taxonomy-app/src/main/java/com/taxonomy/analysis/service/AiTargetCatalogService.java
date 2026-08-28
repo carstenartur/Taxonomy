@@ -5,7 +5,6 @@ import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
 import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetHealth;
 import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetMode;
 import com.taxonomy.analysis.dto.AiTargetDtos.PromptBudget;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -30,21 +29,15 @@ public class AiTargetCatalogService {
     private static final String MOCK_MODEL = "taxonomy-deterministic-v1";
     private static final String LOCAL_MODEL = "bge-small-en-v1.5";
     private static final String GEMINI_MODEL = "gemini-3-flash-preview";
+    private static final PromptBudget DEFAULT_PROMPT_BUDGET =
+            new PromptBudget(120_000, 262_144, 30_000);
 
     private final LlmProviderConfig providerConfig;
     private final PromptBudget promptBudget;
 
-    public AiTargetCatalogService(
-            LlmProviderConfig providerConfig,
-            @Value("${taxonomy.ai.prompt.max-input-characters:120000}") int maxInputCharacters,
-            @Value("${taxonomy.ai.prompt.max-input-bytes:262144}") int maxInputBytes,
-            @Value("${taxonomy.ai.prompt.estimated-max-input-tokens:30000}") int estimatedMaxInputTokens) {
+    public AiTargetCatalogService(LlmProviderConfig providerConfig) {
         this.providerConfig = providerConfig;
-        this.promptBudget = new PromptBudget(
-                positive(maxInputCharacters, "taxonomy.ai.prompt.max-input-characters"),
-                positive(maxInputBytes, "taxonomy.ai.prompt.max-input-bytes"),
-                positive(estimatedMaxInputTokens,
-                        "taxonomy.ai.prompt.estimated-max-input-tokens"));
+        this.promptBudget = DEFAULT_PROMPT_BUDGET;
     }
 
     public AiTargetCatalogView catalog() {
@@ -209,13 +202,6 @@ public class AiTargetCatalogService {
             case "LOCAL_ONNX" -> "Local ONNX";
             default -> provider;
         };
-    }
-
-    private static int positive(int value, String property) {
-        if (value < 1) {
-            throw new IllegalArgumentException(property + " must be at least 1");
-        }
-        return value;
     }
 
     private static String normalize(String value) {
