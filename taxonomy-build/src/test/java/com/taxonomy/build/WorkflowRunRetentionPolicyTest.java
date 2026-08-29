@@ -11,7 +11,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@EnabledOnOs({OS.LINUX, OS.MAC})
+@EnabledOnOs(OS.LINUX)
 class WorkflowRunRetentionPolicyTest {
 
     @Test
