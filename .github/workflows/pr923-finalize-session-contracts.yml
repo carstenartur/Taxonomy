@@ -29,51 +29,45 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Finalize the real failure and context-path contracts
+      - name: Finalize real failure and context-path contracts
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              if old not in text:
-                  if new in text:
-                      return text
+          def require(text: str, needle: str, label: str) -> int:
+              position = text.find(needle)
+              if position < 0:
                   raise SystemExit(f"{label} anchor not found")
-              return text.replace(old, new, 1)
+              return position
 
           test_path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
           test = test_path.read_text(encoding='utf-8')
-          env_anchor = '.withEnv("TAXONOMY_AI_MAX_ARCHITECTURE_NODES", "100")'
-          env_replacement = '''.withEnv("TAXONOMY_AI_MAX_ARCHITECTURE_NODES", "100")
-                  .withEnv("TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS", "256")
-                  .withEnv("TAXONOMY_AI_PROMPT_MAX_INPUT_BYTES", "1024")
-                  .withEnv("TAXONOMY_AI_PROMPT_ESTIMATED_MAX_INPUT_TOKENS", "64")'''
-          if 'TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS' not in test:
-              test = replace_once(test, env_anchor, env_replacement, 'prompt-budget environment')
-
           start_marker = '    private static void assertOneConsolidatedProviderFailure() {'
           end_marker = '    private static Map<String, byte[]> unzip'
-          start = test.find(start_marker)
-          end = test.find(end_marker, start)
-          if start < 0 or end < 0:
-              raise SystemExit('provider-failure method markers not found')
+          start = require(test, start_marker, 'provider-failure start')
+          end = require(test[start:], end_marker, 'provider-failure end') + start
           real_failure = '''    private static void assertOneConsolidatedProviderFailure() {
-              String oversizedText = REQUIREMENT_SENTENCE + " "
-                      + "Additional operational context that deliberately exceeds the configured "
-                      .repeat(8);
+              String oversizedText = "Requirement context ".repeat(7_000);
 
               click(By.id("newVersionButton"));
               WebElement modal = wait.until(
                       ExpectedConditions.visibilityOfElementLocated(By.id("newVersionModal")));
-              fill(modal, "versionText", oversizedText);
+              WebElement textField = modal.findElement(By.id("versionText"));
+              javascript().executeScript("""
+                      const field = arguments[0];
+                      field.value = arguments[1];
+                      field.dispatchEvent(new Event('input', { bubbles: true }));
+                      field.dispatchEvent(new Event('change', { bubbles: true }));
+                      """, textField, oversizedText);
               fill(modal, "changeReason", "Exercise the real prompt-budget rejection contract.");
               modal.findElement(By.cssSelector("button[type='submit']")).click();
               waitForModalClosed("newVersionModal");
               wait.until(textPresent(By.id("detailInfo"), "immutable version"));
-              wait.until(browser -> browser.findElement(By.id("currentText")).getText()
-                      .contains("Additional operational context"));
+              wait.until(browser -> ((Number) javascript().executeScript(
+                      "return (document.getElementById('currentText')?.textContent || '').length"))
+                      .intValue() > 120_000);
               wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
 
               String previousOperationId = driver.findElement(By.id("copilotOperation"))
@@ -109,31 +103,12 @@ jobs:
           }
 
           '''
-          test = test[:start] + real_failure + test[end:]
-          test_path.write_text(test, encoding='utf-8')
+          test_path.write_text(test[:start] + real_failure + test[end:], encoding='utf-8')
 
           ui_path = Path('taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js')
           ui = ui_path.read_text(encoding='utf-8')
-          old_render = '''        setText('copilotOperationStatus', humanize(operation.status));
-                  setText('copilotOperationMessage', operation.message || '');
-                  setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));'''
-          new_render = '''        const status = String(operation.status || '');
-                  const message = primaryOperationMessage(operation);
-                  if (panel) {
-                      panel.setAttribute('role', status === 'FAILED' ? 'alert' : 'status');
-                      panel.setAttribute('aria-live', status === 'FAILED' ? 'assertive' : 'polite');
-                  }
-                  if (status === 'FAILED') clearError();
-                  setText('copilotOperationStatus', humanize(status));
-                  setText('copilotOperationMessage', message);
-                  setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));'''
-          ui = replace_once(ui, old_render, new_render, 'operation rendering')
-          ui = replace_once(
-              ui,
-              "announce((operation.message || '') + ' ' + operation.completedPasses",
-              "announce(message + ' ' + operation.completedPasses",
-              'operation announcement')
-          helper = '''    function primaryOperationMessage(operation) {
+          if 'function primaryOperationMessage(operation)' not in ui:
+              helper = '''    function primaryOperationMessage(operation) {
               if (!operation) return '';
               const status = String(operation.status || '').toUpperCase();
               if (status !== 'FAILED' && status !== 'PARTIAL') {
@@ -154,23 +129,41 @@ jobs:
           }
 
           '''
-          if 'function primaryOperationMessage(operation)' not in ui:
               marker = '    function renderOperation(operation) {'
-              if marker not in ui:
-                  raise SystemExit('operation helper insertion marker not found')
-              ui = ui.replace(marker, helper + marker, 1)
+              position = require(ui, marker, 'operation helper insertion')
+              ui = ui[:position] + helper + ui[position:]
+
+          old_status = "        setText('copilotOperationStatus', humanize(operation.status));"
+          status_start = require(ui, old_status, 'operation status rendering')
+          provider_line = "        setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));"
+          provider_start = require(ui[status_start:], provider_line, 'operation provider rendering') + status_start
+          provider_end = provider_start + len(provider_line)
+          replacement = '''        const status = String(operation.status || '');
+              const message = primaryOperationMessage(operation);
+              if (panel) {
+                  panel.setAttribute('role', status === 'FAILED' ? 'alert' : 'status');
+                  panel.setAttribute('aria-live', status === 'FAILED' ? 'assertive' : 'polite');
+              }
+              if (status === 'FAILED') clearError();
+              setText('copilotOperationStatus', humanize(status));
+              setText('copilotOperationMessage', message);
+              setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));'''
+          ui = ui[:status_start] + replacement + ui[provider_end:]
+          old_announce = "announce((operation.message || '') + ' ' + operation.completedPasses"
+          if old_announce in ui:
+              ui = ui.replace(old_announce,
+                              "announce(message + ' ' + operation.completedPasses", 1)
+          elif "announce(message + ' ' + operation.completedPasses" not in ui:
+              raise SystemExit('operation announcement anchor not found')
           ui_path.write_text(ui, encoding='utf-8')
 
           coordinator_path = Path('taxonomy-app/src/main/resources/static/js/core/taxonomy-operation-coordinator.js')
           coordinator = coordinator_path.read_text(encoding='utf-8')
-          old_matcher = '''    function isMainAnalysisRequest(input, init) {
-              var url = requestUrl(input);
-              return Boolean(url
-                  && url.origin === window.location.origin
-                  && url.pathname === '/api/analyze'
-                  && requestMethod(input, init) === 'POST');
-          }'''
-          new_matcher = '''    function applicationApiPath(url) {
+          matcher_start = require(coordinator, '    function isMainAnalysisRequest(input, init) {',
+                                  'context-path matcher start')
+          matcher_end = require(coordinator[matcher_start:], '    function dispatch(detail) {',
+                                'context-path matcher end') + matcher_start
+          matcher = '''    function applicationApiPath(url) {
               var i18n = window.TaxonomyI18n;
               var basePath = i18n && typeof i18n.getBasePath === 'function'
                   ? String(i18n.getBasePath() || '') : '';
@@ -187,27 +180,33 @@ jobs:
                   && url.origin === window.location.origin
                   && applicationApiPath(url) === '/api/analyze'
                   && requestMethod(input, init) === 'POST');
-          }'''
-          coordinator = replace_once(coordinator, old_matcher, new_matcher, 'context-path analysis matcher')
-          coordinator_path.write_text(coordinator, encoding='utf-8')
+          }
+
+          '''
+          coordinator_path.write_text(
+              coordinator[:matcher_start] + matcher + coordinator[matcher_end:], encoding='utf-8')
 
           contract_path = Path('taxonomy-app/src/test/java/com/taxonomy/portfolio/RequirementCopilotUiContractTest.java')
           contract = contract_path.read_text(encoding='utf-8')
-          old_saved = '''                .contains("dataset.sessionControl", "dataset.sessionTestOutcome")
-                  .doesNotContain("run.disabled = running;")'''
-          new_saved = '''                .contains("dataset.sessionControl", "dataset.sessionTestOutcome")
-                  .contains("primaryOperationMessage")
+          if '.contains("primaryOperationMessage")' not in contract:
+              anchor = '                .contains("dataset.sessionControl", "dataset.sessionTestOutcome")\n'
+              replacement = anchor + '''                .contains("primaryOperationMessage")
                   .contains("item.errorMessage", "job.errorSummary")
                   .contains("status === 'FAILED' ? 'alert' : 'status'")
-                  .doesNotContain("run.disabled = running;")'''
-          contract = replace_once(contract, old_saved, new_saved, 'saved-operation UI contract')
-          contract = replace_once(
-              contract,
-              '.contains("url.pathname === \'/api/analyze\'")',
-              '.contains("applicationApiPath(url) === \'/api/analyze\'")\n'
-              '                .contains("TaxonomyI18n", "getBasePath")\n'
-              '                .doesNotContain("url.pathname === \'/api/analyze\'")',
-              'context-path UI contract')
+          '''
+              if anchor not in contract:
+                  raise SystemExit('saved-operation UI contract anchor not found')
+              contract = contract.replace(anchor, replacement, 1)
+          direct = '.contains("url.pathname === \'/api/analyze\'")'
+          if direct in contract:
+              contract = contract.replace(
+                  direct,
+                  '.contains("applicationApiPath(url) === \'/api/analyze\'")\n'
+                  '                .contains("TaxonomyI18n", "getBasePath")\n'
+                  '                .doesNotContain("url.pathname === \'/api/analyze\'")',
+                  1)
+          elif 'applicationApiPath(url)' not in contract:
+              raise SystemExit('context-path UI contract anchor not found')
           contract_path.write_text(contract, encoding='utf-8')
           PY
 
@@ -215,7 +214,6 @@ jobs:
             -Dtest=RequirementCopilotUiContractTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,PortfolioExceptionHandlerTest,ConfigurationReferenceContractTest,LlmGatewayRegistryPromptBudgetTest,PromptBudgetEnforcingLlmGatewayTest \
             -Dsurefire.failIfNoSpecifiedTests=false test
           ./mvnw -B -ntp -pl taxonomy-app -am -DskipTests package
-          ./mvnw -B -ntp -pl taxonomy-app -DskipTests -DskipITs test-compile
 
           rm .github/workflows/pr923-finalize-session-contracts.yml
           git diff --check
