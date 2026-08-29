@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 /** Deterministic candidate ranking and proposal planning. */
 final class CatalogueOverlayProposalPlanner {
 
+    private static final int MINIMUM_SECONDARY_SCORE = 120;
     private static final Set<String> GENERIC_TOKENS = Set.of(
             "a", "about", "above", "after", "again", "against", "all", "also",
             "am", "an", "and", "any", "are", "as", "at", "be", "because",
@@ -310,7 +311,7 @@ final class CatalogueOverlayProposalPlanner {
             String primary,
             int maximum) {
         return ranked.stream()
-                .filter(candidate -> candidate.score() > 0)
+                .filter(candidate -> candidate.score() >= MINIMUM_SECONDARY_SCORE)
                 .map(CandidateScore::code)
                 .filter(code -> !Objects.equals(code, primary))
                 .limit(maximum)
