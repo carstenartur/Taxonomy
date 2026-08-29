@@ -6,7 +6,7 @@ Taxonomy keeps enough GitHub Actions evidence to diagnose the current state with
 
 The cleanup never deletes a completed run merely because it is old when the run belongs to:
 
-- the current `main` commit;
+- the current default-branch commit;
 - the current head commit of an open pull request;
 - a release or tag commit;
 - the newest successful run of an active workflow;
