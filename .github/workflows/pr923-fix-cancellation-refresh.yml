@@ -29,15 +29,111 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Preserve the first persisted cancellation snapshot and verify the contract
+      - name: Make cancellation idempotent across refreshed persisted snapshots
         shell: bash
         run: |
           set -euo pipefail
-          file='taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java'
 
-          perl -0pi -e 's/        OperationDefinition definition = definition\(jobs\);\n        List<JobWithKey> cancelled = establishCancellation\(/        OperationDefinition definition = definition(jobs);\n        jobs.stream()\n                .filter(entry -> !isTerminal(entry.job().status()))\n                .forEach(entry -> jobControlService.cancel(\n                        entry.job().id(), projectId, username, context));\n        List<JobWithKey> cancelled = establishCancellation(/' "$file"
+          cat > /tmp/patch-cancellation.pl <<'PERL'
+          use strict;
+          use warnings;
 
-          grep -Fq 'entry.job().id(), projectId, username, context));' "$file"
+          my $path = 'taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java';
+          open my $input, '<:encoding(UTF-8)', $path or die "Cannot read $path: $!\n";
+          local $/;
+          my $text = <$input>;
+          close $input;
+
+          sub replace_once {
+              my ($label, $old, $new) = @_;
+              my $count = ($text =~ s/\Q$old\E/$new/);
+              die "$label replacement count was $count, expected 1\n" unless $count == 1;
+          }
+
+          my $old_cancel = <<'OLD';
+                  OperationDefinition definition = definition(jobs);
+                  List<JobWithKey> cancelled = establishCancellation(
+                          definition, username, context);
+          OLD
+          my $new_cancel = <<'NEW';
+                  OperationDefinition definition = definition(jobs);
+                  Set<String> cancellationRequests = new HashSet<>();
+                  cancelActiveJobs(
+                          jobs, definition, username, context, cancellationRequests);
+                  List<JobWithKey> cancelled = establishCancellation(
+                          definition, username, context, cancellationRequests);
+          NEW
+          replace_once('cancel entry point', $old_cancel, $new_cancel);
+
+          my $old_signature = <<'OLD';
+              private List<JobWithKey> establishCancellation(
+                      OperationDefinition definition,
+                      String username,
+                      WorkspaceContext context) {
+          OLD
+          my $new_signature = <<'NEW';
+              private List<JobWithKey> establishCancellation(
+                      OperationDefinition definition,
+                      String username,
+                      WorkspaceContext context,
+                      Set<String> cancellationRequests) {
+          NEW
+          replace_once('cancellation signature', $old_signature, $new_signature);
+
+          my $old_active = <<'OLD';
+                          active.forEach(entry -> jobControlService.cancel(
+                                  entry.job().id(), definition.projectId(), username, context));
+          OLD
+          my $new_active = <<'NEW';
+                          cancelActiveJobs(
+                                  active, definition, username, context, cancellationRequests);
+          NEW
+          my $active_count = ($text =~ s/\Q$old_active\E/$new_active/g);
+          die "active cancellation replacement count was $active_count, expected 2\n"
+              unless $active_count == 2;
+
+          my $old_marker = <<'OLD';
+                          if (!isTerminal(marker.status())) {
+                              jobControlService.cancel(
+                                      marker.id(), definition.projectId(), username, context);
+                          }
+          OLD
+          my $new_marker = <<'NEW';
+                          if (!isTerminal(marker.status())
+                                  && cancellationRequests.add(marker.id())) {
+                              jobControlService.cancel(
+                                      marker.id(), definition.projectId(), username, context);
+                          }
+          NEW
+          replace_once('marker cancellation', $old_marker, $new_marker);
+
+          my $enqueue_marker = <<'OLD';
+              private CopilotOperationView enqueue(
+          OLD
+          my $helper = <<'NEW';
+              private void cancelActiveJobs(
+                      List<JobWithKey> jobs,
+                      OperationDefinition definition,
+                      String username,
+                      WorkspaceContext context,
+                      Set<String> cancellationRequests) {
+                  jobs.stream()
+                          .filter(entry -> !isTerminal(entry.job().status()))
+                          .filter(entry -> cancellationRequests.add(entry.job().id()))
+                          .forEach(entry -> jobControlService.cancel(
+                                  entry.job().id(), definition.projectId(), username, context));
+              }
+
+              private CopilotOperationView enqueue(
+          NEW
+          replace_once('active cancellation helper', $enqueue_marker, $helper);
+
+          open my $output, '>:encoding(UTF-8)', $path or die "Cannot write $path: $!\n";
+          print {$output} $text;
+          close $output;
+          PERL
+
+          perl /tmp/patch-cancellation.pl
 
           ./mvnw -B -ntp -pl taxonomy-app -am \
             -Dtest=CopilotAutomationServiceCoverageTest,CopilotOperationConsistencyTest,CopilotAnalysisControllerTest \
@@ -48,5 +144,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -m 'Cancel active Copilot passes before refreshing persisted state'
+          git commit -m 'Make Copilot cancellation idempotent across refreshed state'
           git push origin HEAD:qa/922-complete-ai-session
