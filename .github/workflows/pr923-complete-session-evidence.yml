@@ -1,0 +1,58 @@
+name: PR 923 complete-session evidence 38cdc2e
+
+on:
+  push:
+    branches:
+      - qa/923-complete-session-evidence-38cdc2e
+
+permissions:
+  contents: read
+
+jobs:
+  complete-session:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source-equivalent evidence branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Run focused operation contracts and complete browser session
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p target/pr923-complete-session
+          ./mvnw -B -ntp -pl taxonomy-app -am verify -Pci \
+            -Dtaxonomy.model.download.skip=true \
+            -Dtaxonomy.ui.skip=true \
+            -Dtaxonomy.quality.skip=true \
+            -Djacoco.skip=true \
+            -Dcyclonedx.skip=true \
+            -Dtest=CopilotOperationConsistencyTest,CopilotAnalysisControllerTest,RequirementCopilotUiContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -Dit.test=CompleteCopilotSessionIT \
+            -Dfailsafe.failIfNoSpecifiedTests=true \
+            2>&1 | tee target/pr923-complete-session/maven.log
+
+      - name: Upload focused browser-session evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pr923-complete-session-38cdc2e
+          path: |
+            target/pr923-complete-session/**
+            taxonomy-app/target/failsafe-reports/**
+          if-no-files-found: warn
+          retention-days: 7
