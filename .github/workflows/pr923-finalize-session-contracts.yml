@@ -1,0 +1,226 @@
+name: PR 923 finalize session contracts
+
+on:
+  push:
+    branches:
+      - qa/922-complete-ai-session
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr923-finalize-session-contracts
+  cancel-in-progress: true
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Finalize the real failure and context-path contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  if new in text:
+                      return text
+                  raise SystemExit(f"{label} anchor not found")
+              return text.replace(old, new, 1)
+
+          test_path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          test = test_path.read_text(encoding='utf-8')
+          env_anchor = '.withEnv("TAXONOMY_AI_MAX_ARCHITECTURE_NODES", "100")'
+          env_replacement = '''.withEnv("TAXONOMY_AI_MAX_ARCHITECTURE_NODES", "100")
+                  .withEnv("TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS", "256")
+                  .withEnv("TAXONOMY_AI_PROMPT_MAX_INPUT_BYTES", "1024")
+                  .withEnv("TAXONOMY_AI_PROMPT_ESTIMATED_MAX_INPUT_TOKENS", "64")'''
+          if 'TAXONOMY_AI_PROMPT_MAX_INPUT_CHARACTERS' not in test:
+              test = replace_once(test, env_anchor, env_replacement, 'prompt-budget environment')
+
+          start_marker = '    private static void assertOneConsolidatedProviderFailure() {'
+          end_marker = '    private static Map<String, byte[]> unzip'
+          start = test.find(start_marker)
+          end = test.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('provider-failure method markers not found')
+          real_failure = '''    private static void assertOneConsolidatedProviderFailure() {
+              String oversizedText = REQUIREMENT_SENTENCE + " "
+                      + "Additional operational context that deliberately exceeds the configured "
+                      .repeat(8);
+
+              click(By.id("newVersionButton"));
+              WebElement modal = wait.until(
+                      ExpectedConditions.visibilityOfElementLocated(By.id("newVersionModal")));
+              fill(modal, "versionText", oversizedText);
+              fill(modal, "changeReason", "Exercise the real prompt-budget rejection contract.");
+              modal.findElement(By.cssSelector("button[type='submit']")).click();
+              waitForModalClosed("newVersionModal");
+              wait.until(textPresent(By.id("detailInfo"), "immutable version"));
+              wait.until(browser -> browser.findElement(By.id("currentText")).getText()
+                      .contains("Additional operational context"));
+              wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
+
+              String previousOperationId = driver.findElement(By.id("copilotOperation"))
+                      .getAttribute("data-operation-id");
+              setChecked("copilotForce", true);
+              click(By.id("copilotRun"));
+              wait.until(browser -> {
+                  String current = browser.findElement(By.id("copilotOperation"))
+                          .getAttribute("data-operation-id");
+                  return current != null && !current.isBlank()
+                          && !current.equals(previousOperationId);
+              });
+              wait.until(attributeEquals(By.id("copilotOperation"),
+                      "data-operation-status", "FAILED"));
+
+              WebElement operation = driver.findElement(By.id("copilotOperation"));
+              assertThat(operation.getAttribute("role")).isEqualTo("alert");
+              assertThat(driver.findElement(By.id("copilotOperationMessage")).getText())
+                      .contains("PROMPT_BUDGET_EXCEEDED")
+                      .containsIgnoringCase("AI target");
+              assertThat(driver.findElement(By.id("copilotError")).isDisplayed()).isFalse();
+
+              long visibleErrors = ((Number) javascript().executeScript("""
+                      return Array.from(document.querySelectorAll('[role="alert"]'))
+                          .filter(element => {
+                              const style = getComputedStyle(element);
+                              return style.display !== 'none' && style.visibility !== 'hidden'
+                                  && element.getBoundingClientRect().height > 0;
+                          }).length;
+                      """)).longValue();
+              assertThat(visibleErrors).isEqualTo(1L);
+              assertThat(driver.findElement(By.id("copilotRun")).isEnabled()).isTrue();
+          }
+
+          '''
+          test = test[:start] + real_failure + test[end:]
+          test_path.write_text(test, encoding='utf-8')
+
+          ui_path = Path('taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js')
+          ui = ui_path.read_text(encoding='utf-8')
+          old_render = '''        setText('copilotOperationStatus', humanize(operation.status));
+                  setText('copilotOperationMessage', operation.message || '');
+                  setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));'''
+          new_render = '''        const status = String(operation.status || '');
+                  const message = primaryOperationMessage(operation);
+                  if (panel) {
+                      panel.setAttribute('role', status === 'FAILED' ? 'alert' : 'status');
+                      panel.setAttribute('aria-live', status === 'FAILED' ? 'assertive' : 'polite');
+                  }
+                  if (status === 'FAILED') clearError();
+                  setText('copilotOperationStatus', humanize(status));
+                  setText('copilotOperationMessage', message);
+                  setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));'''
+          ui = replace_once(ui, old_render, new_render, 'operation rendering')
+          ui = replace_once(
+              ui,
+              "announce((operation.message || '') + ' ' + operation.completedPasses",
+              "announce(message + ' ' + operation.completedPasses",
+              'operation announcement')
+          helper = '''    function primaryOperationMessage(operation) {
+              if (!operation) return '';
+              const status = String(operation.status || '').toUpperCase();
+              if (status !== 'FAILED' && status !== 'PARTIAL') {
+                  return operation.message || '';
+              }
+              const evidence = [];
+              (Array.isArray(operation.jobs) ? operation.jobs : []).forEach(job => {
+                  (Array.isArray(job.items) ? job.items : []).forEach(item => {
+                      if (item && item.errorMessage) evidence.push(String(item.errorMessage));
+                  });
+                  if (job && job.errorSummary) evidence.push(String(job.errorSummary));
+              });
+              if (operation.message) evidence.push(String(operation.message));
+              const unique = evidence.map(value => value.trim()).filter(Boolean)
+                  .filter((value, index, values) => values.indexOf(value) === index);
+              return unique.find(value => value.includes('PROMPT_BUDGET_EXCEEDED'))
+                  || unique[0] || t('failed');
+          }
+
+          '''
+          if 'function primaryOperationMessage(operation)' not in ui:
+              marker = '    function renderOperation(operation) {'
+              if marker not in ui:
+                  raise SystemExit('operation helper insertion marker not found')
+              ui = ui.replace(marker, helper + marker, 1)
+          ui_path.write_text(ui, encoding='utf-8')
+
+          coordinator_path = Path('taxonomy-app/src/main/resources/static/js/core/taxonomy-operation-coordinator.js')
+          coordinator = coordinator_path.read_text(encoding='utf-8')
+          old_matcher = '''    function isMainAnalysisRequest(input, init) {
+              var url = requestUrl(input);
+              return Boolean(url
+                  && url.origin === window.location.origin
+                  && url.pathname === '/api/analyze'
+                  && requestMethod(input, init) === 'POST');
+          }'''
+          new_matcher = '''    function applicationApiPath(url) {
+              var i18n = window.TaxonomyI18n;
+              var basePath = i18n && typeof i18n.getBasePath === 'function'
+                  ? String(i18n.getBasePath() || '') : '';
+              var pathname = url.pathname;
+              if (basePath && pathname.indexOf(basePath + '/') === 0) {
+                  pathname = pathname.substring(basePath.length);
+              }
+              return pathname;
+          }
+
+          function isMainAnalysisRequest(input, init) {
+              var url = requestUrl(input);
+              return Boolean(url
+                  && url.origin === window.location.origin
+                  && applicationApiPath(url) === '/api/analyze'
+                  && requestMethod(input, init) === 'POST');
+          }'''
+          coordinator = replace_once(coordinator, old_matcher, new_matcher, 'context-path analysis matcher')
+          coordinator_path.write_text(coordinator, encoding='utf-8')
+
+          contract_path = Path('taxonomy-app/src/test/java/com/taxonomy/portfolio/RequirementCopilotUiContractTest.java')
+          contract = contract_path.read_text(encoding='utf-8')
+          old_saved = '''                .contains("dataset.sessionControl", "dataset.sessionTestOutcome")
+                  .doesNotContain("run.disabled = running;")'''
+          new_saved = '''                .contains("dataset.sessionControl", "dataset.sessionTestOutcome")
+                  .contains("primaryOperationMessage")
+                  .contains("item.errorMessage", "job.errorSummary")
+                  .contains("status === 'FAILED' ? 'alert' : 'status'")
+                  .doesNotContain("run.disabled = running;")'''
+          contract = replace_once(contract, old_saved, new_saved, 'saved-operation UI contract')
+          contract = replace_once(
+              contract,
+              '.contains("url.pathname === \'/api/analyze\'")',
+              '.contains("applicationApiPath(url) === \'/api/analyze\'")\n'
+              '                .contains("TaxonomyI18n", "getBasePath")\n'
+              '                .doesNotContain("url.pathname === \'/api/analyze\'")',
+              'context-path UI contract')
+          contract_path.write_text(contract, encoding='utf-8')
+          PY
+
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -Dtest=RequirementCopilotUiContractTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,PortfolioExceptionHandlerTest,ConfigurationReferenceContractTest,LlmGatewayRegistryPromptBudgetTest,PromptBudgetEnforcingLlmGatewayTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          ./mvnw -B -ntp -pl taxonomy-app -am -DskipTests package
+          ./mvnw -B -ntp -pl taxonomy-app -DskipTests -DskipITs test-compile
+
+          rm .github/workflows/pr923-finalize-session-contracts.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Exercise real prompt failure and preserve context-path lifecycle'
+          git push origin HEAD:qa/922-complete-ai-session
