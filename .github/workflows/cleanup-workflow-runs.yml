@@ -2,177 +2,67 @@ name: Cleanup Old Workflow Runs
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Run hourly
+    - cron: '17 2 * * *' # Daily at 02:17 UTC.
   workflow_dispatch:
     inputs:
       retain_days:
-        description: 'Delete runs older than this many days'
-        required: false
-        type: number
-        default: '10'
-      keep_minimum_runs:
-        description: 'Always keep at least this many recent runs per workflow'
+        description: 'Retain completed runs of active workflows for this many days'
         required: false
         type: number
         default: '5'
-      dry_run:
-        description: 'Dry run — log what would be deleted without actually deleting'
-        required: false
-        type: boolean
-        default: false
-      max_deletions:
-        description: 'Maximum number of runs to delete per execution (prevents rate limiting)'
+      historical_retain_days:
+        description: 'Retain runs of removed one-off workflows for this many days'
         required: false
         type: number
-        default: '500'
+        default: '2'
+      keep_minimum_runs:
+        description: 'Keep at least this many recent runs per active workflow'
+        required: false
+        type: number
+        default: '3'
+      dry_run:
+        description: 'Only report the deletion plan; do not delete runs'
+        required: false
+        type: boolean
+        default: true
+      max_deletions:
+        description: 'Maximum deletions in one execution'
+        required: false
+        type: number
+        default: '1500'
+  issue_comment:
+    types: [created]
 
-env:
-  DEFAULT_RETAIN_DAYS: '10'
-  DEFAULT_KEEP_MINIMUM_RUNS: '5'
-  DEFAULT_MAX_DELETIONS: '500'
+concurrency:
+  group: workflow-run-cleanup
+  cancel-in-progress: false
 
 permissions:
-  actions: write  # Required to delete workflow runs
+  actions: write
+  contents: read
+  pull-requests: read
 
 jobs:
   cleanup:
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.comment.user.login == github.repository_owner &&
+       github.event.comment.body == '/actions-cleanup')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-    - name: 🧹 Delete old workflow runs
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        REPO: ${{ github.repository }}
-        RETAIN_DAYS: ${{ inputs.retain_days || env.DEFAULT_RETAIN_DAYS }}
-        KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs || env.DEFAULT_KEEP_MINIMUM_RUNS }}
-        DRY_RUN: ${{ inputs.dry_run || 'false' }}
-        MAX_DELETIONS: ${{ inputs.max_deletions || env.DEFAULT_MAX_DELETIONS }}
-      run: |
-        set -euo pipefail
-        # Strip any decimal suffix (e.g., 30.0 → 30)
-        RETAIN_DAYS=${RETAIN_DAYS%.*}
-        KEEP_MINIMUM_RUNS=${KEEP_MINIMUM_RUNS%.*}
-        MAX_DELETIONS=${MAX_DELETIONS%.*}
-        TOTAL_DELETED=0
-        TOTAL_RETAINED=0
-        SUMMARY_ROWS=""
+      - name: Check out the retention policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
 
-        # Cutoff timestamp in seconds since epoch
-        CUTOFF=$(date -d "-${RETAIN_DAYS} days" +%s)
-
-        echo "ℹ️  retain_days=${RETAIN_DAYS}  keep_minimum_runs=${KEEP_MINIMUM_RUNS}  dry_run=${DRY_RUN}  max_deletions=${MAX_DELETIONS}"
-        echo "ℹ️  Cutoff date: $(date -d "-${RETAIN_DAYS} days" --utc +%Y-%m-%dT%H:%M:%SZ)"
-
-        RATE_REMAINING=$(gh api rate_limit --jq '.rate.remaining' 2>/dev/null || echo "unknown")
-        echo "ℹ️  API rate limit remaining: ${RATE_REMAINING}"
-
-        # Fetch all workflows (paginated)
-        WORKFLOWS=$(gh api "repos/${REPO}/actions/workflows?per_page=100" \
-          --paginate \
-          --jq '.workflows[] | "\(.id)\t\(.name)"')
-
-        while IFS=$'\t' read -r WF_ID WF_NAME; do
-          echo ""
-          echo "▶ Processing workflow: ${WF_NAME} (id=${WF_ID})"
-
-          # Collect completed run IDs and their created_at timestamps from all pages,
-          # newest first within each page (API default ordering is newest-first by created_at)
-          RUNS=$(gh api \
-            "repos/${REPO}/actions/workflows/${WF_ID}/runs?status=completed&per_page=100" \
-            --paginate \
-            --jq '.workflow_runs[] | "\(.id)\t\(.created_at)"' || echo "")
-
-          # Sanitize workflow name for markdown table (escape pipe characters)
-          WF_NAME_SAFE="${WF_NAME//|/\\|}"
-
-          if [ -z "${RUNS}" ]; then
-            echo "  ℹ️  No completed runs found."
-            SUMMARY_ROWS="${SUMMARY_ROWS}| ${WF_NAME_SAFE} | 0 | 0 |\n"
-            continue
-          fi
-
-          WF_DELETED=0
-          WF_RETAINED=0
-          RUN_INDEX=0
-
-          while IFS=$'\t' read -r RUN_ID RUN_CREATED; do
-            RUN_INDEX=$((RUN_INDEX + 1))
-
-            # Always keep the most recent KEEP_MINIMUM_RUNS runs
-            if [ "${RUN_INDEX}" -le "${KEEP_MINIMUM_RUNS}" ]; then
-              echo "  ✅ Keeping run ${RUN_ID} (${RUN_CREATED}) — within minimum keep count"
-              WF_RETAINED=$((WF_RETAINED + 1))
-              continue
-            fi
-
-            # Check age
-            RUN_TS=$(date -d "${RUN_CREATED}" +%s)
-            if [ "${RUN_TS}" -ge "${CUTOFF}" ]; then
-              echo "  ✅ Keeping run ${RUN_ID} (${RUN_CREATED}) — within retention period"
-              WF_RETAINED=$((WF_RETAINED + 1))
-              continue
-            fi
-
-            # Delete (or dry-run log)
-            if [ "${DRY_RUN}" = "true" ]; then
-              if [ "$(( TOTAL_DELETED + WF_DELETED ))" -ge "${MAX_DELETIONS}" ]; then
-                echo "  ⚠️ Reached maximum deletions (${MAX_DELETIONS}), stopping. Will continue in next run."
-                break
-              fi
-              echo "  🔍 [DRY RUN] Would delete run ${RUN_ID} (${RUN_CREATED})"
-              WF_DELETED=$((WF_DELETED + 1))
-            else
-              if [ "$(( TOTAL_DELETED + WF_DELETED ))" -ge "${MAX_DELETIONS}" ]; then
-                echo "  ⚠️ Reached maximum deletions (${MAX_DELETIONS}), stopping. Will continue in next run."
-                break
-              fi
-              echo "  🗑️  Deleting run ${RUN_ID} (${RUN_CREATED})"
-              if ! gh api --method DELETE "repos/${REPO}/actions/runs/${RUN_ID}" 2>/dev/null; then
-                echo "    ⚠️ Delete failed (possibly rate-limited), stopping deletions for this workflow"
-                break
-              fi
-              sleep 1
-              WF_DELETED=$((WF_DELETED + 1))
-            fi
-          done <<< "${RUNS}"
-
-          echo "  Summary: deleted=${WF_DELETED}  retained=${WF_RETAINED}"
-          TOTAL_DELETED=$((TOTAL_DELETED + WF_DELETED))
-          TOTAL_RETAINED=$((TOTAL_RETAINED + WF_RETAINED))
-          SUMMARY_ROWS="${SUMMARY_ROWS}| ${WF_NAME_SAFE} | ${WF_RETAINED} | ${WF_DELETED} |\n"
-
-          if [ "${TOTAL_DELETED}" -ge "${MAX_DELETIONS}" ]; then
-            echo ""
-            echo "⚠️ Reached maximum deletions cap (${MAX_DELETIONS}). Remaining cleanup will happen in the next scheduled run."
-            break
-          fi
-        done <<< "${WORKFLOWS}"
-
-        echo ""
-        echo "✅ Done. Total deleted: ${TOTAL_DELETED}  Total retained: ${TOTAL_RETAINED}"
-
-        # Write step summary
-        {
-          if [ "${DRY_RUN}" = "true" ]; then
-            echo "### 🔍 Workflow Runs Cleanup — Dry Run"
-          else
-            echo "### 🧹 Workflow Runs Cleanup"
-          fi
-          echo ""
-          echo "| Setting | Value |"
-          echo "| --- | --- |"
-          echo "| Retain days | ${RETAIN_DAYS} |"
-          echo "| Keep minimum runs | ${KEEP_MINIMUM_RUNS} |"
-          echo "| Max deletions per run | ${MAX_DELETIONS} |"
-          echo "| Dry run | ${DRY_RUN} |"
-          echo ""
-          echo "| Workflow | Retained | Deleted |"
-          echo "| --- | --- | --- |"
-          printf "%b" "${SUMMARY_ROWS}"
-          echo ""
-          echo "| **Total** | **${TOTAL_RETAINED}** | **${TOTAL_DELETED}** |"
-          if [ "${TOTAL_DELETED}" -ge "${MAX_DELETIONS}" ]; then
-            echo ""
-            echo "> ⚠️ **Deletion cap reached** (${MAX_DELETIONS}). Run the workflow again or wait for the next scheduled run to continue cleanup."
-          fi
-        } >> "${GITHUB_STEP_SUMMARY}"
+      - name: Plan and apply workflow-run retention
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RETAIN_DAYS: ${{ inputs.retain_days || '5' }}
+          HISTORICAL_RETAIN_DAYS: ${{ inputs.historical_retain_days || '2' }}
+          KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs || '3' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+          MAX_DELETIONS: ${{ inputs.max_deletions || '1500' }}
+        run: bash .github/scripts/cleanup-workflow-runs.sh
