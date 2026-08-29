@@ -310,24 +310,24 @@
     }
 
     function primaryOperationMessage(operation) {
-    if (!operation) return '';
-    const status = String(operation.status || '').toUpperCase();
-    if (status !== 'FAILED' && status !== 'PARTIAL') {
-        return operation.message || '';
-    }
-    const evidence = [];
-    (Array.isArray(operation.jobs) ? operation.jobs : []).forEach(job => {
-        (Array.isArray(job.items) ? job.items : []).forEach(item => {
-            if (item && item.errorMessage) evidence.push(String(item.errorMessage));
+        if (!operation) return '';
+        const status = String(operation.status || '').toUpperCase();
+        if (status !== 'FAILED' && status !== 'PARTIAL') {
+            return operation.message || '';
+        }
+        const evidence = [];
+        (Array.isArray(operation.jobs) ? operation.jobs : []).forEach(job => {
+            (Array.isArray(job.items) ? job.items : []).forEach(item => {
+                if (item && item.errorMessage) evidence.push(String(item.errorMessage));
+            });
+            if (job && job.errorSummary) evidence.push(String(job.errorSummary));
         });
-        if (job && job.errorSummary) evidence.push(String(job.errorSummary));
-    });
-    if (operation.message) evidence.push(String(operation.message));
-    const unique = evidence.map(value => value.trim()).filter(Boolean)
-        .filter((value, index, values) => values.indexOf(value) === index);
-    return unique.find(value => value.includes('PROMPT_BUDGET_EXCEEDED'))
-        || unique[0] || t('failed');
-}
+        if (operation.message) evidence.push(String(operation.message));
+        const unique = evidence.map(value => value.trim()).filter(Boolean)
+            .filter((value, index, values) => values.indexOf(value) === index);
+        return unique.find(value => value.includes('PROMPT_BUDGET_EXCEEDED'))
+            || unique[0] || t('failed');
+    }
 
     function renderOperation(operation) {
         if (!operation) return;
@@ -339,15 +339,15 @@
         panel?.setAttribute('data-operation-status', operation.status || '');
 
         const status = String(operation.status || '');
-    const message = primaryOperationMessage(operation);
-    if (panel) {
-        panel.setAttribute('role', status === 'FAILED' ? 'alert' : 'status');
-        panel.setAttribute('aria-live', status === 'FAILED' ? 'assertive' : 'polite');
-    }
-    if (status === 'FAILED') clearError();
-    setText('copilotOperationStatus', humanize(status));
-    setText('copilotOperationMessage', message);
-    setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));
+        const message = primaryOperationMessage(operation);
+        if (panel) {
+            panel.setAttribute('role', status === 'FAILED' ? 'alert' : 'status');
+            panel.setAttribute('aria-live', status === 'FAILED' ? 'assertive' : 'polite');
+        }
+        if (status === 'FAILED') clearError();
+        setText('copilotOperationStatus', humanize(status));
+        setText('copilotOperationMessage', message);
+        setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));
         setText('copilotOperationId', t('operation') + ': ' + (operation.operationId || '—'));
         setText('copilotLastContact', t('lastContact') + ': ' + formatTime(lastServerContact));
 

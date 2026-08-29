@@ -35,23 +35,23 @@
     }
 
     function applicationApiPath(url) {
-    var i18n = window.TaxonomyI18n;
-    var basePath = i18n && typeof i18n.getBasePath === 'function'
-        ? String(i18n.getBasePath() || '') : '';
-    var pathname = url.pathname;
-    if (basePath && pathname.indexOf(basePath + '/') === 0) {
-        pathname = pathname.substring(basePath.length);
+        var i18n = window.TaxonomyI18n;
+        var basePath = i18n && typeof i18n.getBasePath === 'function'
+            ? String(i18n.getBasePath() || '') : '';
+        var pathname = url.pathname;
+        if (basePath && pathname.indexOf(basePath + '/') === 0) {
+            pathname = pathname.substring(basePath.length);
+        }
+        return pathname;
     }
-    return pathname;
-}
 
-function isMainAnalysisRequest(input, init) {
-    var url = requestUrl(input);
-    return Boolean(url
-        && url.origin === window.location.origin
-        && applicationApiPath(url) === '/api/analyze'
-        && requestMethod(input, init) === 'POST');
-}
+    function isMainAnalysisRequest(input, init) {
+        var url = requestUrl(input);
+        return Boolean(url
+            && url.origin === window.location.origin
+            && applicationApiPath(url) === '/api/analyze'
+            && requestMethod(input, init) === 'POST');
+    }
 
     function dispatch(detail) {
         var normalized = Object.assign({
