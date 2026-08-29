@@ -28,8 +28,12 @@ The scheduled run executes daily at 02:17 UTC and uses:
 - at least three newest runs per active workflow; and
 - at most 1,500 deletions per execution.
 
-Manual executions default to `dry_run=true`. The job summary reports the protected evidence, the deletion candidates, the selected runs, remaining backlog, and per-workflow counts. A non-dry run stops before the GitHub API rate limit becomes unsafe and after repeated deletion failures.
+Manual executions from the Actions page default to `dry_run=true`. The job summary reports the protected evidence, the deletion candidates, the selected runs, remaining backlog, and per-workflow counts. A non-dry run stops before the GitHub API rate limit becomes unsafe and after repeated deletion failures.
 
 ## Manual cleanup
 
-Run **Cleanup Old Workflow Runs** from the Actions page. Review a dry run first, then repeat with `dry_run=false` when the proposed retention result is acceptable. The current heads of open pull requests and the current default-branch head remain protected in both modes.
+For a preview, run **Cleanup Old Workflow Runs** from the Actions page with the default `dry_run=true`. Repeat with `dry_run=false` after reviewing the plan.
+
+The repository owner can also start the productive default-policy cleanup by posting the exact standalone comment `/actions-cleanup` in an issue conversation or in the **Conversation** tab of a pull request. Inline review-thread comments do not trigger this command. Comments from every other account and all other comment text are ignored by the cleanup job. This command is intentionally destructive and therefore does not run in dry-run mode.
+
+The current heads of open pull requests and the current default-branch head remain protected in every mode.
