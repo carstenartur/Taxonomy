@@ -66,6 +66,7 @@ public class HelpController {
         new String[]{"PROJECT_PORTFOLIO_GIT_COLLABORATION", "🤝", "help.toc.PROJECT_PORTFOLIO_GIT_COLLABORATION", "help.audience.developers"},
         new String[]{"PROJECT_PORTFOLIO_OPERATIONS", "🛠️", "help.toc.PROJECT_PORTFOLIO_OPERATIONS", "help.audience.devops"},
         new String[]{"FRAMEWORK_IMPORT",          "📥", "help.toc.FRAMEWORK_IMPORT",              "help.audience.everyone"},
+        new String[]{"CATALOGUE_OVERLAY_PROPOSALS", "🧩", "help.toc.CATALOGUE_OVERLAY_PROPOSALS", "help.audience.developers"},
         new String[]{"GIT_INTEGRATION",           "🔀", "help.toc.GIT_INTEGRATION",               "help.audience.developers"},
         new String[]{"JGIT_STORAGE_HIBERNATE",    "🗃️", "help.toc.JGIT_STORAGE_HIBERNATE",        "help.audience.devops"},
         new String[]{"PREFERENCES",               "🎛️", "help.toc.PREFERENCES",                   "help.audience.admins"},

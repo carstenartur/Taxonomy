@@ -46,6 +46,7 @@
   "workflowResponsibilities": {
     "ci-cd.yml": "authoritative Maven verification and report publication",
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
+    "catalogue-overlay-proposal.yml": "Maven-verified deterministic catalogue-overlay proposal and review-evidence publication",
     "document-template-report-e2e.yml": "Maven-owned packaged browser and decision-report evidence",
     "jgit-storage-hibernate-contract.yml": "consumer-owned storage compatibility contract with Maven verification catalogue selectors",
     "kubernetes-constrained-smoke.yml": "external kind and Helm constrained-cluster release-floor verification",
