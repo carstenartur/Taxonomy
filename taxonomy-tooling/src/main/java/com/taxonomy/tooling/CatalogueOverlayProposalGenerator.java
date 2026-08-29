@@ -249,7 +249,7 @@ public final class CatalogueOverlayProposalGenerator {
             parent = Path.of(".").toAbsolutePath().normalize();
         }
         Files.createDirectories(parent);
-        Path temporary = Files.createTempFile(parent, "." + target.getFileName(), ".tmp");
+        Path temporary = Files.createTempFile(parent, ".catalogue-overlay-", ".tmp");
         try {
             Files.writeString(temporary, content, StandardCharsets.UTF_8);
             try {

@@ -1,6 +1,6 @@
-# Reproduzierbare Vorschläge für den Katalog-Overlay
+# Reproduzierbare Vorschläge für das Katalog-Overlay
 
-Die eingecheckte C3-Arbeitsmappe bleibt die Basis für Knotenidentität, Titel, Beschreibungen, Quellstatus und Provenienz. Die eingecheckte Datei `nato-taxonomy.json` bleibt der fachlich geprüfte Overlay. Die Vorschlagserzeugung überschreibt **keine** dieser Eingaben.
+Die eingecheckte C3-Arbeitsmappe bleibt die Basis für Knotenidentität, Titel, Beschreibungen, Quellstatus und Provenienz. Die eingecheckte Datei `nato-taxonomy.json` bleibt das fachlich geprüfte Overlay. Die Vorschlagserzeugung überschreibt **keine** dieser Eingaben.
 
 ## Zweck
 
@@ -28,7 +28,7 @@ target/catalogue-overlay/catalogue-overlay-proposal.json
 target/catalogue-overlay/catalogue-overlay-review.md
 ```
 
-Andere Pfade können angegeben werden, ohne den geprüften Overlay zu verändern:
+Andere Pfade können angegeben werden, ohne das geprüfte Overlay zu verändern:
 
 ```bash
 tools/catalogue-overlay/generate.sh \
@@ -38,7 +38,7 @@ tools/catalogue-overlay/generate.sh \
   --report target/pruefbericht.md
 ```
 
-Der Generator lehnt jeden Ausgabepfad ab, der auf die Arbeitsmappe oder den geprüften Overlay zeigt.
+Der Generator lehnt jeden Ausgabepfad ab, der auf die Arbeitsmappe oder das geprüfte Overlay zeigt.
 
 ## Entscheidungsautorität
 
@@ -61,7 +61,7 @@ Die Erzeugung bricht kontrolliert ab bei:
 - ungültigen oder doppelten Sekundärklassifikationen;
 - einem als `PRODUCT` klassifizierten Knoten mit Kindknoten.
 
-Neue Knoten im strikten Geltungsbereich ohne Overlay-Eintrag erscheinen als `NEW_MAPPING` oder `NEW_UNRESOLVED`. Der Generator ändert den Overlay dabei nicht.
+Neue Knoten im strikten Geltungsbereich ohne Overlay-Eintrag erscheinen als `NEW_MAPPING` oder `NEW_UNRESOLVED`. Der Generator ändert das Overlay dabei nicht.
 
 ## Prüf- und Übernahmeprozess
 
