@@ -61,6 +61,8 @@ Every long operation exposes its type, identity, phase and current state. The UI
 
 Cancel remains available while the operation is cancellable. Restart creates a new operation rather than silently reviving a terminal attempt.
 
+For a multi-pass operation cancellation is operation-wide, not tied only to the job that happens to be active at one instant. If a request arrives between verification passes, Taxonomy persists a cancelled marker for the next missing pass. A recorded cancellation dominates any late `PENDING` or `RUNNING` pass and prevents the coordinator from starting further work. A genuinely completed all-success operation is not rewritten retroactively as cancelled.
+
 ### Conformity with expectations
 
 A progress percentage is used only for completed measurable units. An active opaque LLM call is shown as indeterminate.
@@ -98,7 +100,8 @@ A failed run must retain enough evidence to distinguish:
 
 - application startup or authentication failure;
 - operation not created;
-- cancellation race;
+- cancellation requested between passes without a durable terminal marker;
+- a late pass starting or remaining active after operation-wide cancellation;
 - reconnect state not rendered;
 - persisted operation not recovered after reload;
 - missing snapshot;
