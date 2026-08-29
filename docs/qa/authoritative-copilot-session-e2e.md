@@ -16,7 +16,7 @@ It runs the packaged application with:
 - Selenium in a browser container;
 - the real project and requirement pages;
 - `LLM_MOCK=true` for deterministic scoring;
-- no injected result HTML and no fabricated successful terminal state.
+- no injected result HTML and no fabricated successful or failed terminal state.
 
 A focused run is:
 
@@ -43,7 +43,9 @@ A focused run is:
 14. Require a visible export operation and a non-empty response with a valid content type and filename.
 15. Open the DOCX as OOXML and compare common requirement evidence across DOCX, HTML and JSON.
 16. Check responsive overflow, keyboard reachability, accessible names and control obstruction.
-17. Verify that one provider/prompt failure produces one consolidated alert.
+17. Create a new immutable requirement version above the configured prompt budget through the real dialog.
+18. Start a new persisted Copilot operation and require its authoritative `FAILED` state.
+19. Require the server-owned `PROMPT_BUDGET_EXCEEDED` explanation, the affected AI target, exactly one visible alert and an enabled new-run control.
 
 ## Software-ergonomic assertions
 
@@ -105,6 +107,8 @@ A failed run must retain enough evidence to distinguish:
 - invalid OOXML;
 - cross-format semantic divergence;
 - inaccessible or obscured controls;
+- oversized input not rejected by the server before provider dispatch;
+- loss of the concrete prompt-budget/AI-target explanation;
 - multiple competing top-level errors.
 
 Screenshots may supplement this evidence, but screenshot generation is not the authority and must not inject fallback result markup.
