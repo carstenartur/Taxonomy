@@ -1,15 +1,8 @@
 package com.taxonomy.portfolio.controller;
 
-import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
-import com.taxonomy.analysis.service.PromptBudgetExceededException;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
-import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
-import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
-import com.taxonomy.portfolio.service.AiAutomationPolicy;
 import com.taxonomy.portfolio.service.CopilotAutomationService;
-import com.taxonomy.portfolio.service.PortfolioException;
-import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,21 +24,12 @@ import java.net.URI;
 public class CopilotAnalysisController {
 
     private final CopilotAutomationService automationService;
-    private final ProjectPortfolioService projectService;
-    private final AiAutomationPolicy automationPolicy;
-    private final AiPromptBudgetPolicy promptBudgetPolicy;
     private final WorkspaceResolver workspaceResolver;
 
     public CopilotAnalysisController(
             CopilotAutomationService automationService,
-            ProjectPortfolioService projectService,
-            AiAutomationPolicy automationPolicy,
-            AiPromptBudgetPolicy promptBudgetPolicy,
             WorkspaceResolver workspaceResolver) {
         this.automationService = automationService;
-        this.projectService = projectService;
-        this.automationPolicy = automationPolicy;
-        this.promptBudgetPolicy = promptBudgetPolicy;
         this.workspaceResolver = workspaceResolver;
     }
 
@@ -56,7 +40,6 @@ public class CopilotAnalysisController {
             @PathVariable Long requirementId,
             @RequestBody(required = false) CopilotRunRequest request) {
         RequestScope scope = scope();
-        preflightPrompt(projectId, requirementId, request, scope);
         CopilotOperationView operation = automationService.enqueueManual(
                 projectId, requirementId, request, scope.username(), scope.context());
         return ResponseEntity.accepted()
@@ -94,26 +77,6 @@ public class CopilotAnalysisController {
         RequestScope scope = scope();
         return automationService.cancelOperation(
                 projectId, operationId, scope.username(), scope.context());
-    }
-
-    private void preflightPrompt(
-            Long projectId,
-            Long requirementId,
-            CopilotRunRequest request,
-            RequestScope scope) {
-        RequirementView requirement = projectService.getRequirement(
-                projectId, requirementId, scope.username(), scope.context());
-        RequirementVersionView version = requirement.currentVersion();
-        if (version == null || version.text() == null) {
-            throw PortfolioException.conflict(
-                    "Requirement has no immutable current version to analyze");
-        }
-        AiAutomationPolicy.RunSettings settings = automationPolicy.manual(request);
-        try {
-            promptBudgetPolicy.requireWithinBudget(version.text(), settings.target());
-        } catch (PromptBudgetExceededException exception) {
-            throw PortfolioException.promptBudgetExceeded(exception);
-        }
     }
 
     private URI operationLocation(Long projectId, String operationId) {
