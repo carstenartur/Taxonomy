@@ -15,8 +15,6 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -30,9 +28,28 @@ import java.util.stream.Collectors;
 final class CatalogueOverlayProposalPlanner {
 
     private static final Set<String> GENERIC_TOKENS = Set.of(
-            "a", "an", "and", "the", "of", "for", "to", "in", "on", "by",
-            "information", "product", "products", "generic", "other", "joint",
-            "support", "service", "services");
+            "a", "about", "above", "after", "again", "against", "all", "also",
+            "am", "an", "and", "any", "are", "as", "at", "be", "because",
+            "been", "before", "being", "below", "between", "both", "but", "by",
+            "can", "cannot", "contain", "constitute", "context", "could", "did",
+            "do", "does", "doing", "down", "during", "each", "fact", "few",
+            "for", "from", "further", "generic", "had", "has", "have", "having",
+            "he", "her", "here", "hers", "herself", "him", "himself", "his",
+            "how", "i", "if", "in", "include", "information", "into", "is", "it",
+            "its", "itself", "joint", "just", "may", "me", "more", "most",
+            "must", "my", "myself", "necessary", "no", "nor", "not", "now",
+            "object", "of", "off", "on", "once", "only", "or", "other", "our", "ours",
+            "ourselves", "out", "over", "own", "particular", "product", "products",
+            "provide", "required", "same", "service", "services", "she", "should",
+            "so", "some", "specific", "such", "support", "than", "that", "the",
+            "their", "theirs", "them", "themselves", "then", "there", "these",
+            "they", "this", "those", "through", "to", "too", "under", "until",
+            "up", "very", "was", "we", "were", "what", "when", "where", "which",
+            "while", "who", "whom", "why", "will", "with", "would", "you",
+            "your", "yours", "yourself", "yourselves");
+    private static final Set<String> BROAD_DOMAIN_TOKENS = Set.of(
+            "command", "commander", "force", "military", "mission", "operation",
+            "operational", "system", "unit");
     private static final Set<String> FORM_TOKENS = Set.of(
             "alert", "analysis", "assessment", "brief", "catalogue", "control",
             "despatch", "estimate", "list", "matrix", "message", "order", "plan",
@@ -90,9 +107,11 @@ final class CatalogueOverlayProposalPlanner {
             } else {
                 CandidateDecision decision = decideCandidate(ranked, currentParent, patch == null);
                 proposedParent = decision.parentCode();
-                proposedSecondary = secondarySuggestions(ranked, proposedParent, 2);
                 confidence = decision.confidence();
                 unresolved = decision.unresolved();
+                proposedSecondary = unresolved && patch == null
+                        ? List.of()
+                        : secondarySuggestions(ranked, proposedParent, 2);
                 authority = "AUTOMATED_PROPOSAL";
 
                 if (patch == null) {
@@ -201,11 +220,11 @@ final class CatalogueOverlayProposalPlanner {
 
             int score = 0;
             for (String token : titleMatches) {
-                score += FORM_TOKENS.contains(token) ? 80 : 220;
+                score += titleMatchWeight(token);
             }
             for (String token : domainMatches) {
                 if (!titleMatches.contains(token)) {
-                    score += 35;
+                    score += descriptionMatchWeight(token);
                 }
             }
             for (String token : formMatches) {
@@ -238,6 +257,17 @@ final class CatalogueOverlayProposalPlanner {
                     draft.matchedTokens()));
         }
         return List.copyOf(result);
+    }
+
+    private static int titleMatchWeight(String token) {
+        if (FORM_TOKENS.contains(token)) {
+            return 80;
+        }
+        return BROAD_DOMAIN_TOKENS.contains(token) ? 60 : 220;
+    }
+
+    private static int descriptionMatchWeight(String token) {
+        return BROAD_DOMAIN_TOKENS.contains(token) ? 8 : 35;
     }
 
     private static CandidateDecision decideCandidate(

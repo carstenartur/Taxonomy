@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  */
 public final class CatalogueOverlayProposalGenerator {
 
-    static final String ALGORITHM_VERSION = "catalogue-overlay-proposal-v1";
+    static final String ALGORITHM_VERSION = "catalogue-overlay-proposal-v2";
     static final int OUTPUT_SCHEMA_VERSION = 1;
     static final String ROLE_PRODUCT = "PRODUCT";
     static final String ROLE_PRODUCT_FAMILY = "PRODUCT_FAMILY";
