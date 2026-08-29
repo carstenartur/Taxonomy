@@ -162,15 +162,19 @@ public class CopilotAutomationService {
             throw PortfolioException.notFound("Copilot operation not found: " + operationId);
         }
         OperationDefinition definition = definition(jobs);
+        Set<String> cancellationRequests = new HashSet<>();
+        cancelActiveJobs(
+                jobs, definition, username, context, cancellationRequests);
         List<JobWithKey> cancelled = establishCancellation(
-                definition, username, context);
+                definition, username, context, cancellationRequests);
         return view(definition, cancelled, username, context);
     }
 
     private List<JobWithKey> establishCancellation(
             OperationDefinition definition,
             String username,
-            WorkspaceContext context) {
+            WorkspaceContext context,
+            Set<String> cancellationRequests) {
         int maximumAttempts = Math.max(4, definition.totalPasses() * 4);
         for (int attempt = 0; attempt < maximumAttempts; attempt++) {
             List<JobWithKey> jobs = jobsForOperation(
@@ -183,8 +187,8 @@ public class CopilotAutomationService {
 
             if (cancellationRecorded) {
                 if (active.isEmpty()) return jobs;
-                active.forEach(entry -> jobControlService.cancel(
-                        entry.job().id(), definition.projectId(), username, context));
+                cancelActiveJobs(
+                        active, definition, username, context, cancellationRequests);
                 continue;
             }
 
@@ -193,8 +197,8 @@ public class CopilotAutomationService {
             if (fullyTerminal) return jobs;
 
             if (!active.isEmpty()) {
-                active.forEach(entry -> jobControlService.cancel(
-                        entry.job().id(), definition.projectId(), username, context));
+                cancelActiveJobs(
+                        active, definition, username, context, cancellationRequests);
                 continue;
             }
 
@@ -211,7 +215,8 @@ public class CopilotAutomationService {
             try {
                 AnalysisJobView marker = enqueuePass(
                         definition, missingPass, username, context);
-                if (!isTerminal(marker.status())) {
+                if (!isTerminal(marker.status())
+                        && cancellationRequests.add(marker.id())) {
                     jobControlService.cancel(
                             marker.id(), definition.projectId(), username, context);
                 }
@@ -225,6 +230,19 @@ public class CopilotAutomationService {
         throw PortfolioException.conflict(
                 "Unable to establish an authoritative cancellation state for Copilot operation "
                         + definition.operationId());
+    }
+
+    private void cancelActiveJobs(
+            List<JobWithKey> jobs,
+            OperationDefinition definition,
+            String username,
+            WorkspaceContext context,
+            Set<String> cancellationRequests) {
+        jobs.stream()
+                .filter(entry -> !isTerminal(entry.job().status()))
+                .filter(entry -> cancellationRequests.add(entry.job().id()))
+                .forEach(entry -> jobControlService.cancel(
+                        entry.job().id(), definition.projectId(), username, context));
     }
 
     private CopilotOperationView enqueue(
