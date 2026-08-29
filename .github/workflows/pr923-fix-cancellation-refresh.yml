@@ -1,0 +1,139 @@
+name: PR 923 fix cancellation refresh
+
+on:
+  push:
+    branches:
+      - qa/922-complete-ai-session
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr923-fix-cancellation-refresh
+  cancel-in-progress: true
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Deduplicate cancellation requests and verify all cancellation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one anchor, found {count}')
+              return source.replace(old, new, 1)
+
+          text = replace_once(
+              text,
+              '''        OperationDefinition definition = definition(jobs);
+          List<JobWithKey> cancelled = establishCancellation(
+                  definition, username, context);''',
+              '''        OperationDefinition definition = definition(jobs);
+          Set<String> cancellationRequestedJobIds = new HashSet<>();
+          cancelActiveJobs(
+                  jobs,
+                  definition.projectId(),
+                  username,
+                  context,
+                  cancellationRequestedJobIds);
+          List<JobWithKey> cancelled = establishCancellation(
+                  definition, username, context, cancellationRequestedJobIds);''',
+              'cancelOperation')
+
+          text = replace_once(
+              text,
+              '''    private List<JobWithKey> establishCancellation(
+              OperationDefinition definition,
+              String username,
+              WorkspaceContext context) {''',
+              '''    private List<JobWithKey> establishCancellation(
+              OperationDefinition definition,
+              String username,
+              WorkspaceContext context,
+              Set<String> cancellationRequestedJobIds) {''',
+              'establishCancellation signature')
+
+          active_cancel = '''                active.forEach(entry -> jobControlService.cancel(
+                          entry.job().id(), definition.projectId(), username, context));
+                  continue;'''
+          deduplicated_cancel = '''                cancelActiveJobs(
+                          active,
+                          definition.projectId(),
+                          username,
+                          context,
+                          cancellationRequestedJobIds);
+                  continue;'''
+          count = text.count(active_cancel)
+          if count != 2:
+              raise SystemExit(f'active cancellation blocks: expected two anchors, found {count}')
+          text = text.replace(active_cancel, deduplicated_cancel)
+
+          text = replace_once(
+              text,
+              '''                if (!isTerminal(marker.status())) {
+                      jobControlService.cancel(
+                              marker.id(), definition.projectId(), username, context);
+                  }''',
+              '''                if (!isTerminal(marker.status())
+                          && cancellationRequestedJobIds.add(marker.id())) {
+                      jobControlService.cancel(
+                              marker.id(), definition.projectId(), username, context);
+                  }''',
+              'between-pass cancellation marker')
+
+          helper_marker = '''    private CopilotOperationView enqueue(
+              Long projectId,'''
+          helper = '''    private void cancelActiveJobs(
+              List<JobWithKey> jobs,
+              Long projectId,
+              String username,
+              WorkspaceContext context,
+              Set<String> cancellationRequestedJobIds) {
+          jobs.stream()
+                  .filter(entry -> !isTerminal(entry.job().status()))
+                  .filter(entry -> cancellationRequestedJobIds.add(entry.job().id()))
+                  .forEach(entry -> jobControlService.cancel(
+                          entry.job().id(), projectId, username, context));
+      }
+
+  '''
+          if helper_marker not in text:
+              raise SystemExit('cancelActiveJobs insertion anchor not found')
+          text = text.replace(helper_marker, helper + helper_marker, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -Dtest=CopilotAutomationServiceCoverageTest,CopilotOperationConsistencyTest,CopilotAnalysisControllerTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+
+          rm .github/workflows/pr923-fix-cancellation-refresh.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Deduplicate persisted Copilot cancellation requests'
+          git push origin HEAD:qa/922-complete-ai-session
