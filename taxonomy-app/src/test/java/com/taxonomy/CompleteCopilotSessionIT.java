@@ -384,32 +384,58 @@ class CompleteCopilotSessionIT {
     }
 
     private static void assertOneConsolidatedProviderFailure() {
-        javascript().executeScript("""
-                window.__taxonomyWorkingCopilotStart = window.TaxonomyCopilotApi.start;
-                window.TaxonomyCopilotApi.start = async function() {
-                    const error = new Error('PROMPT_BUDGET_EXCEEDED: The selected AI target cannot accept this prompt.');
-                    error.status = 413;
-                    throw error;
-                };
-                """);
-        setChecked("copilotForce", true);
-        click(By.id("copilotRun"));
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("copilotError")));
-        assertThat(driver.findElement(By.id("copilotError")).getText())
-                .contains("PROMPT_BUDGET_EXCEEDED")
-                .containsIgnoringCase("AI target");
-        long visibleErrors = ((Number) javascript().executeScript("""
-                return Array.from(document.querySelectorAll('[role="alert"]'))
-                    .filter(element => {
-                        const style = getComputedStyle(element);
-                        return style.display !== 'none' && style.visibility !== 'hidden'
-                            && element.getBoundingClientRect().height > 0;
-                    }).length;
-                """)).longValue();
-        assertThat(visibleErrors).isEqualTo(1L);
-        javascript().executeScript(
-                "window.TaxonomyCopilotApi.start = window.__taxonomyWorkingCopilotStart;");
-    }
+    String oversizedText = "Requirement context ".repeat(7_000);
+
+    click(By.id("newVersionButton"));
+    WebElement modal = wait.until(
+            ExpectedConditions.visibilityOfElementLocated(By.id("newVersionModal")));
+    WebElement textField = modal.findElement(By.id("versionText"));
+    javascript().executeScript("""
+            const field = arguments[0];
+            field.value = arguments[1];
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+            """, textField, oversizedText);
+    fill(modal, "changeReason", "Exercise the real prompt-budget rejection contract.");
+    modal.findElement(By.cssSelector("button[type='submit']")).click();
+    waitForModalClosed("newVersionModal");
+    wait.until(textPresent(By.id("detailInfo"), "immutable version"));
+    wait.until(browser -> ((Number) javascript().executeScript(
+            "return (document.getElementById('currentText')?.textContent || '').length"))
+            .intValue() > 120_000);
+    wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
+
+    String previousOperationId = driver.findElement(By.id("copilotOperation"))
+            .getAttribute("data-operation-id");
+    setChecked("copilotForce", true);
+    click(By.id("copilotRun"));
+    wait.until(browser -> {
+        String current = browser.findElement(By.id("copilotOperation"))
+                .getAttribute("data-operation-id");
+        return current != null && !current.isBlank()
+                && !current.equals(previousOperationId);
+    });
+    wait.until(attributeEquals(By.id("copilotOperation"),
+            "data-operation-status", "FAILED"));
+
+    WebElement operation = driver.findElement(By.id("copilotOperation"));
+    assertThat(operation.getAttribute("role")).isEqualTo("alert");
+    assertThat(driver.findElement(By.id("copilotOperationMessage")).getText())
+            .contains("PROMPT_BUDGET_EXCEEDED")
+            .containsIgnoringCase("AI target");
+    assertThat(driver.findElement(By.id("copilotError")).isDisplayed()).isFalse();
+
+    long visibleErrors = ((Number) javascript().executeScript("""
+            return Array.from(document.querySelectorAll('[role="alert"]'))
+                .filter(element => {
+                    const style = getComputedStyle(element);
+                    return style.display !== 'none' && style.visibility !== 'hidden'
+                        && element.getBoundingClientRect().height > 0;
+                }).length;
+            """)).longValue();
+    assertThat(visibleErrors).isEqualTo(1L);
+    assertThat(driver.findElement(By.id("copilotRun")).isEnabled()).isTrue();
+}
 
     private static Map<String, byte[]> unzip(byte[] archive) {
         Map<String, byte[]> entries = new LinkedHashMap<>();

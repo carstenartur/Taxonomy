@@ -41,6 +41,9 @@ class RequirementCopilotUiContractTest {
                 .contains("taxonomy:export-operation-state")
                 .contains("blob.size < 1", "Unexpected content type", "Unexpected export filename")
                 .contains("dataset.sessionControl", "dataset.sessionTestOutcome")
+                .contains("primaryOperationMessage")
+        .contains("item.errorMessage", "job.errorSummary")
+        .contains("status === 'FAILED' ? 'alert' : 'status'")
                 .doesNotContain("run.disabled = running;")
                 .doesNotContain("analyzeBtn.click()", "waitForScores");
     }
@@ -57,7 +60,9 @@ class RequirementCopilotUiContractTest {
         assertThat(loader).contains("taxonomy-operation-coordinator.js");
         assertThat(coordinator)
                 .contains("taxonomy:operation-state")
-                .contains("url.pathname === '/api/analyze'")
+                .contains("applicationApiPath(url) === '/api/analyze'")
+                .contains("TaxonomyI18n", "getBasePath")
+                .doesNotContain("url.pathname === '/api/analyze'")
                 .contains("status: 'RUNNING'")
                 .contains("status: cancelled ? 'CANCELLED' : 'FAILED'")
                 .contains("window.TaxonomyAnalysis.runCopilotFlow()")
