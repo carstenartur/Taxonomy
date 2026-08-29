@@ -52,7 +52,9 @@ class StreamRequirementAnalysisUseCaseTest {
             callback.onPhase("Working", 12);
             callback.onScores(Map.of("CP", 80), Map.of("CP", "reason"), "Capabilities scored 80/100", detail);
             callback.onExpanding("CP", List.of("CP-1023"));
-            callback.onComplete("SUCCESS", Map.of("CP", 80, "CR", 0), List.of("warn"), List.of());
+            callback.onComplete(
+                    "SUCCESS", Map.of("CP", 80, "CR", 0), List.of("warn"),
+                    List.of(), List.of());
             return null;
         }).when(llmService).analyzeStreaming(eq(command.businessText()), any());
 
@@ -78,6 +80,7 @@ class StreamRequirementAnalysisUseCaseTest {
                 "SUCCESS",
                 Map.of("CP", 80, "CR", 0),
                 List.of("warn"),
+                List.of(),
                 List.of()));
 
         verify(promptBudgetPolicy).requireWithinBudget(
@@ -95,7 +98,9 @@ class StreamRequirementAnalysisUseCaseTest {
 
         doAnswer(invocation -> {
             com.taxonomy.analysis.service.AnalysisEventCallback callback = invocation.getArgument(1);
-            callback.onError("PARTIAL", "Analysis failed", Map.of("CP", 80), List.of("warn"), List.of());
+            callback.onError(
+                    "PARTIAL", "Analysis failed", Map.of("CP", 80), List.of("warn"),
+                    List.of(), List.of());
             return null;
         }).when(llmService).analyzeStreaming(eq(command.businessText()), any());
 
@@ -108,6 +113,7 @@ class StreamRequirementAnalysisUseCaseTest {
                 "Analysis failed",
                 Map.of("CP", 80),
                 List.of("warn"),
+                List.of(),
                 List.of()));
         verify(promptBudgetPolicy).requireWithinBudget(
                 command.businessText(), command.provider());

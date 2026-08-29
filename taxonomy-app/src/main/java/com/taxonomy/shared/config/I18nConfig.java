@@ -14,6 +14,7 @@ public class I18nConfig {
     public static final List<String> MESSAGE_BASENAMES = List.of(
             "messages_onboarding",
             "messages",
+            "messages_catalogue_overlay",
             "messages_document_import",
             "messages_document_templates",
             "messages_document_template_detail",

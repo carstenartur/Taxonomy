@@ -31,7 +31,9 @@ Git-gestützte Einstellungen (`taxonomy.llm.*`, `taxonomy.analysis.min-score`, `
 | `TAXONOMY_FORWARD_HEADERS_STRATEGY` | Kubernetes: `server.forward-headers-strategy` | `framework` | Verarbeitung vertrauenswürdiger Ingress-Header. |
 | `TAXONOMY_SHUTDOWN_TIMEOUT` | Kubernetes: Shutdown-Phase | `30s` | Graceful-Shutdown-Frist. |
 | `TAXONOMY_LOG_FILE` | Kubernetes: `logging.file.name` | leer | Optionale Logdatei; bei read-only Containern leer lassen. |
-| `TAXONOMY_CATALOGUE_RESOURCE` | `taxonomy.catalogue.resource` | mitgelieferter C3-Katalog | Katalogquelle und Report-Provenienz. |
+| `TAXONOMY_CATALOGUE_RESOURCE` | `taxonomy.catalogue.resource` | mitgelieferter C3-Katalog | Excel-Basiskatalog und Report-Provenienz. |
+| `TAXONOMY_CATALOGUE_OVERLAY_ENABLED` | `taxonomy.catalogue.overlay.enabled` | `true` | Wendet das versionierte, strikt validierte JSON-Overlay auf die Excel-Basis an und gleicht persistierte Knoten idempotent ab. |
+| `TAXONOMY_CATALOGUE_OVERLAY_RESOURCE` | `taxonomy.catalogue.overlay-resource` | `classpath:data/nato-taxonomy.json` | Overlay mit expliziten Elternkorrekturen, Produktrollen, Sekundärklassifikationen und Review-Metadaten. |
 | `TAXONOMY_REPORT_TIME_ZONE` | `taxonomy.report.time-zone` | `Europe/Berlin` | Zeitzone der Berichte. |
 | `GIT_COMMIT` | `git.commit.id` | leer | Bevorzugter Quell-Commit der Report-Provenienz. |
 | `GITHUB_SHA` | Fallback für `git.commit.id` | `unknown` | CI-Fallback, wenn `GIT_COMMIT` fehlt. |
@@ -79,6 +81,8 @@ Die HSQLDB-Poolvariablen gelten nur im HSQLDB-Profil; PostgreSQL, MSSQL und Orac
 | `TAXONOMY_LLM_RPM` | Git-Einstellung `taxonomy.llm.rpm` | `5` | Ausgehende Requests je Anbieter und Minute. |
 | `TAXONOMY_LLM_TIMEOUT_SECONDS` | Git-Einstellung `taxonomy.llm.timeout-seconds` | `30` | Timeout eines LLM-Aufrufs. |
 | `TAXONOMY_ANALYSIS_MIN_SCORE` | Git-Einstellung `taxonomy.analysis.min-score` | `70` | Mindestwert 0–100 für gewöhnliche Architektursichten. |
+| `TAXONOMY_ANALYSIS_PRODUCT_BATCH_SIZE` | `taxonomy.analysis.product.batch-size` | `10` | Zahl konkreter Information Products je unabhängiger Eignungsanfrage (1–10); vor der Batchbildung wird deterministisch sortiert. Höhere Werte stoppen den Start fehlersicher. |
+| `TAXONOMY_ANALYSIS_PRODUCT_MIN_SCORE` | `taxonomy.analysis.product.min-score` | `50` | Unabhängige Eignungsschwelle 0–100 für konkrete Produkte. Niedrigere Werte werden zu expliziten Nullen und können eine strukturierte Produktabdeckungslücke erzeugen. |
 | `TAXONOMY_RATE_LIMIT_PER_MINUTE` | Git-Einstellung `taxonomy.rate-limit.per-minute` | `10` | Zugelassene LLM-Aufrufe je stabiler authentifizierter Identität und Minute; genau `0` deaktiviert, negative Werte wirken fehlersicher als `1`. |
 
 Das eingehende Kontingent wird nach der Autorisierung geprüft. Lokale Benutzer werden über den kanonischen Benutzernamen zugeordnet; Keycloak-Browser- und Bearer-Zugriffe verwenden das unveränderliche Paar `iss`/`sub` und teilen daher auch nach einer Änderung von `preferred_username` dasselbe Budget. Forwarding-Header und Peer-Adressen sind keine Kontingentidentitäten; abgewiesene Aufrufe erzeugen keinen Zustand. Die begrenzten In-Memory-Zähler laufen bei Inaktivität ab und liefern HTTP `429` mit `Retry-After` und `Cache-Control: no-store`. Sie gelten je Anwendungsinstanz; für ein clusterweites Budget bei mehreren Replikaten ist deshalb ein verteilter äußerer Begrenzer erforderlich. Der gleiche Pfadvertrag gilt am Root-Kontext und unter einem Präfix wie `/taxonomy`.

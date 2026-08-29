@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 
 import java.util.List;
@@ -24,10 +25,12 @@ public interface AnalysisEventCallback {
 
     /** Analysis completed successfully. */
     void onComplete(String status, Map<String, Integer> allScores, List<String> warnings,
-                    List<TaxonomyDiscrepancy> discrepancies);
+                    List<TaxonomyDiscrepancy> discrepancies,
+                    List<ProductCoverageGap> productCoverageGaps);
 
     /** Analysis stopped due to an error (possibly with partial scores). */
     void onError(String status, String errorMessage,
                  Map<String, Integer> partialScores, List<String> warnings,
-                 List<TaxonomyDiscrepancy> discrepancies);
+                 List<TaxonomyDiscrepancy> discrepancies,
+                 List<ProductCoverageGap> productCoverageGaps);
 }

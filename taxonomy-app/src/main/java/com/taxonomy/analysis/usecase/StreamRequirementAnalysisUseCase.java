@@ -5,6 +5,7 @@ import com.taxonomy.analysis.service.AnalysisEventCallback;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
@@ -53,17 +54,21 @@ public class StreamRequirementAnalysisUseCase {
                 @Override
                 public void onComplete(String status, Map<String, Integer> allScores,
                                        List<String> warnings,
-                                       List<TaxonomyDiscrepancy> discrepancies) {
-                    handler.handle(new AnalysisStreamEvent.Complete(status, allScores, warnings, discrepancies));
+                                       List<TaxonomyDiscrepancy> discrepancies,
+                                       List<ProductCoverageGap> productCoverageGaps) {
+                    handler.handle(new AnalysisStreamEvent.Complete(
+                            status, allScores, warnings, discrepancies, productCoverageGaps));
                 }
 
                 @Override
                 public void onError(String status, String errorMessage,
                                     Map<String, Integer> partialScores,
                                     List<String> warnings,
-                                    List<TaxonomyDiscrepancy> discrepancies) {
+                                    List<TaxonomyDiscrepancy> discrepancies,
+                                    List<ProductCoverageGap> productCoverageGaps) {
                     handler.handle(new AnalysisStreamEvent.Error(
-                            status, errorMessage, partialScores, warnings, discrepancies));
+                            status, errorMessage, partialScores, warnings, discrepancies,
+                            productCoverageGaps));
                 }
             });
         } finally {

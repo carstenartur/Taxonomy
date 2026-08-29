@@ -196,7 +196,9 @@ DSL-Dokumente werden unter dem Dateinamen `architecture.taxdsl` gespeichert. Der
 
 ## Datenladung
 
-Wenn der Katalog leer ist oder `TAXONOMY_INIT_RELOAD_EXISTING=true` ausdrücklich einen Ersatz anfordert, importiert `TaxonomyService` die mitgelieferte C3-Arbeitsmappe (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) mit Apache POI. Andernfalls werden persistierte Katalogzeilen weiterverwendet. Eine CSV-Seed-Datei (`relations.csv`) liefert Standard-Beziehungen, wenn kein Relations-Blatt vorhanden ist.
+Wenn der Katalog leer ist oder `TAXONOMY_INIT_RELOAD_EXISTING=true` ausdrücklich einen Ersatz anfordert, importiert `TaxonomyService` die mitgelieferte C3-Arbeitsmappe (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) mit Apache POI. Vor der Persistierung wendet `CatalogueOverlayService` das versionierte JSON-Overlay in `src/main/resources/data/nato-taxonomy.json` an, prüft jede gepatchte Identität und Elternzuordnung, verwirft taxonomieübergreifende Verknüpfungen, Selbstreferenzen, Zyklen und unvollständige strikte Abdeckung und berechnet die Ebenen aus der wirksamen Hierarchie neu. Bei einem normalen Neustart wird dasselbe Overlay idempotent mit den persistierten Knoten abgeglichen, ohne Beziehungen oder Analysehistorie zu löschen. Eine CSV-Seed-Datei (`relations.csv`) liefert Standard-Beziehungen, wenn kein Relations-Blatt vorhanden ist.
+
+Das Overlay ordnet derzeit die konkreten Entwurfs-Information-Products unter die freigegebenen Produktfamilien ein. Kategorien behalten die hierarchische Elternbudget-Bewertung; konkrete `PRODUCT`-Blätter erhalten unabhängige Eignungswerte von 0 bis 100 in deterministischen begrenzten Batches und dürfen sämtlich null sein. Eine relevante Produktfamilie ohne Produkt oberhalb der konfigurierten Schwelle erzeugt eine strukturierte Produktabdeckungslücke statt eines erfundenen Katalogknotens. Siehe [Information-Product-Katalog-Overlay](../dev/INFORMATION_PRODUCT_OVERLAY.md).
 
 ### Beziehungs-Seed-Modell
 
@@ -268,9 +270,8 @@ nicht zwischen Spring-Startphasen beendet wird.
 
 Der Entwicklungsstandard ist eine In-Memory-URL. Die Produktions-Docker-
 Konfiguration verwendet dateibasierte HSQLDB- und Lucene-Speicherung. Vorhandene
-persistierte Katalogzeilen werden beim Neustart weiterverwendet.
-`TAXONOMY_INIT_RELOAD_EXISTING=true` löst bewusst ein destruktives Neuladen aus
-der mitgelieferten Arbeitsmappe aus.
+persistierte Katalogzeilen bleiben beim Neustart erhalten und werden mit dem eingecheckten JSON-Overlay abgeglichen; geänderte Eltern- und Ebenenwerte werden aktualisiert, ohne Beziehungen zu löschen.
+`TAXONOMY_INIT_RELOAD_EXISTING=true` löst bewusst ein destruktives Neuladen aus der mitgelieferten Arbeitsmappe mit anschließender identischer strikter Overlay-Anwendung aus.
 
 PostgreSQL, Microsoft SQL Server und Oracle verwenden eigene Profile und die
 begrenzte Testcontainers-Kompatibilitätsmatrix. Details und Testbefehle stehen

@@ -26,7 +26,7 @@ Die Werte sind **Relevanz- und Zuordnungswerte**, keine statistischen Wahrschein
 
 ## Vollständigkeit und Dokumentstatus
 
-Ein Bericht ist erst dann abschließend, wenn alle Wurzelbereiche bewertet wurden und für jeden positiven inneren Knoten sämtliche direkten Kinder einen Wert besitzen. Fehlen bei einem positiven Vaterknoten Kinderbewertungen oder endet die Analyse vor einem tatsächlichen Blatt, wird der Bericht deutlich als Entwurf gekennzeichnet. Positive Vaterknoten, deren vollständig bewertete Kinder sämtlich 0% erhalten, werden als ungelöste Zuordnung ausgewiesen.
+Ein Bericht ist erst dann abschließend, wenn alle Wurzelbereiche bewertet wurden und für jeden positiven inneren Knoten sämtliche direkten Kinder einen Wert besitzen. Fehlen bei einem positiven Vaterknoten Kinderbewertungen oder endet die Analyse vor einem tatsächlichen Blatt, wird der Bericht deutlich als Entwurf gekennzeichnet. Positive Vaterknoten, deren vollständig bewertete Kinder sämtlich 0% erhalten, bleiben nur dann ungelöst, wenn kein validierter strukturierter `productCoverageGap` vorliegt. Belegt dieser Nachweis die vollständige erfolglose Bewertung der konkreten Produkte, ist die Produktabdeckungslücke eine abgeschlossene Feststellung und der Bericht erhält `FINAL_WITH_WARNINGS` statt `DRAFT_INCOMPLETE`.
 
 Mögliche Zustände:
 
@@ -51,7 +51,7 @@ Zusätzlich werden der im Snapshot gespeicherte Taxonomie-Fingerabdruck und der
 Prompt-Fingerabdruck ausgegeben. Weicht der Fingerabdruck der eingefrorenen Hierarchie
 vom gespeicherten Wert ab, erhält der Bericht einen ausdrücklichen Prüfhinweis.
 
-Der Analyse-Fingerabdruck umfasst Anforderung, Anbieter, Status, sortierte Bewertungen, sortierte Begründungen und dokumentierte Abweichungen. Derselbe Taxonomie- und Analysestand führt damit zum selben fachlichen Entscheidungsinhalt; lediglich Erzeugungsmetadaten wie Zeitpunkt und Account ändern sich.
+Der Analyse-Fingerabdruck umfasst Anforderung, Anbieter, Status, sortierte Bewertungen, sortierte Begründungen, dokumentierte Abweichungen und validierte Produktabdeckungslücken. Derselbe Taxonomie- und Analysestand führt damit zum selben fachlichen Entscheidungsinhalt; lediglich Erzeugungsmetadaten wie Zeitpunkt und Account ändern sich.
 
 ## Extension-Architektur
 
@@ -102,6 +102,7 @@ Beispiel:
   "provider": "GEMINI",
   "analysisStatus": "SUCCESS",
   "discrepancies": [],
+  "productCoverageGaps": [],
   "language": "de"
 }
 ```

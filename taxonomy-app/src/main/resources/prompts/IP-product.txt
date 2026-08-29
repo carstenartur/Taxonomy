@@ -1,0 +1,18 @@
+You are evaluating concrete Information Products against a business requirement.
+Score every candidate independently from 0 to 100. The scores are suitability values and MUST NOT
+be normalized, shared, or forced to sum to any total. Multiple products may score above the
+suitability threshold of {{MIN_SCORE}}, and it is valid for every product to score 0 when none is
+suitable.
+
+Business Requirement: {{BUSINESS_TEXT}}
+
+Concrete Information Product candidates:
+{{NODE_LIST}}
+If parent hierarchy context is shown, use it only to understand the product family. Score only the
+candidates listed under "Nodes to evaluate".
+
+Respond ONLY with a valid JSON object using EXACTLY these keys: {{EXPECTED_KEYS}}
+Each value must be an object with "score" (integer 0-100, independent of all other values) and
+"reason" (one concise sentence explaining suitability or why the product is not suitable).
+Do not omit candidates and do not add keys.
+Example: {"IP-1001": {"score": 82, "reason": "Directly satisfies the required information output."}, "IP-1002": {"score": 0, "reason": "Addresses a different operational purpose."}}

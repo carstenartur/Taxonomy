@@ -1,9 +1,13 @@
 package com.taxonomy;
 
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.ObjectMapper;
-import com.taxonomy.dto.SavedAnalysis;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.BudgetDistribution;
+import com.taxonomy.catalog.service.CatalogueOverlayService;
+import com.taxonomy.catalog.service.DeterministicNodeScorer;
 import com.taxonomy.catalog.service.HierarchyScoreDistributor;
+import com.taxonomy.catalog.service.IndependentScoring;
+import com.taxonomy.catalog.service.NodeScorer;
+import com.taxonomy.dto.SavedAnalysis;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -11,26 +15,33 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * Generates the three mock-score JSON files under {@code src/main/resources/mock-scores/}.
+ * Generates the three mock-score JSON files under
+ * {@code src/main/resources/mock-scores/}.
  *
- * <p>Each file contains scores for <em>all</em> taxonomy nodes (roots + every child at every
- * depth level), using a hierarchical distribution where children scores always sum to their
- * parent's score.  This satisfies the correct scoring model: each root taxonomy is rated
- * independently on a 0–100 scale ("how well does this taxonomy cover the requirement?") and
- * the score is then subdivided down the hierarchy.
+ * <p>Each file contains scores for every taxonomy node. Ordinary taxonomy
+ * categories use hierarchical parent-budget distribution. Concrete Information
+ * Product leaves use independent suitability scores with the same default
+ * threshold as live product analysis, so they neither consume nor dilute the
+ * category budget. This mirrors the mixed-sibling runtime contract introduced
+ * for the Information Products overlay.
  *
- * <p>The actual distribution logic lives in {@link HierarchyScoreDistributor}, which
- * walks the taxonomy tree via {@code TaxonomyService} and distributes each parent's
- * score budget across its children deterministically.
+ * <p>The distribution remains deterministic: category weights and raw product
+ * suitability values are derived from stable node-code hashes. Product scores
+ * below the default suitability threshold are stored as explicit zeroes.
  *
- * <p><b>Opt-in:</b> only runs when the {@code generateMockScores} system property is set.
+ * <p><b>Opt-in:</b> only runs when the {@code generateMockScores} system
+ * property is set.
  * <pre>{@code
  * mvn test -DgenerateMockScores -Dtest=MockScoreGeneratorIT
  * }</pre>
@@ -43,14 +54,31 @@ import java.util.*;
 @EnabledIfSystemProperty(named = "generateMockScores", matches = ".*")
 class MockScoreGeneratorIT {
 
+    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
+    private static final int DEFAULT_PRODUCT_MINIMUM_SCORE = 50;
+
+    private static final NodeScorer PRODUCT_SCORER =
+            (requirementText, products, parentScore) -> {
+                Map<String, Integer> rawScores = DeterministicNodeScorer.INSTANCE.score(
+                        requirementText, products, 100);
+                Map<String, Integer> thresholdedScores = new LinkedHashMap<>();
+                for (TaxonomyNode product : products) {
+                    int rawScore = rawScores.getOrDefault(product.getCode(), 0);
+                    thresholdedScores.put(
+                            product.getCode(),
+                            rawScore >= DEFAULT_PRODUCT_MINIMUM_SCORE ? rawScore : 0);
+                }
+                return thresholdedScores;
+            };
+
     @Autowired
     private HierarchyScoreDistributor distributor;
 
-    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
+    @Autowired
+    private CatalogueOverlayService catalogueOverlayService;
 
-    // ── Scenario 1: Secure voice communications ───────────────────────────────
+    // ── Scenario 1: Secure voice communications ────────────────────────────
 
-    /** Root scores for the "secure voice communications" scenario. */
     private static final Map<String, Integer> VOICE_COMMS_ROOT_SCORES = Map.of(
             "CO", 90,
             "CR", 70,
@@ -59,10 +87,9 @@ class MockScoreGeneratorIT {
             "BP", 25,
             "CI", 15,
             "UA", 10,
-            "BR",  0
+            "BR", 0
     );
 
-    /** Root-level reason texts for the "secure voice communications" scenario. */
     private static final Map<String, String> VOICE_COMMS_REASONS = Map.of(
             "CO", "Communications Services directly covers voice communication systems, protocols, and infrastructure for tactical and strategic networks.",
             "CR", "Core Services provide the foundational transport and switching capabilities required to carry voice traffic.",
@@ -74,7 +101,7 @@ class MockScoreGeneratorIT {
             "BR", "Business Roles were evaluated but are not relevant — the taxonomy does not cover voice communication systems through roles alone."
     );
 
-    // ── Scenario 2: Logistics and supply chain ───────────────────────────────
+    // ── Scenario 2: Logistics and supply chain ─────────────────────────────
 
     private static final Map<String, Integer> LOGISTICS_ROOT_SCORES = Map.of(
             "BP", 85,
@@ -98,7 +125,7 @@ class MockScoreGeneratorIT {
             "CI", "COI Services may expose logistics data feeds to operational communities that need situational awareness of supply availability."
     );
 
-    // ── Scenario 3: Cyber defence monitoring ─────────────────────────────────
+    // ── Scenario 3: Cyber defence monitoring ───────────────────────────────
 
     private static final Map<String, Integer> CYBER_DEFENCE_ROOT_SCORES = Map.of(
             "CO", 80,
@@ -122,7 +149,7 @@ class MockScoreGeneratorIT {
             "BR", "Business Roles define the responsibilities of SOC analysts, incident responders, and cyber defence coordinators within the cyber defence organisation."
     );
 
-    // ── Generator tests ───────────────────────────────────────────────────────
+    // ── Generator tests ─────────────────────────────────────────────────────
 
     @Test
     @Order(1)
@@ -131,8 +158,7 @@ class MockScoreGeneratorIT {
                 "Provide secure voice communications between HQ and deployed forces",
                 VOICE_COMMS_ROOT_SCORES,
                 VOICE_COMMS_REASONS,
-                "secure-voice-comms.json"
-        );
+                "secure-voice-comms.json");
     }
 
     @Test
@@ -142,8 +168,7 @@ class MockScoreGeneratorIT {
                 "Manage logistics and supply chain operations for deployed forces including inventory tracking and distribution",
                 LOGISTICS_ROOT_SCORES,
                 LOGISTICS_REASONS,
-                "logistics-supply-chain.json"
-        );
+                "logistics-supply-chain.json");
     }
 
     @Test
@@ -153,23 +178,24 @@ class MockScoreGeneratorIT {
                 "Implement continuous cyber defence monitoring, threat detection, and incident response for IT infrastructure",
                 CYBER_DEFENCE_ROOT_SCORES,
                 CYBER_DEFENCE_REASONS,
-                "cyber-defence-monitoring.json"
-        );
+                "cyber-defence-monitoring.json");
     }
 
-    // ── Core generation logic ─────────────────────────────────────────────────
+    private void generateAndSave(
+            String requirement,
+            Map<String, Integer> rootScores,
+            Map<String, String> rootReasons,
+            String filename) throws IOException {
 
-    /**
-     * Distributes root scores across the entire taxonomy hierarchy using
-     * {@link HierarchyScoreDistributor} and writes the result as a JSON file.
-     */
-    private void generateAndSave(String requirement,
-                                 Map<String, Integer> rootScores,
-                                 Map<String, String> rootReasons,
-                                 String filename) throws IOException {
-
-        HierarchyScoreDistributor.DistributionResult result =
-                distributor.distribute(rootScores, rootReasons);
+        HierarchyScoreDistributor.DistributionResult result = distributor.distribute(
+                rootScores,
+                rootReasons,
+                requirement,
+                DeterministicNodeScorer.INSTANCE,
+                BudgetDistribution.INSTANCE,
+                node -> catalogueOverlayService.isProduct(node.getCode()),
+                PRODUCT_SCORER,
+                IndependentScoring.INSTANCE);
 
         SavedAnalysis analysis = new SavedAnalysis();
         analysis.setVersion(1);
@@ -182,7 +208,10 @@ class MockScoreGeneratorIT {
         Path output = Path.of("src/main/resources/mock-scores/" + filename);
         MAPPER.writerWithDefaultPrettyPrinter().writeValue(output.toFile(), analysis);
 
-        System.out.printf("[MockScoreGenerator] %s: %d nodes written to %s%n",
-                filename, result.scores().size(), output);
+        System.out.printf(
+                "[MockScoreGenerator] %s: %d nodes written to %s%n",
+                filename,
+                result.scores().size(),
+                output);
     }
 }

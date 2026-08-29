@@ -89,7 +89,8 @@ try {
       completenessPercent: reportModel.metadata?.completenessPercent,
       evaluatedNodeCount: reportModel.metadata?.evaluatedNodeCount,
       positiveNodeCount: reportModel.metadata?.positiveNodeCount,
-      warningCount: reportModel.warnings.length
+      warningCount: reportModel.warnings.length,
+      productCoverageGapCount: reportModel.productCoverageGaps.length
     },
     download: {
       ...download,
@@ -266,6 +267,7 @@ async function evaluateHospitalRequirement(target) {
     onboarding,
     evaluatedScoreCount: Object.keys(scores).length,
     positiveScoreCount: positive.length,
+    productCoverageGapCount: (result.productCoverageGaps || []).length,
     suppliedReasonCount: Object.keys(reasons).length,
     leadingScores: Object.fromEntries(positive.slice(0, 12)),
     architectureElementCount: elements.length,
@@ -322,6 +324,7 @@ async function currentReportRequest(target) {
       provider: state?.lastAnalysisProvider || 'MOCK',
       analysisStatus: state?.lastAnalysisStatus || 'UNKNOWN',
       discrepancies: state?.currentDiscrepancies || [],
+      productCoverageGaps: state?.currentProductCoverageGaps || [],
       language: window.TaxonomyI18n?.getLocale?.()
         || document.documentElement.lang
         || 'de'
@@ -374,6 +377,26 @@ async function verifyDecisionModel(target, request) {
     throw new Error(
       `Deterministic mock analysis is incomplete: `
         + `${report.metadata?.completenessPercent}%`);
+  }
+  if (!Array.isArray(report.productCoverageGaps)) {
+    throw new Error('Decision report omitted structured product coverage gaps');
+  }
+  const requestedGaps = Array.isArray(request.productCoverageGaps)
+    ? request.productCoverageGaps : [];
+  if (report.productCoverageGaps.length !== requestedGaps.length) {
+    throw new Error(
+      `Decision report preserved ${report.productCoverageGaps.length} of `
+        + `${requestedGaps.length} product coverage gaps`);
+  }
+  for (const gap of report.productCoverageGaps) {
+    if (!report.warnings.some(warning => warning.includes(gap.productFamilyCode))) {
+      throw new Error(
+        `Decision report did not explain product coverage gap ${gap.productFamilyCode}`);
+    }
+  }
+  if (requestedGaps.length > 0 && report.status !== 'FINAL_WITH_WARNINGS') {
+    throw new Error(
+      `Completed product coverage gaps require FINAL_WITH_WARNINGS, got ${report.status}`);
   }
   if (report.status === 'DRAFT_INCOMPLETE' || report.status === 'NO_RESULT') {
     throw new Error(`Unexpected decision report status: ${report.status}`);
