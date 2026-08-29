@@ -526,4 +526,56 @@ class LlmResponseParserTest {
             assertEquals(0, scores.get("X"));
         }
     }
+    @Nested
+    class ParseIndependentProductScores {
+
+        @Test
+        void doesNotNormalizeIndependentScores() throws Exception {
+            List<TaxonomyNode> nodes = List.of(node("IP-1"), node("IP-2"));
+            var result = parser.parseIndependentScoreParseResult(
+                    "{\"IP-1\": {\"score\": 80, \"reason\": \"match\"}, "
+                            + "\"IP-2\": {\"score\": 70, \"reason\": \"also match\"}}",
+                    nodes, 50);
+
+            assertEquals(80, result.scores().get("IP-1"));
+            assertEquals(70, result.scores().get("IP-2"));
+            assertEquals(150, result.scores().values().stream().mapToInt(Integer::intValue).sum());
+        }
+
+        @Test
+        void appliesSuitabilityThresholdWithoutRedistribution() throws Exception {
+            List<TaxonomyNode> nodes = List.of(node("IP-1"), node("IP-2"));
+            var result = parser.parseIndependentScoreParseResult(
+                    "{\"IP-1\": {\"score\": 49, \"reason\": \"below threshold\"}, "
+                            + "\"IP-2\": {\"score\": 90, \"reason\": \"strong match\"}}",
+                    nodes, 50);
+
+            assertEquals(0, result.scores().get("IP-1"));
+            assertEquals(90, result.scores().get("IP-2"));
+        }
+
+        @Test
+        void rejectsMissingOrUnknownProductKeys() {
+            List<TaxonomyNode> nodes = List.of(node("IP-1"), node("IP-2"));
+
+            assertThrows(IllegalArgumentException.class, () ->
+                    parser.parseIndependentScoreParseResult(
+                            "{\"IP-1\": {\"score\": 80, \"reason\": \"match\"}, "
+                                    + "\"IP-X\": {\"score\": 20, \"reason\": \"unknown\"}}",
+                            nodes, 50));
+        }
+
+        @Test
+        void rejectsMalformedProductValuesInsteadOfTurningThemIntoFalseNegatives() {
+            List<TaxonomyNode> nodes = List.of(node("IP-1"));
+
+            assertThrows(IllegalArgumentException.class, () ->
+                    parser.parseIndependentScoreParseResult(
+                            "{\"IP-1\": {\"reason\": \"missing score\"}}", nodes, 50));
+            assertThrows(IllegalArgumentException.class, () ->
+                    parser.parseIndependentScoreParseResult(
+                            "{\"IP-1\": {\"score\": 80, \"reason\": \" \"}}", nodes, 50));
+        }
+    }
+
 }

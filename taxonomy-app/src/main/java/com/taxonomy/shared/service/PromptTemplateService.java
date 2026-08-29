@@ -52,6 +52,7 @@ public class PromptTemplateService {
         m.put("CO", "Communications Services");
         m.put("CR", "Core Services");
         m.put("IP", "Information Products");
+        m.put("IP-product", "Concrete Information Products");
         m.put("UA", "User Applications");
         m.put("extract-default", "Document Extraction (General)");
         m.put("extract-regulation", "Document Extraction (Regulations)");
@@ -174,6 +175,20 @@ public class PromptTemplateService {
      */
     public String renderPrompt(String taxonomyCode, String businessText, String nodeList) {
         return renderPrompt(taxonomyCode, businessText, nodeList, 100, "");
+    }
+
+    /**
+     * Renders the independent concrete-product suitability prompt. Product scores are not
+     * normalized to a parent budget and may all be zero.
+     */
+    public String renderProductPrompt(String businessText, String nodeList,
+                                      String expectedKeys, int minimumScore) {
+        String template = getTemplate("IP-product");
+        return template
+                .replace("{{BUSINESS_TEXT}}", businessText)
+                .replace("{{NODE_LIST}}", nodeList)
+                .replace("{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")
+                .replace("{{MIN_SCORE}}", String.valueOf(minimumScore));
     }
 
     /**

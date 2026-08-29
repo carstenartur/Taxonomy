@@ -33,6 +33,7 @@ public class AnalysisSseEventMapper {
             payload.put("totalMatched", totalMatched);
             payload.put("warnings", complete.warnings());
             payload.put("discrepancies", complete.discrepancies());
+            payload.put("productCoverageGaps", complete.productCoverageGaps());
             return new MappedEvent("complete", payload);
         }
         if (event instanceof AnalysisStreamEvent.Error error) {
@@ -42,6 +43,7 @@ public class AnalysisSseEventMapper {
             payload.put("partialScores", error.partialScores());
             payload.put("warnings", error.warnings());
             payload.put("discrepancies", error.discrepancies());
+            payload.put("productCoverageGaps", error.productCoverageGaps());
             return new MappedEvent("error", payload);
         }
         throw new IllegalArgumentException("Unsupported analysis stream event: " + event);

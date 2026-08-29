@@ -938,6 +938,7 @@
                 provider: decisionProvider,
                 analysisStatus: S.lastAnalysisStatus || 'UNKNOWN',
                 discrepancies: S.currentDiscrepancies || [],
+                productCoverageGaps: S.currentProductCoverageGaps || [],
                 language: window.TaxonomyI18n
                     ? window.TaxonomyI18n.getLocale() : document.documentElement.lang
             };

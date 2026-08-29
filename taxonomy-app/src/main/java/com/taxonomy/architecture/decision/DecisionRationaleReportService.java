@@ -11,6 +11,7 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.ViewContext;
@@ -70,32 +71,62 @@ public class DecisionRationaleReportService {
 
     /** Input captured from the analysis session or an immutable portfolio snapshot. */
     public record DecisionAnalysisInput(
-            String businessText,
-            Map<String, Integer> scores,
-            Map<String, String> reasons,
-            String provider,
-            String analysisStatus,
-            List<TaxonomyDiscrepancy> discrepancies,
-            List<TaxonomyNodeDto> taxonomyTree,
-            AnalysisSnapshotProvenance snapshotProvenance) {
+  String businessText,
+  Map<String, Integer> scores,
+  Map<String, String> reasons,
+  String provider,
+  String analysisStatus,
+  List<TaxonomyDiscrepancy> discrepancies,
+  List<ProductCoverageGap> productCoverageGaps,
+  List<TaxonomyNodeDto> taxonomyTree,
+  AnalysisSnapshotProvenance snapshotProvenance) {
 
         public DecisionAnalysisInput {
-            scores = scores == null ? Map.of() : Map.copyOf(scores);
-            reasons = reasons == null ? Map.of() : Map.copyOf(reasons);
-            discrepancies = discrepancies == null ? List.of() : List.copyOf(discrepancies);
-            taxonomyTree = taxonomyTree == null ? List.of() : List.copyOf(taxonomyTree);
+  scores = scores == null ? Map.of() : Map.copyOf(scores);
+  reasons = reasons == null ? Map.of() : Map.copyOf(reasons);
+  discrepancies = discrepancies == null ? List.of() : List.copyOf(discrepancies);
+  productCoverageGaps = productCoverageGaps == null
+          ? List.of() : List.copyOf(productCoverageGaps);
+  taxonomyTree = taxonomyTree == null ? List.of() : List.copyOf(taxonomyTree);
         }
 
         /** Backward-compatible ad-hoc analysis input using the currently loaded hierarchy. */
         public DecisionAnalysisInput(
-                String businessText,
-                Map<String, Integer> scores,
-                Map<String, String> reasons,
-                String provider,
-                String analysisStatus,
-                List<TaxonomyDiscrepancy> discrepancies) {
-            this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
-                    List.of(), null);
+      String businessText,
+      Map<String, Integer> scores,
+      Map<String, String> reasons,
+      String provider,
+      String analysisStatus,
+      List<TaxonomyDiscrepancy> discrepancies) {
+  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
+          List.of(), List.of(), null);
+        }
+
+        /** Ad-hoc analysis input including explicit concrete-product coverage evidence. */
+        public DecisionAnalysisInput(
+      String businessText,
+      Map<String, Integer> scores,
+      Map<String, String> reasons,
+      String provider,
+      String analysisStatus,
+      List<TaxonomyDiscrepancy> discrepancies,
+      List<ProductCoverageGap> productCoverageGaps) {
+  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
+          productCoverageGaps, List.of(), null);
+        }
+
+        /** Backward-compatible immutable-snapshot input without product-gap evidence. */
+        public DecisionAnalysisInput(
+      String businessText,
+      Map<String, Integer> scores,
+      Map<String, String> reasons,
+      String provider,
+      String analysisStatus,
+      List<TaxonomyDiscrepancy> discrepancies,
+      List<TaxonomyNodeDto> taxonomyTree,
+      AnalysisSnapshotProvenance snapshotProvenance) {
+  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
+          List.of(), taxonomyTree, snapshotProvenance);
         }
     }
 
@@ -134,8 +165,11 @@ public class DecisionRationaleReportService {
         Map<String, List<TaxonomyNode>> childrenMap = hierarchy.childrenMap();
         Map<String, TaxonomyNode> nodesByCode = indexNodes(roots, childrenMap);
         List<TaxonomyNode> hierarchyOrder = preOrder(roots, childrenMap);
+        List<ProductCoverageGap> productCoverageGaps = validateProductCoverageGaps(
+                input.productCoverageGaps(), nodesByCode, childrenMap, scores);
 
-        Completeness completeness = assessCompleteness(roots, hierarchyOrder, childrenMap, scores);
+        Completeness completeness = assessCompleteness(
+                roots, hierarchyOrder, childrenMap, scores, productCoverageGaps);
         List<DecisionChapter> chapters = buildChapters(
                 hierarchyOrder, childrenMap, scores, reasons, german);
         List<LeafCandidate> leaves = findLeadingLeaves(
@@ -147,7 +181,7 @@ public class DecisionRationaleReportService {
 
         List<String> warnings = new ArrayList<>(buildWarnings(
                 input, viewContext, completeness, scores, reasons, leaves,
-                nodesByCode.keySet(), childrenMap, german));
+                nodesByCode.keySet(), childrenMap, productCoverageGaps, german));
         Instant generatedAt = Instant.now();
 
         TaxonomyCatalogueMetadataService.CatalogueMetadata catalogue =
@@ -155,7 +189,8 @@ public class DecisionRationaleReportService {
         DecisionReportBuildMetadataService.BuildMetadata buildMetadata =
                 buildMetadataService.current();
         String actualDataFingerprint = fingerprint(nodesByCode.values());
-        String analysisSnapshotFingerprint = fingerprintAnalysis(input, scores, reasons);
+        String analysisSnapshotFingerprint = fingerprintAnalysis(
+                input, scores, reasons, productCoverageGaps);
         if (input.snapshotProvenance() != null
                 && input.snapshotProvenance().taxonomyFingerprintSha256() != null
                 && !input.snapshotProvenance().taxonomyFingerprintSha256().isBlank()
@@ -254,6 +289,7 @@ public class DecisionRationaleReportService {
                 chapters,
                 leaves,
                 warnings,
+                productCoverageGaps,
                 input.discrepancies(),
                 viewContext);
     }
@@ -381,6 +417,98 @@ public class DecisionRationaleReportService {
         return result;
     }
 
+    private List<ProductCoverageGap> validateProductCoverageGaps(
+  List<ProductCoverageGap> source,
+  Map<String, TaxonomyNode> nodesByCode,
+  Map<String, List<TaxonomyNode>> childrenMap,
+  Map<String, Integer> scores) {
+        if (source == null || source.isEmpty()) {
+  return List.of();
+        }
+        List<ProductCoverageGap> ordered = new ArrayList<>(source);
+        if (ordered.stream().anyMatch(Objects::isNull)) {
+  throw new IllegalArgumentException("Product coverage gaps must not contain null entries");
+        }
+        ordered.sort(Comparator.comparing(
+      ProductCoverageGap::productFamilyCode,
+      Comparator.nullsLast(String::compareTo)));
+
+        Map<String, ProductCoverageGap> validated = new LinkedHashMap<>();
+        for (ProductCoverageGap gap : ordered) {
+  if (gap.productFamilyCode() == null || gap.productFamilyCode().isBlank()) {
+      throw new IllegalArgumentException("Product coverage gap has no product family code");
+  }
+  String familyCode = gap.productFamilyCode().strip();
+  TaxonomyNode family = nodesByCode.get(familyCode);
+  if (family == null) {
+      throw new IllegalArgumentException(
+              "Product coverage gap references unknown family " + familyCode);
+  }
+  if (gap.familyScore() < 0 || gap.familyScore() > 100) {
+      throw new IllegalArgumentException(
+              "Product coverage gap family score must be between 0 and 100 for "
+                      + familyCode);
+  }
+  Integer storedFamilyScore = scores.get(familyCode);
+  if (storedFamilyScore == null || storedFamilyScore != gap.familyScore()) {
+      throw new IllegalArgumentException(
+              "Product coverage gap family score does not match analysis score for "
+                      + familyCode);
+  }
+  if (gap.reason() == null || gap.reason().isBlank()) {
+      throw new IllegalArgumentException(
+              "Product coverage gap has no reason for " + familyCode);
+  }
+  if (gap.candidateCodes() == null || gap.candidateCodes().isEmpty()) {
+      throw new IllegalArgumentException(
+              "Product coverage gap has no evaluated product candidates for "
+                      + familyCode);
+  }
+
+  Set<String> candidateSet = new LinkedHashSet<>();
+  for (String rawCode : gap.candidateCodes()) {
+      if (rawCode == null || rawCode.isBlank()) {
+          throw new IllegalArgumentException(
+                  "Product coverage gap contains a blank candidate for " + familyCode);
+      }
+      String candidateCode = rawCode.strip();
+      if (!candidateSet.add(candidateCode)) {
+          throw new IllegalArgumentException(
+                  "Product coverage gap contains duplicate candidate "
+                          + candidateCode + " for " + familyCode);
+      }
+  }
+  List<String> candidateCodes = candidateSet.stream().sorted().toList();
+  Set<String> directChildCodes = childrenMap
+          .getOrDefault(familyCode, List.of()).stream()
+          .map(TaxonomyNode::getCode)
+          .collect(Collectors.toCollection(LinkedHashSet::new));
+  if (!directChildCodes.containsAll(candidateCodes)) {
+      throw new IllegalArgumentException(
+              "Product coverage gap candidates are not direct children of "
+                      + familyCode);
+  }
+  if (candidateCodes.stream().anyMatch(code ->
+          !scores.containsKey(code) || scores.get(code) != 0)) {
+      throw new IllegalArgumentException(
+              "Product coverage gap candidates must be explicitly evaluated at 0 for "
+                      + familyCode);
+  }
+
+  ProductCoverageGap normalizedGap = new ProductCoverageGap(
+          familyCode,
+          firstNonBlank(gap.productFamilyName(), family.getName(), familyCode),
+          gap.familyScore(),
+          candidateCodes,
+          gap.reason().strip());
+  if (validated.putIfAbsent(familyCode, normalizedGap) != null) {
+      throw new IllegalArgumentException(
+              "Duplicate product coverage gap for family " + familyCode);
+  }
+        }
+        return List.copyOf(validated.values());
+    }
+
     private Map<String, List<TaxonomyNode>> copyAndSort(
             Map<String, List<TaxonomyNode>> original) {
         Map<String, List<TaxonomyNode>> result = new HashMap<>();
@@ -434,7 +562,8 @@ public class DecisionRationaleReportService {
             List<TaxonomyNode> roots,
             List<TaxonomyNode> hierarchyOrder,
             Map<String, List<TaxonomyNode>> childrenMap,
-            Map<String, Integer> scores) {
+            Map<String, Integer> scores,
+            List<ProductCoverageGap> productCoverageGaps) {
         Set<String> expectedCodes = new LinkedHashSet<>();
         roots.stream().map(TaxonomyNode::getCode).forEach(expectedCodes::add);
         List<String> incompleteParents = new ArrayList<>();
@@ -466,7 +595,9 @@ public class DecisionRationaleReportService {
             boolean allEvaluated = childCodes.stream().allMatch(scores::containsKey);
             if (!allEvaluated) {
                 incompleteParents.add(node.getCode());
-            } else if (!anyPositiveChild) {
+            } else if (!anyPositiveChild
+                    && !hasResolvedProductCoverageGap(
+                            node.getCode(), score, childCodes, scores, productCoverageGaps)) {
                 unresolvedParents.add(node.getCode());
             }
         }
@@ -482,6 +613,23 @@ public class DecisionRationaleReportService {
                 percent,
                 List.copyOf(incompleteParents),
                 List.copyOf(unresolvedParents));
+    }
+
+
+    private boolean hasResolvedProductCoverageGap(
+  String familyCode,
+  Integer familyScore,
+  List<String> directChildCodes,
+  Map<String, Integer> scores,
+  List<ProductCoverageGap> productCoverageGaps) {
+        return productCoverageGaps.stream().anyMatch(gap ->
+      familyCode.equals(gap.productFamilyCode())
+              && familyScore != null
+              && familyScore == gap.familyScore()
+              && !gap.candidateCodes().isEmpty()
+              && directChildCodes.containsAll(gap.candidateCodes())
+              && gap.candidateCodes().stream().allMatch(code ->
+                      scores.containsKey(code) && scores.get(code) == 0));
     }
 
     private List<DecisionChapter> buildChapters(
@@ -671,6 +819,7 @@ public class DecisionRationaleReportService {
             List<LeafCandidate> leaves,
             Set<String> knownNodeCodes,
             Map<String, List<TaxonomyNode>> childrenMap,
+            List<ProductCoverageGap> productCoverageGaps,
             boolean german) {
         List<String> warnings = new ArrayList<>();
         if (input.snapshotProvenance() == null) {
@@ -747,6 +896,20 @@ public class DecisionRationaleReportService {
                         + String.join(", ", inconsistentBudgets) + "."
                     : "For the following parent nodes, the sum of fully evaluated direct children does not match the stored parent budget (child sum / parent score): "
                         + String.join(", ", inconsistentBudgets) + ".");
+        }
+        for (ProductCoverageGap gap : productCoverageGaps) {
+  String candidates = String.join(", ", gap.candidateCodes());
+  warnings.add(german
+          ? "Produktabdeckungslücke für " + gap.productFamilyCode() + " ("
+              + gap.productFamilyName() + ", " + gap.familyScore()
+              + " %): Keines der " + gap.candidateCodes().size()
+              + " vollständig bewerteten Katalogprodukte erreichte den Eignungsschwellenwert. Kandidaten: "
+              + candidates + "."
+          : "Product coverage gap for " + gap.productFamilyCode() + " ("
+              + gap.productFamilyName() + ", " + gap.familyScore()
+              + "%): None of the " + gap.candidateCodes().size()
+              + " fully evaluated catalogue products reached the suitability threshold. Candidates: "
+              + candidates + ".");
         }
         if (input.analysisStatus() != null
                 && !"SUCCESS".equalsIgnoreCase(input.analysisStatus())) {
@@ -996,7 +1159,8 @@ public class DecisionRationaleReportService {
     private String fingerprintAnalysis(
             DecisionAnalysisInput input,
             Map<String, Integer> scores,
-            Map<String, String> reasons) {
+            Map<String, String> reasons,
+            List<ProductCoverageGap> productCoverageGaps) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             updateDigest(digest, "requirement", normalized(input.businessText(), ""));
@@ -1025,6 +1189,11 @@ public class DecisionRationaleReportService {
             for (int index = 0; index < input.discrepancies().size(); index++) {
                 updateDigest(digest, "discrepancy:" + index,
                         String.valueOf(input.discrepancies().get(index)));
+            }
+            for (ProductCoverageGap gap : productCoverageGaps) {
+                updateDigest(digest, "product-gap:" + gap.productFamilyCode(),
+                        gap.familyScore() + "|" + String.join(",", gap.candidateCodes())
+                                + "|" + gap.reason());
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (Exception exception) {

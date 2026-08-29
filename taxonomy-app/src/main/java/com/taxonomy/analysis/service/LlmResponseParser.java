@@ -185,6 +185,62 @@ public class LlmResponseParser {
         return new LlmService.ScoreParseResult(finalScores, reasons, discrepancy);
     }
 
+    /**
+     * Parses independent concrete-product suitability scores. Unlike hierarchical category
+     * scoring, values are never normalized to the parent score. The response must contain
+     * exactly the requested product codes; scores below {@code minimumScore} are retained as
+     * explicit zeroes so downstream selection and coverage-gap detection use one contract.
+     */
+    public LlmService.ScoreParseResult parseIndependentScoreParseResult(
+            String text, List<TaxonomyNode> nodes, int minimumScore) throws Exception {
+        String jsonText = extractJson(text);
+        Map<String, Object> raw = objectMapper.readValue(jsonText, new TypeReference<>() {});
+
+        Set<String> expectedCodes = new LinkedHashSet<>();
+        for (TaxonomyNode node : nodes) {
+            expectedCodes.add(node.getCode());
+        }
+        Set<String> actualCodes = new LinkedHashSet<>(raw.keySet());
+        if (!actualCodes.equals(expectedCodes)) {
+            Set<String> missing = new LinkedHashSet<>(expectedCodes);
+            missing.removeAll(actualCodes);
+            Set<String> unknown = new LinkedHashSet<>(actualCodes);
+            unknown.removeAll(expectedCodes);
+            throw new IllegalArgumentException(
+                    "Independent product response keys do not match candidates; missing="
+                            + missing + ", unknown=" + unknown);
+        }
+
+        int threshold = Math.max(0, Math.min(100, minimumScore));
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, String> reasons = new LinkedHashMap<>();
+        for (TaxonomyNode node : nodes) {
+            Object value = raw.get(node.getCode());
+            if (!(value instanceof Map<?, ?> object)) {
+                throw new IllegalArgumentException(
+                        "Independent product response for " + node.getCode()
+                                + " must be an object containing score and reason");
+            }
+            Object scoreValue = object.get("score");
+            if (!(scoreValue instanceof Number number)) {
+                throw new IllegalArgumentException(
+                        "Independent product response for " + node.getCode()
+                                + " has no numeric score");
+            }
+            Object reasonValue = object.get("reason");
+            if (!(reasonValue instanceof String reason) || reason.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Independent product response for " + node.getCode()
+                                + " has no non-blank reason");
+            }
+            int score = Math.max(0, Math.min(100, number.intValue()));
+            scores.put(node.getCode(), score >= threshold ? score : 0);
+            reasons.put(node.getCode(), reason);
+        }
+        log.info("Independent product scores parsed (threshold {}): {}", threshold, scores);
+        return new LlmService.ScoreParseResult(scores, reasons, null);
+    }
+
     // ── Score normalization ───────────────────────────────────────────────────
 
     /**

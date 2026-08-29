@@ -205,6 +205,7 @@
                 S.currentScores = result.scores;
                 S.currentReasons = result.reasons || {};
                 S.currentDiscrepancies = result.discrepancies || [];
+                S.currentProductCoverageGaps = result.productCoverageGaps || [];
                 S.lastAnalysisProvider = result.provider || provider || null;
                 S.lastAnalysisStatus = result.status || 'UNKNOWN';
                 S.storedBusinessText = text;
@@ -244,6 +245,22 @@
                         .join('');
                     document.getElementById('statusArea').innerHTML +=
                         '<ul class="mb-0 mt-1 ps-3" style="font-size:0.9em">' + warningList + '</ul>';
+                }
+
+                const analysisFindings = [];
+                if (S.currentDiscrepancies.length > 0) {
+                    analysisFindings.push(t(
+                        'analyze.discrepancies', S.currentDiscrepancies.length));
+                }
+                if (S.currentProductCoverageGaps.length > 0) {
+                    analysisFindings.push(t(
+                        'analyze.product.coverage.gaps',
+                        S.currentProductCoverageGaps.length));
+                }
+                if (analysisFindings.length > 0) {
+                    document.getElementById('statusArea').innerHTML +=
+                        '<div class="mt-1">' + analysisFindings
+                            .map(escapeHtml).join(' ') + '</div>';
                 }
 
                 // Update analysis log panel
@@ -408,15 +425,20 @@
             setAnalyzing(false);
             S.currentScores = data.totalScores;
             S.currentDiscrepancies = data.discrepancies || [];
+            S.currentProductCoverageGaps = data.productCoverageGaps || [];
             S.lastAnalysisStatus = data.status || 'SUCCESS';
             S.storedBusinessText = text;
             S.lastAnalyzedText = text;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
             let statusMsg = t('analyze.complete', matchedCount);
             if (S.currentDiscrepancies.length > 0) {
-                statusMsg += ' ⚠️ ' + S.currentDiscrepancies.length + ' scoring discrepanc'
-                    + (S.currentDiscrepancies.length === 1 ? 'y' : 'ies') + ' detected.';
+                statusMsg += ' ' + t('analyze.discrepancies', S.currentDiscrepancies.length);
                 console.log('[Taxonomy] Discrepancies:', S.currentDiscrepancies);
+            }
+            if (S.currentProductCoverageGaps.length > 0) {
+                statusMsg += ' ' + t(
+                    'analyze.product.coverage.gaps', S.currentProductCoverageGaps.length);
+                console.log('[Taxonomy] Product coverage gaps:', S.currentProductCoverageGaps);
             }
             B().showStatus('success', statusMsg);
             B().updateExportGroupVisibility();
@@ -429,6 +451,8 @@
                     eventSource.close();
                     setAnalyzing(false);
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
+                    S.currentDiscrepancies = data.discrepancies || [];
+                    S.currentProductCoverageGaps = data.productCoverageGaps || [];
                     B().showStatus('warning', '⚠️ ' + data.errorMessage);
                 } catch (parseErr) {
                     console.error('Failed to parse SSE error event:', parseErr);

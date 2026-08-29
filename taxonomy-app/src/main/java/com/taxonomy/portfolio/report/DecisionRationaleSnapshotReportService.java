@@ -94,6 +94,7 @@ public class DecisionRationaleSnapshotReportService {
                 firstNonBlank(snapshot.getProvider(), analysis.getProvider()),
                 snapshot.getStatus().name(),
                 analysis.getDiscrepancies(),
+                analysis.getProductCoverageGaps(),
                 analysis.getTree(),
                 provenance);
         return reportService.generate(input, workspaceContext, historicalViewContext, locale);

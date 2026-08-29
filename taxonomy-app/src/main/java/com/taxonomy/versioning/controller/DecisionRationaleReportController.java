@@ -5,6 +5,7 @@ import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
@@ -51,6 +52,8 @@ public class DecisionRationaleReportController {
     private static final int MAX_REASON_LENGTH = 50_000;
     private static final long MAX_TOTAL_REASON_CHARACTERS = 5_000_000L;
     private static final int MAX_DISCREPANCIES = 10_000;
+    private static final int MAX_PRODUCT_COVERAGE_GAPS = 10_000;
+    private static final int MAX_PRODUCT_GAP_CANDIDATES = 25_000;
     private static final int MAX_METADATA_LENGTH = 256;
 
     private final DecisionRationaleReportService reportService;
@@ -76,6 +79,7 @@ public class DecisionRationaleReportController {
             String provider,
             String analysisStatus,
             List<TaxonomyDiscrepancy> discrepancies,
+            List<ProductCoverageGap> productCoverageGaps,
             String language) {
     }
 
@@ -157,7 +161,8 @@ public class DecisionRationaleReportController {
                 request.reasons(),
                 request.provider(),
                 request.analysisStatus(),
-                request.discrepancies());
+                request.discrepancies(),
+                request.productCoverageGaps());
         return reportService.generate(input, context, viewContext, locale);
     }
 
@@ -180,7 +185,9 @@ public class DecisionRationaleReportController {
                 || !boundedMetadata(request.analysisStatus())
                 || !boundedMetadata(request.language())
                 || (request.discrepancies() != null
-                        && request.discrepancies().size() > MAX_DISCREPANCIES)) {
+                        && request.discrepancies().size() > MAX_DISCREPANCIES)
+                || (request.productCoverageGaps() != null
+                        && request.productCoverageGaps().size() > MAX_PRODUCT_COVERAGE_GAPS)) {
             return false;
         }
         boolean validScores = request.scores().entrySet().stream().allMatch(entry ->
@@ -190,7 +197,41 @@ public class DecisionRationaleReportController {
                         && entry.getValue() <= 100);
         return validScores
                 && validReasons(request.reasons())
-                && validDiscrepancies(request.discrepancies());
+                && validDiscrepancies(request.discrepancies())
+                && validProductCoverageGaps(request.productCoverageGaps());
+    }
+
+    private boolean validProductCoverageGaps(
+  List<ProductCoverageGap> productCoverageGaps) {
+        if (productCoverageGaps == null) {
+  return true;
+        }
+        int totalCandidates = 0;
+        java.util.Set<String> familyCodes = new java.util.HashSet<>();
+        for (ProductCoverageGap gap : productCoverageGaps) {
+  if (gap == null
+          || !boundedText(gap.productFamilyCode(),
+                  MAX_NODE_CODE_LENGTH, false)
+          || !boundedText(gap.productFamilyName(), MAX_REASON_LENGTH, true)
+          || gap.familyScore() < 0
+          || gap.familyScore() > 100
+          || !boundedText(gap.reason(), MAX_REASON_LENGTH, false)
+          || gap.candidateCodes() == null
+          || gap.candidateCodes().isEmpty()
+          || !familyCodes.add(gap.productFamilyCode().strip())) {
+      return false;
+  }
+  java.util.Set<String> candidateCodes = new java.util.HashSet<>();
+  for (String candidateCode : gap.candidateCodes()) {
+      totalCandidates++;
+      if (totalCandidates > MAX_PRODUCT_GAP_CANDIDATES
+              || !boundedText(candidateCode, MAX_NODE_CODE_LENGTH, false)
+              || !candidateCodes.add(candidateCode.strip())) {
+          return false;
+      }
+  }
+        }
+        return true;
     }
 
     private boolean validDiscrepancies(

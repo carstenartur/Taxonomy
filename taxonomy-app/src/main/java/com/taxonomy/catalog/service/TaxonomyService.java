@@ -72,6 +72,9 @@ public class TaxonomyService {
     @Autowired
     private ResourceLoader resourceLoader;
 
+    @Autowired
+    private CatalogueOverlayService catalogueOverlayService;
+
     /** Exact catalogue resource used both for loading and report provenance. */
     @Value("${taxonomy.catalogue.resource:classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx}")
     private String catalogueResource;
@@ -182,7 +185,7 @@ public class TaxonomyService {
             log.info("Taxonomy already initialized — skipping duplicate call.");
             return;
         }
-        stateService.update(AppInitializationStateService.State.LOADING_TAXONOMY, "Loading taxonomy from Excel\u2026");
+        stateService.update(AppInitializationStateService.State.LOADING_TAXONOMY, "Loading taxonomy catalogue\u2026");
         try {
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
                 try {
@@ -201,7 +204,7 @@ public class TaxonomyService {
             }
         } catch (RuntimeException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            String msg = async ? "Async taxonomy initialization failed" : "Failed to load taxonomy from Excel";
+            String msg = async ? "Async taxonomy initialization failed" : "Failed to load taxonomy catalogue";
             stateService.fail(msg, cause);
             log.error(msg, cause);
         }
@@ -210,8 +213,23 @@ public class TaxonomyService {
     private void doLoadTaxonomy() throws Exception {
         long persistedNodeCount = repository.count();
         if (persistedNodeCount > 0 && !reloadExisting) {
-            log.info("Found {} persisted taxonomy nodes — reusing the existing catalogue and search index.",
-                    persistedNodeCount);
+            List<TaxonomyNode> persistedNodes = repository.findAll();
+            Map<String, TaxonomyNode> persistedNodeMap = new LinkedHashMap<>();
+            Map<String, String> persistedUuidToCode = new HashMap<>();
+            for (TaxonomyNode node : persistedNodes) {
+                persistedNodeMap.put(node.getCode(), node);
+                if (node.getUuid() != null && !node.getUuid().isBlank()) {
+                    persistedUuidToCode.put(node.getUuid(), node.getCode());
+                }
+            }
+            CatalogueOverlayService.OverlayApplicationResult overlayResult =
+                    catalogueOverlayService.applyAndValidate(
+                            persistedNodeMap, persistedUuidToCode, catalogueResource);
+            entityManager.flush();
+            entityManager.clear();
+            log.info("Reconciled {} persisted taxonomy nodes with catalogue overlay {}; "
+                            + "reusing existing relations and search index.",
+                    persistedNodeCount, overlayResult.mappingVersion());
             return;
         }
 
@@ -271,44 +289,7 @@ public class TaxonomyService {
                 readSheet(sheet, prefix, nodeMap, uuidToCode);
             }
 
-            // 3. Wire parent-child relationships
-            for (TaxonomyNode node : nodeMap.values()) {
-                if (node.getLevel() == 0) continue; // virtual roots have no parent
-                String parentCode = node.getParentCode();
-                TaxonomyNode parent = (parentCode != null) ? nodeMap.get(parentCode) : null;
-
-                // Fallback: parentCode might be a UUID — resolve it to the actual code
-                if (parent == null && parentCode != null) {
-                    String resolvedCode = uuidToCode.get(parentCode);
-                    if (resolvedCode != null) {
-                        parent = nodeMap.get(resolvedCode);
-                        if (parent != null) {
-                            node.setParentCode(resolvedCode);
-                        }
-                    }
-                }
-
-                // A self-parent reference is invalid hierarchy data. Treat it like an
-                // unresolved parent so the explicit root fallback can recover the node
-                // without creating a cycle or a null parent_id.
-                if (parent == node) {
-                    log.warn("Node '{}' references itself as parent; attaching it to taxonomy root '{}'.",
-                            node.getCode(), node.getTaxonomyRoot());
-                    parent = null;
-                }
-
-                // Last resort: attach to the virtual sheet root
-                if (parent == null) {
-                    log.debug("Last resort parent assignment for node '{}' (parentCode='{}', root='{}')",
-                            node.getCode(), node.getParentCode(), node.getTaxonomyRoot());
-                    parent = nodeMap.get(node.getTaxonomyRoot());
-                    node.setParentCode(node.getTaxonomyRoot());
-                }
-                if (parent != null) {
-                    node.setParent(parent);
-                    parent.getChildren().add(node);
-                }
-            }
+            // Parent relationships are resolved and validated after the workbook closes.
 
             // 4a. Extract raw relation rows BEFORE closing the workbook so the workbook
             //     can be released from heap before the (memory-intensive) persist phase.
@@ -318,6 +299,12 @@ public class TaxonomyService {
                 extractRawRelations(relationsSheet, rawRelations);
             }
         } // workbook closes here, releasing its heap memory
+
+        CatalogueOverlayService.OverlayApplicationResult overlayResult =
+                catalogueOverlayService.applyAndValidate(nodeMap, uuidToCode, catalogueResource);
+        log.info("Catalogue hierarchy prepared with overlay {} ({} products, {} product families).",
+                overlayResult.mappingVersion(), overlayResult.productCount(),
+                overlayResult.productFamilyCount());
 
         // 4b. Persist nodes in batches to limit Persistence Context size.
         //     Returns a code → database ID map for subsequent relation wiring.
@@ -656,6 +643,13 @@ public class TaxonomyService {
         dto.setReference(node.getReference());
         dto.setSortOrder(node.getSortOrder());
         dto.setState(node.getState());
+        CatalogueOverlayService.NodeMetadata overlayMetadata =
+                catalogueOverlayService.getNodeMetadata(node.getCode());
+        dto.setAnalysisRole(overlayMetadata.analysisRole());
+        dto.setSecondaryClassificationCodes(overlayMetadata.secondaryClassificationCodes());
+        dto.setClassificationConfidence(overlayMetadata.confidence());
+        dto.setClassificationReviewRequired(overlayMetadata.reviewRequired());
+        dto.setClassificationJustification(overlayMetadata.justification());
         List<TaxonomyNodeDto> childDtos = new ArrayList<>();
         for (TaxonomyNode child : node.getChildren()) {
             childDtos.add(toDto(child));
