@@ -1,0 +1,304 @@
+name: Apply PR 923 cancellation race fix
+
+on:
+  push:
+    branches:
+      - qa/923-cancellation-race-fix
+
+permissions:
+  contents: write
+
+jobs:
+  patch-pr-branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out the PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: qa/922-complete-ai-session
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Persist operation-wide cancellation and verify the race
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  if new in text:
+                      return text
+                  raise SystemExit(f"{label} anchor not found")
+              return text.replace(old, new, 1)
+
+          service_path = Path(
+              'taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java')
+          service = service_path.read_text(encoding='utf-8')
+
+          old_cancel = '''        OperationDefinition definition = definition(jobs);
+                  for (JobWithKey entry : jobs) {
+                      if (!isTerminal(entry.job().status())) {
+                          jobControlService.cancel(entry.job().id(), projectId, username, context);
+                      }
+                  }
+                  return view(definition, jobsForOperation(
+                          projectId, operationId, username, context), username, context);
+              }
+
+              private CopilotOperationView enqueue('''
+          new_cancel = '''        OperationDefinition definition = definition(jobs);
+                  List<JobWithKey> cancelled = establishCancellation(
+                          definition, username, context);
+                  return view(definition, cancelled, username, context);
+              }
+
+              private List<JobWithKey> establishCancellation(
+                      OperationDefinition definition,
+                      String username,
+                      WorkspaceContext context) {
+                  int maximumAttempts = Math.max(4, definition.totalPasses() * 4);
+                  for (int attempt = 0; attempt < maximumAttempts; attempt++) {
+                      List<JobWithKey> jobs = jobsForOperation(
+                              definition.projectId(), definition.operationId(), username, context);
+                      boolean cancellationRecorded = jobs.stream().anyMatch(entry ->
+                              entry.job().status() == AnalysisStatus.CANCELLED);
+                      List<JobWithKey> active = jobs.stream()
+                              .filter(entry -> !isTerminal(entry.job().status()))
+                              .toList();
+
+                      if (cancellationRecorded) {
+                          if (active.isEmpty()) return jobs;
+                          active.forEach(entry -> jobControlService.cancel(
+                                  entry.job().id(), definition.projectId(), username, context));
+                          continue;
+                      }
+
+                      boolean fullyTerminal = jobs.size() == definition.totalPasses()
+                              && jobs.stream().allMatch(entry -> isTerminal(entry.job().status()));
+                      if (fullyTerminal) return jobs;
+
+                      if (!active.isEmpty()) {
+                          active.forEach(entry -> jobControlService.cancel(
+                                  entry.job().id(), definition.projectId(), username, context));
+                          continue;
+                      }
+
+                      Set<Integer> persistedPasses = jobs.stream()
+                              .map(entry -> entry.key().pass())
+                              .collect(java.util.stream.Collectors.toSet());
+                      int missingPass = java.util.stream.IntStream
+                              .rangeClosed(1, definition.totalPasses())
+                              .filter(pass -> !persistedPasses.contains(pass))
+                              .findFirst()
+                              .orElse(-1);
+                      if (missingPass < 0) return jobs;
+
+                      try {
+                          AnalysisJobView marker = enqueuePass(
+                                  definition, missingPass, username, context);
+                          if (!isTerminal(marker.status())) {
+                              jobControlService.cancel(
+                                      marker.id(), definition.projectId(), username, context);
+                          }
+                      } catch (PortfolioException failure) {
+                          boolean markerWasPersisted = jobsForOperation(
+                                  definition.projectId(), definition.operationId(), username, context)
+                                  .stream().anyMatch(entry -> entry.key().pass() == missingPass);
+                          if (!markerWasPersisted) throw failure;
+                      }
+                  }
+                  throw PortfolioException.conflict(
+                          "Unable to establish an authoritative cancellation state for Copilot operation "
+                                  + definition.operationId());
+              }
+
+              private CopilotOperationView enqueue('''
+          service = replace_once(
+              service, old_cancel, new_cancel, 'operation cancellation boundary')
+
+          old_execute = '''        for (int pass = 1; pass <= definition.totalPasses(); pass++) {
+                      AnalysisJobView job = enqueuePass(definition, pass, username, context);
+                      AnalysisJobView terminal = awaitTerminal(
+                              job.id(), definition.projectId(), username, context);
+                      if (terminal == null || terminal.status() == AnalysisStatus.CANCELLED) {
+                          return;
+                      }
+                  }
+                  List<JobWithKey> jobs = jobsForOperation('''
+          new_execute = '''        for (int pass = 1; pass <= definition.totalPasses(); pass++) {
+                      if (cancellationRecorded(definition, username, context)) return;
+
+                      AnalysisJobView job = enqueuePass(definition, pass, username, context);
+                      if (cancellationRecorded(definition, username, context)) {
+                          if (!isTerminal(job.status())) {
+                              jobControlService.cancel(
+                                      job.id(), definition.projectId(), username, context);
+                          }
+                          return;
+                      }
+
+                      AnalysisJobView terminal = awaitTerminal(
+                              job.id(), definition.projectId(), username, context);
+                      if (terminal == null || terminal.status() == AnalysisStatus.CANCELLED) {
+                          return;
+                      }
+                  }
+                  List<JobWithKey> jobs = jobsForOperation('''
+          service = replace_once(service, old_execute, new_execute, 'coordinator cancellation guard')
+
+          execute_end = '''        finalizeOperation(definition, jobs, username, context);
+              }
+
+              private AnalysisJobView enqueuePass('''
+          execute_replacement = '''        finalizeOperation(definition, jobs, username, context);
+              }
+
+              private boolean cancellationRecorded(
+                      OperationDefinition definition,
+                      String username,
+                      WorkspaceContext context) {
+                  return jobsForOperation(
+                          definition.projectId(), definition.operationId(), username, context)
+                          .stream().anyMatch(entry ->
+                                  entry.job().status() == AnalysisStatus.CANCELLED);
+              }
+
+              private AnalysisJobView enqueuePass('''
+          service = replace_once(
+              service, execute_end, execute_replacement, 'cancellation guard helper')
+
+          old_aggregate = '''        if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.RUNNING)) {
+                      return AnalysisStatus.RUNNING;
+                  }
+                  if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.PENDING)) {
+                      return AnalysisStatus.PENDING;
+                  }
+                  if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.CANCELLED)) {
+                      return AnalysisStatus.CANCELLED;
+                  }'''
+          new_aggregate = '''        if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.CANCELLED)) {
+                      return AnalysisStatus.CANCELLED;
+                  }
+                  if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.RUNNING)) {
+                      return AnalysisStatus.RUNNING;
+                  }
+                  if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.PENDING)) {
+                      return AnalysisStatus.PENDING;
+                  }'''
+          service = replace_once(
+              service, old_aggregate, new_aggregate, 'cancellation aggregate precedence')
+          service_path.write_text(service, encoding='utf-8')
+
+          test_path = Path(
+              'taxonomy-app/src/test/java/com/taxonomy/portfolio/CopilotOperationConsistencyTest.java')
+          test = test_path.read_text(encoding='utf-8')
+          marker = '    private static AnalysisJobView job(\n'
+          if 'cancellationBetweenPassesPersistsATerminalMarker' not in test:
+              position = test.find(marker)
+              if position < 0:
+                  raise SystemExit('consistency-test insertion marker not found')
+              tests = '''    @Test
+              void cancellationBetweenPassesPersistsATerminalMarker() {
+                  String operationId = "e".repeat(64);
+                  AnalysisJobView completedPass = job(
+                          "job-1", operationId, 1, 2, 7L, AnalysisStatus.SUCCESS);
+                  AnalysisJobView pendingMarker = job(
+                          "job-2", operationId, 2, 2, 7L, AnalysisStatus.PENDING);
+                  AnalysisJobView cancelledMarker = job(
+                          "job-2", operationId, 2, 2, 7L, AnalysisStatus.CANCELLED);
+                  RequirementView requirement = mock(RequirementView.class);
+
+                  when(analysisService.listJobs(41L, context.username(), context))
+                          .thenReturn(
+                                  List.of(completedPass),
+                                  List.of(completedPass),
+                                  List.of(completedPass, cancelledMarker));
+                  when(analysisService.enqueueRequirement(
+                          org.mockito.ArgumentMatchers.eq(41L),
+                          org.mockito.ArgumentMatchers.eq(7L),
+                          org.mockito.ArgumentMatchers.eq("CUSTOM_OPENAI"),
+                          org.mockito.ArgumentMatchers.eq(50),
+                          org.mockito.ArgumentMatchers.any(String.class),
+                          org.mockito.ArgumentMatchers.eq(context.username()),
+                          org.mockito.ArgumentMatchers.eq(context)))
+                          .thenReturn(pendingMarker);
+                  when(projectService.getRequirement(
+                          41L, 7L, context.username(), context)).thenReturn(requirement);
+                  when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+
+                  var result = service.cancelOperation(
+                          41L, operationId, context.username(), context);
+
+                  assertThat(result.status()).isEqualTo(AnalysisStatus.CANCELLED);
+                  assertThat(result.completedPasses()).isEqualTo(2);
+                  verify(analysisService).enqueueRequirement(
+                          org.mockito.ArgumentMatchers.eq(41L),
+                          org.mockito.ArgumentMatchers.eq(7L),
+                          org.mockito.ArgumentMatchers.eq("CUSTOM_OPENAI"),
+                          org.mockito.ArgumentMatchers.eq(50),
+                          org.mockito.ArgumentMatchers.any(String.class),
+                          org.mockito.ArgumentMatchers.eq(context.username()),
+                          org.mockito.ArgumentMatchers.eq(context));
+                  verify(jobControlService).cancel(
+                          "job-2", 41L, context.username(), context);
+                  verifyNoInteractions(
+                          resultSelector, resultPersistenceService, completionService, coordinator);
+              }
+
+              @Test
+              void cancellationDominatesAndStopsLateRunningPasses() {
+                  String operationId = "f".repeat(64);
+                  AnalysisJobView cancelledPass = job(
+                          "job-1", operationId, 1, 2, 7L, AnalysisStatus.CANCELLED);
+                  AnalysisJobView runningPass = job(
+                          "job-2", operationId, 2, 2, 7L, AnalysisStatus.RUNNING);
+                  AnalysisJobView cancelledLatePass = job(
+                          "job-2", operationId, 2, 2, 7L, AnalysisStatus.CANCELLED);
+                  RequirementView requirement = mock(RequirementView.class);
+
+                  when(analysisService.listJobs(41L, context.username(), context))
+                          .thenReturn(
+                                  List.of(cancelledPass, runningPass),
+                                  List.of(cancelledPass, runningPass),
+                                  List.of(cancelledPass, cancelledLatePass));
+                  when(projectService.getRequirement(
+                          41L, 7L, context.username(), context)).thenReturn(requirement);
+                  when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+
+                  var result = service.cancelOperation(
+                          41L, operationId, context.username(), context);
+
+                  assertThat(result.status()).isEqualTo(AnalysisStatus.CANCELLED);
+                  verify(jobControlService).cancel(
+                          "job-2", 41L, context.username(), context);
+                  verify(analysisService, never()).enqueueRequirement(
+                          any(), any(), any(), any(), any(), any(), any());
+                  verifyNoInteractions(
+                          resultSelector, resultPersistenceService, completionService, coordinator);
+              }
+
+          '''
+              test = test[:position] + tests + test[position:]
+          test_path.write_text(test, encoding='utf-8')
+          PY
+
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -Dtest=CopilotOperationConsistencyTest,CopilotAnalysisControllerTest,RequirementCopilotUiContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          git diff --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/src/main/java/com/taxonomy/portfolio/service/CopilotAutomationService.java \
+                  taxonomy-app/src/test/java/com/taxonomy/portfolio/CopilotOperationConsistencyTest.java
+          git commit -m 'Persist authoritative Copilot cancellation across pass races'
+          git push origin HEAD:qa/922-complete-ai-session
