@@ -1,0 +1,115 @@
+name: Apply PR 923 session-state diagnostics
+
+on:
+  push:
+    branches:
+      - qa/923-session-state-diagnostics
+
+permissions:
+  contents: write
+
+jobs:
+  patch-pr-branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: qa/922-complete-ai-session
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Add bounded authoritative-state diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          source = path.read_text(encoding='utf-8')
+
+          timeout_import = 'import org.openqa.selenium.TimeoutException;\n'
+          if timeout_import not in source:
+              anchor = 'import org.openqa.selenium.StaleElementReferenceException;\n'
+              if anchor not in source:
+                  raise SystemExit('Selenium import anchor not found')
+              source = source.replace(anchor, anchor + timeout_import, 1)
+
+          old_wait = '''        wait.until(attributeEquals(By.id("copilotOperation"),
+                  "data-operation-status", "CANCELLED"));'''
+          new_wait = '''        waitForOperationStatus("CANCELLED", Duration.ofSeconds(45));'''
+          if old_wait in source:
+              source = source.replace(old_wait, new_wait, 1)
+          elif new_wait not in source:
+              raise SystemExit('cancellation wait anchor not found')
+
+          helper_marker = '''    private static ExpectedCondition<Boolean> attributeEquals(By locator,
+                                                               String attribute,
+                                                               String value) {'''
+          if 'private static void waitForOperationStatus(' not in source:
+              helper = '''    private static void waitForOperationStatus(
+              String expectedStatus,
+              Duration timeout) {
+          try {
+              new WebDriverWait(driver, timeout).until(browser -> {
+                  WebElement surface = browser.findElement(By.id("copilotOperation"));
+                  String currentStatus = surface.getAttribute("data-operation-status");
+                  if (Set.of("SUCCESS", "PARTIAL", "FAILED", "CANCELLED")
+                          .contains(currentStatus)
+                          && !expectedStatus.equals(currentStatus)) {
+                      throw operationStateFailure(expectedStatus, currentStatus, null);
+                  }
+                  return expectedStatus.equals(currentStatus);
+              });
+          } catch (TimeoutException timeoutFailure) {
+              String currentStatus = driver.findElement(By.id("copilotOperation"))
+                      .getAttribute("data-operation-status");
+              throw operationStateFailure(expectedStatus, currentStatus, timeoutFailure);
+          }
+      }
+
+      private static AssertionError operationStateFailure(
+              String expectedStatus,
+              String currentStatus,
+              Throwable cause) {
+          WebElement surface = driver.findElement(By.id("copilotOperation"));
+          String operationId = surface.getAttribute("data-operation-id");
+          String message = driver.findElement(By.id("copilotOperationMessage")).getText();
+          String phase = driver.findElement(By.id("copilotOperationPhase")).getText();
+          String diagnostic = "Expected Copilot status " + expectedStatus
+                  + " but observed " + currentStatus
+                  + " for operation " + operationId
+                  + "; " + phase
+                  + "; message=" + message;
+          return cause == null
+                  ? new AssertionError(diagnostic)
+                  : new AssertionError(diagnostic, cause);
+      }
+
+'''
+              if helper_marker not in source:
+                  raise SystemExit('diagnostic helper insertion marker not found')
+              source = source.replace(helper_marker, helper + helper_marker, 1)
+
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          ./mvnw -B -ntp -pl taxonomy-app -am \
+            -Dtest=CopilotOperationConsistencyTest,CopilotAnalysisControllerTest,RequirementCopilotUiContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          ./mvnw -B -ntp -pl taxonomy-app -am -DskipTests test-compile
+          git diff --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java
+          git commit -m 'Fail fast with authoritative Copilot state diagnostics'
+          git push origin HEAD:qa/922-complete-ai-session
