@@ -162,13 +162,69 @@ public class CopilotAutomationService {
             throw PortfolioException.notFound("Copilot operation not found: " + operationId);
         }
         OperationDefinition definition = definition(jobs);
-        for (JobWithKey entry : jobs) {
-            if (!isTerminal(entry.job().status())) {
-                jobControlService.cancel(entry.job().id(), projectId, username, context);
+        List<JobWithKey> cancelled = establishCancellation(
+                definition, username, context);
+        return view(definition, cancelled, username, context);
+    }
+
+    private List<JobWithKey> establishCancellation(
+            OperationDefinition definition,
+            String username,
+            WorkspaceContext context) {
+        int maximumAttempts = Math.max(4, definition.totalPasses() * 4);
+        for (int attempt = 0; attempt < maximumAttempts; attempt++) {
+            List<JobWithKey> jobs = jobsForOperation(
+                    definition.projectId(), definition.operationId(), username, context);
+            boolean cancellationRecorded = jobs.stream().anyMatch(entry ->
+                    entry.job().status() == AnalysisStatus.CANCELLED);
+            List<JobWithKey> active = jobs.stream()
+                    .filter(entry -> !isTerminal(entry.job().status()))
+                    .toList();
+
+            if (cancellationRecorded) {
+                if (active.isEmpty()) return jobs;
+                active.forEach(entry -> jobControlService.cancel(
+                        entry.job().id(), definition.projectId(), username, context));
+                continue;
+            }
+
+            boolean fullyTerminal = jobs.size() == definition.totalPasses()
+                    && jobs.stream().allMatch(entry -> isTerminal(entry.job().status()));
+            if (fullyTerminal) return jobs;
+
+            if (!active.isEmpty()) {
+                active.forEach(entry -> jobControlService.cancel(
+                        entry.job().id(), definition.projectId(), username, context));
+                continue;
+            }
+
+            Set<Integer> persistedPasses = jobs.stream()
+                    .map(entry -> entry.key().pass())
+                    .collect(java.util.stream.Collectors.toSet());
+            int missingPass = java.util.stream.IntStream
+                    .rangeClosed(1, definition.totalPasses())
+                    .filter(pass -> !persistedPasses.contains(pass))
+                    .findFirst()
+                    .orElse(-1);
+            if (missingPass < 0) return jobs;
+
+            try {
+                AnalysisJobView marker = enqueuePass(
+                        definition, missingPass, username, context);
+                if (!isTerminal(marker.status())) {
+                    jobControlService.cancel(
+                            marker.id(), definition.projectId(), username, context);
+                }
+            } catch (PortfolioException failure) {
+                boolean markerWasPersisted = jobsForOperation(
+                        definition.projectId(), definition.operationId(), username, context)
+                        .stream().anyMatch(entry -> entry.key().pass() == missingPass);
+                if (!markerWasPersisted) throw failure;
             }
         }
-        return view(definition, jobsForOperation(
-                projectId, operationId, username, context), username, context);
+        throw PortfolioException.conflict(
+                "Unable to establish an authoritative cancellation state for Copilot operation "
+                        + definition.operationId());
     }
 
     private CopilotOperationView enqueue(
@@ -243,7 +299,17 @@ public class CopilotAutomationService {
             String username,
             WorkspaceContext context) {
         for (int pass = 1; pass <= definition.totalPasses(); pass++) {
+            if (cancellationRecorded(definition, username, context)) return;
+
             AnalysisJobView job = enqueuePass(definition, pass, username, context);
+            if (cancellationRecorded(definition, username, context)) {
+                if (!isTerminal(job.status())) {
+                    jobControlService.cancel(
+                            job.id(), definition.projectId(), username, context);
+                }
+                return;
+            }
+
             AnalysisJobView terminal = awaitTerminal(
                     job.id(), definition.projectId(), username, context);
             if (terminal == null || terminal.status() == AnalysisStatus.CANCELLED) {
@@ -253,6 +319,16 @@ public class CopilotAutomationService {
         List<JobWithKey> jobs = jobsForOperation(
                 definition.projectId(), definition.operationId(), username, context);
         finalizeOperation(definition, jobs, username, context);
+    }
+
+    private boolean cancellationRecorded(
+            OperationDefinition definition,
+            String username,
+            WorkspaceContext context) {
+        return jobsForOperation(
+                definition.projectId(), definition.operationId(), username, context)
+                .stream().anyMatch(entry ->
+                        entry.job().status() == AnalysisStatus.CANCELLED);
     }
 
     private AnalysisJobView enqueuePass(
@@ -491,14 +567,14 @@ public class CopilotAutomationService {
     private static AnalysisStatus aggregateStatus(
             List<JobWithKey> jobs,
             int expectedPasses) {
+        if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.CANCELLED)) {
+            return AnalysisStatus.CANCELLED;
+        }
         if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.RUNNING)) {
             return AnalysisStatus.RUNNING;
         }
         if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.PENDING)) {
             return AnalysisStatus.PENDING;
-        }
-        if (jobs.stream().anyMatch(entry -> entry.job().status() == AnalysisStatus.CANCELLED)) {
-            return AnalysisStatus.CANCELLED;
         }
         if (jobs.size() < expectedPasses) return AnalysisStatus.PENDING;
         long success = jobs.stream()

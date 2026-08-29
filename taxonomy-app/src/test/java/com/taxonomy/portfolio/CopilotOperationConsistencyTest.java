@@ -201,6 +201,86 @@ class CopilotOperationConsistencyTest {
         verify(analysisService, never()).getSnapshot(any(), any(), any(), any());
     }
 
+    @Test
+    void cancellationBetweenPassesPersistsATerminalMarker() {
+        String operationId = "e".repeat(64);
+        AnalysisJobView completedPass = job(
+                "job-1", operationId, 1, 2, 7L, AnalysisStatus.SUCCESS);
+        AnalysisJobView pendingMarker = job(
+                "job-2", operationId, 2, 2, 7L, AnalysisStatus.PENDING);
+        AnalysisJobView cancelledMarker = job(
+                "job-2", operationId, 2, 2, 7L, AnalysisStatus.CANCELLED);
+        RequirementView requirement = mock(RequirementView.class);
+
+        when(analysisService.listJobs(41L, context.username(), context))
+                .thenReturn(
+                        List.of(completedPass),
+                        List.of(completedPass),
+                        List.of(completedPass, cancelledMarker));
+        when(analysisService.enqueueRequirement(
+                org.mockito.ArgumentMatchers.eq(41L),
+                org.mockito.ArgumentMatchers.eq(7L),
+                org.mockito.ArgumentMatchers.eq("CUSTOM_OPENAI"),
+                org.mockito.ArgumentMatchers.eq(50),
+                org.mockito.ArgumentMatchers.any(String.class),
+                org.mockito.ArgumentMatchers.eq(context.username()),
+                org.mockito.ArgumentMatchers.eq(context)))
+                .thenReturn(pendingMarker);
+        when(projectService.getRequirement(
+                41L, 7L, context.username(), context)).thenReturn(requirement);
+        when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+
+        var result = service.cancelOperation(
+                41L, operationId, context.username(), context);
+
+        assertThat(result.status()).isEqualTo(AnalysisStatus.CANCELLED);
+        assertThat(result.completedPasses()).isEqualTo(2);
+        verify(analysisService).enqueueRequirement(
+                org.mockito.ArgumentMatchers.eq(41L),
+                org.mockito.ArgumentMatchers.eq(7L),
+                org.mockito.ArgumentMatchers.eq("CUSTOM_OPENAI"),
+                org.mockito.ArgumentMatchers.eq(50),
+                org.mockito.ArgumentMatchers.any(String.class),
+                org.mockito.ArgumentMatchers.eq(context.username()),
+                org.mockito.ArgumentMatchers.eq(context));
+        verify(jobControlService).cancel(
+                "job-2", 41L, context.username(), context);
+        verifyNoInteractions(
+                resultSelector, resultPersistenceService, completionService, coordinator);
+    }
+
+    @Test
+    void cancellationDominatesAndStopsLateRunningPasses() {
+        String operationId = "f".repeat(64);
+        AnalysisJobView cancelledPass = job(
+                "job-1", operationId, 1, 2, 7L, AnalysisStatus.CANCELLED);
+        AnalysisJobView runningPass = job(
+                "job-2", operationId, 2, 2, 7L, AnalysisStatus.RUNNING);
+        AnalysisJobView cancelledLatePass = job(
+                "job-2", operationId, 2, 2, 7L, AnalysisStatus.CANCELLED);
+        RequirementView requirement = mock(RequirementView.class);
+
+        when(analysisService.listJobs(41L, context.username(), context))
+                .thenReturn(
+                        List.of(cancelledPass, runningPass),
+                        List.of(cancelledPass, runningPass),
+                        List.of(cancelledPass, cancelledLatePass));
+        when(projectService.getRequirement(
+                41L, 7L, context.username(), context)).thenReturn(requirement);
+        when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+
+        var result = service.cancelOperation(
+                41L, operationId, context.username(), context);
+
+        assertThat(result.status()).isEqualTo(AnalysisStatus.CANCELLED);
+        verify(jobControlService).cancel(
+                "job-2", 41L, context.username(), context);
+        verify(analysisService, never()).enqueueRequirement(
+                any(), any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(
+                resultSelector, resultPersistenceService, completionService, coordinator);
+    }
+
     private static AnalysisJobView job(
             String jobId,
             String operationId,
