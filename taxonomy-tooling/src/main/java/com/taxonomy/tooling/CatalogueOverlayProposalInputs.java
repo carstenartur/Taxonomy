@@ -30,7 +30,7 @@ final class CatalogueOverlayProposalInputs {
     private static final String SUPPORTED_OVERLAY_MODE = "OVERLAY";
     private static final List<String> EXPECTED_HEADERS = List.of(
             "Page", "UUID", "Title", "Description", "Parent", "Dataset",
-            "ExternalID", "Source", "Reference", "Order", "State", "Level");
+            "External ID", "Source", "Reference", "Order", "State", "Level");
 
     private CatalogueOverlayProposalInputs() {
     }
@@ -113,7 +113,12 @@ final class CatalogueOverlayProposalInputs {
             throws IOException {
         OpenXmlWorkbook.SheetData sheet = OpenXmlWorkbook.readSheet(
                 catalogue, "Information Products");
-        if (!EXPECTED_HEADERS.equals(sheet.headers())) {
+        // Historical synthetic fixtures used the unspaced spelling. Canonicalize that
+        // one known alias while keeping every other workbook-column change fail-closed.
+        List<String> normalizedHeaders = sheet.headers().stream()
+                .map(header -> "ExternalID".equals(header) ? "External ID" : header)
+                .toList();
+        if (!EXPECTED_HEADERS.equals(normalizedHeaders)) {
             throw new IllegalArgumentException(
                     "Information Products columns changed; expected " + EXPECTED_HEADERS
                             + " but found " + sheet.headers());
