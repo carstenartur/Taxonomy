@@ -109,6 +109,24 @@ class AiAutomationPolicyTest {
     }
 
     @Test
+    void effectiveArchitectureLimitUsesTheLowerAiAndAnalysisCeiling() {
+        LlmProviderConfig providers = readyCustomProvider();
+        AiAutomationPolicy policy = policy(
+                providers, "METERED", false, false, null, 100, 50);
+
+        var manual = policy.manual(new CopilotRunRequest(
+                null, "CUSTOM_OPENAI", null, AnalysisAutomationProfile.EXHAUSTIVE,
+                2, true, true, true));
+
+        assertThat(policy.status().maxArchitectureNodes()).isEqualTo(50);
+        assertThat(manual.maxArchitectureNodes()).isEqualTo(50);
+        assertThatThrownBy(() -> policy.manual(new CopilotRunRequest(
+                null, "CUSTOM_OPENAI", 51, AnalysisAutomationProfile.FULL,
+                1, false, true, true)))
+                .hasMessageContaining("configured limit of 50");
+    }
+
+    @Test
     void exhaustiveManualProfileUsesAtLeastTwoIndependentPasses() {
         LlmProviderConfig providers = readyCustomProvider();
         AiAutomationPolicy policy = policy(
@@ -140,6 +158,17 @@ class AiAutomationPolicyTest {
             boolean enabled,
             boolean onSave,
             String autopilotProvider) {
+        return policy(providers, costPolicy, enabled, onSave, autopilotProvider, 50, 50);
+    }
+
+    private static AiAutomationPolicy policy(
+            LlmProviderConfig providers,
+            String costPolicy,
+            boolean enabled,
+            boolean onSave,
+            String autopilotProvider,
+            int aiMaximumArchitectureNodes,
+            int analysisMaximumArchitectureNodes) {
         return new AiAutomationPolicy(
                 providers,
                 new AiTargetCatalogService(providers),
@@ -148,7 +177,8 @@ class AiAutomationPolicyTest {
                 "EXHAUSTIVE",
                 1,
                 2,
-                50,
+                aiMaximumArchitectureNodes,
+                analysisMaximumArchitectureNodes,
                 enabled,
                 onSave,
                 autopilotProvider,

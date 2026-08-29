@@ -8,6 +8,7 @@ import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
 import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -61,6 +62,7 @@ public class AiAutomationPolicy {
     private final boolean autopilotProducts;
     private final Duration maximumRuntime;
 
+    @Autowired
     public AiAutomationPolicy(
             LlmProviderConfig providerConfig,
             AiTargetCatalogService targetCatalog,
@@ -69,7 +71,9 @@ public class AiAutomationPolicy {
             @Value("${taxonomy.ai.autopilot.profile:EXHAUSTIVE}") String autopilotProfile,
             @Value("${taxonomy.ai.copilot.verification-passes:1}") int copilotPasses,
             @Value("${taxonomy.ai.autopilot.verification-passes:2}") int autopilotPasses,
-            @Value("${taxonomy.ai.max-architecture-nodes:50}") int maximumArchitectureNodes,
+            @Value("${taxonomy.ai.max-architecture-nodes:50}") int aiMaximumArchitectureNodes,
+            @Value("${taxonomy.limits.max-architecture-nodes:50}")
+            int analysisMaximumArchitectureNodes,
             @Value("${taxonomy.ai.autopilot.enabled:false}") boolean autopilotEnabled,
             @Value("${taxonomy.ai.autopilot.on-requirement-save:true}") boolean runAfterRequirementSave,
             @Value("${taxonomy.ai.autopilot.provider:}") String autopilotProvider,
@@ -86,14 +90,52 @@ public class AiAutomationPolicy {
         this.copilotPasses = boundedPasses(copilotPasses, "taxonomy.ai.copilot.verification-passes");
         this.autopilotPasses = boundedPasses(
                 autopilotPasses, "taxonomy.ai.autopilot.verification-passes");
-        this.maximumArchitectureNodes = positive(
-                maximumArchitectureNodes, "taxonomy.ai.max-architecture-nodes");
+        this.maximumArchitectureNodes = Math.min(
+                positive(aiMaximumArchitectureNodes, "taxonomy.ai.max-architecture-nodes"),
+                positive(analysisMaximumArchitectureNodes,
+                        "taxonomy.limits.max-architecture-nodes"));
         this.autopilotEnabled = autopilotEnabled;
         this.runAfterRequirementSave = runAfterRequirementSave;
         this.autopilotProvider = normalizeOptional(autopilotProvider);
         this.autopilotSolutions = autopilotSolutions;
         this.autopilotProducts = autopilotProducts;
         this.maximumRuntime = Duration.ofSeconds(Math.max(60L, maximumRuntimeSeconds));
+    }
+
+    /**
+     * Source-compatible constructor for tests and callers that use one shared
+     * architecture-node ceiling for AI automation and the analysis pipeline.
+     */
+    public AiAutomationPolicy(
+            LlmProviderConfig providerConfig,
+            AiTargetCatalogService targetCatalog,
+            String costPolicy,
+            String copilotProfile,
+            String autopilotProfile,
+            int copilotPasses,
+            int autopilotPasses,
+            int maximumArchitectureNodes,
+            boolean autopilotEnabled,
+            boolean runAfterRequirementSave,
+            String autopilotProvider,
+            boolean autopilotSolutions,
+            boolean autopilotProducts,
+            long maximumRuntimeSeconds) {
+        this(providerConfig,
+                targetCatalog,
+                costPolicy,
+                copilotProfile,
+                autopilotProfile,
+                copilotPasses,
+                autopilotPasses,
+                maximumArchitectureNodes,
+                maximumArchitectureNodes,
+                autopilotEnabled,
+                runAfterRequirementSave,
+                autopilotProvider,
+                autopilotSolutions,
+                autopilotProducts,
+                maximumRuntimeSeconds);
     }
 
     public RunSettings manual(CopilotRunRequest request) {
