@@ -97,6 +97,14 @@ class RequirementCopilotUiContractTest {
                         }
                         """)
                 .contains("""
+                        #copilotOperationId {
+                            flex: 1 1 100%;
+                            min-width: 0;
+                            max-width: 100%;
+                            overflow-wrap: anywhere;
+                        }
+                        """)
+                .contains("""
                         #requirementExportOperation {
                             flex: 1 1 100%;
                             min-width: 0;
