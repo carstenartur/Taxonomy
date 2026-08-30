@@ -1,45 +1,54 @@
 {
   "schemaVersion": 1,
+  "trackingIssue": 857,
   "entries": [
     {
-      "language": "java",
       "ruleId": "java/user-controlled-bypass",
-      "primaryLocationLineHash": "237039575d68d550:1"
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "237039575d68d550:1",
+      "rationale": "Existing bulk-proposal review dataflow tracked for typed-request remediation in #857."
     },
     {
-      "language": "java",
       "ruleId": "java/user-controlled-bypass",
-      "primaryLocationLineHash": "5645628130da912a:1"
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "5645628130da912a:1",
+      "rationale": "Existing bulk-proposal review dataflow tracked for typed-request remediation in #857."
     },
     {
-      "language": "java",
       "ruleId": "java/user-controlled-bypass",
-      "primaryLocationLineHash": "27130642bf3f6cb6:1"
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "primaryLocationLineHash": "27130642bf3f6cb6:1",
+      "rationale": "Existing bulk-proposal review dataflow tracked for typed-request remediation in #857."
     },
     {
-      "language": "java",
       "ruleId": "java/sensitive-log",
-      "primaryLocationLineHash": "6c072f0d8040e56c:1"
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java",
+      "primaryLocationLineHash": "6c072f0d8040e56c:1",
+      "rationale": "Existing relation diagnostic dataflow remains tracked for a consistent non-disclosing logging contract in #857."
     },
     {
-      "language": "java",
       "ruleId": "java/sensitive-log",
-      "primaryLocationLineHash": "ce68b496600c26fc:1"
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java",
+      "primaryLocationLineHash": "ce68b496600c26fc:1",
+      "rationale": "Existing DSL relation diagnostic dataflow remains tracked for a consistent non-disclosing logging contract in #857."
     },
     {
-      "language": "java",
       "ruleId": "java/sensitive-log",
-      "primaryLocationLineHash": "42aaed006789554a:1"
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java",
+      "primaryLocationLineHash": "42aaed006789554a:1",
+      "rationale": "Existing DSL hypothesis diagnostic dataflow remains tracked for a consistent non-disclosing logging contract in #857."
     },
     {
-      "language": "java",
       "ruleId": "java/sensitive-log",
-      "primaryLocationLineHash": "c49faa45273a19ca:1"
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/security/config/SecurityDataInitializer.java",
+      "primaryLocationLineHash": "c49faa45273a19ca:1",
+      "rationale": "Existing one-time bootstrap credential delivery is documented and tracked for an operationally safe replacement in #857."
     },
     {
-      "language": "java",
       "ruleId": "java/sensitive-log",
-      "primaryLocationLineHash": "ed5e7cca8ae089d4:1"
+      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/versioning/service/HypothesisService.java",
+      "primaryLocationLineHash": "ed5e7cca8ae089d4:1",
+      "rationale": "Existing hypothesis diagnostic dataflow remains tracked for a consistent non-disclosing logging contract in #857."
     }
   ]
 }
