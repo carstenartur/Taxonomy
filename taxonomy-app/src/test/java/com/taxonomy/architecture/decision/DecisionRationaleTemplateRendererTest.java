@@ -38,12 +38,25 @@ class DecisionRationaleTemplateRendererTest {
     @Test
     void materializesTheReportIntoTheVersionedTemplateAndEmitsAGenuineDocx()
             throws Exception {
+        OoxmlTemplatePackageCodec codec = new OoxmlTemplatePackageCodec();
         byte[] dotx;
         try (InputStream input = DecisionRationaleTemplateRendererTest.class
                 .getResourceAsStream(
                         "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
-            dotx = input.readAllBytes();
+            Map<String, byte[]> parts = new LinkedHashMap<>(
+                    codec.unpack(input).parts());
+            String footer = new String(
+                    parts.get("word/footer1.xml"),
+                    StandardCharsets.UTF_8);
+            footer = footer.replace(
+                    " · template {{taxonomy.template.id}}@"
+                            + "{{taxonomy.template.commit}}",
+                    "");
+            parts.put(
+                    "word/footer1.xml",
+                    footer.getBytes(StandardCharsets.UTF_8));
+            dotx = codec.pack(parts);
         }
         TemplateManifest manifest = new TemplateManifest(
                 1,
@@ -96,9 +109,26 @@ class DecisionRationaleTemplateRendererTest {
         String footerXml = text(entries, "word/footer1.xml");
         assertThat(footerXml)
                 .contains(report.metadata().generatedBy())
-                .contains(TEMPLATE_COMMIT.substring(0, 12))
+                .doesNotContain(TEMPLATE_COMMIT)
                 .contains("PAGE")
                 .contains("NUMPAGES");
+
+        String customProperties = text(entries, "docProps/custom.xml");
+        assertThat(customProperties)
+                .contains("Taxonomy.Template.Id")
+                .contains(DecisionRationaleTemplateContract.TEMPLATE_ID)
+                .contains("Taxonomy.Template.Commit")
+                .contains(TEMPLATE_COMMIT)
+                .contains("Taxonomy.Template.PackageSha256")
+                .contains("package-sha");
+
+        entries.entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith(".xml")
+                        || entry.getKey().endsWith(".rels"))
+                .forEach(entry -> assertThat(
+                        new String(entry.getValue(), StandardCharsets.UTF_8))
+                        .as(entry.getKey())
+                        .doesNotContain("{{taxonomy."));
     }
 
     private static DecisionRationaleReport report() {
