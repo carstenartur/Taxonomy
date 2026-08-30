@@ -28,6 +28,10 @@ class DecisionRationaleTemplateRendererTest {
 
     private static final String TEMPLATE_COMMIT =
             "0123456789abcdef0123456789abcdef01234567";
+    private static final List<String> VISIBLE_PROVENANCE_TOKENS = List.of(
+            "{{taxonomy.template.id}}",
+            "{{taxonomy.template.commit}}",
+            "{{taxonomy.template.sha256}}");
 
     @Mock
     private DocumentTemplateService templates;
@@ -38,12 +42,40 @@ class DecisionRationaleTemplateRendererTest {
     @Test
     void materializesTheReportIntoTheVersionedTemplateAndEmitsAGenuineDocx()
             throws Exception {
+        OoxmlTemplatePackageCodec codec = new OoxmlTemplatePackageCodec();
         byte[] dotx;
         try (InputStream input = DecisionRationaleTemplateRendererTest.class
                 .getResourceAsStream(
                         "/" + DecisionRationaleTemplateContract.DEFAULT_RESOURCE)) {
             assertThat(input).isNotNull();
-            dotx = input.readAllBytes();
+            Map<String, byte[]> parts = new LinkedHashMap<>(
+                    codec.unpack(input).parts());
+            boolean visibleProvenanceWasPresent = false;
+            for (String path : List.copyOf(parts.keySet())) {
+                if (!(path.endsWith(".xml") || path.endsWith(".rels"))) {
+                    continue;
+                }
+                String xml = new String(parts.get(path), StandardCharsets.UTF_8);
+                for (String token : VISIBLE_PROVENANCE_TOKENS) {
+                    visibleProvenanceWasPresent |= xml.contains(token);
+                    xml = xml.replace(token, "");
+                }
+                parts.put(path, xml.getBytes(StandardCharsets.UTF_8));
+            }
+            assertThat(visibleProvenanceWasPresent).isTrue();
+            parts.entrySet().stream()
+                    .filter(entry -> entry.getKey().endsWith(".xml")
+                            || entry.getKey().endsWith(".rels"))
+                    .forEach(entry -> {
+                        String xml = new String(
+                                entry.getValue(), StandardCharsets.UTF_8);
+                        for (String token : VISIBLE_PROVENANCE_TOKENS) {
+                            assertThat(xml)
+                                    .as(entry.getKey())
+                                    .doesNotContain(token);
+                        }
+                    });
+            dotx = codec.pack(parts);
         }
         TemplateManifest manifest = new TemplateManifest(
                 1,
@@ -96,9 +128,27 @@ class DecisionRationaleTemplateRendererTest {
         String footerXml = text(entries, "word/footer1.xml");
         assertThat(footerXml)
                 .contains(report.metadata().generatedBy())
-                .contains(TEMPLATE_COMMIT.substring(0, 12))
+                .doesNotContain(TEMPLATE_COMMIT)
+                .doesNotContain(TEMPLATE_COMMIT.substring(0, 12))
                 .contains("PAGE")
                 .contains("NUMPAGES");
+
+        String customProperties = text(entries, "docProps/custom.xml");
+        assertThat(customProperties)
+                .contains("Taxonomy.Template.Id")
+                .contains(DecisionRationaleTemplateContract.TEMPLATE_ID)
+                .contains("Taxonomy.Template.Commit")
+                .contains(TEMPLATE_COMMIT)
+                .contains("Taxonomy.Template.PackageSha256")
+                .contains("package-sha");
+
+        entries.entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith(".xml")
+                        || entry.getKey().endsWith(".rels"))
+                .forEach(entry -> assertThat(
+                        new String(entry.getValue(), StandardCharsets.UTF_8))
+                        .as(entry.getKey())
+                        .doesNotContain("{{taxonomy."));
     }
 
     private static DecisionRationaleReport report() {

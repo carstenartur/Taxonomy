@@ -19,20 +19,63 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Fail-closed policy for active constructs that remain possible in macro-free OOXML.
+ * Fail-closed policy for executable, externally resolving and privacy-sensitive OOXML.
  *
- * <p>The generic OPC validator deliberately preserves ordinary Word features. This
- * guard rejects constructs that can load or execute external content when a generated
- * report is opened, including DDE fields, external include fields, alternative-format
- * imports and non-approved hyperlink schemes.</p>
+ * <p>The generic OPC validator deliberately preserves ordinary Word features. This guard
+ * rejects constructs that can execute or load external content, retain unresolved review
+ * state, hide document content or distribute workstation and author metadata.</p>
  */
 @Component
 public final class OoxmlActiveContentValidator {
 
     private static final String WORD_NS =
             "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    private static final String CORE_PROPERTIES_NS =
+            "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
+    private static final String DC_NS = "http://purl.org/dc/elements/1.1/";
+    private static final String EXTENDED_PROPERTIES_NS =
+            "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties";
+
     private static final Set<String> ALLOWED_HYPERLINK_SCHEMES =
             Set.of("https", "mailto");
+    private static final Set<String> CONTROLLED_IDENTITY_VALUES = Set.of(
+            "taxonomy",
+            "taxonomy architecture analyzer",
+            "taxonomy-bootstrap",
+            "taxonomy report service");
+    private static final Set<String> CONTROLLED_COMPANY_VALUES = Set.of(
+            "organisation",
+            "organization",
+            "taxonomy",
+            "taxonomy architecture analyzer");
+    private static final Set<String> PROHIBITED_REVISION_ELEMENTS = Set.of(
+            "commentRangeStart",
+            "commentRangeEnd",
+            "commentReference",
+            "ins",
+            "del",
+            "moveFrom",
+            "moveTo",
+            "moveFromRangeStart",
+            "moveFromRangeEnd",
+            "moveToRangeStart",
+            "moveToRangeEnd",
+            "customXml",
+            "customXmlPr",
+            "customXmlInsRangeStart",
+            "customXmlInsRangeEnd",
+            "customXmlDelRangeStart",
+            "customXmlDelRangeEnd",
+            "customXmlMoveFromRangeStart",
+            "customXmlMoveFromRangeEnd",
+            "customXmlMoveToRangeStart",
+            "customXmlMoveToRangeEnd",
+            "cellIns",
+            "cellDel",
+            "cellMerge",
+            "delText",
+            "delInstrText");
+
     private static final Pattern URI_SCHEME = Pattern.compile(
             "^([A-Za-z][A-Za-z0-9+.-]*):");
     private static final Pattern UNSAFE_FIELD = Pattern.compile(
@@ -45,19 +88,45 @@ public final class OoxmlActiveContentValidator {
         if (parts == null) {
             throw invalid("OOXML package is missing");
         }
+        validateForbiddenParts(parts);
         validateContentTypes(parts.get("[Content_Types].xml"));
+        validateCoreProperties(parts.get("docProps/core.xml"));
+        validateExtendedProperties(parts.get("docProps/app.xml"));
+
         for (Map.Entry<String, byte[]> part : parts.entrySet()) {
             String lower = part.getKey().toLowerCase(Locale.ROOT);
             if (lower.endsWith(".rels")) {
                 validateRelationships(part.getKey(), part.getValue());
             }
             if (lower.startsWith("word/") && lower.endsWith(".xml")) {
-                validateWordFields(part.getKey(), part.getValue());
+                Document document = parse(part.getKey(), part.getValue());
+                validateWordFields(part.getKey(), document);
+                validatePassiveWordContent(part.getKey(), document);
             }
             if (lower.endsWith(".htm") || lower.endsWith(".html")
                     || lower.endsWith(".mht") || lower.endsWith(".mhtml")
                     || lower.endsWith(".rtf")) {
                 throw invalid("alternative-format part is not permitted: " + part.getKey());
+            }
+        }
+    }
+
+    private static void validateForbiddenParts(Map<String, byte[]> parts) {
+        for (String path : parts.keySet()) {
+            String lower = path.toLowerCase(Locale.ROOT);
+            if ((lower.startsWith("word/comments") && lower.endsWith(".xml"))
+                    || "word/people.xml".equals(lower)) {
+                throw invalid("comments and reviewer identity are not permitted: " + path);
+            }
+            if (lower.startsWith("customxml/")
+                    || "docprops/custom.xml".equals(lower)) {
+                throw invalid("custom XML metadata is not permitted: " + path);
+            }
+            if (lower.startsWith("word/printersettings/")) {
+                throw invalid("printer-specific settings are not permitted: " + path);
+            }
+            if (lower.startsWith("docprops/thumbnail.")) {
+                throw invalid("stale document thumbnails are not permitted: " + path);
             }
         }
     }
@@ -141,8 +210,7 @@ public final class OoxmlActiveContentValidator {
         }
     }
 
-    private static void validateWordFields(String path, byte[] content) {
-        Document document = parse(path, content);
+    private static void validateWordFields(String path, Document document) {
         StringBuilder combined = new StringBuilder();
         NodeList instructionText = document.getElementsByTagNameNS(WORD_NS, "instrText");
         for (int index = 0; index < instructionText.getLength(); index++) {
@@ -175,6 +243,109 @@ public final class OoxmlActiveContentValidator {
         }
     }
 
+    private static void validatePassiveWordContent(String path, Document document) {
+        for (String elementName : PROHIBITED_REVISION_ELEMENTS) {
+            if (document.getElementsByTagNameNS(WORD_NS, elementName).getLength() > 0) {
+                throw invalid("unresolved review or revision markup "
+                        + elementName + " is not permitted in " + path);
+            }
+        }
+        if (document.getElementsByTagNameNS(WORD_NS, "trackRevisions").getLength() > 0) {
+            throw invalid("tracked-revision mode is not permitted in " + path);
+        }
+        if (isTextBearingStory(path)
+                && (document.getElementsByTagNameNS(WORD_NS, "vanish").getLength() > 0
+                || document.getElementsByTagNameNS(WORD_NS, "webHidden").getLength() > 0)) {
+            throw invalid("hidden Word text is not permitted in " + path);
+        }
+    }
+
+    private static boolean isTextBearingStory(String path) {
+        String lower = path.toLowerCase(Locale.ROOT);
+        return "word/document.xml".equals(lower)
+                || lower.matches("word/header[0-9]+\\.xml")
+                || lower.matches("word/footer[0-9]+\\.xml")
+                || "word/footnotes.xml".equals(lower)
+                || "word/endnotes.xml".equals(lower)
+                || lower.startsWith("word/glossary/");
+    }
+
+    private static void validateCoreProperties(byte[] content) {
+        if (content == null) {
+            return;
+        }
+        Document document = parse("docProps/core.xml", content);
+        validateControlledIdentity(document, DC_NS, "creator", "creator");
+        validateControlledIdentity(
+                document, CORE_PROPERTIES_NS, "lastModifiedBy", "last-modified-by");
+        rejectNonBlankProperty(
+                document, CORE_PROPERTIES_NS, "lastPrinted", "last-printed timestamp");
+    }
+
+    private static void validateExtendedProperties(byte[] content) {
+        if (content == null) {
+            return;
+        }
+        Document document = parse("docProps/app.xml", content);
+        rejectNonBlankProperty(document, EXTENDED_PROPERTIES_NS, "Manager", "manager");
+        rejectNonBlankProperty(
+                document, EXTENDED_PROPERTIES_NS, "HyperlinkBase", "hyperlink base");
+
+        NodeList companies = document.getElementsByTagNameNS(
+                EXTENDED_PROPERTIES_NS, "Company");
+        for (int index = 0; index < companies.getLength(); index++) {
+            String value = normalizedText(companies.item(index).getTextContent());
+            if (!value.isEmpty() && !CONTROLLED_COMPANY_VALUES.contains(value)) {
+                throw invalid("personal or organization-specific company metadata "
+                        + "is not permitted in docProps/app.xml");
+            }
+        }
+
+        NodeList templates = document.getElementsByTagNameNS(
+                EXTENDED_PROPERTIES_NS, "Template");
+        for (int index = 0; index < templates.getLength(); index++) {
+            String value = templates.item(index).getTextContent();
+            if (value != null && (value.contains("/") || value.contains("\\")
+                    || value.contains(":"))) {
+                throw invalid("workstation template paths are not permitted "
+                        + "in docProps/app.xml");
+            }
+        }
+    }
+
+    private static void validateControlledIdentity(
+            Document document,
+            String namespace,
+            String localName,
+            String description) {
+        NodeList values = document.getElementsByTagNameNS(namespace, localName);
+        for (int index = 0; index < values.getLength(); index++) {
+            String value = normalizedText(values.item(index).getTextContent());
+            if (!value.isEmpty() && !CONTROLLED_IDENTITY_VALUES.contains(value)) {
+                throw invalid("personal " + description
+                        + " metadata is not permitted in docProps/core.xml");
+            }
+        }
+    }
+
+    private static void rejectNonBlankProperty(
+            Document document,
+            String namespace,
+            String localName,
+            String description) {
+        NodeList values = document.getElementsByTagNameNS(namespace, localName);
+        for (int index = 0; index < values.getLength(); index++) {
+            String value = values.item(index).getTextContent();
+            if (value != null && !value.isBlank()) {
+                throw invalid(description + " metadata is not permitted");
+            }
+        }
+    }
+
+    private static String normalizedText(String value) {
+        return value == null ? "" : value.strip().toLowerCase(Locale.ROOT);
+    }
+
     private static Document parse(String path, byte[] content) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -182,9 +353,12 @@ public final class OoxmlActiveContentValidator {
             factory.setXIncludeAware(false);
             factory.setExpandEntityReferences(false);
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            factory.setFeature(
+                    "http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature(
+                    "http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setFeature(
+                    "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
             factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
             factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
             return factory.newDocumentBuilder().parse(new ByteArrayInputStream(content));
@@ -194,10 +368,11 @@ public final class OoxmlActiveContentValidator {
     }
 
     private static IllegalArgumentException invalid(String detail) {
-        return new IllegalArgumentException("Unsafe OOXML active content: " + detail);
+        return new IllegalArgumentException("Unsafe OOXML template content: " + detail);
     }
 
     private static IllegalArgumentException invalid(String detail, Exception cause) {
-        return new IllegalArgumentException("Unsafe OOXML active content: " + detail, cause);
+        return new IllegalArgumentException(
+                "Unsafe OOXML template content: " + detail, cause);
     }
 }
