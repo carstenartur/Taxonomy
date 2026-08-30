@@ -44,12 +44,16 @@ public class GraphSearchService {
     public GraphSearchResult graphSearch(String queryText,
                                          int maxResults,
                                          WorkspaceContext workspaceContext) {
+        if (maxResults <= 0) {
+            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
+                    Collections.emptyMap(), "No graph search results were requested.");
+        }
         if (!embeddingService.isAvailable()) {
             return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
                     Collections.emptyMap(), "Semantic search is not available (embedding model not loaded).");
         }
 
-        int nodeLimit = Math.max(1, Math.min(maxResults, MAX_NODE_RESULTS));
+        int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
         int relationLimit = safeRelationLimit(nodeLimit);
         WorkspaceContext context = workspaceContext != null
                 ? workspaceContext : WorkspaceContext.SHARED;
