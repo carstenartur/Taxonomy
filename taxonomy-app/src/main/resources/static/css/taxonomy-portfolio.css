@@ -216,6 +216,25 @@
     overflow-wrap: anywhere;
 }
 
+#copilotPolicy {
+    min-width: 0;
+    max-width: 100%;
+}
+
+#copilotPolicy .badge {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: start;
+}
+
+#requirementExportOperation {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
 @media (max-width: 1199.98px) {
     .portfolio-sidebar {
         position: static;
