@@ -78,10 +78,11 @@ public class WebDavApplicationCredentialService {
             boolean writeAllowed,
             Integer lifetimeDays) {
         requireAuthenticated(owner);
+        boolean administrator = hasAuthority(owner, "ROLE_ADMIN");
         if (!readAllowed && !writeAllowed) {
             throw new IllegalArgumentException("Select at least one WebDAV scope");
         }
-        if (writeAllowed && !hasAuthority(owner, "ROLE_ADMIN")) {
+        if (writeAllowed && !administrator) {
             throw new SecurityException(
                     "Administrator authority is required for a write-capable WebDAV credential");
         }
@@ -101,7 +102,7 @@ public class WebDavApplicationCredentialService {
         credential.setSecretHash(passwordEncoder.encode(token));
         credential.setReadAllowed(readAllowed || writeAllowed);
         credential.setWriteAllowed(writeAllowed);
-        credential.setAuthorities(authorityString(owner.getAuthorities(), writeAllowed));
+        credential.setAuthorities(authorityString(owner.getAuthorities()));
         credential.setCreatedAt(now);
         credential.setExpiresAt(now.plus(lifetime));
         repository.save(credential);
@@ -254,8 +255,7 @@ public class WebDavApplicationCredentialService {
     }
 
     private static String authorityString(
-            Collection<? extends GrantedAuthority> authorities,
-            boolean writeAllowed) {
+            Collection<? extends GrantedAuthority> authorities) {
         List<String> retained = authorities == null ? new ArrayList<>()
                 : authorities.stream()
                 .map(GrantedAuthority::getAuthority)
@@ -265,9 +265,6 @@ public class WebDavApplicationCredentialService {
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         if (retained.isEmpty()) {
             retained.add("ROLE_USER");
-        }
-        if (writeAllowed && !retained.contains("ROLE_ADMIN")) {
-            throw new SecurityException("Administrator authority is required");
         }
         return String.join(",", retained);
     }
