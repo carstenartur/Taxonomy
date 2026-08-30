@@ -1,6 +1,8 @@
 import { chromium } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const username = process.env.TAXONOMY_A11Y_USERNAME || 'admin';
@@ -10,8 +12,14 @@ const viewport = {
   width: Number.parseInt(process.env.TAXONOMY_VIEWPORT_WIDTH || '1440', 10),
   height: Number.parseInt(process.env.TAXONOMY_VIEWPORT_HEIGHT || '1000', 10)
 };
-const reportPath = process.env.TAXONOMY_A11Y_REPORT || `/tmp/taxonomy-a11y-${profile}.json`;
-const textReportPath = process.env.TAXONOMY_A11Y_TEXT_REPORT || `/tmp/taxonomy-a11y-${profile}.txt`;
+const reportDirectory = !process.env.TAXONOMY_A11Y_REPORT
+  || !process.env.TAXONOMY_A11Y_TEXT_REPORT
+  ? await mkdtemp(join(tmpdir(), 'taxonomy-a11y-'))
+  : null;
+const reportPath = process.env.TAXONOMY_A11Y_REPORT
+  || join(reportDirectory, `${profile}.json`);
+const textReportPath = process.env.TAXONOMY_A11Y_TEXT_REPORT
+  || join(reportDirectory, `${profile}.txt`);
 const baselinePath = process.env.TAXONOMY_A11Y_BASELINE || '.github/accessibility-baseline.json';
 const baseline = JSON.parse(await readFile(baselinePath, 'utf8'));
 if (baseline.schemaVersion !== 1 || !Array.isArray(baseline.allowedModerate)) {

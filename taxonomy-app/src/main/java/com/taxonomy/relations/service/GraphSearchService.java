@@ -26,6 +26,10 @@ import java.util.stream.Collectors;
 public class GraphSearchService {
 
     private static final Logger log = LoggerFactory.getLogger(GraphSearchService.class);
+    private static final int MAX_NODE_RESULTS = 1_000;
+    private static final int RELATIONS_PER_NODE_RESULT = 2;
+    private static final int MAX_RELATION_RESULTS =
+            MAX_NODE_RESULTS * RELATIONS_PER_NODE_RESULT;
 
     private final LocalEmbeddingService embeddingService;
 
@@ -40,11 +44,17 @@ public class GraphSearchService {
     public GraphSearchResult graphSearch(String queryText,
                                          int maxResults,
                                          WorkspaceContext workspaceContext) {
+        if (maxResults <= 0) {
+            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
+                    Collections.emptyMap(), "No graph search results were requested.");
+        }
         if (!embeddingService.isAvailable()) {
             return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
                     Collections.emptyMap(), "Semantic search is not available (embedding model not loaded).");
         }
 
+        int nodeLimit = Math.min(maxResults, MAX_NODE_RESULTS);
+        int relationLimit = safeRelationLimit(nodeLimit);
         WorkspaceContext context = workspaceContext != null
                 ? workspaceContext : WorkspaceContext.SHARED;
         try {
@@ -52,8 +62,8 @@ public class GraphSearchService {
             SearchSession session = Search.session(entityManager);
 
             List<TaxonomyNode> nodeHits = session.search(TaxonomyNode.class)
-                    .where(f -> f.knn(maxResults).field("embedding").matching(queryVector))
-                    .fetchHits(maxResults);
+                    .where(f -> f.knn(nodeLimit).field("embedding").matching(queryVector))
+                    .fetchHits(nodeLimit);
             List<TaxonomyNodeDto> matchedNodes = nodeHits.stream()
                     .map(this::toFlatDto)
                     .collect(Collectors.toList());
@@ -66,8 +76,8 @@ public class GraphSearchService {
                                                     .matching(context.workspaceId()))
                                             .should(f.not(f.exists().field("workspaceId")))
                                     : f.not(f.exists().field("workspaceId")))
-                            .must(f.knn(maxResults * 2).field("embedding").matching(queryVector)))
-                    .fetchHits(maxResults * 2);
+                            .must(f.knn(relationLimit).field("embedding").matching(queryVector)))
+                    .fetchHits(relationLimit);
 
             Map<String, Long> relationCountByRoot = relationHits.stream()
                     .filter(relation -> relation.getSourceNode() != null
@@ -82,15 +92,19 @@ public class GraphSearchService {
                             Collectors.counting()));
 
             String summary = buildSummary(relationCountByRoot, topRelationTypes, queryText);
-            log.debug("Graph search for '{}' in workspace {}: {} node hits, {} relation hits",
-                    queryText, context.workspaceId(), nodeHits.size(), relationHits.size());
+            log.debug("Graph search completed with {} node hits and {} relation hits",
+                    nodeHits.size(), relationHits.size());
             return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);
         } catch (Exception | LinkageError error) {
-            log.error("Graph search failed for query '{}' in workspace {}: {}",
-                    queryText, context.workspaceId(), error.getMessage(), error);
+            log.error("Graph search failed", error);
             return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
-                    Collections.emptyMap(), "Graph search failed: " + error.getMessage());
+                    Collections.emptyMap(), "Graph search failed");
         }
+    }
+
+    private static int safeRelationLimit(int nodeLimit) {
+        long requested = (long) nodeLimit * RELATIONS_PER_NODE_RESULT;
+        return (int) Math.min(requested, MAX_RELATION_RESULTS);
     }
 
     private String buildSummary(Map<String, Long> byRoot, Map<String, Long> byType, String query) {

@@ -1,5 +1,7 @@
 import { chromium, firefox } from '@playwright/test';
-import { writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const username = process.env.TAXONOMY_UI_USERNAME || 'admin';
@@ -11,8 +13,14 @@ const viewport = {
   width: Number.parseInt(process.env.TAXONOMY_VIEWPORT_WIDTH || '1440', 10),
   height: Number.parseInt(process.env.TAXONOMY_VIEWPORT_HEIGHT || '1000', 10)
 };
-const reportPath = process.env.TAXONOMY_UI_REPORT || `/tmp/taxonomy-ui-${profile}.json`;
-const screenshotPath = process.env.TAXONOMY_UI_SCREENSHOT || `/tmp/taxonomy-ui-${profile}.png`;
+const reportDirectory = !process.env.TAXONOMY_UI_REPORT
+  || !process.env.TAXONOMY_UI_SCREENSHOT
+  ? await mkdtemp(join(tmpdir(), 'taxonomy-ui-'))
+  : null;
+const reportPath = process.env.TAXONOMY_UI_REPORT
+  || join(reportDirectory, `${profile}.json`);
+const screenshotPath = process.env.TAXONOMY_UI_SCREENSHOT
+  || join(reportDirectory, `${profile}.png`);
 const baseOrigin = new URL(baseUrl).origin;
 const browserType = { chromium, firefox }[browserName];
 if (!browserType) throw new Error(`Unsupported browser: ${browserName}`);
