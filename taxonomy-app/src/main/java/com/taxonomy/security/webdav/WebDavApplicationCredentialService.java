@@ -291,7 +291,8 @@ public class WebDavApplicationCredentialService {
     }
 
     private static boolean hasAuthority(Authentication authentication, String authority) {
-        return authentication.getAuthorities().stream()
+        Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
+        return authorities != null && authorities.stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch(authority::equals);
     }
