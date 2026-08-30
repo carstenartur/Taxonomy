@@ -66,10 +66,15 @@ class DecisionRationaleTemplateRendererTest {
             parts.entrySet().stream()
                     .filter(entry -> entry.getKey().endsWith(".xml")
                             || entry.getKey().endsWith(".rels"))
-                    .forEach(entry -> assertThat(
-                            new String(entry.getValue(), StandardCharsets.UTF_8))
-                            .as(entry.getKey())
-                            .doesNotContain(VISIBLE_PROVENANCE_TOKENS));
+                    .forEach(entry -> {
+                        String xml = new String(
+                                entry.getValue(), StandardCharsets.UTF_8);
+                        for (String token : VISIBLE_PROVENANCE_TOKENS) {
+                            assertThat(xml)
+                                    .as(entry.getKey())
+                                    .doesNotContain(token);
+                        }
+                    });
             dotx = codec.pack(parts);
         }
         TemplateManifest manifest = new TemplateManifest(
