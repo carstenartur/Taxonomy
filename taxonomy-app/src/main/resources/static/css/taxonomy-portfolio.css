@@ -228,6 +228,13 @@
     text-align: start;
 }
 
+#copilotOperationId {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
 #requirementExportOperation {
     flex: 1 1 100%;
     min-width: 0;
