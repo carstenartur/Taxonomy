@@ -4,6 +4,6 @@
   "skip_tests": false,
   "dry_run": true,
   "resume_staged_release": false,
-  "request_revision": 9,
-  "requested_after_commit": "7c7da4d7e35c49c8b1038941e5eba870557a8884"
+  "request_revision": 10,
+  "requested_after_commit": "6c80f961eef05ad85f9cb85b4ba422a8a6ea6322"
 }
