@@ -397,7 +397,7 @@ class CompleteCopilotSessionIT {
     }
 
     private static void assertOneConsolidatedProviderFailure() {
-        String oversizedText = "Requirement context ".repeat(7_000);
+        String oversizedText = "€".repeat(90_000);
 
         click(By.id("newVersionButton"));
         WebElement modal = wait.until(
@@ -415,7 +415,7 @@ class CompleteCopilotSessionIT {
         wait.until(textPresent(By.id("detailInfo"), "immutable version"));
         wait.until(browser -> ((Number) javascript().executeScript(
                 "return (document.getElementById('currentText')?.textContent || '').length"))
-                .intValue() > 120_000);
+                .intValue() == oversizedText.length());
         wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
 
         String previousOperationId = driver.findElement(By.id("copilotOperation"))
