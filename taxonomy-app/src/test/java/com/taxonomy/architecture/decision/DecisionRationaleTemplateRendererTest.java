@@ -28,6 +28,10 @@ class DecisionRationaleTemplateRendererTest {
 
     private static final String TEMPLATE_COMMIT =
             "0123456789abcdef0123456789abcdef01234567";
+    private static final List<String> VISIBLE_PROVENANCE_TOKENS = List.of(
+            "{{taxonomy.template.id}}",
+            "{{taxonomy.template.commit}}",
+            "{{taxonomy.template.sha256}}");
 
     @Mock
     private DocumentTemplateService templates;
@@ -46,16 +50,26 @@ class DecisionRationaleTemplateRendererTest {
             assertThat(input).isNotNull();
             Map<String, byte[]> parts = new LinkedHashMap<>(
                     codec.unpack(input).parts());
-            String footer = new String(
-                    parts.get("word/footer1.xml"),
-                    StandardCharsets.UTF_8);
-            footer = footer.replace(
-                    " · template {{taxonomy.template.id}}@"
-                            + "{{taxonomy.template.commit}}",
-                    "");
-            parts.put(
-                    "word/footer1.xml",
-                    footer.getBytes(StandardCharsets.UTF_8));
+            boolean visibleProvenanceWasPresent = false;
+            for (String path : List.copyOf(parts.keySet())) {
+                if (!(path.endsWith(".xml") || path.endsWith(".rels"))) {
+                    continue;
+                }
+                String xml = new String(parts.get(path), StandardCharsets.UTF_8);
+                for (String token : VISIBLE_PROVENANCE_TOKENS) {
+                    visibleProvenanceWasPresent |= xml.contains(token);
+                    xml = xml.replace(token, "");
+                }
+                parts.put(path, xml.getBytes(StandardCharsets.UTF_8));
+            }
+            assertThat(visibleProvenanceWasPresent).isTrue();
+            parts.entrySet().stream()
+                    .filter(entry -> entry.getKey().endsWith(".xml")
+                            || entry.getKey().endsWith(".rels"))
+                    .forEach(entry -> assertThat(
+                            new String(entry.getValue(), StandardCharsets.UTF_8))
+                            .as(entry.getKey())
+                            .doesNotContain(VISIBLE_PROVENANCE_TOKENS));
             dotx = codec.pack(parts);
         }
         TemplateManifest manifest = new TemplateManifest(
@@ -110,6 +124,7 @@ class DecisionRationaleTemplateRendererTest {
         assertThat(footerXml)
                 .contains(report.metadata().generatedBy())
                 .doesNotContain(TEMPLATE_COMMIT)
+                .doesNotContain(TEMPLATE_COMMIT.substring(0, 12))
                 .contains("PAGE")
                 .contains("NUMPAGES");
 

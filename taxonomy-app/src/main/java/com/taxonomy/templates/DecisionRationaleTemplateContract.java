@@ -17,7 +17,6 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -48,6 +47,7 @@ public final class DecisionRationaleTemplateContract implements DocumentTemplate
 
     private static final String WORD_NS =
             "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    private static final String TOKEN_PREFIX = "{{taxonomy.";
     private static final Pattern TOKEN_PATTERN = Pattern.compile(
             "\\{\\{taxonomy\\.[A-Za-z0-9.]+}}");
     private static final Set<String> SUPPORTED_TOKENS = Set.of(
@@ -141,39 +141,81 @@ public final class DecisionRationaleTemplateContract implements DocumentTemplate
             if (!(lower.endsWith(".xml") || lower.endsWith(".rels"))) {
                 continue;
             }
-            String raw = new String(entry.getValue(), StandardCharsets.UTF_8);
-            if (!raw.contains("{{taxonomy.")) {
+
+            Document document = parse(path, entry.getValue());
+            rejectMarkersInAttributesOrXmlMetadata(path, document);
+            Element root = document.getDocumentElement();
+            String completeText = root == null ? "" : root.getTextContent();
+            if (completeText == null || !completeText.contains(TOKEN_PREFIX)) {
                 continue;
             }
+            int expectedTokens = countTokens(path, completeText);
             if (!lower.startsWith("word/") || !lower.endsWith(".xml")) {
                 throw invalid("Taxonomy tokens are not supported in OOXML part " + path);
             }
 
-            Document document = parse(path, entry.getValue());
             NodeList paragraphs = document.getElementsByTagNameNS(WORD_NS, "p");
             int foundTokens = 0;
             for (int index = 0; index < paragraphs.getLength(); index++) {
                 Element paragraph = (Element) paragraphs.item(index);
                 String text = elementText(paragraph);
-                if (!text.contains("{{taxonomy.")) {
+                if (!text.contains(TOKEN_PREFIX)) {
                     continue;
                 }
+                countTokens(path, text);
                 Matcher matcher = TOKEN_PATTERN.matcher(text);
-                int paragraphTokens = 0;
                 while (matcher.find()) {
-                    paragraphTokens++;
                     foundTokens++;
                     validateToken(path, paragraph, matcher.group());
                 }
-                String residual = TOKEN_PATTERN.matcher(text).replaceAll("");
-                if (paragraphTokens == 0 || residual.contains("{{taxonomy.")) {
-                    throw invalid("malformed Taxonomy token in " + path);
-                }
             }
-            if (foundTokens == 0) {
-                throw invalid("Taxonomy token is outside a supported Word paragraph in "
+            if (foundTokens != expectedTokens) {
+                throw invalid("Taxonomy token is outside supported Word paragraph text in "
                         + path);
             }
+        }
+    }
+
+    private static int countTokens(String path, String text) {
+        Matcher matcher = TOKEN_PATTERN.matcher(text);
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        String residual = TOKEN_PATTERN.matcher(text).replaceAll("");
+        if (residual.contains(TOKEN_PREFIX)) {
+            throw invalid("malformed Taxonomy token in " + path);
+        }
+        return count;
+    }
+
+    private static void rejectMarkersInAttributesOrXmlMetadata(
+            String path,
+            Node node) {
+        if (node == null) {
+            return;
+        }
+        var attributes = node.getAttributes();
+        if (attributes != null) {
+            for (int index = 0; index < attributes.getLength(); index++) {
+                String value = attributes.item(index).getNodeValue();
+                if (value != null && value.contains(TOKEN_PREFIX)) {
+                    throw invalid("Taxonomy token is not permitted in an XML attribute in "
+                            + path);
+                }
+            }
+        }
+        int nodeType = node.getNodeType();
+        if (nodeType == Node.COMMENT_NODE
+                || nodeType == Node.PROCESSING_INSTRUCTION_NODE) {
+            String value = node.getNodeValue();
+            if (value != null && value.contains(TOKEN_PREFIX)) {
+                throw invalid("Taxonomy token is not permitted in XML metadata in " + path);
+            }
+        }
+        NodeList children = node.getChildNodes();
+        for (int index = 0; index < children.getLength(); index++) {
+            rejectMarkersInAttributesOrXmlMetadata(path, children.item(index));
         }
     }
 

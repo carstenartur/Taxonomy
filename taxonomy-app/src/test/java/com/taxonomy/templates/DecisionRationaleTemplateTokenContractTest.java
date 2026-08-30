@@ -115,6 +115,34 @@ class DecisionRationaleTemplateTokenContractTest {
                 .hasMessageContaining("docProps/core.xml");
     }
 
+    @Test
+    void rejectsUtf16EncodedTokensAndAttributeMarkers() {
+        String footnotes = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>"
+                + "<w:footnotes xmlns:w=\""
+                + "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                + "\"><w:footnote w:id=\"1\">"
+                + paragraph("{{taxonomy.report.title}}")
+                + "</w:footnote></w:footnotes>";
+        parts.put("word/footnotes.xml", footnotes.getBytes(StandardCharsets.UTF_16));
+
+        assertThatThrownBy(() -> contract.validate(parts))
+                .hasMessageContaining("not supported in Word story")
+                .hasMessageContaining("word/footnotes.xml");
+
+        loadTemplate();
+        String document = text("word/document.xml");
+        parts.put(
+                "word/document.xml",
+                insertBeforeBodyMarker(
+                        document,
+                        "<w:p w:rsidR=\"{{taxonomy.report.commit}}\">"
+                                + "<w:r><w:t>ordinary text</w:t></w:r></w:p>"));
+
+        assertThatThrownBy(() -> contract.validate(parts))
+                .hasMessageContaining("XML attribute")
+                .hasMessageContaining("word/document.xml");
+    }
+
     private String text(String path) {
         assertThat(parts).containsKey(path);
         return new String(parts.get(path), StandardCharsets.UTF_8);
