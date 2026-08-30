@@ -253,10 +253,21 @@ public final class OoxmlActiveContentValidator {
         if (document.getElementsByTagNameNS(WORD_NS, "trackRevisions").getLength() > 0) {
             throw invalid("tracked-revision mode is not permitted in " + path);
         }
-        if (document.getElementsByTagNameNS(WORD_NS, "vanish").getLength() > 0
-                || document.getElementsByTagNameNS(WORD_NS, "webHidden").getLength() > 0) {
+        if (isTextBearingStory(path)
+                && (document.getElementsByTagNameNS(WORD_NS, "vanish").getLength() > 0
+                || document.getElementsByTagNameNS(WORD_NS, "webHidden").getLength() > 0)) {
             throw invalid("hidden Word text is not permitted in " + path);
         }
+    }
+
+    private static boolean isTextBearingStory(String path) {
+        String lower = path.toLowerCase(Locale.ROOT);
+        return "word/document.xml".equals(lower)
+                || lower.matches("word/header[0-9]+\\.xml")
+                || lower.matches("word/footer[0-9]+\\.xml")
+                || "word/footnotes.xml".equals(lower)
+                || "word/endnotes.xml".equals(lower)
+                || lower.startsWith("word/glossary/");
     }
 
     private static void validateCoreProperties(byte[] content) {
