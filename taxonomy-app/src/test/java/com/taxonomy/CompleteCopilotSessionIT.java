@@ -217,9 +217,16 @@ class CompleteCopilotSessionIT {
                 "architecture-tab", "decisions-tab", "solutions-tab")) {
             click(By.id(tabId));
             WebElement tab = driver.findElement(By.id(tabId));
-            assertThat(tab.getAttribute("aria-selected")).isEqualTo("true");
             String target = tab.getAttribute("data-bs-target");
-            assertThat(driver.findElement(By.cssSelector(target)).isDisplayed()).isTrue();
+            wait.until(attributeEquals(By.id(tabId), "aria-selected", "true"));
+            WebElement panel = wait.until(ExpectedConditions.visibilityOfElementLocated(
+                    By.cssSelector(target)));
+            assertThat(tab.getAttribute("aria-selected"))
+                    .as("selected state for %s", tabId)
+                    .isEqualTo("true");
+            assertThat(panel.isDisplayed())
+                    .as("visible panel for %s", tabId)
+                    .isTrue();
         }
 
         click(By.id("newVersionButton"));
