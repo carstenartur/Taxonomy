@@ -388,9 +388,9 @@ class CompleteCopilotSessionIT {
         assertThat(overflow.longValue()).isLessThanOrEqualTo(2L);
 
         driver.manage().window().setSize(new Dimension(1440, 1000));
-        WebElement profile = driver.findElement(By.id("copilotProfile"));
-        profile.click();
-        profile.sendKeys(org.openqa.selenium.Keys.TAB);
+        click(By.id("copilotProfile"));
+        driver.findElement(By.id("copilotProfile"))
+                .sendKeys(org.openqa.selenium.Keys.TAB);
         String activeId = String.valueOf(javascript().executeScript(
                 "return document.activeElement && document.activeElement.id"));
         assertThat(activeId).isNotBlank().isNotEqualTo("null");
