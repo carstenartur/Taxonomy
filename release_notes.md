@@ -27,11 +27,11 @@ The browser acceptance suite exercises this as a vertical workflow and treats se
 
 ### Authoritative and recoverable requirement Copilot sessions
 
-The requirement Copilot no longer treats one browser request or one polling connection as the authority for a longer analysis session. The persisted server operation exposes explicit `RUNNING`, `SUCCEEDED`, `PARTIAL`, `FAILED`, and `CANCELLED` states and remains observable across transient status failures, navigation and page reload.
+The requirement Copilot no longer treats one browser request or one polling connection as the authority for a longer analysis session. The persisted server operation exposes explicit `RUNNING`, `SUCCEEDED`, `PARTIAL`, `FAILED`, and `CANCELLED` states and remains observable across transient status failures, navigation and page reloads.
 
 The session workflow includes:
 
-- explicit reconnecting state instead of declaring a still-running server operation failed;
+- explicit `RECONNECTING` state instead of declaring a still-running server operation failed;
 - indeterminate progress for opaque LLM work and determinate progress only for completed passes;
 - cancellation that waits for the authoritative terminal state;
 - visible running, success, and failure states for DOCX, HTML, and JSON decision-report exports;
@@ -42,7 +42,7 @@ The session workflow includes:
 
 A PostgreSQL/Testcontainers browser acceptance performs one coherent session with cancellation, forced restart, a transient poll failure, reload recovery, result navigation, real exports, OOXML validation, cross-format evidence checks, responsive controls, and a server-owned oversized-prompt failure.
 
-### Versioned Information Product overlay and bounded product analysis
+### Versioned Information Product overlay and bounded concrete-product analysis
 
 The checked-in C3 Excel workbook remains the upstream catalogue baseline. A versioned JSON overlay applies explicit structural corrections and draft Information Product classifications without rewriting that workbook.
 
@@ -70,7 +70,7 @@ The template boundary includes:
 - ETags, lock tokens, conditional writes, stale-write rejection, and concurrent-create protection;
 - rejection of unsafe ZIP paths, malformed XML, invalid manifests and relationships, unsafe external links, dangerous Word field instructions, macros, ActiveX, OLE objects, and signatures;
 - rejection of comments and reviewer identity, tracked insert/delete/move/cell revisions, tracked-revision mode, hidden or web-hidden text in document stories, custom XML, custom document properties, printer settings, stale thumbnails, and uncontrolled personal or workstation metadata;
-- a fail-closed placeholder contract that permits known Taxonomy tokens only in supported body/table paragraphs, headers, and footers and rejects unknown, malformed, text-box, content-control, footnote, metadata, attribute, and other unsupported placements before activation;
+- a fail-closed placeholder contract that permits known Taxonomy tokens only in supported body/table paragraphs, headers, and footers and rejects unknown, malformed, text-box, content-control, footnote, metadata, attributes, and other unsupported placements before activation;
 - deterministic package materialisation and semantic-validation caching by immutable template revision.
 
 Taxonomy rejects unsafe or privacy-bearing templates; it does not silently sanitize and activate them. A downloadable sanitization report and optional deterministic cleanup remain post-1.4.0 administration enhancements.
@@ -232,7 +232,7 @@ A bounded set of existing Python release adapters and evidence generators remain
 6. For local form login, configure `TAXONOMY_ADMIN_PASSWORD`. Review `TAXONOMY_REQUIRE_PASSWORD_CHANGE`, `TAXONOMY_LOGIN_RATE_LIMIT`, `TAXONOMY_LOGIN_MAX_ATTEMPTS`, and `TAXONOMY_LOGIN_LOCKOUT_SECONDS` before production rollout. Forwarded peer addresses are trustworthy only behind a controlled ingress.
 7. When protected Actuator or ServiceMonitor access is used, configure a distinct machine token. With the supplied Helm chart, keep Secret key `ADMIN_PASSWORD` for the login credential and add `ADMIN_TOKEN` for the machine token; never reuse one value for both. Installations with `serviceMonitor.enabled=false` may omit `ADMIN_TOKEN`.
 8. Review the bilingual configuration reference before carrying forward environment values. Production Compose forwards `.env`, while local embeddings and runtime model download remain disabled until enabled explicitly.
-9. Review every provisional Information Product mapping and every AI-generated decision before treating it as organizational or procurement authority.
+9. Review every provisional Information Product mapping and every AI-generated decision before treating it as organisational or procurement authority.
 10. Deploy the immutable 1.4.0 image digest or verified release tag; do not deploy `latest` or `v1.3.1`.
 11. For Rancher/RKE2 sub-path deployments, start with `values-rancher-rke2.yaml`, verify `/taxonomy/actuator/health/readiness`, and exercise the prefixed login/password-replacement path.
 12. Treat the reported semantic-search readiness state as authoritative while model/index initialization is in progress.
