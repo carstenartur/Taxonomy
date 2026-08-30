@@ -1,5 +1,7 @@
 package com.taxonomy.portfolio.service;
 
+import com.taxonomy.analysis.service.PromptBudgetExceededException;
+
 /** Typed application exception mapped to an RFC 9457 problem response. */
 public class PortfolioException extends RuntimeException {
 
@@ -7,24 +9,34 @@ public class PortfolioException extends RuntimeException {
         NOT_FOUND,
         CONFLICT,
         VALIDATION,
+        PAYLOAD_TOO_LARGE,
         ANALYSIS_FAILED,
         UNAVAILABLE
     }
 
     private final Kind kind;
+    private final String code;
 
     public PortfolioException(Kind kind, String message) {
-        super(message);
-        this.kind = kind;
+        this(kind, null, message, null);
     }
 
     public PortfolioException(Kind kind, String message, Throwable cause) {
+        this(kind, null, message, cause);
+    }
+
+    public PortfolioException(Kind kind, String code, String message, Throwable cause) {
         super(message, cause);
         this.kind = kind;
+        this.code = code;
     }
 
     public Kind getKind() {
         return kind;
+    }
+
+    public String getCode() {
+        return code;
     }
 
     public static PortfolioException notFound(String message) {
@@ -37,6 +49,15 @@ public class PortfolioException extends RuntimeException {
 
     public static PortfolioException validation(String message) {
         return new PortfolioException(Kind.VALIDATION, message);
+    }
+
+    public static PortfolioException promptBudgetExceeded(
+            PromptBudgetExceededException exception) {
+        return new PortfolioException(
+                Kind.PAYLOAD_TOO_LARGE,
+                exception.getCode(),
+                exception.getMessage(),
+                exception);
     }
 
     public static PortfolioException analysisFailed(String message, Throwable cause) {

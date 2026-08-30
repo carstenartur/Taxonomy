@@ -80,6 +80,7 @@
         <jgit.version>7.7.1.202607240634-r</jgit.version>
         <jgit-storage-hibernate.version>0.11.2</jgit-storage-hibernate.version>
         <d3-hierarchy.version>3.1.2</d3-hierarchy.version>
+        <svgpath.version>2.5.0</svgpath.version>
         <springdoc.version>3.1.0</springdoc.version>
         <postgresql.version>42.7.12</postgresql.version>
         <jackson-2-bom.version>2.22.2</jackson-2-bom.version>
@@ -142,6 +143,14 @@
                 <groupId>org.webjars.npm</groupId>
                 <artifactId>d3-hierarchy</artifactId>
                 <version>${d3-hierarchy.version}</version>
+            </dependency>
+            <!-- svg2pdf.js declares svgpath as [2.3.0,3). Pin the compatible
+                 WebJar so clean builds do not depend on remote range metadata
+                 being available at build time. -->
+            <dependency>
+                <groupId>org.webjars.npm</groupId>
+                <artifactId>svgpath</artifactId>
+                <version>${svgpath.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.hibernate.search</groupId>

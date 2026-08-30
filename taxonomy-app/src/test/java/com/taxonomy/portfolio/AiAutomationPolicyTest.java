@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio;
 
+import com.taxonomy.analysis.service.AiTargetCatalogService;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmProviderConfig;
 import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
@@ -21,16 +22,32 @@ class AiAutomationPolicyTest {
                 providers, "METERED", true, true, "CUSTOM_OPENAI");
 
         var manual = policy.manual(new CopilotRunRequest(
-                "CUSTOM_OPENAI", 40, AnalysisAutomationProfile.FULL,
+                null, "CUSTOM_OPENAI", 40, AnalysisAutomationProfile.FULL,
                 1, false, true, true));
 
         assertThat(manual.autopilot()).isFalse();
         assertThat(manual.provider()).isEqualTo("CUSTOM_OPENAI");
+        assertThat(manual.target().targetId()).startsWith("custom-openai:test-model:");
         assertThat(policy.autopilotReady()).isFalse();
         assertThat(policy.automaticAfterRequirementSaveReady()).isFalse();
         assertThat(policy.status().reason()).contains("UNMETERED");
         assertThatThrownBy(policy::autopilot)
                 .hasMessageContaining("UNMETERED");
+    }
+
+    @Test
+    void stableTargetIdCanSelectTheProviderWithoutLegacyProviderField() {
+        LlmProviderConfig providers = readyCustomProvider();
+        AiAutomationPolicy policy = policy(
+                providers, "METERED", false, false, null);
+        String targetId = policy.targetForProvider("CUSTOM_OPENAI").targetId();
+
+        var manual = policy.manual(new CopilotRunRequest(
+                targetId, null, 40, AnalysisAutomationProfile.FULL,
+                1, false, true, true));
+
+        assertThat(manual.provider()).isEqualTo("CUSTOM_OPENAI");
+        assertThat(manual.target().targetId()).isEqualTo(targetId);
     }
 
     @Test
@@ -86,7 +103,25 @@ class AiAutomationPolicyTest {
                 providers, "METERED", false, false, null);
 
         assertThatThrownBy(() -> policy.manual(new CopilotRunRequest(
-                "CUSTOM_OPENAI", 51, AnalysisAutomationProfile.FULL,
+                null, "CUSTOM_OPENAI", 51, AnalysisAutomationProfile.FULL,
+                1, false, true, true)))
+                .hasMessageContaining("configured limit of 50");
+    }
+
+    @Test
+    void effectiveArchitectureLimitUsesTheLowerAiAndAnalysisCeiling() {
+        LlmProviderConfig providers = readyCustomProvider();
+        AiAutomationPolicy policy = policy(
+                providers, "METERED", false, false, null, 100, 50);
+
+        var manual = policy.manual(new CopilotRunRequest(
+                null, "CUSTOM_OPENAI", null, AnalysisAutomationProfile.EXHAUSTIVE,
+                2, true, true, true));
+
+        assertThat(policy.status().maxArchitectureNodes()).isEqualTo(50);
+        assertThat(manual.maxArchitectureNodes()).isEqualTo(50);
+        assertThatThrownBy(() -> policy.manual(new CopilotRunRequest(
+                null, "CUSTOM_OPENAI", 51, AnalysisAutomationProfile.FULL,
                 1, false, true, true)))
                 .hasMessageContaining("configured limit of 50");
     }
@@ -98,7 +133,7 @@ class AiAutomationPolicyTest {
                 providers, "METERED", false, false, null);
 
         var manual = policy.manual(new CopilotRunRequest(
-                null, null, AnalysisAutomationProfile.EXHAUSTIVE,
+                null, null, null, AnalysisAutomationProfile.EXHAUSTIVE,
                 null, false, null, null));
 
         assertThat(manual.verificationPasses()).isEqualTo(2);
@@ -110,6 +145,10 @@ class AiAutomationPolicyTest {
         LlmProviderConfig providers = mock(LlmProviderConfig.class);
         when(providers.getActiveProvider()).thenReturn(LlmProvider.CUSTOM_OPENAI);
         when(providers.isProviderConfigured(LlmProvider.CUSTOM_OPENAI)).thenReturn(true);
+        when(providers.getOpenAiCompatibleModel(LlmProvider.CUSTOM_OPENAI))
+                .thenReturn("test-model");
+        when(providers.getOpenAiCompatibleUrl(LlmProvider.CUSTOM_OPENAI))
+                .thenReturn("https://llm.example.test/v1/chat/completions");
         return providers;
     }
 
@@ -119,14 +158,27 @@ class AiAutomationPolicyTest {
             boolean enabled,
             boolean onSave,
             String autopilotProvider) {
+        return policy(providers, costPolicy, enabled, onSave, autopilotProvider, 50, 50);
+    }
+
+    private static AiAutomationPolicy policy(
+            LlmProviderConfig providers,
+            String costPolicy,
+            boolean enabled,
+            boolean onSave,
+            String autopilotProvider,
+            int aiMaximumArchitectureNodes,
+            int analysisMaximumArchitectureNodes) {
         return new AiAutomationPolicy(
                 providers,
+                new AiTargetCatalogService(providers),
                 costPolicy,
                 "FULL",
                 "EXHAUSTIVE",
                 1,
                 2,
-                50,
+                aiMaximumArchitectureNodes,
+                analysisMaximumArchitectureNodes,
                 enabled,
                 onSave,
                 autopilotProvider,

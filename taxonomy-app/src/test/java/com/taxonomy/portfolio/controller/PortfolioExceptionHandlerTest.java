@@ -71,6 +71,8 @@ class PortfolioExceptionHandlerTest {
                 new ExpectedProblem(HttpStatus.CONFLICT, "Portfolio state conflict"),
                 PortfolioException.Kind.VALIDATION,
                 new ExpectedProblem(HttpStatus.BAD_REQUEST, "Invalid portfolio request"),
+                PortfolioException.Kind.PAYLOAD_TOO_LARGE,
+                new ExpectedProblem(HttpStatus.PAYLOAD_TOO_LARGE, "AI prompt budget exceeded"),
                 PortfolioException.Kind.ANALYSIS_FAILED,
                 new ExpectedProblem(
                         HttpStatus.UNPROCESSABLE_ENTITY,

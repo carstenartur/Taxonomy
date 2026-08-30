@@ -1,18 +1,24 @@
-/* requirement-copilot.js – resumable full-analysis UI for saved requirements. */
+/* requirement-copilot.js – resilient, resumable full-analysis UI for saved requirements. */
 (function () {
     'use strict';
 
     const match = window.location.pathname.match(/(?:^|\/)projects\/(\d+)\/requirements\/(\d+)$/);
     if (!match) return;
+
     const projectId = Number(match[1]);
     const requirementId = Number(match[2]);
     const locale = (new URLSearchParams(window.location.search).get('lang')
         || document.documentElement.lang || 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
     const terminal = new Set(['SUCCESS', 'PARTIAL', 'FAILED', 'CANCELLED']);
+    const active = new Set(['PENDING', 'RUNNING', 'RECONNECTING', 'CANCELLING']);
+
     let activeOperationId = null;
-    let polling = false;
+    let activeOperation = null;
+    let pollingGeneration = 0;
     let manualCopilotReady = false;
     let lastAnnouncement = null;
+    let lastServerContact = null;
+    let consecutivePollFailures = 0;
 
     const copy = {
         en: {
@@ -20,18 +26,34 @@
             profile: 'Profile', standard: 'Standard', full: 'Full', exhaustive: 'Exhaustive',
             force: 'Force a new run even when the current state was already analysed',
             autopilotReady: 'Autopilot active: new requirement versions are analysed automatically.',
-            autopilotOff: 'Autopilot is not active', review: 'Human review remains required for mappings, responsibilities, solution/product selection, procurement and branch merge.',
+            autopilotOff: 'Autopilot is not active',
+            review: 'Human review remains required for mappings, responsibilities, solution/product selection, procurement and branch merge.',
             failed: 'Copilot operation failed', completed: 'Copilot completed. Opening the selected immutable snapshot…',
-            pass: 'passes complete', provider: 'Provider', status: 'Status'
+            pass: 'passes complete', provider: 'AI target', operation: 'Operation', phase: 'Phase',
+            lastContact: 'Last server contact', queued: 'Waiting for analysis capacity',
+            scoring: 'The current verification pass is being evaluated', finalizing: 'Selecting and enriching the best immutable result',
+            reconnecting: 'The server status cannot currently be reached. The analysis has not been declared failed; Taxonomy is reconnecting.',
+            reconnectAttempt: 'Reconnect attempt', cancelling: 'Cancellation requested. Waiting for the authoritative terminal state…',
+            retryStatus: 'Retry status connection now', openResult: 'Open result',
+            exportTitle: 'Report export', exportRunning: 'Generating and validating the requested export…',
+            exportSuccess: 'Export created', exportFailed: 'Export failed', bytes: 'bytes'
         },
         de: {
             title: 'Copilot-Vollanalyse', run: 'Vollanalyse starten', cancel: 'Abbrechen',
             profile: 'Profil', standard: 'Standard', full: 'Vollständig', exhaustive: 'Umfassend',
             force: 'Neuen Lauf erzwingen, auch wenn dieser Stand bereits analysiert wurde',
             autopilotReady: 'Autopilot aktiv: Neue Anforderungsversionen werden automatisch analysiert.',
-            autopilotOff: 'Autopilot ist nicht aktiv', review: 'Menschliche Prüfung bleibt erforderlich für Zuordnungen, Zuständigkeiten, Lösungs-/Produktauswahl, Beschaffung und Branch-Merge.',
+            autopilotOff: 'Autopilot ist nicht aktiv',
+            review: 'Menschliche Prüfung bleibt erforderlich für Zuordnungen, Zuständigkeiten, Lösungs-/Produktauswahl, Beschaffung und Branch-Merge.',
             failed: 'Die Copilot-Operation ist fehlgeschlagen', completed: 'Copilot abgeschlossen. Der ausgewählte unveränderliche Snapshot wird geöffnet…',
-            pass: 'Durchläufe abgeschlossen', provider: 'Provider', status: 'Status'
+            pass: 'Durchläufe abgeschlossen', provider: 'KI-Ziel', operation: 'Vorgang', phase: 'Phase',
+            lastContact: 'Letzter Serverkontakt', queued: 'Warten auf freie Analysekapazität',
+            scoring: 'Der aktuelle Prüfdurchlauf wird bewertet', finalizing: 'Das beste unveränderliche Ergebnis wird ausgewählt und ergänzt',
+            reconnecting: 'Der Serverstatus ist momentan nicht erreichbar. Die Analyse wurde nicht als fehlgeschlagen erklärt; Taxonomy stellt die Verbindung wieder her.',
+            reconnectAttempt: 'Wiederverbindungsversuch', cancelling: 'Abbruch angefordert. Warten auf den autoritativen Endzustand…',
+            retryStatus: 'Statusverbindung jetzt erneut versuchen', openResult: 'Ergebnis öffnen',
+            exportTitle: 'Berichtsexport', exportRunning: 'Der angeforderte Export wird erzeugt und geprüft…',
+            exportSuccess: 'Export erstellt', exportFailed: 'Export fehlgeschlagen', bytes: 'Bytes'
         }
     };
 
@@ -46,8 +68,12 @@
     async function initialize() {
         ensureSurface();
         translate();
+        installControlInventory();
         document.getElementById('copilotRun')?.addEventListener('click', start);
         document.getElementById('copilotCancel')?.addEventListener('click', cancel);
+        document.getElementById('copilotRetryStatus')?.addEventListener('click', retryStatusConnection);
+        document.addEventListener('click', interceptDecisionReportExport, true);
+
         try {
             const [status, latest] = await Promise.all([
                 api().status(),
@@ -55,20 +81,21 @@
             ]);
             renderPolicy(status);
             if (latest) {
+                lastServerContact = new Date();
                 renderOperation(latest);
-                if (!terminal.has(latest.status)) poll(latest.operationId);
+                if (!terminal.has(latest.status)) startPolling(latest.operationId);
             }
         } catch (error) {
             showError(error);
         }
     }
 
-
     function ensureSurface() {
         if (document.getElementById('requirementCopilotCard')) return;
         const main = document.getElementById('requirementMain');
         const anchor = main?.querySelector('section.card');
         if (!main || !anchor) return;
+
         const section = document.createElement('section');
         section.id = 'requirementCopilotCard';
         section.className = 'card shadow-sm mb-3 border-primary';
@@ -79,7 +106,7 @@
                 <div id="copilotPolicy"></div>
             </div>
             <div class="card-body">
-                <div id="copilotError" class="alert alert-danger d-none" role="alert"></div>
+                <div id="copilotError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
                 <div class="row g-3 align-items-end">
                     <div class="col-12 col-md-3">
                         <label id="copilotProfileLabel" for="copilotProfile" class="form-label">Profile</label>
@@ -106,16 +133,28 @@
                     </div>
                 </div>
                 <p id="copilotReviewBoundary" class="small text-body-secondary mt-3 mb-0"></p>
-                <div id="copilotOperation" class="border rounded p-3 mt-3 d-none" role="status" aria-live="polite">
-                    <div class="d-flex flex-wrap justify-content-between gap-2">
-                        <strong id="copilotOperationStatus"></strong>
+                <div id="copilotOperation" class="border rounded p-3 mt-3 d-none" role="status" aria-live="polite"
+                     data-operation-surface="copilot">
+                    <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
+                        <div>
+                            <strong id="copilotOperationStatus"></strong>
+                            <div id="copilotOperationPhase" class="small text-body-secondary"></div>
+                        </div>
                         <span id="copilotOperationProvider" class="small text-body-secondary"></span>
                     </div>
-                    <p id="copilotOperationMessage" class="mb-2"></p>
-                    <div class="progress" role="progressbar" aria-label="Copilot progress" aria-valuemin="0" aria-valuemax="100">
-                        <div id="copilotProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%" aria-valuenow="0"></div>
+                    <p id="copilotOperationMessage" class="mb-2 mt-2"></p>
+                    <div id="copilotProgress" class="progress" role="progressbar" aria-label="Copilot progress">
+                        <div id="copilotProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"></div>
                     </div>
                     <div id="copilotOperationProgress" class="small text-body-secondary mt-1"></div>
+                    <div class="d-flex flex-wrap justify-content-between gap-2 mt-2 small text-body-secondary">
+                        <span id="copilotOperationId"></span>
+                        <span id="copilotLastContact"></span>
+                    </div>
+                    <div id="copilotReconnect" class="alert alert-warning py-2 px-3 mt-3 mb-0 d-none" role="status">
+                        <span id="copilotReconnectMessage"></span>
+                        <button id="copilotRetryStatus" type="button" class="btn btn-sm btn-outline-warning ms-2"></button>
+                    </div>
                 </div>
             </div>`;
         anchor.insertAdjacentElement('afterend', section);
@@ -131,11 +170,29 @@
         setText('copilotProfileExhaustive', t('exhaustive'));
         setText('copilotForceLabel', t('force'));
         setText('copilotReviewBoundary', t('review'));
+        setText('copilotRetryStatus', t('retryStatus'));
+    }
+
+    function installControlInventory() {
+        markControl('copilotProfile', 'profile', 'toggle');
+        markControl('copilotForce', 'force-new-run', 'toggle');
+        markControl('copilotRun', 'run-full-analysis', 'operation');
+        markControl('copilotCancel', 'cancel-full-analysis', 'cancel');
+        markControl('copilotRetryStatus', 'retry-status-connection', 'operation');
+    }
+
+    function markControl(id, control, outcome) {
+        const element = document.getElementById(id);
+        if (!element) return;
+        element.dataset.sessionControl = control;
+        element.dataset.sessionTestOutcome = outcome;
     }
 
     async function start() {
+        stopPolling();
         setControls(true);
         clearError();
+        hideReconnect();
         try {
             const profile = document.getElementById('copilotProfile')?.value || 'FULL';
             const operation = await api().start(projectId, requirementId, {
@@ -145,8 +202,11 @@
                 proposeSolutions: profile !== 'STANDARD',
                 proposeProducts: profile !== 'STANDARD'
             });
+            lastServerContact = new Date();
+            activeOperation = operation;
             renderOperation(operation);
-            poll(operation.operationId);
+            if (!terminal.has(operation.status)) startPolling(operation.operationId);
+            else handleTerminal(operation);
         } catch (error) {
             showError(error);
             setControls(false);
@@ -155,42 +215,83 @@
 
     async function cancel() {
         if (!activeOperationId) return;
+        clearError();
+        renderLocalState('CANCELLING', t('cancelling'));
         setControls(true);
         try {
-            renderOperation(await api().cancel(projectId, activeOperationId));
-        } catch (error) {
-            showError(error);
-        } finally {
-            setControls(false);
-        }
-    }
-
-    async function poll(operationId) {
-        if (!operationId || polling) return;
-        activeOperationId = operationId;
-        polling = true;
-        try {
-            for (;;) {
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                const operation = await api().get(projectId, operationId);
-                renderOperation(operation);
-                if (terminal.has(operation.status)) {
-                    if ((operation.status === 'SUCCESS' || operation.status === 'PARTIAL')
-                            && operation.selectedSnapshotId) {
-                        announce(t('completed'));
-                        const url = new URL(window.location.href);
-                        url.searchParams.set('snapshot', operation.selectedSnapshotId);
-                        url.searchParams.set('lang', locale);
-                        window.location.replace(url);
-                    }
-                    return;
-                }
+            const operation = await api().cancel(projectId, activeOperationId);
+            lastServerContact = new Date();
+            activeOperation = operation;
+            renderOperation(operation);
+            if (terminal.has(operation.status)) {
+                stopPolling();
+                handleTerminal(operation);
+            } else {
+                startPolling(activeOperationId);
             }
         } catch (error) {
             showError(error);
-        } finally {
-            polling = false;
-            setControls(false);
+            if (activeOperation && !terminal.has(activeOperation.status)) startPolling(activeOperationId);
+        }
+    }
+
+    function startPolling(operationId) {
+        if (!operationId) return;
+        pollingGeneration += 1;
+        const generation = pollingGeneration;
+        activeOperationId = operationId;
+        poll(operationId, generation);
+    }
+
+    function stopPolling() {
+        pollingGeneration += 1;
+    }
+
+    async function poll(operationId, generation) {
+        while (generation === pollingGeneration) {
+            await delay(consecutivePollFailures > 0
+                ? Math.min(15000, 1500 * Math.pow(2, consecutivePollFailures - 1))
+                : 1500);
+            if (generation !== pollingGeneration) return;
+
+            try {
+                const operation = await api().get(projectId, operationId);
+                if (generation !== pollingGeneration || operation.operationId !== operationId) return;
+                consecutivePollFailures = 0;
+                lastServerContact = new Date();
+                activeOperation = operation;
+                hideReconnect();
+                renderOperation(operation);
+                if (terminal.has(operation.status)) {
+                    stopPolling();
+                    handleTerminal(operation);
+                    return;
+                }
+            } catch (error) {
+                if (generation !== pollingGeneration) return;
+                consecutivePollFailures += 1;
+                renderReconnect(error, consecutivePollFailures);
+            }
+        }
+    }
+
+    function retryStatusConnection() {
+        if (!activeOperationId) return;
+        consecutivePollFailures = 0;
+        startPolling(activeOperationId);
+    }
+
+    function handleTerminal(operation) {
+        setControls(false);
+        if ((operation.status === 'SUCCESS' || operation.status === 'PARTIAL')
+                && operation.selectedSnapshotId) {
+            announce(t('completed'));
+            window.setTimeout(function () {
+                const url = new URL(window.location.href);
+                url.searchParams.set('snapshot', operation.selectedSnapshotId);
+                url.searchParams.set('lang', locale);
+                window.location.replace(url);
+            }, 600);
         }
     }
 
@@ -205,38 +306,145 @@
         manualCopilotReady = Boolean(status.manualCopilotReady);
         const button = document.getElementById('copilotRun');
         if (button) button.title = manualCopilotReady ? '' : (status.reason || '');
-        setControls(false);
+        setControls(Boolean(activeOperation && !terminal.has(activeOperation.status)));
+    }
+
+    function primaryOperationMessage(operation) {
+        if (!operation) return '';
+        const status = String(operation.status || '').toUpperCase();
+        if (status !== 'FAILED' && status !== 'PARTIAL') {
+            return operation.message || '';
+        }
+        const evidence = [];
+        (Array.isArray(operation.jobs) ? operation.jobs : []).forEach(job => {
+            (Array.isArray(job.items) ? job.items : []).forEach(item => {
+                if (item && item.errorMessage) evidence.push(String(item.errorMessage));
+            });
+            if (job && job.errorSummary) evidence.push(String(job.errorSummary));
+        });
+        if (operation.message) evidence.push(String(operation.message));
+        const unique = evidence.map(value => value.trim()).filter(Boolean)
+            .filter((value, index, values) => values.indexOf(value) === index);
+        return unique.find(value => value.includes('PROMPT_BUDGET_EXCEEDED'))
+            || unique[0] || t('failed');
     }
 
     function renderOperation(operation) {
         if (!operation) return;
         activeOperationId = operation.operationId;
+        activeOperation = operation;
         const panel = document.getElementById('copilotOperation');
         panel?.classList.remove('d-none');
-        setText('copilotOperationStatus', humanize(operation.status));
-        setText('copilotOperationMessage', operation.message || '');
-        setText('copilotOperationProgress', operation.completedPasses + ' / '
-            + operation.verificationPasses + ' ' + t('pass'));
-        setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));
+        panel?.setAttribute('data-operation-id', operation.operationId || '');
+        panel?.setAttribute('data-operation-status', operation.status || '');
 
-        const progress = document.getElementById('copilotProgressBar');
-        if (progress) {
-            const percentage = Math.round(100 * operation.completedPasses
-                / Math.max(1, operation.verificationPasses));
-            progress.style.width = percentage + '%';
-            progress.setAttribute('aria-valuenow', String(percentage));
+        const status = String(operation.status || '');
+        const message = primaryOperationMessage(operation);
+        if (panel) {
+            panel.setAttribute('role', status === 'FAILED' ? 'alert' : 'status');
+            panel.setAttribute('aria-live', status === 'FAILED' ? 'assertive' : 'polite');
         }
+        if (status === 'FAILED') clearError();
+        setText('copilotOperationStatus', humanize(status));
+        setText('copilotOperationMessage', message);
+        setText('copilotOperationProvider', t('provider') + ': ' + (operation.provider || '—'));
+        setText('copilotOperationId', t('operation') + ': ' + (operation.operationId || '—'));
+        setText('copilotLastContact', t('lastContact') + ': ' + formatTime(lastServerContact));
+
+        const phase = operationPhase(operation);
+        setText('copilotOperationPhase', t('phase') + ': ' + phase.label);
+        renderProgress(operation, phase);
+
         const cancelButton = document.getElementById('copilotCancel');
         if (cancelButton) cancelButton.disabled = terminal.has(operation.status);
         setControls(!terminal.has(operation.status));
-        announce((operation.message || '') + ' ' + operation.completedPasses
+        announce(message + ' ' + operation.completedPasses
             + '/' + operation.verificationPasses);
+    }
+
+    function renderLocalState(status, message) {
+        const operation = Object.assign({}, activeOperation || {}, {
+            operationId: activeOperationId,
+            status: status,
+            message: message
+        });
+        activeOperation = operation;
+        renderOperation(operation);
+    }
+
+    function operationPhase(operation) {
+        const jobs = Array.isArray(operation.jobs) ? operation.jobs : [];
+        const running = jobs.find(job => job.status === 'RUNNING');
+        const pending = jobs.find(job => job.status === 'PENDING');
+        if (operation.status === 'CANCELLING') return { key: 'CANCELLING', label: t('cancelling'), indeterminate: true };
+        if (operation.status === 'RECONNECTING') return { key: 'RECONNECTING', label: t('reconnecting'), indeterminate: true };
+        if (running) return { key: 'SCORING', label: t('scoring'), indeterminate: true };
+        if (pending) return { key: 'QUEUED', label: t('queued'), indeterminate: true };
+        if (terminal.has(operation.status)) return { key: 'FINAL', label: t('finalizing'), indeterminate: false };
+        return { key: 'QUEUED', label: t('queued'), indeterminate: true };
+    }
+
+    function renderProgress(operation, phase) {
+        const total = Math.max(1, Number(operation.verificationPasses) || 1);
+        const completed = Math.max(0, Number(operation.completedPasses) || 0);
+        const percentage = Math.max(0, Math.min(100, Math.round(100 * completed / total)));
+        const progress = document.getElementById('copilotProgress');
+        const bar = document.getElementById('copilotProgressBar');
+        if (!progress || !bar) return;
+
+        if (phase.indeterminate && !terminal.has(operation.status)) {
+            progress.removeAttribute('aria-valuemin');
+            progress.removeAttribute('aria-valuemax');
+            progress.removeAttribute('aria-valuenow');
+            progress.setAttribute('aria-valuetext', phase.label + '; ' + completed + ' / ' + total + ' ' + t('pass'));
+            bar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+            bar.style.width = Math.max(12, percentage) + '%';
+        } else {
+            progress.setAttribute('aria-valuemin', '0');
+            progress.setAttribute('aria-valuemax', '100');
+            progress.setAttribute('aria-valuenow', String(terminal.has(operation.status) ? 100 : percentage));
+            progress.removeAttribute('aria-valuetext');
+            bar.className = 'progress-bar';
+            bar.style.width = (terminal.has(operation.status) ? 100 : percentage) + '%';
+        }
+        setText('copilotOperationProgress', completed + ' / ' + total + ' ' + t('pass'));
+    }
+
+    function renderReconnect(error, attempt) {
+        const panel = document.getElementById('copilotOperation');
+        panel?.classList.remove('d-none');
+        panel?.setAttribute('data-operation-status', 'RECONNECTING');
+        setText('copilotOperationStatus', 'Reconnecting');
+        setText('copilotOperationPhase', t('phase') + ': RECONNECTING');
+        setText('copilotOperationMessage', t('reconnecting'));
+        setText('copilotLastContact', t('lastContact') + ': ' + formatTime(lastServerContact));
+        const reconnect = document.getElementById('copilotReconnect');
+        reconnect?.classList.remove('d-none');
+        setText('copilotReconnectMessage', t('reconnectAttempt') + ' ' + attempt
+            + (error?.message ? ': ' + error.message : ''));
+        const phase = { label: t('reconnecting'), indeterminate: true };
+        renderProgress(activeOperation || {
+            status: 'RECONNECTING', completedPasses: 0, verificationPasses: 1
+        }, phase);
+        setControls(true);
+        announce(t('reconnecting'));
+    }
+
+    function hideReconnect() {
+        document.getElementById('copilotReconnect')?.classList.add('d-none');
     }
 
     function setControls(running) {
         const run = document.getElementById('copilotRun');
         const spinner = document.getElementById('copilotRunSpinner');
-        if (run) run.disabled = running || !manualCopilotReady;
+        const profile = document.getElementById('copilotProfile');
+        const force = document.getElementById('copilotForce');
+        if (run) {
+            run.disabled = running || !manualCopilotReady;
+            run.setAttribute('aria-busy', running ? 'true' : 'false');
+        }
+        if (profile) profile.disabled = running;
+        if (force) force.disabled = running;
         spinner?.classList.toggle('d-none', !running);
     }
 
@@ -245,11 +453,148 @@
         if (!target) return;
         target.textContent = error?.message || t('failed');
         target.classList.remove('d-none');
+        target.focus();
         announce(target.textContent);
     }
 
     function clearError() {
-        document.getElementById('copilotError')?.classList.add('d-none');
+        const target = document.getElementById('copilotError');
+        target?.classList.add('d-none');
+        if (target) target.textContent = '';
+    }
+
+    async function interceptDecisionReportExport(event) {
+        const button = event.target?.closest?.('[data-decision-report-format]');
+        if (!button) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const format = String(button.dataset.decisionReportFormat || '').toLowerCase();
+        markExportControls();
+        await runDecisionReportExport(button, format);
+    }
+
+    function markExportControls() {
+        document.querySelectorAll('[data-decision-report-format]').forEach(button => {
+            button.dataset.sessionControl = 'decision-report-' + button.dataset.decisionReportFormat;
+            button.dataset.sessionTestOutcome = 'export';
+        });
+    }
+
+    async function runDecisionReportExport(button, format) {
+        const snapshotId = new URLSearchParams(window.location.search).get('snapshot');
+        const surface = ensureExportSurface(button);
+        const operationId = 'export-' + Date.now().toString(36) + '-' + format;
+        if (!snapshotId) {
+            renderExportState(surface, operationId, 'FAILED', t('exportFailed'), 'No selected snapshot');
+            return;
+        }
+
+        setExportControlsDisabled(true);
+        renderExportState(surface, operationId, 'RUNNING', t('exportRunning'), '');
+        dispatchExport(operationId, format, 'RUNNING');
+        try {
+            const response = await window.TaxonomyPortfolioApi.downloadDecisionReport(
+                projectId, snapshotId, format, locale);
+            const blob = await response.blob();
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+            const filename = filenameMatch ? filenameMatch[1]
+                : `taxonomy-decision-rationale-report.${format}`;
+            validateExport(response, blob, format, filename);
+            downloadBlob(blob, filename);
+            renderExportState(surface, operationId, 'SUCCESS', t('exportSuccess'),
+                filename + ' · ' + blob.size + ' ' + t('bytes'));
+            dispatchExport(operationId, format, 'SUCCESS', {
+                filename: filename,
+                bytes: blob.size,
+                contentType: response.headers.get('Content-Type') || blob.type || ''
+            });
+        } catch (error) {
+            renderExportState(surface, operationId, 'FAILED', t('exportFailed'), error?.message || String(error));
+            dispatchExport(operationId, format, 'FAILED', { error: error?.message || String(error) });
+        } finally {
+            setExportControlsDisabled(false);
+        }
+    }
+
+    function ensureExportSurface(button) {
+        let surface = document.getElementById('requirementExportOperation');
+        if (surface) return surface;
+        surface = document.createElement('div');
+        surface.id = 'requirementExportOperation';
+        surface.className = 'alert alert-info mt-2 mb-0';
+        surface.setAttribute('role', 'status');
+        surface.setAttribute('aria-live', 'polite');
+        surface.dataset.operationSurface = 'export';
+        button.closest('.border.rounded')?.appendChild(surface);
+        return surface;
+    }
+
+    function renderExportState(surface, operationId, status, title, detail) {
+        if (!surface) return;
+        surface.className = 'alert mt-2 mb-0 ' + (status === 'FAILED'
+            ? 'alert-danger' : status === 'SUCCESS' ? 'alert-success' : 'alert-info');
+        surface.dataset.operationId = operationId;
+        surface.dataset.operationStatus = status;
+        surface.textContent = '';
+        const strong = document.createElement('strong');
+        strong.textContent = t('exportTitle') + ': ' + title;
+        surface.appendChild(strong);
+        if (detail) surface.appendChild(document.createTextNode(' — ' + detail));
+        if (status === 'RUNNING') {
+            const spinner = document.createElement('span');
+            spinner.className = 'spinner-border spinner-border-sm ms-2';
+            spinner.setAttribute('aria-hidden', 'true');
+            surface.appendChild(spinner);
+        }
+        announce(surface.textContent);
+    }
+
+    function validateExport(response, blob, format, filename) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        if (!blob || blob.size < 1) throw new Error('The export response was empty');
+        const type = String(response.headers.get('Content-Type') || blob.type || '').toLowerCase();
+        const expected = {
+            docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/octet-stream'],
+            html: ['text/html', 'application/xhtml+xml'],
+            json: ['application/json', 'application/problem+json']
+        }[format] || [];
+        if (expected.length && !expected.some(candidate => type.includes(candidate))) {
+            throw new Error('Unexpected content type for ' + format + ': ' + (type || 'missing'));
+        }
+        if (!filename.toLowerCase().endsWith('.' + format)) {
+            throw new Error('Unexpected export filename: ' + filename);
+        }
+    }
+
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+    }
+
+    function setExportControlsDisabled(disabled) {
+        document.querySelectorAll('[data-decision-report-format]').forEach(button => {
+            button.disabled = disabled;
+            button.setAttribute('aria-busy', disabled ? 'true' : 'false');
+        });
+    }
+
+    function dispatchExport(operationId, format, status, detail) {
+        document.dispatchEvent(new CustomEvent('taxonomy:export-operation-state', {
+            detail: Object.assign({
+                operationId: operationId,
+                operationType: 'EXPORT',
+                format: format,
+                status: status,
+                updatedAt: new Date().toISOString()
+            }, detail || {})
+        }));
     }
 
     function announce(message) {
@@ -277,6 +622,16 @@
     function humanize(value) {
         return String(value || '—').toLowerCase().replaceAll('_', ' ')
             .replace(/\b\w/g, character => character.toUpperCase());
+    }
+
+    function formatTime(value) {
+        if (!value) return '—';
+        try { return value.toLocaleTimeString(locale); }
+        catch (error) { return String(value); }
+    }
+
+    function delay(milliseconds) {
+        return new Promise(resolve => window.setTimeout(resolve, milliseconds));
     }
 
     function escapeHtml(value) {

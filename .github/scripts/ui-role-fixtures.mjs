@@ -18,8 +18,50 @@ export const ROLE_ACCOUNTS = Object.freeze({
   })
 });
 
+const SUCCESSFUL_PROVISIONING_STATUSES = new Set([200, 201, 409]);
+const STARTUP_TRANSIENT_PROVISIONING_STATUSES = new Set([401, 503]);
+const DEFAULT_PROVISIONING_MAX_ATTEMPTS = 30;
+const DEFAULT_PROVISIONING_RETRY_DELAY_MS = 1_000;
+
 export function basicAuthorization(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`, 'utf8').toString('base64')}`;
+}
+
+export async function provisionRoleAccount(api, account, {
+  maxAttempts = DEFAULT_PROVISIONING_MAX_ATTEMPTS,
+  retryDelayMs = DEFAULT_PROVISIONING_RETRY_DELAY_MS,
+  sleep = delay => new Promise(resolve => setTimeout(resolve, delay))
+} = {}) {
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new TypeError('maxAttempts must be a positive integer');
+  }
+  if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0) {
+    throw new TypeError('retryDelayMs must be a non-negative number');
+  }
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await api.post('/api/admin/users', {
+      data: {
+        username: account.username,
+        password: account.password,
+        displayName: `QA ${account.roles.at(-1)}`,
+        email: `${account.username}@example.invalid`,
+        roles: account.roles
+      }
+    });
+    const status = response.status();
+    if (SUCCESSFUL_PROVISIONING_STATUSES.has(status)) return;
+
+    const body = await response.text();
+    const retryable = STARTUP_TRANSIENT_PROVISIONING_STATUSES.has(status);
+    if (!retryable || attempt === maxAttempts) {
+      const attemptLabel = attempt === 1 ? '1 attempt' : `${attempt} attempts`;
+      throw new Error(
+        `Unable to provision ${account.username} after ${attemptLabel}: ${status} ${body}`
+      );
+    }
+    await sleep(retryDelayMs);
+  }
 }
 
 export async function provisionRoleAccounts({ baseUrl, adminUsername, adminPassword }) {
@@ -31,18 +73,7 @@ export async function provisionRoleAccounts({ baseUrl, adminUsername, adminPassw
   });
   try {
     for (const account of [ROLE_ACCOUNTS.USER, ROLE_ACCOUNTS.ARCHITECT]) {
-      const response = await api.post('/api/admin/users', {
-        data: {
-          username: account.username,
-          password: account.password,
-          displayName: `QA ${account.roles.at(-1)}`,
-          email: `${account.username}@example.invalid`,
-          roles: account.roles
-        }
-      });
-      if (![200, 201, 409].includes(response.status())) {
-        throw new Error(`Unable to provision ${account.username}: ${response.status()} ${await response.text()}`);
-      }
+      await provisionRoleAccount(api, account);
     }
   } finally {
     await api.dispose();
