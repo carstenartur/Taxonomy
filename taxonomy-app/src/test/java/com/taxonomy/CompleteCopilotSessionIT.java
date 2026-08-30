@@ -196,6 +196,12 @@ class CompleteCopilotSessionIT {
     }
 
     private static void openSelectedSnapshotThroughVisibleAnalysisControls() {
+        // Terminal Copilot success intentionally schedules navigation to the selected
+        // immutable snapshot. Do not race that real page transition with a tab click.
+        wait.until(browser -> browser.getCurrentUrl().contains("snapshot="));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("analyses-tab")));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                By.cssSelector(".portfolio-busy:not(.d-none)")));
         click(By.id("analyses-tab"));
         wait.until(browser -> !browser.findElements(
                 By.cssSelector("#snapshotList [data-snapshot-id]")).isEmpty());
@@ -540,6 +546,8 @@ class CompleteCopilotSessionIT {
     private static void click(By locator) {
         wait.until(ExpectedConditions.invisibilityOfElementLocated(
                 By.cssSelector(".modal-backdrop.show")));
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                By.cssSelector(".portfolio-busy:not(.d-none)")));
         wait.until(browser -> {
             try {
                 WebElement element = browser.findElement(locator);
