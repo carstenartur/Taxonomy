@@ -115,3 +115,7 @@ A failed run must retain enough evidence to distinguish:
 - multiple competing top-level errors.
 
 Screenshots may supplement this evidence, but screenshot generation is not the authority and must not inject fallback result markup.
+
+## Documentation screenshot ownership
+
+`CompleteCopilotSessionIT` owns `docs/images/72-complete-copilot-run-result.png`. The image is captured only after the real persistent operation reaches `SUCCESS` or `PARTIAL`, the selected immutable snapshot has opened, the **Analyses** tab is active, and the structured result contracts have passed. Do not replace it with a fabricated DOM fixture or an isolated architecture-workbench screenshot.
