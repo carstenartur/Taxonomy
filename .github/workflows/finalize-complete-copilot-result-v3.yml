@@ -1,0 +1,448 @@
+name: Finalize Complete Copilot Result V3
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-result-review
+    paths:
+      - .github/workflows/finalize-complete-copilot-result-v3.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: finalize-complete-copilot-result
+  cancel-in-progress: true
+
+jobs:
+  verify-and-publish:
+    name: Verify and publish accessible complete Copilot results
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/complete-copilot-run-result-review
+          fetch-depth: 0
+
+      - name: Apply final result, restart and evidence-table corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'{label} insertion point not found')
+              return text.replace(old, new, 1)
+
+          copilot_path = Path('taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js')
+          copilot = copilot_path.read_text(encoding='utf-8')
+          old_terminal = """        const isTerminal = terminal.has(operation.status);
+                  const settings = document.getElementById('copilotRunSettings');
+                  if (settings) settings.open = !isTerminal;
+                  document.getElementById('requirementCopilotCard')?.classList.toggle('copilot-terminal', isTerminal);
+                  setControls(!isTerminal);
+          """
+          new_terminal = """        const isTerminal = terminal.has(operation.status);
+                  const resultReady = ['SUCCESS', 'PARTIAL'].includes(status.toUpperCase());
+                  const settings = document.getElementById('copilotRunSettings');
+                  if (settings) settings.open = !resultReady;
+                  document.getElementById('requirementCopilotCard')?.classList.toggle('copilot-terminal', resultReady);
+                  setControls(!isTerminal);
+          """
+          if old_terminal in copilot:
+              copilot = copilot.replace(old_terminal, new_terminal, 1)
+          elif new_terminal not in copilot:
+              raise SystemExit('Copilot terminal-state block not found')
+
+          listener_anchor = """        document.getElementById('copilotRetryStatus')?.addEventListener('click', retryStatusConnection);
+                  document.addEventListener('click', interceptDecisionReportExport, true);
+          """
+          listener_replacement = """        document.getElementById('copilotRetryStatus')?.addEventListener('click', retryStatusConnection);
+                  document.addEventListener('taxonomy:requirement-version-created', revealRunSettings);
+                  document.addEventListener('click', interceptDecisionReportExport, true);
+          """
+          if "addEventListener('taxonomy:requirement-version-created'" not in copilot:
+              copilot = replace_once(copilot, listener_anchor, listener_replacement,
+                                     'Copilot new-version listener')
+
+          reveal_function = """    function revealRunSettings() {
+                  const settings = document.getElementById('copilotRunSettings');
+                  if (settings) settings.open = true;
+                  document.getElementById('requirementCopilotCard')
+                      ?.classList.remove('copilot-terminal');
+              }
+
+          """
+          if 'function revealRunSettings()' not in copilot:
+              copilot = replace_once(copilot, "    function showError(error) {\n",
+                                     reveal_function + "    function showError(error) {\n",
+                                     'Copilot reveal function')
+          copilot_path.write_text(copilot, encoding='utf-8')
+
+          detail_path = Path('taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js')
+          detail = detail_path.read_text(encoding='utf-8')
+
+          if "descriptionLabel: 'Description'" not in detail:
+              detail = replace_once(
+                  detail,
+                  """            resultReady: 'The immutable Copilot result is ready for review.',
+                      verificationResult: 'Verification result {0} of {1}',
+                  """,
+                  """            descriptionLabel: 'Description', expectedTarget: 'Expected target',
+                      missingElementLabel: 'Missing element',
+                      resultReady: 'The immutable Copilot result is ready for review.',
+                      verificationResult: 'Verification result {0} of {1}',
+                  """,
+                  'English finding labels')
+          if "descriptionLabel: 'Beschreibung'" not in detail:
+              detail = replace_once(
+                  detail,
+                  """            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.',
+                      verificationResult: 'Prüfergebnis {0} von {1}',
+                  """,
+                  """            descriptionLabel: 'Beschreibung', expectedTarget: 'Erwartetes Ziel',
+                      missingElementLabel: 'Fehlendes Element',
+                      resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.',
+                      verificationResult: 'Prüfergebnis {0} von {1}',
+                  """,
+                  'German finding labels')
+
+          version_anchor = """            showInfo(t('versionCreated'));
+                      await loadAll();
+          """
+          version_replacement = """            showInfo(t('versionCreated'));
+                      await loadAll();
+                      document.dispatchEvent(new CustomEvent(
+                          'taxonomy:requirement-version-created', {
+                              detail: { requirementId: requirementId }
+                          }));
+          """
+          if "new CustomEvent(\n                    'taxonomy:requirement-version-created'" not in detail:
+              detail = replace_once(detail, version_anchor, version_replacement,
+                                    'Requirement-version event')
+
+          old_metric = """            + `<div class="portfolio-result-kpi-value">${escapeHtml(value)}</div>`
+          """
+          new_metric = """            + `<div class="portfolio-result-kpi-value">${escapeHtml(String(value ?? '—'))}</div>`
+          """
+          if "escapeHtml(String(value ?? '—'))" not in detail:
+              detail = replace_once(detail, old_metric, new_metric, 'Zero-safe KPI value')
+
+          pattern_anchor = """    function renderPatternResult(patterns, matched) {
+                  const cards = matched.length ? matched.map(pattern => {
+          """
+          pattern_replacement = """    function renderPatternResult(patterns, matched) {
+                  const coveragePercent = percentage(patterns.patternCoverage);
+                  const cards = matched.length ? matched.map(pattern => {
+          """
+          if 'const coveragePercent = percentage(patterns.patternCoverage);' not in detail:
+              detail = replace_once(detail, pattern_anchor, pattern_replacement,
+                                    'Pattern coverage value')
+          old_pattern_badge = """            + `<span class="badge text-bg-success">${percentage(patterns.patternCoverage)}%</span></div>`
+          """
+          new_pattern_badge = """            + `<span class="badge ${coveragePercent >= 70 ? 'text-bg-success' : 'text-bg-warning'}">${coveragePercent}%</span></div>`
+          """
+          if new_pattern_badge.strip() not in detail:
+              detail = replace_once(detail, old_pattern_badge, new_pattern_badge,
+                                    'Pattern coverage badge')
+
+          old_findings = """    function renderFindingDetails(label, items, fields) {
+                  if (!items.length) return '';
+                  return `<details class="portfolio-finding-details"><summary>${escapeHtml(label)} <span class="badge text-bg-secondary">${items.length}</span></summary>`
+                      + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0"><tbody>`
+                      + items.map(item => `<tr>${fields.map(field => `<td>${escapeHtml(formatFindingValue(field, item[field]))}</td>`).join('')}</tr>`).join('')
+                      + `</tbody></table></div></details>`;
+              }
+
+          """
+          new_findings = """    function renderFindingDetails(label, items, fields) {
+                  if (!items.length) return '';
+                  const headers = fields.map(field => `<th scope="col">${escapeHtml(findingFieldLabel(field))}</th>`).join('');
+                  return `<details class="portfolio-finding-details"><summary>${escapeHtml(label)} <span class="badge text-bg-secondary">${items.length}</span></summary>`
+                      + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0">`
+                      + `<thead><tr>${headers}</tr></thead><tbody>`
+                      + items.map(item => `<tr>${fields.map(field => `<td>${escapeHtml(formatFindingValue(field, item[field]))}</td>`).join('')}</tr>`).join('')
+                      + `</tbody></table></div></details>`;
+              }
+
+              function findingFieldLabel(field) {
+                  const key = {
+                      sourceNodeCode: 'node',
+                      nodeCode: 'node',
+                      expectedRelationType: 'relation',
+                      expectedTargetRoot: 'expectedTarget',
+                      description: 'descriptionLabel',
+                      coverageScore: 'coverage',
+                      gapDescription: 'descriptionLabel',
+                      patternDescription: 'patternDetection',
+                      missingElement: 'missingElementLabel'
+                  }[field];
+                  return key ? t(key) : humanize(field);
+              }
+
+          """
+          if 'function findingFieldLabel(field)' not in detail:
+              detail = replace_once(detail, old_findings, new_findings,
+                                    'Accessible finding table')
+          detail_path.write_text(detail, encoding='utf-8')
+
+          contract_path = Path('taxonomy-app/src/test/java/com/taxonomy/portfolio/CompleteCopilotResultUiContractTest.java')
+          contract = contract_path.read_text(encoding='utf-8')
+          if 'taxonomy:requirement-version-created' not in contract:
+              old_contract = """                .contains("settings.open = !isTerminal")
+                          .contains("classList.toggle('copilot-terminal', isTerminal)");
+          """
+              new_contract = """                .contains("const resultReady = ['SUCCESS', 'PARTIAL'].includes(status.toUpperCase())")
+                          .contains("settings.open = !resultReady")
+                          .contains("classList.toggle('copilot-terminal', resultReady)")
+                          .contains("taxonomy:requirement-version-created", "revealRunSettings");
+          """
+              if old_contract in contract:
+                  contract = contract.replace(old_contract, new_contract, 1)
+              else:
+                  current_contract = """                .contains("classList.toggle('copilot-terminal', resultReady)");
+          """
+                  replacement = """                .contains("classList.toggle('copilot-terminal', resultReady)")
+                          .contains("taxonomy:requirement-version-created", "revealRunSettings");
+          """
+                  contract = replace_once(contract, current_contract, replacement,
+                                          'Complete-result terminal contract')
+          detail_contract_anchor = """                .contains("renderGapResult", "renderPatternResult", "renderRecommendationResult")
+          """
+          detail_contract_replacement = detail_contract_anchor + """                .contains("findingFieldLabel", "<thead><tr>", "String(value ?? '—')")
+                          .contains("coveragePercent >= 70")
+          """
+          if 'findingFieldLabel' not in contract:
+              contract = replace_once(contract, detail_contract_anchor,
+                                      detail_contract_replacement,
+                                      'Complete-result evidence contract')
+          contract_path.write_text(contract, encoding='utf-8')
+
+          browser_path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          browser = browser_path.read_text(encoding='utf-8')
+          cancel_anchor = """        assertThat(driver.findElement(By.id("copilotRun")).isEnabled()).isTrue();
+                  return operationId;
+          """
+          cancel_replacement = """        assertThat(driver.findElement(By.id("copilotRun")).isEnabled()).isTrue();
+                  assertThat(driver.findElement(By.id("copilotRunSettings")).getAttribute("open"))
+                          .as("run settings stay open after cancellation so a retry remains visible")
+                          .isNotNull();
+                  return operationId;
+          """
+          if 'run settings stay open after cancellation' not in browser:
+              browser = replace_once(browser, cancel_anchor, cancel_replacement,
+                                     'Cancellation visibility assertion')
+
+          result_anchor = """        wait.until(ExpectedConditions.visibilityOfElementLocated(
+                          By.id("snapshotResultOverview")));
+          """
+          result_replacement = result_anchor + """        assertThat(driver.findElement(By.id("copilotRunSettings")).getAttribute("open"))
+                          .as("completed result gives the review surface visual priority")
+                          .isNull();
+          """
+          if 'completed result gives the review surface visual priority' not in browser:
+              browser = replace_once(browser, result_anchor, result_replacement,
+                                     'Completed-result priority assertion')
+
+          old_kpis = """        assertThat(driver.findElements(By.cssSelector(
+                          "#snapshotResultOverview .portfolio-result-kpi")))
+                          .hasSize(6);
+          """
+          new_kpis = """        List<WebElement> resultKpis = driver.findElements(By.cssSelector(
+                          "#snapshotResultOverview .portfolio-result-kpi"));
+                  assertThat(resultKpis).hasSize(6);
+                  assertThat(resultKpis).allSatisfy(kpi ->
+                          assertThat(kpi.findElement(By.cssSelector(
+                                  ".portfolio-result-kpi-value")).getText()).isNotBlank());
+          """
+          if 'List<WebElement> resultKpis' not in browser:
+              browser = replace_once(browser, old_kpis, new_kpis,
+                                     'Non-empty result KPI assertion')
+
+          open_rows_anchor = """        wait.until(browser -> !browser.findElements(By.cssSelector(
+                          "#snapshotDetail details.portfolio-finding-details[open] table tr"))
+                          .isEmpty());
+          """
+          open_rows_replacement = open_rows_anchor + """        List<WebElement> findingHeaders = driver.findElements(By.cssSelector(
+                          "#snapshotDetail details.portfolio-finding-details[open] th"));
+                  assertThat(findingHeaders).isNotEmpty();
+                  assertThat(findingHeaders).allSatisfy(header ->
+                          assertThat(header.getText()).isNotBlank());
+          """
+          if 'List<WebElement> findingHeaders' not in browser:
+              browser = replace_once(browser, open_rows_anchor, open_rows_replacement,
+                                     'Finding table header assertion')
+
+          responsive_anchor = """    private static void assertResponsiveAndKeyboardReachable() {
+                  driver.manage().window().setSize(new Dimension(390, 844));
+          """
+          responsive_replacement = """    private static void assertResponsiveAndKeyboardReachable() {
+                  openCopilotRunSettings();
+                  driver.manage().window().setSize(new Dimension(390, 844));
+          """
+          if 'private static void assertResponsiveAndKeyboardReachable() {\n        openCopilotRunSettings();' not in browser:
+              browser = replace_once(browser, responsive_anchor, responsive_replacement,
+                                     'Keyboard settings expansion')
+
+          helper = """    private static void openCopilotRunSettings() {
+                  WebElement settings = driver.findElement(By.id("copilotRunSettings"));
+                  if (settings.getAttribute("open") != null) return;
+                  click(By.cssSelector("#copilotRunSettings > summary"));
+                  wait.until(browser -> browser.findElement(By.id("copilotRunSettings"))
+                          .getAttribute("open") != null);
+              }
+
+          """
+          if 'private static void openCopilotRunSettings()' not in browser:
+              browser = replace_once(browser,
+                                     "    private static void assertOneConsolidatedProviderFailure() {\n",
+                                     helper + "    private static void assertOneConsolidatedProviderFailure() {\n",
+                                     'Copilot settings helper')
+
+          version_ready_anchor = """        wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
+
+                  String previousOperationId = driver.findElement(By.id("copilotOperation"))
+          """
+          version_ready_replacement = """        wait.until(ExpectedConditions.elementToBeClickable(By.id("copilotRun")));
+                  assertThat(driver.findElement(By.id("copilotRunSettings")).getAttribute("open"))
+                          .as("a new immutable version reveals the controls for its new analysis")
+                          .isNotNull();
+
+                  String previousOperationId = driver.findElement(By.id("copilotOperation"))
+          """
+          if 'a new immutable version reveals the controls for its new analysis' not in browser:
+              browser = replace_once(browser, version_ready_anchor, version_ready_replacement,
+                                     'New-version rerun assertion')
+          browser_path.write_text(browser, encoding='utf-8')
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          git diff --check
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify focused source contracts
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am test
+          -Dtest=CompleteCopilotResultUiContractTest,RequirementCopilotUiContractTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Exercise and capture the authoritative complete Copilot session
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=CompleteCopilotSessionIT
+          -DgenerateScreenshots=true
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify the real complete-result screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=docs/images/72-complete-copilot-run-result.png
+          test -s "$image"
+          test "$(wc -c < "$image")" -gt 75000
+          file "$image" | grep -F 'PNG image data'
+          ! grep -F 'gap.summary || gap.description || JSON.stringify(gap)' \
+              taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+
+      - name: Upload focused evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-copilot-result-v3-evidence
+          path: |
+            docs/images/72-complete-copilot-run-result.png
+            taxonomy-app/target/failsafe-reports/**
+            taxonomy-app/target/surefire-reports/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publish the verified feature and clean one-shot workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/finalize-complete-copilot-result.yml \
+            .github/workflows/finalize-complete-copilot-result-v2.yml \
+            .github/workflows/finalize-complete-copilot-result-v3.yml \
+            .github/workflows/open-complete-copilot-result-pr.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Finalize complete Copilot result review and accessible evidence'
+          git push origin HEAD:fix/complete-copilot-run-result-review
+
+      - name: Create or publish the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          number="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head fix/complete-copilot-run-result-review \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+          if [ -z "$number" ]; then
+            cat > /tmp/body.md <<'EOF'
+          ## Problem
+
+          A completed Copilot full analysis exposed its most important results as an unstructured JSON-like text block. Cancelled or stale runs could also leave the controls needed for the next analysis hidden.
+
+          ## Result
+
+          The selected immutable snapshot now opens directly as a structured review surface with six orientation metrics, gap and pattern evidence, architecture recommendations, bounded secondary tables, technical diagnostics, decision filters and an explicit architecture-workbench path. Restart controls remain visible after cancellation or failure and reappear automatically for a new immutable requirement version.
+
+          ## Verification
+
+          The branch passed focused source contracts, a packaged multi-module build and `CompleteCopilotSessionIT` with PostgreSQL, Selenium, the deterministic mock LLM, cancellation, reconnect, reload, two verification passes, keyboard access, a new version, prompt-budget failure and equivalent DOCX/HTML/JSON exports. The screenshot is generated by that same authoritative session.
+
+          ![Complete Copilot run result](https://raw.githubusercontent.com/carstenartur/Taxonomy/fix/complete-copilot-run-result-review/docs/images/72-complete-copilot-run-result.png)
+          EOF
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head fix/complete-copilot-run-result-review \
+              --title 'Make complete Copilot results reviewable' \
+              --body-file /tmp/body.md
+            number="$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --head fix/complete-copilot-run-result-review \
+              --base main \
+              --state open \
+              --json number \
+              --jq '.[0].number')"
+          fi
+          is_draft="$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+          if [ "$is_draft" = true ]; then
+            gh pr ready "$number" --repo "$GITHUB_REPOSITORY"
+          fi
+          gh pr comment "$number" --repo "$GITHUB_REPOSITORY" --body \
+            "Authoritative complete-session QA passed in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. The generated result screenshot and focused Surefire/Failsafe evidence are attached to that run."
