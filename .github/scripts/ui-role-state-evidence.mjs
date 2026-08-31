@@ -6,6 +6,64 @@ import { createEvidencePolicy, screenshotStrategy } from './ui-evidence-policy.m
 export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
   const policy = createEvidencePolicy();
   const states = [];
+  let analysisDraftBarrier = null;
+  let analysisDraftBarrierRecorded = false;
+
+  async function persistAnalysisDraftBeforeBlockingEvidence(state) {
+    if (state !== 'analysis-success') return;
+    if (!analysisDraftBarrier) {
+      analysisDraftBarrier = page.evaluate(async () => {
+        const session = window.TaxonomyAnalysisSession;
+        const context = window.__TaxonomyAnalysisSessionContext;
+        const runtime = context?.runtime;
+        if (!session || typeof session.saveNow !== 'function'
+            || !runtime?.workspaceId
+            || typeof context.currentPayload !== 'function'
+            || typeof context.comparable !== 'function') {
+          throw new Error('Analysis draft persistence contract is unavailable');
+        }
+
+        const saved = await session.saveNow();
+        if (saved !== true) {
+          throw new Error('Analysis draft did not reach a confirmed saved state');
+        }
+        if (runtime.conflict) {
+          throw new Error('Analysis draft entered conflict before evidence capture');
+        }
+
+        const response = await fetch(
+          `/api/analysis-drafts/${encodeURIComponent(runtime.workspaceId)}`,
+          {
+            method: 'GET',
+            headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+            cache: 'no-store'
+          }
+        );
+        if (!response.ok) {
+          throw new Error(`Analysis draft verification returned HTTP ${response.status}`);
+        }
+        const view = await response.json();
+        return {
+          workspaceId: runtime.workspaceId,
+          localVersion: runtime.version,
+          remoteVersion: view.version,
+          equivalent: context.comparable(context.currentPayload())
+            === context.comparable(view.payload)
+        };
+      });
+    }
+
+    const result = await analysisDraftBarrier;
+    if (!result.equivalent
+        || Number(result.localVersion) !== Number(result.remoteVersion)) {
+      throw new Error(
+        `Analysis draft persistence barrier diverged: ${JSON.stringify(result)}`);
+    }
+    if (!analysisDraftBarrierRecorded) {
+      analysisDraftBarrierRecorded = true;
+      checks.push('authoritative analysis draft before blocking evidence');
+    }
+  }
 
   async function measureTaxonomyTreeViewport() {
     return page.evaluate(() => {
@@ -154,6 +212,7 @@ export function createRoleStateEvidence({ page, outputDir, checks, findings }) {
   }
 
   async function runAxe(state) {
+    await persistAnalysisDraftBeforeBlockingEvidence(state);
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();
