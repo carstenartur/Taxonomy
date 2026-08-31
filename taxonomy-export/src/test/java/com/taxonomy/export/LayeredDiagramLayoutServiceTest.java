@@ -44,6 +44,36 @@ class LayeredDiagramLayoutServiceTest {
     }
 
     @Test
+    void verticallyCentersSparseLayersAgainstTheTallestLayer() {
+        DiagramModel model = new DiagramModel(
+                "Balanced architecture",
+                List.of(
+                        new DiagramNode("CP-1", "Capability", "Capabilities", 0.9, true, 1),
+                        new DiagramNode("IP-1", "Product one", "Information Products", 0.8, false, 2),
+                        new DiagramNode("IP-2", "Product two", "Information Products", 0.7, false, 2),
+                        new DiagramNode("IP-3", "Product three", "Information Products", 0.6, false, 2)),
+                List.of(),
+                new DiagramLayout("LR", true));
+
+        DiagramScene scene = service.layout(model);
+        var capability = scene.nodes().stream()
+                .filter(node -> node.id().equals("CP-1"))
+                .findFirst()
+                .orElseThrow();
+        var products = scene.nodes().stream()
+                .filter(node -> node.type().equals("Information Products"))
+                .toList();
+
+        double productsTop = products.getFirst().y();
+        double productsBottom = products.getLast().y() + products.getLast().height();
+        double productsCenter = (productsTop + productsBottom) / 2.0;
+        double capabilityCenter = capability.y() + capability.height() / 2.0;
+
+        assertThat(capability.y()).isGreaterThan(productsTop);
+        assertThat(capabilityCenter).isEqualTo(productsCenter);
+    }
+
+    @Test
     void returnsExplicitEmptySceneForMissingArchitecture() {
         DiagramScene scene = service.layout(
                 new DiagramModel("Empty", List.of(), List.of(), new DiagramLayout("LR", true)));
