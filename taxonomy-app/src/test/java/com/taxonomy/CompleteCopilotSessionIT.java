@@ -259,7 +259,7 @@ class CompleteCopilotSessionIT {
             driver.manage().window().setSize(new Dimension(2200, 1600));
             javascript().executeScript("""
                     document.querySelectorAll('#snapshotDetail details[open]')
-                        .forEach(detail -> detail.open = false);
+                        .forEach(detail => { detail.open = false; });
                     window.scrollTo(0, 0);
                     """);
             wait.until(ExpectedConditions.visibilityOfElementLocated(
