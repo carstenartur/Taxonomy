@@ -11,7 +11,7 @@ on:
       - '.github/codeql-sarif-baseline.json'
       - '.github/workflows/codeql.yml'
   push:
-    branches: [ main ]
+    branches: ['**']
     paths:
       - 'pom.xml'
       - 'taxonomy-*/pom.xml'
@@ -33,6 +33,9 @@ concurrency:
 jobs:
   java:
     name: CodeQL / Java
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -111,6 +114,9 @@ jobs:
 
   javascript:
     name: CodeQL / JavaScript
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
