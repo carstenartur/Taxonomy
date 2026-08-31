@@ -240,6 +240,14 @@ class ArchitectureWorkbenchUiIT {
         Dimension previousSize = driver.manage().window().getSize();
         try {
             driver.manage().window().setSize(new Dimension(2200, 1300));
+            javascript().executeScript("""
+                    const diagram = document.getElementById('architectureCanvas');
+                    diagram.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                    """);
+            wait.until(browser -> browser.findElements(By.cssSelector(
+                    ".architecture-node.is-selected, .architecture-node.is-muted, "
+                            + ".architecture-edge.is-selected, .architecture-edge.is-muted"))
+                    .isEmpty());
             fitAndWait();
             assertDiagramFitsCanvas();
             java.nio.file.Path output = documentationScreenshotPath();
