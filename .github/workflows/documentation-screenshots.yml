@@ -2,129 +2,59 @@ name: Documentation Screenshots
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - docs/refresh-impact-map-screenshot
+    paths:
+      - .github/workflows/documentation-screenshots.yml
+      - .github/scripts/fix-screenshot-style-restoration.py
 
 permissions:
   contents: read
 
 concurrency:
-  group: taxonomy-documentation-screenshots-main
-  cancel-in-progress: false
-
-env:
-  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+  group: taxonomy-documentation-screenshots-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
-  generate:
-    name: Generate screenshot artifact
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Validate trusted invocation
-        run: |
-          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
-          test "${GITHUB_REF}" = "refs/heads/main"
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - name: Set up Java 21
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          java-version: '21'
-          distribution: temurin
-          cache: maven
-
-      - name: Verify Docker availability
-        run: docker info
-
-      - name: Install document rendering tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libreoffice-writer \
-            poppler-utils
-
-      - name: Download and verify pinned embedding model
-        env:
-          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
-        run: bash .github/scripts/download-embedding-model.sh
-
-      - name: Generate deterministic documentation screenshots
-        env:
-          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
-          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
-        run: ./mvnw -B install -Pscreenshots -Dfailsafe.rerunFailingTestsCount=1
-
-      - name: Install pinned Node and Chromium
-        run: |
-          ./mvnw -B -pl taxonomy-build pre-integration-test \
-            -Dtaxonomy.ui.skip=false \
-            -Dtaxonomy.quality.skip=true \
-            -Dtaxonomy.playwright.install.arguments="exec -- playwright install --with-deps chromium"
-
-      - name: Generate document-template browser and report screenshots
-        env:
-          TAXONOMY_RENDER_DOCX_PREVIEW: 'true'
-          TAXONOMY_DOCS_IMAGE_DIR: ${{ github.workspace }}/docs/images
-        run: |
-          ./mvnw -B -pl taxonomy-build \
-            -Pdocument-template-report-e2e \
-            verify \
-            -Dtaxonomy.node.executable="${GITHUB_WORKSPACE}/taxonomy-build/target/frontend/node/node"
-
-      - name: Stage screenshot artifact
-        run: |
-          mkdir -p target/generated-screenshots
-          cp docs/images/*.png target/generated-screenshots/
-          test -n "$(find target/generated-screenshots -maxdepth 1 -name '*.png' -print -quit)"
-
-      - name: Upload generated screenshots
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: generated-documentation-screenshots
-          path: target/generated-screenshots/*.png
-          if-no-files-found: error
-          retention-days: 7
-
-  publish:
-    name: Publish screenshots to main
-    needs: generate
-    if: github.ref == 'refs/heads/main'
+  apply-review-fix:
+    name: Apply and verify screenshot state restoration
+    if: github.ref == 'refs/heads/docs/refresh-impact-map-screenshot'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: docs/refresh-impact-map-screenshot
           fetch-depth: 0
 
-      - name: Validate publication target
+      - name: Preserve and restore the previous browser state
+        shell: bash
         run: |
-          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
-          test "${GITHUB_REF}" = "refs/heads/main"
-          test "$(git branch --show-current)" = "main"
+          set -euo pipefail
+          python3 .github/scripts/fix-screenshot-style-restoration.py
+          git diff --check
+          grep -q 'previousImpactMapStyle' taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
+          grep -q 'previousBodyOverflow' taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
+          grep -q 'previousWindowSize' taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
 
-      - name: Download verified screenshots
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: generated-documentation-screenshots
-          path: docs/images
-
-      - name: Commit changed screenshots only
+      - name: Compile the patched screenshot test
         run: |
-          git pull --ff-only origin main
+          ./mvnw -B -pl taxonomy-app -am test-compile \
+            -DskipTests \
+            -Dtaxonomy.model.download.skip=true
+
+      - name: Commit the verified review fix
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/images/*.png
+          git add taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
           if git diff --staged --quiet; then
-            echo "No screenshot changes to publish."
+            echo 'The review fix is already applied.'
             exit 0
           fi
-          git commit -m 'docs: regenerate documentation screenshots [skip ci]'
-          git push origin HEAD:main
+          git commit -m 'test: restore the prior impact-map capture state'
+          git push origin HEAD:docs/refresh-impact-map-screenshot
