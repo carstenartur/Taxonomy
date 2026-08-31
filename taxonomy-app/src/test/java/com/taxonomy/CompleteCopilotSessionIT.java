@@ -134,7 +134,7 @@ class CompleteCopilotSessionIT {
             return "SUCCESS".equals(status) || "PARTIAL".equals(status);
         });
 
-        openSelectedSnapshotThroughVisibleAnalysisControls();
+        openSelectedSnapshotThroughVisibleAnalysisControls(projectId);
         exerciseRequirementWorkspaceControls();
         assertSessionControlsAreNotObscuredWhenFocused();
         Map<String, ExportEvidence> exports = exerciseAndReadAllDecisionReportExports(projectId);
@@ -202,7 +202,7 @@ class CompleteCopilotSessionIT {
                 """);
     }
 
-    private static void openSelectedSnapshotThroughVisibleAnalysisControls() {
+    private static void openSelectedSnapshotThroughVisibleAnalysisControls(long projectId) {
         // The selected immutable result must be the visible destination of
         // terminal Copilot navigation; no compensating tab or snapshot click.
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot="));
@@ -222,6 +222,17 @@ class CompleteCopilotSessionIT {
         assertThat(driver.findElements(By.cssSelector(
                 "#snapshotResultOverview .portfolio-result-kpi")))
                 .hasSize(6);
+
+        WebElement selectedSnapshot = driver.findElement(By.cssSelector(
+                "#snapshotList [data-snapshot-id].active[aria-current='true']"));
+        String selectedSnapshotId = selectedSnapshot.getAttribute("data-snapshot-id");
+        String workbenchHref = driver.findElement(By.cssSelector(
+                "#snapshotResultOverview a[href*='/architecture/workbench']"))
+                .getAttribute("href");
+        assertThat(workbenchHref)
+                .contains("/architecture/workbench")
+                .contains("projectId=" + projectId)
+                .contains("snapshotId=" + selectedSnapshotId);
 
         String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
         assertThat(visibleResult)

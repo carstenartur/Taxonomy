@@ -80,7 +80,7 @@ class CompleteCopilotResultUiContractTest {
                 .contains("activateDetailTab('analyses-tab');")
                 .contains("window.bootstrap.Tab.getOrCreateInstance(trigger).show();");
         int methodStart = session.indexOf(
-                "private static void openSelectedSnapshotThroughVisibleAnalysisControls()");
+                "private static void openSelectedSnapshotThroughVisibleAnalysisControls(long projectId)");
         int methodEnd = session.indexOf(
                 "private static void saveCompleteCopilotRunResultScreenshot()",
                 methodStart);
@@ -113,6 +113,40 @@ class CompleteCopilotResultUiContractTest {
                 .contains("coverageScore: 'Coverage score'")
                 .contains("coverageScore: 'Abdeckungswert'");
         assertThat(css).contains(".portfolio-result-table thead th");
+    }
+
+
+    @Test
+    void suggestedRelationshipTableHasCaptionAndScopedHeaders()
+            throws IOException {
+        String detail = Files.readString(Path.of(
+                "src/main/resources/static/js/portfolio/requirement-detail.js"));
+
+        assertThat(detail)
+                .contains("suggestedRelations")
+                .contains("<caption class=", "visually-hidden")
+                .contains("<th scope=", "t('relation')", "t('reasoning')");
+    }
+
+    @Test
+    void workbenchLinkKeepsTheExactSelectedImmutableSnapshot()
+            throws IOException {
+        String detail = Files.readString(Path.of(
+                "src/main/resources/static/js/portfolio/requirement-detail.js"));
+        String session = Files.readString(Path.of(
+                "src/test/java/com/taxonomy/CompleteCopilotSessionIT.java"));
+
+        assertThat(detail)
+                .contains("new URL('/architecture/workbench', window.location.origin)")
+                .contains("url.searchParams.set('projectId', String(projectId))")
+                .contains("url.searchParams.set('snapshotId', String(state.selectedSnapshot.id))")
+                .doesNotContain("+ '/architecture?lang=' + encodeURIComponent(locale)");
+        assertThat(session)
+                .contains("openSelectedSnapshotThroughVisibleAnalysisControls(projectId)")
+                .contains("#snapshotResultOverview a[href*='/architecture/workbench']")
+                .contains("projectId=")
+                .contains("snapshotId=")
+                .contains("selectedSnapshotId");
     }
 
 }

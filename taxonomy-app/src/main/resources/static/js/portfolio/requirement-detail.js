@@ -528,8 +528,9 @@
             : `<p class="text-body-secondary mb-0">—</p>`;
         const relationDetails = suggested.length
             ? `<details class="portfolio-finding-details"><summary>${escapeHtml(t('suggestedRelations'))} <span class="badge text-bg-secondary">${suggested.length}</span></summary>`
-                + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0"><thead><tr>`
-                + `<th>${escapeHtml(t('relation'))}</th><th>${escapeHtml(t('reasoning'))}</th></tr></thead><tbody>`
+                + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0">`
+                + `<caption class="visually-hidden">${escapeHtml(t('suggestedRelations'))}</caption><thead><tr>`
+                + `<th scope="col">${escapeHtml(t('relation'))}</th><th scope="col">${escapeHtml(t('reasoning'))}</th></tr></thead><tbody>`
                 + suggested.map(item => `<tr><td><code>${escapeHtml(item.sourceCode || '—')}</code> → <code>${escapeHtml(item.targetCode || '—')}</code>`
                     + `<div class="small fw-semibold">${escapeHtml(humanize(item.relationType || 'RELATED_TO'))}</div></td>`
                     + `<td>${escapeHtml(item.reasoning || '—')}</td></tr>`).join('')
@@ -613,8 +614,15 @@
     }
 
     function architectureWorkbenchUrl() {
-        return window.location.pathname.replace(/\/$/, '')
-            + '/architecture?lang=' + encodeURIComponent(locale);
+        if (!state.selectedSnapshot || state.selectedSnapshot.id === null
+                || state.selectedSnapshot.id === undefined) {
+            return '#';
+        }
+        const url = new URL('/architecture/workbench', window.location.origin);
+        url.searchParams.set('projectId', String(projectId));
+        url.searchParams.set('snapshotId', String(state.selectedSnapshot.id));
+        url.searchParams.set('lang', locale);
+        return url.pathname + url.search;
     }
 
     function renderArchitecture() {
