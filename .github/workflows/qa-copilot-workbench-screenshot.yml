@@ -1,0 +1,112 @@
+name: QA Copilot Workbench Screenshot
+
+on:
+  push:
+    branches:
+      - qa/copilot-workbench-screenshot
+    paths:
+      - .github/workflows/qa-copilot-workbench-screenshot.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-copilot-workbench-screenshot
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Capture persisted Copilot workbench
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Instrument the existing owning acceptance test for a QA-only screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java')
+          text = path.read_text(encoding='utf-8')
+          marker = '        assertThat(number(pdf.get("length"))).isGreaterThan(500);\n'
+          if marker not in text:
+              raise SystemExit('ArchitectureWorkbenchUiIT screenshot insertion point not found')
+          insertion = marker + '''
+
+                  if (Boolean.getBoolean("captureCopilotWorkbenchScreenshot")) {
+                      driver.manage().window().setSize(new Dimension(1800, 1100));
+                      driver.findElement(By.id("fitArchitecture")).click();
+                      wait.until(browser -> Boolean.TRUE.equals(
+                              ((JavascriptExecutor) browser).executeScript(
+                                      "var viewport=document.querySelector('.architecture-viewport');" +
+                                      "if (!viewport) return false;" +
+                                      "var transform=viewport.getAttribute('transform') || '';" +
+                                      "return transform === '' || transform.indexOf('scale(1)') >= 0;")));
+                      java.nio.file.Path output = java.nio.file.Path.of(
+                              System.getProperty("copilotWorkbenchScreenshot.output"));
+                      try {
+                          java.nio.file.Files.createDirectories(output.getParent());
+                          java.io.File capture = ((org.openqa.selenium.TakesScreenshot) driver)
+                                  .getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+                          java.nio.file.Files.copy(
+                                  capture.toPath(),
+                                  output,
+                                  java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                      } catch (java.io.IOException exception) {
+                          throw new AssertionError("Could not save Copilot workbench screenshot", exception);
+                      }
+                  }
+          '''
+          path.write_text(text.replace(marker, insertion, 1), encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Run the real persisted-snapshot workbench acceptance and capture it
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=ArchitectureWorkbenchUiIT
+          -DcaptureCopilotWorkbenchScreenshot=true
+          -DcopilotWorkbenchScreenshot.output=${{ github.workspace }}/target/copilot-workbench/41-copilot-architecture-workbench-before.png
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify screenshot output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s target/copilot-workbench/41-copilot-architecture-workbench-before.png
+          file target/copilot-workbench/41-copilot-architecture-workbench-before.png
+
+      - name: Upload screenshot and focused test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: copilot-workbench-before
+          path: |
+            target/copilot-workbench/**
+            taxonomy-app/target/failsafe-reports/**
+          if-no-files-found: warn
+          retention-days: 7
