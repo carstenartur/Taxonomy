@@ -1,0 +1,242 @@
+name: Apply Copilot Workbench Acceptance
+
+on:
+  push:
+    branches:
+      - fix/copilot-architecture-workbench-ux
+    paths:
+      - .github/tmp/copilot-workbench-acceptance-ready
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-copilot-workbench-acceptance
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/copilot-architecture-workbench-ux
+          fetch-depth: 0
+
+      - name: Extend the owning browser acceptance and screenshot profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          test_path = Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java')
+          text = test_path.read_text(encoding='utf-8')
+
+          old_open = '''        open("/projects/" + projectId + "/requirements/" + requirementId + "/architecture",
+                          By.id("architectureCanvas"));
+                  wait.until(browser -> browser.findElement(By.id("architectureStatus"))
+                          .getText().startsWith("Loaded "));
+                  wait.until(browser -> !browser.findElements(By.cssSelector(".architecture-node")).isEmpty());
+          '''
+          new_open = '''        open("/projects/" + projectId + "/requirements/" + requirementId + "/architecture",
+                          By.id("architectureWorkbench"));
+                  wait.until(browser -> browser.findElement(By.id("architectureStatus"))
+                          .getText().startsWith("Loaded "));
+                  wait.until(browser -> !browser.findElements(By.cssSelector(".architecture-node")).isEmpty());
+                  wait.until(browser -> browser.findElements(By.cssSelector(".architecture-kpi")).size() >= 4);
+                  assertThat(driver.findElement(By.id("architectureTitle")).getText())
+                          .isNotBlank()
+                          .doesNotStartWith("archview.");
+                  fitAndWait();
+                  assertDiagramFitsCanvas();
+          '''
+          if old_open not in text:
+              raise SystemExit('Architecture workbench open block not found')
+          text = text.replace(old_open, new_open, 1)
+
+          old_code = '''        String nodeCode = nodes.getFirst().findElement(By.cssSelector("text")).getText();
+          '''
+          new_code = '''        String nodeCode = nodes.getFirst()
+                          .findElement(By.cssSelector(".architecture-node-code"))
+                          .getText();
+          '''
+          if old_code not in text:
+              raise SystemExit('Node-code lookup not found')
+          text = text.replace(old_code, new_code, 1)
+
+          requirement_assertion = '''        assertThat(driver.findElement(By.id("requirementText")).getText())
+                          .contains("secure resilient command information exchange");
+          '''
+          interaction_block = requirement_assertion + '''
+                  WebElement search = driver.findElement(By.id("architectureSearch"));
+                  search.sendKeys(nodeCode);
+                  wait.until(browser -> !browser.findElements(By.cssSelector(
+                          ".architecture-node.is-search-match[data-node-id='" + nodeCode + "']")).isEmpty());
+                  driver.findElement(By.id("clearArchitectureSearch")).click();
+                  wait.until(browser -> browser.findElements(
+                          By.cssSelector(".architecture-node.is-search-match")).isEmpty());
+
+                  int overviewNodeCount = driver.findElements(By.cssSelector(".architecture-node")).size();
+                  driver.findElement(By.id("architectureFocus")).click();
+                  wait.until(browser -> {
+                      int visible = browser.findElements(By.cssSelector(".architecture-node")).size();
+                      return visible > 0 && visible <= overviewNodeCount;
+                  });
+                  driver.findElement(By.id("architectureOverview")).click();
+                  wait.until(browser -> browser.findElements(
+                          By.cssSelector(".architecture-node")).size() == overviewNodeCount);
+                  fitAndWait();
+                  assertDiagramFitsCanvas();
+          '''
+          if requirement_assertion not in text:
+              raise SystemExit('Requirement assertion insertion point not found')
+          text = text.replace(requirement_assertion, interaction_block, 1)
+
+          pdf_assertion = '''        assertThat(number(pdf.get("length"))).isGreaterThan(500);
+          '''
+          screenshot_call = pdf_assertion + '''
+
+                  if (Boolean.getBoolean("generateScreenshots")) {
+                      saveDocumentationScreenshot();
+                  }
+          '''
+          if pdf_assertion not in text:
+              raise SystemExit('PDF assertion insertion point not found')
+          text = text.replace(pdf_assertion, screenshot_call, 1)
+
+          login_marker = '''    private static void login() {
+          '''
+          helpers = '''    private static void fitAndWait() {
+                  javascript().executeScript("""
+                          window.__architectureFitReady = false;
+                          document.getElementById('fitArchitecture').click();
+                          window.setTimeout(() => { window.__architectureFitReady = true; }, 350);
+                          """);
+                  wait.until(browser -> Boolean.TRUE.equals(
+                          javascript().executeScript(
+                                  "return window.__architectureFitReady === true;")));
+              }
+
+              private static void assertDiagramFitsCanvas() {
+                  Object result = javascript().executeScript("""
+                          const shell = document.getElementById('architectureCanvasShell');
+                          const elements = Array.from(document.querySelectorAll(
+                              '.architecture-layer-header, .architecture-node'));
+                          if (!shell || elements.length === 0) return false;
+                          const canvasBounds = shell.getBoundingClientRect();
+                          return elements.every(element => {
+                              const bounds = element.getBoundingClientRect();
+                              return bounds.left >= canvasBounds.left - 2
+                                  && bounds.right <= canvasBounds.right + 2
+                                  && bounds.top >= canvasBounds.top - 2
+                                  && bounds.bottom <= canvasBounds.bottom + 2;
+                          });
+                          """);
+                  assertThat(result).isEqualTo(Boolean.TRUE);
+              }
+
+              private static void saveDocumentationScreenshot() {
+                  Dimension previousSize = driver.manage().window().getSize();
+                  try {
+                      driver.manage().window().setSize(new Dimension(1800, 1100));
+                      fitAndWait();
+                      assertDiagramFitsCanvas();
+                      java.nio.file.Path output = documentationScreenshotPath();
+                      java.nio.file.Files.createDirectories(output.getParent());
+                      java.io.File capture = ((org.openqa.selenium.TakesScreenshot) driver)
+                              .getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+                      java.nio.file.Files.copy(
+                              capture.toPath(),
+                              output,
+                              java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                  } catch (java.io.IOException exception) {
+                      throw new AssertionError("Could not save Copilot workbench screenshot", exception);
+                  } finally {
+                      driver.manage().window().setSize(previousSize);
+                      fitAndWait();
+                  }
+              }
+
+              private static java.nio.file.Path documentationScreenshotPath() {
+                  java.nio.file.Path module = java.nio.file.Path.of(
+                          System.getProperty("project.basedir", "."))
+                          .toAbsolutePath()
+                          .normalize();
+                  java.nio.file.Path repository = module.getParent();
+                  if (repository == null) {
+                      repository = module;
+                  }
+                  return repository.resolve("docs/images/41-copilot-architecture-workbench.png");
+              }
+
+          ''' + login_marker
+          if login_marker not in text:
+              raise SystemExit('Login helper insertion point not found')
+          text = text.replace(login_marker, helpers, 1)
+          test_path.write_text(text, encoding='utf-8')
+
+          pom_path = Path('pom.xml')
+          pom = pom_path.read_text(encoding='utf-8')
+          old_profile = '<skipITs>false</skipITs><it.test>ScreenshotGeneratorIT</it.test>'
+          new_profile = '<skipITs>false</skipITs><it.test>ScreenshotGeneratorIT,ArchitectureWorkbenchUiIT</it.test>'
+          if old_profile not in pom:
+              raise SystemExit('Screenshot Maven profile selector not found')
+          pom_path.write_text(pom.replace(old_profile, new_profile, 1), encoding='utf-8')
+
+          english_path = Path('docs/en/COPILOT_AUTOPILOT.md')
+          english = english_path.read_text(encoding='utf-8')
+          english_marker = '## Architecture-node limits\n'
+          english_section = '''## Persisted architecture workbench
+
+          Every successful Copilot full analysis stores an immutable architecture snapshot. Open **Architecture** from the completed run to investigate that exact result in a read-only workbench with search, overview and focus modes, context filtering, zoom, true fit-to-content, fullscreen display, provenance, review state and evidence details.
+
+          ![Persisted Copilot architecture workbench](../images/41-copilot-architecture-workbench.png)
+
+          The browser, SVG download and PDF download use the same deterministic server-side scene and coordinates. The interactive browser controls change only visibility, selection and viewport; they do not silently recalculate or mutate the persisted architecture.
+
+          '''
+          if english_marker not in english:
+              raise SystemExit('English documentation insertion point not found')
+          english_path.write_text(english.replace(english_marker, english_section + english_marker, 1), encoding='utf-8')
+
+          german_path = Path('docs/de/COPILOT_AUTOPILOT.md')
+          german = german_path.read_text(encoding='utf-8')
+          german_marker = '## Grenzen der Architekturknoten\n'
+          german_section = '''## Persistierte Architektur-Workbench
+
+          Jede erfolgreiche Copilot-Vollanalyse speichert einen unveränderlichen Architektursnapshot. Über **Architektur** im abgeschlossenen Lauf lässt sich genau dieses Ergebnis in einer schreibgeschützten Workbench untersuchen: mit Suche, Übersicht und Fokusmodus, Kontextfilter, Zoom, echtem Einpassen, Vollbild, Provenienz sowie Review- und Evidenzdetails.
+
+          ![Persistierte Copilot-Architektur-Workbench](../images/41-copilot-architecture-workbench.png)
+
+          Browseransicht, SVG-Download und PDF-Download verwenden dieselbe deterministische serverseitige Szene mit denselben Koordinaten. Die interaktiven Browserwerkzeuge verändern nur Sichtbarkeit, Auswahl und Bildausschnitt; sie berechnen oder verändern die persistierte Architektur nicht stillschweigend neu.
+
+          '''
+          if german_marker not in german:
+              raise SystemExit('German documentation insertion point not found')
+          german_path.write_text(german.replace(german_marker, german_section + german_marker, 1), encoding='utf-8')
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/architecture-workbench.js
+          git diff --check
+          grep -F '41-copilot-architecture-workbench.png' docs/en/COPILOT_AUTOPILOT.md docs/de/COPILOT_AUTOPILOT.md
+          grep -F 'ScreenshotGeneratorIT,ArchitectureWorkbenchUiIT' pom.xml
+
+          rm .github/tmp/copilot-workbench-acceptance-ready
+          rm .github/workflows/apply-copilot-workbench-acceptance.yml
+
+      - name: Commit acceptance, documentation and screenshot ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java \
+            pom.xml \
+            docs/en/COPILOT_AUTOPILOT.md \
+            docs/de/COPILOT_AUTOPILOT.md \
+            .github/tmp/copilot-workbench-acceptance-ready \
+            .github/workflows/apply-copilot-workbench-acceptance.yml
+          git commit -m 'Document and verify the persisted Copilot workbench'
+          git push origin HEAD:fix/copilot-architecture-workbench-ux
