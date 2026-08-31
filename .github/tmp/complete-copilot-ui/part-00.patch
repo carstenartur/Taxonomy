@@ -1,0 +1,122 @@
+--- a/taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
++++ b/taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+@@ -47,7 +47,26 @@
+             reportHtml: 'HTML', reportJson: 'JSON',
+             selected: 'Selected', retry: 'Retry failed analysis', comparePrevious: 'Compare with previous version',
+             added: 'Added', removed: 'Removed', unchanged: 'Unchanged', permission: 'Your role cannot change this requirement.',
+-            failed: 'The operation failed.'
++            failed: 'The operation failed.', resultOverview: 'Copilot result overview',
++            mappedElements: 'Mapped elements', mappedRelations: 'Mapped relationships',
++            openGaps: 'Open gaps', patternCoverage: 'Pattern coverage',
++            recommendationConfidence: 'Recommendation confidence', confirmedElements: 'Confirmed elements',
++            gapAnalysis: 'Gap analysis', anchorsEvaluated: 'Anchors evaluated',
++            missingRelations: 'Missing relationships', coverageGaps: 'Coverage gaps',
++            incompletePatterns: 'Incomplete patterns', highestPriority: 'Highest-priority findings',
++            allFindings: 'All findings', patternDetection: 'Detected patterns',
++            matchedPatterns: 'Matched patterns', expectedSteps: 'Expected architecture steps',
++            recommendation: 'Recommendation', proposedElements: 'Proposed elements',
++            suggestedRelations: 'Suggested relationships', reasoning: 'Reasoning',
++            technicalData: 'Technical snapshot data',
++            technicalDataHint: 'Condensed provider-neutral diagnostics. Use the JSON report for the complete payload.',
++            openWorkbench: 'Inspect diagram in architecture workbench',
++            mappingResults: 'Taxonomy mappings', relationResults: 'Relationship mappings',
++            filterDecisions: 'Review decisions', searchDecisions: 'Search code, title or evidence…',
++            allReviews: 'All review states', visibleDecisions: 'Visible decisions',
++            noDecisionMatches: 'No decisions match the current filter.', decisionEvidence: 'Evidence / reason',
++            reviewState: 'Review state', direct: 'Direct', context: 'Context', showDetails: 'Show details',
++            resultReady: 'The immutable Copilot result is ready for review.'
+         },
+         de: {
+             loading: 'Wird geladen…', portfolio: 'Portfolio', matrices: 'Matrizen',
+@@ -75,7 +94,26 @@
+             reportHtml: 'HTML', reportJson: 'JSON',
+             selected: 'Ausgewählt', retry: 'Fehlgeschlagene Analyse wiederholen', comparePrevious: 'Mit vorheriger Version vergleichen',
+             added: 'Hinzugefügt', removed: 'Entfernt', unchanged: 'Unverändert', permission: 'Ihre Rolle darf diese Anforderung nicht ändern.',
+-            failed: 'Die Operation ist fehlgeschlagen.'
++            failed: 'Die Operation ist fehlgeschlagen.', resultOverview: 'Copilot-Ergebnisübersicht',
++            mappedElements: 'Zugeordnete Elemente', mappedRelations: 'Zugeordnete Beziehungen',
++            openGaps: 'Offene Lücken', patternCoverage: 'Musterabdeckung',
++            recommendationConfidence: 'Konfidenz der Empfehlung', confirmedElements: 'Bestätigte Elemente',
++            gapAnalysis: 'Lückenanalyse', anchorsEvaluated: 'Bewertete Anker',
++            missingRelations: 'Fehlende Beziehungen', coverageGaps: 'Abdeckungslücken',
++            incompletePatterns: 'Unvollständige Muster', highestPriority: 'Wichtigste Befunde',
++            allFindings: 'Alle Befunde', patternDetection: 'Erkannte Muster',
++            matchedPatterns: 'Erfüllte Muster', expectedSteps: 'Erwartete Architekturschritte',
++            recommendation: 'Empfehlung', proposedElements: 'Vorgeschlagene Elemente',
++            suggestedRelations: 'Vorgeschlagene Beziehungen', reasoning: 'Begründung',
++            technicalData: 'Technische Snapshot-Daten',
++            technicalDataHint: 'Verdichtete anbieterneutrale Diagnosedaten. Der JSON-Bericht enthält die vollständigen Nutzdaten.',
++            openWorkbench: 'Diagramm in der Architektur-Workbench untersuchen',
++            mappingResults: 'Taxonomiezuordnungen', relationResults: 'Beziehungszuordnungen',
++            filterDecisions: 'Entscheidungen prüfen', searchDecisions: 'Code, Titel oder Evidenz suchen…',
++            allReviews: 'Alle Prüfzustände', visibleDecisions: 'Sichtbare Entscheidungen',
++            noDecisionMatches: 'Keine Entscheidung entspricht dem aktuellen Filter.', decisionEvidence: 'Evidenz / Grund',
++            reviewState: 'Prüfzustand', direct: 'Direkt', context: 'Kontext', showDetails: 'Details anzeigen',
++            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.'
+         }
+     };
+ 
+@@ -88,8 +126,12 @@
+         wireEvents();
+         await loadAll();
+         const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
+-        if (requestedSnapshot) await selectSnapshot(requestedSnapshot);
+-        else if (state.snapshots.length) await selectSnapshot(state.snapshots[0].id);
++        if (requestedSnapshot) {
++            await selectSnapshot(requestedSnapshot);
++            activateDetailTab('analyses-tab');
++        } else if (state.snapshots.length) {
++            await selectSnapshot(state.snapshots[0].id);
++        }
+     }
+ 
+     function translateSurface() {
+@@ -115,6 +157,16 @@
+ 
+     function setTabText(id, value) { document.getElementById(id).textContent = value; }
+ 
++    function activateDetailTab(tabId) {
++        const trigger = document.getElementById(tabId);
++        if (!trigger) return;
++        if (window.bootstrap && bootstrap.Tab) {
++            bootstrap.Tab.getOrCreateInstance(trigger).show();
++        } else {
++            trigger.click();
++        }
++    }
++
+     function wireEvents() {
+         document.getElementById('newVersionForm').addEventListener('submit', createVersion);
+         document.getElementById('reanalyzeRequirement').addEventListener('click', analyzeRequirement);
+@@ -130,6 +182,10 @@
+             const button = event.target.closest('[data-decision-report-format]');
+             if (button) downloadDecisionReport(button.dataset.decisionReportFormat);
+         });
++        document.getElementById('taskList').addEventListener('click', event => {
++            const task = event.target.closest('[data-task-tab]');
++            if (task) activateDetailTab(task.dataset.taskTab);
++        });
+     }
+ 
+     async function loadAll() {
+@@ -252,13 +308,16 @@
+             return;
+         }
+         state.snapshots.forEach(snapshot => {
++            const selected = Boolean(state.selectedSnapshot
++                && String(state.selectedSnapshot.id) === String(snapshot.id));
+             const button = document.createElement('button');
+             button.type = 'button';
+-            button.className = 'list-group-item list-group-item-action';
++            button.className = 'list-group-item list-group-item-action' + (selected ? ' active' : '');
+             button.dataset.snapshotId = snapshot.id;
++            if (selected) button.setAttribute('aria-current', 'true');
+             button.innerHTML = `<div class="d-flex justify-content-between gap-2"><strong>v${snapshot.requirementVersionNumber}</strong>`
+                 + `<span class="badge ${statusClass(snapshot.status)}">${escapeHtml(humanize(snapshot.status))}</span></div>`
+-                + `<div class="small">${escapeHtml(formatDate(snapshot.createdAt))}</div>`;
++                + `<div class="small${selected ? '' : ' text-body-secondary'}">${escapeHtml(formatDate(snapshot.createdAt))}</div>`;
+             list.appendChild(button);
+         });
+     }
+@@ -266,12 +325,13 @@
+     async function selectSnapshot(id) {
