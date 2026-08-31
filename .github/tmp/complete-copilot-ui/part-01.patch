@@ -1,0 +1,106 @@
+         setBusy(true);
+         try {
+-            state.selectedSnapshot = state.snapshots.find(snapshot => snapshot.id === id) || null;
++            state.selectedSnapshot = state.snapshots.find(snapshot => String(snapshot.id) === String(id)) || null;
+             state.snapshotDetail = await api().getSnapshot(projectId, id);
+             const url = new URL(window.location.href);
+             url.searchParams.set('snapshot', id);
+             url.searchParams.set('lang', locale);
+             history.replaceState(null, '', url);
++            renderSnapshots();
+             renderSnapshotDetail();
+             renderArchitecture();
+             renderDecisions();
+@@ -288,12 +348,15 @@
+         const detail = state.snapshotDetail;
+         if (!detail) return renderEmpty(target, t('noSnapshots'));
+         const summary = detail.summary;
+-        target.innerHTML = `<div class="d-flex justify-content-between gap-2"><h2 class="h5">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
+-            + `<span class="badge ${statusClass(summary.status)}">${escapeHtml(humanize(summary.status))}</span></div>`
+-            + `<dl class="portfolio-card-meta"><dt>${escapeHtml(t('provider'))}</dt><dd>${escapeHtml(summary.provider || '—')}</dd>`
++        target.classList.add('portfolio-snapshot-detail');
++        target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
++            + `<div><h2 class="h4 mb-1">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
++            + `<p class="small text-body-secondary mb-0">${escapeHtml(t('resultReady'))}</p></div>`
++            + `<span class="badge ${statusClass(summary.status)} fs-6">${escapeHtml(humanize(summary.status))}</span></div>`
++            + `<dl class="portfolio-card-meta portfolio-snapshot-meta mt-3"><dt>${escapeHtml(t('provider'))}</dt><dd>${escapeHtml(summary.provider || '—')}</dd>`
+             + `<dt>${escapeHtml(t('model'))}</dt><dd>${escapeHtml(summary.modelName || '—')}</dd>`
+             + `<dt>${escapeHtml(t('created'))}</dt><dd>${escapeHtml(formatDate(summary.createdAt))}</dd>`
+-            + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(String(summary.durationMs))} ms</dd>`
++            + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(formatDuration(summary.durationMs))}</dd>`
+             + `<dt>${escapeHtml(t('baseline'))}</dt><dd><code>${escapeHtml(String(summary.taxonomyFingerprint || '').slice(0, 16))}</code> / <code>${escapeHtml(String(summary.promptFingerprint || '').slice(0, 16))}</code></dd></dl>`
+             + renderDecisionReportActions(summary)
+             + renderAnalysisSummary(detail);
+@@ -347,12 +410,187 @@
+     }
+ 
+     function renderAnalysisSummary(detail) {
+-        const warnings = detail.analysis && detail.analysis.warnings || [];
+-        const gap = detail.gapAnalysis;
+-        const recommendation = detail.recommendation;
+-        return (warnings.length ? `<div class="alert alert-warning mt-3"><ul class="mb-0">${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>` : '')
+-            + (gap ? `<section class="mt-3"><h3 class="h6">Gap analysis</h3><p>${escapeHtml(gap.summary || gap.description || JSON.stringify(gap))}</p></section>` : '')
+-            + (recommendation ? `<section class="mt-3"><h3 class="h6">Recommendation</h3><p>${escapeHtml(recommendation.summary || recommendation.recommendation || JSON.stringify(recommendation))}</p></section>` : '');
++        const analysis = detail.analysis || {};
++        const warnings = asArray(analysis.warnings);
++        const gap = detail.gapAnalysis || {};
++        const patterns = detail.patternDetection || {};
++        const recommendation = detail.recommendation || {};
++        const mappings = asArray(detail.elementMappings);
++        const relations = asArray(detail.relationMappings);
++        const missing = asArray(gap.missingRelations);
++        const coverage = asArray(gap.coverageGaps);
++        const incomplete = asArray(gap.incompletePatterns);
++        const matched = asArray(patterns.matchedPatterns);
++        const confirmed = asArray(recommendation.confirmedElements);
++        const proposed = asArray(recommendation.proposedElements);
++        const suggested = asArray(recommendation.suggestedRelations);
++        const reasoning = asArray(recommendation.reasoning);
++        const gapCount = safeNumber(gap.totalGaps, missing.length);
++        const patternPercent = percentage(patterns.patternCoverage);
++        const recommendationPercent = percentage(recommendation.confidence);
++
++        const overview = `<section id="snapshotResultOverview" class="portfolio-result-overview mt-3" aria-labelledby="snapshotResultTitle">`
++            + `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-2">`
++            + `<h3 id="snapshotResultTitle" class="h5 mb-0">${escapeHtml(t('resultOverview'))}</h3>`
++            + `<a class="btn btn-sm btn-outline-success" href="${escapeHtml(architectureWorkbenchUrl())}">${escapeHtml(t('openWorkbench'))}</a></div>`
++            + `<div class="portfolio-result-kpis">`
++            + resultMetric(t('mappedElements'), mappings.length, mappings.filter(item => item.selectedForImpact).length + ' ' + t('direct'), 'primary')
++            + resultMetric(t('mappedRelations'), relations.length, '', 'info')
++            + resultMetric(t('openGaps'), gapCount, missing.length + ' ' + t('missingRelations'), gapCount > 0 ? 'warning' : 'success')
++            + resultMetric(t('patternCoverage'), patternPercent + '%', matched.length + ' ' + t('matchedPatterns'), patternPercent >= 70 ? 'success' : 'warning')
++            + resultMetric(t('recommendationConfidence'), recommendationPercent + '%', suggested.length + ' ' + t('suggestedRelations'), recommendationPercent >= 70 ? 'success' : 'warning')
++            + resultMetric(t('confirmedElements'), confirmed.length, proposed.length + ' ' + t('proposedElements'), 'success')
++            + `</div></section>`;
++
++        const warningHtml = warnings.length
++            ? `<div class="alert alert-warning mt-3"><ul class="mb-0">${warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>`
++            : '';
++
++        const gapHtml = renderGapResult(gap, missing, coverage, incomplete);
++        const patternHtml = renderPatternResult(patterns, matched);
++        const recommendationHtml = renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning);
++        const technical = {
++            summary: detail.summary || {},
++            analysis: {
++                status: analysis.status,
++                provider: analysis.provider,
++                warnings: warnings,
++                discrepancies: asArray(analysis.discrepancies),
++                productCoverageGaps: asArray(analysis.productCoverageGaps),
++                provisionalRelations: asArray(analysis.provisionalRelations),
++                architectureView: compactArchitectureView(analysis.architectureView)
++            },
++            gapAnalysis: gap,
++            patternDetection: patterns,
++            recommendation: recommendation
++        };
++        const technicalHtml = `<details id="technicalSnapshotData" class="portfolio-technical-data mt-3">`
++            + `<summary><span>${escapeHtml(t('technicalData'))}</span><small>${escapeHtml(t('technicalDataHint'))}</small></summary>`
++            + `<pre>${escapeHtml(JSON.stringify(technical, null, 2))}</pre></details>`;
++
++        return overview + warningHtml
++            + `<div class="portfolio-result-grid mt-3">${gapHtml}${patternHtml}${recommendationHtml}</div>`
++            + technicalHtml;
++    }
++
