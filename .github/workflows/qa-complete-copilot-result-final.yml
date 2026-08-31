@@ -24,6 +24,234 @@ jobs:
           ref: fix/complete-copilot-run-result-ux
           fetch-depth: 0
 
+      - name: Apply robust result navigation and verification-pass labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          js_path = Path('taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js')
+          text = js_path.read_text(encoding='utf-8')
+
+          english = "            resultReady: 'The immutable Copilot result is ready for review.'\n"
+          english_new = (
+              "            resultReady: 'The immutable Copilot result is ready for review.',\n"
+              "            verificationResult: 'Verification result {0} of {1}',\n"
+              "            requirementVersionLabel: 'Requirement v{0}'\n"
+          )
+          if english not in text:
+              raise SystemExit('English result label insertion point not found')
+          text = text.replace(english, english_new, 1)
+
+          german = "            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.'\n"
+          german_new = (
+              "            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.',\n"
+              "            verificationResult: 'Prüfergebnis {0} von {1}',\n"
+              "            requirementVersionLabel: 'Anforderung v{0}'\n"
+          )
+          if german not in text:
+              raise SystemExit('German result label insertion point not found')
+          text = text.replace(german, german_new, 1)
+
+          helper = "    function t(key) { return (text[locale] && text[locale][key]) || text.en[key] || key; }\n"
+          helper_new = helper + """
+
+              function formatText(key, ...values) {
+                  return t(key).replace(/\\{(\\d+)\\}/g, (match, index) => {
+                      const valueIndex = Number(index);
+                      return valueIndex < values.length ? String(values[valueIndex]) : match;
+                  });
+              }
+          """
+          if helper not in text:
+              raise SystemExit('Translation helper insertion point not found')
+          text = text.replace(helper, helper_new, 1)
+
+          old_initialize = """    async function initialize() {
+                  translateSurface();
+                  wireEvents();
+                  await loadAll();
+                  const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
+                  if (requestedSnapshot) {
+                      await selectSnapshot(requestedSnapshot);
+                      activateDetailTab('analyses-tab');
+                  } else if (state.snapshots.length) {
+                      await selectSnapshot(state.snapshots[0].id);
+                  }
+              }
+          """
+          new_initialize = """    async function initialize() {
+                  const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
+                  translateSurface();
+                  wireEvents();
+                  if (requestedSnapshot) activateDetailTab('analyses-tab');
+                  await loadAll();
+                  if (requestedSnapshot) {
+                      await selectSnapshot(requestedSnapshot);
+                      activateDetailTab('analyses-tab');
+                      window.requestAnimationFrame(() => activateDetailTab('analyses-tab'));
+                  } else if (state.snapshots.length) {
+                      await selectSnapshot(state.snapshots[0].id);
+                  }
+              }
+          """
+          if old_initialize not in text:
+              raise SystemExit('Initialize block not found')
+          text = text.replace(old_initialize, new_initialize, 1)
+
+          old_activate = """    function activateDetailTab(tabId) {
+                  const trigger = document.getElementById(tabId);
+                  if (!trigger) return;
+                  if (window.bootstrap && bootstrap.Tab) {
+                      bootstrap.Tab.getOrCreateInstance(trigger).show();
+                  } else {
+                      trigger.click();
+                  }
+              }
+          """
+          new_activate = """    function activateDetailTab(tabId) {
+                  const trigger = document.getElementById(tabId);
+                  if (!trigger) return;
+                  if (window.bootstrap && window.bootstrap.Tab) {
+                      window.bootstrap.Tab.getOrCreateInstance(trigger).show();
+                      return;
+                  }
+                  const targetSelector = trigger.getAttribute('data-bs-target');
+                  const target = targetSelector ? document.querySelector(targetSelector) : null;
+                  document.querySelectorAll('#detailTabs .nav-link').forEach(tab => {
+                      const selected = tab === trigger;
+                      tab.classList.toggle('active', selected);
+                      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+                  });
+                  document.querySelectorAll('#requirementMain .tab-content > .tab-pane').forEach(pane => {
+                      const selected = pane === target;
+                      pane.classList.toggle('active', selected);
+                      pane.classList.toggle('show', selected);
+                  });
+              }
+          """
+          if old_activate not in text:
+              raise SystemExit('Tab activation block not found')
+          text = text.replace(old_activate, new_activate, 1)
+
+          start = text.index('    function renderSnapshots() {')
+          end = text.index('\n    async function selectSnapshot', start)
+          new_snapshots = """    function snapshotSequence(snapshot) {
+                  const versionIdentity = snapshot.requirementVersionId
+                      || snapshot.requirementVersionNumber;
+                  const siblings = state.snapshots.filter(candidate => String(
+                      candidate.requirementVersionId || candidate.requirementVersionNumber
+                  ) === String(versionIdentity)).slice().sort((left, right) => {
+                      const leftTime = Date.parse(left.createdAt || '') || 0;
+                      const rightTime = Date.parse(right.createdAt || '') || 0;
+                      return leftTime - rightTime || String(left.id).localeCompare(String(right.id));
+                  });
+                  const position = siblings.findIndex(candidate =>
+                      String(candidate.id) === String(snapshot.id));
+                  return {
+                      index: Math.max(0, position) + 1,
+                      total: Math.max(1, siblings.length)
+                  };
+              }
+
+              function snapshotDisplayTitle(snapshot) {
+                  const sequence = snapshotSequence(snapshot);
+                  return sequence.total > 1
+                      ? formatText('verificationResult', sequence.index, sequence.total)
+                      : formatText('requirementVersionLabel', snapshot.requirementVersionNumber);
+              }
+
+              function renderSnapshots() {
+                  const list = document.getElementById('snapshotList');
+                  list.textContent = '';
+                  if (!state.snapshots.length) {
+                      renderEmpty(list, t('noSnapshots'));
+                      renderEmpty(document.getElementById('snapshotDetail'), t('noSnapshots'));
+                      return;
+                  }
+                  state.snapshots.forEach(snapshot => {
+                      const selected = Boolean(state.selectedSnapshot
+                          && String(state.selectedSnapshot.id) === String(snapshot.id));
+                      const button = document.createElement('button');
+                      button.type = 'button';
+                      button.className = 'list-group-item list-group-item-action'
+                          + (selected ? ' active' : '');
+                      button.dataset.snapshotId = snapshot.id;
+                      if (selected) button.setAttribute('aria-current', 'true');
+                      const targetName = [snapshot.provider, snapshot.modelName]
+                          .filter(Boolean).join(' / ');
+                      button.innerHTML = `<div class="d-flex justify-content-between gap-2">`
+                          + `<strong>${escapeHtml(snapshotDisplayTitle(snapshot))}</strong>`
+                          + `<span class="badge ${statusClass(snapshot.status)}">${escapeHtml(humanize(snapshot.status))}</span></div>`
+                          + `<div class="small${selected ? '' : ' text-body-secondary'}">`
+                          + `${escapeHtml(formatText('requirementVersionLabel', snapshot.requirementVersionNumber))}`
+                          + ` · ${escapeHtml(formatDate(snapshot.createdAt))}</div>`
+                          + (targetName ? `<div class="small${selected ? '' : ' text-body-secondary'}">${escapeHtml(targetName)}</div>` : '');
+                      list.appendChild(button);
+                  });
+              }
+          """
+          text = text[:start] + new_snapshots + text[end:]
+
+          old_detail = """        const summary = detail.summary;
+                  target.classList.add('portfolio-snapshot-detail');
+                  target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
+                      + `<div><h2 class="h4 mb-1">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
+                      + `<p class="small text-body-secondary mb-0">${escapeHtml(t('resultReady'))}</p></div>`
+          """
+          new_detail = """        const summary = detail.summary;
+                  target.classList.add('portfolio-snapshot-detail');
+                  target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
+                      + `<div><h2 class="h4 mb-1">${escapeHtml(snapshotDisplayTitle(summary))}</h2>`
+                      + `<p class="small text-body-secondary mb-0">`
+                      + `${escapeHtml(formatText('requirementVersionLabel', summary.requirementVersionNumber))}`
+                      + ` · ${escapeHtml(t('resultReady'))}</p></div>`
+          """
+          if old_detail not in text:
+              raise SystemExit('Snapshot detail heading block not found')
+          text = text.replace(old_detail, new_detail, 1)
+          js_path.write_text(text, encoding='utf-8')
+
+          contract_path = Path('taxonomy-app/src/test/java/com/taxonomy/portfolio/CompleteCopilotResultUiContractTest.java')
+          contract = contract_path.read_text(encoding='utf-8')
+          old_contract = """                .contains("activateDetailTab('analyses-tab')")
+                          .contains("aria-current", "snapshotResultOverview", "portfolio-result-kpi")
+          """
+          new_contract = """                .contains("activateDetailTab('analyses-tab')")
+                          .contains("window.bootstrap.Tab", "window.requestAnimationFrame")
+                          .contains("snapshotSequence", "verificationResult", "requirementVersionLabel")
+                          .contains("aria-current", "snapshotResultOverview", "portfolio-result-kpi")
+          """
+          if old_contract not in contract:
+              raise SystemExit('Result contract insertion point not found')
+          contract_path.write_text(contract.replace(old_contract, new_contract, 1), encoding='utf-8')
+
+          browser_path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          browser = browser_path.read_text(encoding='utf-8')
+          selected_assertion = """        assertThat(driver.findElements(By.cssSelector(
+                          "#snapshotList [data-snapshot-id].active[aria-current='true']")))
+                          .hasSize(1);
+          """
+          sequence_assertion = selected_assertion + """        List<String> snapshotLabels = driver.findElements(By.cssSelector(
+                          "#snapshotList [data-snapshot-id] strong")).stream()
+                          .map(WebElement::getText)
+                          .toList();
+                  assertThat(snapshotLabels)
+                          .hasSizeGreaterThanOrEqualTo(2)
+                          .doesNotHaveDuplicates()
+                          .allMatch(label -> label.contains("Verification result"));
+          """
+          if selected_assertion not in browser:
+              raise SystemExit('Selected snapshot assertion not found')
+          browser_path.write_text(
+              browser.replace(selected_assertion, sequence_assertion, 1),
+              encoding='utf-8')
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          git diff --check
+
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           java-version: '21'
@@ -90,7 +318,10 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java \
+            taxonomy-app/src/test/java/com/taxonomy/portfolio/CompleteCopilotResultUiContractTest.java \
             docs/images/72-complete-copilot-run-result.png \
             .github/workflows/qa-complete-copilot-result-final.yml
-          git commit -m 'docs: add the complete Copilot run result screenshot [skip ci]'
+          git commit -m 'Finalize the complete Copilot result review surface [skip ci]'
           git push origin HEAD:fix/complete-copilot-run-result-ux
