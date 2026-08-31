@@ -35,15 +35,26 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/fix-screenshot-style-restoration.py
           git diff --check
-          grep -q 'previousImpactMapStyle' taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
-          grep -q 'previousBodyOverflow' taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
-          grep -q 'previousWindowSize' taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
-
-      - name: Compile the patched screenshot test
-        run: |
-          ./mvnw -B -pl taxonomy-app -am test-compile \
-            -DskipTests \
-            -Dtaxonomy.model.download.skip=true
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java').read_text(encoding='utf-8')
+          required = (
+              'previousImpactMapStyle',
+              'previousBodyOverflow',
+              'previousWindowSize',
+              'impactMapHadStyle',
+              'try {',
+              '} finally {',
+              "arguments[0].setAttribute('style'",
+              "arguments[0].removeAttribute('style')",
+              'driver.manage().window().setSize(previousWindowSize);',
+          )
+          missing = [token for token in required if token not in source]
+          if missing:
+              raise SystemExit(f'Missing screenshot state-restoration tokens: {missing}')
+          if source.count('void captureArchitectureView()') != 1:
+              raise SystemExit('Expected exactly one captureArchitectureView method')
+          PY
 
       - name: Commit the verified review fix
         shell: bash
