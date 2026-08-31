@@ -1129,7 +1129,8 @@
                     sourceCode: r.sourceCode,
                     targetCode: r.targetCode,
                     relationType: r.relationType,
-                    propagatedRelevance: r.propagatedRelevance
+                    propagatedRelevance: r.propagatedRelevance,
+                    includedBecause: r.derivationReason || r.includedBecause || ''
                 };
             });
 

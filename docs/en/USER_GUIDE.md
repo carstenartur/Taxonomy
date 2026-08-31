@@ -444,19 +444,23 @@ The panel shows three areas:
 |---|---|
 | **Impact Summary Bar** | A compact KPI row: direct matches, affected elements, relations, layers, and change hotspots |
 | **Policy Title & Legend** | A title showing the active diagram policy (e.g. "Architecture Impact View") and small rule-badges describing active filters (e.g. "Root nodes suppressed"). This updates automatically when you switch the `diagram.policy` preference. |
-| **Interactive Network Graph** | An interactive force-directed network graph (default view) showing all impacted elements as draggable nodes connected by directed edges. Toggle to "🏗️ Layer View" for the traditional swimlane layout. |
+| **Interactive Impact Graph** | A stable architecture-layer layout with readable element cards, search, context filtering, focus mode, zoom, and a detail area. Toggle to "🏗️ Layer View" for the compact swimlane representation. |
 | **Detail Tables** | Collapsible tables listing all elements and relationships with full metadata (expand via the 📋 summary line) |
 
 ### Understanding the Visualization
 
-The main visualization is an **interactive force-directed network graph** showing all impacted elements and their relationships. Nodes are circles colored by taxonomy layer, with size proportional to relevance.
+The main visualization is a **stable impact graph arranged by architecture layer**. Capabilities, processes, services, applications, information products, and communications services remain in the same columns on every render, making result versions and relationship paths easier to compare.
 
-- **★ Anchor nodes** (direct matches) have a gold border and display their score percentage. These are the nodes the AI considers the best answer to your requirement.
-- **⚠️ Hotspot nodes** pulse red, highlighting areas of high change impact — either anchors with multiple outgoing relationships, or nodes reached from multiple different anchors.
-- **Propagated elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears with its hop distance shown.
-- **Directed edges** connect specific source → target nodes, colored by relationship type (e.g., green for SUPPORTS, blue for REALIZES). Thicker edges indicate higher propagated relevance.
-- **Drag** nodes to rearrange the layout, **hover** for a detailed tooltip (code, title, layer, relevance, hop distance, anchor/hotspot status), and **click** to open the node in Graph Explorer.
-- Toggle to **"🏗️ Layer View"** for the traditional swimlane layout grouping elements by architecture layer.
+- **Element cards** show the node code, readable title, relevance, architecture layer, and whether the element is a direct match or a propagated hop. Long titles wrap instead of overlapping other nodes.
+- **★ Direct matches** use a highlighted border and appear first within their layer. These are the elements derived directly from the requirement analysis.
+- **⚠️ Hotspots** identify areas of high change impact, such as shared dependencies or direct matches with several outgoing relationships.
+- **Directed connections** show source, target, and relationship type. Selecting an element highlights its connected paths and de-emphasises unrelated elements.
+- Use **search** to find elements by code, title, or layer. Press Enter to move to the first match.
+- The **Context nodes** switch shows or hides propagated elements while preserving direct matches.
+- Switch between **Overview** and **Focus**. Focus mode shows the selected element and its immediate neighbours; double-clicking a card also activates it.
+- Use **Fit**, **zoom**, canvas panning, and **fullscreen** to inspect small or extensive results. On narrow views the map starts centred on the most important match at a readable scale.
+- **Click** an element card or connection to view its relevance, distance, inclusion reason, and connected elements in the detail area. From there you can open the element in Graph Explorer.
+- Toggle to **"🏗️ Layer View"** for the compact swimlane representation grouped by architecture layer.
 
 ![Architecture View](../images/20-architecture-view.png)
 
