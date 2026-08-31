@@ -1,0 +1,124 @@
+name: Finalize PR 948 exact head V2
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-result-review
+    paths:
+      - .github/workflows/finalize-pr-948-v2.yml
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: finalize-pr-948-exact-head-v2
+  cancel-in-progress: true
+
+jobs:
+  verify-and-merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Verify the immutable PR head and merge through the commit-bound API
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          owner="${repo%%/*}"
+          name="${repo#*/}"
+          pr=948
+
+          cat > /tmp/expected-files <<'EOF'
+          .github/copilot-ref-screenshots.md
+          docs/de/COPILOT_AUTOPILOT.md
+          docs/en/COPILOT_AUTOPILOT.md
+          docs/images/72-complete-copilot-run-result.png
+          pom.xml
+          taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css
+          taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotResultUiContractTest.java
+          taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java
+          taxonomy-app/src/test/java/com/taxonomy/RequirementCopilotResultSurfaceContractTest.java
+          EOF
+          sort -o /tmp/expected-files /tmp/expected-files
+
+          head=""
+          ready=false
+          for attempt in $(seq 1 100); do
+            pr_json="$(gh api "repos/$repo/pulls/$pr")"
+            if [[ "$(jq -r '.merged' <<<"$pr_json")" == true ]]; then
+              echo "PR #$pr is already merged."
+              exit 0
+            fi
+            [[ "$(jq -r '.state' <<<"$pr_json")" == open ]]
+            [[ "$(jq -r '.draft' <<<"$pr_json")" == false ]]
+            [[ "$(jq -r '.head.ref' <<<"$pr_json")" == fix/complete-copilot-run-screenshot ]]
+            [[ "$(jq -r '.base.ref' <<<"$pr_json")" == main ]]
+            current_head="$(jq -r '.head.sha' <<<"$pr_json")"
+            if [[ -z "$head" ]]; then head="$current_head"; fi
+            [[ "$current_head" == "$head" ]]
+
+            gh api --paginate "repos/$repo/pulls/$pr/files?per_page=100" \
+              --jq '.[].filename' | sort > /tmp/actual-files
+            diff -u /tmp/expected-files /tmp/actual-files
+
+            unresolved="$(gh api graphql \
+              -f owner="$owner" -f name="$name" -F number="$pr" \
+              -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}' \
+              --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')"
+            [[ "$unresolved" == 0 ]]
+
+            runs="$(gh api "repos/$repo/actions/runs?head_sha=$head&per_page=100")"
+            pending=false
+            failed=false
+            for workflow in \
+              'CI / CD' \
+              'Database Compatibility' \
+              'Document Template Report E2E' \
+              'Kubernetes Constrained Smoke' \
+              'JGit Storage Consumer Contract' \
+              'Security Scan'; do
+              current="$(jq -c --arg workflow "$workflow" \
+                '[.workflow_runs[] | select(.name == $workflow)] | sort_by(.created_at) | last // empty' \
+                <<<"$runs")"
+              if [[ -z "$current" ]]; then
+                echo "$workflow: not started"
+                pending=true
+                continue
+              fi
+              status="$(jq -r '.status' <<<"$current")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$current")"
+              echo "$workflow: $status ${conclusion:-pending}"
+              if [[ "$status" != completed ]]; then
+                pending=true
+              elif [[ "$conclusion" != success ]]; then
+                failed=true
+              fi
+            done
+            [[ "$failed" == false ]]
+            if [[ "$pending" == false ]]; then ready=true; break; fi
+            sleep 30
+          done
+          [[ "$ready" == true ]]
+
+          final_json="$(gh api "repos/$repo/pulls/$pr")"
+          [[ "$(jq -r '.head.sha' <<<"$final_json")" == "$head" ]]
+          [[ "$(jq -r '.mergeable' <<<"$final_json")" == true ]]
+          merge_state="$(jq -r '.mergeable_state' <<<"$final_json")"
+          [[ "$merge_state" == clean || "$merge_state" == unstable ]]
+
+          response="$(gh api --method PUT "repos/$repo/pulls/$pr/merge" \
+            -f sha="$head" \
+            -f merge_method=squash \
+            -f commit_title='Present complete Copilot results as a reviewable summary (#948)' \
+            -f commit_message='Expose accurate terminal state and selected-snapshot routing, replace raw result payloads with a structured review surface, and retain exact browser, export and screenshot evidence.')"
+          [[ "$(jq -r '.merged' <<<"$response")" == true ]]
+          echo "$(jq -r '.message' <<<"$response")"
+          verify="$(gh api "repos/$repo/pulls/$pr")"
+          [[ "$(jq -r '.merged' <<<"$verify")" == true ]]
