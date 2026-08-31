@@ -1,12 +1,13 @@
 # Screenshots & Selenium Test Reference
 
-> **Read this when**: You are adding, modifying, or debugging screenshot tests in `ScreenshotGeneratorIT.java`.
+> **Read this when**: You are adding, modifying, or debugging documentation screenshot tests.
 
 ---
 
 ## How screenshots are generated
 
 Most screenshots are captured by `src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`. The persisted Copilot architecture workbench is owned by `ArchitectureWorkbenchUiIT.java` because that test creates and opens the real immutable analysis snapshot used by the browser, SVG and PDF paths.
+Changes to persisted-workbench controls or layout must remain in `ArchitectureWorkbenchUiIT` so the documentation image and the browser/SVG/PDF contract are verified from the same snapshot.
 The test class is **opt-in** — it only runs when the `generateScreenshots` system property is set:
 
 ```bash
@@ -114,6 +115,5 @@ To trigger it manually from the GitHub UI: **Actions → Documentation Screensho
 | Versions Timeline | `#versionsTimeline` |
 | Versions Undo button | `#versionsUndoBtn` |
 | Versions Branch selector | `#versionsBranchSelect` |
-| Save Version button | `#versionsSaveBtn` |
-| Version Title input | `#versionTitle` |
+| Save Version button | `#versionTitle` |
 | Version Description textarea | `#versionDescription` |
