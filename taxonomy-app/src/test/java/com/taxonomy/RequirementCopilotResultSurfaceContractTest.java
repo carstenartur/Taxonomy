@@ -33,4 +33,19 @@ class RequirementCopilotResultSurfaceContractTest {
                         "if (terminal.has(operation.status)) return { key: 'FINAL', "
                                 + "label: t('finalizing')");
     }
+
+    @Test
+    void authoritativeSessionOwnsScreenshotWithoutAConcurrentDriverWatcher()
+            throws IOException {
+        String session = Files.readString(Path.of(
+                "src/test/java/com/taxonomy/CompleteCopilotSessionIT.java"));
+
+        assertThat(session)
+                .contains("saveCompleteCopilotRunResultScreenshot()")
+                .contains("aria-selected", "snapshotDetail")
+                .contains("getScreenshotAs(OutputType.FILE)")
+                .doesNotContain("CompleteCopilotScreenshotWatcher")
+                .doesNotContain("Thread.ofPlatform");
+    }
+
 }

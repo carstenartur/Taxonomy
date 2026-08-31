@@ -4,11 +4,12 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -22,7 +23,12 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -46,7 +52,6 @@ import static org.assertj.core.api.Assertions.assertThat;
  * presentation around real persisted operations.</p>
  */
 @Tag("ui-acceptance")
-@ExtendWith(CompleteCopilotScreenshotWatcher.class)
 class CompleteCopilotSessionIT {
 
     private static final String ADMIN_PASSWORD = "Complete-Copilot-Session-2026!";
@@ -211,6 +216,62 @@ class CompleteCopilotSessionIT {
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotDetail")));
         wait.until(browser -> browser.findElements(
                 By.cssSelector("[data-decision-report-format]")).size() == 3);
+        if (Boolean.getBoolean("generateScreenshots")) {
+            saveCompleteCopilotRunResultScreenshot();
+        }
+    }
+
+    private static void saveCompleteCopilotRunResultScreenshot() {
+        Dimension previousSize = driver.manage().window().getSize();
+        Boolean settingsWereOpen = false;
+        try {
+            driver.manage().window().setSize(new Dimension(2200, 1600));
+            settingsWereOpen = (Boolean) javascript().executeScript("""
+                    const settings = document.getElementById('copilotRunSettings');
+                    const wasOpen = Boolean(settings && settings.open);
+                    if (settings) settings.open = false;
+                    document.querySelectorAll('#snapshotDetail details[open]')
+                        .forEach(detail => { detail.open = false; });
+                    window.scrollTo(0, 0);
+                    return wasOpen;
+                    """);
+            wait.until(attributeEquals(By.id("analyses-tab"),
+                    "aria-selected", "true"));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(
+                    By.id("snapshotDetail")));
+            wait.until(browser -> {
+                Number height = (Number) javascript().executeScript(
+                        "return document.getElementById('snapshotDetail')"
+                                + ".getBoundingClientRect().height");
+                return height.doubleValue() > 100.0;
+            });
+
+            Path module = Path.of(System.getProperty("project.basedir", "."))
+                    .toAbsolutePath()
+                    .normalize();
+            Path repository = module.getParent() == null ? module : module.getParent();
+            Path output = repository.resolve(
+                    "docs/images/72-complete-copilot-run-result.png");
+            Files.createDirectories(output.getParent());
+            File screenshot = ((TakesScreenshot) driver)
+                    .getScreenshotAs(OutputType.FILE);
+            Files.copy(screenshot.toPath(), output,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException exception) {
+            throw new AssertionError(
+                    "Could not save the complete Copilot result screenshot", exception);
+        } finally {
+            Boolean restoreOpen = settingsWereOpen;
+            try {
+                javascript().executeScript("""
+                        const settings = document.getElementById('copilotRunSettings');
+                        if (settings) settings.open = arguments[0];
+                        """, restoreOpen);
+            } catch (RuntimeException ignoredDuringNavigation) {
+                // The owning test remains authoritative if the page navigated meanwhile.
+            }
+            driver.manage().window().setSize(previousSize);
+        }
     }
 
     private static void exerciseRequirementWorkspaceControls() {
