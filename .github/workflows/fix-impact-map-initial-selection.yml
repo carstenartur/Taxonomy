@@ -1,0 +1,40 @@
+name: Fix impact map initial overview state
+
+on:
+  push:
+    branches:
+      - fix/usable-result-impact-map
+    paths:
+      - .github/workflows/fix-impact-map-initial-selection.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/usable-result-impact-map
+          fetch-depth: 0
+
+      - name: Separate initial centring from explicit selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/fix-impact-map-initial-selection.py
+          node --check taxonomy-app/src/main/resources/static/js/shared/taxonomy-impact-map.js
+          node --check .github/scripts/ui-acceptance.mjs
+          node --test .github/scripts/taxonomy-impact-map.test.mjs
+          git diff --check
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            taxonomy-app/src/main/resources/static/js/shared/taxonomy-impact-map.js \
+            .github/scripts/taxonomy-impact-map.test.mjs \
+            .github/scripts/ui-acceptance.mjs
+          git commit -m "Start impact map in an unfiltered overview"
+          git push origin HEAD:fix/usable-result-impact-map
