@@ -95,4 +95,24 @@ class CompleteCopilotResultUiContractTest {
                         "click(By.cssSelector(\"#snapshotList [data-snapshot-id]\"))");
     }
 
+
+    @Test
+    void findingTablesExposeLocalizedAccessibleColumnHeaders()
+            throws IOException {
+        String detail = Files.readString(Path.of(
+                "src/main/resources/static/js/portfolio/requirement-detail.js"));
+        String css = Files.readString(Path.of(
+                "src/main/resources/static/css/taxonomy-portfolio.css"));
+
+        assertThat(detail)
+                .contains("<caption class=\"visually-hidden\">")
+                .contains("<th scope=\"col\">")
+                .contains("findingColumnLabel(field)")
+                .contains("sourceNode: 'Source node'")
+                .contains("sourceNode: 'Quellknoten'")
+                .contains("coverageScore: 'Coverage score'")
+                .contains("coverageScore: 'Abdeckungswert'");
+        assertThat(css).contains(".portfolio-result-table thead th");
+    }
+
 }

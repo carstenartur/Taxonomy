@@ -60,6 +60,11 @@
             technicalData: 'Technical snapshot data',
             technicalDataHint: 'Condensed provider-neutral diagnostics. Use the JSON report for the complete payload.',
             openWorkbench: 'Inspect diagram in architecture workbench', direct: 'Direct',
+            sourceNode: 'Source node', expectedRelation: 'Expected relationship',
+            targetArea: 'Target area', descriptionLabel: 'Description',
+            nodeCode: 'Node code', coverageScore: 'Coverage score',
+            gapDescription: 'Gap description', patternDescription: 'Pattern description',
+            missingElement: 'Missing element',
             resultReady: 'The immutable Copilot result is ready for review.'
         },
         de: {
@@ -101,6 +106,11 @@
             technicalData: 'Technische Snapshot-Daten',
             technicalDataHint: 'Verdichtete anbieterneutrale Diagnosedaten. Der JSON-Bericht enthält die vollständigen Nutzdaten.',
             openWorkbench: 'Diagramm in der Architektur-Workbench untersuchen', direct: 'Direkt',
+            sourceNode: 'Quellknoten', expectedRelation: 'Erwartete Beziehung',
+            targetArea: 'Zielbereich', descriptionLabel: 'Beschreibung',
+            nodeCode: 'Knotencode', coverageScore: 'Abdeckungswert',
+            gapDescription: 'Lückenbeschreibung', patternDescription: 'Musterbeschreibung',
+            missingElement: 'Fehlendes Element',
             resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.'
         }
     };
@@ -537,10 +547,29 @@
 
     function renderFindingDetails(label, items, fields) {
         if (!items.length) return '';
+        const headers = fields.map(field =>
+            `<th scope="col">${escapeHtml(findingColumnLabel(field))}</th>`).join('');
         return `<details class="portfolio-finding-details"><summary>${escapeHtml(label)} <span class="badge text-bg-secondary">${items.length}</span></summary>`
-            + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0"><tbody>`
+            + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0">`
+            + `<caption class="visually-hidden">${escapeHtml(label)}</caption>`
+            + `<thead><tr>${headers}</tr></thead><tbody>`
             + items.map(item => `<tr>${fields.map(field => `<td>${escapeHtml(formatFindingValue(field, item[field]))}</td>`).join('')}</tr>`).join('')
             + `</tbody></table></div></details>`;
+    }
+
+    function findingColumnLabel(field) {
+        const labels = {
+            sourceNodeCode: t('sourceNode'),
+            expectedRelationType: t('expectedRelation'),
+            expectedTargetRoot: t('targetArea'),
+            description: t('descriptionLabel'),
+            nodeCode: t('nodeCode'),
+            coverageScore: t('coverageScore'),
+            gapDescription: t('gapDescription'),
+            patternDescription: t('patternDescription'),
+            missingElement: t('missingElement')
+        };
+        return labels[field] || humanize(field);
     }
 
     function formatFindingValue(field, value) {
