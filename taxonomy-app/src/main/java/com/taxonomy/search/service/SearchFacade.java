@@ -19,6 +19,8 @@ import java.util.Map;
 @Service
 public class SearchFacade {
 
+    private static final int MAX_SEMANTIC_RESULTS = 1_000;
+
     private final TaxonomyService taxonomyService;
     private final SearchService searchService;
     private final HybridSearchService hybridSearchService;
@@ -53,7 +55,11 @@ public class SearchFacade {
     }
 
     public List<TaxonomyNodeDto> semanticSearch(String query, int maxResults) {
-        return embeddingService.semanticSearch(query, maxResults);
+        int resultLimit = boundedSemanticResults(maxResults);
+        if (resultLimit == 0) {
+            return List.of();
+        }
+        return embeddingService.semanticSearch(query, resultLimit);
     }
 
     public List<TaxonomyNodeDto> hybridSearch(String query, int maxResults) {
@@ -61,7 +67,15 @@ public class SearchFacade {
     }
 
     public List<TaxonomyNodeDto> findSimilarNodes(String code, int topK) {
-        return embeddingService.findSimilarNodes(code, topK);
+        int resultLimit = boundedSemanticResults(topK);
+        if (resultLimit == 0) {
+            return List.of();
+        }
+        return embeddingService.findSimilarNodes(code, resultLimit);
+    }
+
+    static int boundedSemanticResults(int requestedResults) {
+        return Math.max(0, Math.min(requestedResults, MAX_SEMANTIC_RESULTS));
     }
 
     public GraphSearchResult graphSearch(String query,
