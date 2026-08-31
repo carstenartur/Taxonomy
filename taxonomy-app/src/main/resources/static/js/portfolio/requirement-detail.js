@@ -114,8 +114,12 @@
         wireEvents();
         await loadAll();
         const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
-        if (requestedSnapshot) await selectSnapshot(requestedSnapshot);
-        else if (state.snapshots.length) await selectSnapshot(state.snapshots[0].id);
+        if (requestedSnapshot) {
+            await selectSnapshot(requestedSnapshot);
+            activateDetailTab('analyses-tab');
+        } else if (state.snapshots.length) {
+            await selectSnapshot(state.snapshots[0].id);
+        }
     }
 
     function translateSurface() {
@@ -140,6 +144,17 @@
     }
 
     function setTabText(id, value) { document.getElementById(id).textContent = value; }
+
+
+    function activateDetailTab(tabId) {
+        const trigger = document.getElementById(tabId);
+        if (!trigger) return;
+        if (window.bootstrap && window.bootstrap.Tab) {
+            window.bootstrap.Tab.getOrCreateInstance(trigger).show();
+        } else {
+            trigger.click();
+        }
+    }
 
     function wireEvents() {
         document.getElementById('newVersionForm').addEventListener('submit', createVersion);

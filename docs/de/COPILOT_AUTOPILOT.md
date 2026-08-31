@@ -35,7 +35,7 @@ Browseransicht, SVG-Download und PDF-Download verwenden dieselbe deterministisch
 
 ## Ergebnisoberfläche eines vollständigen Laufs
 
-Nach einem autoritativ abgeschlossenen vollständigen Lauf lädt Taxonomy die Anforderung mit dem ausgewählten unveränderlichen Snapshot neu. Auf derselben Seite bleiben Operationsstatus, Anbieter, korrekte Endphase, abgeschlossene Prüfdurchläufe und letzter Serverkontakt oberhalb der Ergebnisregister sichtbar. Der ausgewählte Snapshot wird außerdem ausdrücklich angezeigt und bleibt über **Ergebnis öffnen** erreichbar.
+Nach einem autoritativ abgeschlossenen vollständigen Lauf lädt Taxonomy die Anforderung mit dem ausgewählten unveränderlichen Snapshot neu. Auf derselben Seite bleiben Operationsstatus, Anbieter, korrekte Endphase, abgeschlossene Prüfdurchläufe und letzter Serverkontakt oberhalb der Ergebnisregister sichtbar. Der ausgewählte Snapshot wird außerdem ausdrücklich angezeigt und bleibt über **Ergebnis öffnen** erreichbar. Snapshot-gebundene Links öffnen das geladene Ergebnis direkt im Register **Analysen**, statt es hinter dem standardmäßigen Textregister zu verbergen.
 
 Der normale Lesefluss zeigt sechs anbieterneutrale Kennzahlen, die wichtigsten Architekturlücken, erkannte Muster und die Begründung der Empfehlung. Vollständige technische Nutzdaten bleiben im eingeklappten Diagnosebereich und im JSON-Bericht verfügbar, statt unformatiert in der Ergebnisansicht zu erscheinen.
 

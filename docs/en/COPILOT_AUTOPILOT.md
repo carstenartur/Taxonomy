@@ -37,7 +37,7 @@ The browser, SVG download and PDF download use the same deterministic server-sid
 
 ## Complete-run result surface
 
-After a full analysis reaches an authoritative terminal state, Taxonomy reloads the requirement with the selected immutable snapshot. The same page keeps the Copilot operation status, provider, accurate terminal phase, completed verification passes and server-contact evidence visible above the result tabs. The selected snapshot is also shown explicitly and remains available through **Open result**.
+After a full analysis reaches an authoritative terminal state, Taxonomy reloads the requirement with the selected immutable snapshot. The same page keeps the Copilot operation status, provider, accurate terminal phase, completed verification passes and server-contact evidence visible above the result tabs. The selected snapshot is also shown explicitly and remains available through **Open result**. Snapshot-bound links open the loaded **Analyses** result directly rather than leaving it hidden behind the default text tab.
 
 The normal reading flow presents six provider-neutral indicators, the highest-priority architecture gaps, detected patterns and recommendation reasoning. Complete technical payloads remain available in the collapsed diagnostics section and the JSON report instead of being dumped into the result page.
 

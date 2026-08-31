@@ -66,4 +66,33 @@ class CompleteCopilotResultUiContractTest {
                 .doesNotContain("Verification result {0} of {1}")
                 .doesNotContain("Prüfergebnis {0} von {1}");
     }
+
+    @Test
+    void snapshotBoundUrlsActivateTheResultOnlyAfterItHasLoaded()
+            throws IOException {
+        String detail = Files.readString(Path.of(
+                "src/main/resources/static/js/portfolio/requirement-detail.js"));
+        String session = Files.readString(Path.of(
+                "src/test/java/com/taxonomy/CompleteCopilotSessionIT.java"));
+
+        assertThat(detail)
+                .contains("await selectSnapshot(requestedSnapshot);")
+                .contains("activateDetailTab('analyses-tab');")
+                .contains("window.bootstrap.Tab.getOrCreateInstance(trigger).show();");
+        int methodStart = session.indexOf(
+                "private static void openSelectedSnapshotThroughVisibleAnalysisControls()");
+        int methodEnd = session.indexOf(
+                "private static void saveCompleteCopilotRunResultScreenshot()",
+                methodStart);
+        assertThat(methodStart).isGreaterThanOrEqualTo(0);
+        assertThat(methodEnd).isGreaterThan(methodStart);
+        String navigationMethod = session.substring(methodStart, methodEnd);
+        assertThat(navigationMethod)
+                .contains("aria-selected", "snapshotResultOverview")
+                .contains("no compensating tab or snapshot click")
+                .doesNotContain("click(By.id(\"analyses-tab\"))")
+                .doesNotContain(
+                        "click(By.cssSelector(\"#snapshotList [data-snapshot-id]\"))");
+    }
+
 }

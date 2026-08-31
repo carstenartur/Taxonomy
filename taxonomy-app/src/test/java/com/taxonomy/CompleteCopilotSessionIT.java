@@ -203,39 +203,42 @@ class CompleteCopilotSessionIT {
     }
 
     private static void openSelectedSnapshotThroughVisibleAnalysisControls() {
-        // Terminal Copilot success intentionally schedules navigation to the selected
-        // immutable snapshot. Do not race that real page transition with a tab click.
+        // The selected immutable result must be the visible destination of
+        // terminal Copilot navigation; no compensating tab or snapshot click.
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot="));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("analyses-tab")));
         wait.until(ExpectedConditions.invisibilityOfElementLocated(
                 By.cssSelector(".portfolio-busy:not(.d-none)")));
-        click(By.id("analyses-tab"));
-        wait.until(browser -> !browser.findElements(
-                By.cssSelector("#snapshotList [data-snapshot-id]")).isEmpty());
-        click(By.cssSelector("#snapshotList [data-snapshot-id]"));
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotDetail")));
+        wait.until(attributeEquals(By.id("analyses-tab"),
+                "aria-selected", "true"));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(
+                By.id("snapshotResultOverview")));
         wait.until(browser -> browser.findElements(
                 By.cssSelector("[data-decision-report-format]")).size() == 3);
-    wait.until(ExpectedConditions.visibilityOfElementLocated(
-            By.id("snapshotResultOverview")));
-    assertThat(driver.findElements(By.cssSelector(
-            "#snapshotResultOverview .portfolio-result-kpi")))
-            .hasSize(6);
-    String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
-    assertThat(visibleResult)
-            .contains("Copilot result overview")
-            .contains("Gap analysis")
-            .contains("Detected patterns")
-            .contains("Recommendation")
-            .doesNotContain("missingRelations")
-            .doesNotContain("businessText");
-    List<WebElement> findingDetails = driver.findElements(
-            By.cssSelector("#snapshotDetail details.portfolio-finding-details"));
-    assertThat(findingDetails).isNotEmpty();
-    assertThat(findingDetails).allSatisfy(detail ->
-            assertThat(detail.getAttribute("open")).isNull());
-    assertThat(driver.findElement(By.id("technicalSnapshotData"))
-            .getAttribute("open")).isNull();
+
+        assertThat(driver.findElements(By.cssSelector(
+                "#snapshotList [data-snapshot-id].active[aria-current='true']")))
+                .hasSize(1);
+        assertThat(driver.findElements(By.cssSelector(
+                "#snapshotResultOverview .portfolio-result-kpi")))
+                .hasSize(6);
+
+        String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
+        assertThat(visibleResult)
+                .contains("Copilot result overview")
+                .contains("Gap analysis")
+                .contains("Detected patterns")
+                .contains("Recommendation")
+                .doesNotContain("missingRelations")
+                .doesNotContain("businessText");
+
+        List<WebElement> findingDetails = driver.findElements(
+                By.cssSelector("#snapshotDetail details.portfolio-finding-details"));
+        assertThat(findingDetails).isNotEmpty();
+        assertThat(findingDetails).allSatisfy(detail ->
+                assertThat(detail.getAttribute("open")).isNull());
+        assertThat(driver.findElement(By.id("technicalSnapshotData"))
+                .getAttribute("open")).isNull();
 
         if (Boolean.getBoolean("generateScreenshots")) {
             saveCompleteCopilotRunResultScreenshot();
