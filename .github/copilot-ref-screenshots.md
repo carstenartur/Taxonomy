@@ -115,5 +115,6 @@ To trigger it manually from the GitHub UI: **Actions → Documentation Screensho
 | Versions Timeline | `#versionsTimeline` |
 | Versions Undo button | `#versionsUndoBtn` |
 | Versions Branch selector | `#versionsBranchSelect` |
-| Save Version button | `#versionTitle` |
+| Save Version button | `#versionsSaveBtn` |
+| Version Title input | `#versionTitle` |
 | Version Description textarea | `#versionDescription` |
