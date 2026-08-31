@@ -1,0 +1,156 @@
+            state.visibleEdges.forEach(function (edge) {
+                if (edge.sourceId === selectedNode || edge.targetId === selectedNode) {
+                    connectedNodeIds.add(edge.sourceId);
+                    connectedNodeIds.add(edge.targetId);
+                    connectedEdgeIds.add(edge.id);
+                }
+            });
+        }
+        const matches = new Set(matchingNodeIds());
+        const hasSearch = state.searchQuery.trim().length > 0;
+
+        state.nodeElements.forEach(function (element, id) {
+            const connected = connectedNodeIds.has(id);
+            const searchMatch = matches.has(id);
+            const muted = id !== selectedNode
+                && ((selectedNode && !connected) || (hasSearch && !searchMatch));
+            element.classList.toggle('is-selected', id === selectedNode);
+            element.classList.toggle('is-search-match', hasSearch && searchMatch);
+            element.classList.toggle('is-muted', Boolean(muted));
+        });
+
+        state.edgeElements.forEach(function (element, id) {
+            const source = element.dataset.source;
+            const target = element.dataset.target;
+            const connected = connectedEdgeIds.has(id);
+            const searchRelevant = !hasSearch || matches.has(source) || matches.has(target);
+            const muted = id !== selectedEdge
+                && ((selectedNode && !connected) || (hasSearch && !searchRelevant));
+            element.classList.toggle('is-selected', id === selectedEdge);
+            element.classList.toggle('is-connected', connected);
+            element.classList.toggle('is-muted', Boolean(muted));
+            if (element._label) {
+                element._label.style.display = state.visibleEdges.length <= 12
+                    || connected || id === selectedEdge || (hasSearch && searchRelevant)
+                    ? '' : 'none';
+            }
+        });
+        updateVisibleStatus();
+    }
+
+    function updateVisibleStatus() {
+        const matches = matchingNodeIds();
+        if (state.searchQuery.trim()) {
+            const visibleMatches = matches.filter(function (id) {
+                return state.visibleNodeIds.has(id);
+            }).length;
+            visibleStatus.textContent = matches.length + ' matching elements; '
+                + visibleMatches + ' currently visible.';
+        } else {
+            visibleStatus.textContent = 'Showing ' + state.visibleNodes.length + ' of '
+                + scene.nodes.length + ' elements and ' + state.visibleEdges.length
+                + ' relationships.';
+        }
+    }
+
+    function updateKpis() {
+        document.getElementById('directKpi').textContent = state.visibleNodes.filter(function (node) {
+            return node.anchor;
+        }).length + ' direct';
+        document.getElementById('elementKpi').textContent = state.visibleNodes.length + ' elements';
+        document.getElementById('relationKpi').textContent = state.visibleEdges.length + ' relationships';
+        document.getElementById('layerKpi').textContent = state.layerGroups.length + ' layers';
+    }
+
+    function updateModeButtons() {
+        overviewButton.setAttribute('aria-pressed', state.mode === 'overview' ? 'true' : 'false');
+        focusButton.setAttribute('aria-pressed', state.mode === 'focus' ? 'true' : 'false');
+        focusButton.disabled = !state.selectedNodeId;
+    }
+
+    function setSelection(nodeId, edgeId, center) {
+        state.selectedNodeId = nodeId || null;
+        state.selectedEdgeId = edgeId || null;
+        updateModeButtons();
+        updateInteractionStyles();
+        if (state.selectedNodeId) {
+            renderNodeDetails(nodeById.get(state.selectedNodeId));
+        } else if (state.selectedEdgeId) {
+            renderEdgeDetails(edgeById.get(state.selectedEdgeId));
+        } else {
+            clearDetails();
+        }
+        if (center && state.selectedNodeId) centerOnNode(state.selectedNodeId);
+    }
+
+    function renderDiagram(autoFit) {
+        const model = visibleModel();
+        state.visibleNodes = model.nodes;
+        state.visibleEdges = model.edges;
+        state.visibleNodeIds = model.nodeIds;
+        state.layerGroups = buildLayerGroups(model.nodes);
+        state.bounds = calculateBounds(model.nodes, state.layerGroups);
+        state.nodeElements.clear();
+        state.edgeElements.clear();
+        svg.replaceChildren();
+
+        const defs = createSvgElement('defs');
+        const viewport = createSvgElement('g', {class: 'architecture-viewport'});
+        svg.append(defs, viewport);
+        viewportSelection = d3.select(viewport);
+        renderMarkers(defs);
+        renderLayers(viewport);
+        renderEdges(viewport);
+        renderNodes(viewport);
+        if (state.selectedNodeId && !state.visibleNodeIds.has(state.selectedNodeId)) {
+            state.selectedNodeId = null;
+            state.selectedEdgeId = null;
+            state.mode = 'overview';
+            clearDetails();
+        }
+        if (state.selectedEdgeId
+                && !state.visibleEdges.some(function (edge) { return edge.id === state.selectedEdgeId; })) {
+            state.selectedEdgeId = null;
+            clearDetails();
+        }
+        updateViewBox();
+        updateKpis();
+        updateModeButtons();
+        updateInteractionStyles();
+        if (autoFit !== false) window.requestAnimationFrame(fitView);
+    }
+
+    function renderProvenance(data) {
+        const model = data.modelName ? '/' + data.modelName : '';
+        const created = data.snapshotCreatedAt
+            ? ' · ' + new Date(data.snapshotCreatedAt).toLocaleString()
+            : '';
+        document.getElementById('architectureProvenance').textContent =
+            'Snapshot ' + data.snapshotId
+            + ' · ' + text(data.snapshotStatus, 'status n/a')
+            + ' · ' + text(data.provider, 'provider n/a') + model
+            + ' · branch ' + text(data.branchName, 'n/a')
+            + ' · commit ' + text(data.commitSha, 'n/a').slice(0, 12)
+            + created;
+    }
+
+    function renderWarnings(data) {
+        const warnings = document.getElementById('architectureWarnings');
+        const section = document.getElementById('architectureWarningsSection');
+        warnings.replaceChildren();
+        const values = Array.isArray(data.warnings) ? data.warnings : [];
+        values.forEach(function (warning) {
+            const item = document.createElement('li');
+            item.textContent = warning;
+            warnings.append(item);
+        });
+        section.classList.toggle('d-none', values.length === 0);
+    }
+
+    function render(data) {
+        if (!data || !data.scene || !Array.isArray(data.scene.nodes)) {
+            throw new Error('The persisted analysis does not contain an architecture scene.');
+        }
+        projection = data;
+        scene = data.scene;
+        scene.edges = Array.isArray(scene.edges) ? scene.edges : [];
