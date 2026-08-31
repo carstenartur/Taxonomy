@@ -1,0 +1,100 @@
+         if (!mappings.length) return renderEmpty(target, t('noMappings'));
+-        mappings.forEach(mapping => {
+-            const card = document.createElement('article');
+-            card.className = 'card';
+-            card.innerHTML = `<div class="card-body"><div class="d-flex justify-content-between gap-2"><div><code>${escapeHtml(mapping.nodeCode)}</code> · <strong>${escapeHtml(mapping.nodeTitle || '')}</strong></div>`
+-                + `<span class="badge ${mapping.reviewStatus === 'CONFIRMED' ? 'text-bg-success' : 'text-bg-warning'}">${escapeHtml(humanize(mapping.reviewStatus))}</span></div>`
+-                + `<dl class="portfolio-card-meta mt-2"><dt>${escapeHtml(t('action'))}</dt><dd>${escapeHtml(humanize(mapping.actionStatus))}</dd>`
+-                + `<dt>${escapeHtml(t('evidence'))}</dt><dd>${escapeHtml(mapping.actionEvidence || '—')}</dd>`
+-                + `<dt>${escapeHtml(t('author'))}</dt><dd>${escapeHtml(mapping.decisionBy || '—')}</dd>`
+-                + `<dt>${escapeHtml(t('created'))}</dt><dd>${escapeHtml(formatDate(mapping.decisionAt))}</dd></dl></div>`;
+-            target.appendChild(card);
+-        });
++        const ordered = mappings.slice().sort((left, right) =>
++            decisionRank(left.reviewStatus) - decisionRank(right.reviewStatus)
++                || safeNumber(right.relevance, 0) - safeNumber(left.relevance, 0)
++                || String(left.nodeCode).localeCompare(String(right.nodeCode)));
++        const reviewStates = Array.from(new Set(ordered.map(mapping => mapping.reviewStatus).filter(Boolean))).sort();
++        target.innerHTML = `<section class="portfolio-decision-workbench" aria-labelledby="decisionWorkbenchTitle">`
++            + `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3">`
++            + `<div><h2 id="decisionWorkbenchTitle" class="h5 mb-1">${escapeHtml(t('filterDecisions'))}</h2>`
++            + `<div id="decisionVisibleCount" class="small text-body-secondary"></div></div>`
++            + `<div class="portfolio-decision-filters">`
++            + `<input id="decisionSearch" class="form-control form-control-sm" type="search" placeholder="${escapeHtml(t('searchDecisions'))}" aria-label="${escapeHtml(t('searchDecisions'))}">`
++            + `<select id="decisionReviewFilter" class="form-select form-select-sm" aria-label="${escapeHtml(t('reviewState'))}">`
++            + `<option value="">${escapeHtml(t('allReviews'))}</option>`
++            + reviewStates.map(status => `<option value="${escapeHtml(status)}">${escapeHtml(humanize(status))}</option>`).join('')
++            + `</select></div></div>`
++            + `<div class="portfolio-result-table portfolio-decision-table"><table class="table table-sm align-middle mb-0">`
++            + `<thead><tr><th>${escapeHtml(t('node'))}</th><th>${escapeHtml(t('relevance'))}</th><th>${escapeHtml(t('review'))}</th>`
++            + `<th>${escapeHtml(t('action'))}</th><th>${escapeHtml(t('decisionEvidence'))}</th></tr></thead>`
++            + `<tbody id="decisionRows">${ordered.map(mapping => {
++                const evidence = mapping.actionEvidence || mapping.decisionComment || mapping.presenceReason || '—';
++                return `<tr data-decision-row data-review-status="${escapeHtml(mapping.reviewStatus || '')}">`
++                    + `<td><code>${escapeHtml(mapping.nodeCode)}</code><div class="small fw-semibold">${escapeHtml(mapping.nodeTitle || '')}</div>`
++                    + `<div class="small text-body-secondary">${escapeHtml(mapping.hierarchyPath || '')}</div></td>`
++                    + `<td><strong>${percentage(mapping.relevance)}%</strong><div class="small text-body-secondary">${percentage(mapping.directScore)}% ${escapeHtml(t('direct'))}</div></td>`
++                    + `<td><span class="badge ${statusClass(mapping.reviewStatus)}">${escapeHtml(humanize(mapping.reviewStatus))}</span></td>`
++                    + `<td>${escapeHtml(humanize(mapping.actionStatus))}</td>`
++                    + `<td class="portfolio-decision-evidence">${escapeHtml(evidence)}</td></tr>`;
++            }).join('')}</tbody></table>`
++            + `<div id="decisionEmpty" class="portfolio-empty d-none"><span aria-hidden="true">⌕</span>${escapeHtml(t('noDecisionMatches'))}</div>`
++            + `</div></section>`;
++        installDecisionFilters(target, mappings.length);
++    }
++
++    function decisionRank(status) {
++        return { PROPOSED: 0, PENDING: 1, PARTIAL: 2, CONFIRMED: 3, REJECTED: 4 }[status] ?? 5;
++    }
++
++    function installDecisionFilters(target, total) {
++        const search = target.querySelector('#decisionSearch');
++        const review = target.querySelector('#decisionReviewFilter');
++        const count = target.querySelector('#decisionVisibleCount');
++        const empty = target.querySelector('#decisionEmpty');
++        const rows = Array.from(target.querySelectorAll('[data-decision-row]'));
++        function apply() {
++            const query = String(search.value || '').trim().toLowerCase();
++            const status = review.value;
++            let visible = 0;
++            rows.forEach(row => {
++                const matchesQuery = !query || row.textContent.toLowerCase().includes(query);
++                const matchesStatus = !status || row.dataset.reviewStatus === status;
++                row.hidden = !(matchesQuery && matchesStatus);
++                if (!row.hidden) visible += 1;
++            });
++            count.textContent = `${t('visibleDecisions')}: ${visible} / ${total}`;
++            empty.classList.toggle('d-none', visible !== 0);
++        }
++        search.addEventListener('input', apply);
++        review.addEventListener('change', apply);
++        apply();
+     }
+ 
+     function renderSolutions() {
+@@ -438,18 +745,30 @@
+         const target = document.getElementById('taskList');
+         target.textContent = '';
+         const tasks = [];
+-        if (!state.requirement.currentAnalysisSnapshotId) tasks.push(t('stale'));
++        if (!state.requirement.currentAnalysisSnapshotId) tasks.push({ message: t('stale'), tab: 'analyses-tab' });
+         const mappings = state.snapshotDetail && state.snapshotDetail.elementMappings || [];
+-        if (mappings.some(mapping => mapping.reviewStatus !== 'CONFIRMED')) tasks.push(t('unreviewed'));
++        if (mappings.some(mapping => mapping.reviewStatus !== 'CONFIRMED')) tasks.push({ message: t('unreviewed'), tab: 'decisions-tab' });
+         const links = (state.portfolio && state.portfolio.solutions || []).flatMap(solution => solution.requirements || [])
+             .filter(link => link.requirementId === requirementId && link.reviewStatus === 'CONFIRMED');
+-        if (!links.length) tasks.push(t('noConfirmedSolution'));
+-        if (!(state.requirement.currentVersion && state.requirement.currentVersion.source)) tasks.push(t('sourceMissing'));
+-        if (!tasks.length) tasks.push(t('allClear'));
++        if (!links.length) tasks.push({ message: t('noConfirmedSolution'), tab: 'solutions-tab' });
++        if (!(state.requirement.currentVersion && state.requirement.currentVersion.source)) tasks.push({ message: t('sourceMissing'), tab: 'text-tab' });
++        if (!tasks.length) tasks.push({ message: t('allClear'), tab: null });
+         tasks.forEach(task => {
+-            const item = document.createElement('div');
+-            item.className = 'list-group-item';
+-            item.textContent = task;
++            const item = document.createElement(task.tab ? 'button' : 'div');
++            if (task.tab) {
++                item.type = 'button';
++                item.dataset.taskTab = task.tab;
++            }
