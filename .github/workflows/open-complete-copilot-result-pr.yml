@@ -1,0 +1,98 @@
+name: Open Verified Complete Copilot Result PR
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-result-review
+    paths:
+      - docs/images/72-complete-copilot-run-result.png
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: open-complete-copilot-result-pr
+  cancel-in-progress: true
+
+jobs:
+  open:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/complete-copilot-run-result-review
+          fetch-depth: 0
+
+      - name: Verify the published feature payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s docs/images/72-complete-copilot-run-result.png
+          test ! -e .github/workflows/finalize-complete-copilot-result.yml
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          ! grep -F 'gap.summary || gap.description || JSON.stringify(gap)' \
+              taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          git diff --check
+
+      - name: Open the pull request once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head fix/complete-copilot-run-result-review \
+            --base main \
+            --state all \
+            --json number \
+            --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            echo "Pull request #$existing already exists"
+            exit 0
+          fi
+          cat > /tmp/body.md <<'EOF'
+          ## Problem
+
+          A completed Copilot full analysis exposed its most important results as an unstructured JSON-like text block. The terminal run card also consumed space needed for review, while a cancelled run could hide the controls needed to restart it.
+
+          ## Changes
+
+          - open the selected immutable snapshot directly in the **Analyses** tab after a successful or partial run;
+          - provide a six-metric result overview for mappings, relationships, gaps, pattern coverage, recommendation confidence and confirmed elements;
+          - render gap findings, detected patterns and architecture recommendations as structured review sections;
+          - keep long secondary evidence collapsed and bounded instead of dumping provider payloads into the reading flow;
+          - retain complete provider-neutral diagnostics in the JSON report and a collapsed technical section;
+          - distinguish multiple verification-pass snapshots by pass number;
+          - add searchable/filterable decision review and explicit links to the architecture workbench;
+          - collapse run settings only when a reviewable result exists, while keeping restart controls visible after cancellation or failure;
+          - document and capture the real complete-result surface.
+
+          ## Verification
+
+          - focused source contracts for the Copilot controls and complete-result rendering;
+          - packaged multi-module application build;
+          - `CompleteCopilotSessionIT` with PostgreSQL, Selenium, deterministic mock LLM, cancellation, reconnect, reload, two verification passes, result inspection and DOCX/HTML/JSON equivalence;
+          - screenshot generated from the same authoritative browser session, without injected result markup.
+
+          ![Complete Copilot run result](https://raw.githubusercontent.com/carstenartur/Taxonomy/fix/complete-copilot-run-result-review/docs/images/72-complete-copilot-run-result.png)
+          EOF
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head fix/complete-copilot-run-result-review \
+            --title 'Make complete Copilot results reviewable' \
+            --body-file /tmp/body.md
+
+      - name: Remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/open-complete-copilot-result-pr.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/open-complete-copilot-result-pr.yml
+          git commit -m 'Remove complete-result PR bootstrap workflow [skip ci]'
+          git push origin HEAD:fix/complete-copilot-run-result-review
