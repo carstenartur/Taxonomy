@@ -178,9 +178,17 @@ class ArchitectureWorkbenchUiIT {
             int visible = browser.findElements(By.cssSelector(".architecture-node")).size();
             return visible > 0 && visible <= overviewNodeCount;
         });
-        driver.findElement(By.id("architectureOverview")).click();
-        wait.until(browser -> browser.findElements(
-                By.cssSelector(".architecture-node")).size() == overviewNodeCount);
+        javascript().executeScript("""
+                document.getElementById('architectureCanvas')
+                    .dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                """);
+        wait.until(browser -> "true".equals(browser.findElement(
+                By.id("architectureOverview")).getAttribute("aria-pressed"))
+                && "false".equals(browser.findElement(
+                        By.id("architectureFocus")).getAttribute("aria-pressed"))
+                && !browser.findElement(By.id("architectureFocus")).isEnabled()
+                && browser.findElements(By.cssSelector(
+                        ".architecture-node")).size() == overviewNodeCount);
         fitAndWait();
         assertDiagramFitsCanvas();
 

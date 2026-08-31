@@ -36,6 +36,22 @@ class ArchitectureWorkbenchAssetContractTest {
     }
 
     @Test
+    void graphAdapterKeepsFailureControlsInertAndTraversesHopsLinearly() throws Exception {
+        String adapter = resource("static/js/architecture-workbench.js");
+
+        assertThat(adapter)
+                .contains("let queueIndex = 0")
+                .contains("while (queueIndex < queue.length)")
+                .doesNotContain("queue.shift()")
+                .contains("const leavingFocusMode = !nodeId && state.mode === 'focus'")
+                .contains("state.mode = 'overview'")
+                .contains("searchInput,")
+                .contains("contextCheckbox,")
+                .contains("fullscreenButton")
+                .contains("control.disabled = true");
+    }
+
+    @Test
     void legacyExportControlRoutesOnlyTheActiveArchitectureResultToItsGraph() throws Exception {
         String exporter = resource("static/js/shared/taxonomy-export.js");
 

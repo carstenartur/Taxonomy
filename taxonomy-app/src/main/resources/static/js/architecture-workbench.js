@@ -97,8 +97,19 @@
         alertBox.textContent = error instanceof Error ? error.message : String(error);
         alertBox.classList.remove('d-none');
         setStatus('Architecture could not be loaded.');
-        [fitButton, zoomInButton, zoomOutButton, overviewButton, focusButton]
-            .forEach(function (button) { button.disabled = true; });
+        searchInput.value = '';
+        clearSearch.hidden = true;
+        [
+            searchInput,
+            clearSearch,
+            contextCheckbox,
+            overviewButton,
+            focusButton,
+            fitButton,
+            zoomInButton,
+            zoomOutButton,
+            fullscreenButton
+        ].forEach(function (control) { control.disabled = true; });
     }
 
     function text(value, fallback) {
@@ -285,8 +296,9 @@
                 queue.push(node.id);
             }
         });
-        while (queue.length > 0) {
-            const current = queue.shift();
+        let queueIndex = 0;
+        while (queueIndex < queue.length) {
+            const current = queue[queueIndex++];
             const distance = distances.get(current) + 1;
             adjacency.get(current).forEach(function (neighbor) {
                 if (!distances.has(neighbor)) {
@@ -783,8 +795,14 @@
     }
 
     function setSelection(nodeId, edgeId, center) {
+        const leavingFocusMode = !nodeId && state.mode === 'focus';
         state.selectedNodeId = nodeId || null;
         state.selectedEdgeId = edgeId || null;
+        if (leavingFocusMode) {
+            state.mode = 'overview';
+            renderDiagram(true);
+            return;
+        }
         updateModeButtons();
         updateInteractionStyles();
         if (state.selectedNodeId) {
