@@ -1,0 +1,122 @@
+name: Recover clean PR 948 projection
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-result-review
+    paths:
+      - .github/workflows/recover-clean-pr-948.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: recover-clean-pr-948-projection
+  cancel-in-progress: true
+
+jobs:
+  recover-only-if-workflow-contaminated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Rebuild a clean branch only when temporary workflow files remain
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          pr=948
+          clean_branch=fix/complete-copilot-result-clean
+
+          pr_json="$(gh api "repos/$repo/pulls/$pr")"
+          if [[ "$(jq -r '.merged' <<<"$pr_json")" == true ]]; then
+            echo 'The reviewed PR is already merged; no recovery is necessary.'
+            exit 0
+          fi
+          source_head="$(jq -r '.head.sha' <<<"$pr_json")"
+          [[ "$(jq -r '.head.ref' <<<"$pr_json")" == fix/complete-copilot-run-screenshot ]]
+          [[ "$(jq -r '.base.ref' <<<"$pr_json")" == main ]]
+
+          cat > /tmp/allowed <<'EOF'
+          .github/copilot-ref-screenshots.md
+          docs/de/COPILOT_AUTOPILOT.md
+          docs/en/COPILOT_AUTOPILOT.md
+          docs/images/72-complete-copilot-run-result.png
+          pom.xml
+          taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css
+          taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotResultUiContractTest.java
+          taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java
+          taxonomy-app/src/test/java/com/taxonomy/RequirementCopilotResultSurfaceContractTest.java
+          EOF
+          sort -o /tmp/allowed /tmp/allowed
+
+          gh api --paginate "repos/$repo/pulls/$pr/files?per_page=100" \
+            --jq '.[].filename' | sort > /tmp/source-files
+          grep '^\.github/workflows/' /tmp/source-files > /tmp/workflow-files || true
+          if [[ ! -s /tmp/workflow-files ]]; then
+            echo 'The reviewed PR already has a clean permanent diff; recovery is intentionally skipped.'
+            exit 0
+          fi
+
+          comm -23 /tmp/source-files /tmp/allowed \
+            | grep -v '^\.github/workflows/' > /tmp/unexpected || true
+          if [[ -s /tmp/unexpected ]]; then
+            echo 'Non-workflow contamination exists; refusing to project a replacement branch:' >&2
+            cat /tmp/unexpected >&2
+            exit 1
+          fi
+
+          git fetch origin main "$source_head"
+          if git ls-remote --exit-code --heads origin "$clean_branch" >/dev/null 2>&1; then
+            echo "Recovery branch $clean_branch already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          git checkout -B "$clean_branch" origin/main
+          while IFS= read -r file; do
+            git checkout "$source_head" -- "$file"
+          done < /tmp/allowed
+
+          git diff --check
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          ./mvnw -B -pl taxonomy-app -am test \
+            -Dtest=RequirementCopilotResultSurfaceContractTest,CompleteCopilotResultUiContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -Dcyclonedx.skip=true \
+            -Dtaxonomy.model.download.skip=true
+          ./mvnw -B -pl taxonomy-app -am install \
+            -DskipTests \
+            -Dcyclonedx.skip=true \
+            -Dtaxonomy.model.download.skip=true
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git commit -m 'Present complete Copilot results as a reviewable summary'
+          git push origin HEAD:"$clean_branch"
+
+          existing="$(gh pr list --repo "$repo" --state open --head "$clean_branch" --json number --jq '.[0].number // empty')"
+          if [[ -z "$existing" ]]; then
+            gh pr create \
+              --repo "$repo" \
+              --base main \
+              --head "$clean_branch" \
+              --title 'Present complete Copilot results as a reviewable summary' \
+              --body 'Clean projection of the already reviewed PR #948 result. It contains exactly the eleven permanent product, test, documentation and screenshot files and excludes every temporary construction workflow. Merge remains subject to the complete regular repository matrix.'
+          fi
+          gh pr comment "$pr" --repo "$repo" \
+            --body "A clean eleven-file projection was created on \`$clean_branch\` because temporary workflow files remained in this PR. No product or test failure was bypassed."
