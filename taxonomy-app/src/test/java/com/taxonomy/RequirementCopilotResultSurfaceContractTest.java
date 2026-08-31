@@ -29,6 +29,10 @@ class RequirementCopilotResultSurfaceContractTest {
                 .contains("label: t('failedPhase')")
                 .contains("status === 'CANCELLED'")
                 .contains("label: t('cancelledPhase')")
+                .contains("status === 'PENDING'")
+                .contains("key: 'QUEUED', label: t('queued')")
+                .contains("status === 'RUNNING'")
+                .contains("key: 'FINALIZING', label: t('finalizing')")
                 .doesNotContain(
                         "if (terminal.has(operation.status)) return { key: 'FINAL', "
                                 + "label: t('finalizing')");

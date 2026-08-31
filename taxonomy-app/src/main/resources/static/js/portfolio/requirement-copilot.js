@@ -424,9 +424,11 @@
         if (status === 'PARTIAL') return { key: 'PARTIAL', label: t('partialPhase'), indeterminate: false };
         if (status === 'FAILED') return { key: 'FAILED', label: t('failedPhase'), indeterminate: false };
         if (status === 'CANCELLED') return { key: 'CANCELLED', label: t('cancelledPhase'), indeterminate: false };
+        if (status === 'PENDING') return { key: 'QUEUED', label: t('queued'), indeterminate: true };
         if (running) return { key: 'SCORING', label: t('scoring'), indeterminate: true };
         if (pending) return { key: 'QUEUED', label: t('queued'), indeterminate: true };
-        return { key: 'FINALIZING', label: t('finalizing'), indeterminate: true };
+        if (status === 'RUNNING') return { key: 'FINALIZING', label: t('finalizing'), indeterminate: true };
+        return { key: 'QUEUED', label: t('queued'), indeterminate: true };
     }
 
     function renderProgress(operation, phase) {

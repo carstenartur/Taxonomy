@@ -39,6 +39,8 @@ The browser, SVG download and PDF download use the same deterministic server-sid
 
 After a full analysis reaches an authoritative terminal state, Taxonomy reloads the requirement with the selected immutable snapshot. The same page keeps the Copilot operation status, provider, accurate terminal phase, completed verification passes and server-contact evidence visible above the result tabs. The selected snapshot is also shown explicitly and remains available through **Open result**.
 
+The normal reading flow presents six provider-neutral indicators, the highest-priority architecture gaps, detected patterns and recommendation reasoning. Complete technical payloads remain available in the collapsed diagnostics section and the JSON report instead of being dumped into the result page.
+
 ![Complete Copilot run result](../images/72-complete-copilot-run-result.png)
 
 The screenshot is captured by `CompleteCopilotSessionIT` from the real successful persisted state. It is not assembled from a browser fixture, and screenshot generation fails if the selected snapshot, terminal operation and result tabs are not visible together.

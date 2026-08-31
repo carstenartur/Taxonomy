@@ -216,6 +216,27 @@ class CompleteCopilotSessionIT {
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotDetail")));
         wait.until(browser -> browser.findElements(
                 By.cssSelector("[data-decision-report-format]")).size() == 3);
+    wait.until(ExpectedConditions.visibilityOfElementLocated(
+            By.id("snapshotResultOverview")));
+    assertThat(driver.findElements(By.cssSelector(
+            "#snapshotResultOverview .portfolio-result-kpi")))
+            .hasSize(6);
+    String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
+    assertThat(visibleResult)
+            .contains("Copilot result overview")
+            .contains("Gap analysis")
+            .contains("Detected patterns")
+            .contains("Recommendation")
+            .doesNotContain("missingRelations")
+            .doesNotContain("businessText");
+    List<WebElement> findingDetails = driver.findElements(
+            By.cssSelector("#snapshotDetail details.portfolio-finding-details"));
+    assertThat(findingDetails).isNotEmpty();
+    assertThat(findingDetails).allSatisfy(detail ->
+            assertThat(detail.getAttribute("open")).isNull());
+    assertThat(driver.findElement(By.id("technicalSnapshotData"))
+            .getAttribute("open")).isNull();
+
         if (Boolean.getBoolean("generateScreenshots")) {
             saveCompleteCopilotRunResultScreenshot();
         }
