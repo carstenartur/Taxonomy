@@ -65,6 +65,7 @@ jobs:
         run: docker info
 
       - name: Install document rendering tools
+        if: github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
@@ -90,12 +91,14 @@ jobs:
           else
             ./mvnw -B -pl taxonomy-app -am install \
               -DskipTests \
+              -Dcyclonedx.skip=true \
               -Dtaxonomy.model.download.skip=true
             ./mvnw -B -pl taxonomy-app verify -Pscreenshots \
               -Dtest=__NoUnitTests__ \
               -Dsurefire.failIfNoSpecifiedTests=false \
               -Dit.test=ScreenshotGeneratorIT#captureArchitectureView \
               -DgenerateScreenshots=true \
+              -Dcyclonedx.skip=true \
               -Dtaxonomy.model.download.skip=true \
               -Dfailsafe.rerunFailingTestsCount=1
           fi
