@@ -140,8 +140,13 @@ try {
       const text = document.querySelector('#statusArea')?.textContent?.toLowerCase() || '';
       return text.includes('complete') || text.includes('completed');
     }, null, { timeout: 120_000 });
+    assert(await page.evaluate(() => Object.values(window.TaxonomyState?.currentScores || {})
+      .some(score => Number(score) > 0)),
+      'Real UI analysis completed without producing scored taxonomy state');
+    await page.locator('#viewList').click();
+    await page.locator('.tax-pct').first().waitFor({ state: 'attached', timeout: 10_000 });
     assert(await page.locator('.tax-pct').count() > 0,
-      'Real UI analysis completed without rendering scored taxonomy nodes');
+      'Scored taxonomy nodes were not restored in the result list');
     assert(await page.locator('[role="treeitem"][aria-label*="Relevance"]').count() > 0,
       'Dynamic scores were not synchronized to accessible tree-item names');
 
