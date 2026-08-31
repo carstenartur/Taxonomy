@@ -142,6 +142,20 @@
         return Number.isFinite(number) ? number : fallback;
     }
 
+    function shouldMuteEdge(options) {
+        if (options.edgeId === options.selectedEdgeId) return false;
+        var mutedBySelection = Boolean(options.selectedNodeId) && !options.connected;
+        var mutedBySearch = options.hasSearch && !options.searchRelevant;
+        return mutedBySelection || mutedBySearch;
+    }
+
+    function shouldClearSelectionFromClick(event) {
+        if (!event || event.defaultPrevented) return false;
+        var target = event.target;
+        if (!target || typeof target.closest !== 'function') return true;
+        return !target.closest('.impact-map-node, .impact-map-edge-hit');
+    }
+
     function createElement(tagName, className, text) {
         var element = document.createElement(tagName);
         if (className) element.className = className;
@@ -728,12 +742,12 @@
         }
 
         function matchingNodeIds() {
-            var query = state.searchQuery.trim().toLocaleLowerCase();
+            var query = state.searchQuery.trim().toLowerCase();
             if (!query) return [];
             return state.allNodes.filter(function (node) {
-                return node.id.toLocaleLowerCase().indexOf(query) >= 0 ||
-                    node.title.toLocaleLowerCase().indexOf(query) >= 0 ||
-                    node.sheetLabel.toLocaleLowerCase().indexOf(query) >= 0;
+                return node.id.toLowerCase().indexOf(query) >= 0 ||
+                    node.title.toLowerCase().indexOf(query) >= 0 ||
+                    node.sheetLabel.toLowerCase().indexOf(query) >= 0;
             }).map(function (node) { return node.id; });
         }
 
@@ -976,7 +990,7 @@
                     if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         setSelection(node.id, null, false);
-                    } else if (event.key.toLocaleLowerCase() === 'f') {
+                    } else if (event.key.toLowerCase() === 'f') {
                         event.preventDefault();
                         state.selectedNodeId = node.id;
                         state.selectedEdgeId = null;
@@ -1018,18 +1032,25 @@
             });
 
             state.edgeElements.forEach(function (element, id) {
-                var edge = state.visible.edges.find(function (candidate) { return candidate.id === id; });
                 var connected = connectedEdgeIds.has(id);
+                var source = element.getAttribute('data-source');
+                var target = element.getAttribute('data-target');
+                var searchRelevant = !hasSearch || matches.has(source) || matches.has(target);
+                var muted = shouldMuteEdge({
+                    edgeId: id,
+                    selectedEdgeId: selectedEdge,
+                    selectedNodeId: selectedNode,
+                    connected: connected,
+                    hasSearch: hasSearch,
+                    searchRelevant: searchRelevant
+                });
                 element.classList.toggle('is-selected', id === selectedEdge);
                 element.classList.toggle('is-connected', connected);
-                element.classList.toggle('is-muted', Boolean(selectedNode) && !connected);
+                element.classList.toggle('is-muted', muted);
                 if (element._label) {
-                    element._label.style.display = state.visible.edges.length <= 14 || connected || id === selectedEdge
+                    element._label.style.display = state.visible.edges.length <= 14 ||
+                        connected || id === selectedEdge || (hasSearch && searchRelevant)
                         ? '' : 'none';
-                }
-                if (hasSearch && edge) {
-                    var searchRelevant = matches.has(edge.source) || matches.has(edge.target);
-                    element.classList.toggle('is-muted', !searchRelevant);
                 }
             });
             updateStatus();
@@ -1292,7 +1313,7 @@
         });
 
         svg.addEventListener('click', function (event) {
-            if (event.target === svg) {
+            if (shouldClearSelectionFromClick(event)) {
                 setSelection(null, null, false);
             }
         });
@@ -1348,7 +1369,9 @@
             normalizeNodes: normalizeNodes,
             normalizeEdges: normalizeEdges,
             buildLayout: buildLayout,
-            visibleModel: visibleModel
+            visibleModel: visibleModel,
+            shouldMuteEdge: shouldMuteEdge,
+            shouldClearSelectionFromClick: shouldClearSelectionFromClick
         };
     }
 

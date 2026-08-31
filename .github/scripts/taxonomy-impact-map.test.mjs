@@ -191,6 +191,44 @@ test('context and focus modes reduce the visible graph predictably', () => {
   assert.deepEqual(new Set(focused.edges.map((edge) => edge.id)), new Set(['AB', 'BC']));
 });
 
+test('combines selection and search edge muting without overriding either state', () => {
+  const { api } = loadApi();
+
+  assert.equal(api.shouldMuteEdge({
+    edgeId: 'AB', selectedEdgeId: null, selectedNodeId: 'A',
+    connected: false, hasSearch: false, searchRelevant: true,
+  }), true);
+  assert.equal(api.shouldMuteEdge({
+    edgeId: 'AB', selectedEdgeId: null, selectedNodeId: 'A',
+    connected: true, hasSearch: true, searchRelevant: false,
+  }), true);
+  assert.equal(api.shouldMuteEdge({
+    edgeId: 'AB', selectedEdgeId: null, selectedNodeId: 'A',
+    connected: true, hasSearch: true, searchRelevant: true,
+  }), false);
+  assert.equal(api.shouldMuteEdge({
+    edgeId: 'AB', selectedEdgeId: 'AB', selectedNodeId: 'A',
+    connected: false, hasSearch: true, searchRelevant: false,
+  }), false);
+});
+
+test('clears selection from non-interactive diagram background clicks', () => {
+  const { api } = loadApi();
+  const background = { closest() { return null; } };
+  const node = { closest() { return {}; } };
+
+  assert.equal(api.shouldClearSelectionFromClick({ defaultPrevented: false, target: background }), true);
+  assert.equal(api.shouldClearSelectionFromClick({ defaultPrevented: false, target: node }), false);
+  assert.equal(api.shouldClearSelectionFromClick({ defaultPrevented: true, target: background }), false);
+});
+
+test('uses locale-independent matching and avoids per-edge graph scans', () => {
+  assert.doesNotMatch(graphSource, /toLocaleLowerCase/);
+  assert.doesNotMatch(graphSource, /state\.visible\.edges\.find/);
+  assert.match(graphSource, /\.toLowerCase\(\)/);
+  assert.match(graphSource, /mutedBySelection \|\| mutedBySearch/);
+});
+
 test('provides orientation, search, focus, detail and accessibility controls', () => {
   for (const requiredContract of [
     'impact-map-search',
