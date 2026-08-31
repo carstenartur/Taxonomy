@@ -1,0 +1,56 @@
+name: Fix Complete Copilot Result Finalizer
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-screenshot
+    paths:
+      - .github/workflows/fix-finalize-complete-copilot-result.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-complete-copilot-result-finalizer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Include required reactor modules in the focused contract test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/finalize-complete-copilot-result.yml')
+          text = workflow.read_text(encoding='utf-8')
+          old = './mvnw -B -pl taxonomy-app test\n'
+          new = './mvnw -B -pl taxonomy-app -am test\n'
+          if text.count(old) != 1:
+              raise SystemExit('Expected exactly one focused Maven test command')
+          workflow.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          rm .github/workflows/fix-finalize-complete-copilot-result.yml
+          git diff --check
+
+      - name: Publish the corrected self-removing finalizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=fix/complete-copilot-run-screenshot
+          remote_head="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            .github/workflows/finalize-complete-copilot-result.yml \
+            .github/workflows/fix-finalize-complete-copilot-result.yml
+          git commit -m 'Run the complete result contract with its reactor dependencies'
+          git push origin HEAD:"$branch"
