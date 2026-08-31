@@ -1369,12 +1369,53 @@ class ScreenshotGeneratorIT {
                     && impactKpis.size() >= 4;
         });
 
+        // The product intentionally opens large results at a readable focal point. For the
+        // documentation image, temporarily use a wider viewport and activate Fit so every
+        // architecture layer is visible while the cards remain legible.
+        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1800, 1100));
         WebElement impactMap = driver.findElement(By.cssSelector(".impact-map-workbench"));
-        js("window.dispatchEvent(new Event('resize'));" +
-           "arguments[0].scrollIntoView({behavior:'instant', block:'start'});", impactMap);
-        wait(5).until(d -> impactMap.getSize().getWidth() > 0
-                && impactMap.getSize().getHeight() > 0);
+        js("arguments[0].style.position='fixed';" +
+           "arguments[0].style.inset='0';" +
+           "arguments[0].style.zIndex='2000';" +
+           "arguments[0].style.width='100vw';" +
+           "arguments[0].style.height='100vh';" +
+           "arguments[0].style.borderRadius='0';" +
+           "arguments[0].style.setProperty('--impact-map-canvas-height','650px');" +
+           "document.body.style.overflow='hidden';" +
+           "window.dispatchEvent(new Event('resize'));", impactMap);
+        wait(5).until(d -> impactMap.getSize().getWidth() >= 1700
+                && impactMap.getSize().getHeight() >= 900);
+
+        js("var root=arguments[0];" +
+           "var label=(window.TaxonomyI18n && window.TaxonomyI18n.t)" +
+           "  ? window.TaxonomyI18n.t('impactmap.fit') : 'Fit';" +
+           "var btn=Array.from(root.querySelectorAll('.impact-map-button')).find(function(candidate) {" +
+           "  return candidate.getAttribute('aria-label')===label || candidate.title===label;" +
+           "});" +
+           "if (!btn) throw new Error('Impact-map Fit button not found');" +
+           "window.__impactMapFitReady=false;" +
+           "btn.click();" +
+           "window.setTimeout(function(){window.__impactMapFitReady=true;},450);", impactMap);
+        wait(5).until(d -> Boolean.TRUE.equals(
+                ((JavascriptExecutor) d).executeScript(
+                        "return window.__impactMapFitReady === true;")));
+        wait(5).until(d -> Boolean.TRUE.equals(
+                ((JavascriptExecutor) d).executeScript(
+                        "var root=arguments[0], canvas=root.querySelector('.impact-map-canvas');" +
+                        "var headers=Array.from(root.querySelectorAll('.impact-map-layer-header'));" +
+                        "if (!canvas || headers.length < 8) return false;" +
+                        "var c=canvas.getBoundingClientRect();" +
+                        "return headers.every(function(header) {" +
+                        "  var r=header.getBoundingClientRect();" +
+                        "  return r.left >= c.left - 2 && r.right <= c.right + 2 &&" +
+                        "         r.top >= c.top - 2 && r.bottom <= c.bottom + 2;" +
+                        "});", impactMap)));
+
         saveElementScreenshot(impactMap, "20-architecture-view.png");
+        js("arguments[0].removeAttribute('style');" +
+           "document.body.style.overflow='';" +
+           "window.dispatchEvent(new Event('resize'));", impactMap);
+        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
         // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
         navigateToTab("analyze");
