@@ -1,0 +1,192 @@
+name: Structure Complete Copilot Result V2
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-screenshot
+    paths:
+      - .github/workflows/structure-complete-copilot-result-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: structure-complete-copilot-result-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify and publish the structured complete result
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Apply the structured result recipe with robust browser-test insertion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/structure-complete-copilot-result.yml')
+          lines = workflow.read_text(encoding='utf-8').splitlines()
+          step_name = '      - name: Replace raw payload output with a structured review surface'
+          step = lines.index(step_name)
+          run_index = next(
+              index for index in range(step + 1, len(lines))
+              if lines[index] == '        run: |')
+          body = []
+          for line in lines[run_index + 1:]:
+              if line.startswith('      - name:'):
+                  break
+              if line and not line.startswith('          '):
+                  raise SystemExit(f'Unexpected recipe indentation: {line!r}')
+              body.append(line[10:] if line else '')
+          script = '\n'.join(body) + '\n'
+
+          start = script.index(
+              "session_path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')")
+          end = script.index(
+              "en_path = Path('docs/en/COPILOT_AUTOPILOT.md')", start)
+          robust = '''session_path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          session = session_path.read_text(encoding='utf-8')
+          method_start = session.index(
+              '    private static void openSelectedSnapshotThroughVisibleAnalysisControls() {')
+          ready_start = session.index(
+              '        wait.until(browser -> browser.findElements(\\n', method_start)
+          ready_end = session.index(
+              '\\n        if (Boolean.getBoolean("generateScreenshots"))', ready_start)
+          ready_block = session[ready_start:ready_end]
+          if '[data-decision-report-format]' not in ready_block:
+              raise SystemExit('Authoritative report readiness block not found')
+          result_assertions = ''' + '"""' + '''
+              wait.until(ExpectedConditions.visibilityOfElementLocated(
+                      By.id("snapshotResultOverview")));
+              assertThat(driver.findElements(By.cssSelector(
+                      "#snapshotResultOverview .portfolio-result-kpi")))
+                      .hasSize(6);
+              String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
+              assertThat(visibleResult)
+                      .contains("Copilot result overview")
+                      .contains("Gap analysis")
+                      .contains("Detected patterns")
+                      .contains("Recommendation")
+                      .doesNotContain("missingRelations")
+                      .doesNotContain("businessText");
+              List<WebElement> findingDetails = driver.findElements(
+                      By.cssSelector("#snapshotDetail details.portfolio-finding-details"));
+              assertThat(findingDetails).isNotEmpty();
+              assertThat(findingDetails).allSatisfy(detail ->
+                      assertThat(detail.getAttribute("open")).isNull());
+              assertThat(driver.findElement(By.id("technicalSnapshotData"))
+                      .getAttribute("open")).isNull();
+          ''' + '"""' + '''
+          session_path.write_text(
+              session[:ready_end] + result_assertions + session[ready_end:],
+              encoding='utf-8')
+
+          '''
+          script = script[:start] + robust + script[end:]
+          Path('/tmp/apply-structured-result.sh').write_text(script, encoding='utf-8')
+          PY
+          bash /tmp/apply-structured-result.sh
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          git diff --check
+
+      - name: Verify focused result contracts
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am test
+          -Dtest=RequirementCopilotResultSurfaceContractTest,CompleteCopilotResultUiContractTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Exercise the authoritative complete session and regenerate screenshot 72
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=CompleteCopilotSessionIT
+          -DgenerateScreenshots=true
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify the structured screenshot and test evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=docs/images/72-complete-copilot-run-result.png
+          test -s "$image"
+          test "$(wc -c < "$image")" -gt 50000
+          file "$image" | grep -F 'PNG image data'
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+
+          image = Path('docs/images/72-complete-copilot-run-result.png').read_bytes()
+          width, height = struct.unpack('>II', image[16:24])
+          if width < 2000 or height < 1200:
+              raise SystemExit(f'Screenshot is unexpectedly small: {width}x{height}')
+          print(f'Verified structured screenshot dimensions: {width}x{height}')
+          PY
+          grep -F 'Tests run: 1, Failures: 0, Errors: 0' \
+            taxonomy-app/target/failsafe-reports/com.taxonomy.CompleteCopilotSessionIT.txt
+          ! grep -F 'gap.summary || gap.description || JSON.stringify(gap)' \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          git diff --check
+
+      - name: Upload structured result evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-copilot-structured-result
+          path: |
+            docs/images/72-complete-copilot-run-result.png
+            taxonomy-app/target/failsafe-reports/**
+            taxonomy-app/target/surefire-reports/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish only permanent product, test and documentation changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=fix/complete-copilot-run-screenshot
+          remote_head="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js \
+            taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css \
+            taxonomy-app/src/test/java/com/taxonomy/RequirementCopilotResultSurfaceContractTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotResultUiContractTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java \
+            docs/images/72-complete-copilot-run-result.png \
+            docs/en/COPILOT_AUTOPILOT.md \
+            docs/de/COPILOT_AUTOPILOT.md
+          git diff --cached --check
+          git commit -m 'Present complete Copilot results as a reviewable summary'
+          git push origin HEAD:"$branch"
