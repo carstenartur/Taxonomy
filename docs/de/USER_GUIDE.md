@@ -440,19 +440,23 @@ Das Panel zeigt drei Bereiche:
 |---|---|
 | **Impact Summary Bar** | Eine kompakte KPI-Zeile: direkte Treffer, betroffene Elemente, Beziehungen, Schichten und Änderungs-Hotspots |
 | **Richtlinien-Titel & Legende** | Ein Titel, der die aktive Diagrammrichtlinie anzeigt (z. B. „Architektur-Wirkungsansicht"), sowie kleine Regel-Badges, die aktive Filter beschreiben (z. B. „Wurzelknoten unterdrückt"). Diese Anzeige aktualisiert sich automatisch, wenn die `diagram.policy`-Einstellung geändert wird. |
-| **Interaktiver Netzwerkgraph** | Ein interaktiver kräftebasierter Netzwerkgraph (Standardansicht), der alle betroffenen Elemente als verschiebbare Knoten zeigt, verbunden durch gerichtete Kanten. Umschalten auf „🏗️ Layer View" für die traditionelle Swimlane-Darstellung. |
+| **Interaktiver Auswirkungsgraph** | Eine stabile, nach Architekturebenen geordnete Standardansicht mit lesbaren Elementkarten, Suche, Kontextfilter, Fokusmodus, Zoom und Detailbereich. Umschalten auf „🏗️ Layer View" für die kompakte Swimlane-Darstellung. |
 | **Detail-Tabellen** | Aufklappbare Tabellen mit allen Elementen und Beziehungen samt vollständigen Metadaten (über die 📋-Zusammenfassungszeile aufklappbar) |
 
 ### Die Visualisierung verstehen
 
-Die Hauptvisualisierung ist ein **interaktiver kräftebasierter Netzwerkgraph**, der alle betroffenen Elemente und ihre Beziehungen zeigt. Knoten sind Kreise, die nach Taxonomieschicht eingefärbt sind, mit einer Größe proportional zur Relevanz.
+Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Auswirkungsgraph**. Fähigkeiten, Prozesse, Dienste, Anwendungen, Informationsprodukte und Kommunikationsdienste bleiben bei jedem Aufruf in denselben Spalten. Dadurch lassen sich Ergebnisstände vergleichen und Beziehungspfade verfolgen.
 
-- **★ Ankerknoten** (direkte Treffer) haben einen goldenen Rahmen und zeigen ihren Score-Prozentsatz an. Dies sind die Knoten, die die KI als beste Antwort auf Ihre Anforderung betrachtet.
-- **⚠️ Hotspot-Knoten** pulsieren rot und heben Bereiche mit hoher Änderungswirkung hervor — entweder Anker mit mehreren ausgehenden Beziehungen oder Knoten, die von mehreren verschiedenen Ankern erreicht werden.
-- **Propagierte Elemente** erweitern das Bild: Wenn ein Ankerknoten eine Fähigkeit *realisiert*, erscheint diese Fähigkeit ebenfalls mit ihrer Hop-Distanz.
-- **Gerichtete Kanten** verbinden spezifische Quell- → Zielknoten, eingefärbt nach Beziehungstyp (z. B. grün für SUPPORTS, blau für REALIZES). Dickere Kanten zeigen höhere propagierte Relevanz an.
-- **Ziehen** Sie Knoten, um das Layout neu anzuordnen, **hovern** Sie für einen detaillierten Tooltip (Code, Titel, Schicht, Relevanz, Hop-Distanz, Anker-/Hotspot-Status) und **klicken** Sie, um den Knoten im Graph Explorer zu öffnen.
-- Wechseln Sie zu **„🏗️ Layer View"** für die traditionelle Swimlane-Darstellung, die Elemente nach Architekturschicht gruppiert.
+- **Elementkarten** zeigen Knotencode, verständliche Bezeichnung, Relevanz, Architekturebene sowie direkten Treffer oder Beziehungsschritt. Lange Bezeichnungen werden lesbar umgebrochen.
+- **★ Direkte Treffer** haben einen hervorgehobenen Rahmen und stehen innerhalb ihrer Ebene zuerst. Dies sind die Elemente, welche die Analyse unmittelbar aus der Anforderung abgeleitet hat.
+- **⚠️ Hotspots** kennzeichnen Elemente mit hoher Änderungswirkung, etwa gemeinsam genutzte Abhängigkeiten oder direkte Treffer mit mehreren ausgehenden Beziehungen.
+- **Gerichtete Verbindungen** zeigen Quelle, Ziel und Beziehungstyp. Wenn Sie ein Element auswählen, werden dessen verbundene Pfade hervorgehoben und nicht zugehörige Elemente zurückgenommen.
+- Mit der **Suche** finden Sie Elemente anhand von Code, Bezeichnung oder Ebene. Drücken Sie die Eingabetaste, um zum ersten Treffer zu springen.
+- Der Schalter **Kontextknoten** blendet propagierte Elemente ein oder aus. Direkte Treffer bleiben sichtbar.
+- Wechseln Sie zwischen **Übersicht** und **Fokus**. Der Fokusmodus zeigt das ausgewählte Element mit seinen direkten Nachbarn; ein Doppelklick auf eine Karte aktiviert ihn ebenfalls.
+- Nutzen Sie **Einpassen**, **Zoom**, Verschieben der Zeichenfläche und **Vollbild**, um kleine oder umfangreiche Ergebnisse zu untersuchen. Auf schmalen Ansichten startet die Darstellung auf dem wichtigsten Treffer in lesbarer Größe.
+- **Klicken** Sie auf eine Elementkarte oder Verbindung, um im Detailbereich Relevanz, Entfernung, Begründung und verbundene Elemente anzuzeigen. Von dort können Sie das Element im Graph Explorer öffnen.
+- Wechseln Sie zu **„🏗️ Layer View"** für die kompakte Swimlane-Darstellung nach Architekturebene.
 
 ![Architekturansicht](../images/20-architecture-view.png)
 

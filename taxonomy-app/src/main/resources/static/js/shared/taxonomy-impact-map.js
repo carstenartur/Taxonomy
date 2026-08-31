@@ -610,6 +610,7 @@
         zoomGroup.appendChild(fitButton);
         zoomGroup.appendChild(zoomInButton);
         zoomGroup.appendChild(fullscreenButton);
+        fullscreenButton.hidden = typeof root.requestFullscreen !== 'function';
         toolbar.appendChild(zoomGroup);
 
         var status = createElement('div', 'impact-map-status');
@@ -682,17 +683,35 @@
             }
         }
 
-        function centerOnNode(nodeId) {
+        function centerOnNode(nodeId, requestedScale) {
             var position = state.layout && state.layout.positions.get(nodeId);
             if (!position) return;
             var size = viewportSize();
             var current = window.d3.zoomTransform(svg);
-            var scale = clamp(Math.max(current.k, 1.05), 0.8, 1.55);
+            var scale = requestedScale === undefined
+                ? clamp(Math.max(current.k, 1.05), 0.8, 1.55)
+                : clamp(requestedScale, 0.55, 1.55);
             var centerX = position.x + position.width / 2;
             var centerY = position.y + position.height / 2;
             applyTransform(window.d3.zoomIdentity
                 .translate(size.width / 2 - centerX * scale, size.height / 2 - centerY * scale)
                 .scale(scale));
+        }
+
+        function showReadableInitialView() {
+            if (!state.layout) return;
+            var size = viewportSize();
+            var padding = 34;
+            var fullFitScale = Math.min(
+                (size.width - padding * 2) / state.layout.width,
+                (size.height - padding * 2) / state.layout.height,
+                1.25
+            );
+            if (fullFitScale >= 0.62 || !state.selectedNodeId) {
+                fitView();
+            } else {
+                centerOnNode(state.selectedNodeId, 0.82);
+            }
         }
 
         function updateViewBox() {
@@ -1310,7 +1329,8 @@
             delete container.__taxonomyImpactMapCleanup;
         };
 
-        renderDiagram(true);
+        renderDiagram(false);
+        window.requestAnimationFrame(showReadableInitialView);
         return state;
     }
 

@@ -203,6 +203,9 @@ test('provides orientation, search, focus, detail and accessibility controls', (
     'openGraphExplorer',
     'requestFullscreen',
     'ResizeObserver',
+    'showReadableInitialView',
+    'fullFitScale >= 0.62',
+    "fullscreenButton.hidden = typeof root.requestFullscreen !== 'function'",
   ]) {
     assert.ok(graphSource.includes(requiredContract), `missing contract: ${requiredContract}`);
   }
