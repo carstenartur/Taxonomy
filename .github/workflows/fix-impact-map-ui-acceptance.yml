@@ -1,0 +1,36 @@
+name: Fix impact map UI acceptance navigation
+
+on:
+  push:
+    branches:
+      - fix/usable-result-impact-map
+    paths:
+      - .github/workflows/fix-impact-map-ui-acceptance.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/usable-result-impact-map
+          fetch-depth: 0
+
+      - name: Restore the scored result list before score assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/fix-impact-map-ui-acceptance.py
+          node --check .github/scripts/ui-acceptance.mjs
+          node --test .github/scripts/taxonomy-impact-map.test.mjs
+          git diff --check
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/scripts/ui-acceptance.mjs
+          git commit -m "Keep impact map UI acceptance in the scored result view"
+          git push origin HEAD:fix/usable-result-impact-map
