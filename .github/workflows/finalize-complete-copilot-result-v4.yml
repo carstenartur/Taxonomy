@@ -1,0 +1,233 @@
+name: Finalize Complete Copilot Result V4
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-result-review
+    paths:
+      - .github/workflows/finalize-complete-copilot-result-v4.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: finalize-complete-copilot-result
+  cancel-in-progress: true
+
+jobs:
+  rebuild-verify-publish:
+    name: Rebuild on current main, verify and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/complete-copilot-run-result-review
+          fetch-depth: 0
+
+      - name: Build the final feature tree and replay it onto current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          original_head="$(git rev-parse HEAD)"
+          echo "ORIGINAL_BRANCH_HEAD=$original_head" >> "$GITHUB_ENV"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          recipe = Path('.github/workflows/finalize-complete-copilot-result-v3.yml')
+          content = recipe.read_text(encoding='utf-8')
+          marker = "          python3 - <<'PY'\n"
+          start = content.index(marker) + len(marker)
+          end = content.index("\n          PY", start)
+          script = textwrap.dedent(content[start:end])
+          exec(compile(script, str(recipe) + ':embedded-patch', 'exec'))
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          git diff --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Prepare final complete-result feature tree'
+          feature_commit="$(git rev-parse HEAD)"
+
+          git fetch origin main
+          base="$(git merge-base "$feature_commit" origin/main)"
+          git diff --binary "$base" "$feature_commit" -- \
+            docs/qa/authoritative-copilot-session-e2e.md \
+            taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java \
+            taxonomy-app/src/test/java/com/taxonomy/portfolio/CompleteCopilotResultUiContractTest.java \
+            > /tmp/complete-result.patch
+          git show "$feature_commit:docs/en/COPILOT_AUTOPILOT.md" > /tmp/copilot-en-feature.md
+          git show "$feature_commit:docs/de/COPILOT_AUTOPILOT.md" > /tmp/copilot-de-feature.md
+
+          git checkout -B complete-result-clean origin/main
+          git apply --3way --index /tmp/complete-result.patch
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          IMAGE = '72-complete-copilot-run-result.png'
+
+          def extract_section(text: str) -> tuple[str, str | None]:
+              lines = text.splitlines(keepends=True)
+              image_index = next(i for i, line in enumerate(lines) if IMAGE in line)
+              start = image_index
+              while start >= 0 and not lines[start].startswith('## '):
+                  start -= 1
+              if start < 0:
+                  raise RuntimeError('Complete-result section heading not found')
+              end = start + 1
+              while end < len(lines) and not lines[end].startswith('## '):
+                  end += 1
+              next_heading = lines[end].rstrip('\r\n') if end < len(lines) else None
+              section = ''.join(lines[start:end]).rstrip() + '\n\n'
+              return section, next_heading
+
+          def merge_section(target_path: str, feature_path: str) -> None:
+              target = Path(target_path)
+              current = target.read_text(encoding='utf-8')
+              if IMAGE in current:
+                  return
+              feature = Path(feature_path).read_text(encoding='utf-8')
+              section, next_heading = extract_section(feature)
+              if next_heading and next_heading in current:
+                  current = current.replace(next_heading, section + next_heading, 1)
+              else:
+                  current = current.rstrip() + '\n\n' + section
+              target.write_text(current, encoding='utf-8')
+
+          merge_section('docs/en/COPILOT_AUTOPILOT.md', '/tmp/copilot-en-feature.md')
+          merge_section('docs/de/COPILOT_AUTOPILOT.md', '/tmp/copilot-de-feature.md')
+          PY
+
+          git add docs/en/COPILOT_AUTOPILOT.md docs/de/COPILOT_AUTOPILOT.md
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          git diff --check
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify focused source contracts
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am test
+          -Dtest=CompleteCopilotResultUiContractTest,RequirementCopilotUiContractTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Exercise and capture the authoritative complete Copilot session
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=CompleteCopilotSessionIT
+          -DgenerateScreenshots=true
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify the real complete-result screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=docs/images/72-complete-copilot-run-result.png
+          test -s "$image"
+          test "$(wc -c < "$image")" -gt 75000
+          file "$image" | grep -F 'PNG image data'
+          ! grep -F 'gap.summary || gap.description || JSON.stringify(gap)' \
+              taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+
+      - name: Upload focused evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-copilot-result-current-main-evidence
+          path: |
+            docs/images/72-complete-copilot-run-result.png
+            taxonomy-app/target/failsafe-reports/**
+            taxonomy-app/target/surefire-reports/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publish one clean verified commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git commit -m 'Make complete Copilot results reviewable'
+          git push \
+            --force-with-lease=refs/heads/fix/complete-copilot-run-result-review:"$ORIGINAL_BRANCH_HEAD" \
+            origin HEAD:fix/complete-copilot-run-result-review
+
+      - name: Create or publish the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          number="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head fix/complete-copilot-run-result-review \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+          if [ -z "$number" ]; then
+            cat > /tmp/body.md <<'EOF'
+          ## Problem
+
+          A completed Copilot full analysis exposed its most important results as an unstructured JSON-like text block. Cancelled or stale runs could also leave the controls needed for the next analysis hidden.
+
+          ## Result
+
+          The selected immutable snapshot now opens directly as a structured review surface with six orientation metrics, gap and pattern evidence, architecture recommendations, bounded and labelled secondary tables, technical diagnostics, decision filters and an explicit architecture-workbench path. Restart controls remain visible after cancellation or failure and reappear automatically for a new immutable requirement version.
+
+          ## Verification
+
+          The clean branch based on current `main` passed focused source contracts, a packaged multi-module build and `CompleteCopilotSessionIT` with PostgreSQL, Selenium, the deterministic mock LLM, cancellation, reconnect, reload, two verification passes, keyboard access, a new version, prompt-budget failure and equivalent DOCX/HTML/JSON exports. The screenshot is generated by that same authoritative session.
+
+          ![Complete Copilot run result](https://raw.githubusercontent.com/carstenartur/Taxonomy/fix/complete-copilot-run-result-review/docs/images/72-complete-copilot-run-result.png)
+          EOF
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head fix/complete-copilot-run-result-review \
+              --title 'Make complete Copilot results reviewable' \
+              --body-file /tmp/body.md
+            number="$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --head fix/complete-copilot-run-result-review \
+              --base main \
+              --state open \
+              --json number \
+              --jq '.[0].number')"
+          fi
+          is_draft="$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+          if [ "$is_draft" = true ]; then
+            gh pr ready "$number" --repo "$GITHUB_REPOSITORY"
+          fi
+          gh pr comment "$number" --repo "$GITHUB_REPOSITORY" --body \
+            "The feature was rebuilt on current main and its authoritative complete-session QA passed in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. The generated screenshot and focused Surefire/Failsafe evidence are attached to that run."
