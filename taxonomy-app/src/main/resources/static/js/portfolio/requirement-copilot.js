@@ -36,7 +36,8 @@
             reconnectAttempt: 'Reconnect attempt', cancelling: 'Cancellation requested. Waiting for the authoritative terminal state…',
             retryStatus: 'Retry status connection now', openResult: 'Open result',
             exportTitle: 'Report export', exportRunning: 'Generating and validating the requested export…',
-            exportSuccess: 'Export created', exportFailed: 'Export failed', bytes: 'bytes'
+            exportSuccess: 'Export created', exportFailed: 'Export failed', bytes: 'bytes',
+            runSettings: 'Run settings'
         },
         de: {
             title: 'Copilot-Vollanalyse', run: 'Vollanalyse starten', cancel: 'Abbrechen',
@@ -53,7 +54,8 @@
             reconnectAttempt: 'Wiederverbindungsversuch', cancelling: 'Abbruch angefordert. Warten auf den autoritativen Endzustand…',
             retryStatus: 'Statusverbindung jetzt erneut versuchen', openResult: 'Ergebnis öffnen',
             exportTitle: 'Berichtsexport', exportRunning: 'Der angeforderte Export wird erzeugt und geprüft…',
-            exportSuccess: 'Export erstellt', exportFailed: 'Export fehlgeschlagen', bytes: 'Bytes'
+            exportSuccess: 'Export erstellt', exportFailed: 'Export fehlgeschlagen', bytes: 'Bytes',
+            runSettings: 'Laufeinstellungen'
         }
     };
 
@@ -107,32 +109,35 @@
             </div>
             <div class="card-body">
                 <div id="copilotError" class="alert alert-danger d-none" role="alert" tabindex="-1"></div>
-                <div class="row g-3 align-items-end">
-                    <div class="col-12 col-md-3">
-                        <label id="copilotProfileLabel" for="copilotProfile" class="form-label">Profile</label>
-                        <select id="copilotProfile" class="form-select">
-                            <option id="copilotProfileStandard" value="STANDARD">Standard</option>
-                            <option id="copilotProfileFull" value="FULL" selected>Full</option>
-                            <option id="copilotProfileExhaustive" value="EXHAUSTIVE">Exhaustive</option>
-                        </select>
-                    </div>
-                    <div class="col-12 col-md-5">
-                        <div class="form-check">
-                            <input id="copilotForce" class="form-check-input" type="checkbox">
-                            <label id="copilotForceLabel" class="form-check-label" for="copilotForce">
-                                Force a new run even when the current state was already analysed
-                            </label>
+                <details id="copilotRunSettings" class="copilot-run-settings" open>
+                    <summary><span id="copilotRunSettingsLabel">Run settings</span></summary>
+                    <div class="row g-3 align-items-end mt-1">
+                        <div class="col-12 col-md-3">
+                            <label id="copilotProfileLabel" for="copilotProfile" class="form-label">Profile</label>
+                            <select id="copilotProfile" class="form-select">
+                                <option id="copilotProfileStandard" value="STANDARD">Standard</option>
+                                <option id="copilotProfileFull" value="FULL" selected>Full</option>
+                                <option id="copilotProfileExhaustive" value="EXHAUSTIVE">Exhaustive</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-5">
+                            <div class="form-check">
+                                <input id="copilotForce" class="form-check-input" type="checkbox">
+                                <label id="copilotForceLabel" class="form-check-label" for="copilotForce">
+                                    Force a new run even when the current state was already analysed
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4 d-flex gap-2 flex-wrap">
+                            <button id="copilotRun" type="button" class="btn btn-primary">
+                                <span id="copilotRunSpinner" class="spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
+                                <span id="copilotRunLabel">Run full analysis</span>
+                            </button>
+                            <button id="copilotCancel" type="button" class="btn btn-outline-danger" disabled>Cancel</button>
                         </div>
                     </div>
-                    <div class="col-12 col-md-4 d-flex gap-2 flex-wrap">
-                        <button id="copilotRun" type="button" class="btn btn-primary">
-                            <span id="copilotRunSpinner" class="spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
-                            <span id="copilotRunLabel">Run full analysis</span>
-                        </button>
-                        <button id="copilotCancel" type="button" class="btn btn-outline-danger" disabled>Cancel</button>
-                    </div>
-                </div>
-                <p id="copilotReviewBoundary" class="small text-body-secondary mt-3 mb-0"></p>
+                    <p id="copilotReviewBoundary" class="small text-body-secondary mt-3 mb-0"></p>
+                </details>
                 <div id="copilotOperation" class="border rounded p-3 mt-3 d-none" role="status" aria-live="polite"
                      data-operation-surface="copilot">
                     <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
@@ -171,6 +176,7 @@
         setText('copilotForceLabel', t('force'));
         setText('copilotReviewBoundary', t('review'));
         setText('copilotRetryStatus', t('retryStatus'));
+        setText('copilotRunSettingsLabel', t('runSettings'));
     }
 
     function installControlInventory() {
@@ -357,7 +363,11 @@
 
         const cancelButton = document.getElementById('copilotCancel');
         if (cancelButton) cancelButton.disabled = terminal.has(operation.status);
-        setControls(!terminal.has(operation.status));
+        const isTerminal = terminal.has(operation.status);
+        const settings = document.getElementById('copilotRunSettings');
+        if (settings) settings.open = !isTerminal;
+        document.getElementById('requirementCopilotCard')?.classList.toggle('copilot-terminal', isTerminal);
+        setControls(!isTerminal);
         announce(message + ' ' + operation.completedPasses
             + '/' + operation.verificationPasses);
     }

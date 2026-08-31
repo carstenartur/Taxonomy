@@ -47,7 +47,26 @@
             reportHtml: 'HTML', reportJson: 'JSON',
             selected: 'Selected', retry: 'Retry failed analysis', comparePrevious: 'Compare with previous version',
             added: 'Added', removed: 'Removed', unchanged: 'Unchanged', permission: 'Your role cannot change this requirement.',
-            failed: 'The operation failed.'
+            failed: 'The operation failed.', resultOverview: 'Copilot result overview',
+            mappedElements: 'Mapped elements', mappedRelations: 'Mapped relationships',
+            openGaps: 'Open gaps', patternCoverage: 'Pattern coverage',
+            recommendationConfidence: 'Recommendation confidence', confirmedElements: 'Confirmed elements',
+            gapAnalysis: 'Gap analysis', anchorsEvaluated: 'Anchors evaluated',
+            missingRelations: 'Missing relationships', coverageGaps: 'Coverage gaps',
+            incompletePatterns: 'Incomplete patterns', highestPriority: 'Highest-priority findings',
+            allFindings: 'All findings', patternDetection: 'Detected patterns',
+            matchedPatterns: 'Matched patterns', expectedSteps: 'Expected architecture steps',
+            recommendation: 'Recommendation', proposedElements: 'Proposed elements',
+            suggestedRelations: 'Suggested relationships', reasoning: 'Reasoning',
+            technicalData: 'Technical snapshot data',
+            technicalDataHint: 'Condensed provider-neutral diagnostics. Use the JSON report for the complete payload.',
+            openWorkbench: 'Inspect diagram in architecture workbench',
+            mappingResults: 'Taxonomy mappings', relationResults: 'Relationship mappings',
+            filterDecisions: 'Review decisions', searchDecisions: 'Search code, title or evidence…',
+            allReviews: 'All review states', visibleDecisions: 'Visible decisions',
+            noDecisionMatches: 'No decisions match the current filter.', decisionEvidence: 'Evidence / reason',
+            reviewState: 'Review state', direct: 'Direct', context: 'Context', showDetails: 'Show details',
+            resultReady: 'The immutable Copilot result is ready for review.'
         },
         de: {
             loading: 'Wird geladen…', portfolio: 'Portfolio', matrices: 'Matrizen',
@@ -75,7 +94,26 @@
             reportHtml: 'HTML', reportJson: 'JSON',
             selected: 'Ausgewählt', retry: 'Fehlgeschlagene Analyse wiederholen', comparePrevious: 'Mit vorheriger Version vergleichen',
             added: 'Hinzugefügt', removed: 'Entfernt', unchanged: 'Unverändert', permission: 'Ihre Rolle darf diese Anforderung nicht ändern.',
-            failed: 'Die Operation ist fehlgeschlagen.'
+            failed: 'Die Operation ist fehlgeschlagen.', resultOverview: 'Copilot-Ergebnisübersicht',
+            mappedElements: 'Zugeordnete Elemente', mappedRelations: 'Zugeordnete Beziehungen',
+            openGaps: 'Offene Lücken', patternCoverage: 'Musterabdeckung',
+            recommendationConfidence: 'Konfidenz der Empfehlung', confirmedElements: 'Bestätigte Elemente',
+            gapAnalysis: 'Lückenanalyse', anchorsEvaluated: 'Bewertete Anker',
+            missingRelations: 'Fehlende Beziehungen', coverageGaps: 'Abdeckungslücken',
+            incompletePatterns: 'Unvollständige Muster', highestPriority: 'Wichtigste Befunde',
+            allFindings: 'Alle Befunde', patternDetection: 'Erkannte Muster',
+            matchedPatterns: 'Erfüllte Muster', expectedSteps: 'Erwartete Architekturschritte',
+            recommendation: 'Empfehlung', proposedElements: 'Vorgeschlagene Elemente',
+            suggestedRelations: 'Vorgeschlagene Beziehungen', reasoning: 'Begründung',
+            technicalData: 'Technische Snapshot-Daten',
+            technicalDataHint: 'Verdichtete anbieterneutrale Diagnosedaten. Der JSON-Bericht enthält die vollständigen Nutzdaten.',
+            openWorkbench: 'Diagramm in der Architektur-Workbench untersuchen',
+            mappingResults: 'Taxonomiezuordnungen', relationResults: 'Beziehungszuordnungen',
+            filterDecisions: 'Entscheidungen prüfen', searchDecisions: 'Code, Titel oder Evidenz suchen…',
+            allReviews: 'Alle Prüfzustände', visibleDecisions: 'Sichtbare Entscheidungen',
+            noDecisionMatches: 'Keine Entscheidung entspricht dem aktuellen Filter.', decisionEvidence: 'Evidenz / Grund',
+            reviewState: 'Prüfzustand', direct: 'Direkt', context: 'Kontext', showDetails: 'Details anzeigen',
+            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.'
         }
     };
 
@@ -88,8 +126,12 @@
         wireEvents();
         await loadAll();
         const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
-        if (requestedSnapshot) await selectSnapshot(requestedSnapshot);
-        else if (state.snapshots.length) await selectSnapshot(state.snapshots[0].id);
+        if (requestedSnapshot) {
+            await selectSnapshot(requestedSnapshot);
+            activateDetailTab('analyses-tab');
+        } else if (state.snapshots.length) {
+            await selectSnapshot(state.snapshots[0].id);
+        }
     }
 
     function translateSurface() {
@@ -115,6 +157,16 @@
 
     function setTabText(id, value) { document.getElementById(id).textContent = value; }
 
+    function activateDetailTab(tabId) {
+        const trigger = document.getElementById(tabId);
+        if (!trigger) return;
+        if (window.bootstrap && bootstrap.Tab) {
+            bootstrap.Tab.getOrCreateInstance(trigger).show();
+        } else {
+            trigger.click();
+        }
+    }
+
     function wireEvents() {
         document.getElementById('newVersionForm').addEventListener('submit', createVersion);
         document.getElementById('reanalyzeRequirement').addEventListener('click', analyzeRequirement);
@@ -129,6 +181,10 @@
         document.getElementById('snapshotDetail').addEventListener('click', event => {
             const button = event.target.closest('[data-decision-report-format]');
             if (button) downloadDecisionReport(button.dataset.decisionReportFormat);
+        });
+        document.getElementById('taskList').addEventListener('click', event => {
+            const task = event.target.closest('[data-task-tab]');
+            if (task) activateDetailTab(task.dataset.taskTab);
         });
     }
 
@@ -252,13 +308,16 @@
             return;
         }
         state.snapshots.forEach(snapshot => {
+            const selected = Boolean(state.selectedSnapshot
+                && String(state.selectedSnapshot.id) === String(snapshot.id));
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'list-group-item list-group-item-action';
+            button.className = 'list-group-item list-group-item-action' + (selected ? ' active' : '');
             button.dataset.snapshotId = snapshot.id;
+            if (selected) button.setAttribute('aria-current', 'true');
             button.innerHTML = `<div class="d-flex justify-content-between gap-2"><strong>v${snapshot.requirementVersionNumber}</strong>`
                 + `<span class="badge ${statusClass(snapshot.status)}">${escapeHtml(humanize(snapshot.status))}</span></div>`
-                + `<div class="small">${escapeHtml(formatDate(snapshot.createdAt))}</div>`;
+                + `<div class="small${selected ? '' : ' text-body-secondary'}">${escapeHtml(formatDate(snapshot.createdAt))}</div>`;
             list.appendChild(button);
         });
     }
@@ -266,12 +325,13 @@
     async function selectSnapshot(id) {
         setBusy(true);
         try {
-            state.selectedSnapshot = state.snapshots.find(snapshot => snapshot.id === id) || null;
+            state.selectedSnapshot = state.snapshots.find(snapshot => String(snapshot.id) === String(id)) || null;
             state.snapshotDetail = await api().getSnapshot(projectId, id);
             const url = new URL(window.location.href);
             url.searchParams.set('snapshot', id);
             url.searchParams.set('lang', locale);
             history.replaceState(null, '', url);
+            renderSnapshots();
             renderSnapshotDetail();
             renderArchitecture();
             renderDecisions();
@@ -288,12 +348,15 @@
         const detail = state.snapshotDetail;
         if (!detail) return renderEmpty(target, t('noSnapshots'));
         const summary = detail.summary;
-        target.innerHTML = `<div class="d-flex justify-content-between gap-2"><h2 class="h5">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
-            + `<span class="badge ${statusClass(summary.status)}">${escapeHtml(humanize(summary.status))}</span></div>`
-            + `<dl class="portfolio-card-meta"><dt>${escapeHtml(t('provider'))}</dt><dd>${escapeHtml(summary.provider || '—')}</dd>`
+        target.classList.add('portfolio-snapshot-detail');
+        target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
+            + `<div><h2 class="h4 mb-1">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
+            + `<p class="small text-body-secondary mb-0">${escapeHtml(t('resultReady'))}</p></div>`
+            + `<span class="badge ${statusClass(summary.status)} fs-6">${escapeHtml(humanize(summary.status))}</span></div>`
+            + `<dl class="portfolio-card-meta portfolio-snapshot-meta mt-3"><dt>${escapeHtml(t('provider'))}</dt><dd>${escapeHtml(summary.provider || '—')}</dd>`
             + `<dt>${escapeHtml(t('model'))}</dt><dd>${escapeHtml(summary.modelName || '—')}</dd>`
             + `<dt>${escapeHtml(t('created'))}</dt><dd>${escapeHtml(formatDate(summary.createdAt))}</dd>`
-            + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(String(summary.durationMs))} ms</dd>`
+            + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(formatDuration(summary.durationMs))}</dd>`
             + `<dt>${escapeHtml(t('baseline'))}</dt><dd><code>${escapeHtml(String(summary.taxonomyFingerprint || '').slice(0, 16))}</code> / <code>${escapeHtml(String(summary.promptFingerprint || '').slice(0, 16))}</code></dd></dl>`
             + renderDecisionReportActions(summary)
             + renderAnalysisSummary(detail);
@@ -347,12 +410,187 @@
     }
 
     function renderAnalysisSummary(detail) {
-        const warnings = detail.analysis && detail.analysis.warnings || [];
-        const gap = detail.gapAnalysis;
-        const recommendation = detail.recommendation;
-        return (warnings.length ? `<div class="alert alert-warning mt-3"><ul class="mb-0">${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>` : '')
-            + (gap ? `<section class="mt-3"><h3 class="h6">Gap analysis</h3><p>${escapeHtml(gap.summary || gap.description || JSON.stringify(gap))}</p></section>` : '')
-            + (recommendation ? `<section class="mt-3"><h3 class="h6">Recommendation</h3><p>${escapeHtml(recommendation.summary || recommendation.recommendation || JSON.stringify(recommendation))}</p></section>` : '');
+        const analysis = detail.analysis || {};
+        const warnings = asArray(analysis.warnings);
+        const gap = detail.gapAnalysis || {};
+        const patterns = detail.patternDetection || {};
+        const recommendation = detail.recommendation || {};
+        const mappings = asArray(detail.elementMappings);
+        const relations = asArray(detail.relationMappings);
+        const missing = asArray(gap.missingRelations);
+        const coverage = asArray(gap.coverageGaps);
+        const incomplete = asArray(gap.incompletePatterns);
+        const matched = asArray(patterns.matchedPatterns);
+        const confirmed = asArray(recommendation.confirmedElements);
+        const proposed = asArray(recommendation.proposedElements);
+        const suggested = asArray(recommendation.suggestedRelations);
+        const reasoning = asArray(recommendation.reasoning);
+        const gapCount = safeNumber(gap.totalGaps, missing.length);
+        const patternPercent = percentage(patterns.patternCoverage);
+        const recommendationPercent = percentage(recommendation.confidence);
+
+        const overview = `<section id="snapshotResultOverview" class="portfolio-result-overview mt-3" aria-labelledby="snapshotResultTitle">`
+            + `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-2">`
+            + `<h3 id="snapshotResultTitle" class="h5 mb-0">${escapeHtml(t('resultOverview'))}</h3>`
+            + `<a class="btn btn-sm btn-outline-success" href="${escapeHtml(architectureWorkbenchUrl())}">${escapeHtml(t('openWorkbench'))}</a></div>`
+            + `<div class="portfolio-result-kpis">`
+            + resultMetric(t('mappedElements'), mappings.length, mappings.filter(item => item.selectedForImpact).length + ' ' + t('direct'), 'primary')
+            + resultMetric(t('mappedRelations'), relations.length, '', 'info')
+            + resultMetric(t('openGaps'), gapCount, missing.length + ' ' + t('missingRelations'), gapCount > 0 ? 'warning' : 'success')
+            + resultMetric(t('patternCoverage'), patternPercent + '%', matched.length + ' ' + t('matchedPatterns'), patternPercent >= 70 ? 'success' : 'warning')
+            + resultMetric(t('recommendationConfidence'), recommendationPercent + '%', suggested.length + ' ' + t('suggestedRelations'), recommendationPercent >= 70 ? 'success' : 'warning')
+            + resultMetric(t('confirmedElements'), confirmed.length, proposed.length + ' ' + t('proposedElements'), 'success')
+            + `</div></section>`;
+
+        const warningHtml = warnings.length
+            ? `<div class="alert alert-warning mt-3"><ul class="mb-0">${warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>`
+            : '';
+
+        const gapHtml = renderGapResult(gap, missing, coverage, incomplete);
+        const patternHtml = renderPatternResult(patterns, matched);
+        const recommendationHtml = renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning);
+        const technical = {
+            summary: detail.summary || {},
+            analysis: {
+                status: analysis.status,
+                provider: analysis.provider,
+                warnings: warnings,
+                discrepancies: asArray(analysis.discrepancies),
+                productCoverageGaps: asArray(analysis.productCoverageGaps),
+                provisionalRelations: asArray(analysis.provisionalRelations),
+                architectureView: compactArchitectureView(analysis.architectureView)
+            },
+            gapAnalysis: gap,
+            patternDetection: patterns,
+            recommendation: recommendation
+        };
+        const technicalHtml = `<details id="technicalSnapshotData" class="portfolio-technical-data mt-3">`
+            + `<summary><span>${escapeHtml(t('technicalData'))}</span><small>${escapeHtml(t('technicalDataHint'))}</small></summary>`
+            + `<pre>${escapeHtml(JSON.stringify(technical, null, 2))}</pre></details>`;
+
+        return overview + warningHtml
+            + `<div class="portfolio-result-grid mt-3">${gapHtml}${patternHtml}${recommendationHtml}</div>`
+            + technicalHtml;
+    }
+
+    function resultMetric(label, value, detail, variant) {
+        return `<article class="portfolio-result-kpi border-${escapeHtml(variant || 'secondary')}">`
+            + `<div class="portfolio-result-kpi-value">${escapeHtml(value)}</div>`
+            + `<div class="portfolio-result-kpi-label">${escapeHtml(label)}</div>`
+            + (detail ? `<div class="portfolio-result-kpi-detail">${escapeHtml(detail)}</div>` : '')
+            + `</article>`;
+    }
+
+    function renderGapResult(gap, missing, coverage, incomplete) {
+        const topMissing = missing.slice(0, 5);
+        const findings = topMissing.length
+            ? `<ol class="portfolio-finding-list">${topMissing.map(item => `<li><code>${escapeHtml(item.sourceNodeCode || '—')}</code> `
+                + `<strong>${escapeHtml(humanize(item.expectedRelationType || 'RELATED_TO'))}</strong> `
+                + `→ <span>${escapeHtml(item.expectedTargetRoot || '—')}</span>`
+                + `<small>${escapeHtml(item.description || '')}</small></li>`).join('')}</ol>`
+            : `<p class="text-body-secondary mb-0">—</p>`;
+        return `<section id="gapResultSection" class="portfolio-result-panel" aria-labelledby="gapResultTitle">`
+            + `<div class="portfolio-result-panel-header"><h3 id="gapResultTitle" class="h6 mb-0">${escapeHtml(t('gapAnalysis'))}</h3>`
+            + `<div class="d-flex flex-wrap gap-1"><span class="badge text-bg-secondary">${safeNumber(gap.totalAnchors, 0)} ${escapeHtml(t('anchorsEvaluated'))}</span>`
+            + `<span class="badge ${safeNumber(gap.totalGaps, 0) > 0 ? 'text-bg-warning' : 'text-bg-success'}">${safeNumber(gap.totalGaps, 0)} ${escapeHtml(t('openGaps'))}</span></div></div>`
+            + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('highestPriority'))}</h4>${findings}`
+            + renderFindingDetails(t('missingRelations'), missing, ['sourceNodeCode', 'expectedRelationType', 'expectedTargetRoot', 'description'])
+            + renderFindingDetails(t('coverageGaps'), coverage, ['nodeCode', 'coverageScore', 'gapDescription'])
+            + renderFindingDetails(t('incompletePatterns'), incomplete, ['nodeCode', 'patternDescription', 'missingElement'])
+            + `</section>`;
+    }
+
+    function renderPatternResult(patterns, matched) {
+        const cards = matched.length ? matched.map(pattern => {
+            const completeness = percentage(pattern.completeness);
+            const expected = asArray(pattern.expectedSteps);
+            const present = new Set(asArray(pattern.presentSteps));
+            return `<article class="portfolio-pattern-card"><div class="d-flex justify-content-between gap-2 align-items-center">`
+                + `<strong>${escapeHtml(pattern.patternName || t('patternDetection'))}</strong>`
+                + `<span class="badge ${completeness >= 100 ? 'text-bg-success' : 'text-bg-warning'}">${completeness}%</span></div>`
+                + `<div class="progress mt-2" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${completeness}">`
+                + `<div class="progress-bar" style="width:${completeness}%"></div></div>`
+                + `<ul class="portfolio-step-list">${expected.map(step => `<li class="${present.has(step) ? 'is-present' : 'is-missing'}">`
+                    + `<span aria-hidden="true">${present.has(step) ? '✓' : '○'}</span>${escapeHtml(step)}</li>`).join('')}</ul></article>`;
+        }).join('') : `<p class="text-body-secondary mb-0">—</p>`;
+        return `<section id="patternResultSection" class="portfolio-result-panel" aria-labelledby="patternResultTitle">`
+            + `<div class="portfolio-result-panel-header"><h3 id="patternResultTitle" class="h6 mb-0">${escapeHtml(t('patternDetection'))}</h3>`
+            + `<span class="badge text-bg-success">${percentage(patterns.patternCoverage)}%</span></div>`
+            + `<div class="vstack gap-2 mt-3">${cards}</div></section>`;
+    }
+
+    function renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning) {
+        const reasoningHtml = reasoning.length
+            ? `<ul class="portfolio-reasoning-list">${reasoning.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+            : `<p class="text-body-secondary mb-0">—</p>`;
+        const relationDetails = suggested.length
+            ? `<details class="portfolio-finding-details"><summary>${escapeHtml(t('suggestedRelations'))} <span class="badge text-bg-secondary">${suggested.length}</span></summary>`
+                + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0"><thead><tr>`
+                + `<th>${escapeHtml(t('relation'))}</th><th>${escapeHtml(t('reasoning'))}</th></tr></thead><tbody>`
+                + suggested.map(item => `<tr><td><code>${escapeHtml(item.sourceCode || '—')}</code> → <code>${escapeHtml(item.targetCode || '—')}</code>`
+                    + `<div class="small fw-semibold">${escapeHtml(humanize(item.relationType || 'RELATED_TO'))}</div></td>`
+                    + `<td>${escapeHtml(item.reasoning || '—')}</td></tr>`).join('') + `</tbody></table></div></details>`
+            : '';
+        return `<section id="recommendationResultSection" class="portfolio-result-panel portfolio-result-panel-wide" aria-labelledby="recommendationResultTitle">`
+            + `<div class="portfolio-result-panel-header"><h3 id="recommendationResultTitle" class="h6 mb-0">${escapeHtml(t('recommendation'))}</h3>`
+            + `<span class="badge ${percentage(recommendation.confidence) >= 70 ? 'text-bg-success' : 'text-bg-warning'}">${percentage(recommendation.confidence)}%</span></div>`
+            + `<div class="d-flex flex-wrap gap-2 mt-3">`
+            + `<span class="badge text-bg-success">${confirmed.length} ${escapeHtml(t('confirmedElements'))}</span>`
+            + `<span class="badge text-bg-warning">${proposed.length} ${escapeHtml(t('proposedElements'))}</span>`
+            + `<span class="badge text-bg-info">${suggested.length} ${escapeHtml(t('suggestedRelations'))}</span></div>`
+            + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('reasoning'))}</h4>${reasoningHtml}${relationDetails}</section>`;
+    }
+
+    function renderFindingDetails(label, items, fields) {
+        if (!items.length) return '';
+        return `<details class="portfolio-finding-details"><summary>${escapeHtml(label)} <span class="badge text-bg-secondary">${items.length}</span></summary>`
+            + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0"><tbody>`
+            + items.map(item => `<tr>${fields.map(field => `<td>${escapeHtml(formatFindingValue(field, item[field]))}</td>`).join('')}</tr>`).join('')
+            + `</tbody></table></div></details>`;
+    }
+
+    function formatFindingValue(field, value) {
+        if (value === null || value === undefined || value === '') return '—';
+        if (field.toLowerCase().includes('score')) return percentage(value) + '%';
+        return String(value);
+    }
+
+    function compactArchitectureView(view) {
+        if (!view) return null;
+        return {
+            viewTitle: view.viewTitle,
+            viewDescription: view.viewDescription,
+            totalAnchors: view.totalAnchors,
+            totalElements: view.totalElements,
+            totalRelationships: view.totalRelationships,
+            maxHopDistance: view.maxHopDistance,
+            activeRules: view.activeRules,
+            notes: view.notes
+        };
+    }
+
+    function asArray(value) { return Array.isArray(value) ? value : []; }
+
+    function safeNumber(value, fallback) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : (fallback || 0);
+    }
+
+    function percentage(value) {
+        const parsed = safeNumber(value, 0);
+        const normalized = Math.abs(parsed) <= 1 && parsed !== 0 ? parsed * 100 : parsed;
+        return Math.max(0, Math.min(100, Math.round(normalized)));
+    }
+
+    function formatDuration(value) {
+        const milliseconds = safeNumber(value, 0);
+        if (milliseconds < 1000) return Math.round(milliseconds) + ' ms';
+        if (milliseconds < 60000) return (milliseconds / 1000).toFixed(1) + ' s';
+        return (milliseconds / 60000).toFixed(1) + ' min';
+    }
+
+    function architectureWorkbenchUrl() {
+        return window.location.pathname.replace(/\/$/, '') + '/architecture?lang=' + encodeURIComponent(locale);
     }
 
     function renderArchitecture() {
@@ -360,10 +598,12 @@
         const mappings = detail && detail.elementMappings || [];
         const relations = detail && detail.relationMappings || [];
         const summary = document.getElementById('architectureSummary');
-        summary.innerHTML = `<div class="row row-cols-2 row-cols-md-4 g-2">`
+        summary.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3">`
+            + `<div class="row row-cols-2 row-cols-md-4 g-2 flex-grow-1">`
             + metric(t('node'), mappings.length) + metric(t('relation'), relations.length)
-            + metric(t('review'), mappings.filter(m => m.reviewStatus === 'CONFIRMED').length)
-            + metric(t('open'), mappings.filter(m => m.reviewStatus === 'PROPOSED').length) + '</div>';
+            + metric(t('review'), mappings.filter(mapping => mapping.reviewStatus === 'CONFIRMED').length)
+            + metric(t('open'), mappings.filter(mapping => mapping.reviewStatus === 'PROPOSED').length) + `</div>`
+            + `<a class="btn btn-success ms-lg-3" href="${escapeHtml(architectureWorkbenchUrl())}">${escapeHtml(t('openWorkbench'))}</a></div>`;
         renderMappings(mappings);
         renderRelations(relations);
     }
@@ -375,21 +615,40 @@
     function renderMappings(mappings) {
         const target = document.getElementById('mappingTable');
         if (!mappings.length) return renderEmpty(target, t('noMappings'));
-        target.innerHTML = `<table class="table table-sm align-middle"><caption>${escapeHtml(t('architecture'))}</caption>`
+        const ordered = mappings.slice().sort((left, right) =>
+            Number(Boolean(right.selectedForImpact)) - Number(Boolean(left.selectedForImpact))
+                || safeNumber(right.relevance, 0) - safeNumber(left.relevance, 0)
+                || String(left.nodeCode).localeCompare(String(right.nodeCode)));
+        target.innerHTML = `<section class="portfolio-table-section" aria-labelledby="mappingResultsTitle">`
+            + `<div class="portfolio-table-heading"><h3 id="mappingResultsTitle" class="h6 mb-0">${escapeHtml(t('mappingResults'))}</h3>`
+            + `<span class="badge text-bg-secondary">${mappings.length}</span></div>`
+            + `<div class="portfolio-result-table"><table class="table table-sm align-middle mb-0"><caption class="visually-hidden">${escapeHtml(t('architecture'))}</caption>`
             + `<thead><tr><th>${escapeHtml(t('node'))}</th><th>${escapeHtml(t('score'))}</th><th>${escapeHtml(t('relevance'))}</th>`
             + `<th>${escapeHtml(t('confidence'))}</th><th>${escapeHtml(t('origin'))}</th><th>${escapeHtml(t('review'))}</th><th>${escapeHtml(t('action'))}</th></tr></thead>`
-            + `<tbody>${mappings.map(mapping => `<tr><td><code>${escapeHtml(mapping.nodeCode)}</code><div class="small">${escapeHtml(mapping.nodeTitle || '')}</div><div class="small text-body-secondary">${escapeHtml(mapping.hierarchyPath || '')}</div></td>`
-                + `<td>${mapping.directScore}%</td><td>${Math.round(mapping.relevance * 100)}%</td><td>${Math.round(mapping.confidence * 100)}%</td>`
-                + `<td>${escapeHtml(humanize(mapping.mappingOrigin))}</td><td>${escapeHtml(humanize(mapping.reviewStatus))}</td><td>${escapeHtml(humanize(mapping.actionStatus))}</td></tr>`).join('')}</tbody></table>`;
+            + `<tbody>${ordered.map(mapping => `<tr><td><div class="d-flex gap-1 align-items-center"><code>${escapeHtml(mapping.nodeCode)}</code>`
+                + (mapping.selectedForImpact ? `<span class="badge text-bg-primary">${escapeHtml(t('direct'))}</span>` : '') + `</div>`
+                + `<div class="small fw-semibold">${escapeHtml(mapping.nodeTitle || '')}</div><div class="small text-body-secondary">${escapeHtml(mapping.hierarchyPath || '')}</div></td>`
+                + `<td>${percentage(mapping.directScore)}%</td><td>${percentage(mapping.relevance)}%</td><td>${percentage(mapping.confidence)}%</td>`
+                + `<td>${escapeHtml(humanize(mapping.mappingOrigin))}</td><td><span class="badge ${statusClass(mapping.reviewStatus)}">${escapeHtml(humanize(mapping.reviewStatus))}</span></td>`
+                + `<td>${escapeHtml(humanize(mapping.actionStatus))}</td></tr>`).join('')}</tbody></table></div></section>`;
     }
 
     function renderRelations(relations) {
         const target = document.getElementById('relationTable');
         if (!relations.length) return renderEmpty(target, t('noRelations'));
-        target.innerHTML = `<table class="table table-sm align-middle"><caption>${escapeHtml(t('relation'))}</caption>`
+        const ordered = relations.slice().sort((left, right) =>
+            safeNumber(right.relevance, 0) - safeNumber(left.relevance, 0)
+                || String(left.sourceCode).localeCompare(String(right.sourceCode)));
+        target.innerHTML = `<section class="portfolio-table-section" aria-labelledby="relationResultsTitle">`
+            + `<div class="portfolio-table-heading"><h3 id="relationResultsTitle" class="h6 mb-0">${escapeHtml(t('relationResults'))}</h3>`
+            + `<span class="badge text-bg-secondary">${relations.length}</span></div>`
+            + `<div class="portfolio-result-table portfolio-result-table-relations"><table class="table table-sm align-middle mb-0"><caption class="visually-hidden">${escapeHtml(t('relation'))}</caption>`
             + `<thead><tr><th>${escapeHtml(t('relation'))}</th><th>${escapeHtml(t('relevance'))}</th><th>${escapeHtml(t('confidence'))}</th><th>${escapeHtml(t('review'))}</th></tr></thead>`
-            + `<tbody>${relations.map(relation => `<tr><td><code>${escapeHtml(relation.sourceCode)}</code> → <code>${escapeHtml(relation.targetCode)}</code><div class="small">${escapeHtml(relation.relationType)}</div></td>`
-                + `<td>${Math.round(relation.relevance * 100)}%</td><td>${Math.round(relation.confidence * 100)}%</td><td>${escapeHtml(humanize(relation.reviewStatus))}</td></tr>`).join('')}</tbody></table>`;
+            + `<tbody>${ordered.map(relation => `<tr><td><code>${escapeHtml(relation.sourceCode)}</code> → <code>${escapeHtml(relation.targetCode)}</code>`
+                + `<div class="small fw-semibold">${escapeHtml(humanize(relation.relationType))}</div>`
+                + `<div class="small text-body-secondary">${escapeHtml(relation.presenceReason || '')}</div></td>`
+                + `<td>${percentage(relation.relevance)}%</td><td>${percentage(relation.confidence)}%</td>`
+                + `<td><span class="badge ${statusClass(relation.reviewStatus)}">${escapeHtml(humanize(relation.reviewStatus))}</span></td></tr>`).join('')}</tbody></table></div></section>`;
     }
 
     function renderDecisions() {
@@ -397,17 +656,65 @@
         target.textContent = '';
         const mappings = state.snapshotDetail && state.snapshotDetail.elementMappings || [];
         if (!mappings.length) return renderEmpty(target, t('noMappings'));
-        mappings.forEach(mapping => {
-            const card = document.createElement('article');
-            card.className = 'card';
-            card.innerHTML = `<div class="card-body"><div class="d-flex justify-content-between gap-2"><div><code>${escapeHtml(mapping.nodeCode)}</code> · <strong>${escapeHtml(mapping.nodeTitle || '')}</strong></div>`
-                + `<span class="badge ${mapping.reviewStatus === 'CONFIRMED' ? 'text-bg-success' : 'text-bg-warning'}">${escapeHtml(humanize(mapping.reviewStatus))}</span></div>`
-                + `<dl class="portfolio-card-meta mt-2"><dt>${escapeHtml(t('action'))}</dt><dd>${escapeHtml(humanize(mapping.actionStatus))}</dd>`
-                + `<dt>${escapeHtml(t('evidence'))}</dt><dd>${escapeHtml(mapping.actionEvidence || '—')}</dd>`
-                + `<dt>${escapeHtml(t('author'))}</dt><dd>${escapeHtml(mapping.decisionBy || '—')}</dd>`
-                + `<dt>${escapeHtml(t('created'))}</dt><dd>${escapeHtml(formatDate(mapping.decisionAt))}</dd></dl></div>`;
-            target.appendChild(card);
-        });
+        const ordered = mappings.slice().sort((left, right) =>
+            decisionRank(left.reviewStatus) - decisionRank(right.reviewStatus)
+                || safeNumber(right.relevance, 0) - safeNumber(left.relevance, 0)
+                || String(left.nodeCode).localeCompare(String(right.nodeCode)));
+        const reviewStates = Array.from(new Set(ordered.map(mapping => mapping.reviewStatus).filter(Boolean))).sort();
+        target.innerHTML = `<section class="portfolio-decision-workbench" aria-labelledby="decisionWorkbenchTitle">`
+            + `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3">`
+            + `<div><h2 id="decisionWorkbenchTitle" class="h5 mb-1">${escapeHtml(t('filterDecisions'))}</h2>`
+            + `<div id="decisionVisibleCount" class="small text-body-secondary"></div></div>`
+            + `<div class="portfolio-decision-filters">`
+            + `<input id="decisionSearch" class="form-control form-control-sm" type="search" placeholder="${escapeHtml(t('searchDecisions'))}" aria-label="${escapeHtml(t('searchDecisions'))}">`
+            + `<select id="decisionReviewFilter" class="form-select form-select-sm" aria-label="${escapeHtml(t('reviewState'))}">`
+            + `<option value="">${escapeHtml(t('allReviews'))}</option>`
+            + reviewStates.map(status => `<option value="${escapeHtml(status)}">${escapeHtml(humanize(status))}</option>`).join('')
+            + `</select></div></div>`
+            + `<div class="portfolio-result-table portfolio-decision-table"><table class="table table-sm align-middle mb-0">`
+            + `<thead><tr><th>${escapeHtml(t('node'))}</th><th>${escapeHtml(t('relevance'))}</th><th>${escapeHtml(t('review'))}</th>`
+            + `<th>${escapeHtml(t('action'))}</th><th>${escapeHtml(t('decisionEvidence'))}</th></tr></thead>`
+            + `<tbody id="decisionRows">${ordered.map(mapping => {
+                const evidence = mapping.actionEvidence || mapping.decisionComment || mapping.presenceReason || '—';
+                return `<tr data-decision-row data-review-status="${escapeHtml(mapping.reviewStatus || '')}">`
+                    + `<td><code>${escapeHtml(mapping.nodeCode)}</code><div class="small fw-semibold">${escapeHtml(mapping.nodeTitle || '')}</div>`
+                    + `<div class="small text-body-secondary">${escapeHtml(mapping.hierarchyPath || '')}</div></td>`
+                    + `<td><strong>${percentage(mapping.relevance)}%</strong><div class="small text-body-secondary">${percentage(mapping.directScore)}% ${escapeHtml(t('direct'))}</div></td>`
+                    + `<td><span class="badge ${statusClass(mapping.reviewStatus)}">${escapeHtml(humanize(mapping.reviewStatus))}</span></td>`
+                    + `<td>${escapeHtml(humanize(mapping.actionStatus))}</td>`
+                    + `<td class="portfolio-decision-evidence">${escapeHtml(evidence)}</td></tr>`;
+            }).join('')}</tbody></table>`
+            + `<div id="decisionEmpty" class="portfolio-empty d-none"><span aria-hidden="true">⌕</span>${escapeHtml(t('noDecisionMatches'))}</div>`
+            + `</div></section>`;
+        installDecisionFilters(target, mappings.length);
+    }
+
+    function decisionRank(status) {
+        return { PROPOSED: 0, PENDING: 1, PARTIAL: 2, CONFIRMED: 3, REJECTED: 4 }[status] ?? 5;
+    }
+
+    function installDecisionFilters(target, total) {
+        const search = target.querySelector('#decisionSearch');
+        const review = target.querySelector('#decisionReviewFilter');
+        const count = target.querySelector('#decisionVisibleCount');
+        const empty = target.querySelector('#decisionEmpty');
+        const rows = Array.from(target.querySelectorAll('[data-decision-row]'));
+        function apply() {
+            const query = String(search.value || '').trim().toLowerCase();
+            const status = review.value;
+            let visible = 0;
+            rows.forEach(row => {
+                const matchesQuery = !query || row.textContent.toLowerCase().includes(query);
+                const matchesStatus = !status || row.dataset.reviewStatus === status;
+                row.hidden = !(matchesQuery && matchesStatus);
+                if (!row.hidden) visible += 1;
+            });
+            count.textContent = `${t('visibleDecisions')}: ${visible} / ${total}`;
+            empty.classList.toggle('d-none', visible !== 0);
+        }
+        search.addEventListener('input', apply);
+        review.addEventListener('change', apply);
+        apply();
     }
 
     function renderSolutions() {
@@ -438,18 +745,30 @@
         const target = document.getElementById('taskList');
         target.textContent = '';
         const tasks = [];
-        if (!state.requirement.currentAnalysisSnapshotId) tasks.push(t('stale'));
+        if (!state.requirement.currentAnalysisSnapshotId) tasks.push({ message: t('stale'), tab: 'analyses-tab' });
         const mappings = state.snapshotDetail && state.snapshotDetail.elementMappings || [];
-        if (mappings.some(mapping => mapping.reviewStatus !== 'CONFIRMED')) tasks.push(t('unreviewed'));
+        if (mappings.some(mapping => mapping.reviewStatus !== 'CONFIRMED')) tasks.push({ message: t('unreviewed'), tab: 'decisions-tab' });
         const links = (state.portfolio && state.portfolio.solutions || []).flatMap(solution => solution.requirements || [])
             .filter(link => link.requirementId === requirementId && link.reviewStatus === 'CONFIRMED');
-        if (!links.length) tasks.push(t('noConfirmedSolution'));
-        if (!(state.requirement.currentVersion && state.requirement.currentVersion.source)) tasks.push(t('sourceMissing'));
-        if (!tasks.length) tasks.push(t('allClear'));
+        if (!links.length) tasks.push({ message: t('noConfirmedSolution'), tab: 'solutions-tab' });
+        if (!(state.requirement.currentVersion && state.requirement.currentVersion.source)) tasks.push({ message: t('sourceMissing'), tab: 'text-tab' });
+        if (!tasks.length) tasks.push({ message: t('allClear'), tab: null });
         tasks.forEach(task => {
-            const item = document.createElement('div');
-            item.className = 'list-group-item';
-            item.textContent = task;
+            const item = document.createElement(task.tab ? 'button' : 'div');
+            if (task.tab) {
+                item.type = 'button';
+                item.dataset.taskTab = task.tab;
+            }
+            item.className = 'list-group-item' + (task.tab ? ' list-group-item-action d-flex justify-content-between align-items-center gap-2' : '');
+            const label = document.createElement('span');
+            label.textContent = task.message;
+            item.appendChild(label);
+            if (task.tab) {
+                const arrow = document.createElement('span');
+                arrow.setAttribute('aria-hidden', 'true');
+                arrow.textContent = '→';
+                item.appendChild(arrow);
+            }
             target.appendChild(item);
         });
     }
