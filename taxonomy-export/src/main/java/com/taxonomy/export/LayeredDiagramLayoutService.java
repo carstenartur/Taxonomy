@@ -52,12 +52,18 @@ public class LayeredDiagramLayoutService {
             byLayer.computeIfAbsent(node.layer(), ignored -> new ArrayList<>()).add(node);
         }
 
+        int maximumRows = byLayer.values().stream()
+                .mapToInt(List::size)
+                .max()
+                .orElse(1);
+        double contentHeight = rowsHeight(maximumRows);
+
         List<DiagramSceneNode> sceneNodes = new ArrayList<>(ordered.size());
         Map<String, DiagramSceneNode> byId = new LinkedHashMap<>();
         int column = 0;
-        int maximumRows = 0;
         for (List<DiagramNode> layerNodes : byLayer.values()) {
-            maximumRows = Math.max(maximumRows, layerNodes.size());
+            double layerHeight = rowsHeight(layerNodes.size());
+            double firstRowY = MARGIN + (contentHeight - layerHeight) / 2.0;
             for (int row = 0; row < layerNodes.size(); row++) {
                 DiagramNode node = layerNodes.get(row);
                 DiagramSceneNode sceneNode = new DiagramSceneNode(
@@ -72,7 +78,7 @@ public class LayeredDiagramLayoutService {
                         node.parentId(),
                         node.container(),
                         MARGIN + column * (NODE_WIDTH + COLUMN_GAP),
-                        MARGIN + row * (NODE_HEIGHT + ROW_GAP),
+                        firstRowY + row * (NODE_HEIGHT + ROW_GAP),
                         NODE_WIDTH,
                         NODE_HEIGHT);
                 sceneNodes.add(sceneNode);
@@ -112,10 +118,7 @@ public class LayeredDiagramLayoutService {
                 MIN_WIDTH,
                 2 * MARGIN + byLayer.size() * NODE_WIDTH
                         + Math.max(0, byLayer.size() - 1) * COLUMN_GAP);
-        double height = Math.max(
-                MIN_HEIGHT,
-                2 * MARGIN + maximumRows * NODE_HEIGHT
-                        + Math.max(0, maximumRows - 1) * ROW_GAP);
+        double height = Math.max(MIN_HEIGHT, 2 * MARGIN + contentHeight);
 
         return new DiagramScene(
                 model.title(),
@@ -124,6 +127,11 @@ public class LayeredDiagramLayoutService {
                 direction(model),
                 sceneNodes,
                 sceneEdges);
+    }
+
+    private static double rowsHeight(int rows) {
+        int boundedRows = Math.max(1, rows);
+        return boundedRows * NODE_HEIGHT + Math.max(0, boundedRows - 1) * ROW_GAP;
     }
 
     private static String direction(DiagramModel model) {
