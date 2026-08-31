@@ -1,0 +1,110 @@
+name: QA Complete Copilot Run Screenshot
+
+on:
+  push:
+    branches:
+      - qa/complete-copilot-run-screenshot
+    paths:
+      - .github/workflows/qa-complete-copilot-run-screenshot.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-complete-copilot-run-screenshot
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Capture complete Copilot run result
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Instrument the owning complete-session acceptance for one baseline screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          text = path.read_text(encoding='utf-8')
+          marker = '        openSelectedSnapshotThroughVisibleAnalysisControls();\n'
+          if marker not in text:
+              raise SystemExit('Complete Copilot screenshot insertion point not found')
+          insertion = marker + '''        driver.manage().window().setSize(new Dimension(2200, 1600));
+                  javascript().executeScript("window.scrollTo(0, 0);");
+                  wait.until(browser -> Boolean.TRUE.equals(javascript().executeScript("""
+                          const detail = document.getElementById('snapshotDetail');
+                          const operation = document.getElementById('copilotOperation');
+                          return detail && detail.getBoundingClientRect().height > 0
+                              && operation && operation.dataset.operationStatus
+                              && ['SUCCESS', 'PARTIAL'].includes(operation.dataset.operationStatus);
+                          """)));
+                  try {
+                      java.nio.file.Path output = java.nio.file.Path.of(
+                              System.getProperty("completeCopilotScreenshot.output"));
+                      java.nio.file.Files.createDirectories(output.getParent());
+                      java.io.File capture = ((org.openqa.selenium.TakesScreenshot) driver)
+                              .getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+                      java.nio.file.Files.copy(
+                              capture.toPath(),
+                              output,
+                              java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                  } catch (java.io.IOException exception) {
+                      throw new AssertionError("Could not save complete Copilot screenshot", exception);
+                  }
+          '''
+          path.write_text(text.replace(marker, insertion, 1), encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Run the authoritative complete Copilot session and capture its result
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=CompleteCopilotSessionIT
+          -DcompleteCopilotScreenshot.output=${{ github.workspace }}/target/complete-copilot-run/72-complete-copilot-run-before.png
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify screenshot output
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=target/complete-copilot-run/72-complete-copilot-run-before.png
+          test -s "$image"
+          test "$(wc -c < "$image")" -gt 50000
+          file "$image" | grep -F 'PNG image data'
+
+      - name: Upload screenshot and focused test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-copilot-run-before
+          path: |
+            target/complete-copilot-run/**
+            taxonomy-app/target/failsafe-reports/**
+          if-no-files-found: warn
+          retention-days: 7
