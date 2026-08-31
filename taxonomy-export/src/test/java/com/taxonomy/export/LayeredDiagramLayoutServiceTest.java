@@ -74,6 +74,43 @@ class LayeredDiagramLayoutServiceTest {
     }
 
     @Test
+    void wrapsDenseLayersIntoDeterministicSubcolumns() {
+        List<DiagramNode> products = java.util.stream.IntStream.rangeClosed(1, 13)
+                .mapToObj(index -> new DiagramNode(
+                        "IP-" + index,
+                        "Information product " + index,
+                        "Information Products",
+                        0.8,
+                        false,
+                        3))
+                .toList();
+        List<DiagramNode> nodes = new java.util.ArrayList<>();
+        nodes.add(new DiagramNode("CP-1", "Capability", "Capabilities", 0.9, true, 1));
+        nodes.addAll(products);
+
+        DiagramScene scene = service.layout(new DiagramModel(
+                "Dense architecture",
+                nodes,
+                List.of(),
+                new DiagramLayout("LR", true)));
+        var productSceneNodes = scene.nodes().stream()
+                .filter(node -> node.type().equals("Information Products"))
+                .toList();
+
+        assertThat(productSceneNodes).hasSize(13);
+        assertThat(productSceneNodes.stream().map(node -> node.x()).distinct())
+                .hasSize(3);
+        assertThat(productSceneNodes.stream()
+                .collect(java.util.stream.Collectors.groupingBy(node -> node.x())))
+                .allSatisfy((x, column) -> assertThat(column)
+                        .hasSizeLessThanOrEqualTo(LayeredDiagramLayoutService.MAX_ROWS_PER_COLUMN));
+        assertThat(productSceneNodes.stream().map(node -> node.y()).distinct())
+                .hasSizeLessThanOrEqualTo(LayeredDiagramLayoutService.MAX_ROWS_PER_COLUMN);
+        assertThat(scene.height()).isLessThan(800);
+        assertThat(scene.width()).isGreaterThan(1_000);
+    }
+
+    @Test
     void returnsExplicitEmptySceneForMissingArchitecture() {
         DiagramScene scene = service.layout(
                 new DiagramModel("Empty", List.of(), List.of(), new DiagramLayout("LR", true)));
