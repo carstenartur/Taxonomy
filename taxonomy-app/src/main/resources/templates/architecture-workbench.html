@@ -1,24 +1,28 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
     <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
-    <title>Architecture Workbench</title>
+    <title>Copilot Architecture Workbench</title>
     <link rel="stylesheet"
           th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"
           href="/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css"/>
     <link rel="stylesheet" th:href="@{/css/architecture-workbench.css}"
           href="/css/architecture-workbench.css"/>
 </head>
-<body th:attr="data-project-id=${projectId},data-snapshot-id=${snapshotId}">
+<body th:attr="data-project-id=${projectId},
+               data-snapshot-id=${snapshotId},
+               data-policy-title-default-impact=#{archview.policy.title.defaultImpact},
+               data-policy-title-leaf-only=#{archview.policy.title.leafOnly},
+               data-policy-title-clustering=#{archview.policy.title.clustering},
+               data-policy-title-trace=#{archview.policy.title.trace}">
 <a class="visually-hidden-focusable" href="#architectureCanvas">Skip to architecture diagram</a>
 
 <header class="workbench-toolbar navbar navbar-dark bg-dark px-3">
-    <a class="navbar-brand" th:href="@{/projects}" href="/projects">Taxonomy Architecture Workbench</a>
+    <a class="navbar-brand" th:href="@{/projects}" href="/projects">Taxonomy Copilot Architecture</a>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-        <button id="fitArchitecture" class="btn btn-sm btn-outline-light" type="button">Fit view</button>
         <button id="downloadArchitectureSvg" class="btn btn-sm btn-outline-light" type="button">
             Download SVG
         </button>
@@ -29,7 +33,7 @@
 </header>
 
 <div id="architectureStatus" class="workbench-status" role="status" aria-live="polite">
-    Loading persisted architecture snapshot…
+    Loading persisted Copilot architecture snapshot…
 </div>
 <div id="architectureAlert" class="alert alert-danger m-3 d-none" role="alert"></div>
 
@@ -37,20 +41,80 @@
     <section class="workbench-canvas-panel" aria-labelledby="architectureTitle">
         <div class="workbench-heading">
             <div>
-                <h1 id="architectureTitle" class="h4 mb-1">Architecture</h1>
-                <p id="architectureProvenance" class="text-muted small mb-0"></p>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h1 id="architectureTitle" class="h4 mb-0">Persisted Copilot architecture</h1>
+                    <span class="badge text-bg-secondary">Read-only snapshot</span>
+                </div>
+                <p id="architectureProvenance" class="text-muted small mb-0 mt-1"></p>
             </div>
-            <div id="architectureLegend" class="architecture-legend" aria-label="Architecture layers"></div>
+            <div id="architectureKpis" class="architecture-kpis" aria-label="Architecture summary">
+                <span class="architecture-kpi"><span aria-hidden="true">🎯</span><span id="directKpi">0 direct</span></span>
+                <span class="architecture-kpi"><span aria-hidden="true">▦</span><span id="elementKpi">0 elements</span></span>
+                <span class="architecture-kpi"><span aria-hidden="true">↗</span><span id="relationKpi">0 relationships</span></span>
+                <span class="architecture-kpi"><span aria-hidden="true">▤</span><span id="layerKpi">0 layers</span></span>
+            </div>
         </div>
-        <div class="architecture-canvas-shell">
-            <svg id="architectureCanvas"
-                 role="img"
-                 aria-labelledby="architectureTitle architectureDescription"
-                 tabindex="0">
-                <desc id="architectureDescription">
-                    Requirement-derived architecture graph loaded from an immutable analysis snapshot.
-                </desc>
-            </svg>
+
+        <div id="architectureWorkbench" class="architecture-workbench">
+            <div class="architecture-controls" role="toolbar" aria-label="Architecture diagram controls">
+                <div class="architecture-search-wrap">
+                    <input id="architectureSearch"
+                           class="architecture-search"
+                           type="search"
+                           placeholder="Find code, title or layer…"
+                           aria-label="Search architecture elements"/>
+                    <button id="clearArchitectureSearch"
+                            class="architecture-search-clear"
+                            type="button"
+                            aria-label="Clear architecture search"
+                            title="Clear search"
+                            hidden>×</button>
+                </div>
+
+                <label class="architecture-toggle">
+                    <input id="showArchitectureContext" type="checkbox" checked/>
+                    <span>Context elements</span>
+                </label>
+
+                <div class="architecture-button-group" aria-label="Display mode">
+                    <button id="architectureOverview" class="architecture-control" type="button"
+                            aria-pressed="true" title="Overview">
+                        <span aria-hidden="true">▦</span><span>Overview</span>
+                    </button>
+                    <button id="architectureFocus" class="architecture-control" type="button"
+                            aria-pressed="false" title="Focus selected element" disabled>
+                        <span aria-hidden="true">◎</span><span>Focus</span>
+                    </button>
+                </div>
+
+                <div class="architecture-button-group" aria-label="Zoom controls">
+                    <button id="zoomArchitectureOut" class="architecture-control icon-only" type="button"
+                            title="Zoom out" aria-label="Zoom out">−</button>
+                    <button id="fitArchitecture" class="architecture-control" type="button"
+                            title="Fit diagram" disabled>
+                        <span aria-hidden="true">⊙</span><span>Fit</span>
+                    </button>
+                    <button id="zoomArchitectureIn" class="architecture-control icon-only" type="button"
+                            title="Zoom in" aria-label="Zoom in">+</button>
+                    <button id="fullscreenArchitecture" class="architecture-control icon-only" type="button"
+                            title="Fullscreen" aria-label="Fullscreen">⛶</button>
+                </div>
+
+                <div id="architectureVisibleStatus" class="architecture-visible-status"
+                     role="status" aria-live="polite"></div>
+            </div>
+
+            <p id="architectureDescription" class="visually-hidden">
+                Requirement-derived architecture loaded from an immutable Copilot analysis snapshot.
+            </p>
+            <div id="architectureCanvasShell" class="architecture-canvas-shell">
+                <svg id="architectureCanvas"
+                     role="img"
+                     aria-labelledby="architectureTitle architectureDescription"
+                     tabindex="0">
+                    <desc>Persisted Copilot architecture diagram</desc>
+                </svg>
+            </div>
         </div>
     </section>
 
