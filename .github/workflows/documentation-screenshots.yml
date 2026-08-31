@@ -82,7 +82,35 @@ jobs:
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
-        run: ./mvnw -B install -Pscreenshots -Dfailsafe.rerunFailingTestsCount=1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            ./mvnw -B install -Pscreenshots -Dfailsafe.rerunFailingTestsCount=1
+          else
+            ./mvnw -B -pl taxonomy-app -am install \
+              -DskipTests \
+              -Dtaxonomy.model.download.skip=true
+            ./mvnw -B -pl taxonomy-app verify -Pscreenshots \
+              -Dtest=__NoUnitTests__ \
+              -Dsurefire.failIfNoSpecifiedTests=false \
+              -Dit.test=ScreenshotGeneratorIT#captureArchitectureView \
+              -DgenerateScreenshots=true \
+              -Dtaxonomy.model.download.skip=true \
+              -Dfailsafe.rerunFailingTestsCount=1
+          fi
+
+      - name: Upload screenshot diagnostics on failure
+        if: failure() && github.ref == 'refs/heads/docs/refresh-impact-map-screenshot'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: impact-map-screenshot-diagnostics
+          path: |
+            taxonomy-app/target/failsafe-reports/**
+            taxonomy-app/target/surefire-reports/**
+            docs/images/20-architecture-view.png
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Install pinned Node and Chromium
         if: github.ref == 'refs/heads/main'
