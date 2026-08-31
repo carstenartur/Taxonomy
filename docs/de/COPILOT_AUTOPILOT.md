@@ -25,6 +25,14 @@ Konfigurierte oder angeforderte Durchlaufzahlen müssen zwischen 1 und 3 liegen.
 
 Der manuelle Copilot benötigt einen bereiten Anbieter, aber **kein** `TAXONOMY_AI_COST_POLICY=UNMETERED`, weil jeder Lauf ausdrücklich durch einen Benutzer gestartet wird.
 
+## Persistierte Architektur-Workbench
+
+Jede erfolgreiche Copilot-Vollanalyse speichert einen unveränderlichen Architektursnapshot. Über **Architektur** im abgeschlossenen Lauf lässt sich genau dieses Ergebnis in einer schreibgeschützten Workbench untersuchen: mit Suche, Übersicht und Fokusmodus, Kontextfilter, Zoom, echtem Einpassen, Vollbild, Provenienz sowie Review- und Evidenzdetails.
+
+![Persistierte Copilot-Architektur-Workbench](../images/41-copilot-architecture-workbench.png)
+
+Browseransicht, SVG-Download und PDF-Download verwenden dieselbe deterministische serverseitige Szene mit denselben Koordinaten. Die interaktiven Browserwerkzeuge verändern nur Sichtbarkeit, Auswahl und Bildausschnitt; sie berechnen oder verändern die persistierte Architektur nicht stillschweigend neu.
+
 ## Grenzen der Architekturknoten
 
 `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` behält aus Kompatibilitätsgründen seinen historischen Namen. Die zugehörige Spring-Property heißt `taxonomy.ai.max-architecture-nodes` und gilt **sowohl für den manuellen Copilot als auch für den Autopiloten**. Sie ist die Betreiberobergrenze der Architektursicht jedes AI-Automatisierungsdurchlaufs. Eine manuelle API-Anfrage darf einen kleineren Wert wählen, aber keinen größeren.
