@@ -1,0 +1,65 @@
+name: Fix Complete Copilot Screenshot JavaScript
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-result-ux
+    paths:
+      - .github/workflows/fix-complete-copilot-screenshot-js.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-complete-copilot-screenshot-js
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/complete-copilot-run-result-ux
+          fetch-depth: 0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Correct and compile the screenshot callback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          text = path.read_text(encoding='utf-8')
+          old = '.forEach(detail -> detail.open = false);'
+          new = '.forEach(detail => { detail.open = false; });'
+          if old not in text:
+              raise SystemExit('Invalid screenshot callback was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git diff --check
+          ./mvnw -B -pl taxonomy-app -am test-compile \
+            -DskipTests \
+            -Dcyclonedx.skip=true \
+            -Dtaxonomy.model.download.skip=true
+
+      - name: Commit the correction and remove this temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/fix-complete-copilot-screenshot-js.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java \
+            .github/workflows/fix-complete-copilot-screenshot-js.yml
+          git commit -m 'Fix complete Copilot screenshot callback'
+          git push origin HEAD:fix/complete-copilot-run-result-ux
