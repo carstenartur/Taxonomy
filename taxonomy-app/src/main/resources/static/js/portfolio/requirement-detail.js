@@ -66,7 +66,9 @@
             allReviews: 'All review states', visibleDecisions: 'Visible decisions',
             noDecisionMatches: 'No decisions match the current filter.', decisionEvidence: 'Evidence / reason',
             reviewState: 'Review state', direct: 'Direct', context: 'Context', showDetails: 'Show details',
-            resultReady: 'The immutable Copilot result is ready for review.'
+            resultReady: 'The immutable Copilot result is ready for review.',
+            verificationResult: 'Verification result {0} of {1}',
+            requirementVersionLabel: 'Requirement v{0}'
         },
         de: {
             loading: 'Wird geladen…', portfolio: 'Portfolio', matrices: 'Matrizen',
@@ -113,7 +115,9 @@
             allReviews: 'Alle Prüfzustände', visibleDecisions: 'Sichtbare Entscheidungen',
             noDecisionMatches: 'Keine Entscheidung entspricht dem aktuellen Filter.', decisionEvidence: 'Evidenz / Grund',
             reviewState: 'Prüfzustand', direct: 'Direkt', context: 'Kontext', showDetails: 'Details anzeigen',
-            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.'
+            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.',
+            verificationResult: 'Prüfergebnis {0} von {1}',
+            requirementVersionLabel: 'Anforderung v{0}'
         }
     };
 
@@ -121,14 +125,24 @@
 
     function t(key) { return (text[locale] && text[locale][key]) || text.en[key] || key; }
 
+
+    function formatText(key, ...values) {
+        return t(key).replace(/\{(\d+)\}/g, (match, index) => {
+            const valueIndex = Number(index);
+            return valueIndex < values.length ? String(values[valueIndex]) : match;
+        });
+    }
+
     async function initialize() {
+        const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
         translateSurface();
         wireEvents();
+        if (requestedSnapshot) activateDetailTab('analyses-tab');
         await loadAll();
-        const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
         if (requestedSnapshot) {
             await selectSnapshot(requestedSnapshot);
             activateDetailTab('analyses-tab');
+            window.requestAnimationFrame(() => activateDetailTab('analyses-tab'));
         } else if (state.snapshots.length) {
             await selectSnapshot(state.snapshots[0].id);
         }
@@ -160,11 +174,22 @@
     function activateDetailTab(tabId) {
         const trigger = document.getElementById(tabId);
         if (!trigger) return;
-        if (window.bootstrap && bootstrap.Tab) {
-            bootstrap.Tab.getOrCreateInstance(trigger).show();
-        } else {
-            trigger.click();
+        if (window.bootstrap && window.bootstrap.Tab) {
+            window.bootstrap.Tab.getOrCreateInstance(trigger).show();
+            return;
         }
+        const targetSelector = trigger.getAttribute('data-bs-target');
+        const target = targetSelector ? document.querySelector(targetSelector) : null;
+        document.querySelectorAll('#detailTabs .nav-link').forEach(tab => {
+            const selected = tab === trigger;
+            tab.classList.toggle('active', selected);
+            tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+        });
+        document.querySelectorAll('#requirementMain .tab-content > .tab-pane').forEach(pane => {
+            const selected = pane === target;
+            pane.classList.toggle('active', selected);
+            pane.classList.toggle('show', selected);
+        });
     }
 
     function wireEvents() {
@@ -299,6 +324,31 @@
         return `<div class="font-monospace small">${rows.join('')}</div>`;
     }
 
+    function snapshotSequence(snapshot) {
+        const versionIdentity = snapshot.requirementVersionId
+            || snapshot.requirementVersionNumber;
+        const siblings = state.snapshots.filter(candidate => String(
+            candidate.requirementVersionId || candidate.requirementVersionNumber
+        ) === String(versionIdentity)).slice().sort((left, right) => {
+            const leftTime = Date.parse(left.createdAt || '') || 0;
+            const rightTime = Date.parse(right.createdAt || '') || 0;
+            return leftTime - rightTime || String(left.id).localeCompare(String(right.id));
+        });
+        const position = siblings.findIndex(candidate =>
+            String(candidate.id) === String(snapshot.id));
+        return {
+            index: Math.max(0, position) + 1,
+            total: Math.max(1, siblings.length)
+        };
+    }
+
+    function snapshotDisplayTitle(snapshot) {
+        const sequence = snapshotSequence(snapshot);
+        return sequence.total > 1
+            ? formatText('verificationResult', sequence.index, sequence.total)
+            : formatText('requirementVersionLabel', snapshot.requirementVersionNumber);
+    }
+
     function renderSnapshots() {
         const list = document.getElementById('snapshotList');
         list.textContent = '';
@@ -312,12 +362,19 @@
                 && String(state.selectedSnapshot.id) === String(snapshot.id));
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'list-group-item list-group-item-action' + (selected ? ' active' : '');
+            button.className = 'list-group-item list-group-item-action'
+                + (selected ? ' active' : '');
             button.dataset.snapshotId = snapshot.id;
             if (selected) button.setAttribute('aria-current', 'true');
-            button.innerHTML = `<div class="d-flex justify-content-between gap-2"><strong>v${snapshot.requirementVersionNumber}</strong>`
+            const targetName = [snapshot.provider, snapshot.modelName]
+                .filter(Boolean).join(' / ');
+            button.innerHTML = `<div class="d-flex justify-content-between gap-2">`
+                + `<strong>${escapeHtml(snapshotDisplayTitle(snapshot))}</strong>`
                 + `<span class="badge ${statusClass(snapshot.status)}">${escapeHtml(humanize(snapshot.status))}</span></div>`
-                + `<div class="small${selected ? '' : ' text-body-secondary'}">${escapeHtml(formatDate(snapshot.createdAt))}</div>`;
+                + `<div class="small${selected ? '' : ' text-body-secondary'}">`
+                + `${escapeHtml(formatText('requirementVersionLabel', snapshot.requirementVersionNumber))}`
+                + ` · ${escapeHtml(formatDate(snapshot.createdAt))}</div>`
+                + (targetName ? `<div class="small${selected ? '' : ' text-body-secondary'}">${escapeHtml(targetName)}</div>` : '');
             list.appendChild(button);
         });
     }
@@ -350,8 +407,10 @@
         const summary = detail.summary;
         target.classList.add('portfolio-snapshot-detail');
         target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
-            + `<div><h2 class="h4 mb-1">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
-            + `<p class="small text-body-secondary mb-0">${escapeHtml(t('resultReady'))}</p></div>`
+            + `<div><h2 class="h4 mb-1">${escapeHtml(snapshotDisplayTitle(summary))}</h2>`
+            + `<p class="small text-body-secondary mb-0">`
+            + `${escapeHtml(formatText('requirementVersionLabel', summary.requirementVersionNumber))}`
+            + ` · ${escapeHtml(t('resultReady'))}</p></div>`
             + `<span class="badge ${statusClass(summary.status)} fs-6">${escapeHtml(humanize(summary.status))}</span></div>`
             + `<dl class="portfolio-card-meta portfolio-snapshot-meta mt-3"><dt>${escapeHtml(t('provider'))}</dt><dd>${escapeHtml(summary.provider || '—')}</dd>`
             + `<dt>${escapeHtml(t('model'))}</dt><dd>${escapeHtml(summary.modelName || '—')}</dd>`

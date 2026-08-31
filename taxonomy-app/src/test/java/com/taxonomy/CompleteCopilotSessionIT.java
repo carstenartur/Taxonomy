@@ -212,6 +212,14 @@ class CompleteCopilotSessionIT {
         assertThat(driver.findElements(By.cssSelector(
                 "#snapshotList [data-snapshot-id].active[aria-current='true']")))
                 .hasSize(1);
+        List<String> snapshotLabels = driver.findElements(By.cssSelector(
+                "#snapshotList [data-snapshot-id] strong")).stream()
+                .map(WebElement::getText)
+                .toList();
+        assertThat(snapshotLabels)
+                .hasSizeGreaterThanOrEqualTo(2)
+                .doesNotHaveDuplicates()
+                .allMatch(label -> label.contains("Verification result"));
         assertThat(driver.findElements(By.cssSelector(
                 "#snapshotResultOverview .portfolio-result-kpi")))
                 .hasSize(6);

@@ -19,6 +19,8 @@ class CompleteCopilotResultUiContractTest {
 
         assertThat(detail)
                 .contains("activateDetailTab('analyses-tab')")
+                .contains("window.bootstrap.Tab", "window.requestAnimationFrame")
+                .contains("snapshotSequence", "verificationResult", "requirementVersionLabel")
                 .contains("aria-current", "snapshotResultOverview", "portfolio-result-kpi")
                 .contains("renderGapResult", "renderPatternResult", "renderRecommendationResult")
                 .contains("portfolio-finding-details", "technicalSnapshotData")
