@@ -239,7 +239,7 @@ class ArchitectureWorkbenchUiIT {
     private static void saveDocumentationScreenshot() {
         Dimension previousSize = driver.manage().window().getSize();
         try {
-            driver.manage().window().setSize(new Dimension(1800, 1100));
+            driver.manage().window().setSize(new Dimension(2200, 1300));
             fitAndWait();
             assertDiagramFitsCanvas();
             java.nio.file.Path output = documentationScreenshotPath();
@@ -267,7 +267,7 @@ class ArchitectureWorkbenchUiIT {
         if (repository == null) {
             repository = module;
         }
-        return repository.resolve("docs/images/41-copilot-architecture-workbench.png");
+        return repository.resolve("docs/images/71-copilot-architecture-workbench.png");
     }
 
     private static void login() {

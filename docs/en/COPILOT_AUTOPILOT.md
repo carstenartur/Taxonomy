@@ -31,7 +31,7 @@ Manual Copilot requires a ready provider but does **not** require `TAXONOMY_AI_C
 
 Every successful Copilot full analysis stores an immutable architecture snapshot. Open **Architecture** from the completed run to investigate that exact result in a read-only workbench with search, overview and focus modes, context filtering, zoom, true fit-to-content, fullscreen display, provenance, review state and evidence details.
 
-![Persisted Copilot architecture workbench](../images/41-copilot-architecture-workbench.png)
+![Persisted Copilot architecture workbench](../images/71-copilot-architecture-workbench.png)
 
 The browser, SVG download and PDF download use the same deterministic server-side scene and coordinates. The interactive browser controls change only visibility, selection and viewport; they do not silently recalculate or mutate the persisted architecture.
 

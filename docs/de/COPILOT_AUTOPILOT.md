@@ -29,7 +29,7 @@ Der manuelle Copilot benötigt einen bereiten Anbieter, aber **kein** `TAXONOMY_
 
 Jede erfolgreiche Copilot-Vollanalyse speichert einen unveränderlichen Architektursnapshot. Über **Architektur** im abgeschlossenen Lauf lässt sich genau dieses Ergebnis in einer schreibgeschützten Workbench untersuchen: mit Suche, Übersicht und Fokusmodus, Kontextfilter, Zoom, echtem Einpassen, Vollbild, Provenienz sowie Review- und Evidenzdetails.
 
-![Persistierte Copilot-Architektur-Workbench](../images/41-copilot-architecture-workbench.png)
+![Persistierte Copilot-Architektur-Workbench](../images/71-copilot-architecture-workbench.png)
 
 Browseransicht, SVG-Download und PDF-Download verwenden dieselbe deterministische serverseitige Szene mit denselben Koordinaten. Die interaktiven Browserwerkzeuge verändern nur Sichtbarkeit, Auswahl und Bildausschnitt; sie berechnen oder verändern die persistierte Architektur nicht stillschweigend neu.
 
