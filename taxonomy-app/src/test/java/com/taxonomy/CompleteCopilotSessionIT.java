@@ -8,6 +8,8 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -21,7 +23,12 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -127,7 +134,7 @@ class CompleteCopilotSessionIT {
             return "SUCCESS".equals(status) || "PARTIAL".equals(status);
         });
 
-        openSelectedSnapshotThroughVisibleAnalysisControls();
+        openSelectedSnapshotThroughVisibleAnalysisControls(projectId);
         exerciseRequirementWorkspaceControls();
         assertSessionControlsAreNotObscuredWhenFocused();
         Map<String, ExportEvidence> exports = exerciseAndReadAllDecisionReportExports(projectId);
@@ -195,20 +202,111 @@ class CompleteCopilotSessionIT {
                 """);
     }
 
-    private static void openSelectedSnapshotThroughVisibleAnalysisControls() {
-        // Terminal Copilot success intentionally schedules navigation to the selected
-        // immutable snapshot. Do not race that real page transition with a tab click.
+    private static void openSelectedSnapshotThroughVisibleAnalysisControls(long projectId) {
+        // The selected immutable result must be the visible destination of
+        // terminal Copilot navigation; no compensating tab or snapshot click.
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot="));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("analyses-tab")));
         wait.until(ExpectedConditions.invisibilityOfElementLocated(
                 By.cssSelector(".portfolio-busy:not(.d-none)")));
-        click(By.id("analyses-tab"));
-        wait.until(browser -> !browser.findElements(
-                By.cssSelector("#snapshotList [data-snapshot-id]")).isEmpty());
-        click(By.cssSelector("#snapshotList [data-snapshot-id]"));
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotDetail")));
+        wait.until(attributeEquals(By.id("analyses-tab"),
+                "aria-selected", "true"));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(
+                By.id("snapshotResultOverview")));
         wait.until(browser -> browser.findElements(
                 By.cssSelector("[data-decision-report-format]")).size() == 3);
+
+        assertThat(driver.findElements(By.cssSelector(
+                "#snapshotList [data-snapshot-id].active[aria-current='true']")))
+                .hasSize(1);
+        assertThat(driver.findElements(By.cssSelector(
+                "#snapshotResultOverview .portfolio-result-kpi")))
+                .hasSize(6);
+
+        WebElement selectedSnapshot = driver.findElement(By.cssSelector(
+                "#snapshotList [data-snapshot-id].active[aria-current='true']"));
+        String selectedSnapshotId = selectedSnapshot.getAttribute("data-snapshot-id");
+        String workbenchHref = driver.findElement(By.cssSelector(
+                "#snapshotResultOverview a[href*='/architecture/workbench']"))
+                .getAttribute("href");
+        assertThat(workbenchHref)
+                .contains("/architecture/workbench")
+                .contains("projectId=" + projectId)
+                .contains("snapshotId=" + selectedSnapshotId);
+
+        String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
+        assertThat(visibleResult)
+                .contains("Copilot result overview")
+                .contains("Gap analysis")
+                .contains("Detected patterns")
+                .contains("Recommendation")
+                .doesNotContain("missingRelations")
+                .doesNotContain("businessText");
+
+        List<WebElement> findingDetails = driver.findElements(
+                By.cssSelector("#snapshotDetail details.portfolio-finding-details"));
+        assertThat(findingDetails).isNotEmpty();
+        assertThat(findingDetails).allSatisfy(detail ->
+                assertThat(detail.getAttribute("open")).isNull());
+        assertThat(driver.findElement(By.id("technicalSnapshotData"))
+                .getAttribute("open")).isNull();
+
+        if (Boolean.getBoolean("generateScreenshots")) {
+            saveCompleteCopilotRunResultScreenshot();
+        }
+    }
+
+    private static void saveCompleteCopilotRunResultScreenshot() {
+        Dimension previousSize = driver.manage().window().getSize();
+        Boolean settingsWereOpen = false;
+        try {
+            driver.manage().window().setSize(new Dimension(2200, 1600));
+            settingsWereOpen = (Boolean) javascript().executeScript("""
+                    const settings = document.getElementById('copilotRunSettings');
+                    const wasOpen = Boolean(settings && settings.open);
+                    if (settings) settings.open = false;
+                    document.querySelectorAll('#snapshotDetail details[open]')
+                        .forEach(detail => { detail.open = false; });
+                    window.scrollTo(0, 0);
+                    return wasOpen;
+                    """);
+            wait.until(attributeEquals(By.id("analyses-tab"),
+                    "aria-selected", "true"));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(
+                    By.id("snapshotDetail")));
+            wait.until(browser -> {
+                Number height = (Number) javascript().executeScript(
+                        "return document.getElementById('snapshotDetail')"
+                                + ".getBoundingClientRect().height");
+                return height.doubleValue() > 100.0;
+            });
+
+            Path module = Path.of(System.getProperty("project.basedir", "."))
+                    .toAbsolutePath()
+                    .normalize();
+            Path repository = module.getParent() == null ? module : module.getParent();
+            Path output = repository.resolve(
+                    "docs/images/72-complete-copilot-run-result.png");
+            Files.createDirectories(output.getParent());
+            File screenshot = ((TakesScreenshot) driver)
+                    .getScreenshotAs(OutputType.FILE);
+            Files.copy(screenshot.toPath(), output,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException exception) {
+            throw new AssertionError(
+                    "Could not save the complete Copilot result screenshot", exception);
+        } finally {
+            Boolean restoreOpen = settingsWereOpen;
+            try {
+                javascript().executeScript("""
+                        const settings = document.getElementById('copilotRunSettings');
+                        if (settings) settings.open = arguments[0];
+                        """, restoreOpen);
+            } catch (RuntimeException ignoredDuringNavigation) {
+                // The owning test remains authoritative if the page navigated meanwhile.
+            }
+            driver.manage().window().setSize(previousSize);
+        }
     }
 
     private static void exerciseRequirementWorkspaceControls() {

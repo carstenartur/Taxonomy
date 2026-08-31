@@ -47,7 +47,25 @@
             reportHtml: 'HTML', reportJson: 'JSON',
             selected: 'Selected', retry: 'Retry failed analysis', comparePrevious: 'Compare with previous version',
             added: 'Added', removed: 'Removed', unchanged: 'Unchanged', permission: 'Your role cannot change this requirement.',
-            failed: 'The operation failed.'
+            failed: 'The operation failed.', resultOverview: 'Copilot result overview',
+            mappedElements: 'Mapped elements', mappedRelations: 'Mapped relationships',
+            openGaps: 'Open gaps', patternCoverage: 'Pattern coverage',
+            recommendationConfidence: 'Recommendation confidence', confirmedElements: 'Confirmed elements',
+            gapAnalysis: 'Gap analysis', anchorsEvaluated: 'Anchors evaluated',
+            missingRelations: 'Missing relationships', coverageGaps: 'Coverage gaps',
+            incompletePatterns: 'Incomplete patterns', highestPriority: 'Highest-priority findings',
+            patternDetection: 'Detected patterns', matchedPatterns: 'Matched patterns',
+            recommendation: 'Recommendation', proposedElements: 'Proposed elements',
+            suggestedRelations: 'Suggested relationships', reasoning: 'Reasoning',
+            technicalData: 'Technical snapshot data',
+            technicalDataHint: 'Condensed provider-neutral diagnostics. Use the JSON report for the complete payload.',
+            openWorkbench: 'Inspect diagram in architecture workbench', direct: 'Direct',
+            sourceNode: 'Source node', expectedRelation: 'Expected relationship',
+            targetArea: 'Target area', descriptionLabel: 'Description',
+            nodeCode: 'Node code', coverageScore: 'Coverage score',
+            gapDescription: 'Gap description', patternDescription: 'Pattern description',
+            missingElement: 'Missing element',
+            resultReady: 'The immutable Copilot result is ready for review.'
         },
         de: {
             loading: 'Wird geladen…', portfolio: 'Portfolio', matrices: 'Matrizen',
@@ -75,7 +93,25 @@
             reportHtml: 'HTML', reportJson: 'JSON',
             selected: 'Ausgewählt', retry: 'Fehlgeschlagene Analyse wiederholen', comparePrevious: 'Mit vorheriger Version vergleichen',
             added: 'Hinzugefügt', removed: 'Entfernt', unchanged: 'Unverändert', permission: 'Ihre Rolle darf diese Anforderung nicht ändern.',
-            failed: 'Die Operation ist fehlgeschlagen.'
+            failed: 'Die Operation ist fehlgeschlagen.', resultOverview: 'Copilot-Ergebnisübersicht',
+            mappedElements: 'Zugeordnete Elemente', mappedRelations: 'Zugeordnete Beziehungen',
+            openGaps: 'Offene Lücken', patternCoverage: 'Musterabdeckung',
+            recommendationConfidence: 'Konfidenz der Empfehlung', confirmedElements: 'Bestätigte Elemente',
+            gapAnalysis: 'Lückenanalyse', anchorsEvaluated: 'Bewertete Anker',
+            missingRelations: 'Fehlende Beziehungen', coverageGaps: 'Abdeckungslücken',
+            incompletePatterns: 'Unvollständige Muster', highestPriority: 'Wichtigste Befunde',
+            patternDetection: 'Erkannte Muster', matchedPatterns: 'Erfüllte Muster',
+            recommendation: 'Empfehlung', proposedElements: 'Vorgeschlagene Elemente',
+            suggestedRelations: 'Vorgeschlagene Beziehungen', reasoning: 'Begründung',
+            technicalData: 'Technische Snapshot-Daten',
+            technicalDataHint: 'Verdichtete anbieterneutrale Diagnosedaten. Der JSON-Bericht enthält die vollständigen Nutzdaten.',
+            openWorkbench: 'Diagramm in der Architektur-Workbench untersuchen', direct: 'Direkt',
+            sourceNode: 'Quellknoten', expectedRelation: 'Erwartete Beziehung',
+            targetArea: 'Zielbereich', descriptionLabel: 'Beschreibung',
+            nodeCode: 'Knotencode', coverageScore: 'Abdeckungswert',
+            gapDescription: 'Lückenbeschreibung', patternDescription: 'Musterbeschreibung',
+            missingElement: 'Fehlendes Element',
+            resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.'
         }
     };
 
@@ -88,8 +124,12 @@
         wireEvents();
         await loadAll();
         const requestedSnapshot = new URLSearchParams(window.location.search).get('snapshot');
-        if (requestedSnapshot) await selectSnapshot(requestedSnapshot);
-        else if (state.snapshots.length) await selectSnapshot(state.snapshots[0].id);
+        if (requestedSnapshot) {
+            await selectSnapshot(requestedSnapshot);
+            activateDetailTab('analyses-tab');
+        } else if (state.snapshots.length) {
+            await selectSnapshot(state.snapshots[0].id);
+        }
     }
 
     function translateSurface() {
@@ -114,6 +154,17 @@
     }
 
     function setTabText(id, value) { document.getElementById(id).textContent = value; }
+
+
+    function activateDetailTab(tabId) {
+        const trigger = document.getElementById(tabId);
+        if (!trigger) return;
+        if (window.bootstrap && window.bootstrap.Tab) {
+            window.bootstrap.Tab.getOrCreateInstance(trigger).show();
+        } else {
+            trigger.click();
+        }
+    }
 
     function wireEvents() {
         document.getElementById('newVersionForm').addEventListener('submit', createVersion);
@@ -252,13 +303,17 @@
             return;
         }
         state.snapshots.forEach(snapshot => {
+            const selected = Boolean(state.selectedSnapshot
+                && String(state.selectedSnapshot.id) === String(snapshot.id));
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'list-group-item list-group-item-action';
+            button.className = 'list-group-item list-group-item-action'
+                + (selected ? ' active' : '');
             button.dataset.snapshotId = snapshot.id;
+            if (selected) button.setAttribute('aria-current', 'true');
             button.innerHTML = `<div class="d-flex justify-content-between gap-2"><strong>v${snapshot.requirementVersionNumber}</strong>`
                 + `<span class="badge ${statusClass(snapshot.status)}">${escapeHtml(humanize(snapshot.status))}</span></div>`
-                + `<div class="small">${escapeHtml(formatDate(snapshot.createdAt))}</div>`;
+                + `<div class="small${selected ? '' : ' text-body-secondary'}">${escapeHtml(formatDate(snapshot.createdAt))}</div>`;
             list.appendChild(button);
         });
     }
@@ -266,12 +321,13 @@
     async function selectSnapshot(id) {
         setBusy(true);
         try {
-            state.selectedSnapshot = state.snapshots.find(snapshot => snapshot.id === id) || null;
+            state.selectedSnapshot = state.snapshots.find(snapshot => String(snapshot.id) === String(id)) || null;
             state.snapshotDetail = await api().getSnapshot(projectId, id);
             const url = new URL(window.location.href);
             url.searchParams.set('snapshot', id);
             url.searchParams.set('lang', locale);
             history.replaceState(null, '', url);
+            renderSnapshots();
             renderSnapshotDetail();
             renderArchitecture();
             renderDecisions();
@@ -288,12 +344,15 @@
         const detail = state.snapshotDetail;
         if (!detail) return renderEmpty(target, t('noSnapshots'));
         const summary = detail.summary;
-        target.innerHTML = `<div class="d-flex justify-content-between gap-2"><h2 class="h5">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
-            + `<span class="badge ${statusClass(summary.status)}">${escapeHtml(humanize(summary.status))}</span></div>`
-            + `<dl class="portfolio-card-meta"><dt>${escapeHtml(t('provider'))}</dt><dd>${escapeHtml(summary.provider || '—')}</dd>`
+        target.classList.add('portfolio-snapshot-detail');
+        target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
+            + `<div><h2 class="h4 mb-1">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
+            + `<p class="small text-body-secondary mb-0">${escapeHtml(t('resultReady'))}</p></div>`
+            + `<span class="badge ${statusClass(summary.status)} fs-6">${escapeHtml(humanize(summary.status))}</span></div>`
+            + `<dl class="portfolio-card-meta portfolio-snapshot-meta mt-3"><dt>${escapeHtml(t('provider'))}</dt><dd>${escapeHtml(summary.provider || '—')}</dd>`
             + `<dt>${escapeHtml(t('model'))}</dt><dd>${escapeHtml(summary.modelName || '—')}</dd>`
             + `<dt>${escapeHtml(t('created'))}</dt><dd>${escapeHtml(formatDate(summary.createdAt))}</dd>`
-            + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(String(summary.durationMs))} ms</dd>`
+            + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(formatDuration(summary.durationMs))}</dd>`
             + `<dt>${escapeHtml(t('baseline'))}</dt><dd><code>${escapeHtml(String(summary.taxonomyFingerprint || '').slice(0, 16))}</code> / <code>${escapeHtml(String(summary.promptFingerprint || '').slice(0, 16))}</code></dd></dl>`
             + renderDecisionReportActions(summary)
             + renderAnalysisSummary(detail);
@@ -347,12 +406,223 @@
     }
 
     function renderAnalysisSummary(detail) {
-        const warnings = detail.analysis && detail.analysis.warnings || [];
-        const gap = detail.gapAnalysis;
-        const recommendation = detail.recommendation;
-        return (warnings.length ? `<div class="alert alert-warning mt-3"><ul class="mb-0">${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul></div>` : '')
-            + (gap ? `<section class="mt-3"><h3 class="h6">Gap analysis</h3><p>${escapeHtml(gap.summary || gap.description || JSON.stringify(gap))}</p></section>` : '')
-            + (recommendation ? `<section class="mt-3"><h3 class="h6">Recommendation</h3><p>${escapeHtml(recommendation.summary || recommendation.recommendation || JSON.stringify(recommendation))}</p></section>` : '');
+        const analysis = detail.analysis || {};
+        const warnings = asArray(analysis.warnings);
+        const gap = detail.gapAnalysis || {};
+        const patterns = detail.patternDetection || {};
+        const recommendation = detail.recommendation || {};
+        const mappings = asArray(detail.elementMappings);
+        const relations = asArray(detail.relationMappings);
+        const missing = asArray(gap.missingRelations);
+        const coverage = asArray(gap.coverageGaps);
+        const incomplete = asArray(gap.incompletePatterns);
+        const matched = asArray(patterns.matchedPatterns);
+        const confirmed = asArray(recommendation.confirmedElements);
+        const proposed = asArray(recommendation.proposedElements);
+        const suggested = asArray(recommendation.suggestedRelations);
+        const reasoning = asArray(recommendation.reasoning);
+        const gapCount = safeNumber(gap.totalGaps, missing.length);
+        const patternPercent = percentage(patterns.patternCoverage);
+        const recommendationPercent = percentage(recommendation.confidence);
+
+        const overview = `<section id="snapshotResultOverview" class="portfolio-result-overview mt-3" aria-labelledby="snapshotResultTitle">`
+            + `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-2">`
+            + `<h3 id="snapshotResultTitle" class="h5 mb-0">${escapeHtml(t('resultOverview'))}</h3>`
+            + `<a class="btn btn-sm btn-outline-success" href="${escapeHtml(architectureWorkbenchUrl())}">${escapeHtml(t('openWorkbench'))}</a></div>`
+            + `<div class="portfolio-result-kpis">`
+            + resultMetric(t('mappedElements'), mappings.length,
+                mappings.filter(item => item.selectedForImpact).length + ' ' + t('direct'), 'primary')
+            + resultMetric(t('mappedRelations'), relations.length, '', 'info')
+            + resultMetric(t('openGaps'), gapCount,
+                missing.length + ' ' + t('missingRelations'), gapCount > 0 ? 'warning' : 'success')
+            + resultMetric(t('patternCoverage'), patternPercent + '%',
+                matched.length + ' ' + t('matchedPatterns'), patternPercent >= 70 ? 'success' : 'warning')
+            + resultMetric(t('recommendationConfidence'), recommendationPercent + '%',
+                suggested.length + ' ' + t('suggestedRelations'), recommendationPercent >= 70 ? 'success' : 'warning')
+            + resultMetric(t('confirmedElements'), confirmed.length,
+                proposed.length + ' ' + t('proposedElements'), 'success')
+            + `</div></section>`;
+
+        const warningHtml = warnings.length
+            ? `<div class="alert alert-warning mt-3"><ul class="mb-0">${warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>`
+            : '';
+        const technical = {
+            summary: detail.summary || {},
+            analysis: {
+                status: analysis.status,
+                provider: analysis.provider,
+                warnings: warnings,
+                discrepancies: asArray(analysis.discrepancies),
+                productCoverageGaps: asArray(analysis.productCoverageGaps),
+                provisionalRelations: asArray(analysis.provisionalRelations),
+                architectureView: compactArchitectureView(analysis.architectureView)
+            },
+            gapAnalysis: gap,
+            patternDetection: patterns,
+            recommendation: recommendation
+        };
+        const technicalHtml = `<details id="technicalSnapshotData" class="portfolio-technical-data mt-3">`
+            + `<summary><span>${escapeHtml(t('technicalData'))}</span><small>${escapeHtml(t('technicalDataHint'))}</small></summary>`
+            + `<pre>${escapeHtml(JSON.stringify(technical, null, 2))}</pre></details>`;
+
+        return overview + warningHtml
+            + `<div class="portfolio-result-grid mt-3">`
+            + renderGapResult(gap, missing, coverage, incomplete)
+            + renderPatternResult(patterns, matched)
+            + renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning)
+            + `</div>` + technicalHtml;
+    }
+
+    function resultMetric(label, value, detail, variant) {
+        return `<article class="portfolio-result-kpi border-${escapeHtml(variant || 'secondary')}">`
+            + `<div class="portfolio-result-kpi-value">${escapeHtml(String(value))}</div>`
+            + `<div class="portfolio-result-kpi-label">${escapeHtml(label)}</div>`
+            + (detail ? `<div class="portfolio-result-kpi-detail">${escapeHtml(detail)}</div>` : '')
+            + `</article>`;
+    }
+
+    function renderGapResult(gap, missing, coverage, incomplete) {
+        const topMissing = missing.slice(0, 5);
+        const findings = topMissing.length
+            ? `<ol class="portfolio-finding-list">${topMissing.map(item => `<li><code>${escapeHtml(item.sourceNodeCode || '—')}</code> `
+                + `<strong>${escapeHtml(humanize(item.expectedRelationType || 'RELATED_TO'))}</strong> `
+                + `→ <span>${escapeHtml(item.expectedTargetRoot || '—')}</span>`
+                + `<small>${escapeHtml(item.description || '')}</small></li>`).join('')}</ol>`
+            : `<p class="text-body-secondary mb-0">—</p>`;
+        return `<section id="gapResultSection" class="portfolio-result-panel" aria-labelledby="gapResultTitle">`
+            + `<div class="portfolio-result-panel-header"><h3 id="gapResultTitle" class="h6 mb-0">${escapeHtml(t('gapAnalysis'))}</h3>`
+            + `<div class="d-flex flex-wrap gap-1"><span class="badge text-bg-secondary">${safeNumber(gap.totalAnchors, 0)} ${escapeHtml(t('anchorsEvaluated'))}</span>`
+            + `<span class="badge ${safeNumber(gap.totalGaps, 0) > 0 ? 'text-bg-warning' : 'text-bg-success'}">${safeNumber(gap.totalGaps, 0)} ${escapeHtml(t('openGaps'))}</span></div></div>`
+            + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('highestPriority'))}</h4>${findings}`
+            + renderFindingDetails(t('missingRelations'), missing,
+                ['sourceNodeCode', 'expectedRelationType', 'expectedTargetRoot', 'description'])
+            + renderFindingDetails(t('coverageGaps'), coverage,
+                ['nodeCode', 'coverageScore', 'gapDescription'])
+            + renderFindingDetails(t('incompletePatterns'), incomplete,
+                ['nodeCode', 'patternDescription', 'missingElement'])
+            + `</section>`;
+    }
+
+    function renderPatternResult(patterns, matched) {
+        const cards = matched.length ? matched.map(pattern => {
+            const completeness = percentage(pattern.completeness);
+            const expected = asArray(pattern.expectedSteps);
+            const present = new Set(asArray(pattern.presentSteps));
+            return `<article class="portfolio-pattern-card"><div class="d-flex justify-content-between gap-2 align-items-center">`
+                + `<strong>${escapeHtml(pattern.patternName || t('patternDetection'))}</strong>`
+                + `<span class="badge ${completeness >= 100 ? 'text-bg-success' : 'text-bg-warning'}">${completeness}%</span></div>`
+                + `<div class="progress mt-2" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${completeness}">`
+                + `<div class="progress-bar" style="width:${completeness}%"></div></div>`
+                + `<ul class="portfolio-step-list">${expected.map(step => `<li class="${present.has(step) ? 'is-present' : 'is-missing'}">`
+                    + `<span aria-hidden="true">${present.has(step) ? '✓' : '○'}</span>${escapeHtml(step)}</li>`).join('')}</ul></article>`;
+        }).join('') : `<p class="text-body-secondary mb-0">—</p>`;
+        return `<section id="patternResultSection" class="portfolio-result-panel" aria-labelledby="patternResultTitle">`
+            + `<div class="portfolio-result-panel-header"><h3 id="patternResultTitle" class="h6 mb-0">${escapeHtml(t('patternDetection'))}</h3>`
+            + `<span class="badge text-bg-success">${percentage(patterns.patternCoverage)}%</span></div>`
+            + `<div class="vstack gap-2 mt-3">${cards}</div></section>`;
+    }
+
+    function renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning) {
+        const reasoningHtml = reasoning.length
+            ? `<ul class="portfolio-reasoning-list">${reasoning.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+            : `<p class="text-body-secondary mb-0">—</p>`;
+        const relationDetails = suggested.length
+            ? `<details class="portfolio-finding-details"><summary>${escapeHtml(t('suggestedRelations'))} <span class="badge text-bg-secondary">${suggested.length}</span></summary>`
+                + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0">`
+                + `<caption class="visually-hidden">${escapeHtml(t('suggestedRelations'))}</caption><thead><tr>`
+                + `<th scope="col">${escapeHtml(t('relation'))}</th><th scope="col">${escapeHtml(t('reasoning'))}</th></tr></thead><tbody>`
+                + suggested.map(item => `<tr><td><code>${escapeHtml(item.sourceCode || '—')}</code> → <code>${escapeHtml(item.targetCode || '—')}</code>`
+                    + `<div class="small fw-semibold">${escapeHtml(humanize(item.relationType || 'RELATED_TO'))}</div></td>`
+                    + `<td>${escapeHtml(item.reasoning || '—')}</td></tr>`).join('')
+                + `</tbody></table></div></details>`
+            : '';
+        return `<section id="recommendationResultSection" class="portfolio-result-panel portfolio-result-panel-wide" aria-labelledby="recommendationResultTitle">`
+            + `<div class="portfolio-result-panel-header"><h3 id="recommendationResultTitle" class="h6 mb-0">${escapeHtml(t('recommendation'))}</h3>`
+            + `<span class="badge ${percentage(recommendation.confidence) >= 70 ? 'text-bg-success' : 'text-bg-warning'}">${percentage(recommendation.confidence)}%</span></div>`
+            + `<div class="d-flex flex-wrap gap-2 mt-3">`
+            + `<span class="badge text-bg-success">${confirmed.length} ${escapeHtml(t('confirmedElements'))}</span>`
+            + `<span class="badge text-bg-warning">${proposed.length} ${escapeHtml(t('proposedElements'))}</span>`
+            + `<span class="badge text-bg-info">${suggested.length} ${escapeHtml(t('suggestedRelations'))}</span></div>`
+            + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('reasoning'))}</h4>${reasoningHtml}${relationDetails}</section>`;
+    }
+
+    function renderFindingDetails(label, items, fields) {
+        if (!items.length) return '';
+        const headers = fields.map(field =>
+            `<th scope="col">${escapeHtml(findingColumnLabel(field))}</th>`).join('');
+        return `<details class="portfolio-finding-details"><summary>${escapeHtml(label)} <span class="badge text-bg-secondary">${items.length}</span></summary>`
+            + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0">`
+            + `<caption class="visually-hidden">${escapeHtml(label)}</caption>`
+            + `<thead><tr>${headers}</tr></thead><tbody>`
+            + items.map(item => `<tr>${fields.map(field => `<td>${escapeHtml(formatFindingValue(field, item[field]))}</td>`).join('')}</tr>`).join('')
+            + `</tbody></table></div></details>`;
+    }
+
+    function findingColumnLabel(field) {
+        const labels = {
+            sourceNodeCode: t('sourceNode'),
+            expectedRelationType: t('expectedRelation'),
+            expectedTargetRoot: t('targetArea'),
+            description: t('descriptionLabel'),
+            nodeCode: t('nodeCode'),
+            coverageScore: t('coverageScore'),
+            gapDescription: t('gapDescription'),
+            patternDescription: t('patternDescription'),
+            missingElement: t('missingElement')
+        };
+        return labels[field] || humanize(field);
+    }
+
+    function formatFindingValue(field, value) {
+        if (value === null || value === undefined || value === '') return '—';
+        if (field.toLowerCase().includes('score')) return percentage(value) + '%';
+        return String(value);
+    }
+
+    function compactArchitectureView(view) {
+        if (!view) return null;
+        return {
+            viewTitle: view.viewTitle,
+            viewDescription: view.viewDescription,
+            totalAnchors: view.totalAnchors,
+            totalElements: view.totalElements,
+            totalRelationships: view.totalRelationships,
+            maxHopDistance: view.maxHopDistance,
+            activeRules: view.activeRules,
+            notes: view.notes
+        };
+    }
+
+    function asArray(value) { return Array.isArray(value) ? value : []; }
+
+    function safeNumber(value, fallback) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : (fallback ?? 0);
+    }
+
+    function percentage(value) {
+        const parsed = safeNumber(value, 0);
+        const normalized = Math.abs(parsed) <= 1 && parsed !== 0 ? parsed * 100 : parsed;
+        return Math.max(0, Math.min(100, Math.round(normalized)));
+    }
+
+    function formatDuration(value) {
+        const milliseconds = safeNumber(value, 0);
+        if (milliseconds < 1000) return Math.round(milliseconds) + ' ms';
+        if (milliseconds < 60000) return (milliseconds / 1000).toFixed(1) + ' s';
+        return (milliseconds / 60000).toFixed(1) + ' min';
+    }
+
+    function architectureWorkbenchUrl() {
+        if (!state.selectedSnapshot || state.selectedSnapshot.id === null
+                || state.selectedSnapshot.id === undefined) {
+            return '#';
+        }
+        const url = new URL('/architecture/workbench', window.location.origin);
+        url.searchParams.set('projectId', String(projectId));
+        url.searchParams.set('snapshotId', String(state.selectedSnapshot.id));
+        url.searchParams.set('lang', locale);
+        return url.pathname + url.search;
     }
 
     function renderArchitecture() {

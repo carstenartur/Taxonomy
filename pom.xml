@@ -401,7 +401,7 @@
         <profile>
             <id>screenshots</id>
             <properties>
-                <skipITs>false</skipITs><it.test>ScreenshotGeneratorIT,ArchitectureWorkbenchUiIT</it.test>
+                <skipITs>false</skipITs><it.test>ScreenshotGeneratorIT,ArchitectureWorkbenchUiIT,CompleteCopilotSessionIT</it.test>
                 <generateScreenshots>true</generateScreenshots>
                 <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
                 <taxonomy.model.download.skip>false</taxonomy.model.download.skip>
