@@ -1,0 +1,114 @@
+name: QA Copilot Workbench Overview Screenshot
+
+on:
+  push:
+    branches:
+      - fix/copilot-architecture-workbench-ux
+    paths:
+      - .github/workflows/qa-copilot-workbench-overview-screenshot.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qa-copilot-workbench-overview-screenshot
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Capture complete persisted-snapshot overview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/copilot-architecture-workbench-ux
+          fetch-depth: 0
+
+      - name: Clear the inspected selection before the documentation capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java')
+          text = path.read_text(encoding='utf-8')
+          marker = '''            driver.manage().window().setSize(new Dimension(2200, 1300));
+                      fitAndWait();
+          '''
+          replacement = '''            driver.manage().window().setSize(new Dimension(2200, 1300));
+                      javascript().executeScript("""
+                              const diagram = document.getElementById('architectureCanvas');
+                              diagram.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                              """);
+                      wait.until(browser -> browser.findElements(By.cssSelector(
+                              ".architecture-node.is-selected, .architecture-node.is-muted, "
+                                      + ".architecture-edge.is-selected, .architecture-edge.is-muted"))
+                              .isEmpty());
+                      fitAndWait();
+          '''
+          if marker not in text:
+              raise SystemExit('Documentation screenshot preparation block not found')
+          path.write_text(text.replace(marker, replacement, 1), encoding='utf-8')
+          PY
+          git diff --check
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Exercise and capture the complete overview
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=ArchitectureWorkbenchUiIT
+          -DgenerateScreenshots=true
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify and upload the overview screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=docs/images/71-copilot-architecture-workbench.png
+          test -s "$image"
+          test "$(wc -c < "$image")" -gt 75000
+          file "$image" | grep -F 'PNG image data'
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: persisted-copilot-workbench-overview
+          path: |
+            docs/images/71-copilot-architecture-workbench.png
+            taxonomy-app/target/failsafe-reports/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish the reviewed overview and remove this temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/qa-copilot-workbench-overview-screenshot.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java \
+            docs/images/71-copilot-architecture-workbench.png \
+            .github/workflows/qa-copilot-workbench-overview-screenshot.yml
+          git commit -m 'Document the complete Copilot workbench overview'
+          git push origin HEAD:fix/copilot-architecture-workbench-ux
