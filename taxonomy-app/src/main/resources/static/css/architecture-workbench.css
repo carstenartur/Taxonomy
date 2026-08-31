@@ -4,6 +4,7 @@
     --workbench-panel: #ffffff;
     --workbench-muted: #64748b;
     --workbench-focus: #0d6efd;
+    --workbench-canvas: #f3f5f7;
 }
 
 html,
@@ -25,15 +26,15 @@ body {
 .workbench-status {
     min-height: 28px;
     padding: 0.35rem 1rem;
-    background: #e0f2fe;
     border-bottom: 1px solid #bae6fd;
+    background: #e0f2fe;
     color: #0c4a6e;
     font-size: 0.875rem;
 }
 
 .workbench-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 1fr) 360px;
     height: calc(100vh - 84px);
     gap: 1px;
     background: var(--workbench-border);
@@ -41,8 +42,8 @@ body {
 
 .workbench-canvas-panel,
 .workbench-detail-panel {
-    background: var(--workbench-panel);
     min-width: 0;
+    background: var(--workbench-panel);
 }
 
 .workbench-canvas-panel {
@@ -52,58 +53,333 @@ body {
 
 .workbench-heading {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
     align-items: flex-start;
-    gap: 1rem;
-    padding: 0.85rem 1rem;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    padding: 0.8rem 1rem;
     border-bottom: 1px solid var(--workbench-border);
 }
 
-.architecture-canvas-shell {
+.architecture-kpis {
+    display: flex;
+    flex: 1 1 24rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+
+.architecture-kpi {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    min-height: 1.8rem;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--workbench-border);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 0.72rem;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.architecture-workbench {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     min-height: 0;
     overflow: hidden;
-    background:
-        linear-gradient(#f8fafc 1px, transparent 1px),
-        linear-gradient(90deg, #f8fafc 1px, transparent 1px);
+    background: #fff;
+}
+
+.architecture-workbench:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    background: #fff;
+}
+
+.architecture-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid var(--workbench-border);
+    background: #fff;
+}
+
+.architecture-search-wrap {
+    position: relative;
+    flex: 1 1 16rem;
+    min-width: 13rem;
+}
+
+.architecture-search {
+    width: 100%;
+    min-height: 2.1rem;
+    padding: 0.35rem 2rem 0.35rem 0.7rem;
+    border: 1px solid #ced4da;
+    border-radius: 0.45rem;
+    background: #fff;
+    color: #212529;
+    font-size: 0.8rem;
+}
+
+.architecture-search:focus {
+    border-color: var(--workbench-focus);
+    outline: 0;
+    box-shadow: 0 0 0 0.18rem rgb(13 110 253 / 20%);
+}
+
+.architecture-search-clear {
+    position: absolute;
+    top: 50%;
+    right: 0.35rem;
+    width: 1.45rem;
+    height: 1.45rem;
+    padding: 0;
+    transform: translateY(-50%);
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #6c757d;
+    line-height: 1;
+}
+
+.architecture-search-clear:hover,
+.architecture-search-clear:focus-visible {
+    background: #f1f3f5;
+    color: #212529;
+}
+
+.architecture-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2.1rem;
+    padding: 0.3rem 0.55rem;
+    border: 1px solid var(--workbench-border);
+    border-radius: 0.45rem;
+    background: #f8f9fa;
+    font-size: 0.76rem;
+    white-space: nowrap;
+}
+
+.architecture-toggle input {
+    margin: 0;
+}
+
+.architecture-button-group {
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid var(--workbench-border);
+    border-radius: 0.45rem;
+}
+
+.architecture-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.28rem;
+    min-height: 2.1rem;
+    padding: 0.32rem 0.55rem;
+    border: 0;
+    border-right: 1px solid var(--workbench-border);
+    background: #fff;
+    color: #212529;
+    font-size: 0.75rem;
+    line-height: 1.15;
+    white-space: nowrap;
+}
+
+.architecture-control:last-child {
+    border-right: 0;
+}
+
+.architecture-control.icon-only {
+    min-width: 2.15rem;
+    font-size: 1rem;
+}
+
+.architecture-control:hover,
+.architecture-control:focus-visible {
+    z-index: 1;
+    background: #f1f3f5;
+    outline: 2px solid var(--workbench-focus);
+    outline-offset: -2px;
+}
+
+.architecture-control[aria-pressed="true"] {
+    background: var(--workbench-focus);
+    color: #fff;
+}
+
+.architecture-control:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+}
+
+.architecture-visible-status {
+    flex: 1 0 100%;
+    min-height: 1.1rem;
+    color: #6c757d;
+    font-size: 0.72rem;
+}
+
+.architecture-canvas-shell {
+    position: relative;
+    min-height: 430px;
+    overflow: hidden;
+    background-color: var(--workbench-canvas);
+    background-image:
+        linear-gradient(rgb(127 127 127 / 8%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(127 127 127 / 8%) 1px, transparent 1px);
     background-size: 24px 24px;
+    touch-action: none;
 }
 
 #architectureCanvas {
+    display: block;
     width: 100%;
     height: 100%;
-    display: block;
     outline: none;
+    cursor: grab;
+    user-select: none;
+}
+
+#architectureCanvas:active {
+    cursor: grabbing;
 }
 
 #architectureCanvas:focus-visible {
     box-shadow: inset 0 0 0 3px var(--workbench-focus);
 }
 
+.architecture-layer-column {
+    fill: rgb(255 255 255 / 72%);
+    stroke: #d9dee3;
+    stroke-width: 1;
+}
+
+.architecture-layer-header {
+    stroke: rgb(15 23 42 / 25%);
+    stroke-width: 1.2;
+}
+
+.architecture-layer-title {
+    font-size: 12px;
+    font-weight: 700;
+    pointer-events: none;
+}
+
+.architecture-layer-count {
+    font-size: 10px;
+    font-weight: 700;
+    pointer-events: none;
+}
+
 .architecture-node {
     cursor: pointer;
+    outline: none;
+    transition: opacity 120ms ease;
 }
 
-.architecture-node rect {
-    transition: stroke-width 120ms ease, filter 120ms ease;
+.architecture-node-card {
+    stroke: rgb(15 23 42 / 40%);
+    stroke-width: 1.2;
+    filter: drop-shadow(0 2px 3px rgb(15 23 42 / 14%));
 }
 
-.architecture-node:hover rect,
-.architecture-node:focus rect,
-.architecture-node.is-selected rect {
+.architecture-node:hover .architecture-node-card,
+.architecture-node:focus-visible .architecture-node-card {
     stroke: var(--workbench-focus);
-    stroke-width: 4px;
-    filter: drop-shadow(0 3px 4px rgb(15 23 42 / 0.22));
+    stroke-width: 2.6;
 }
 
-.architecture-edge {
+.architecture-node.is-anchor .architecture-node-card {
+    stroke: #9a6700;
+    stroke-width: 2.4;
+}
+
+.architecture-node.is-selected .architecture-node-card {
+    stroke: var(--workbench-focus);
+    stroke-width: 3.2;
+    filter: drop-shadow(0 0 6px rgb(13 110 253 / 58%));
+}
+
+.architecture-node.is-search-match .architecture-node-card {
+    stroke: #7c3aed;
+    stroke-width: 3.2;
+    filter: drop-shadow(0 0 5px rgb(124 58 237 / 60%));
+}
+
+.architecture-node.is-muted {
+    opacity: 0.2;
+}
+
+.architecture-node-code {
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+}
+
+.architecture-node-title {
+    font-size: 13px;
+    font-weight: 650;
+    pointer-events: none;
+}
+
+.architecture-node-meta {
+    font-size: 9px;
+    opacity: 0.84;
+    pointer-events: none;
+}
+
+.architecture-node-score-pill {
+    stroke: rgb(255 255 255 / 65%);
+    stroke-width: 0.8;
+    pointer-events: none;
+}
+
+.architecture-node-score {
+    font-size: 10px;
+    font-weight: 800;
+    pointer-events: none;
+}
+
+.architecture-edge-path {
+    fill: none;
+    stroke-width: 1.7;
+    stroke-opacity: 0.58;
+    transition: stroke-opacity 120ms ease, stroke-width 120ms ease;
+}
+
+.architecture-edge-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 14;
     cursor: pointer;
+    pointer-events: stroke;
 }
 
-.architecture-edge:hover line,
-.architecture-edge:focus line,
-.architecture-edge.is-selected line {
-    stroke: var(--workbench-focus);
-    stroke-width: 4px;
+.architecture-edge.is-muted .architecture-edge-path {
+    stroke-opacity: 0.09;
+}
+
+.architecture-edge.is-connected .architecture-edge-path,
+.architecture-edge.is-selected .architecture-edge-path {
+    stroke-opacity: 0.98;
+    stroke-width: 3;
+}
+
+.architecture-edge-label {
+    font-size: 9px;
+    font-weight: 650;
+    paint-order: stroke;
+    stroke: var(--workbench-canvas);
+    stroke-width: 5px;
+    stroke-linejoin: round;
+    pointer-events: none;
 }
 
 .workbench-detail-panel {
@@ -129,35 +405,20 @@ body {
 }
 
 .requirement-text {
-    white-space: pre-wrap;
     max-height: 16rem;
+    padding: 0.75rem;
     overflow: auto;
     border: 1px solid var(--workbench-border);
     border-radius: 0.4rem;
-    padding: 0.75rem;
     background: #f8fafc;
     font-size: 0.84rem;
+    white-space: pre-wrap;
 }
 
-.architecture-legend {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.35rem 0.65rem;
-    font-size: 0.72rem;
-}
-
-.legend-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.legend-swatch {
-    width: 0.9rem;
-    height: 0.9rem;
-    border: 1px solid #64748b;
-    border-radius: 0.2rem;
+@media (max-width: 1050px) {
+    .workbench-grid {
+        grid-template-columns: minmax(0, 1fr) 310px;
+    }
 }
 
 @media (max-width: 900px) {
@@ -168,7 +429,7 @@ body {
 
     .workbench-grid {
         grid-template-columns: 1fr;
-        grid-template-rows: minmax(65vh, 1fr) auto;
+        grid-template-rows: minmax(70vh, 1fr) auto;
         height: auto;
     }
 
@@ -176,14 +437,25 @@ body {
         max-height: none;
     }
 
+    .architecture-workbench {
+        min-height: 70vh;
+    }
+
     .architecture-canvas-shell {
-        min-height: 65vh;
+        min-height: 60vh;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .architecture-node,
+    .architecture-edge-path {
+        transition: none;
     }
 }
 
 @media (forced-colors: active) {
-    .architecture-node rect,
-    .architecture-edge line {
+    .architecture-node-card,
+    .architecture-edge-path {
         forced-color-adjust: auto;
     }
 }

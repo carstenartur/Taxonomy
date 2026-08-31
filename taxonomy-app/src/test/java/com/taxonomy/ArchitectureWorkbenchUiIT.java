@@ -137,14 +137,22 @@ class ArchitectureWorkbenchUiIT {
         assertThat(snapshotId).isNotBlank().isNotEqualTo("null");
 
         open("/projects/" + projectId + "/requirements/" + requirementId + "/architecture",
-                By.id("architectureCanvas"));
+                By.id("architectureWorkbench"));
         wait.until(browser -> browser.findElement(By.id("architectureStatus"))
                 .getText().startsWith("Loaded "));
         wait.until(browser -> !browser.findElements(By.cssSelector(".architecture-node")).isEmpty());
+        wait.until(browser -> browser.findElements(By.cssSelector(".architecture-kpi")).size() >= 4);
+        assertThat(driver.findElement(By.id("architectureTitle")).getText())
+                .isNotBlank()
+                .doesNotStartWith("archview.");
+        fitAndWait();
+        assertDiagramFitsCanvas();
 
         List<WebElement> nodes = driver.findElements(By.cssSelector(".architecture-node"));
         assertThat(nodes).isNotEmpty();
-        String nodeCode = nodes.getFirst().findElement(By.cssSelector("text")).getText();
+        String nodeCode = nodes.getFirst()
+                .findElement(By.cssSelector(".architecture-node-code"))
+                .getText();
         assertThat(nodeCode).isNotBlank();
 
         nodes.getFirst().click();
@@ -155,6 +163,34 @@ class ArchitectureWorkbenchUiIT {
                 .contains("branch");
         assertThat(driver.findElement(By.id("requirementText")).getText())
                 .contains("secure resilient command information exchange");
+
+        WebElement search = driver.findElement(By.id("architectureSearch"));
+        search.sendKeys(nodeCode);
+        wait.until(browser -> !browser.findElements(By.cssSelector(
+                ".architecture-node.is-search-match[data-node-id='" + nodeCode + "']")).isEmpty());
+        driver.findElement(By.id("clearArchitectureSearch")).click();
+        wait.until(browser -> browser.findElements(
+                By.cssSelector(".architecture-node.is-search-match")).isEmpty());
+
+        int overviewNodeCount = driver.findElements(By.cssSelector(".architecture-node")).size();
+        driver.findElement(By.id("architectureFocus")).click();
+        wait.until(browser -> {
+            int visible = browser.findElements(By.cssSelector(".architecture-node")).size();
+            return visible > 0 && visible <= overviewNodeCount;
+        });
+        javascript().executeScript("""
+                document.getElementById('architectureCanvas')
+                    .dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                """);
+        wait.until(browser -> "true".equals(browser.findElement(
+                By.id("architectureOverview")).getAttribute("aria-pressed"))
+                && "false".equals(browser.findElement(
+                        By.id("architectureFocus")).getAttribute("aria-pressed"))
+                && !browser.findElement(By.id("architectureFocus")).isEnabled()
+                && browser.findElements(By.cssSelector(
+                        ".architecture-node")).size() == overviewNodeCount);
+        fitAndWait();
+        assertDiagramFitsCanvas();
 
         Map<String, Object> svg = requestText(
                 "/api/projects/" + projectId + "/architecture-workbench/" + snapshotId + ".svg");
@@ -172,6 +208,82 @@ class ArchitectureWorkbenchUiIT {
         assertThat(String.valueOf(pdf.get("contentType"))).startsWith("application/pdf");
         assertThat(String.valueOf(pdf.get("prefix"))).isEqualTo("%PDF-");
         assertThat(number(pdf.get("length"))).isGreaterThan(500);
+
+
+        if (Boolean.getBoolean("generateScreenshots")) {
+            saveDocumentationScreenshot();
+        }
+    }
+
+    private static void fitAndWait() {
+        javascript().executeScript("""
+                window.__architectureFitReady = false;
+                document.getElementById('fitArchitecture').click();
+                window.setTimeout(() => { window.__architectureFitReady = true; }, 350);
+                """);
+        wait.until(browser -> Boolean.TRUE.equals(
+                javascript().executeScript(
+                        "return window.__architectureFitReady === true;")));
+    }
+
+    private static void assertDiagramFitsCanvas() {
+        Object result = javascript().executeScript("""
+                const shell = document.getElementById('architectureCanvasShell');
+                const elements = Array.from(document.querySelectorAll(
+                    '.architecture-layer-header, .architecture-node'));
+                if (!shell || elements.length === 0) return false;
+                const canvasBounds = shell.getBoundingClientRect();
+                return elements.every(element => {
+                    const bounds = element.getBoundingClientRect();
+                    return bounds.left >= canvasBounds.left - 2
+                        && bounds.right <= canvasBounds.right + 2
+                        && bounds.top >= canvasBounds.top - 2
+                        && bounds.bottom <= canvasBounds.bottom + 2;
+                });
+                """);
+        assertThat(result).isEqualTo(Boolean.TRUE);
+    }
+
+    private static void saveDocumentationScreenshot() {
+        Dimension previousSize = driver.manage().window().getSize();
+        try {
+            driver.manage().window().setSize(new Dimension(2200, 1300));
+            javascript().executeScript("""
+                    const diagram = document.getElementById('architectureCanvas');
+                    diagram.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                    """);
+            wait.until(browser -> browser.findElements(By.cssSelector(
+                    ".architecture-node.is-selected, .architecture-node.is-muted, "
+                            + ".architecture-edge.is-selected, .architecture-edge.is-muted"))
+                    .isEmpty());
+            fitAndWait();
+            assertDiagramFitsCanvas();
+            java.nio.file.Path output = documentationScreenshotPath();
+            java.nio.file.Files.createDirectories(output.getParent());
+            java.io.File capture = ((org.openqa.selenium.TakesScreenshot) driver)
+                    .getScreenshotAs(org.openqa.selenium.OutputType.FILE);
+            java.nio.file.Files.copy(
+                    capture.toPath(),
+                    output,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (java.io.IOException exception) {
+            throw new AssertionError("Could not save Copilot workbench screenshot", exception);
+        } finally {
+            driver.manage().window().setSize(previousSize);
+            fitAndWait();
+        }
+    }
+
+    private static java.nio.file.Path documentationScreenshotPath() {
+        java.nio.file.Path module = java.nio.file.Path.of(
+                System.getProperty("project.basedir", "."))
+                .toAbsolutePath()
+                .normalize();
+        java.nio.file.Path repository = module.getParent();
+        if (repository == null) {
+            repository = module;
+        }
+        return repository.resolve("docs/images/71-copilot-architecture-workbench.png");
     }
 
     private static void login() {

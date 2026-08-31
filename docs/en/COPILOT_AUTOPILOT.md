@@ -27,6 +27,14 @@ All configured or request-supplied verification-pass counts must be between 1 an
 
 Manual Copilot requires a ready provider but does **not** require `TAXONOMY_AI_COST_POLICY=UNMETERED`; the user explicitly starts every run.
 
+## Persisted architecture workbench
+
+Every successful Copilot full analysis stores an immutable architecture snapshot. Open **Architecture** from the completed run to investigate that exact result in a read-only workbench with search, overview and focus modes, context filtering, zoom, true fit-to-content, fullscreen display, provenance, review state and evidence details.
+
+![Persisted Copilot architecture workbench](../images/71-copilot-architecture-workbench.png)
+
+The browser, SVG download and PDF download use the same deterministic server-side scene and coordinates. The interactive browser controls change only visibility, selection and viewport; they do not silently recalculate or mutate the persisted architecture.
+
 ## Architecture-node limits
 
 `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` keeps its historical name for compatibility, but its Spring property is `taxonomy.ai.max-architecture-nodes` and it applies to **both manual Copilot and Autopilot**. It is the operator ceiling for the architecture view built in every AI-automation pass. A manual API request may select a lower value but cannot exceed it.

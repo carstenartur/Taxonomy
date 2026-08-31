@@ -25,7 +25,9 @@ public class LayeredDiagramLayoutService {
     static final double NODE_WIDTH = 238.0;
     static final double NODE_HEIGHT = 82.0;
     static final double COLUMN_GAP = 92.0;
+    static final double SUBCOLUMN_GAP = 24.0;
     static final double ROW_GAP = 34.0;
+    static final int MAX_ROWS_PER_COLUMN = 5;
     static final double MIN_WIDTH = 760.0;
     static final double MIN_HEIGHT = 420.0;
 
@@ -52,14 +54,23 @@ public class LayeredDiagramLayoutService {
             byLayer.computeIfAbsent(node.layer(), ignored -> new ArrayList<>()).add(node);
         }
 
+        int maximumRows = byLayer.values().stream()
+                .mapToInt(layer -> rowCount(layer.size()))
+                .max()
+                .orElse(1);
+        double contentHeight = rowsHeight(maximumRows);
+
         List<DiagramSceneNode> sceneNodes = new ArrayList<>(ordered.size());
         Map<String, DiagramSceneNode> byId = new LinkedHashMap<>();
-        int column = 0;
-        int maximumRows = 0;
+        double layerStartX = MARGIN;
         for (List<DiagramNode> layerNodes : byLayer.values()) {
-            maximumRows = Math.max(maximumRows, layerNodes.size());
-            for (int row = 0; row < layerNodes.size(); row++) {
-                DiagramNode node = layerNodes.get(row);
+            int rows = rowCount(layerNodes.size());
+            double layerHeight = rowsHeight(rows);
+            double firstRowY = MARGIN + (contentHeight - layerHeight) / 2.0;
+            for (int index = 0; index < layerNodes.size(); index++) {
+                DiagramNode node = layerNodes.get(index);
+                int subcolumn = index / rows;
+                int row = index % rows;
                 DiagramSceneNode sceneNode = new DiagramSceneNode(
                         node.id(),
                         node.label(),
@@ -71,14 +82,14 @@ public class LayeredDiagramLayoutService {
                         node.selectedForImpact(),
                         node.parentId(),
                         node.container(),
-                        MARGIN + column * (NODE_WIDTH + COLUMN_GAP),
-                        MARGIN + row * (NODE_HEIGHT + ROW_GAP),
+                        layerStartX + subcolumn * (NODE_WIDTH + SUBCOLUMN_GAP),
+                        firstRowY + row * (NODE_HEIGHT + ROW_GAP),
                         NODE_WIDTH,
                         NODE_HEIGHT);
                 sceneNodes.add(sceneNode);
                 byId.put(sceneNode.id(), sceneNode);
             }
-            column++;
+            layerStartX += layerWidth(layerNodes.size()) + COLUMN_GAP;
         }
 
         List<DiagramSceneEdge> sceneEdges = new ArrayList<>();
@@ -108,14 +119,14 @@ public class LayeredDiagramLayoutService {
             }
         }
 
+        double layerWidths = byLayer.values().stream()
+                .mapToDouble(layer -> layerWidth(layer.size()))
+                .sum();
         double width = Math.max(
                 MIN_WIDTH,
-                2 * MARGIN + byLayer.size() * NODE_WIDTH
+                2 * MARGIN + layerWidths
                         + Math.max(0, byLayer.size() - 1) * COLUMN_GAP);
-        double height = Math.max(
-                MIN_HEIGHT,
-                2 * MARGIN + maximumRows * NODE_HEIGHT
-                        + Math.max(0, maximumRows - 1) * ROW_GAP);
+        double height = Math.max(MIN_HEIGHT, 2 * MARGIN + contentHeight);
 
         return new DiagramScene(
                 model.title(),
@@ -124,6 +135,27 @@ public class LayeredDiagramLayoutService {
                 direction(model),
                 sceneNodes,
                 sceneEdges);
+    }
+
+    private static int subcolumnCount(int nodeCount) {
+        int boundedCount = Math.max(1, nodeCount);
+        return Math.max(1, (boundedCount + MAX_ROWS_PER_COLUMN - 1) / MAX_ROWS_PER_COLUMN);
+    }
+
+    private static int rowCount(int nodeCount) {
+        int boundedCount = Math.max(1, nodeCount);
+        int subcolumns = subcolumnCount(boundedCount);
+        return Math.max(1, (boundedCount + subcolumns - 1) / subcolumns);
+    }
+
+    private static double layerWidth(int nodeCount) {
+        int subcolumns = subcolumnCount(nodeCount);
+        return subcolumns * NODE_WIDTH + Math.max(0, subcolumns - 1) * SUBCOLUMN_GAP;
+    }
+
+    private static double rowsHeight(int rows) {
+        int boundedRows = Math.max(1, rows);
+        return boundedRows * NODE_HEIGHT + Math.max(0, boundedRows - 1) * ROW_GAP;
     }
 
     private static String direction(DiagramModel model) {

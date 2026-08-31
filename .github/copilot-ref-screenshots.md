@@ -1,12 +1,13 @@
 # Screenshots & Selenium Test Reference
 
-> **Read this when**: You are adding, modifying, or debugging screenshot tests in `ScreenshotGeneratorIT.java`.
+> **Read this when**: You are adding, modifying, or debugging documentation screenshot tests.
 
 ---
 
 ## How screenshots are generated
 
-Screenshots are captured by `src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`.  
+Most screenshots are captured by `src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`. The persisted Copilot architecture workbench is owned by `ArchitectureWorkbenchUiIT.java` because that test creates and opens the real immutable analysis snapshot used by the browser, SVG and PDF paths.
+Changes to persisted-workbench controls or layout must remain in `ArchitectureWorkbenchUiIT` so the documentation image and the browser/SVG/PDF contract are verified from the same snapshot.
 The test class is **opt-in** — it only runs when the `generateScreenshots` system property is set:
 
 ```bash
@@ -43,6 +44,7 @@ Generated PNG files are written to `docs/images/` and must be committed to the r
 | `52` – `68` | No | Extended workspace: Sync Tab states, Transfer, Merge, History Search, Diff View |
 | `69`         | Yes (mock mode) | Scored Decision Map (populated with analysis results) |
 | `70`         | No              | Swagger UI (API Documentation)                        |
+| `71`         | Yes (mock mode) | Persisted Copilot architecture workbench from the owning snapshot acceptance |
 
 LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null)` when no key is present.
 
@@ -62,6 +64,8 @@ LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.g
    ```
 
 3. **Run the generator** locally (`./mvnw -B verify -Pscreenshots`) to produce the PNG file.
+
+   The Maven-owned `screenshots` profile runs both screenshot owners. Keep a snapshot-specific screenshot in `ArchitectureWorkbenchUiIT` instead of fabricating a second browser state in `ScreenshotGeneratorIT`.
 
 4. **Commit the PNG** to `docs/images/` alongside the test and documentation changes.
 
@@ -88,6 +92,9 @@ To trigger it manually from the GitHub UI: **Actions → Documentation Screensho
 | Failure Impact button | `#graphFailureBtn` |
 | Graph results area | `#graphResultsArea` |
 | Architecture View panel | `#architectureViewPanel` |
+| Persisted Copilot workbench | `#architectureWorkbench` |
+| Copilot workbench search | `#architectureSearch` |
+| Copilot workbench true fit | `#fitArchitecture` |
 | Relation Proposals panel | `#proposalsPanel` |
 | Admin lock button | `#adminLockBtn` |
 | Admin modal | `#adminModal` |
