@@ -61,7 +61,7 @@ jobs:
 
           reference = Path('.github/copilot-ref-screenshots.md')
           text = reference.read_text(encoding='utf-8')
-          old_intro = 'Screenshots are captured by `src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`.'
+          old_intro = 'Screenshots are captured by `src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`.  '
           new_intro = ('Most screenshots are captured by '
                        '`src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`. '
                        'The persisted Copilot architecture workbench is owned by '
