@@ -1,0 +1,789 @@
+name: Structure Complete Copilot Result
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-screenshot
+    paths:
+      - .github/workflows/structure-complete-copilot-result.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: structure-complete-copilot-result-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Structure, exercise and publish the complete result
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Replace raw payload output with a structured review surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          detail_path = Path('taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js')
+          detail = detail_path.read_text(encoding='utf-8')
+
+          english = "            failed: 'The operation failed.'\n"
+          english_new = """            failed: 'The operation failed.', resultOverview: 'Copilot result overview',
+                      mappedElements: 'Mapped elements', mappedRelations: 'Mapped relationships',
+                      openGaps: 'Open gaps', patternCoverage: 'Pattern coverage',
+                      recommendationConfidence: 'Recommendation confidence', confirmedElements: 'Confirmed elements',
+                      gapAnalysis: 'Gap analysis', anchorsEvaluated: 'Anchors evaluated',
+                      missingRelations: 'Missing relationships', coverageGaps: 'Coverage gaps',
+                      incompletePatterns: 'Incomplete patterns', highestPriority: 'Highest-priority findings',
+                      patternDetection: 'Detected patterns', matchedPatterns: 'Matched patterns',
+                      recommendation: 'Recommendation', proposedElements: 'Proposed elements',
+                      suggestedRelations: 'Suggested relationships', reasoning: 'Reasoning',
+                      technicalData: 'Technical snapshot data',
+                      technicalDataHint: 'Condensed provider-neutral diagnostics. Use the JSON report for the complete payload.',
+                      openWorkbench: 'Inspect diagram in architecture workbench', direct: 'Direct',
+                      resultReady: 'The immutable Copilot result is ready for review.'
+          """
+          if english not in detail:
+              raise SystemExit('English result labels insertion point not found')
+          detail = detail.replace(english, english_new, 1)
+
+          german = "            failed: 'Die Operation ist fehlgeschlagen.'\n"
+          german_new = """            failed: 'Die Operation ist fehlgeschlagen.', resultOverview: 'Copilot-Ergebnisübersicht',
+                      mappedElements: 'Zugeordnete Elemente', mappedRelations: 'Zugeordnete Beziehungen',
+                      openGaps: 'Offene Lücken', patternCoverage: 'Musterabdeckung',
+                      recommendationConfidence: 'Konfidenz der Empfehlung', confirmedElements: 'Bestätigte Elemente',
+                      gapAnalysis: 'Lückenanalyse', anchorsEvaluated: 'Bewertete Anker',
+                      missingRelations: 'Fehlende Beziehungen', coverageGaps: 'Abdeckungslücken',
+                      incompletePatterns: 'Unvollständige Muster', highestPriority: 'Wichtigste Befunde',
+                      patternDetection: 'Erkannte Muster', matchedPatterns: 'Erfüllte Muster',
+                      recommendation: 'Empfehlung', proposedElements: 'Vorgeschlagene Elemente',
+                      suggestedRelations: 'Vorgeschlagene Beziehungen', reasoning: 'Begründung',
+                      technicalData: 'Technische Snapshot-Daten',
+                      technicalDataHint: 'Verdichtete anbieterneutrale Diagnosedaten. Der JSON-Bericht enthält die vollständigen Nutzdaten.',
+                      openWorkbench: 'Diagramm in der Architektur-Workbench untersuchen', direct: 'Direkt',
+                      resultReady: 'Das unveränderliche Copilot-Ergebnis ist zur Prüfung bereit.'
+          """
+          if german not in detail:
+              raise SystemExit('German result labels insertion point not found')
+          detail = detail.replace(german, german_new, 1)
+
+          snapshots_start = detail.index('    function renderSnapshots() {')
+          snapshots_end = detail.index('\n    async function selectSnapshot', snapshots_start)
+          snapshots = """    function renderSnapshots() {
+                  const list = document.getElementById('snapshotList');
+                  list.textContent = '';
+                  if (!state.snapshots.length) {
+                      renderEmpty(list, t('noSnapshots'));
+                      renderEmpty(document.getElementById('snapshotDetail'), t('noSnapshots'));
+                      return;
+                  }
+                  state.snapshots.forEach(snapshot => {
+                      const selected = Boolean(state.selectedSnapshot
+                          && String(state.selectedSnapshot.id) === String(snapshot.id));
+                      const button = document.createElement('button');
+                      button.type = 'button';
+                      button.className = 'list-group-item list-group-item-action'
+                          + (selected ? ' active' : '');
+                      button.dataset.snapshotId = snapshot.id;
+                      if (selected) button.setAttribute('aria-current', 'true');
+                      button.innerHTML = `<div class="d-flex justify-content-between gap-2"><strong>v${snapshot.requirementVersionNumber}</strong>`
+                          + `<span class="badge ${statusClass(snapshot.status)}">${escapeHtml(humanize(snapshot.status))}</span></div>`
+                          + `<div class="small${selected ? '' : ' text-body-secondary'}">${escapeHtml(formatDate(snapshot.createdAt))}</div>`;
+                      list.appendChild(button);
+                  });
+              }
+          """
+          detail = detail[:snapshots_start] + snapshots + detail[snapshots_end:]
+          detail = detail.replace(
+              'state.selectedSnapshot = state.snapshots.find(snapshot => snapshot.id === id) || null;',
+              'state.selectedSnapshot = state.snapshots.find(snapshot => String(snapshot.id) === String(id)) || null;',
+              1)
+          history_marker = "            history.replaceState(null, '', url);\n            renderSnapshotDetail();\n"
+          if history_marker not in detail:
+              raise SystemExit('Selected snapshot rerender insertion point not found')
+          detail = detail.replace(
+              history_marker,
+              "            history.replaceState(null, '', url);\n            renderSnapshots();\n            renderSnapshotDetail();\n",
+              1)
+
+          snapshot_start = detail.index('    function renderSnapshotDetail() {')
+          snapshot_end = detail.index('\n    function renderDecisionReportActions', snapshot_start)
+          snapshot_detail = """    function renderSnapshotDetail() {
+                  const target = document.getElementById('snapshotDetail');
+                  const detail = state.snapshotDetail;
+                  if (!detail) return renderEmpty(target, t('noSnapshots'));
+                  const summary = detail.summary;
+                  target.classList.add('portfolio-snapshot-detail');
+                  target.innerHTML = `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">`
+                      + `<div><h2 class="h4 mb-1">${escapeHtml(t('snapshot'))} v${summary.requirementVersionNumber}</h2>`
+                      + `<p class="small text-body-secondary mb-0">${escapeHtml(t('resultReady'))}</p></div>`
+                      + `<span class="badge ${statusClass(summary.status)} fs-6">${escapeHtml(humanize(summary.status))}</span></div>`
+                      + `<dl class="portfolio-card-meta portfolio-snapshot-meta mt-3"><dt>${escapeHtml(t('provider'))}</dt><dd>${escapeHtml(summary.provider || '—')}</dd>`
+                      + `<dt>${escapeHtml(t('model'))}</dt><dd>${escapeHtml(summary.modelName || '—')}</dd>`
+                      + `<dt>${escapeHtml(t('created'))}</dt><dd>${escapeHtml(formatDate(summary.createdAt))}</dd>`
+                      + `<dt>${escapeHtml(t('duration'))}</dt><dd>${escapeHtml(formatDuration(summary.durationMs))}</dd>`
+                      + `<dt>${escapeHtml(t('baseline'))}</dt><dd><code>${escapeHtml(String(summary.taxonomyFingerprint || '').slice(0, 16))}</code> / <code>${escapeHtml(String(summary.promptFingerprint || '').slice(0, 16))}</code></dd></dl>`
+                      + renderDecisionReportActions(summary)
+                      + renderAnalysisSummary(detail);
+              }
+          """
+          detail = detail[:snapshot_start] + snapshot_detail + detail[snapshot_end:]
+
+          result_start = detail.index('    function renderAnalysisSummary(detail) {')
+          result_end = detail.index('\n    function renderArchitecture()', result_start)
+          structured = """    function renderAnalysisSummary(detail) {
+                  const analysis = detail.analysis || {};
+                  const warnings = asArray(analysis.warnings);
+                  const gap = detail.gapAnalysis || {};
+                  const patterns = detail.patternDetection || {};
+                  const recommendation = detail.recommendation || {};
+                  const mappings = asArray(detail.elementMappings);
+                  const relations = asArray(detail.relationMappings);
+                  const missing = asArray(gap.missingRelations);
+                  const coverage = asArray(gap.coverageGaps);
+                  const incomplete = asArray(gap.incompletePatterns);
+                  const matched = asArray(patterns.matchedPatterns);
+                  const confirmed = asArray(recommendation.confirmedElements);
+                  const proposed = asArray(recommendation.proposedElements);
+                  const suggested = asArray(recommendation.suggestedRelations);
+                  const reasoning = asArray(recommendation.reasoning);
+                  const gapCount = safeNumber(gap.totalGaps, missing.length);
+                  const patternPercent = percentage(patterns.patternCoverage);
+                  const recommendationPercent = percentage(recommendation.confidence);
+
+                  const overview = `<section id="snapshotResultOverview" class="portfolio-result-overview mt-3" aria-labelledby="snapshotResultTitle">`
+                      + `<div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-2">`
+                      + `<h3 id="snapshotResultTitle" class="h5 mb-0">${escapeHtml(t('resultOverview'))}</h3>`
+                      + `<a class="btn btn-sm btn-outline-success" href="${escapeHtml(architectureWorkbenchUrl())}">${escapeHtml(t('openWorkbench'))}</a></div>`
+                      + `<div class="portfolio-result-kpis">`
+                      + resultMetric(t('mappedElements'), mappings.length,
+                          mappings.filter(item => item.selectedForImpact).length + ' ' + t('direct'), 'primary')
+                      + resultMetric(t('mappedRelations'), relations.length, '', 'info')
+                      + resultMetric(t('openGaps'), gapCount,
+                          missing.length + ' ' + t('missingRelations'), gapCount > 0 ? 'warning' : 'success')
+                      + resultMetric(t('patternCoverage'), patternPercent + '%',
+                          matched.length + ' ' + t('matchedPatterns'), patternPercent >= 70 ? 'success' : 'warning')
+                      + resultMetric(t('recommendationConfidence'), recommendationPercent + '%',
+                          suggested.length + ' ' + t('suggestedRelations'), recommendationPercent >= 70 ? 'success' : 'warning')
+                      + resultMetric(t('confirmedElements'), confirmed.length,
+                          proposed.length + ' ' + t('proposedElements'), 'success')
+                      + `</div></section>`;
+
+                  const warningHtml = warnings.length
+                      ? `<div class="alert alert-warning mt-3"><ul class="mb-0">${warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></div>`
+                      : '';
+                  const technical = {
+                      summary: detail.summary || {},
+                      analysis: {
+                          status: analysis.status,
+                          provider: analysis.provider,
+                          warnings: warnings,
+                          discrepancies: asArray(analysis.discrepancies),
+                          productCoverageGaps: asArray(analysis.productCoverageGaps),
+                          provisionalRelations: asArray(analysis.provisionalRelations),
+                          architectureView: compactArchitectureView(analysis.architectureView)
+                      },
+                      gapAnalysis: gap,
+                      patternDetection: patterns,
+                      recommendation: recommendation
+                  };
+                  const technicalHtml = `<details id="technicalSnapshotData" class="portfolio-technical-data mt-3">`
+                      + `<summary><span>${escapeHtml(t('technicalData'))}</span><small>${escapeHtml(t('technicalDataHint'))}</small></summary>`
+                      + `<pre>${escapeHtml(JSON.stringify(technical, null, 2))}</pre></details>`;
+
+                  return overview + warningHtml
+                      + `<div class="portfolio-result-grid mt-3">`
+                      + renderGapResult(gap, missing, coverage, incomplete)
+                      + renderPatternResult(patterns, matched)
+                      + renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning)
+                      + `</div>` + technicalHtml;
+              }
+
+              function resultMetric(label, value, detail, variant) {
+                  return `<article class="portfolio-result-kpi border-${escapeHtml(variant || 'secondary')}">`
+                      + `<div class="portfolio-result-kpi-value">${escapeHtml(String(value))}</div>`
+                      + `<div class="portfolio-result-kpi-label">${escapeHtml(label)}</div>`
+                      + (detail ? `<div class="portfolio-result-kpi-detail">${escapeHtml(detail)}</div>` : '')
+                      + `</article>`;
+              }
+
+              function renderGapResult(gap, missing, coverage, incomplete) {
+                  const topMissing = missing.slice(0, 5);
+                  const findings = topMissing.length
+                      ? `<ol class="portfolio-finding-list">${topMissing.map(item => `<li><code>${escapeHtml(item.sourceNodeCode || '—')}</code> `
+                          + `<strong>${escapeHtml(humanize(item.expectedRelationType || 'RELATED_TO'))}</strong> `
+                          + `→ <span>${escapeHtml(item.expectedTargetRoot || '—')}</span>`
+                          + `<small>${escapeHtml(item.description || '')}</small></li>`).join('')}</ol>`
+                      : `<p class="text-body-secondary mb-0">—</p>`;
+                  return `<section id="gapResultSection" class="portfolio-result-panel" aria-labelledby="gapResultTitle">`
+                      + `<div class="portfolio-result-panel-header"><h3 id="gapResultTitle" class="h6 mb-0">${escapeHtml(t('gapAnalysis'))}</h3>`
+                      + `<div class="d-flex flex-wrap gap-1"><span class="badge text-bg-secondary">${safeNumber(gap.totalAnchors, 0)} ${escapeHtml(t('anchorsEvaluated'))}</span>`
+                      + `<span class="badge ${safeNumber(gap.totalGaps, 0) > 0 ? 'text-bg-warning' : 'text-bg-success'}">${safeNumber(gap.totalGaps, 0)} ${escapeHtml(t('openGaps'))}</span></div></div>`
+                      + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('highestPriority'))}</h4>${findings}`
+                      + renderFindingDetails(t('missingRelations'), missing,
+                          ['sourceNodeCode', 'expectedRelationType', 'expectedTargetRoot', 'description'])
+                      + renderFindingDetails(t('coverageGaps'), coverage,
+                          ['nodeCode', 'coverageScore', 'gapDescription'])
+                      + renderFindingDetails(t('incompletePatterns'), incomplete,
+                          ['nodeCode', 'patternDescription', 'missingElement'])
+                      + `</section>`;
+              }
+
+              function renderPatternResult(patterns, matched) {
+                  const cards = matched.length ? matched.map(pattern => {
+                      const completeness = percentage(pattern.completeness);
+                      const expected = asArray(pattern.expectedSteps);
+                      const present = new Set(asArray(pattern.presentSteps));
+                      return `<article class="portfolio-pattern-card"><div class="d-flex justify-content-between gap-2 align-items-center">`
+                          + `<strong>${escapeHtml(pattern.patternName || t('patternDetection'))}</strong>`
+                          + `<span class="badge ${completeness >= 100 ? 'text-bg-success' : 'text-bg-warning'}">${completeness}%</span></div>`
+                          + `<div class="progress mt-2" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${completeness}">`
+                          + `<div class="progress-bar" style="width:${completeness}%"></div></div>`
+                          + `<ul class="portfolio-step-list">${expected.map(step => `<li class="${present.has(step) ? 'is-present' : 'is-missing'}">`
+                              + `<span aria-hidden="true">${present.has(step) ? '✓' : '○'}</span>${escapeHtml(step)}</li>`).join('')}</ul></article>`;
+                  }).join('') : `<p class="text-body-secondary mb-0">—</p>`;
+                  return `<section id="patternResultSection" class="portfolio-result-panel" aria-labelledby="patternResultTitle">`
+                      + `<div class="portfolio-result-panel-header"><h3 id="patternResultTitle" class="h6 mb-0">${escapeHtml(t('patternDetection'))}</h3>`
+                      + `<span class="badge text-bg-success">${percentage(patterns.patternCoverage)}%</span></div>`
+                      + `<div class="vstack gap-2 mt-3">${cards}</div></section>`;
+              }
+
+              function renderRecommendationResult(recommendation, confirmed, proposed, suggested, reasoning) {
+                  const reasoningHtml = reasoning.length
+                      ? `<ul class="portfolio-reasoning-list">${reasoning.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+                      : `<p class="text-body-secondary mb-0">—</p>`;
+                  const relationDetails = suggested.length
+                      ? `<details class="portfolio-finding-details"><summary>${escapeHtml(t('suggestedRelations'))} <span class="badge text-bg-secondary">${suggested.length}</span></summary>`
+                          + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0"><thead><tr>`
+                          + `<th>${escapeHtml(t('relation'))}</th><th>${escapeHtml(t('reasoning'))}</th></tr></thead><tbody>`
+                          + suggested.map(item => `<tr><td><code>${escapeHtml(item.sourceCode || '—')}</code> → <code>${escapeHtml(item.targetCode || '—')}</code>`
+                              + `<div class="small fw-semibold">${escapeHtml(humanize(item.relationType || 'RELATED_TO'))}</div></td>`
+                              + `<td>${escapeHtml(item.reasoning || '—')}</td></tr>`).join('')
+                          + `</tbody></table></div></details>`
+                      : '';
+                  return `<section id="recommendationResultSection" class="portfolio-result-panel portfolio-result-panel-wide" aria-labelledby="recommendationResultTitle">`
+                      + `<div class="portfolio-result-panel-header"><h3 id="recommendationResultTitle" class="h6 mb-0">${escapeHtml(t('recommendation'))}</h3>`
+                      + `<span class="badge ${percentage(recommendation.confidence) >= 70 ? 'text-bg-success' : 'text-bg-warning'}">${percentage(recommendation.confidence)}%</span></div>`
+                      + `<div class="d-flex flex-wrap gap-2 mt-3">`
+                      + `<span class="badge text-bg-success">${confirmed.length} ${escapeHtml(t('confirmedElements'))}</span>`
+                      + `<span class="badge text-bg-warning">${proposed.length} ${escapeHtml(t('proposedElements'))}</span>`
+                      + `<span class="badge text-bg-info">${suggested.length} ${escapeHtml(t('suggestedRelations'))}</span></div>`
+                      + `<h4 class="small fw-semibold mt-3">${escapeHtml(t('reasoning'))}</h4>${reasoningHtml}${relationDetails}</section>`;
+              }
+
+              function renderFindingDetails(label, items, fields) {
+                  if (!items.length) return '';
+                  return `<details class="portfolio-finding-details"><summary>${escapeHtml(label)} <span class="badge text-bg-secondary">${items.length}</span></summary>`
+                      + `<div class="portfolio-result-table portfolio-result-table-sm"><table class="table table-sm align-middle mb-0"><tbody>`
+                      + items.map(item => `<tr>${fields.map(field => `<td>${escapeHtml(formatFindingValue(field, item[field]))}</td>`).join('')}</tr>`).join('')
+                      + `</tbody></table></div></details>`;
+              }
+
+              function formatFindingValue(field, value) {
+                  if (value === null || value === undefined || value === '') return '—';
+                  if (field.toLowerCase().includes('score')) return percentage(value) + '%';
+                  return String(value);
+              }
+
+              function compactArchitectureView(view) {
+                  if (!view) return null;
+                  return {
+                      viewTitle: view.viewTitle,
+                      viewDescription: view.viewDescription,
+                      totalAnchors: view.totalAnchors,
+                      totalElements: view.totalElements,
+                      totalRelationships: view.totalRelationships,
+                      maxHopDistance: view.maxHopDistance,
+                      activeRules: view.activeRules,
+                      notes: view.notes
+                  };
+              }
+
+              function asArray(value) { return Array.isArray(value) ? value : []; }
+
+              function safeNumber(value, fallback) {
+                  const parsed = Number(value);
+                  return Number.isFinite(parsed) ? parsed : (fallback ?? 0);
+              }
+
+              function percentage(value) {
+                  const parsed = safeNumber(value, 0);
+                  const normalized = Math.abs(parsed) <= 1 && parsed !== 0 ? parsed * 100 : parsed;
+                  return Math.max(0, Math.min(100, Math.round(normalized)));
+              }
+
+              function formatDuration(value) {
+                  const milliseconds = safeNumber(value, 0);
+                  if (milliseconds < 1000) return Math.round(milliseconds) + ' ms';
+                  if (milliseconds < 60000) return (milliseconds / 1000).toFixed(1) + ' s';
+                  return (milliseconds / 60000).toFixed(1) + ' min';
+              }
+
+              function architectureWorkbenchUrl() {
+                  return window.location.pathname.replace(/\/$/, '')
+                      + '/architecture?lang=' + encodeURIComponent(locale);
+              }
+          """
+          detail = detail[:result_start] + structured + detail[result_end:]
+          detail_path.write_text(detail, encoding='utf-8')
+
+          css_path = Path('taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css')
+          css = css_path.read_text(encoding='utf-8')
+          if '.portfolio-result-overview' in css:
+              raise SystemExit('Structured result CSS unexpectedly already exists')
+          css += """
+
+          /* Structured complete Copilot result ----------------------------------- */
+          .portfolio-snapshot-meta {
+              grid-template-columns: minmax(6.5rem, auto) minmax(0, 1fr);
+          }
+
+          .portfolio-result-overview {
+              padding: 1rem;
+              border: 1px solid var(--bs-border-color);
+              border-radius: calc(var(--bs-border-radius) * 1.2);
+              background: linear-gradient(135deg,
+                  color-mix(in srgb, var(--bs-primary-bg-subtle) 64%, var(--bs-body-bg)),
+                  var(--bs-body-bg));
+          }
+
+          .portfolio-result-kpis {
+              display: grid;
+              grid-template-columns: repeat(6, minmax(8.5rem, 1fr));
+              gap: 0.65rem;
+          }
+
+          .portfolio-result-kpi {
+              min-width: 0;
+              padding: 0.75rem;
+              border: 1px solid var(--bs-border-color);
+              border-top-width: 0.25rem;
+              border-radius: var(--bs-border-radius);
+              background: var(--bs-body-bg);
+          }
+
+          .portfolio-result-kpi-value {
+              font-size: clamp(1.35rem, 2vw, 1.8rem);
+              font-weight: 750;
+              font-variant-numeric: tabular-nums;
+              line-height: 1.1;
+          }
+
+          .portfolio-result-kpi-label {
+              margin-top: 0.2rem;
+              font-size: 0.78rem;
+              font-weight: 650;
+          }
+
+          .portfolio-result-kpi-detail {
+              margin-top: 0.2rem;
+              color: var(--bs-secondary-color);
+              font-size: 0.72rem;
+              overflow-wrap: anywhere;
+          }
+
+          .portfolio-result-grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 0.85rem;
+          }
+
+          .portfolio-result-panel {
+              min-width: 0;
+              padding: 0.9rem;
+              border: 1px solid var(--bs-border-color);
+              border-radius: var(--bs-border-radius);
+              background: var(--bs-body-bg);
+          }
+
+          .portfolio-result-panel-wide {
+              grid-column: 1 / -1;
+          }
+
+          .portfolio-result-panel-header {
+              display: flex;
+              flex-wrap: wrap;
+              align-items: center;
+              justify-content: space-between;
+              gap: 0.5rem;
+          }
+
+          .portfolio-finding-list,
+          .portfolio-reasoning-list,
+          .portfolio-step-list {
+              margin: 0;
+              padding-left: 1.2rem;
+          }
+
+          .portfolio-finding-list li {
+              margin-bottom: 0.55rem;
+          }
+
+          .portfolio-finding-list small {
+              display: block;
+              margin-top: 0.12rem;
+              color: var(--bs-secondary-color);
+          }
+
+          .portfolio-pattern-card {
+              padding: 0.75rem;
+              border: 1px solid var(--bs-border-color);
+              border-radius: var(--bs-border-radius);
+              background: var(--bs-tertiary-bg);
+          }
+
+          .portfolio-step-list {
+              margin-top: 0.65rem;
+              list-style: none;
+              padding-left: 0;
+              font-size: 0.78rem;
+          }
+
+          .portfolio-step-list li {
+              display: flex;
+              gap: 0.45rem;
+              margin-top: 0.3rem;
+          }
+
+          .portfolio-step-list .is-present span {
+              color: var(--bs-success);
+              font-weight: 700;
+          }
+
+          .portfolio-step-list .is-missing span {
+              color: var(--bs-warning-text-emphasis);
+          }
+
+          .portfolio-finding-details,
+          .portfolio-technical-data {
+              margin-top: 0.65rem;
+              border-top: 1px solid var(--bs-border-color);
+              padding-top: 0.55rem;
+          }
+
+          .portfolio-finding-details > summary,
+          .portfolio-technical-data > summary {
+              cursor: pointer;
+              font-weight: 600;
+          }
+
+          .portfolio-technical-data > summary {
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: space-between;
+              gap: 0.5rem 1rem;
+          }
+
+          .portfolio-technical-data > summary small {
+              color: var(--bs-secondary-color);
+              font-weight: 400;
+          }
+
+          .portfolio-technical-data pre {
+              max-height: 24rem;
+              margin: 0.75rem 0 0;
+              overflow: auto;
+              white-space: pre;
+          }
+
+          .portfolio-result-table {
+              max-height: 34rem;
+              overflow: auto;
+              border: 1px solid var(--bs-border-color);
+              border-radius: var(--bs-border-radius);
+              background: var(--bs-body-bg);
+          }
+
+          .portfolio-result-table-sm {
+              max-height: 20rem;
+              margin-top: 0.55rem;
+          }
+
+          .portfolio-result-table table {
+              min-width: 52rem;
+          }
+
+          .portfolio-result-table thead th {
+              position: sticky;
+              top: 0;
+              z-index: 2;
+              background: var(--bs-tertiary-bg);
+              box-shadow: 0 1px 0 var(--bs-border-color);
+          }
+
+          @media (max-width: 1399.98px) {
+              .portfolio-result-kpis {
+                  grid-template-columns: repeat(3, minmax(9rem, 1fr));
+              }
+          }
+
+          @media (max-width: 767.98px) {
+              .portfolio-result-kpis,
+              .portfolio-result-grid {
+                  grid-template-columns: 1fr;
+              }
+
+              .portfolio-result-panel-wide {
+                  grid-column: auto;
+              }
+
+              .portfolio-result-overview {
+                  padding: 0.75rem;
+              }
+          }
+          """
+          css_path.write_text(css, encoding='utf-8')
+
+          copilot_path = Path('taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js')
+          copilot = copilot_path.read_text(encoding='utf-8')
+          terminal_marker = "        if (status === 'CANCELLED') return { key: 'CANCELLED', label: t('cancelledPhase'), indeterminate: false };\n"
+          if terminal_marker not in copilot:
+              raise SystemExit('PENDING phase insertion point not found')
+          copilot = copilot.replace(
+              terminal_marker,
+              terminal_marker + "        if (status === 'PENDING') return { key: 'QUEUED', label: t('queued'), indeterminate: true };\n",
+              1)
+          old_fallback = "        return { key: 'FINALIZING', label: t('finalizing'), indeterminate: true };\n"
+          new_fallback = "        if (status === 'RUNNING') return { key: 'FINALIZING', label: t('finalizing'), indeterminate: true };\n        return { key: 'QUEUED', label: t('queued'), indeterminate: true };\n"
+          if old_fallback not in copilot:
+              raise SystemExit('Operation phase fallback not found')
+          copilot_path.write_text(copilot.replace(old_fallback, new_fallback, 1), encoding='utf-8')
+
+          surface_test = Path('taxonomy-app/src/test/java/com/taxonomy/RequirementCopilotResultSurfaceContractTest.java')
+          surface = surface_test.read_text(encoding='utf-8')
+          pending_assertion = "                .contains(\"status === 'CANCELLED'\")\n                .contains(\"label: t('cancelledPhase')\")\n"
+          if pending_assertion not in surface:
+              raise SystemExit('Terminal phase test insertion point not found')
+          surface = surface.replace(
+              pending_assertion,
+              pending_assertion
+              + "                .contains(\"status === 'PENDING'\")\n"
+              + "                .contains(\"key: 'QUEUED', label: t('queued')\")\n"
+              + "                .contains(\"status === 'RUNNING'\")\n"
+              + "                .contains(\"key: 'FINALIZING', label: t('finalizing')\")\n",
+              1)
+          surface_test.write_text(surface, encoding='utf-8')
+
+          session_path = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          session = session_path.read_text(encoding='utf-8')
+          report_ready = """        wait.until(browser -> browser.findElements(
+                  By.cssSelector("[data-decision-report-format]")).size() == 3);
+          """
+          result_assertions = report_ready + """        wait.until(ExpectedConditions.visibilityOfElementLocated(
+                  By.id("snapshotResultOverview")));
+              assertThat(driver.findElements(By.cssSelector(
+                      "#snapshotResultOverview .portfolio-result-kpi")))
+                      .hasSize(6);
+              String visibleResult = driver.findElement(By.id("snapshotDetail")).getText();
+              assertThat(visibleResult)
+                      .contains("Copilot result overview")
+                      .contains("Gap analysis")
+                      .contains("Detected patterns")
+                      .contains("Recommendation")
+                      .doesNotContain("missingRelations")
+                      .doesNotContain("businessText");
+              List<WebElement> findingDetails = driver.findElements(
+                      By.cssSelector("#snapshotDetail details.portfolio-finding-details"));
+              assertThat(findingDetails).isNotEmpty();
+              assertThat(findingDetails).allSatisfy(detail ->
+                      assertThat(detail.getAttribute("open")).isNull());
+              assertThat(driver.findElement(By.id("technicalSnapshotData"))
+                      .getAttribute("open")).isNull();
+          """
+          if session.count(report_ready) != 1:
+              raise SystemExit('Expected one authoritative result readiness point')
+          session_path.write_text(session.replace(report_ready, result_assertions, 1), encoding='utf-8')
+
+          en_path = Path('docs/en/COPILOT_AUTOPILOT.md')
+          en = en_path.read_text(encoding='utf-8')
+          en_marker = 'The selected snapshot is also shown explicitly and remains available through **Open result**.\n'
+          en_extra = en_marker + '\nThe normal reading flow presents six provider-neutral indicators, the highest-priority architecture gaps, detected patterns and recommendation reasoning. Complete technical payloads remain available in the collapsed diagnostics section and the JSON report instead of being dumped into the result page.\n'
+          if en_marker not in en:
+              raise SystemExit('English structured result documentation marker not found')
+          en_path.write_text(en.replace(en_marker, en_extra, 1), encoding='utf-8')
+
+          de_path = Path('docs/de/COPILOT_AUTOPILOT.md')
+          de = de_path.read_text(encoding='utf-8')
+          de_marker = 'Der ausgewählte Snapshot wird außerdem ausdrücklich angezeigt und bleibt über **Ergebnis öffnen** erreichbar.\n'
+          de_extra = de_marker + '\nDer normale Lesefluss zeigt sechs anbieterneutrale Kennzahlen, die wichtigsten Architekturlücken, erkannte Muster und die Begründung der Empfehlung. Vollständige technische Nutzdaten bleiben im eingeklappten Diagnosebereich und im JSON-Bericht verfügbar, statt unformatiert in der Ergebnisansicht zu erscheinen.\n'
+          if de_marker not in de:
+              raise SystemExit('German structured result documentation marker not found')
+          de_path.write_text(de.replace(de_marker, de_extra, 1), encoding='utf-8')
+          PY
+
+          cat > taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotResultUiContractTest.java <<'JAVA'
+          package com.taxonomy;
+
+          import org.junit.jupiter.api.Test;
+
+          import java.io.IOException;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+
+          import static org.assertj.core.api.Assertions.assertThat;
+
+          class CompleteCopilotResultUiContractTest {
+
+              @Test
+              void normalReviewFlowUsesStructuredSectionsInsteadOfRawPayloads()
+                      throws IOException {
+                  String detail = Files.readString(Path.of(
+                          "src/main/resources/static/js/portfolio/requirement-detail.js"));
+
+                  assertThat(detail)
+                          .contains("snapshotResultOverview", "portfolio-result-kpi")
+                          .contains("renderGapResult", "renderPatternResult")
+                          .contains("renderRecommendationResult", "technicalSnapshotData")
+                          .contains("architectureWorkbenchUrl")
+                          .doesNotContain("gap.summary || gap.description || JSON.stringify(gap)")
+                          .doesNotContain(
+                                  "recommendation.summary || recommendation.recommendation"
+                                          + " || JSON.stringify(recommendation)")
+                          .doesNotContain("snapshotSequence", "verificationResult");
+              }
+
+              @Test
+              void longEvidenceIsBoundedAndSecondaryDetailsStartCollapsed()
+                      throws IOException {
+                  String css = Files.readString(Path.of(
+                          "src/main/resources/static/css/taxonomy-portfolio.css"));
+                  String detail = Files.readString(Path.of(
+                          "src/main/resources/static/js/portfolio/requirement-detail.js"));
+
+                  assertThat(css)
+                          .contains(".portfolio-result-kpis")
+                          .contains("grid-template-columns: repeat(6")
+                          .contains(".portfolio-result-table")
+                          .contains("max-height: 34rem")
+                          .contains("overflow: auto")
+                          .contains("@media (max-width: 767.98px)");
+                  assertThat(detail)
+                          .contains("<details class=\"portfolio-finding-details\"")
+                          .contains("<details id=\"technicalSnapshotData\"")
+                          .doesNotContain(
+                                  "<details class=\"portfolio-finding-details\" open")
+                          .doesNotContain(
+                                  "<details id=\"technicalSnapshotData\""
+                                          + " class=\"portfolio-technical-data mt-3\" open");
+              }
+
+              @Test
+              void selectedSnapshotIsExplicitWithoutInventingPassNumbers()
+                      throws IOException {
+                  String detail = Files.readString(Path.of(
+                          "src/main/resources/static/js/portfolio/requirement-detail.js"));
+
+                  assertThat(detail)
+                          .contains("String(state.selectedSnapshot.id) === String(snapshot.id)")
+                          .contains("button.setAttribute('aria-current', 'true')")
+                          .contains("renderSnapshots();")
+                          .doesNotContain("Verification result {0} of {1}")
+                          .doesNotContain("Prüfergebnis {0} von {1}");
+              }
+          }
+          JAVA
+
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          git diff --check
+
+      - name: Verify focused result contracts
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am test
+          -Dtest=RequirementCopilotResultSurfaceContractTest,CompleteCopilotResultUiContractTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Exercise the authoritative complete session and regenerate screenshot 72
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=CompleteCopilotSessionIT
+          -DgenerateScreenshots=true
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify the structured screenshot and test evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=docs/images/72-complete-copilot-run-result.png
+          test -s "$image"
+          test "$(wc -c < "$image")" -gt 50000
+          file "$image" | grep -F 'PNG image data'
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+
+          image = Path('docs/images/72-complete-copilot-run-result.png').read_bytes()
+          width, height = struct.unpack('>II', image[16:24])
+          if width < 2000 or height < 1200:
+              raise SystemExit(f'Screenshot is unexpectedly small: {width}x{height}')
+          print(f'Verified structured screenshot dimensions: {width}x{height}')
+          PY
+          grep -F 'Tests run: 1, Failures: 0, Errors: 0' \
+            taxonomy-app/target/failsafe-reports/com.taxonomy.CompleteCopilotSessionIT.txt
+          ! grep -F 'gap.summary || gap.description || JSON.stringify(gap)' \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          git diff --check
+
+      - name: Upload structured result evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-copilot-structured-result
+          path: |
+            docs/images/72-complete-copilot-run-result.png
+            taxonomy-app/target/failsafe-reports/**
+            taxonomy-app/target/surefire-reports/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish only permanent product, test and documentation changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=fix/complete-copilot-run-screenshot
+          remote_head="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js \
+            taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css \
+            taxonomy-app/src/test/java/com/taxonomy/RequirementCopilotResultSurfaceContractTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotResultUiContractTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java \
+            docs/images/72-complete-copilot-run-result.png \
+            docs/en/COPILOT_AUTOPILOT.md \
+            docs/de/COPILOT_AUTOPILOT.md
+          git diff --cached --check
+          git commit -m 'Present complete Copilot results as a reviewable summary'
+          git push origin HEAD:"$branch"
