@@ -24,7 +24,8 @@ public class I18nConfig {
             "messages_observability",
             "messages_portfolio",
             "messages_search",
-            "messages_task_focus");
+            "messages_task_focus",
+            "messages_impact_map");
 
     @Bean
     public MessageSource messageSource() {
