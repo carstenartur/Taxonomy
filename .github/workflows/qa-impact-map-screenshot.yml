@@ -1,0 +1,74 @@
+name: QA impact map documentation screenshot
+
+on:
+  push:
+    branches:
+      - fix/usable-impact-map
+    paths:
+      - .github/workflows/qa-impact-map-screenshot.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: taxonomy-impact-map-screenshot-qa
+  cancel-in-progress: true
+
+env:
+  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: fix/usable-impact-map
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Download and verify pinned embedding model
+        env:
+          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
+        run: bash .github/scripts/download-embedding-model.sh
+
+      - name: Generate deterministic application screenshots
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          LLM_MOCK: 'true'
+        run: ./mvnw -B install -Pscreenshots -Dfailsafe.rerunFailingTestsCount=1
+
+      - name: Commit the architecture-view screenshot to the QA branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s docs/images/20-architecture-view.png
+          file docs/images/20-architecture-view.png
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/images/20-architecture-view.png
+          if git diff --staged --quiet; then
+            echo "The generated screenshot is unchanged."
+            exit 0
+          fi
+          git commit -m "docs: generate impact map screenshot for QA"
+          git push origin HEAD:fix/usable-impact-map
+
+      - name: Upload screenshot artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: impact-map-documentation-screenshot
+          path: docs/images/20-architecture-view.png
+          if-no-files-found: error
+          retention-days: 7
