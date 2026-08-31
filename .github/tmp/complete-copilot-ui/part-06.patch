@@ -1,0 +1,282 @@
++    border: 1px solid var(--bs-border-color);
++    border-radius: var(--bs-border-radius);
++    padding: 0.65rem 0.8rem;
++    background: var(--bs-tertiary-bg);
++}
++
++.copilot-run-settings > summary {
++    cursor: pointer;
++    font-weight: 600;
++    color: var(--bs-primary-text-emphasis);
++}
++
++.copilot-run-settings[open] > summary {
++    margin-bottom: 0.25rem;
++}
++
++#requirementCopilotCard.copilot-terminal .card-body {
++    padding-top: 0.75rem;
++}
++
++#requirementCopilotCard.copilot-terminal #copilotPolicy .small {
++    display: none;
++}
++
++#requirementCopilotCard.copilot-terminal #copilotOperation {
++    margin-top: 0.65rem !important;
++    padding: 0.75rem !important;
++}
++
++#requirementCopilotCard.copilot-terminal #copilotOperationMessage {
++    margin-block: 0.25rem !important;
++}
++
++#requirementCopilotCard.copilot-terminal #copilotProgress {
++    height: 0.45rem;
++}
++
++.portfolio-snapshot-meta {
++    grid-template-columns: minmax(6.5rem, auto) minmax(0, 1fr);
++}
++
++.portfolio-result-overview {
++    padding: 1rem;
++    border: 1px solid var(--bs-border-color);
++    border-radius: calc(var(--bs-border-radius) * 1.2);
++    background: linear-gradient(135deg,
++        color-mix(in srgb, var(--bs-primary-bg-subtle) 64%, var(--bs-body-bg)),
++        var(--bs-body-bg));
++}
++
++.portfolio-result-kpis {
++    display: grid;
++    grid-template-columns: repeat(6, minmax(8.5rem, 1fr));
++    gap: 0.65rem;
++}
++
++.portfolio-result-kpi {
++    min-width: 0;
++    padding: 0.75rem;
++    border: 1px solid var(--bs-border-color);
++    border-top-width: 0.25rem;
++    border-radius: var(--bs-border-radius);
++    background: var(--bs-body-bg);
++}
++
++.portfolio-result-kpi-value {
++    font-size: clamp(1.35rem, 2vw, 1.8rem);
++    font-weight: 750;
++    font-variant-numeric: tabular-nums;
++    line-height: 1.1;
++}
++
++.portfolio-result-kpi-label {
++    margin-top: 0.2rem;
++    font-size: 0.78rem;
++    font-weight: 650;
++}
++
++.portfolio-result-kpi-detail {
++    margin-top: 0.2rem;
++    color: var(--bs-secondary-color);
++    font-size: 0.72rem;
++    overflow-wrap: anywhere;
++}
++
++.portfolio-result-grid {
++    display: grid;
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++    gap: 0.85rem;
++}
++
++.portfolio-result-panel {
++    min-width: 0;
++    padding: 0.9rem;
++    border: 1px solid var(--bs-border-color);
++    border-radius: var(--bs-border-radius);
++    background: var(--bs-body-bg);
++}
++
++.portfolio-result-panel-wide {
++    grid-column: 1 / -1;
++}
++
++.portfolio-result-panel-header,
++.portfolio-table-heading {
++    display: flex;
++    flex-wrap: wrap;
++    align-items: center;
++    justify-content: space-between;
++    gap: 0.5rem;
++}
++
++.portfolio-finding-list,
++.portfolio-reasoning-list,
++.portfolio-step-list {
++    margin: 0;
++    padding-left: 1.2rem;
++}
++
++.portfolio-finding-list li {
++    margin-bottom: 0.55rem;
++}
++
++.portfolio-finding-list small {
++    display: block;
++    margin-top: 0.12rem;
++    color: var(--bs-secondary-color);
++}
++
++.portfolio-pattern-card {
++    padding: 0.75rem;
++    border: 1px solid var(--bs-border-color);
++    border-radius: var(--bs-border-radius);
++    background: var(--bs-tertiary-bg);
++}
++
++.portfolio-step-list {
++    margin-top: 0.65rem;
++    list-style: none;
++    padding-left: 0;
++    font-size: 0.78rem;
++}
++
++.portfolio-step-list li {
++    display: flex;
++    gap: 0.45rem;
++    margin-top: 0.3rem;
++}
++
++.portfolio-step-list .is-present span {
++    color: var(--bs-success);
++    font-weight: 700;
++}
++
++.portfolio-step-list .is-missing span {
++    color: var(--bs-warning-text-emphasis);
++}
++
++.portfolio-finding-details,
++.portfolio-technical-data {
++    margin-top: 0.65rem;
++    border-top: 1px solid var(--bs-border-color);
++    padding-top: 0.55rem;
++}
++
++.portfolio-finding-details > summary,
++.portfolio-technical-data > summary {
++    cursor: pointer;
++    font-weight: 600;
++}
++
++.portfolio-technical-data > summary {
++    display: flex;
++    flex-wrap: wrap;
++    justify-content: space-between;
++    gap: 0.5rem 1rem;
++}
++
++.portfolio-technical-data > summary small {
++    color: var(--bs-secondary-color);
++    font-weight: 400;
++}
++
++.portfolio-technical-data pre {
++    max-height: 24rem;
++    margin: 0.75rem 0 0;
++    overflow: auto;
++    white-space: pre;
++}
++
++.portfolio-table-section {
++    min-width: 0;
++}
++
++.portfolio-table-heading {
++    margin-bottom: 0.45rem;
++}
++
++.portfolio-result-table {
++    max-height: 34rem;
++    overflow: auto;
++    border: 1px solid var(--bs-border-color);
++    border-radius: var(--bs-border-radius);
++    background: var(--bs-body-bg);
++}
++
++.portfolio-result-table-sm {
++    max-height: 20rem;
++    margin-top: 0.55rem;
++}
++
++.portfolio-result-table table {
++    min-width: 52rem;
++}
++
++.portfolio-result-table thead th {
++    position: sticky;
++    top: 0;
++    z-index: 2;
++    background: var(--bs-tertiary-bg);
++    box-shadow: 0 1px 0 var(--bs-border-color);
++}
++
++.portfolio-result-table tbody tr:hover {
++    background: var(--bs-tertiary-bg);
++}
++
++.portfolio-result-table-relations {
++    max-height: 24rem;
++}
++
++.portfolio-decision-workbench {
++    min-width: 0;
++}
++
++.portfolio-decision-filters {
++    display: grid;
++    grid-template-columns: minmax(14rem, 2fr) minmax(10rem, 1fr);
++    gap: 0.5rem;
++    width: min(42rem, 100%);
++}
++
++.portfolio-decision-table {
++    max-height: min(60vh, 42rem);
++}
++
++.portfolio-decision-evidence {
++    min-width: 18rem;
++    max-width: 36rem;
++    white-space: normal;
++    overflow-wrap: anywhere;
++}
++
++[data-decision-row][hidden] {
++    display: none;
++}
++
++@media (max-width: 1399.98px) {
++    .portfolio-result-kpis {
++        grid-template-columns: repeat(3, minmax(9rem, 1fr));
++    }
++}
++
++@media (max-width: 767.98px) {
++    .portfolio-result-kpis,
++    .portfolio-result-grid {
++        grid-template-columns: 1fr;
++    }
++
++    .portfolio-result-panel-wide {
++        grid-column: auto;
++    }
++
++    .portfolio-decision-filters {
++        grid-template-columns: 1fr;
++    }
++
++    .portfolio-result-overview {
++        padding: 0.75rem;
++    }
++}
++
