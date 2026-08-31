@@ -1,0 +1,152 @@
+name: Finalize PR 948 exact head
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-result-review
+    paths:
+      - .github/workflows/finalize-pr-948.yml
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: finalize-pr-948-exact-head
+  cancel-in-progress: true
+
+jobs:
+  verify-and-merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Verify the immutable PR head and merge only the complete green result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          owner="${repo%%/*}"
+          name="${repo#*/}"
+          pr=948
+          expected_head_ref=fix/complete-copilot-run-screenshot
+          expected_base_ref=main
+
+          cat > /tmp/expected-files <<'EOF'
+          .github/copilot-ref-screenshots.md
+          docs/de/COPILOT_AUTOPILOT.md
+          docs/en/COPILOT_AUTOPILOT.md
+          docs/images/72-complete-copilot-run-result.png
+          pom.xml
+          taxonomy-app/src/main/resources/static/css/taxonomy-portfolio.css
+          taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotResultUiContractTest.java
+          taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java
+          taxonomy-app/src/test/java/com/taxonomy/RequirementCopilotResultSurfaceContractTest.java
+          EOF
+          sort -o /tmp/expected-files /tmp/expected-files
+
+          original_head=""
+          ready=false
+          for attempt in $(seq 1 100); do
+            pr_json="$(gh api "repos/$repo/pulls/$pr")"
+            state="$(jq -r '.state' <<<"$pr_json")"
+            draft="$(jq -r '.draft' <<<"$pr_json")"
+            merged="$(jq -r '.merged' <<<"$pr_json")"
+            head="$(jq -r '.head.sha' <<<"$pr_json")"
+            head_ref="$(jq -r '.head.ref' <<<"$pr_json")"
+            base_ref="$(jq -r '.base.ref' <<<"$pr_json")"
+
+            if [[ "$merged" == true ]]; then
+              echo "PR #$pr is already merged."
+              exit 0
+            fi
+            [[ "$state" == open ]]
+            [[ "$draft" == false ]]
+            [[ "$head_ref" == "$expected_head_ref" ]]
+            [[ "$base_ref" == "$expected_base_ref" ]]
+
+            if [[ -z "$original_head" ]]; then
+              original_head="$head"
+            fi
+            if [[ "$head" != "$original_head" ]]; then
+              echo "PR head changed while the gate was running: $original_head -> $head" >&2
+              exit 1
+            fi
+
+            gh api --paginate "repos/$repo/pulls/$pr/files?per_page=100" \
+              --jq '.[].filename' | sort > /tmp/actual-files
+            if ! diff -u /tmp/expected-files /tmp/actual-files; then
+              echo "PR #$pr does not contain the exact permanent eleven-file result." >&2
+              exit 1
+            fi
+
+            unresolved="$(gh api graphql \
+              -f owner="$owner" -f name="$name" -F number="$pr" \
+              -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}' \
+              --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')"
+            [[ "$unresolved" == 0 ]]
+
+            runs="$(gh api "repos/$repo/actions/runs?head_sha=$head&per_page=100")"
+            pending=false
+            failed=false
+            for workflow in \
+              'CI / CD' \
+              'Database Compatibility' \
+              'Document Template Report E2E' \
+              'Kubernetes Constrained Smoke' \
+              'JGit Storage Consumer Contract' \
+              'Security Scan'; do
+              current="$(jq -c --arg workflow "$workflow" \
+                '[.workflow_runs[] | select(.name == $workflow)] | sort_by(.created_at) | last // empty' \
+                <<<"$runs")"
+              if [[ -z "$current" ]]; then
+                echo "$workflow: not started"
+                pending=true
+                continue
+              fi
+              run_status="$(jq -r '.status' <<<"$current")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$current")"
+              echo "$workflow: $run_status ${conclusion:-pending}"
+              if [[ "$run_status" != completed ]]; then
+                pending=true
+              elif [[ "$conclusion" != success ]]; then
+                failed=true
+              fi
+            done
+
+            if [[ "$failed" == true ]]; then
+              echo "At least one authoritative workflow failed for $head." >&2
+              exit 1
+            fi
+            if [[ "$pending" == false ]]; then
+              ready=true
+              break
+            fi
+            sleep 30
+          done
+
+          [[ "$ready" == true ]]
+
+          final_json="$(gh api "repos/$repo/pulls/$pr")"
+          final_head="$(jq -r '.head.sha' <<<"$final_json")"
+          mergeable="$(jq -r '.mergeable' <<<"$final_json")"
+          merge_state="$(jq -r '.mergeable_state' <<<"$final_json")"
+          [[ "$final_head" == "$original_head" ]]
+          [[ "$mergeable" == true ]]
+          [[ "$merge_state" == clean || "$merge_state" == unstable ]]
+
+          gh pr merge "$pr" \
+            --repo "$repo" \
+            --squash \
+            --match-head-commit "$original_head" \
+            --subject 'Present complete Copilot results as a reviewable summary (#948)' \
+            --body 'Expose accurate terminal state and selected-snapshot routing, replace raw result payloads with a structured review surface, and retain exact browser, export and screenshot evidence.'
+
+          merged_json="$(gh api "repos/$repo/pulls/$pr")"
+          [[ "$(jq -r '.merged' <<<"$merged_json")" == true ]]
+          echo "Merged PR #$pr at exact verified head $original_head."
