@@ -1,0 +1,258 @@
+name: Refine Complete Copilot Screenshot
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-screenshot
+    paths:
+      - .github/workflows/refine-complete-copilot-screenshot.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refine-complete-copilot-screenshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Replace the asynchronous watcher with an authoritative synchronous capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          session = Path('taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java')
+          text = session.read_text(encoding='utf-8')
+
+          text = text.replace('import org.junit.jupiter.api.extension.ExtendWith;\n', '', 1)
+          text = text.replace('@ExtendWith(CompleteCopilotScreenshotWatcher.class)\n', '', 1)
+
+          selenium_marker = 'import org.openqa.selenium.JavascriptExecutor;\n'
+          selenium_imports = (
+              selenium_marker
+              + 'import org.openqa.selenium.OutputType;\n'
+              + 'import org.openqa.selenium.TakesScreenshot;\n'
+          )
+          if selenium_marker not in text:
+              raise SystemExit('Selenium import insertion point not found')
+          text = text.replace(selenium_marker, selenium_imports, 1)
+
+          io_marker = 'import java.io.ByteArrayOutputStream;\n'
+          io_imports = (
+              io_marker
+              + 'import java.io.File;\n'
+              + 'import java.io.IOException;\n'
+          )
+          if io_marker not in text:
+              raise SystemExit('I/O import insertion point not found')
+          text = text.replace(io_marker, io_imports, 1)
+
+          nio_marker = 'import java.nio.charset.StandardCharsets;\n'
+          nio_imports = (
+              nio_marker
+              + 'import java.nio.file.Files;\n'
+              + 'import java.nio.file.Path;\n'
+              + 'import java.nio.file.StandardCopyOption;\n'
+          )
+          if nio_marker not in text:
+              raise SystemExit('NIO import insertion point not found')
+          text = text.replace(nio_marker, nio_imports, 1)
+
+          call_marker = '''        wait.until(browser -> browser.findElements(
+                  By.cssSelector("[data-decision-report-format]")).size() == 3);
+              }
+          '''
+          call_replacement = '''        wait.until(browser -> browser.findElements(
+                  By.cssSelector("[data-decision-report-format]")).size() == 3);
+              if (Boolean.getBoolean("generateScreenshots")) {
+                  saveCompleteCopilotRunResultScreenshot();
+              }
+          }
+          '''
+          if call_marker not in text:
+              raise SystemExit('Authoritative snapshot-ready insertion point not found')
+          text = text.replace(call_marker, call_replacement, 1)
+
+          method_marker = '    private static void exerciseRequirementWorkspaceControls() {\n'
+          method = '''    private static void saveCompleteCopilotRunResultScreenshot() {
+                  Dimension previousSize = driver.manage().window().getSize();
+                  Boolean settingsWereOpen = false;
+                  try {
+                      driver.manage().window().setSize(new Dimension(2200, 1600));
+                      settingsWereOpen = (Boolean) javascript().executeScript("""
+                              const settings = document.getElementById('copilotRunSettings');
+                              const wasOpen = Boolean(settings && settings.open);
+                              if (settings) settings.open = false;
+                              document.querySelectorAll('#snapshotDetail details[open]')
+                                  .forEach(detail => { detail.open = false; });
+                              window.scrollTo(0, 0);
+                              return wasOpen;
+                              """);
+                      wait.until(attributeEquals(By.id("analyses-tab"),
+                              "aria-selected", "true"));
+                      wait.until(ExpectedConditions.visibilityOfElementLocated(
+                              By.id("snapshotDetail")));
+                      wait.until(browser -> {
+                          Number height = (Number) javascript().executeScript(
+                                  "return document.getElementById('snapshotDetail')"
+                                          + ".getBoundingClientRect().height");
+                          return height.doubleValue() > 100.0;
+                      });
+
+                      Path module = Path.of(System.getProperty("project.basedir", "."))
+                              .toAbsolutePath()
+                              .normalize();
+                      Path repository = module.getParent() == null ? module : module.getParent();
+                      Path output = repository.resolve(
+                              "docs/images/72-complete-copilot-run-result.png");
+                      Files.createDirectories(output.getParent());
+                      File screenshot = ((TakesScreenshot) driver)
+                              .getScreenshotAs(OutputType.FILE);
+                      Files.copy(screenshot.toPath(), output,
+                              StandardCopyOption.REPLACE_EXISTING);
+                  } catch (IOException exception) {
+                      throw new AssertionError(
+                              "Could not save the complete Copilot result screenshot", exception);
+                  } finally {
+                      Boolean restoreOpen = settingsWereOpen;
+                      try {
+                          javascript().executeScript("""
+                                  const settings = document.getElementById('copilotRunSettings');
+                                  if (settings) settings.open = arguments[0];
+                                  """, restoreOpen);
+                      } catch (RuntimeException ignoredDuringNavigation) {
+                          // The owning test remains authoritative if the page navigated meanwhile.
+                      }
+                      driver.manage().window().setSize(previousSize);
+                  }
+              }
+
+          '''
+          if method_marker not in text:
+              raise SystemExit('Synchronous screenshot method insertion point not found')
+          text = text.replace(method_marker, method + method_marker, 1)
+          session.write_text(text, encoding='utf-8')
+
+          contract = Path('taxonomy-app/src/test/java/com/taxonomy/RequirementCopilotResultSurfaceContractTest.java')
+          contract_text = contract.read_text(encoding='utf-8')
+          assertion_marker = '''                .doesNotContain(
+                          "if (terminal.has(operation.status)) return { key: 'FINAL', "
+                                  + "label: t('finalizing')");
+              }
+          '''
+          assertion_replacement = '''                .doesNotContain(
+                          "if (terminal.has(operation.status)) return { key: 'FINAL', "
+                                  + "label: t('finalizing')");
+
+                  String session = Files.readString(Path.of(
+                          "src/test/java/com/taxonomy/CompleteCopilotSessionIT.java"));
+                  assertThat(session)
+                          .contains("saveCompleteCopilotRunResultScreenshot()")
+                          .contains("aria-selected", "snapshotDetail")
+                          .doesNotContain("CompleteCopilotScreenshotWatcher");
+              }
+          '''
+          if assertion_marker not in contract_text:
+              raise SystemExit('Focused screenshot ownership contract insertion point not found')
+          contract.write_text(
+              contract_text.replace(assertion_marker, assertion_replacement, 1),
+              encoding='utf-8')
+          PY
+
+          rm taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotScreenshotWatcher.java
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-copilot.js
+          git diff --check
+
+      - name: Verify focused contracts
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am test
+          -Dtest=RequirementCopilotResultSurfaceContractTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Run the complete browser session and regenerate the screenshot
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=CompleteCopilotSessionIT
+          -DgenerateScreenshots=true
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify regenerated evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=docs/images/72-complete-copilot-run-result.png
+          test -s "$image"
+          test "$(wc -c < "$image")" -gt 40000
+          file "$image" | grep -F 'PNG image data'
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+
+          image = Path('docs/images/72-complete-copilot-run-result.png').read_bytes()
+          width, height = struct.unpack('>II', image[16:24])
+          if width < 2000 or height < 1200:
+              raise SystemExit(f'Screenshot is unexpectedly small: {width}x{height}')
+          print(f'Verified screenshot dimensions: {width}x{height}')
+          PY
+          git diff --check
+
+      - name: Upload refined evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-copilot-run-result-synchronous
+          path: |
+            docs/images/72-complete-copilot-run-result.png
+            taxonomy-app/target/failsafe-reports/**
+            taxonomy-app/target/surefire-reports/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish the verified permanent refinement
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=fix/complete-copilot-run-screenshot
+          remote_head="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java \
+            taxonomy-app/src/test/java/com/taxonomy/RequirementCopilotResultSurfaceContractTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotScreenshotWatcher.java \
+            docs/images/72-complete-copilot-run-result.png
+          git diff --cached --check
+          git commit -m 'Capture the complete Copilot result synchronously'
+          git push origin HEAD:"$branch"
