@@ -153,6 +153,10 @@ try {
     const impactNodes = impactMap.locator('.impact-map-node');
     assert(await impactNodes.count() > 0,
       'Impact map did not render readable element cards');
+    assert(await impactMap.locator('.impact-map-node.is-muted').count() === 0,
+      'Impact map starts with unrelated elements muted before the user selects anything');
+    assert((await impactMap.locator('.impact-map-details').getAttribute('class')).includes('is-empty'),
+      'Impact map starts with an implicit selection instead of the overview hint');
     const firstImpactNode = impactNodes.first();
     const impactCode = await firstImpactNode.getAttribute('data-node-id');
     assert(Boolean(impactCode), 'Impact-map element lacks its stable node code');

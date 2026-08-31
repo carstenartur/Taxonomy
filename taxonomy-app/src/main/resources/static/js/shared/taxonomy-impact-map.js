@@ -560,7 +560,8 @@
             nodeById: nodeById,
             showContext: true,
             mode: 'overview',
-            selectedNodeId: defaultSelection ? defaultSelection.id : null,
+            initialNodeId: defaultSelection ? defaultSelection.id : null,
+            selectedNodeId: null,
             selectedEdgeId: null,
             searchQuery: '',
             visible: null,
@@ -736,10 +737,11 @@
                 (size.height - padding * 2) / state.layout.height,
                 1.25
             );
-            if (fullFitScale >= 0.62 || !state.selectedNodeId) {
+            var focusNodeId = state.selectedNodeId || state.initialNodeId;
+            if (fullFitScale >= 0.62 || !focusNodeId) {
                 fitView();
             } else {
-                centerOnNode(state.selectedNodeId, 0.82);
+                centerOnNode(focusNodeId, 0.82);
             }
         }
 

@@ -292,6 +292,9 @@ test('provides orientation, search, focus, detail and accessibility controls', (
     'ResizeObserver',
     'showReadableInitialView',
     'renderAndCenterNode',
+    "initialNodeId: defaultSelection ? defaultSelection.id : null",
+    'selectedNodeId: null',
+    'state.selectedNodeId || state.initialNodeId',
     'fullFitScale >= 0.62',
     "fullscreenButton.hidden = typeof root.requestFullscreen !== 'function'",
   ]) {
