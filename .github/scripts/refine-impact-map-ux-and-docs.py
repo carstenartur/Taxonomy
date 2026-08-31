@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""Apply the one-time impact-map UX and documentation refinements."""
+
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    file = Path(path)
+    content = file.read_text(encoding="utf-8")
+    occurrences = content.count(old)
+    if occurrences != 1:
+        raise SystemExit(
+            f"{path}: expected one replacement target, found {occurrences}"
+        )
+    file.write_text(content.replace(old, new, 1), encoding="utf-8")
+
+
+graph = "taxonomy-app/src/main/resources/static/js/shared/taxonomy-impact-map.js"
+replace_once(
+    graph,
+    "        function centerOnNode(nodeId) {",
+    "        function centerOnNode(nodeId, requestedScale) {",
+)
+replace_once(
+    graph,
+    "            var scale = clamp(Math.max(current.k, 1.05), 0.8, 1.55);",
+    "\n".join(
+        [
+            "            var scale = requestedScale === undefined",
+            "                ? clamp(Math.max(current.k, 1.05), 0.8, 1.55)",
+            "                : clamp(requestedScale, 0.55, 1.55);",
+        ]
+    ),
+)
+replace_once(
+    graph,
+    """            applyTransform(window.d3.zoomIdentity
+                .translate(size.width / 2 - centerX * scale, size.height / 2 - centerY * scale)
+                .scale(scale));
+        }
+
+        function updateViewBox() {""",
+    """            applyTransform(window.d3.zoomIdentity
+                .translate(size.width / 2 - centerX * scale, size.height / 2 - centerY * scale)
+                .scale(scale));
+        }
+
+        function showReadableInitialView() {
+            if (!state.layout) return;
+            var size = viewportSize();
+            var padding = 34;
+            var fullFitScale = Math.min(
+                (size.width - padding * 2) / state.layout.width,
+                (size.height - padding * 2) / state.layout.height,
+                1.25
+            );
+            if (fullFitScale >= 0.62 || !state.selectedNodeId) {
+                fitView();
+            } else {
+                centerOnNode(state.selectedNodeId, 0.82);
+            }
+        }
+
+        function updateViewBox() {""",
+)
+replace_once(
+    graph,
+    """        zoomGroup.appendChild(fullscreenButton);
+        toolbar.appendChild(zoomGroup);""",
+    """        zoomGroup.appendChild(fullscreenButton);
+        fullscreenButton.hidden = typeof root.requestFullscreen !== 'function';
+        toolbar.appendChild(zoomGroup);""",
+)
+replace_once(
+    graph,
+    """        renderDiagram(true);
+        return state;""",
+    """        renderDiagram(false);
+        window.requestAnimationFrame(showReadableInitialView);
+        return state;""",
+)
+
+tests = ".github/scripts/taxonomy-impact-map.test.mjs"
+replace_once(
+    tests,
+    """    'ResizeObserver',
+  ]) {""",
+    """    'ResizeObserver',
+    'showReadableInitialView',
+    'fullFitScale >= 0.62',
+    "fullscreenButton.hidden = typeof root.requestFullscreen !== 'function'",
+  ]) {""",
+)
+
+de_guide = "docs/de/USER_GUIDE.md"
+replace_once(
+    de_guide,
+    '| **Interaktiver Netzwerkgraph** | Ein interaktiver kräftebasierter Netzwerkgraph (Standardansicht), der alle betroffenen Elemente als verschiebbare Knoten zeigt, verbunden durch gerichtete Kanten. Umschalten auf „🏗️ Layer View" für die traditionelle Swimlane-Darstellung. |',
+    '| **Interaktiver Auswirkungsgraph** | Eine stabile, nach Architekturebenen geordnete Standardansicht mit lesbaren Elementkarten, Suche, Kontextfilter, Fokusmodus, Zoom und Detailbereich. Umschalten auf „🏗️ Layer View" für die kompakte Swimlane-Darstellung. |',
+)
+replace_once(
+    de_guide,
+    """Die Hauptvisualisierung ist ein **interaktiver kräftebasierter Netzwerkgraph**, der alle betroffenen Elemente und ihre Beziehungen zeigt. Knoten sind Kreise, die nach Taxonomieschicht eingefärbt sind, mit einer Größe proportional zur Relevanz.
+
+- **★ Ankerknoten** (direkte Treffer) haben einen goldenen Rahmen und zeigen ihren Score-Prozentsatz an. Dies sind die Knoten, die die KI als beste Antwort auf Ihre Anforderung betrachtet.
+- **⚠️ Hotspot-Knoten** pulsieren rot und heben Bereiche mit hoher Änderungswirkung hervor — entweder Anker mit mehreren ausgehenden Beziehungen oder Knoten, die von mehreren verschiedenen Ankern erreicht werden.
+- **Propagierte Elemente** erweitern das Bild: Wenn ein Ankerknoten eine Fähigkeit *realisiert*, erscheint diese Fähigkeit ebenfalls mit ihrer Hop-Distanz.
+- **Gerichtete Kanten** verbinden spezifische Quell- → Zielknoten, eingefärbt nach Beziehungstyp (z. B. grün für SUPPORTS, blau für REALIZES). Dickere Kanten zeigen höhere propagierte Relevanz an.
+- **Ziehen** Sie Knoten, um das Layout neu anzuordnen, **hovern** Sie für einen detaillierten Tooltip (Code, Titel, Schicht, Relevanz, Hop-Distanz, Anker-/Hotspot-Status) und **klicken** Sie, um den Knoten im Graph Explorer zu öffnen.
+- Wechseln Sie zu **„🏗️ Layer View"** für die traditionelle Swimlane-Darstellung, die Elemente nach Architekturschicht gruppiert.""",
+    """Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Auswirkungsgraph**. Fähigkeiten, Prozesse, Dienste, Anwendungen, Informationsprodukte und Kommunikationsdienste bleiben bei jedem Aufruf in denselben Spalten. Dadurch lassen sich Ergebnisstände vergleichen und Beziehungspfade verfolgen.
+
+- **Elementkarten** zeigen Knotencode, verständliche Bezeichnung, Relevanz, Architekturebene sowie direkten Treffer oder Beziehungsschritt. Lange Bezeichnungen werden lesbar umgebrochen.
+- **★ Direkte Treffer** haben einen hervorgehobenen Rahmen und stehen innerhalb ihrer Ebene zuerst. Dies sind die Elemente, welche die Analyse unmittelbar aus der Anforderung abgeleitet hat.
+- **⚠️ Hotspots** kennzeichnen Elemente mit hoher Änderungswirkung, etwa gemeinsam genutzte Abhängigkeiten oder direkte Treffer mit mehreren ausgehenden Beziehungen.
+- **Gerichtete Verbindungen** zeigen Quelle, Ziel und Beziehungstyp. Wenn Sie ein Element auswählen, werden dessen verbundene Pfade hervorgehoben und nicht zugehörige Elemente zurückgenommen.
+- Mit der **Suche** finden Sie Elemente anhand von Code, Bezeichnung oder Ebene. Drücken Sie die Eingabetaste, um zum ersten Treffer zu springen.
+- Der Schalter **Kontextknoten** blendet propagierte Elemente ein oder aus. Direkte Treffer bleiben sichtbar.
+- Wechseln Sie zwischen **Übersicht** und **Fokus**. Der Fokusmodus zeigt das ausgewählte Element mit seinen direkten Nachbarn; ein Doppelklick auf eine Karte aktiviert ihn ebenfalls.
+- Nutzen Sie **Einpassen**, **Zoom**, Verschieben der Zeichenfläche und **Vollbild**, um kleine oder umfangreiche Ergebnisse zu untersuchen. Auf schmalen Ansichten startet die Darstellung auf dem wichtigsten Treffer in lesbarer Größe.
+- **Klicken** Sie auf eine Elementkarte oder Verbindung, um im Detailbereich Relevanz, Entfernung, Begründung und verbundene Elemente anzuzeigen. Von dort können Sie das Element im Graph Explorer öffnen.
+- Wechseln Sie zu **„🏗️ Layer View"** für die kompakte Swimlane-Darstellung nach Architekturebene.""",
+)
+
+en_guide = "docs/en/USER_GUIDE.md"
+replace_once(
+    en_guide,
+    '| **Interactive Network Graph** | An interactive force-directed network graph (default view) showing all impacted elements as draggable nodes connected by directed edges. Toggle to "🏗️ Layer View" for the traditional swimlane layout. |',
+    '| **Interactive Impact Graph** | A stable architecture-layer layout with readable element cards, search, context filtering, focus mode, zoom, and a detail area. Toggle to "🏗️ Layer View" for the compact swimlane representation. |',
+)
+replace_once(
+    en_guide,
+    """The main visualization is an **interactive force-directed network graph** showing all impacted elements and their relationships. Nodes are circles colored by taxonomy layer, with size proportional to relevance.
+
+- **★ Anchor nodes** (direct matches) have a gold border and display their score percentage. These are the nodes the AI considers the best answer to your requirement.
+- **⚠️ Hotspot nodes** pulse red, highlighting areas of high change impact — either anchors with multiple outgoing relationships, or nodes reached from multiple different anchors.
+- **Propagated elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears with its hop distance shown.
+- **Directed edges** connect specific source → target nodes, colored by relationship type (e.g., green for SUPPORTS, blue for REALIZES). Thicker edges indicate higher propagated relevance.
+- **Drag** nodes to rearrange the layout, **hover** for a detailed tooltip (code, title, layer, relevance, hop distance, anchor/hotspot status), and **click** to open the node in Graph Explorer.
+- Toggle to **"🏗️ Layer View"** for the traditional swimlane layout grouping elements by architecture layer.""",
+    """The main visualization is a **stable impact graph arranged by architecture layer**. Capabilities, processes, services, applications, information products, and communications services remain in the same columns on every render, making result versions and relationship paths easier to compare.
+
+- **Element cards** show the node code, readable title, relevance, architecture layer, and whether the element is a direct match or a propagated hop. Long titles wrap instead of overlapping other nodes.
+- **★ Direct matches** use a highlighted border and appear first within their layer. These are the elements derived directly from the requirement analysis.
+- **⚠️ Hotspots** identify areas of high change impact, such as shared dependencies or direct matches with several outgoing relationships.
+- **Directed connections** show source, target, and relationship type. Selecting an element highlights its connected paths and de-emphasises unrelated elements.
+- Use **search** to find elements by code, title, or layer. Press Enter to move to the first match.
+- The **Context nodes** switch shows or hides propagated elements while preserving direct matches.
+- Switch between **Overview** and **Focus**. Focus mode shows the selected element and its immediate neighbours; double-clicking a card also activates it.
+- Use **Fit**, **zoom**, canvas panning, and **fullscreen** to inspect small or extensive results. On narrow views the map starts centred on the most important match at a readable scale.
+- **Click** an element card or connection to view its relevance, distance, inclusion reason, and connected elements in the detail area. From there you can open the element in Graph Explorer.
+- Toggle to **"🏗️ Layer View"** for the compact swimlane representation grouped by architecture layer.""",
+)
