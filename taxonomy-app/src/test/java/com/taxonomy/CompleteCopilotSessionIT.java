@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.ElementClickInterceptedException;
@@ -45,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * presentation around real persisted operations.</p>
  */
 @Tag("ui-acceptance")
+@ExtendWith(CompleteCopilotScreenshotWatcher.class)
 class CompleteCopilotSessionIT {
 
     private static final String ADMIN_PASSWORD = "Complete-Copilot-Session-2026!";

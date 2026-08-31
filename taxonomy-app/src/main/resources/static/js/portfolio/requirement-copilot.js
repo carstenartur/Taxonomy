@@ -30,8 +30,11 @@
             review: 'Human review remains required for mappings, responsibilities, solution/product selection, procurement and branch merge.',
             failed: 'Copilot operation failed', completed: 'Copilot completed. Opening the selected immutable snapshot…',
             pass: 'passes complete', provider: 'AI target', operation: 'Operation', phase: 'Phase',
+            snapshot: 'Selected snapshot',
             lastContact: 'Last server contact', queued: 'Waiting for analysis capacity',
             scoring: 'The current verification pass is being evaluated', finalizing: 'Selecting and enriching the best immutable result',
+            completedPhase: 'Completed and ready for review',
+            partialPhase: 'Completed with partial results', failedPhase: 'Failed', cancelledPhase: 'Cancelled',
             reconnecting: 'The server status cannot currently be reached. The analysis has not been declared failed; Taxonomy is reconnecting.',
             reconnectAttempt: 'Reconnect attempt', cancelling: 'Cancellation requested. Waiting for the authoritative terminal state…',
             retryStatus: 'Retry status connection now', openResult: 'Open result',
@@ -47,8 +50,11 @@
             review: 'Menschliche Prüfung bleibt erforderlich für Zuordnungen, Zuständigkeiten, Lösungs-/Produktauswahl, Beschaffung und Branch-Merge.',
             failed: 'Die Copilot-Operation ist fehlgeschlagen', completed: 'Copilot abgeschlossen. Der ausgewählte unveränderliche Snapshot wird geöffnet…',
             pass: 'Durchläufe abgeschlossen', provider: 'KI-Ziel', operation: 'Vorgang', phase: 'Phase',
+            snapshot: 'Ausgewählter Snapshot',
             lastContact: 'Letzter Serverkontakt', queued: 'Warten auf freie Analysekapazität',
             scoring: 'Der aktuelle Prüfdurchlauf wird bewertet', finalizing: 'Das beste unveränderliche Ergebnis wird ausgewählt und ergänzt',
+            completedPhase: 'Abgeschlossen und zur Prüfung bereit',
+            partialPhase: 'Mit Teilergebnissen abgeschlossen', failedPhase: 'Fehlgeschlagen', cancelledPhase: 'Abgebrochen',
             reconnecting: 'Der Serverstatus ist momentan nicht erreichbar. Die Analyse wurde nicht als fehlgeschlagen erklärt; Taxonomy stellt die Verbindung wieder her.',
             reconnectAttempt: 'Wiederverbindungsversuch', cancelling: 'Abbruch angefordert. Warten auf den autoritativen Endzustand…',
             retryStatus: 'Statusverbindung jetzt erneut versuchen', openResult: 'Ergebnis öffnen',
@@ -147,6 +153,11 @@
                         <div id="copilotProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"></div>
                     </div>
                     <div id="copilotOperationProgress" class="small text-body-secondary mt-1"></div>
+                    <div id="copilotResultActions"
+                         class="d-none flex-wrap justify-content-between align-items-center gap-2 mt-3 p-2 border rounded bg-body-tertiary">
+                        <span id="copilotSelectedSnapshot" class="small text-body-secondary"></span>
+                        <a id="copilotOpenResult" class="btn btn-sm btn-outline-primary" href="#">Open result</a>
+                    </div>
                     <div class="d-flex flex-wrap justify-content-between gap-2 mt-2 small text-body-secondary">
                         <span id="copilotOperationId"></span>
                         <span id="copilotLastContact"></span>
@@ -171,6 +182,7 @@
         setText('copilotForceLabel', t('force'));
         setText('copilotReviewBoundary', t('review'));
         setText('copilotRetryStatus', t('retryStatus'));
+        setText('copilotOpenResult', t('openResult'));
     }
 
     function installControlInventory() {
@@ -179,6 +191,7 @@
         markControl('copilotRun', 'run-full-analysis', 'operation');
         markControl('copilotCancel', 'cancel-full-analysis', 'cancel');
         markControl('copilotRetryStatus', 'retry-status-connection', 'operation');
+        markControl('copilotOpenResult', 'open-selected-result', 'navigation');
     }
 
     function markControl(id, control, outcome) {
@@ -354,12 +367,40 @@
         const phase = operationPhase(operation);
         setText('copilotOperationPhase', t('phase') + ': ' + phase.label);
         renderProgress(operation, phase);
+        renderResultAction(operation);
 
         const cancelButton = document.getElementById('copilotCancel');
         if (cancelButton) cancelButton.disabled = terminal.has(operation.status);
         setControls(!terminal.has(operation.status));
         announce(message + ' ' + operation.completedPasses
             + '/' + operation.verificationPasses);
+    }
+
+    function renderResultAction(operation) {
+        const surface = document.getElementById('copilotResultActions');
+        const snapshot = document.getElementById('copilotSelectedSnapshot');
+        const link = document.getElementById('copilotOpenResult');
+        if (!surface || !snapshot || !link) return;
+
+        const status = String(operation?.status || '').toUpperCase();
+        const snapshotId = String(operation?.selectedSnapshotId || '').trim();
+        const available = (status === 'SUCCESS' || status === 'PARTIAL')
+            && snapshotId.length > 0;
+        surface.classList.toggle('d-none', !available);
+        surface.classList.toggle('d-flex', available);
+        if (!available) {
+            snapshot.textContent = '';
+            link.removeAttribute('href');
+            link.removeAttribute('aria-label');
+            return;
+        }
+
+        snapshot.textContent = t('snapshot') + ': ' + snapshotId;
+        const resultUrl = new URL(window.location.href);
+        resultUrl.searchParams.set('snapshot', snapshotId);
+        resultUrl.searchParams.set('lang', locale);
+        link.href = resultUrl.pathname + resultUrl.search + resultUrl.hash;
+        link.setAttribute('aria-label', t('openResult') + ': ' + snapshotId);
     }
 
     function renderLocalState(status, message) {
@@ -376,12 +417,16 @@
         const jobs = Array.isArray(operation.jobs) ? operation.jobs : [];
         const running = jobs.find(job => job.status === 'RUNNING');
         const pending = jobs.find(job => job.status === 'PENDING');
-        if (operation.status === 'CANCELLING') return { key: 'CANCELLING', label: t('cancelling'), indeterminate: true };
-        if (operation.status === 'RECONNECTING') return { key: 'RECONNECTING', label: t('reconnecting'), indeterminate: true };
+        const status = String(operation.status || '').toUpperCase();
+        if (status === 'CANCELLING') return { key: 'CANCELLING', label: t('cancelling'), indeterminate: true };
+        if (status === 'RECONNECTING') return { key: 'RECONNECTING', label: t('reconnecting'), indeterminate: true };
+        if (status === 'SUCCESS') return { key: 'COMPLETED', label: t('completedPhase'), indeterminate: false };
+        if (status === 'PARTIAL') return { key: 'PARTIAL', label: t('partialPhase'), indeterminate: false };
+        if (status === 'FAILED') return { key: 'FAILED', label: t('failedPhase'), indeterminate: false };
+        if (status === 'CANCELLED') return { key: 'CANCELLED', label: t('cancelledPhase'), indeterminate: false };
         if (running) return { key: 'SCORING', label: t('scoring'), indeterminate: true };
         if (pending) return { key: 'QUEUED', label: t('queued'), indeterminate: true };
-        if (terminal.has(operation.status)) return { key: 'FINAL', label: t('finalizing'), indeterminate: false };
-        return { key: 'QUEUED', label: t('queued'), indeterminate: true };
+        return { key: 'FINALIZING', label: t('finalizing'), indeterminate: true };
     }
 
     function renderProgress(operation, phase) {

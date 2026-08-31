@@ -35,6 +35,14 @@ Every successful Copilot full analysis stores an immutable architecture snapshot
 
 The browser, SVG download and PDF download use the same deterministic server-side scene and coordinates. The interactive browser controls change only visibility, selection and viewport; they do not silently recalculate or mutate the persisted architecture.
 
+## Complete-run result surface
+
+After a full analysis reaches an authoritative terminal state, Taxonomy reloads the requirement with the selected immutable snapshot. The same page keeps the Copilot operation status, provider, accurate terminal phase, completed verification passes and server-contact evidence visible above the result tabs. The selected snapshot is also shown explicitly and remains available through **Open result**.
+
+![Complete Copilot run result](../images/72-complete-copilot-run-result.png)
+
+The screenshot is captured by `CompleteCopilotSessionIT` from the real successful persisted state. It is not assembled from a browser fixture, and screenshot generation fails if the selected snapshot, terminal operation and result tabs are not visible together.
+
 ## Architecture-node limits
 
 `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` keeps its historical name for compatibility, but its Spring property is `taxonomy.ai.max-architecture-nodes` and it applies to **both manual Copilot and Autopilot**. It is the operator ceiling for the architecture view built in every AI-automation pass. A manual API request may select a lower value but cannot exceed it.

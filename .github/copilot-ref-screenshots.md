@@ -45,8 +45,12 @@ Generated PNG files are written to `docs/images/` and must be committed to the r
 | `69`         | Yes (mock mode) | Scored Decision Map (populated with analysis results) |
 | `70`         | No              | Swagger UI (API Documentation)                        |
 | `71`         | Yes (mock mode) | Persisted Copilot architecture workbench from the owning snapshot acceptance |
+| `72`         | Yes (mock mode) | Complete persisted Copilot run result from `CompleteCopilotSessionIT` |
 
 LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null)` when no key is present.
+
+
+The complete Copilot result screenshot is owned by `CompleteCopilotSessionIT.java`, because only that acceptance creates, recovers and opens the authoritative selected snapshot while retaining the terminal operation evidence.
 
 ## Adding a new screenshot
 

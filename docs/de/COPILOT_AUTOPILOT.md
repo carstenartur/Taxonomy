@@ -33,6 +33,14 @@ Jede erfolgreiche Copilot-Vollanalyse speichert einen unveränderlichen Architek
 
 Browseransicht, SVG-Download und PDF-Download verwenden dieselbe deterministische serverseitige Szene mit denselben Koordinaten. Die interaktiven Browserwerkzeuge verändern nur Sichtbarkeit, Auswahl und Bildausschnitt; sie berechnen oder verändern die persistierte Architektur nicht stillschweigend neu.
 
+## Ergebnisoberfläche eines vollständigen Laufs
+
+Nach einem autoritativ abgeschlossenen vollständigen Lauf lädt Taxonomy die Anforderung mit dem ausgewählten unveränderlichen Snapshot neu. Auf derselben Seite bleiben Operationsstatus, Anbieter, korrekte Endphase, abgeschlossene Prüfdurchläufe und letzter Serverkontakt oberhalb der Ergebnisregister sichtbar. Der ausgewählte Snapshot wird außerdem ausdrücklich angezeigt und bleibt über **Ergebnis öffnen** erreichbar.
+
+![Ergebnis eines vollständigen Copilot-Laufs](../images/72-complete-copilot-run-result.png)
+
+Der Screenshot wird durch `CompleteCopilotSessionIT` aus dem echten erfolgreichen persistenten Zustand aufgenommen. Er wird nicht aus einem Browser-Fixture zusammengesetzt; die Screenshot-Erzeugung schlägt fehl, wenn ausgewählter Snapshot, terminale Operation und Ergebnisregister nicht gemeinsam sichtbar sind.
+
 ## Grenzen der Architekturknoten
 
 `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` behält aus Kompatibilitätsgründen seinen historischen Namen. Die zugehörige Spring-Property heißt `taxonomy.ai.max-architecture-nodes` und gilt **sowohl für den manuellen Copilot als auch für den Autopiloten**. Sie ist die Betreiberobergrenze der Architektursicht jedes AI-Automatisierungsdurchlaufs. Eine manuelle API-Anfrage darf einen kleineren Wert wählen, aber keinen größeren.
