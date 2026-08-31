@@ -25,6 +25,14 @@ Konfigurierte oder angeforderte Durchlaufzahlen müssen zwischen 1 und 3 liegen.
 
 Der manuelle Copilot benötigt einen bereiten Anbieter, aber **kein** `TAXONOMY_AI_COST_POLICY=UNMETERED`, weil jeder Lauf ausdrücklich durch einen Benutzer gestartet wird.
 
+## Ergebnis eines vollständigen Laufs
+
+Nach einer erfolgreichen Copilot-Vollanalyse öffnet Taxonomy den ausgewählten unveränderlichen Snapshot unmittelbar im Tab **Analysen**. Die Ergebnisansicht fasst zunächst zugeordnete Elemente und Beziehungen, offene Lücken, Musterabdeckung, Konfidenz der Empfehlung und bestätigte Elemente zusammen und zeigt danach die zugehörige Evidenz.
+
+![Ergebnis eines vollständigen Copilot-Laufs](../images/72-complete-copilot-run-result.png)
+
+Die fünf wichtigsten fehlenden Beziehungen bleiben unmittelbar sichtbar. Längere Lücken-, Muster- und Beziehungslisten sind zunächst eingeklappt und öffnen sich in begrenzten, scrollbareren Tabellen. Die vollständigen anbieterneutralen Nutzdaten bleiben über den JSON-Bericht und den eingeklappten Abschnitt mit technischen Snapshot-Daten verfügbar; sie werden nicht mehr als unstrukturierter JSON-Block in den normalen Lesefluss geschrieben. Architektur-Workbench, Entscheidungsprüfung sowie Lösungs- und Produktansicht bleiben ausdrückliche nächste Schritte, weil Copilot-Ergebnisse keine verbindliche menschliche Entscheidung ersetzen.
+
 ## Grenzen der Architekturknoten
 
 `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` behält aus Kompatibilitätsgründen seinen historischen Namen. Die zugehörige Spring-Property heißt `taxonomy.ai.max-architecture-nodes` und gilt **sowohl für den manuellen Copilot als auch für den Autopiloten**. Sie ist die Betreiberobergrenze der Architektursicht jedes AI-Automatisierungsdurchlaufs. Eine manuelle API-Anfrage darf einen kleineren Wert wählen, aber keinen größeren.

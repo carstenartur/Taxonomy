@@ -27,6 +27,14 @@ All configured or request-supplied verification-pass counts must be between 1 an
 
 Manual Copilot requires a ready provider but does **not** require `TAXONOMY_AI_COST_POLICY=UNMETERED`; the user explicitly starts every run.
 
+## Complete-run result
+
+A successful Copilot full analysis opens the selected immutable snapshot directly in the **Analyses** tab. The result surface summarizes mapped elements and relationships, open gaps, pattern coverage, recommendation confidence and confirmed elements before showing the supporting evidence.
+
+![Complete Copilot run result](../images/72-complete-copilot-run-result.png)
+
+The five highest-priority missing relationships remain visible. Longer gap, pattern and relation lists are collapsed by default and open into bounded, scrollable tables. The full provider-neutral payload remains available through the JSON report and the collapsed technical snapshot section; it is no longer dumped into the normal reading flow. The architecture workbench, decision review and solution/product tabs remain explicit next steps because Copilot output is not a binding human decision.
+
 ## Architecture-node limits
 
 `TAXONOMY_AI_AUTOPILOT_MAX_ARCHITECTURE_NODES` keeps its historical name for compatibility, but its Spring property is `taxonomy.ai.max-architecture-nodes` and it applies to **both manual Copilot and Autopilot**. It is the operator ceiling for the architecture view built in every AI-automation pass. A manual API request may select a lower value but cannot exceed it.
