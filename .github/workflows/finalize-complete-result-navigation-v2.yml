@@ -1,0 +1,165 @@
+name: Finalize Complete Result Navigation V2
+
+on:
+  push:
+    branches:
+      - fix/complete-copilot-run-screenshot
+    paths:
+      - .github/workflows/finalize-complete-result-navigation-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-complete-result-navigation-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify Docker availability
+        run: docker info
+
+      - name: Apply direct-result navigation and scope its source contract precisely
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/finalize-complete-result-navigation.yml')
+          lines = workflow.read_text(encoding='utf-8').splitlines()
+          step_name = '      - name: Make snapshot URLs open the loaded Analyses result directly'
+          step = lines.index(step_name)
+          run_index = next(
+              index for index in range(step + 1, len(lines))
+              if lines[index] == '        run: |')
+          body = []
+          for line in lines[run_index + 1:]:
+              if line.startswith('      - name:'):
+                  break
+              if line and not line.startswith('          '):
+                  raise SystemExit(f'Unexpected navigation recipe indentation: {line!r}')
+              body.append(line[10:] if line else '')
+          Path('/tmp/apply-direct-result-navigation.sh').write_text(
+              '\n'.join(body) + '\n', encoding='utf-8')
+          PY
+          bash /tmp/apply-direct-result-navigation.sh
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(
+              'taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotResultUiContractTest.java')
+          text = path.read_text(encoding='utf-8')
+          old = '''        assertThat(session)
+                          .contains("aria-selected", "snapshotResultOverview")
+                          .contains("no compensating tab or snapshot click")
+                          .doesNotContain("click(By.id(\\\"analyses-tab\\\"))")
+                          .doesNotContain(
+                                  "click(By.cssSelector(\\\"#snapshotList [data-snapshot-id]\\\"))");
+          '''
+          new = '''        int methodStart = session.indexOf(
+                          "private static void openSelectedSnapshotThroughVisibleAnalysisControls()");
+                  int methodEnd = session.indexOf(
+                          "private static void saveCompleteCopilotRunResultScreenshot()",
+                          methodStart);
+                  assertThat(methodStart).isGreaterThanOrEqualTo(0);
+                  assertThat(methodEnd).isGreaterThan(methodStart);
+                  String navigationMethod = session.substring(methodStart, methodEnd);
+                  assertThat(navigationMethod)
+                          .contains("aria-selected", "snapshotResultOverview")
+                          .contains("no compensating tab or snapshot click")
+                          .doesNotContain("click(By.id(\\\"analyses-tab\\\"))")
+                          .doesNotContain(
+                                  "click(By.cssSelector(\\\"#snapshotList [data-snapshot-id]\\\"))");
+          '''
+          if old not in text:
+              raise SystemExit('Over-broad navigation assertion not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js
+          git diff --check
+
+      - name: Verify focused result contracts
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am test
+          -Dtest=RequirementCopilotResultSurfaceContractTest,CompleteCopilotResultUiContractTest
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Build the packaged application
+        run: >-
+          ./mvnw -B -pl taxonomy-app -am install
+          -DskipTests
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Exercise direct terminal navigation and regenerate screenshot 72
+        run: >-
+          ./mvnw -B -pl taxonomy-app verify
+          -Dtest=__NoUnitTests__
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -DskipITs=false
+          -Dit.test=CompleteCopilotSessionIT
+          -DgenerateScreenshots=true
+          -Dcyclonedx.skip=true
+          -Dtaxonomy.model.download.skip=true
+
+      - name: Verify final direct-navigation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=docs/images/72-complete-copilot-run-result.png
+          test -s "$image"
+          test "$(wc -c < "$image")" -gt 50000
+          file "$image" | grep -F 'PNG image data'
+          grep -F 'Tests run: 1, Failures: 0, Errors: 0' \
+            taxonomy-app/target/failsafe-reports/com.taxonomy.CompleteCopilotSessionIT.txt
+          git diff --check
+
+      - name: Upload direct-navigation evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-copilot-direct-result
+          path: |
+            docs/images/72-complete-copilot-run-result.png
+            taxonomy-app/target/failsafe-reports/**
+            taxonomy-app/target/surefire-reports/**
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish only permanent navigation, test, documentation and screenshot changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=fix/complete-copilot-run-screenshot
+          remote_head="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add \
+            taxonomy-app/src/main/resources/static/js/portfolio/requirement-detail.js \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotResultUiContractTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/CompleteCopilotSessionIT.java \
+            docs/images/72-complete-copilot-run-result.png \
+            docs/en/COPILOT_AUTOPILOT.md \
+            docs/de/COPILOT_AUTOPILOT.md
+          git diff --cached --check
+          git commit -m 'Open selected Copilot snapshots in the result tab'
+          git push origin HEAD:"$branch"
