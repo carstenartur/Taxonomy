@@ -11,6 +11,10 @@ const indexPath = new URL(
   '../../taxonomy-app/src/main/resources/templates/index.html',
   import.meta.url
 );
+const scoringSourcePath = new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',
+  import.meta.url
+);
 const englishMessagesPath = new URL(
   '../../taxonomy-app/src/main/resources/i18n/messages_impact_map.properties',
   import.meta.url
@@ -21,6 +25,7 @@ const germanMessagesPath = new URL(
 );
 
 const graphSource = readFileSync(graphSourcePath, 'utf8');
+const scoringSource = readFileSync(scoringSourcePath, 'utf8');
 
 function loadApi() {
   const originalRenderer = function legacyRenderer() {};
@@ -191,6 +196,29 @@ test('context and focus modes reduce the visible graph predictably', () => {
   assert.deepEqual(new Set(focused.edges.map((edge) => edge.id)), new Set(['AB', 'BC']));
 });
 
+test('keeps the selected result visible when a large graph is capped', () => {
+  const { api } = loadApi();
+  const allNodes = Array.from({ length: 81 }, (_, index) => ({
+    id: `N${index}`,
+    anchor: index < 2,
+    hotspot: false,
+    context: false,
+    relevance: index === 80 ? 0 : 1 - index / 100,
+  }));
+
+  const visible = api.visibleModel({
+    allNodes,
+    allEdges: [],
+    showContext: true,
+    mode: 'overview',
+    selectedNodeId: 'N80',
+  });
+
+  assert.equal(visible.nodes.length, 80);
+  assert.ok(visible.nodes.some((node) => node.id === 'N80'));
+  assert.equal(visible.omitted, 1);
+});
+
 test('combines selection and search edge muting without overriding either state', () => {
   const { api } = loadApi();
 
@@ -209,6 +237,27 @@ test('combines selection and search edge muting without overriding either state'
   assert.equal(api.shouldMuteEdge({
     edgeId: 'AB', selectedEdgeId: 'AB', selectedNodeId: 'A',
     connected: false, hasSearch: true, searchRelevant: false,
+  }), false);
+});
+
+test('keeps a selected node visible while applying selection and search filters', () => {
+  const { api } = loadApi();
+
+  assert.equal(api.shouldMuteNode({
+    nodeId: 'A', selectedNodeId: 'A', connected: true,
+    hasSearch: true, searchMatch: false,
+  }), false);
+  assert.equal(api.shouldMuteNode({
+    nodeId: 'B', selectedNodeId: 'A', connected: false,
+    hasSearch: false, searchMatch: true,
+  }), true);
+  assert.equal(api.shouldMuteNode({
+    nodeId: 'B', selectedNodeId: 'A', connected: true,
+    hasSearch: true, searchMatch: false,
+  }), true);
+  assert.equal(api.shouldMuteNode({
+    nodeId: 'B', selectedNodeId: 'A', connected: true,
+    hasSearch: true, searchMatch: true,
   }), false);
 });
 
@@ -242,11 +291,19 @@ test('provides orientation, search, focus, detail and accessibility controls', (
     'requestFullscreen',
     'ResizeObserver',
     'showReadableInitialView',
+    'renderAndCenterNode',
     'fullFitScale >= 0.62',
     "fullscreenButton.hidden = typeof root.requestFullscreen !== 'function'",
   ]) {
     assert.ok(graphSource.includes(requiredContract), `missing contract: ${requiredContract}`);
   }
+});
+
+test('passes relationship derivation reasons into the impact-map detail model', () => {
+  assert.match(
+    scoringSource,
+    /includedBecause:\s*r\.derivationReason \|\| r\.includedBecause \|\| ''/
+  );
 });
 
 test('registers the stylesheet and renderer in the main page', () => {

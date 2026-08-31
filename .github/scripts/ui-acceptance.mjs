@@ -129,6 +129,8 @@ try {
   if (mode === 'full') {
     const interactive = page.locator('#interactiveMode');
     if (await interactive.isChecked()) await interactive.uncheck();
+    const architectureView = page.locator('#includeArchitectureView');
+    if (!(await architectureView.isChecked())) await architectureView.check();
     await page.locator('#businessText').fill(
       'Provide secure hospital communications with traceable architecture decisions and resilient data exchange.');
     await page.locator('#analyzeBtn').focus();
@@ -142,6 +144,35 @@ try {
       'Real UI analysis completed without rendering scored taxonomy nodes');
     assert(await page.locator('[role="treeitem"][aria-label*="Relevance"]').count() > 0,
       'Dynamic scores were not synchronized to accessible tree-item names');
+
+    await navigateTo('architecture');
+    const impactMap = page.locator('.impact-map-workbench');
+    await impactMap.waitFor({ state: 'visible', timeout: 30_000 });
+    assert(await impactMap.locator('.impact-map-kpi').count() >= 4,
+      'Impact map did not render its orientation KPIs');
+    const impactNodes = impactMap.locator('.impact-map-node');
+    assert(await impactNodes.count() > 0,
+      'Impact map did not render readable element cards');
+    const firstImpactNode = impactNodes.first();
+    const impactCode = await firstImpactNode.getAttribute('data-node-id');
+    assert(Boolean(impactCode), 'Impact-map element lacks its stable node code');
+    await firstImpactNode.click();
+    assert(!(await impactMap.locator('.impact-map-details').getAttribute('class')).includes('is-empty'),
+      'Selecting an impact-map element did not expose its details');
+    const impactSearch = impactMap.locator('.impact-map-search');
+    await impactSearch.fill(impactCode);
+    await impactSearch.press('Enter');
+    assert(await impactMap.locator('.impact-map-node.is-search-match').count() > 0,
+      'Impact-map search did not highlight the matching element');
+    await impactMap.locator('.impact-map-layer-column').first().evaluate(element => {
+      element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    assert((await impactMap.locator('.impact-map-details').getAttribute('class')).includes('is-empty'),
+      'Clicking empty impact-map space did not clear the selection');
+    await impactSearch.fill('');
+    passed('impact map layout, search, details, and background clearing');
+
+    await navigateTo('analyze');
     await page.locator('#businessText').fill(
       'Provide secure hospital communications with an additional emergency notification capability.');
     await page.locator('#businessText.stale-results').waitFor({ state: 'visible', timeout: 10_000 });

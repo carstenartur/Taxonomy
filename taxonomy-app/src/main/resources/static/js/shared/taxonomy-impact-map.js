@@ -149,6 +149,13 @@
         return mutedBySelection || mutedBySearch;
     }
 
+    function shouldMuteNode(options) {
+        if (options.nodeId === options.selectedNodeId) return false;
+        var mutedBySelection = Boolean(options.selectedNodeId) && !options.connected;
+        var mutedBySearch = options.hasSearch && !options.searchMatch;
+        return mutedBySelection || mutedBySearch;
+    }
+
     function shouldClearSelectionFromClick(event) {
         if (!event || event.defaultPrevented) return false;
         var target = event.target;
@@ -325,11 +332,17 @@
         return normalized;
     }
 
-    function limitNodes(nodes) {
+    function limitNodes(nodes, preferredNodeIds) {
         if (nodes.length <= MAX_VISIBLE_NODES) {
             return { nodes: nodes.slice(), omitted: 0 };
         }
+        var preferred = preferredNodeIds instanceof Set
+            ? preferredNodeIds
+            : new Set(preferredNodeIds || []);
         var sorted = nodes.slice().sort(function (left, right) {
+            var leftPreferred = preferred.has(left.id);
+            var rightPreferred = preferred.has(right.id);
+            if (leftPreferred !== rightPreferred) return leftPreferred ? -1 : 1;
             if (left.anchor !== right.anchor) return left.anchor ? -1 : 1;
             if (left.hotspot !== right.hotspot) return left.hotspot ? -1 : 1;
             if (right.relevance !== left.relevance) return right.relevance - left.relevance;
@@ -357,7 +370,9 @@
             candidates = candidates.filter(function (node) { return included.has(node.id); });
         }
 
-        var limited = limitNodes(candidates);
+        var preferredNodeIds = new Set();
+        if (state.selectedNodeId) preferredNodeIds.add(state.selectedNodeId);
+        var limited = limitNodes(candidates, preferredNodeIds);
         var ids = new Set(limited.nodes.map(function (node) { return node.id; }));
         var visibleEdges = state.allEdges.filter(function (edge) {
             return ids.has(edge.source) && ids.has(edge.target);
@@ -741,6 +756,13 @@
             if (center && nodeId) centerOnNode(nodeId);
         }
 
+        function renderAndCenterNode(nodeId) {
+            renderDiagram(false);
+            window.requestAnimationFrame(function () {
+                centerOnNode(nodeId);
+            });
+        }
+
         function matchingNodeIds() {
             var query = state.searchQuery.trim().toLowerCase();
             if (!query) return [];
@@ -1024,11 +1046,17 @@
             var hasSearch = state.searchQuery.trim().length > 0;
 
             state.nodeElements.forEach(function (element, id) {
+                var searchMatch = matches.has(id);
+                var muted = shouldMuteNode({
+                    nodeId: id,
+                    selectedNodeId: selectedNode,
+                    connected: connectedNodeIds.has(id),
+                    hasSearch: hasSearch,
+                    searchMatch: searchMatch
+                });
                 element.classList.toggle('is-selected', id === selectedNode);
-                element.classList.toggle('is-search-match', hasSearch && matches.has(id));
-                var mutedBySelection = Boolean(selectedNode) && !connectedNodeIds.has(id);
-                var mutedBySearch = hasSearch && !matches.has(id);
-                element.classList.toggle('is-muted', mutedBySelection || mutedBySearch);
+                element.classList.toggle('is-search-match', hasSearch && searchMatch);
+                element.classList.toggle('is-muted', muted);
             });
 
             state.edgeElements.forEach(function (element, id) {
@@ -1075,7 +1103,7 @@
                 state.mode = 'overview';
                 state.selectedNodeId = nodeId;
                 state.selectedEdgeId = null;
-                renderDiagram(false);
+                renderAndCenterNode(nodeId);
             } else {
                 setSelection(nodeId, null, true);
             }
@@ -1257,7 +1285,7 @@
                 state.mode = 'overview';
                 state.selectedNodeId = first;
                 state.selectedEdgeId = null;
-                renderDiagram(false);
+                renderAndCenterNode(first);
                 status.textContent = t('impactmap.search.hidden');
             } else {
                 setSelection(first, null, true);
@@ -1324,7 +1352,11 @@
             fullscreenButton.setAttribute('aria-label', fullscreenButton.title);
             window.setTimeout(function () {
                 updateViewBox();
-                fitView();
+                if (full) {
+                    fitView();
+                } else {
+                    showReadableInitialView();
+                }
             }, 0);
         }
         document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -1371,6 +1403,7 @@
             buildLayout: buildLayout,
             visibleModel: visibleModel,
             shouldMuteEdge: shouldMuteEdge,
+            shouldMuteNode: shouldMuteNode,
             shouldClearSelectionFromClick: shouldClearSelectionFromClick
         };
     }
