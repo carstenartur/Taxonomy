@@ -7,13 +7,14 @@ on:
       - docs/refresh-impact-map-screenshot
     paths:
       - .github/workflows/documentation-screenshots.yml
+      - .github/scripts/refresh-impact-map-screenshot.py
 
 permissions:
   contents: read
 
 concurrency:
   group: taxonomy-documentation-screenshots-${{ github.ref_name }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
@@ -42,6 +43,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      - name: Prepare the impact-map documentation capture
+        if: github.ref == 'refs/heads/docs/refresh-impact-map-screenshot'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/refresh-impact-map-screenshot.py
+          git diff --check
+          grep -F 'By.cssSelector(".impact-map-workbench")' \
+            taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
 
       - name: Set up Java 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -171,6 +182,13 @@ jobs:
           test "${GITHUB_REF}" = "refs/heads/docs/refresh-impact-map-screenshot"
           test "$(git branch --show-current)" = "docs/refresh-impact-map-screenshot"
 
+      - name: Apply the verified screenshot-test update
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/refresh-impact-map-screenshot.py
+          git diff --check
+
       - name: Download verified impact-map screenshot
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -184,7 +202,9 @@ jobs:
           git pull --ff-only origin docs/refresh-impact-map-screenshot
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/images/20-architecture-view.png
+          git add \
+            docs/images/20-architecture-view.png \
+            taxonomy-app/src/test/java/com/taxonomy/ScreenshotGeneratorIT.java
           if git diff --staged --quiet; then
             echo "The impact-map screenshot is already current."
             exit 0
