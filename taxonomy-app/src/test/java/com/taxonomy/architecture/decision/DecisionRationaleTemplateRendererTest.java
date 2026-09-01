@@ -1,5 +1,6 @@
 package com.taxonomy.architecture.decision;
 
+import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.templates.DecisionRationaleTemplateContract;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
 import com.taxonomy.templates.DocumentTemplateService;
@@ -28,6 +29,7 @@ class DecisionRationaleTemplateRendererTest {
 
     private static final String TEMPLATE_COMMIT =
             "0123456789abcdef0123456789abcdef01234567";
+    private static final String TEMPLATE_SHA256 = "a".repeat(64);
     private static final List<String> VISIBLE_PROVENANCE_TOKENS = List.of(
             "{{taxonomy.template.id}}",
             "{{taxonomy.template.commit}}",
@@ -87,7 +89,7 @@ class DecisionRationaleTemplateRendererTest {
                 "taxonomy-bootstrap",
                 4_096,
                 10,
-                "package-sha");
+                TEMPLATE_SHA256);
         when(templates.downloadCurrentValidated(
                 DecisionRationaleTemplateContract.TEMPLATE_ID))
                 .thenReturn(new TemplateFile(
@@ -107,8 +109,15 @@ class DecisionRationaleTemplateRendererTest {
         assertThat(delegate.render(report)).isNotEmpty();
         assertThat(delegate.reportBodyWrites()).isEqualTo(1);
 
-        byte[] docx = renderer.render(delegate, report);
+        ReportRenderResult artifact = renderer.renderArtifact(delegate, report);
         assertThat(delegate.reportBodyWrites()).isEqualTo(2);
+        assertThat(artifact.artifactMetadata()).containsExactlyInAnyOrderEntriesOf(
+                new DecisionReportTemplateProvenance(
+                        DecisionRationaleTemplateContract.TEMPLATE_ID,
+                        TEMPLATE_COMMIT,
+                        TEMPLATE_SHA256,
+                        1).artifactMetadata());
+        byte[] docx = artifact.bytes();
         Map<String, byte[]> entries = unzip(docx);
 
         String contentTypes = text(entries, "[Content_Types].xml");
@@ -144,7 +153,9 @@ class DecisionRationaleTemplateRendererTest {
                 .contains("Taxonomy.Template.Commit")
                 .contains(TEMPLATE_COMMIT)
                 .contains("Taxonomy.Template.PackageSha256")
-                .contains("package-sha");
+                .contains(TEMPLATE_SHA256)
+                .contains("Taxonomy.Template.SchemaVersion")
+                .contains(">1<");
 
         entries.entrySet().stream()
                 .filter(entry -> entry.getKey().endsWith(".xml")

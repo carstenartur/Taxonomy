@@ -3,6 +3,7 @@ package com.taxonomy.versioning.controller;
 import com.taxonomy.architecture.decision.DecisionRationaleReport;
 import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
+import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.dto.ProductCoverageGap;
@@ -135,7 +136,7 @@ public class DecisionRationaleReportController {
                 DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId);
         ReportFormatDescriptor format = renderer.descriptor();
         ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));
-        return ResponseEntity.ok()
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\""
@@ -144,7 +145,9 @@ public class DecisionRationaleReportController {
                 .header("X-Taxonomy-Data-SHA256",
                         report.metadata().taxonomyDataFingerprintSha256())
                 .header("X-Taxonomy-Analysis-SHA256",
-                        report.metadata().analysisSnapshotFingerprintSha256())
+                        report.metadata().analysisSnapshotFingerprintSha256());
+        DecisionReportTemplateHeaders.apply(response, rendered);
+        return response
                 .contentType(MediaType.parseMediaType(format.contentType()))
                 .body(rendered.bytes());
     }

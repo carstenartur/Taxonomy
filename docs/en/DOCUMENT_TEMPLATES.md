@@ -76,6 +76,28 @@ contract in addition to the generic OOXML security validation. The
 `decisionRationaleTemplate` Actuator health component reports `DOWN` when the
 required template is missing or structurally invalid.
 
+## Audit provenance
+
+Every template-backed DOCX stores its exact Word-template identity independently of
+visible cover tokens. The custom document properties are
+`Taxonomy.Template.Id`, `Taxonomy.Template.Commit`,
+`Taxonomy.Template.PackageSha256`, and `Taxonomy.Template.SchemaVersion`. The commit
+is the complete 40-character Git object ID and the package digest is the canonical
+64-character SHA-256 from the validated template manifest. Removing the optional
+`{{taxonomy.template.*}}` presentation tokens therefore does not remove the audit
+record.
+
+The DOCX download response exposes the same values through the allow-listed headers
+`X-Taxonomy-Template-Id`, `X-Taxonomy-Template-Commit`,
+`X-Taxonomy-Template-SHA256`, and `X-Taxonomy-Template-Schema-Version`. Internally the
+format-neutral renderer result carries the same four fields as immutable artifact
+metadata; HTML and JSON outputs do not claim a Word-template identity.
+
+Auditors can inspect the properties in Word under **File → Info → Properties →
+Advanced Properties → Custom**, or without Word by reading `docProps/custom.xml` from
+the DOCX ZIP package. Compare the full commit with the template history and the
+SHA-256 with the corresponding `template.json` manifest.
+
 ## Version and concurrency semantics
 
 Each template exposes the last Git commit that changed its own OOXML subtree as its
