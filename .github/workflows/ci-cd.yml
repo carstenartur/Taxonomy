@@ -8,6 +8,7 @@ on:
       - 'v*'
   pull_request:
     branches: [ main ]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
 permissions:
@@ -273,8 +274,16 @@ jobs:
     needs: [application, core, observability, ui-contracts, ui-shards]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
+      - name: Keep draft heads non-mergeable
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
+        run: |
+          echo "::error::Draft pull-request heads intentionally do not satisfy required Maven verification."
+          exit 1
       - name: Require every authoritative lane
         env:
           APPLICATION_RESULT: ${{ needs.application.result }}
@@ -287,7 +296,7 @@ jobs:
             [[ "${!lane}" == success ]] || { echo "::error::$lane ended with ${!lane}"; exit 1; }
           done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with: { persist-credentials: false }
+        with: { persist-credentials: false, fetch-depth: 0 }
       - name: Set up Java 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with: { java-version: '21', distribution: temurin, cache: maven }
@@ -313,6 +322,26 @@ jobs:
           TAXONOMY_UI_SHARD_RESULTS_ROOT: ${{ github.workspace }}/target/ui-verification
           TAXONOMY_UI_APPLICATION_MANIFEST: ${{ github.workspace }}/target/ui-application/manifest.json
         run: ./mvnw -B -f .github/ui-verification-pom.xml verify -Pevidence-gate
+      - name: Require complete review of the exact pull-request head
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REVIEW_GATE_REVIEWERS: 'copilot-pull-request-reviewer[bot],Copilot'
+          REVIEW_GATE_WAIT_SECONDS: '900'
+          REVIEW_GATE_POLL_SECONDS: '20'
+          REVIEW_GATE_EVIDENCE_PATH: 'target/quality-reports/review-gate.json'
+        run: |
+          set -euo pipefail
+          gate=.github/scripts/exact-head-review-gate.mjs
+          if git cat-file -e "${{ github.event.pull_request.base.sha }}:$gate" 2>/dev/null; then
+            mkdir -p target/trusted-review-gate
+            git show "${{ github.event.pull_request.base.sha }}:$gate" \
+              > target/trusted-review-gate/exact-head-review-gate.mjs
+            gate=target/trusted-review-gate/exact-head-review-gate.mjs
+          fi
+          .cache/ui-frontend/node/node "$gate"
       - name: Finalize commit-bound quality evidence
         run: bash .github/scripts/finalize-quality-evidence.sh
       - name: Upload verified reports
