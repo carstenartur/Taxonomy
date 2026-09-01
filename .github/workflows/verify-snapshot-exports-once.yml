@@ -33,7 +33,7 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Verify JavaScript syntax and final file scope
+      - name: Verify JavaScript, browser and documentation contracts
         run: |
           set -euo pipefail
           git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
@@ -44,19 +44,53 @@ jobs:
             taxonomy-app/src/main/resources/static/js/api/architecture-workbench-api.js \
             taxonomy-app/src/main/resources/static/js/architecture-workbench.js \
             taxonomy-app/src/main/resources/templates/architecture-workbench.html \
-            taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench
+            taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java \
+            taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench \
+            docs/en/ARCHITECTURE_HANDOFF.md \
+            docs/de/ARCHITECTURE_HANDOFF.md \
+            docs/en/FEATURE_MATRIX.md \
+            docs/de/FEATURE_MATRIX.md \
+            docs/en/USER_GUIDE.md \
+            docs/de/USER_GUIDE.md
 
           service=taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench/ArchitectureSnapshotExportService.java
           controller=taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench/ArchitectureWorkbenchController.java
           page=taxonomy-app/src/main/resources/templates/architecture-workbench.html
+          browser=taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java
+
           grep -Fq 'projection.branchName()' "$service"
           ! grep -Fq 'projection.branch()' "$service"
+          ! grep -Fq 'LlmService' "$service"
+          grep -Fq 'canonical-evidence' "$service"
           grep -Fq 'experimental-model-exchange' "$service"
+          grep -Fq 'lossy-text-projection' "$service"
           grep -Fq 'X-Taxonomy-Export-Role' "$controller"
+          grep -Fq 'X-Taxonomy-Architecture-Graph-SHA256' "$controller"
           grep -Fq 'id="architectureExportFormat"' "$page"
           grep -Fq 'id="downloadArchitectureExport"' "$page"
+          ! grep -Fq 'value="visio"' "$page"
+          grep -Fq '.doesNotContain("visio")' "$browser"
+          grep -Fq 'x-taxonomy-architecture-graph-sha256' "$browser"
+          grep -Fq 'requestTextArtifact(' "$browser"
 
-      - name: Run focused Maven tests
+          test -f docs/en/ARCHITECTURE_HANDOFF.md
+          test -f docs/de/ARCHITECTURE_HANDOFF.md
+          grep -Fq 'does **not** run the LLM again' docs/en/ARCHITECTURE_HANDOFF.md
+          grep -Fq 'wird **nicht** erneut ausgeführt' docs/de/ARCHITECTURE_HANDOFF.md
+          grep -Fq 'Visio VSDX handoff' docs/en/FEATURE_MATRIX.md
+          grep -Fq 'Visio-VSDX-Übergabe' docs/de/FEATURE_MATRIX.md
+          ! grep -Fq '| Export (ArchiMate/Visio/Mermaid/JSON) |' docs/en/FEATURE_MATRIX.md
+          ! grep -Fq '| Export (ArchiMate/Visio/Mermaid/JSON) |' docs/de/FEATURE_MATRIX.md
+          grep -Fq 'not certified as a reliable editable Microsoft Visio handoff' docs/en/USER_GUIDE.md
+          grep -Fq 'nicht als zuverlässige editierbare Microsoft-Visio-Übergabe zertifiziert' docs/de/USER_GUIDE.md
+          ! grep -Fq 'suitable for import into tools such as Archi or Sparx EA' docs/en/USER_GUIDE.md
+          ! grep -Fq 'zum Import in Tools wie Archi oder Sparx EA geeignet' docs/de/USER_GUIDE.md
+
+          test ! -e .github/workflows/apply-snapshot-export-ui-once.yml
+          test ! -e .github/workflows/apply-snapshot-export-browser-test-once.yml
+          test ! -e .github/workflows/reconcile-export-user-guides-once.yml
+
+      - name: Run focused Maven tests and compile browser acceptance
         run: |
           set -euo pipefail
           ./mvnw -B -ntp \
