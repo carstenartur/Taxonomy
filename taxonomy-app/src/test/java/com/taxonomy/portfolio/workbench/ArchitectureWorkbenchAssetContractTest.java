@@ -18,7 +18,9 @@ class ArchitectureWorkbenchAssetContractTest {
                 .contains("/js/architecture-workbench.js")
                 .contains("/webjars/d3/7.9.0/dist/d3.min.js")
                 .contains("id=\"architectureExportFormat\"")
+                .contains("aria-describedby=\"architectureExportHint\"\n                disabled")
                 .contains("id=\"downloadArchitectureExport\"")
+                .contains("type=\"button\"\n                disabled")
                 .contains("Evidence JSON")
                 .contains("ArchiMate Exchange XML (experimental)")
                 .contains("Every format is generated from the exact persisted snapshot");
@@ -57,7 +59,8 @@ class ArchitectureWorkbenchAssetContractTest {
                 .contains("fullscreenButton,")
                 .contains("exportFormatSelect,")
                 .contains("exportButton")
-                .contains("control.disabled = true");
+                .contains("control.disabled = true")
+                .contains("control.disabled = false");
     }
 
     @Test
