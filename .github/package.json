@@ -7,6 +7,7 @@
   },
   "scripts": {
     "install:playwright:github": "bash scripts/install-playwright-github.sh",
+    "test:merged-pr-review-audit": "node --test scripts/merged-pr-review-audit.test.mjs",
     "test:ui-evidence-policy": "node --test scripts/ui-evidence-policy.test.mjs",
     "test:ui-evidence-targets": "node --test scripts/ui-primary-evidence.test.mjs",
     "test:state-render-consistency": "node --test scripts/taxonomy-state.test.mjs",
@@ -23,8 +24,8 @@
     "test:ui-role-state-isolation": "node --test scripts/ui-role-state-isolation.test.mjs",
     "test:ui-suite-plan": "node --test scripts/ui-suite-plan.test.mjs",
     "test:ui-shard-plan": "node --test scripts/ui-shard-plan.test.mjs",
-    "verify:ui": "npm run test:ui-evidence-policy && npm run test:ui-evidence-targets && npm run test:state-render-consistency && npm run test:analysis-operation-controller && npm run test:analysis-session-api-routing && npm run test:analysis-session-draft && npm run test:analysis-session-draft-serialization && npm run test:analysis-session-startup && npm run test:analysis-workflow-regression && npm run test:copilot-terminal-state && npm run test:impact-map && npm run test:ui-role-provisioning && npm run test:ui-role-state-http-failure-policy && npm run test:ui-role-state-isolation && npm run test:ui-suite-plan && npm run test:ui-shard-plan && node scripts/run-ui-suite.mjs",
-    "verify:ui-contracts": "npm run test:ui-evidence-policy && npm run test:ui-evidence-targets && npm run test:state-render-consistency && npm run test:analysis-operation-controller && npm run test:analysis-session-api-routing && npm run test:analysis-session-draft && npm run test:analysis-session-draft-serialization && npm run test:analysis-session-startup && npm run test:analysis-workflow-regression && npm run test:copilot-terminal-state && npm run test:impact-map && npm run test:ui-role-provisioning && npm run test:ui-role-state-http-failure-policy && npm run test:ui-role-state-isolation && npm run test:ui-suite-plan && npm run test:ui-shard-plan",
+    "verify:ui": "npm run test:merged-pr-review-audit && npm run test:ui-evidence-policy && npm run test:ui-evidence-targets && npm run test:state-render-consistency && npm run test:analysis-operation-controller && npm run test:analysis-session-api-routing && npm run test:analysis-session-draft && npm run test:analysis-session-draft-serialization && npm run test:analysis-session-startup && npm run test:analysis-workflow-regression && npm run test:copilot-terminal-state && npm run test:impact-map && npm run test:ui-role-provisioning && npm run test:ui-role-state-http-failure-policy && npm run test:ui-role-state-isolation && npm run test:ui-suite-plan && npm run test:ui-shard-plan && node scripts/run-ui-suite.mjs",
+    "verify:ui-contracts": "npm run test:merged-pr-review-audit && npm run test:ui-evidence-policy && npm run test:ui-evidence-targets && npm run test:state-render-consistency && npm run test:analysis-operation-controller && npm run test:analysis-session-api-routing && npm run test:analysis-session-draft && npm run test:analysis-session-draft-serialization && npm run test:analysis-session-startup && npm run test:analysis-workflow-regression && npm run test:copilot-terminal-state && npm run test:impact-map && npm run test:ui-role-provisioning && npm run test:ui-role-state-http-failure-policy && npm run test:ui-role-state-isolation && npm run test:ui-suite-plan && npm run test:ui-shard-plan",
     "verify:ui-shard": "node scripts/run-ui-suite.mjs",
     "verify:ui-shards": "node scripts/verify-ui-shards.mjs",
     "test:api-transport": "node scripts/test-taxonomy-api-client.mjs"
