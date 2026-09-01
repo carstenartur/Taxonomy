@@ -30,9 +30,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * HTTP adapter for the hierarchical decision-rationale report extension family.
@@ -205,34 +207,33 @@ public class DecisionRationaleReportController {
     }
 
     private boolean validProductCoverageGaps(
-  List<ProductCoverageGap> productCoverageGaps) {
+            List<ProductCoverageGap> productCoverageGaps) {
         if (productCoverageGaps == null) {
-  return true;
+            return true;
         }
         int totalCandidates = 0;
-        java.util.Set<String> familyCodes = new java.util.HashSet<>();
+        Set<String> familyCodes = new HashSet<>();
         for (ProductCoverageGap gap : productCoverageGaps) {
-  if (gap == null
-          || !boundedText(gap.productFamilyCode(),
-                  MAX_NODE_CODE_LENGTH, false)
-          || !boundedText(gap.productFamilyName(), MAX_REASON_LENGTH, true)
-          || gap.familyScore() < 0
-          || gap.familyScore() > 100
-          || !boundedText(gap.reason(), MAX_REASON_LENGTH, false)
-          || gap.candidateCodes() == null
-          || gap.candidateCodes().isEmpty()
-          || !familyCodes.add(gap.productFamilyCode().strip())) {
-      return false;
-  }
-  java.util.Set<String> candidateCodes = new java.util.HashSet<>();
-  for (String candidateCode : gap.candidateCodes()) {
-      totalCandidates++;
-      if (totalCandidates > MAX_PRODUCT_GAP_CANDIDATES
-              || !boundedText(candidateCode, MAX_NODE_CODE_LENGTH, false)
-              || !candidateCodes.add(candidateCode.strip())) {
-          return false;
-      }
-  }
+            if (gap == null
+                    || !boundedNodeCode(gap.productFamilyCode())
+                    || !boundedText(gap.productFamilyName(), MAX_REASON_LENGTH, true)
+                    || gap.familyScore() < 0
+                    || gap.familyScore() > 100
+                    || !boundedText(gap.reason(), MAX_REASON_LENGTH, false)
+                    || gap.candidateCodes() == null
+                    || gap.candidateCodes().isEmpty()
+                    || !familyCodes.add(gap.productFamilyCode())) {
+                return false;
+            }
+            Set<String> candidateCodes = new HashSet<>();
+            for (String candidateCode : gap.candidateCodes()) {
+                totalCandidates++;
+                if (totalCandidates > MAX_PRODUCT_GAP_CANDIDATES
+                        || !boundedNodeCode(candidateCode)
+                        || !candidateCodes.add(candidateCode)) {
+                    return false;
+                }
+            }
         }
         return true;
     }
@@ -276,6 +277,11 @@ public class DecisionRationaleReportController {
             }
         }
         return true;
+    }
+
+    private boolean boundedNodeCode(String value) {
+        return boundedText(value, MAX_NODE_CODE_LENGTH, false)
+                && value.equals(value.strip());
     }
 
     private boolean boundedMetadata(String value) {
