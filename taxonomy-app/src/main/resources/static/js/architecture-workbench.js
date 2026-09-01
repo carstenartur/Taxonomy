@@ -23,6 +23,8 @@
     const zoomInButton = document.getElementById('zoomArchitectureIn');
     const zoomOutButton = document.getElementById('zoomArchitectureOut');
     const fullscreenButton = document.getElementById('fullscreenArchitecture');
+    const exportFormatSelect = document.getElementById('architectureExportFormat');
+    const exportButton = document.getElementById('downloadArchitectureExport');
     const reducedMotion = window.matchMedia
         && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -108,7 +110,9 @@
             fitButton,
             zoomInButton,
             zoomOutButton,
-            fullscreenButton
+            fullscreenButton,
+            exportFormatSelect,
+            exportButton
         ].forEach(function (control) { control.disabled = true; });
     }
 
@@ -907,8 +911,15 @@
         document.getElementById('requirementText').textContent = data.requirementText || '';
         renderWarnings(data);
         contextCheckbox.disabled = !scene.nodes.some(function (node) { return node.anchor; });
-        [fitButton, zoomInButton, zoomOutButton, overviewButton].forEach(function (button) {
-            button.disabled = false;
+        [
+            fitButton,
+            zoomInButton,
+            zoomOutButton,
+            overviewButton,
+            exportFormatSelect,
+            exportButton
+        ].forEach(function (control) {
+            control.disabled = false;
         });
         fullscreenButton.hidden = typeof workbench.requestFullscreen !== 'function';
         renderDiagram(true);
@@ -1017,12 +1028,14 @@
         }
     });
 
-    document.getElementById('downloadArchitectureSvg').addEventListener('click', function () {
-        window.location.assign(ArchitectureWorkbenchApi.svgUrl(projectId, snapshotId));
-    });
-
-    document.getElementById('downloadArchitecturePdf').addEventListener('click', function () {
-        window.location.assign(ArchitectureWorkbenchApi.pdfUrl(projectId, snapshotId));
+    exportButton.addEventListener('click', function () {
+        const formatId = exportFormatSelect.value;
+        const option = exportFormatSelect.options[exportFormatSelect.selectedIndex];
+        const formatLabel = option ? option.text : formatId;
+        setStatus('Downloading ' + formatLabel
+            + ' from persisted snapshot ' + snapshotId + '…');
+        window.location.assign(
+            ArchitectureWorkbenchApi.exportUrl(projectId, snapshotId, formatId));
     });
 
     if (!projectId || !snapshotId) {
