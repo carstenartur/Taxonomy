@@ -36,6 +36,7 @@ jobs:
       - name: Verify JavaScript syntax and final file scope
         run: |
           set -euo pipefail
+          git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
           node --check taxonomy-app/src/main/resources/static/js/api/architecture-workbench-api.js
           node --check taxonomy-app/src/main/resources/static/js/architecture-workbench.js
           git diff --check origin/main...HEAD -- \
