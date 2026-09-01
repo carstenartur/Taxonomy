@@ -19,6 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
@@ -90,20 +91,22 @@ public class ArchitectureSnapshotExportService {
                     "Loaded architecture snapshot does not match the requested snapshot ID");
         }
 
-        byte[] content = render(format, projection);
+        String graphSha256 = graphFingerprint(projection.diagram());
+        byte[] content = render(format, projection, graphSha256);
         return new SnapshotArtifact(
                 format,
                 content,
                 projection.snapshotId(),
                 projection.commitSha(),
-                graphFingerprint(projection.diagram()),
+                graphSha256,
                 sha256(content));
     }
 
-    private byte[] render(ExportFormat format, Projection projection) {
+    private byte[] render(
+            ExportFormat format, Projection projection, String graphSha256) {
         DiagramModel diagram = projection.diagram();
         return switch (format) {
-            case JSON -> json(projection);
+            case JSON -> json(projection, graphSha256);
             case SVG -> utf8(svgRenderer.render(projection.scene()));
             case PDF -> pdfRenderer.render(projection);
             case ARCHIMATE -> {
@@ -115,14 +118,38 @@ public class ArchitectureSnapshotExportService {
         };
     }
 
-    private byte[] json(Projection projection) {
+    private byte[] json(Projection projection, String graphSha256) {
+        SnapshotEvidence evidence = new SnapshotEvidence(
+                1,
+                projection.snapshotId(),
+                projection.commitSha(),
+                graphSha256,
+                projection.projectId(),
+                projection.requirementId(),
+                projection.workspaceId(),
+                projection.branch(),
+                projection.provider(),
+                projection.modelName(),
+                exportProfiles(),
+                projection);
         try {
             return utf8(objectMapper.writerWithDefaultPrettyPrinter()
-                    .writeValueAsString(projection));
+                    .writeValueAsString(evidence));
         } catch (JacksonException error) {
             throw new IllegalStateException(
                     "Unable to render architecture snapshot evidence JSON", error);
         }
+    }
+
+    private static List<ExportProfile> exportProfiles() {
+        return Arrays.stream(ExportFormat.values())
+                .map(format -> new ExportProfile(
+                        format.id(),
+                        format.mediaType(),
+                        format.fileName(),
+                        format.profileId(),
+                        format.handoffRole()))
+                .toList();
     }
 
     static String graphFingerprint(DiagramModel diagram) {
@@ -204,28 +231,35 @@ public class ArchitectureSnapshotExportService {
 
     public enum ExportFormat {
         JSON("json", "application/json", "architecture-snapshot.json",
-                "taxonomy-snapshot-evidence-v1"),
+                "taxonomy-snapshot-evidence-v1", "canonical-evidence"),
         SVG("svg", "image/svg+xml", "architecture.svg",
-                "taxonomy-snapshot-svg-v1"),
+                "taxonomy-snapshot-svg-v1", "stable-human-view"),
         PDF("pdf", "application/pdf", "architecture.pdf",
-                "taxonomy-snapshot-pdf-v1"),
+                "taxonomy-snapshot-pdf-v1", "stable-human-view"),
         ARCHIMATE("archimate", "application/xml", "architecture.xml",
-                "archimate-exchange-3.1-taxonomy-v1"),
+                "archimate-exchange-3.1-taxonomy-v1", "experimental-model-exchange"),
         MERMAID("mermaid", "text/plain;charset=UTF-8", "architecture.mmd",
-                "mermaid-flowchart-taxonomy-v1"),
+                "mermaid-flowchart-taxonomy-v1", "lossy-text-projection"),
         STRUCTURIZR("structurizr", "text/plain;charset=UTF-8", "architecture.dsl",
-                "structurizr-dsl-taxonomy-v1");
+                "structurizr-dsl-taxonomy-v1", "lossy-text-projection");
 
         private final String id;
         private final String mediaType;
         private final String fileName;
         private final String profileId;
+        private final String handoffRole;
 
-        ExportFormat(String id, String mediaType, String fileName, String profileId) {
+        ExportFormat(
+                String id,
+                String mediaType,
+                String fileName,
+                String profileId,
+                String handoffRole) {
             this.id = id;
             this.mediaType = mediaType;
             this.fileName = fileName;
             this.profileId = profileId;
+            this.handoffRole = handoffRole;
         }
 
         public String id() {
@@ -244,6 +278,10 @@ public class ArchitectureSnapshotExportService {
             return profileId;
         }
 
+        public String handoffRole() {
+            return handoffRole;
+        }
+
         static ExportFormat fromId(String value) {
             String normalized = ArchitectureSnapshotExportService.value(value)
                     .strip().toLowerCase(Locale.ROOT);
@@ -255,6 +293,29 @@ public class ArchitectureSnapshotExportService {
             throw PortfolioException.validation(
                     "Unsupported architecture export format: " + normalized);
         }
+    }
+
+    public record ExportProfile(
+            String formatId,
+            String mediaType,
+            String fileName,
+            String profileId,
+            String handoffRole) {
+    }
+
+    public record SnapshotEvidence(
+            int schemaVersion,
+            String snapshotId,
+            String commitSha,
+            String graphSha256,
+            Long projectId,
+            Long requirementId,
+            String workspaceId,
+            String branch,
+            String provider,
+            String modelName,
+            List<ExportProfile> exportProfiles,
+            Projection projection) {
     }
 
     public record SnapshotArtifact(
