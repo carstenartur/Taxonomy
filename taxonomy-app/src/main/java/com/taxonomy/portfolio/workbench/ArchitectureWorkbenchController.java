@@ -33,6 +33,7 @@ public class ArchitectureWorkbenchController {
     static final String COMMIT_HEADER = "X-Taxonomy-Architecture-Commit";
     static final String GRAPH_SHA_HEADER = "X-Taxonomy-Architecture-Graph-SHA256";
     static final String PROFILE_HEADER = "X-Taxonomy-Export-Profile";
+    static final String ROLE_HEADER = "X-Taxonomy-Export-Role";
     static final String CONTENT_SHA_HEADER = "X-Taxonomy-Export-Content-SHA256";
 
     private static final Pattern SAFE_HEADER_VALUE = Pattern.compile("[\\x21-\\x7E]{1,256}");
@@ -144,6 +145,8 @@ public class ArchitectureWorkbenchController {
                 requiredHeader("graphSha256", artifact.graphSha256()));
         headers.set(PROFILE_HEADER,
                 requiredHeader("exportProfile", artifact.format().profileId()));
+        headers.set(ROLE_HEADER,
+                requiredHeader("handoffRole", artifact.format().handoffRole()));
         headers.set(CONTENT_SHA_HEADER,
                 requiredHeader("contentSha256", artifact.contentSha256()));
         return ResponseEntity.ok().headers(headers).body(content);
