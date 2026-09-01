@@ -175,23 +175,34 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                             endpointMessage, exception);
                 }
 
-                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                    log.info("LLM Response [{}] — raw response (first 500 chars): {}",
-                            provider, response.getBody().substring(0,
-                                    Math.min(response.getBody().length(), 500)));
-                    if (recordReplayService != null && recordReplayService.isRecordMode()) {
-                        recordReplayService.record(prompt, response.getBody(), provider.name(), null);
-                    }
-                    return response.getBody();
+                if (!response.getStatusCode().is2xxSuccessful()) {
+                    throw new LlmProviderException(
+                            LlmProviderException.Reason.REQUEST_REJECTED,
+                            provider + " endpoint returned unexpected HTTP status "
+                                    + response.getStatusCode().value() + ".");
                 }
-                log.error("{} API returned status {}", provider, response.getStatusCode());
-                return null;
+                String responseBody = response.getBody();
+                if (responseBody == null || responseBody.isBlank()) {
+                    throw new LlmProviderException(
+                            LlmProviderException.Reason.REQUEST_REJECTED,
+                            provider + " endpoint returned an empty response body.");
+                }
+
+                log.info("LLM response [{}] received with status {} and {} characters",
+                        provider, response.getStatusCode().value(), responseBody.length());
+                if (recordReplayService != null && recordReplayService.isRecordMode()) {
+                    recordReplayService.record(prompt, responseBody, provider.name(), null);
+                }
+                return responseBody;
             }
         } catch (LlmRateLimitException | LlmTimeoutException | LlmProviderException exception) {
             throw exception;
         } catch (Exception exception) {
-            log.error("Error calling {} API", provider, exception);
-            return null;
+            log.error("Unexpected error calling {} API ({})",
+                    provider, exception.getClass().getSimpleName());
+            throw new LlmProviderException(
+                    LlmProviderException.Reason.REQUEST_REJECTED,
+                    provider + " API request failed unexpectedly.", exception);
         }
     }
 
