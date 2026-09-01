@@ -35,68 +35,65 @@ jobs:
           path = Path('taxonomy-app/src/main/resources/static/js/architecture-workbench.js')
           text = path.read_text(encoding='utf-8')
 
-          replacements = [
-              (
-                  """    const fullscreenButton = document.getElementById('fullscreenArchitecture');
-              const reducedMotion = window.matchMedia
-          """,
-                  """    const fullscreenButton = document.getElementById('fullscreenArchitecture');
-              const exportFormatSelect = document.getElementById('architectureExportFormat');
-              const exportButton = document.getElementById('downloadArchitectureExport');
-              const reducedMotion = window.matchMedia
-          """),
-              (
-                  """            zoomOutButton,
-              fullscreenButton
-          """,
-                  """            zoomOutButton,
-              fullscreenButton,
-              exportFormatSelect,
-              exportButton
-          """),
-              (
-                  """        [fitButton, zoomInButton, zoomOutButton, overviewButton].forEach(function (button) {
-              button.disabled = false;
-          });
-          """,
-                  """        [
-              fitButton,
-              zoomInButton,
-              zoomOutButton,
-              overviewButton,
-              exportFormatSelect,
-              exportButton
-          ].forEach(function (control) {
-              control.disabled = false;
-          });
-          """),
-              (
-                  """    document.getElementById('downloadArchitectureSvg').addEventListener('click', function () {
-              window.location.assign(ArchitectureWorkbenchApi.svgUrl(projectId, snapshotId));
-          });
-
-              document.getElementById('downloadArchitecturePdf').addEventListener('click', function () {
-              window.location.assign(ArchitectureWorkbenchApi.pdfUrl(projectId, snapshotId));
-          });
-          """,
-                  """    exportButton.addEventListener('click', function () {
-              const formatId = exportFormatSelect.value;
-              const option = exportFormatSelect.options[exportFormatSelect.selectedIndex];
-              const formatLabel = option ? option.text : formatId;
-              setStatus('Downloading ' + formatLabel
-                  + ' from persisted snapshot ' + snapshotId + '…');
-              window.location.assign(
-                  ArchitectureWorkbenchApi.exportUrl(projectId, snapshotId, formatId));
-          });
-          """)
-          ]
-
-          for old, new in replacements:
-              occurrences = text.count(old)
-              if occurrences != 1:
-                  raise SystemExit(
-                      f'expected exactly one occurrence, found {occurrences}: {old[:80]!r}')
+          def replace_once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one occurrence, found {count}')
               text = text.replace(old, new)
+
+          replace_once(
+              "    const fullscreenButton = document.getElementById('fullscreenArchitecture');\n",
+              "    const fullscreenButton = document.getElementById('fullscreenArchitecture');\n"
+              "    const exportFormatSelect = document.getElementById('architectureExportFormat');\n"
+              "    const exportButton = document.getElementById('downloadArchitectureExport');\n",
+              'control declarations')
+
+          replace_once(
+              "            zoomOutButton,\n"
+              "            fullscreenButton\n",
+              "            zoomOutButton,\n"
+              "            fullscreenButton,\n"
+              "            exportFormatSelect,\n"
+              "            exportButton\n",
+              'failure control inventory')
+
+          replace_once(
+              "        [fitButton, zoomInButton, zoomOutButton, overviewButton].forEach(function (button) {\n"
+              "            button.disabled = false;\n"
+              "        });\n",
+              "        [\n"
+              "            fitButton,\n"
+              "            zoomInButton,\n"
+              "            zoomOutButton,\n"
+              "            overviewButton,\n"
+              "            exportFormatSelect,\n"
+              "            exportButton\n"
+              "        ].forEach(function (control) {\n"
+              "            control.disabled = false;\n"
+              "        });\n",
+              'successful-load control inventory')
+
+          start_marker = "    document.getElementById('downloadArchitectureSvg').addEventListener"
+          end_marker = "\n\n    if (!projectId || !snapshotId)"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('legacy download handler block was not found exactly once')
+          if text.find(start_marker, start + 1) >= 0:
+              raise SystemExit('legacy download handler block is duplicated')
+          replacement = (
+              "    exportButton.addEventListener('click', function () {\n"
+              "        const formatId = exportFormatSelect.value;\n"
+              "        const option = exportFormatSelect.options[exportFormatSelect.selectedIndex];\n"
+              "        const formatLabel = option ? option.text : formatId;\n"
+              "        setStatus('Downloading ' + formatLabel\n"
+              "            + ' from persisted snapshot ' + snapshotId + '…');\n"
+              "        window.location.assign(\n"
+              "            ArchitectureWorkbenchApi.exportUrl(projectId, snapshotId, formatId));\n"
+              "    });"
+          )
+          text = text[:start] + replacement + text[end:]
 
           forbidden = [
               "downloadArchitectureSvg",
