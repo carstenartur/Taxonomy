@@ -15,7 +15,8 @@ Eine Funktion gilt nur als abgeschlossen, wenn alle erforderlichen Spalten ✅ z
 | Ansichtsmodi (6 Modi) | ✅ | ✅ | ✅ §5 | ✅ #5–9, 39, 69 | ✅ | ✅ | ✅ Vollständig |
 | Architekturansicht | ✅ | ✅ | ✅ §7 | ✅ #20, 38 | ✅ | ✅ | ✅ Vollständig |
 | Relationsvorschläge (annehmen/ablehnen) | ✅ | ✅ | ✅ §9 | ✅ #12, 13, 36 | ✅ | ✅ | ✅ Vollständig |
-| Export (ArchiMate/Visio/Mermaid/JSON) | ✅ | ✅ | ✅ §10 | ✅ #23, 33 | ✅ | ✅ | ✅ Vollständig |
+| Snapshotgebundene Architekturübergabe (JSON/SVG/PDF/ArchiMate/Mermaid/Structurizr) | ✅ | ✅ | ✅ [Architekturübergabe](ARCHITECTURE_HANDOFF.md) | ⚠️ Workbench-Screenshot zu aktualisieren | ✅ | ⚠️ Workbench-Textaudit | ⚠️ Teilweise — exakte Snapshot-Autorität ist umgesetzt; ArchiMate bleibt experimentell und Formatverlust-Evidenz ist unvollständig (#966, #967) |
+| Visio-VSDX-Übergabe | ⚠️ nur bisheriger Komfortexport | ⚠️ bisheriger Endpunkt | ✅ [Architekturübergabe](ARCHITECTURE_HANDOFF.md) | ⚠️ vorhandene Screenshots übertreiben die Reife | ⚠️ | ⚠️ | 🔴 Nicht zertifiziert und im unveränderlichen Snapshot-Workflow nicht angeboten, bis #965 abgeschlossen ist |
 | Volltextsuche | ✅ | ✅ | ✅ §11a | ✅ #29 | ✅ | ✅ | ✅ Vollständig |
 | Semantische/Hybridsuche | ✅ | ✅ | ✅ §11b, §11c | ✅ #30, 31 | ✅ | ✅ | ✅ Vollständig |
 | Graphexploration (Upstream/Downstream) | ✅ | ✅ | ✅ §8 | ✅ #11, 21, 37 | ✅ | ✅ | ✅ Vollständig |
