@@ -37,6 +37,12 @@ export function parseReviewCoverage(body) {
     } : null;
 }
 
+export function parseReviewCommentCount(body) {
+    const match = String(body ?? '').match(
+        /Comments generated:\*{0,2}\s*(\d+)/iu);
+    return match ? Number.parseInt(match[1], 10) : null;
+}
+
 export function classifyReview(review) {
     const body = String(review?.body ?? '');
     const state = String(review?.state ?? '').toUpperCase();
@@ -123,14 +129,41 @@ export function evaluateExactHeadReview({
     }
 
     const coverage = parseReviewCoverage(review.body);
-    if (!coverage || coverage.total < 1 || coverage.reviewed !== coverage.total) {
+    const changedFiles = Number(pullRequest?.changed_files);
+    if (!coverage
+            || coverage.total < 1
+            || coverage.reviewed !== coverage.total
+            || !Number.isInteger(changedFiles)
+            || changedFiles < 1
+            || coverage.total !== changedFiles) {
         const message = coverage
-            ? `The review covered ${coverage.reviewed}/${coverage.total} changed files.`
+            ? `The review covered ${coverage.reviewed}/${coverage.total} files while the pull request contains ${Number.isInteger(changedFiles) ? changedFiles : 'an unknown number of'} changed files.`
             : 'The review did not publish a changed-file coverage count.';
         return result('blocked', 'REVIEW_FILE_COVERAGE_INCOMPLETE', message, {
             review,
-            coverage
+            coverage,
+            changedFiles
         });
+    }
+
+    const reviewCommentCount = parseReviewCommentCount(review.body);
+    if (reviewCommentCount === null) {
+        return result('blocked', 'REVIEW_COMMENT_COUNT_MISSING',
+            'The review did not publish its generated-comment count.', {
+                review,
+                coverage,
+                changedFiles,
+                reviewCommentCount
+            });
+    }
+    if (reviewCommentCount !== 0) {
+        return result('blocked', 'REVIEW_FOLLOW_UP_REQUIRED',
+            `The latest exact-head review generated ${reviewCommentCount} comment(s); a fresh comment-free review is required after disposition.`, {
+                review,
+                coverage,
+                changedFiles,
+                reviewCommentCount
+            });
     }
 
     const unresolvedThreads = unresolvedCurrentThreads(threads);
@@ -139,6 +172,8 @@ export function evaluateExactHeadReview({
             `${unresolvedThreads.length} current review thread(s) remain unresolved.`, {
                 review,
                 coverage,
+                changedFiles,
+                reviewCommentCount,
                 unresolvedThreads
             });
     }
@@ -147,6 +182,8 @@ export function evaluateExactHeadReview({
         `Exact head ${expectedHeadSha} has a complete approval-recommended review.`, {
             review,
             coverage,
+            changedFiles,
+            reviewCommentCount,
             unresolvedThreads: []
         });
 }
@@ -281,7 +318,9 @@ function evidence(resultValue, number, headSha) {
         reviewCommit: reviewCommit(resultValue.review),
         reviewSubmittedAt: reviewSubmittedAt(resultValue.review),
         filesReviewed: resultValue.coverage?.reviewed ?? null,
-        changedFiles: resultValue.coverage?.total ?? null,
+        changedFilesReportedByReview: resultValue.coverage?.total ?? null,
+        changedFilesInPullRequest: resultValue.changedFiles ?? null,
+        reviewCommentsGenerated: resultValue.reviewCommentCount ?? null,
         unresolvedCurrentThreads: resultValue.unresolvedThreads?.length ?? 0,
         recordedAt: new Date().toISOString()
     };
@@ -311,6 +350,7 @@ async function writeSummary(resultValue, number, headSha) {
 - Head: \`${headSha}\`
 - Result: **${resultValue.status}** (\`${resultValue.code}\`)
 - Changed-file coverage: ${coverage}
+- Review comments generated: ${resultValue.reviewCommentCount ?? 'not available'}
 - Current unresolved threads: ${resultValue.unresolvedThreads?.length ?? 0}
 
 ${resultValue.message}
