@@ -26,7 +26,8 @@
         <label class="visually-hidden" for="architectureExportFormat">Export format</label>
         <select id="architectureExportFormat"
                 class="form-select form-select-sm w-auto"
-                aria-describedby="architectureExportHint">
+                aria-describedby="architectureExportHint"
+                disabled>
             <optgroup label="Evidence">
                 <option value="json">Evidence JSON</option>
             </optgroup>
@@ -44,7 +45,8 @@
         </select>
         <button id="downloadArchitectureExport"
                 class="btn btn-sm btn-warning"
-                type="button">
+                type="button"
+                disabled>
             Download selected format
         </button>
         <span id="architectureExportHint" class="visually-hidden">
