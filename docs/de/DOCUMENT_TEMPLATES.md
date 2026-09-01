@@ -76,6 +76,29 @@ allgemeinen OOXML-Sicherheitscheck gegen diesen Vertrag validiert. Der
 Actuator-Health-Check `decisionRationaleTemplate` meldet `DOWN`, wenn die Pflichtvorlage
 fehlt oder strukturell ungültig ist.
 
+## Audit-Nachweis
+
+Jeder vorlagenbasierte DOCX-Bericht speichert die genaue Identität seiner Word-Vorlage
+unabhängig von sichtbaren Feldern auf der Titelseite. Die benutzerdefinierten
+Dokumenteigenschaften heißen `Taxonomy.Template.Id`, `Taxonomy.Template.Commit`,
+`Taxonomy.Template.PackageSha256` und `Taxonomy.Template.SchemaVersion`. Der Commit ist
+die vollständige 40-stellige Git-Objekt-ID; der Paket-Digest ist der kanonische
+64-stellige SHA-256-Wert aus dem validierten Vorlagenmanifest. Das Entfernen der
+optionalen Anzeigetoken `{{taxonomy.template.*}}` entfernt daher nicht den
+Audit-Nachweis.
+
+Der DOCX-Download liefert dieselben Werte in den explizit freigegebenen Headern
+`X-Taxonomy-Template-Id`, `X-Taxonomy-Template-Commit`,
+`X-Taxonomy-Template-SHA256` und `X-Taxonomy-Template-Schema-Version`. Intern trägt das
+formatneutrale Renderergebnis dieselben vier Felder als unveränderliche
+Artefaktmetadaten. HTML- und JSON-Ausgaben behaupten keine Word-Vorlagenidentität.
+
+Prüfer können die Werte in Word unter **Datei → Informationen → Eigenschaften →
+Erweiterte Eigenschaften → Anpassen** ansehen. Ohne Word lässt sich
+`docProps/custom.xml` direkt aus dem DOCX-ZIP-Paket lesen. Die vollständige Commit-ID
+ist mit der Vorlagenhistorie und der SHA-256-Wert mit dem zugehörigen
+`template.json`-Manifest zu vergleichen.
+
 ## Versions- und Konkurrenzmodell
 
 Jede Vorlage verwendet den letzten Git-Commit, der ihren eigenen OOXML-Unterbaum

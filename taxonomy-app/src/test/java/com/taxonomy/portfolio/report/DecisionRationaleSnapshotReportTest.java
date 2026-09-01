@@ -4,6 +4,8 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
 import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.architecture.decision.DecisionReportTemplateProvenance;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
@@ -233,7 +235,8 @@ class DecisionRationaleSnapshotReportTest {
                 mock(DecisionRationaleSnapshotReportService.class);
         WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
         DecisionRationaleReport report = report(7);
-        ReportRendererExtension renderer = renderer("json", "application/json", "payload");
+        ReportRendererExtension renderer = renderer(
+                "json", "application/json", "payload", templateMetadata());
         ReportRendererRegistry registry = new ReportRendererRegistry(List.of(renderer));
         DecisionRationaleSnapshotReportController controller =
                 new DecisionRationaleSnapshotReportController(
@@ -263,6 +266,18 @@ class DecisionRationaleSnapshotReportTest {
                 .isEqualTo("data-sha");
         assertThat(response.getHeaders().getFirst("X-Taxonomy-Analysis-SHA256"))
                 .isEqualTo("analysis-sha");
+        assertThat(response.getHeaders().getFirst(
+                DecisionReportTemplateHeaders.HEADER_TEMPLATE_ID))
+                .isEqualTo("decision-rationale-report");
+        assertThat(response.getHeaders().getFirst(
+                DecisionReportTemplateHeaders.HEADER_TEMPLATE_COMMIT))
+                .isEqualTo("0123456789abcdef0123456789abcdef01234567");
+        assertThat(response.getHeaders().getFirst(
+                DecisionReportTemplateHeaders.HEADER_TEMPLATE_SHA256))
+                .isEqualTo("c".repeat(64));
+        assertThat(response.getHeaders().getFirst(
+                DecisionReportTemplateHeaders.HEADER_TEMPLATE_SCHEMA_VERSION))
+                .isEqualTo("1");
         assertThat(response.getBody())
                 .isEqualTo("payload".getBytes(StandardCharsets.UTF_8));
         verify(reportService).generate(
@@ -408,8 +423,24 @@ class DecisionRationaleSnapshotReportTest {
                 null);
     }
 
+    private Map<String, String> templateMetadata() {
+        return new DecisionReportTemplateProvenance(
+                "decision-rationale-report",
+                "0123456789abcdef0123456789abcdef01234567",
+                "c".repeat(64),
+                1).artifactMetadata();
+    }
+
     private ReportRendererExtension renderer(
             String id, String contentType, String content) {
+        return renderer(id, contentType, content, Map.of());
+    }
+
+    private ReportRendererExtension renderer(
+            String id,
+            String contentType,
+            String content,
+            Map<String, String> artifactMetadata) {
         ReportFormatDescriptor descriptor = new ReportFormatDescriptor(
                 id, "JSON", id, contentType, false);
         return new ReportRendererExtension() {
@@ -431,7 +462,8 @@ class DecisionRationaleSnapshotReportTest {
             @Override
             public ReportRenderResult render(ReportRenderContext context) {
                 assertThat(context.payloadAs(DecisionRationaleReport.class)).isNotNull();
-                return new ReportRenderResult(content.getBytes(StandardCharsets.UTF_8));
+                return new ReportRenderResult(
+                        content.getBytes(StandardCharsets.UTF_8), artifactMetadata);
             }
         };
     }

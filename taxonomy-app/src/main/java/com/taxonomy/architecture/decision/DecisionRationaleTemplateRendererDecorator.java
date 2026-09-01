@@ -68,8 +68,7 @@ public final class DecisionRationaleTemplateRendererDecorator
             DecisionRationaleReport report =
                     context.payloadAs(DecisionRationaleReport.class);
             try {
-                return new ReportRenderResult(
-                        templateRenderer.render(delegate, report));
+                return templateRenderer.renderArtifact(delegate, report);
             } catch (DecisionReportTemplateUnavailableException exception) {
                 throw exception;
             } catch (IllegalStateException exception) {

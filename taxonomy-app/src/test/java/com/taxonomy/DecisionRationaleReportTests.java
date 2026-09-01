@@ -5,6 +5,8 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.AnalysisSnapshotProvenance;
 import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.architecture.decision.DecisionReportTemplateProvenance;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
@@ -12,8 +14,10 @@ import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.extension.api.report.ReportRendererExtension;
 import com.taxonomy.portfolio.service.PortfolioFingerprintService;
+import com.taxonomy.templates.DecisionRationaleTemplateContract;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +42,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -215,9 +220,16 @@ class DecisionRationaleReportTests {
                 .contains("decision-auditor", report.metadata().taxonomyDataVersion())
                 .doesNotContain("<script src=");
 
-        byte[] docx = reportRendererRegistry.getRequired(
+        ReportRenderResult docxArtifact = reportRendererRegistry.getRequired(
                         DecisionRationaleReportPlugin.REPORT_TYPE_ID, "docx")
-                .render(ReportRenderContext.ofPayload(report)).bytes();
+                .render(ReportRenderContext.ofPayload(report));
+        assertThat(docxArtifact.artifactMetadata())
+                .containsKeys(
+                        DecisionReportTemplateProvenance.METADATA_TEMPLATE_ID,
+                        DecisionReportTemplateProvenance.METADATA_TEMPLATE_COMMIT,
+                        DecisionReportTemplateProvenance.METADATA_TEMPLATE_SHA256,
+                        DecisionReportTemplateProvenance.METADATA_TEMPLATE_SCHEMA_VERSION);
+        byte[] docx = docxArtifact.bytes();
         assertThat(docx).hasSizeGreaterThan(10_000);
         assertThat(docx[0]).isEqualTo((byte) 0x50);
         assertThat(docx[1]).isEqualTo((byte) 0x4B);
@@ -302,7 +314,19 @@ class DecisionRationaleReportTests {
                 .andExpect(header().string("Content-Disposition",
                         "attachment; filename=\"taxonomy-decision-rationale-report.docx\""))
                 .andExpect(header().exists("X-Taxonomy-Data-SHA256"))
-                .andExpect(header().exists("X-Taxonomy-Analysis-SHA256"));
+                .andExpect(header().exists("X-Taxonomy-Analysis-SHA256"))
+                .andExpect(header().string(
+                        DecisionReportTemplateHeaders.HEADER_TEMPLATE_ID,
+                        DecisionRationaleTemplateContract.TEMPLATE_ID))
+                .andExpect(header().string(
+                        DecisionReportTemplateHeaders.HEADER_TEMPLATE_COMMIT,
+                        matchesPattern("[0-9a-f]{40}")))
+                .andExpect(header().string(
+                        DecisionReportTemplateHeaders.HEADER_TEMPLATE_SHA256,
+                        matchesPattern("[0-9a-f]{64}")))
+                .andExpect(header().string(
+                        DecisionReportTemplateHeaders.HEADER_TEMPLATE_SCHEMA_VERSION,
+                        "1"));
         mockMvc.perform(post("/api/decision-report/html")
                         .contentType(MediaType.APPLICATION_JSON).content(json))
                 .andExpect(status().isOk())

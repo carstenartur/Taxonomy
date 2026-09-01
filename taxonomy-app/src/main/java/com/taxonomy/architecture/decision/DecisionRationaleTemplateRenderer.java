@@ -1,5 +1,6 @@
 package com.taxonomy.architecture.decision;
 
+import com.taxonomy.extension.api.report.ReportRenderResult;
 import com.taxonomy.templates.DecisionRationaleTemplateContract;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateService;
@@ -53,6 +54,8 @@ public final class DecisionRationaleTemplateRenderer {
     private static final String TEMPLATE_COMMIT_PROPERTY = "Taxonomy.Template.Commit";
     private static final String TEMPLATE_SHA256_PROPERTY =
             "Taxonomy.Template.PackageSha256";
+    private static final String TEMPLATE_SCHEMA_VERSION_PROPERTY =
+            "Taxonomy.Template.SchemaVersion";
 
     private final DocumentTemplateService templates;
     private final DecisionRationaleTemplateContract contract;
@@ -65,6 +68,12 @@ public final class DecisionRationaleTemplateRenderer {
     }
 
     public byte[] render(
+            DecisionRationaleDocxRenderer delegate,
+            DecisionRationaleReport report) {
+        return renderArtifact(delegate, report).bytes();
+    }
+
+    ReportRenderResult renderArtifact(
             DecisionRationaleDocxRenderer delegate,
             DecisionRationaleReport report) {
         Objects.requireNonNull(delegate, "delegate");
@@ -85,6 +94,8 @@ public final class DecisionRationaleTemplateRenderer {
                     + safeMessage(exception), exception);
         }
 
+        DecisionReportTemplateProvenance provenance =
+                DecisionReportTemplateProvenance.from(template);
         DecisionReportLabels labels = new DecisionReportLabels(report.languageTag());
         try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(
                     convertDotxToDocx(template.content())));
@@ -94,10 +105,11 @@ public final class DecisionRationaleTemplateRenderer {
             removeBodyMarker(document);
 
             delegate.writeReportBody(document, report, labels);
-            writeTemplateProvenanceProperties(document, template);
+            writeTemplateProvenanceProperties(document, provenance);
 
             document.write(output);
-            return output.toByteArray();
+            return new ReportRenderResult(
+                    output.toByteArray(), provenance.artifactMetadata());
         } catch (Exception exception) {
             throw unavailable(
                     "Could not materialize template commit " + template.commitId()
@@ -149,21 +161,25 @@ public final class DecisionRationaleTemplateRenderer {
 
     private static void writeTemplateProvenanceProperties(
             XWPFDocument document,
-            TemplateFile template) {
+            DecisionReportTemplateProvenance provenance) {
         POIXMLProperties.CustomProperties properties =
                 document.getProperties().getCustomProperties();
         replaceCustomProperty(
                 properties,
                 TEMPLATE_ID_PROPERTY,
-                DecisionRationaleTemplateContract.TEMPLATE_ID);
+                provenance.templateId());
         replaceCustomProperty(
                 properties,
                 TEMPLATE_COMMIT_PROPERTY,
-                value(template.commitId()));
+                provenance.commitId());
         replaceCustomProperty(
                 properties,
                 TEMPLATE_SHA256_PROPERTY,
-                value(template.manifest().packageSha256()));
+                provenance.packageSha256());
+        replaceCustomProperty(
+                properties,
+                TEMPLATE_SCHEMA_VERSION_PROPERTY,
+                Integer.toString(provenance.schemaVersion()));
     }
 
     private static void replaceCustomProperty(
