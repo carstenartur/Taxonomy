@@ -2,6 +2,7 @@ package com.taxonomy.versioning.controller;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.versioning.controller.DecisionRationaleReportController.DecisionReportRequest;
 import com.taxonomy.versioning.service.RepositoryStateService;
@@ -62,6 +63,40 @@ class DecisionRationaleReportControllerValidationTest {
     }
 
     @Test
+    void rejectsWhitespacePaddedProductCoverageCodesBeforeResolvingTrustedContext() {
+        DecisionRationaleReportService reportService =
+                mock(DecisionRationaleReportService.class);
+        ReportRendererRegistry rendererRegistry =
+                mock(ReportRendererRegistry.class);
+        RepositoryStateService repositoryStateService =
+                mock(RepositoryStateService.class);
+        WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
+        DecisionRationaleReportController controller =
+                new DecisionRationaleReportController(
+                        reportService,
+                        rendererRegistry,
+                        repositoryStateService,
+                        workspaceResolver);
+
+        List<List<ProductCoverageGap>> invalidCases = List.of(
+                List.of(productGap(" CP", List.of("CP-P1"))),
+                List.of(productGap("CP ", List.of("CP-P1"))),
+                List.of(productGap("CP", List.of(" CP-P1"))),
+                List.of(productGap("CP", List.of("CP-P1 "))));
+
+        for (List<ProductCoverageGap> productCoverageGaps : invalidCases) {
+            assertThat(controller.exportJson(
+                    request(List.of(), productCoverageGaps)).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+        verifyNoInteractions(
+                reportService,
+                rendererRegistry,
+                repositoryStateService,
+                workspaceResolver);
+    }
+
+    @Test
     void acceptsBoundedDiscrepancyIncludingLegitimateOversubscription() {
         DecisionRationaleReportService reportService =
                 mock(DecisionRationaleReportService.class);
@@ -91,8 +126,55 @@ class DecisionRationaleReportControllerValidationTest {
                 repositoryStateService);
     }
 
+    @Test
+    void acceptsExactProductCoverageCodes() {
+        DecisionRationaleReportService reportService =
+                mock(DecisionRationaleReportService.class);
+        ReportRendererRegistry rendererRegistry =
+                mock(ReportRendererRegistry.class);
+        RepositoryStateService repositoryStateService =
+                mock(RepositoryStateService.class);
+        WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
+        DecisionRationaleReportController controller =
+                new DecisionRationaleReportController(
+                        reportService,
+                        rendererRegistry,
+                        repositoryStateService,
+                        workspaceResolver);
+        when(workspaceResolver.resolveCurrentContext())
+                .thenThrow(new IllegalStateException("validation passed"));
+
+        assertThatThrownBy(() -> controller.exportJson(request(
+                List.of(), List.of(productGap("CP", List.of("CP-P1"))))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("validation passed");
+
+        verify(workspaceResolver).resolveCurrentContext();
+        verifyNoInteractions(
+                reportService,
+                rendererRegistry,
+                repositoryStateService);
+    }
+
+    private ProductCoverageGap productGap(
+            String familyCode,
+            List<String> candidateCodes) {
+        return new ProductCoverageGap(
+                familyCode,
+                "Capability",
+                100,
+                candidateCodes,
+                "No suitable product reached the threshold.");
+    }
+
     private DecisionReportRequest request(
             List<TaxonomyDiscrepancy> discrepancies) {
+        return request(discrepancies, List.of());
+    }
+
+    private DecisionReportRequest request(
+            List<TaxonomyDiscrepancy> discrepancies,
+            List<ProductCoverageGap> productCoverageGaps) {
         return new DecisionReportRequest(
                 Map.of("CP", 100),
                 Map.of("CP", "reason"),
@@ -100,7 +182,7 @@ class DecisionRationaleReportControllerValidationTest {
                 "MOCK",
                 "SUCCESS",
                 discrepancies,
-                List.of(),
+                productCoverageGaps,
                 "en");
     }
 }
