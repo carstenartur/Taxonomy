@@ -46,6 +46,16 @@ jobs:
             taxonomy-app/src/main/resources/templates/architecture-workbench.html \
             taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench
 
+          service=taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench/ArchitectureSnapshotExportService.java
+          controller=taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench/ArchitectureWorkbenchController.java
+          page=taxonomy-app/src/main/resources/templates/architecture-workbench.html
+          grep -Fq 'projection.branchName()' "$service"
+          ! grep -Fq 'projection.branch()' "$service"
+          grep -Fq 'experimental-model-exchange' "$service"
+          grep -Fq 'X-Taxonomy-Export-Role' "$controller"
+          grep -Fq 'id="architectureExportFormat"' "$page"
+          grep -Fq 'id="downloadArchitectureExport"' "$page"
+
       - name: Run focused Maven tests
         run: |
           set -euo pipefail
