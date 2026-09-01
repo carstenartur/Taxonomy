@@ -323,7 +323,7 @@ Die Anwendung verwendet **Spring Security** mit einem Drei-Rollen-Autorisierungs
 - **Formularanmeldung** — Browser-Sitzungen über die `/login`-Seite (CSRF-geschützt)
 - **HTTP Basic** — Zustandslose REST-Clients (CSRF deaktiviert für `/api/**`)
 
-Ein Standard-`admin`-Benutzer (mit allen drei Rollen) wird beim ersten Start über `SecurityDataInitializer` erstellt. Das Passwort ist über `TAXONOMY_ADMIN_PASSWORD` konfigurierbar (Standard: `admin`).
+Beim ersten Start wird über `SecurityDataInitializer` ein `admin`-Benutzer mit allen drei Rollen angelegt. `TAXONOMY_ADMIN_PASSWORD` kann das initiale Passwort vorgeben. Ist der Wert außerhalb der Produktion leer, wird ein zufälliges einmaliges Passwort über eine eigentümergeschützte temporäre Datei bereitgestellt; ein wiederverwendbares Standardpasswort existiert nicht.
 
 **Öffentliche Endpunkte** (keine Authentifizierung erforderlich): `/login`, `/error`, `/actuator/health/**`, `/v3/api-docs/**` (konfigurierbar), `/swagger-ui/**` (konfigurierbar) und statische Assets.
 

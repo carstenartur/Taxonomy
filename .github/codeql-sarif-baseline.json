@@ -40,12 +40,6 @@
     },
     {
       "ruleId": "java/sensitive-log",
-      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/security/config/SecurityDataInitializer.java",
-      "primaryLocationLineHash": "960f66a8f61eea7e:1",
-      "rationale": "Existing one-time bootstrap credential delivery is documented and tracked for an operationally safe replacement in #857."
-    },
-    {
-      "ruleId": "java/sensitive-log",
       "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/versioning/service/HypothesisService.java",
       "primaryLocationLineHash": "64d3fb8a5c0e0545:1",
       "rationale": "Existing hypothesis diagnostic dataflow remains tracked for a consistent non-disclosing logging contract in #857."

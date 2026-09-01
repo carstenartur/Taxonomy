@@ -74,7 +74,7 @@ Click an export button to download the architecture as ArchiMate XML, Visio `.vs
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/analyze \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/analyze \
   -d "businessText=Provide+integrated+communication+platform+for+hospital+staff" \
   -d "includeArchitectureView=true"
 ```
@@ -102,7 +102,7 @@ See also [User Guide](USER_GUIDE.md) for details on the Graph Explorer interface
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ```
 
 </details>
@@ -139,7 +139,7 @@ curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Patient data sharing across hospital departments",
@@ -206,26 +206,26 @@ After accepting, the relation becomes visible in the knowledge graph:
 
 ```bash
 # Generate proposals for a node
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/propose \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
   -d '{"sourceCode": "CR-1047", "relationType": "SUPPORTS"}'
 
 # List pending proposals
-curl -u admin:admin "http://localhost:8080/api/proposals/pending"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/proposals/pending"
 
 # Accept a proposal
-curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/accept"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/proposals/42/accept"
 
 # Reject a proposal
-curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/reject"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/proposals/42/reject"
 
 # Bulk accept/reject
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/bulk \
   -H "Content-Type: application/json" \
   -d '{"ids": [42, 43, 44], "action": "ACCEPT"}'
 
 # Revert a decision
-curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/revert"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/proposals/42/revert"
 ```
 
 </details>
@@ -251,7 +251,7 @@ See also [User Guide](USER_GUIDE.md) for details on the recommendations interfac
 <summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/recommend \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Reliable remote access and coordination services for distributed field teams",
@@ -297,7 +297,7 @@ Click the desired export button in the **Architecture View**:
 ### ArchiMate XML
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.xml
@@ -308,7 +308,7 @@ The resulting XML file can be imported into **Archi**, **BiZZdesign**, **MEGA**,
 ### Visio
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.vsdx
@@ -317,7 +317,7 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
 ### Mermaid
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
   -d '{"businessText": "Integrated communication platform for hospital staff"}'
 ```
@@ -420,7 +420,7 @@ Click **ArchiMate** to download the architecture as XML. Import into Archi or Bi
 ### Step 1 — Export current state as DSL
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/dsl/export"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/export"
 ```
 
 Returns DSL text like:
@@ -451,7 +451,7 @@ relation CI-1023 REALIZES CP-1022 {
 Modify the DSL (add elements, relations, evidence) and commit:
 
 ```bash
-curl -u admin:admin -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=add+field+monitoring+relations" \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=add+field+monitoring+relations" \
   -H "Content-Type: text/plain" \
   -d @architecture.taxdsl
 ```
@@ -461,13 +461,13 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/commit?branch=draft&m
 View the diff between two commits:
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/dsl/diff/semantic/{beforeId}/{afterId}"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/diff/semantic/{beforeId}/{afterId}"
 ```
 
 ### Step 4 — Merge to accepted
 
 ```bash
-curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=draft&intoBranch=accepted"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/merge?fromBranch=draft&intoBranch=accepted"
 ```
 
 The merged changes are materialized into the relation database and become visible in the graph and architecture views.

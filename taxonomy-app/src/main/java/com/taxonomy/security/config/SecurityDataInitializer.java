@@ -4,6 +4,7 @@ import com.taxonomy.security.model.AppRole;
 import com.taxonomy.security.model.AppUser;
 import com.taxonomy.security.repository.RoleRepository;
 import com.taxonomy.security.repository.UserRepository;
+import com.taxonomy.security.service.BootstrapAdminCredentialStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +16,8 @@ import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -32,18 +35,21 @@ public class SecurityDataInitializer implements ApplicationRunner {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final BootstrapAdminCredentialStore bootstrapCredentialStore;
     private final String configuredAdminPassword;
     private final boolean requirePasswordChange;
 
     public SecurityDataInitializer(RoleRepository roleRepository,
                                    UserRepository userRepository,
                                    PasswordEncoder passwordEncoder,
+                                   BootstrapAdminCredentialStore bootstrapCredentialStore,
                                    @Value("${taxonomy.admin-password:}") String configuredAdminPassword,
                                    @Value("${taxonomy.security.require-password-change:true}")
                                    boolean requirePasswordChange) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.bootstrapCredentialStore = bootstrapCredentialStore;
         this.configuredAdminPassword = configuredAdminPassword;
         this.requirePasswordChange = requirePasswordChange;
     }
@@ -70,13 +76,22 @@ public class SecurityDataInitializer implements ApplicationRunner {
             admin.setDisplayName("Administrator");
             admin.setRoles(Set.of(roleUser, roleArchitect, roleAdmin));
             admin.setMustChangePassword(generatedBootstrapPassword || requirePasswordChange);
-            userRepository.save(admin);
 
             if (generatedBootstrapPassword) {
-                log.warn("Generated a one-time local administrator bootstrap password. "
-                                + "Sign in as 'admin' with this value and replace it immediately: {}",
-                        effectivePassword);
-            } else {
+                bootstrapCredentialStore.publish(effectivePassword);
+                removePublishedCredentialAfterRollback();
+            }
+
+            try {
+                userRepository.save(admin);
+            } catch (RuntimeException exception) {
+                if (generatedBootstrapPassword) {
+                    bootstrapCredentialStore.deletePublishedCredential();
+                }
+                throw exception;
+            }
+
+            if (!generatedBootstrapPassword) {
                 log.info("Created configured administrator account "
                                 + "(passwordChangeRequired={}).",
                         requirePasswordChange);
@@ -90,6 +105,21 @@ public class SecurityDataInitializer implements ApplicationRunner {
             userRepository.save(admin);
             log.warn("Detected a legacy administrator credential and required replacement.");
         }
+    }
+
+    private void removePublishedCredentialAfterRollback() {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status != TransactionSynchronization.STATUS_COMMITTED) {
+                            bootstrapCredentialStore.deletePublishedCredential();
+                        }
+                    }
+                });
     }
 
     private AppRole findOrCreateRole(String name) {

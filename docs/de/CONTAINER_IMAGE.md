@@ -25,10 +25,12 @@ Nur zur lokalen Evaluierung:
 
 ```bash
 docker pull ghcr.io/carstenartur/taxonomy:latest
-docker run --rm -p 8080:8080 ghcr.io/carstenartur/taxonomy:latest
+docker run --rm -p 8080:8080 \
+  -e TAXONOMY_ADMIN_PASSWORD='ein-eindeutiges-lokales-passwort' \
+  ghcr.io/carstenartur/taxonomy:latest
 ```
 
-Öffnen Sie <http://localhost:8080>. Der Entwicklungsstandard ist `admin` / `admin`; exponieren Sie diese Konfiguration niemals in einem Netzwerk.
+Öffnen Sie <http://localhost:8080> und melden Sie sich als `admin` mit dem oben gesetzten Passwort an. Es gibt kein wiederverwendbares Entwicklungspasswort. Wird die Variable außerhalb der Produktion absichtlich weggelassen, liegt die erzeugte Zugangsdaten-Datei innerhalb des Containers; im Protokoll erscheint nur ihr Pfad. Für einen kurzlebigen Container ist ein expliziter Wert einfacher.
 
 ### Cloud-LLM
 
@@ -106,7 +108,7 @@ Laufzeitvariablen:
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
-| `TAXONOMY_ADMIN_PASSWORD` | außerhalb Produktion `admin` | Initiales lokales Administratorpasswort |
+| `TAXONOMY_ADMIN_PASSWORD` | außerhalb der Produktion leer; in Produktion erforderlich | Initiales lokales Administratorpasswort. Ein leerer Nicht-Produktionswert erzeugt eine eigentümergeschützte einmalige Zugangsdaten-Datei und protokolliert nur deren Pfad. |
 | `LLM_PROVIDER` | automatisch erkannt | `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL` oder `LOCAL_ONNX` |
 | `GEMINI_API_KEY`, `OPENAI_API_KEY`, … | leer | Provider-Zugangsdaten |
 | `TAXONOMY_EMBEDDING_ENABLED` | `true` | Semantische/KNN-Suche aktivieren |

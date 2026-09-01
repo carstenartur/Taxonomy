@@ -27,7 +27,7 @@ This guide describes how to migrate from the default form-login authentication m
 | Feature | Form Login (default) | Keycloak Mode |
 |---|---|---|
 | Login page | Spring default `/login` form | Keycloak login page (OIDC redirect) |
-| API authentication | HTTP Basic (`curl -u admin:admin`) | JWT Bearer Token (`Authorization: Bearer <token>`) |
+| API authentication | HTTP Basic (`curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}"`) | JWT Bearer Token (`Authorization: Bearer <token>`) |
 | User management | `/api/admin/users` REST API | Keycloak Admin Console |
 | Password changes | `/change-password` page | Keycloak Account Console |
 | User database | Local (HSQLDB/PostgreSQL) | Keycloak (no local user DB) |

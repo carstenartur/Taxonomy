@@ -157,12 +157,12 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 
 ## Sicherheit und Keycloak
 
-`ADMIN_PASSWORD` schützt zusätzliche Actuator-/Legacy-Token-Prüfungen. `TAXONOMY_ADMIN_PASSWORD` initialisiert das lokale Konto `admin`. Ohne diesen Wert erzeugt ein Nicht-Produktionsstart ein einmaliges zufälliges Startpasswort; Produktion verlangt mindestens 16 nicht triviale Zeichen.
+`ADMIN_PASSWORD` schützt zusätzliche Actuator-/Legacy-Token-Prüfungen. `TAXONOMY_ADMIN_PASSWORD` initialisiert das lokale Konto `admin`. Ohne diesen Wert schreibt ein Nicht-Produktionsstart ein einmaliges zufälliges Startpasswort in eine eigentümergeschützte temporäre Datei und protokolliert nur deren Pfad; Produktion verlangt mindestens 16 nicht triviale Zeichen.
 
 | Variable | Property / Gültigkeit | Standard | Bedeutung |
 |---|---|---|---|
 | `ADMIN_PASSWORD` | `admin.token` | leer | Optionaler `X-Admin-Token`/Bearer für sensible Zusatzprüfungen; ersetzt keine rollenbasierte Anmeldung. |
-| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | leer außerhalb Produktion; dort erforderlich | Initiales lokales Administratorpasswort. |
+| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | leer außerhalb Produktion; dort erforderlich | Initiales lokales Administratorpasswort. Ein leerer Nicht-Produktionswert schreibt ein einmaliges zufälliges Passwort in eine eigentümergeschützte temporäre Datei; protokolliert wird nur ihr Pfad. |
 | `TAXONOMY_LOGIN_RATE_LIMIT` | `taxonomy.security.login-rate-limit.enabled` | `true` | Login-Fehlversuchsbegrenzung. |
 | `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `taxonomy.security.login-rate-limit.max-attempts` | `5` | Fehlversuche bis zur Sperre. |
 | `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `taxonomy.security.login-rate-limit.lockout-seconds` | `300` | Sperrdauer. |
