@@ -96,15 +96,19 @@ class DecisionRationaleTemplateRendererTest {
                         dotx,
                         Instant.parse("2026-08-22T16:00:00Z")));
 
-        DecisionRationaleDocxRenderer delegate =
-                new DecisionRationaleDocxRenderer(diagrams);
+        RecordingDecisionRationaleDocxRenderer delegate =
+                new RecordingDecisionRationaleDocxRenderer(diagrams);
         DecisionRationaleTemplateRenderer renderer =
                 new DecisionRationaleTemplateRenderer(
                         templates,
                         new DecisionRationaleTemplateContract());
         DecisionRationaleReport report = report();
 
+        assertThat(delegate.render(report)).isNotEmpty();
+        assertThat(delegate.reportBodyWrites()).isEqualTo(1);
+
         byte[] docx = renderer.render(delegate, report);
+        assertThat(delegate.reportBodyWrites()).isEqualTo(2);
         Map<String, byte[]> entries = unzip(docx);
 
         String contentTypes = text(entries, "[Content_Types].xml");
@@ -149,6 +153,30 @@ class DecisionRationaleTemplateRendererTest {
                         new String(entry.getValue(), StandardCharsets.UTF_8))
                         .as(entry.getKey())
                         .doesNotContain("{{taxonomy."));
+    }
+
+    private static final class RecordingDecisionRationaleDocxRenderer
+            extends DecisionRationaleDocxRenderer {
+
+        private int reportBodyWrites;
+
+        private RecordingDecisionRationaleDocxRenderer(
+                DecisionChapterDiagramRenderer diagrams) {
+            super(diagrams);
+        }
+
+        @Override
+        void writeReportBody(
+                org.apache.poi.xwpf.usermodel.XWPFDocument document,
+                DecisionRationaleReport report,
+                DecisionReportLabels labels) throws Exception {
+            reportBodyWrites++;
+            super.writeReportBody(document, report, labels);
+        }
+
+        private int reportBodyWrites() {
+            return reportBodyWrites;
+        }
     }
 
     private static DecisionRationaleReport report() {

@@ -114,17 +114,31 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         try (XWPFDocument document = new XWPFDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             configurePage(document);
-            configureCoreProperties(document, report);
             addHeaderAndFooter(document, report, labels);
             renderTitlePage(document, report, labels);
-            renderExecutiveSummary(document, report, labels);
-            renderChapters(document, report, labels);
-            renderAppendix(document, report, labels);
+            writeReportBody(document, report, labels);
             document.write(output);
             return output.toByteArray();
         } catch (Exception exception) {
             throw new IllegalStateException("Could not generate decision rationale DOCX", exception);
         }
+    }
+
+    /**
+     * Writes the report content shared by standalone and template-backed DOCX output.
+     *
+     * <p>The already opened document owns its cover, headers, footers and template
+     * styling. This typed boundary owns the single implementation of metadata,
+     * executive-summary, chapter/table/diagram and appendix semantics.</p>
+     */
+    void writeReportBody(
+            XWPFDocument document,
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) throws Exception {
+        configureCoreProperties(document, report);
+        renderExecutiveSummary(document, report, labels);
+        renderChapters(document, report, labels);
+        renderAppendix(document, report, labels);
     }
 
     private void configurePage(XWPFDocument document) {

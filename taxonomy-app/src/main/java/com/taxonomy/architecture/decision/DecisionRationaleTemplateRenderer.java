@@ -21,8 +21,6 @@ import org.springframework.stereotype.Component;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -44,7 +42,7 @@ import java.util.zip.ZipOutputStream;
  * <p>The existing renderer remains the single implementation of dynamic chapters, tables,
  * diagrams, and appendix semantics. This adapter opens the editable cover/header/footer
  * template, replaces stable tokens, removes the body marker, and invokes those proven
- * rendering stages against the template-backed document.</p>
+ * rendering stages through its package-level typed body writer.</p>
  */
 @Component
 public final class DecisionRationaleTemplateRenderer {
@@ -55,26 +53,6 @@ public final class DecisionRationaleTemplateRenderer {
     private static final String TEMPLATE_COMMIT_PROPERTY = "Taxonomy.Template.Commit";
     private static final String TEMPLATE_SHA256_PROPERTY =
             "Taxonomy.Template.PackageSha256";
-
-    private static final Method CONFIGURE_CORE_PROPERTIES = method(
-            "configureCoreProperties",
-            XWPFDocument.class,
-            DecisionRationaleReport.class);
-    private static final Method RENDER_EXECUTIVE_SUMMARY = method(
-            "renderExecutiveSummary",
-            XWPFDocument.class,
-            DecisionRationaleReport.class,
-            DecisionReportLabels.class);
-    private static final Method RENDER_CHAPTERS = method(
-            "renderChapters",
-            XWPFDocument.class,
-            DecisionRationaleReport.class,
-            DecisionReportLabels.class);
-    private static final Method RENDER_APPENDIX = method(
-            "renderAppendix",
-            XWPFDocument.class,
-            DecisionRationaleReport.class,
-            DecisionReportLabels.class);
 
     private final DocumentTemplateService templates;
     private final DecisionRationaleTemplateContract contract;
@@ -115,10 +93,7 @@ public final class DecisionRationaleTemplateRenderer {
             replaceTokens(document, tokenValues(report, labels, template));
             removeBodyMarker(document);
 
-            invoke(CONFIGURE_CORE_PROPERTIES, delegate, document, report);
-            invoke(RENDER_EXECUTIVE_SUMMARY, delegate, document, report, labels);
-            invoke(RENDER_CHAPTERS, delegate, document, report, labels);
-            invoke(RENDER_APPENDIX, delegate, document, report, labels);
+            delegate.writeReportBody(document, report, labels);
             writeTemplateProvenanceProperties(document, template);
 
             document.write(output);
@@ -377,41 +352,6 @@ public final class DecisionRationaleTemplateRenderer {
     private static String abbreviate(String value) {
         String normalized = value(value);
         return normalized.length() <= 12 ? normalized : normalized.substring(0, 12);
-    }
-
-    private static Method method(String name, Class<?>... parameterTypes) {
-        try {
-            Method method = DecisionRationaleDocxRenderer.class
-                    .getDeclaredMethod(name, parameterTypes);
-            if (!method.trySetAccessible()) {
-                throw new IllegalStateException(
-                        "Cannot access decision-report rendering stage " + name);
-            }
-            return method;
-        } catch (ReflectiveOperationException exception) {
-            throw new ExceptionInInitializerError(exception);
-        }
-    }
-
-    private static void invoke(
-            Method method,
-            DecisionRationaleDocxRenderer delegate,
-            Object... arguments) throws Exception {
-        try {
-            method.invoke(delegate, arguments);
-        } catch (InvocationTargetException exception) {
-            Throwable cause = exception.getCause();
-            if (cause instanceof Exception checked) {
-                throw checked;
-            }
-            if (cause instanceof Error error) {
-                throw error;
-            }
-            throw new IllegalStateException(cause);
-        } catch (IllegalAccessException exception) {
-            throw new IllegalStateException(
-                    "Decision-report rendering stage is inaccessible", exception);
-        }
     }
 
     private static IllegalStateException unavailable(
