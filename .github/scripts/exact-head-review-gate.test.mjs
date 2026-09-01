@@ -6,6 +6,7 @@ import {
     classifyReview,
     evaluateExactHeadReview,
     normalizeLogin,
+    parseReviewCommentCount,
     parseReviewCoverage,
     parseReviewerLogins
 } from './exact-head-review-gate.mjs';
@@ -22,6 +23,7 @@ function pullRequest(overrides = {}) {
         html_url: 'https://github.example/pull/933',
         head: { sha: HEAD },
         base: { ref: 'main' },
+        changed_files: 2,
         merged_at: null,
         ...overrides
     };
@@ -44,15 +46,18 @@ const APPROVAL = `### 🟢 Approval recommended
 <summary>Review details</summary>
 
 - **Files reviewed:** 2/2 changed files
+- **Comments generated:** 0
 </details>`;
 
 const CHANGES = `### 🟡 Changes recommended
 
-- **Files reviewed:** 2/2 changed files`;
+- **Files reviewed:** 2/2 changed files
+- **Comments generated:** 1`;
 
 const CLOSER = `### 🔵 Needs a closer look
 
-- **Files reviewed:** 2/2 changed files`;
+- **Files reviewed:** 2/2 changed files
+- **Comments generated:** 1`;
 
 test('normalizes bot logins and reviewer configuration', () => {
     assert.equal(normalizeLogin('Copilot-Pull-Request-Reviewer[bot]'),
@@ -62,9 +67,11 @@ test('normalizes bot logins and reviewer configuration', () => {
         ['copilot', 'reviewer']);
 });
 
-test('parses the changed-file coverage published by Copilot', () => {
+test('parses the changed-file coverage and comment count published by Copilot', () => {
     assert.deepEqual(parseReviewCoverage(APPROVAL), { reviewed: 2, total: 2 });
     assert.equal(parseReviewCoverage('no coverage'), null);
+    assert.equal(parseReviewCommentCount(APPROVAL), 0);
+    assert.equal(parseReviewCommentCount('no count'), null);
 });
 
 test('classifies explicit review outcomes', () => {
@@ -121,6 +128,29 @@ test('blocks partial file coverage', () => {
     assert.equal(result.code, 'REVIEW_FILE_COVERAGE_INCOMPLETE');
 });
 
+test('blocks a review whose reported total differs from the pull request', () => {
+    const result = evaluateExactHeadReview({
+        pullRequest: pullRequest({ changed_files: 3 }),
+        reviews: [review(APPROVAL)],
+        threads: [],
+        expectedHeadSha: HEAD,
+        reviewerLogins: REVIEWERS
+    });
+    assert.equal(result.code, 'REVIEW_FILE_COVERAGE_INCOMPLETE');
+});
+
+test('requires a fresh comment-free exact-head review', () => {
+    const result = evaluateExactHeadReview({
+        pullRequest: pullRequest(),
+        reviews: [review(APPROVAL.replace('Comments generated:** 0',
+            'Comments generated:** 2'))],
+        threads: [],
+        expectedHeadSha: HEAD,
+        reviewerLogins: REVIEWERS
+    });
+    assert.equal(result.code, 'REVIEW_FOLLOW_UP_REQUIRED');
+});
+
 test('blocks unresolved current threads but ignores outdated threads', () => {
     const blocked = evaluateExactHeadReview({
         pullRequest: pullRequest(),
@@ -156,7 +186,7 @@ test('required Maven verification invokes the trusted exact-head gate', async ()
     const workflow = await readFile(
         new URL('../workflows/ci-cd.yml', import.meta.url), 'utf8');
     assert.match(workflow,
-        /types: \[opened, synchronize, reopened, ready_for_review\]/u);
+        /types: \[opened, synchronize, reopened, ready_for_review, converted_to_draft\]/u);
     assert.match(workflow,
         /name: Keep draft heads non-mergeable/u);
     assert.match(workflow,
