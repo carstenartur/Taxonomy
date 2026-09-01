@@ -15,7 +15,8 @@ A feature is only complete when all required columns show ✅.
 | View modes (6 modes) | ✅ | ✅ | ✅ §5 | ✅ #5–9, 39, 69 | ✅ | ✅ | ✅ Complete |
 | Architecture view | ✅ | ✅ | ✅ §7 | ✅ #20, 38 | ✅ | ✅ | ✅ Complete |
 | Relation proposals (accept/reject) | ✅ | ✅ | ✅ §9 | ✅ #12, 13, 36 | ✅ | ✅ | ✅ Complete |
-| Export (ArchiMate/Visio/Mermaid/JSON) | ✅ | ✅ | ✅ §10 | ✅ #23, 33 | ✅ | ✅ | ✅ Complete |
+| Snapshot-bound architecture handoff (JSON/SVG/PDF/ArchiMate/Mermaid/Structurizr) | ✅ | ✅ | ✅ [Architecture Handoff](ARCHITECTURE_HANDOFF.md) | ⚠️ workbench refresh required | ✅ | ⚠️ workbench text audit | ⚠️ Partial — exact snapshot authority is implemented; ArchiMate remains experimental and format-loss evidence is incomplete (#966, #967) |
+| Visio VSDX handoff | ⚠️ legacy convenience export only | ⚠️ legacy endpoint | ✅ [Architecture Handoff](ARCHITECTURE_HANDOFF.md) | ⚠️ existing screenshots overstate readiness | ⚠️ | ⚠️ | 🔴 Not certified or offered by the immutable-snapshot workflow until #965 is complete |
 | Full-text search | ✅ | ✅ | ✅ §11a | ✅ #29 | ✅ | ✅ | ✅ Complete |
 | Semantic/Hybrid search | ✅ | ✅ | ✅ §11b, §11c | ✅ #30, 31 | ✅ | ✅ | ✅ Complete |
 | Graph exploration (upstream/downstream) | ✅ | ✅ | ✅ §8 | ✅ #11, 21, 37 | ✅ | ✅ | ✅ Complete |
