@@ -2,6 +2,10 @@
 window.ArchitectureWorkbenchApi = (function () {
     'use strict';
 
+    const EXPORT_FORMATS = new Set([
+        'json', 'svg', 'pdf', 'archimate', 'mermaid', 'structurizr'
+    ]);
+
     async function getJson(url) {
         const response = await fetch(url, {
             method: 'GET',
@@ -33,6 +37,14 @@ window.ArchitectureWorkbenchApi = (function () {
         return encodeURIComponent(normalized);
     }
 
+    function exportFormat(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (!EXPORT_FORMATS.has(normalized)) {
+            throw new TypeError('architecture export format is invalid');
+        }
+        return normalized;
+    }
+
     function base(projectId, snapshotId) {
         return '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/architecture-workbench/' + snapshot(snapshotId);
@@ -41,6 +53,10 @@ window.ArchitectureWorkbenchApi = (function () {
     return {
         load: function (projectId, snapshotId) {
             return getJson(base(projectId, snapshotId));
+        },
+        exportUrl: function (projectId, snapshotId, formatId) {
+            return base(projectId, snapshotId)
+                + '/exports/' + encodeURIComponent(exportFormat(formatId));
         },
         svgUrl: function (projectId, snapshotId) {
             return base(projectId, snapshotId) + '.svg';
