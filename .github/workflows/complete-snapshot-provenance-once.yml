@@ -1,0 +1,235 @@
+name: Complete immutable snapshot provenance once
+
+on:
+  push:
+    branches:
+      - fix/snapshot-bound-architecture-exports
+    paths:
+      - .github/workflows/complete-snapshot-provenance-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: complete-snapshot-provenance-once
+  cancel-in-progress: false
+
+jobs:
+  complete:
+    if: github.repository == 'carstenartur/Taxonomy' && github.actor == 'carstenartur'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Wire requirement-version and fingerprint provenance through UI and tests
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one occurrence, found {count}')
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          js = Path('taxonomy-app/src/main/resources/static/js/architecture-workbench.js')
+          replace_once(
+              js,
+              '''    function renderProvenance(data) {
+                  const model = data.modelName ? '/' + data.modelName : '';
+                  const created = data.snapshotCreatedAt
+                      ? ' · ' + new Date(data.snapshotCreatedAt).toLocaleString()
+                      : '';
+                  document.getElementById('architectureProvenance').textContent =
+                      'Snapshot ' + data.snapshotId
+                      + ' · ' + text(data.snapshotStatus, 'status n/a')
+                      + ' · ' + text(data.provider, 'provider n/a') + model
+                      + ' · branch ' + text(data.branchName, 'n/a')
+                      + ' · commit ' + text(data.commitSha, 'n/a').slice(0, 12)
+                      + created;
+              }
+          ''',
+              '''    function renderProvenance(data) {
+                  const model = data.modelName ? '/' + data.modelName : '';
+                  const version = data.requirementVersionNumber
+                      ? ' · requirement v' + data.requirementVersionNumber
+                          + (data.requirementVersionId ? ' (#' + data.requirementVersionId + ')' : '')
+                      : '';
+                  const taxonomy = data.taxonomyFingerprint
+                      ? ' · taxonomy ' + String(data.taxonomyFingerprint).slice(0, 12)
+                      : '';
+                  const created = data.snapshotCreatedAt
+                      ? ' · ' + new Date(data.snapshotCreatedAt).toLocaleString()
+                      : '';
+                  document.getElementById('architectureProvenance').textContent =
+                      'Snapshot ' + data.snapshotId
+                      + version
+                      + ' · ' + text(data.snapshotStatus, 'status n/a')
+                      + ' · ' + text(data.provider, 'provider n/a') + model
+                      + taxonomy
+                      + ' · branch ' + text(data.branchName, 'n/a')
+                      + ' · commit ' + text(data.commitSha, 'n/a').slice(0, 12)
+                      + created;
+              }
+          ''',
+              'workbench provenance rendering')
+
+          export_test = Path(
+              'taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/'
+              'ArchitectureSnapshotExportServiceTest.java')
+          replace_once(
+              export_test,
+              '''                7L,
+                          "REQ-001",
+                          "Secure communications",
+                          "Need secure communications",
+          ''',
+              '''                7L,
+                          99L,
+                          3,
+                          "requirement-content-sha256",
+                          "REQ-001",
+                          "Secure communications",
+                          "Need secure communications",
+          ''',
+              'snapshot export test requirement provenance')
+          replace_once(
+              export_test,
+              '''                "MOCK",
+                          "deterministic",
+                          "workspace-a",
+          ''',
+              '''                "MOCK",
+                          "deterministic",
+                          "taxonomy-fingerprint",
+                          "prompt-fingerprint",
+                          "workspace-a",
+          ''',
+              'snapshot export test analysis provenance')
+          replace_once(
+              export_test,
+              '''                .contains("\\\"graphSha256\\\" : \\\"" + artifact.graphSha256() + "\\\"")
+                          .contains("\\\"workspaceId\\\" : \\\"workspace-a\\\"")
+          ''',
+              '''                .contains("\\\"graphSha256\\\" : \\\"" + artifact.graphSha256() + "\\\"")
+                          .contains("\\\"requirementVersionId\\\" : 99")
+                          .contains("\\\"requirementVersionNumber\\\" : 3")
+                          .contains("\\\"requirementContentHash\\\" : \\\"requirement-content-sha256\\\"")
+                          .contains("\\\"taxonomyFingerprint\\\" : \\\"taxonomy-fingerprint\\\"")
+                          .contains("\\\"promptFingerprint\\\" : \\\"prompt-fingerprint\\\"")
+                          .contains("\\\"workspaceId\\\" : \\\"workspace-a\\\"")
+          ''',
+              'snapshot evidence assertions')
+
+          service_test = Path(
+              'taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/'
+              'ArchitectureWorkbenchServiceTest.java')
+          replace_once(
+              service_test,
+              '''        assertThat(projection.requirementText()).isEqualTo("Provide secure command information.");
+                  assertThat(svg).contains("CP-1").contains("CR-1").doesNotContain("window.print");
+          ''',
+              '''        assertThat(projection.requirementText()).isEqualTo("Provide secure command information.");
+                  assertThat(projection.requirementVersionId()).isEqualTo(99L);
+                  assertThat(projection.requirementVersionNumber()).isEqualTo(3);
+                  assertThat(projection.requirementContentHash()).isEqualTo("hash");
+                  assertThat(projection.taxonomyFingerprint()).isEqualTo("taxonomy-fingerprint");
+                  assertThat(projection.promptFingerprint()).isEqualTo("prompt-fingerprint");
+                  assertThat(svg).contains("CP-1").contains("CR-1").doesNotContain("window.print");
+          ''',
+              'workbench service provenance assertions')
+
+          asset_test = Path(
+              'taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/'
+              'ArchitectureWorkbenchAssetContractTest.java')
+          replace_once(
+              asset_test,
+              '''                .contains("from persisted snapshot");
+          ''',
+              '''                .contains("from persisted snapshot")
+                          .contains("data.requirementVersionNumber")
+                          .contains("data.requirementVersionId")
+                          .contains("data.taxonomyFingerprint");
+          ''',
+              'asset provenance assertions')
+
+          browser = Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java')
+          replace_once(
+              browser,
+              '''                .contains("canonical-evidence")
+                          .contains("experimental-model-exchange")
+                          .contains("lossy-text-projection");
+          ''',
+              '''                .contains("canonical-evidence")
+                          .contains("requirementVersionId")
+                          .contains("requirementVersionNumber")
+                          .contains("requirementContentHash")
+                          .contains("taxonomyFingerprint")
+                          .contains("promptFingerprint")
+                          .contains("experimental-model-exchange")
+                          .contains("lossy-text-projection");
+          ''',
+              'browser evidence provenance assertions')
+
+          en = Path('docs/en/ARCHITECTURE_HANDOFF.md')
+          replace_once(
+              en,
+              '''Evidence JSON embeds the snapshot coordinates, graph fingerprint and all declared format profiles so provenance remains available after the HTTP headers have been separated from the file.
+          ''',
+              '''Evidence JSON embeds the snapshot coordinates, exact requirement version and content hash, provider/model, taxonomy and prompt fingerprints, graph fingerprint, and all declared format profiles so provenance remains available after the HTTP headers have been separated from the file.
+          ''',
+              'English provenance documentation')
+
+          de = Path('docs/de/ARCHITECTURE_HANDOFF.md')
+          replace_once(
+              de,
+              '''Das Evidenz-JSON enthält Snapshot-Koordinaten, Graph-Fingerprint und alle deklarierten Formatprofile, damit die Herkunft auch nach der Trennung der Datei von den HTTP-Headern erhalten bleibt.
+          ''',
+              '''Das Evidenz-JSON enthält Snapshot-Koordinaten, exakte Anforderungsversion und Inhalts-Hash, Provider/Modell, Taxonomie- und Prompt-Fingerprints, Graph-Fingerprint und alle deklarierten Formatprofile, damit die Herkunft auch nach der Trennung der Datei von den HTTP-Headern erhalten bleibt.
+          ''',
+              'German provenance documentation')
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/architecture-workbench.js
+          git diff --check -- \
+            taxonomy-app/src/main/resources/static/js/architecture-workbench.js \
+            taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java \
+            taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench \
+            docs/en/ARCHITECTURE_HANDOFF.md \
+            docs/de/ARCHITECTURE_HANDOFF.md
+          rm .github/workflows/complete-snapshot-provenance-once.yml
+
+      - name: Commit only the final provenance changes
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            taxonomy-app/src/main/resources/static/js/architecture-workbench.js \
+            taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java \
+            taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureSnapshotExportServiceTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureWorkbenchServiceTest.java \
+            taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureWorkbenchAssetContractTest.java \
+            docs/en/ARCHITECTURE_HANDOFF.md \
+            docs/de/ARCHITECTURE_HANDOFF.md \
+            .github/workflows/complete-snapshot-provenance-once.yml
+          actual=$(git diff --cached --name-only | sort)
+          expected=$(printf '%s\n' \
+            '.github/workflows/complete-snapshot-provenance-once.yml' \
+            'docs/de/ARCHITECTURE_HANDOFF.md' \
+            'docs/en/ARCHITECTURE_HANDOFF.md' \
+            'taxonomy-app/src/main/resources/static/js/architecture-workbench.js' \
+            'taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java' \
+            'taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureSnapshotExportServiceTest.java' \
+            'taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureWorkbenchAssetContractTest.java' \
+            'taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureWorkbenchServiceTest.java' | sort)
+          test "$actual" = "$expected"
+          git commit -m "Expose immutable requirement and analysis provenance"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
