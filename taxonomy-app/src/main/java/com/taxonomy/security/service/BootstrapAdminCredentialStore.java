@@ -2,14 +2,19 @@ package com.taxonomy.security.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.AclEntry;
 import java.nio.file.attribute.AclEntryPermission;
@@ -17,14 +22,20 @@ import java.nio.file.attribute.AclEntryType;
 import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.EnumSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Delivers a generated local-administrator bootstrap credential outside the
  * application log stream in an owner-only temporary file.
+ *
+ * <p>The final file name is derived from a one-way fingerprint of the configured
+ * data-source URL. That makes the deletion target stable across process restarts
+ * without writing the URL or credential into the file name or log.</p>
  */
 @Service
 @Profile("!keycloak")
@@ -34,47 +45,61 @@ public class BootstrapAdminCredentialStore {
             LoggerFactory.getLogger(BootstrapAdminCredentialStore.class);
     private static final String FILE_PREFIX = "taxonomy-admin-bootstrap-";
     private static final String FILE_SUFFIX = ".txt";
+    private static final String PENDING_SUFFIX = ".pending";
+    private static final String DEFAULT_STORAGE_IDENTITY = "taxonomy-local";
 
     private final Path directory;
-    private final AtomicReference<Path> publishedFile = new AtomicReference<>();
+    private final Path credentialFile;
 
-    public BootstrapAdminCredentialStore() {
-        this(Path.of(System.getProperty("java.io.tmpdir")));
+    @Autowired
+    public BootstrapAdminCredentialStore(
+            @Value("${spring.datasource.url:taxonomy-local}") String storageIdentity) {
+        this(Path.of(System.getProperty("java.io.tmpdir")), storageIdentity);
     }
 
     BootstrapAdminCredentialStore(Path directory) {
+        this(directory, DEFAULT_STORAGE_IDENTITY);
+    }
+
+    BootstrapAdminCredentialStore(Path directory, String storageIdentity) {
         this.directory = Objects.requireNonNull(directory, "directory")
                 .toAbsolutePath()
                 .normalize();
+        this.credentialFile = this.directory.resolve(
+                FILE_PREFIX + stableKey(storageIdentity) + FILE_SUFFIX);
     }
 
     /**
-     * Writes the credential to a newly created owner-only file and returns its
-     * absolute path. A second publication replaces and removes the first file.
+     * Writes the credential to an owner-only staging file and publishes it at the
+     * restart-stable data-source-specific path.
      */
     public Path publish(String credential) {
         if (credential == null || credential.isBlank()) {
             throw new IllegalArgumentException("Bootstrap credential must not be blank");
         }
 
-        Path file = null;
+        Path stagingFile = null;
+        boolean movedToPublishedPath = false;
         try {
             Files.createDirectories(directory);
-            file = Files.createTempFile(directory, FILE_PREFIX, FILE_SUFFIX);
-            restrictToOwner(file);
-            Files.writeString(file,
+            stagingFile = Files.createTempFile(
+                    directory,
+                    credentialFile.getFileName().toString() + "-",
+                    PENDING_SUFFIX);
+            restrictToOwner(stagingFile);
+            Files.writeString(stagingFile,
                     credential + System.lineSeparator(),
                     StandardCharsets.UTF_8,
                     StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE);
-            restrictToOwner(file);
+            restrictToOwner(stagingFile);
 
-            Path previous = publishedFile.getAndSet(file);
-            if (previous != null && !previous.equals(file)) {
-                deleteQuietly(previous);
-            }
+            moveReplacing(stagingFile, credentialFile);
+            movedToPublishedPath = true;
+            stagingFile = null;
+            restrictToOwner(credentialFile);
 
-            Path absoluteFile = file.toAbsolutePath().normalize();
+            Path absoluteFile = credentialFile.toAbsolutePath().normalize();
             log.warn("BOOTSTRAP_ADMIN_CREDENTIAL_FILE path={} "
                             + "Read this owner-only file once, sign in as 'admin', "
                             + "and replace the password immediately. The file is "
@@ -82,8 +107,11 @@ public class BootstrapAdminCredentialStore {
                     absoluteFile);
             return absoluteFile;
         } catch (IOException | RuntimeException exception) {
-            if (file != null) {
-                deleteQuietly(file);
+            if (stagingFile != null) {
+                deleteQuietly(stagingFile);
+            }
+            if (movedToPublishedPath) {
+                deleteQuietly(credentialFile);
             }
             throw new IllegalStateException(
                     "Unable to create an owner-only administrator bootstrap credential file",
@@ -91,21 +119,47 @@ public class BootstrapAdminCredentialStore {
         }
     }
 
-    /** Removes the file published by this process, if one exists. */
+    /**
+     * Removes this data source's published credential, including after a process
+     * restart, if the file exists.
+     */
     public void deletePublishedCredential() {
-        Path file = publishedFile.getAndSet(null);
-        if (file == null) {
-            return;
-        }
         try {
-            if (Files.deleteIfExists(file)) {
+            if (Files.deleteIfExists(credentialFile)) {
                 log.info("BOOTSTRAP_ADMIN_CREDENTIAL_FILE_REMOVED path={}",
-                        file.toAbsolutePath().normalize());
+                        credentialFile.toAbsolutePath().normalize());
             }
         } catch (IOException exception) {
             log.error("BOOTSTRAP_ADMIN_CREDENTIAL_FILE_REMOVE_FAILED path={} "
                             + "Delete this owner-only file manually.",
-                    file.toAbsolutePath().normalize());
+                    credentialFile.toAbsolutePath().normalize());
+        }
+    }
+
+    private static void moveReplacing(Path source, Path target) throws IOException {
+        try {
+            Files.move(
+                    source,
+                    target,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException
+                | FileAlreadyExistsException
+                | UnsupportedOperationException exception) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static String stableKey(String storageIdentity) {
+        String normalized = storageIdentity == null || storageIdentity.isBlank()
+                ? DEFAULT_STORAGE_IDENTITY
+                : storageIdentity.strip();
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(normalized.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest).substring(0, 32);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
     }
 

@@ -49,15 +49,54 @@ class BootstrapAdminCredentialStoreTest {
     }
 
     @Test
-    void secondPublicationRemovesPreviousCredential() {
+    void secondPublicationAtomicallyReplacesCredentialAtTheSamePath()
+            throws Exception {
         BootstrapAdminCredentialStore store =
                 new BootstrapAdminCredentialStore(temporaryDirectory);
 
         Path first = store.publish("first-bootstrap-secret");
         Path second = store.publish("second-bootstrap-secret");
 
-        assertThat(first).doesNotExist();
-        assertThat(second).exists();
+        assertThat(second).isEqualTo(first);
+        assertThat(Files.readString(second, StandardCharsets.UTF_8).strip())
+                .isEqualTo("second-bootstrap-secret");
+        try (var files = Files.list(temporaryDirectory)) {
+            assertThat(files).containsExactly(second);
+        }
+    }
+
+    @Test
+    void restartedStoreDeletesCredentialPublishedForTheSameDataSource() {
+        BootstrapAdminCredentialStore firstProcess =
+                new BootstrapAdminCredentialStore(
+                        temporaryDirectory,
+                        "jdbc:hsqldb:file:restart-test");
+        Path published = firstProcess.publish("restart-bootstrap-secret");
+
+        BootstrapAdminCredentialStore restartedProcess =
+                new BootstrapAdminCredentialStore(
+                        temporaryDirectory,
+                        "jdbc:hsqldb:file:restart-test");
+        restartedProcess.deletePublishedCredential();
+
+        assertThat(published).doesNotExist();
+    }
+
+    @Test
+    void independentDataSourcesUseIndependentCredentialPaths() throws Exception {
+        BootstrapAdminCredentialStore first =
+                new BootstrapAdminCredentialStore(temporaryDirectory, "jdbc:test:first");
+        BootstrapAdminCredentialStore second =
+                new BootstrapAdminCredentialStore(temporaryDirectory, "jdbc:test:second");
+
+        Path firstFile = first.publish("first-data-source-secret");
+        Path secondFile = second.publish("second-data-source-secret");
+
+        assertThat(firstFile).isNotEqualTo(secondFile);
+        assertThat(Files.readString(firstFile, StandardCharsets.UTF_8).strip())
+                .isEqualTo("first-data-source-secret");
+        assertThat(Files.readString(secondFile, StandardCharsets.UTF_8).strip())
+                .isEqualTo("second-data-source-secret");
     }
 
     @Test
