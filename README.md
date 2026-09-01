@@ -8,17 +8,20 @@
 [![DOI](https://zenodo.org/badge/1172765819.svg)](https://zenodo.org/badge/latestdoi/1172765819)
 [![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)](https://github.com/carstenartur/Taxonomy/releases/latest)
 
-**Transform requirements, regulations, and architecture knowledge into traceable architecture models.**
+**Generate plausible, traceable architecture prototypes from requirements—rapidly, with AI assistance and human control.**
 
-Taxonomy Architecture Analyzer combines a hierarchical architecture catalogue, a version-controlled architecture DSL, full-text and vector search, source provenance, architecture relations, and optional LLM-assisted analysis in one Spring Boot application.
+Taxonomy Architecture Analyzer uses hierarchical AI-assisted analysis to turn requirements, regulations, and source documents into plausible cross-layer architecture prototypes. It traverses the architecture catalogue, scores relevant paths, proposes elements and relations, and produces inspectable views and exportable models.
 
-The system is intended to reduce the cognitive load of architecture analysis while keeping every accepted change reviewable, attributable, comparable, and reversible.
+The primary goal is to shorten the path from an unstructured need to a useful first architecture model by automating much of the initial catalogue analysis and model construction. The result is deliberately a prototype rather than an authoritative decision: scores, rationales, source mappings, proposals, and accepted changes remain reviewable, attributable, comparable, refinable, versioned, and reversible.
+
+By externalizing taxonomy paths, scores, relations, provenance, and history, the workbench also reduces the amount of architecture context users must reconstruct and keep in mind at once.
 
 ## What the application provides
 
 | Capability | Description |
 |---|---|
-| Hierarchical requirement analysis | Scores catalogue roots, intermediate nodes, and leaves instead of treating final nodes as isolated labels |
+| Rapid architecture prototyping | Derives candidate cross-layer architecture elements, relations, and views from requirements and source documents |
+| Hierarchical analysis trace | Scores catalogue roots, intermediate nodes, and leaves while preserving the paths and rationales behind the result |
 | Architecture views | Builds cross-layer views from selected elements and typed relations |
 | Traceable source import | Extracts bounded candidates from PDF and DOCX sources and links accepted requirements to source versions and fragments |
 | Versioned architecture DSL | Stores architecture changes in JGit with branches, history, semantic diffs, merges, reverts, and selective transfer |
@@ -32,13 +35,14 @@ The system is intended to reduce the cognitive load of architecture analysis whi
 ```mermaid
 flowchart LR
     A[Requirement or source document] --> B[Candidate extraction]
-    B --> C[Hierarchical analysis]
-    C --> D[Human review]
-    D --> E[Versioned architecture change]
-    E --> F[Diagram, report, or data export]
+    B --> C[AI-assisted hierarchical analysis]
+    C --> D[Architecture prototype]
+    D --> E[Human review and refinement]
+    E --> F[Versioned architecture change]
+    F --> G[Diagram, report, or data export]
 ```
 
-LLM results are proposals, not authoritative architecture decisions. Users remain responsible for reviewing scores, rationales, relations, and source mappings before accepting them.
+AI-generated scores, relations, and architecture prototypes are proposals, not authoritative decisions. Users remain responsible for reviewing rationales, source mappings, and model content before accepting them.
 
 ## Architecture Impact Showcase
 
