@@ -22,7 +22,6 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -31,7 +30,6 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -65,7 +63,8 @@ class ArchitectureSnapshotExportServiceTest {
     void everyFormatUsesTheSameScopedPersistedProjectionAndGraphFingerprint() {
         WorkspaceContext context = new WorkspaceContext("alice", "workspace-a", "feature-a");
         Projection projection = projection(diagram());
-        ArchiMateModel archiMateModel = mock(ArchiMateModel.class);
+        ArchiMateModel archiMateModel = new ArchiMateModel(
+                "export", List.of(), List.of(), Map.of(), null);
         when(workbenchService.load(42L, "snapshot-1", "alice", context))
                 .thenReturn(projection);
         when(svgRenderer.render(projection.scene())).thenReturn("<svg/>");
@@ -171,9 +170,8 @@ class ArchitectureSnapshotExportServiceTest {
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("Unsupported architecture export format");
 
-        verify(workbenchService, never())
-                .load(42L, "snapshot-1", "alice", context);
         verifyNoInteractions(
+                workbenchService,
                 svgRenderer,
                 pdfRenderer,
                 archiMateDiagramService,
@@ -216,7 +214,7 @@ class ArchitectureSnapshotExportServiceTest {
                 "Need secure communications",
                 "snapshot-1",
                 AnalysisStatus.SUCCESS,
-                Instant.parse("2026-09-01T12:00:00Z"),
+                null,
                 "MOCK",
                 "deterministic",
                 "workspace-a",
