@@ -24,7 +24,7 @@ The maintainer will assess the report, coordinate remediation, and agree on disc
 
 The application has no reusable built-in administrator password.
 
-- On a new local database, an unset `TAXONOMY_ADMIN_PASSWORD` causes a high-entropy one-time bootstrap password to be generated and printed once to the startup log.
+- On a new local database, an unset `TAXONOMY_ADMIN_PASSWORD` causes a high-entropy one-time bootstrap password to be written to a uniquely named owner-only temporary file. The startup log contains only the file path.
 - Bootstrap accounts must replace their initial password.
 - The `production` profile refuses missing, known-placeholder, or shorter-than-16-character administrator passwords before an account can be created.
 - External Git access tokens are read from deployment configuration and are not persisted in repository entities or returned by status APIs.

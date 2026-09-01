@@ -25,10 +25,12 @@ For local evaluation only:
 
 ```bash
 docker pull ghcr.io/carstenartur/taxonomy:latest
-docker run --rm -p 8080:8080 ghcr.io/carstenartur/taxonomy:latest
+docker run --rm -p 8080:8080 \
+  -e TAXONOMY_ADMIN_PASSWORD='choose-a-unique-local-password' \
+  ghcr.io/carstenartur/taxonomy:latest
 ```
 
-Open <http://localhost:8080>. The development default is `admin` / `admin`; never expose that configuration to a network.
+Open <http://localhost:8080> and sign in as `admin` with the password supplied above. There is no reusable development password. When the variable is intentionally omitted outside production, the generated credential remains inside the container in the owner-only temporary file whose path is logged; supplying the value explicitly is simpler for an ephemeral container.
 
 ### Cloud LLM
 
@@ -106,7 +108,7 @@ Runtime variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `TAXONOMY_ADMIN_PASSWORD` | `admin` outside production | Initial local administrator password |
+| `TAXONOMY_ADMIN_PASSWORD` | empty outside production; required in production | Initial local administrator password. An empty non-production value creates an owner-only one-time credential file and logs only its path. |
 | `LLM_PROVIDER` | auto-detected | `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL` or `LOCAL_ONNX` |
 | `GEMINI_API_KEY`, `OPENAI_API_KEY`, … | empty | Provider credentials |
 | `TAXONOMY_EMBEDDING_ENABLED` | `true` | Enable semantic/KNN search |

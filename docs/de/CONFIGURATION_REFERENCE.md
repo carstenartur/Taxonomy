@@ -162,7 +162,7 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 | Variable | Property / Gültigkeit | Standard | Bedeutung |
 |---|---|---|---|
 | `ADMIN_PASSWORD` | `admin.token` | leer | Optionaler `X-Admin-Token`/Bearer für sensible Zusatzprüfungen; ersetzt keine rollenbasierte Anmeldung. |
-| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | leer außerhalb Produktion; dort erforderlich | Initiales lokales Administratorpasswort. |
+| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | leer außerhalb Produktion; dort erforderlich | Initiales lokales Administratorpasswort. Ein leerer Nicht-Produktionswert schreibt ein einmaliges zufälliges Passwort in eine eigentümergeschützte temporäre Datei; protokolliert wird nur ihr Pfad. |
 | `TAXONOMY_LOGIN_RATE_LIMIT` | `taxonomy.security.login-rate-limit.enabled` | `true` | Login-Fehlversuchsbegrenzung. |
 | `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `taxonomy.security.login-rate-limit.max-attempts` | `5` | Fehlversuche bis zur Sperre. |
 | `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `taxonomy.security.login-rate-limit.lockout-seconds` | `300` | Sperrdauer. |

@@ -162,7 +162,7 @@ Effective policy and readiness can be inspected at `GET /api/ai-automation`. Gen
 | Variable | Spring property / scope | Default | Meaning |
 |---|---|---|---|
 | `ADMIN_PASSWORD` | `admin.token` | empty | Optional `X-Admin-Token`/Bearer value for sensitive Actuator and legacy admin-token checks. Empty disables this extra token layer; it does not replace role-based login authorization. |
-| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | empty outside production; required in production | Initial local administrator credential. Empty non-production starts use a one-time random bootstrap password. |
+| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | empty outside production; required in production | Initial local administrator credential. Empty non-production starts write a one-time random password to an owner-only temporary file and log only its path. |
 | `TAXONOMY_LOGIN_RATE_LIMIT` | `taxonomy.security.login-rate-limit.enabled` | `true` | Enables failed-login rate limiting by client address. |
 | `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `taxonomy.security.login-rate-limit.max-attempts` | `5` | Failed attempts allowed before lockout. |
 | `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `taxonomy.security.login-rate-limit.lockout-seconds` | `300` | Lockout duration. |

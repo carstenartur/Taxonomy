@@ -8,10 +8,10 @@
 
 | Step | Action | Where |
 |:---:|---|---|
-| **1** | Log in with `admin` / `admin` | Login page at `http://localhost:8080` |
+| **1** | Log in as `admin` with the configured password, or read the owner-only bootstrap file whose path appears in the local startup log | Login page at `http://localhost:8080` |
 | **2** | Type your requirement | Right panel → "Business Requirement Analysis" text area |
 
-> ⚠️ **Security:** The default credentials (`admin` / `admin`) are for local development only. For any non-local deployment, change the password via the `TAXONOMY_ADMIN_PASSWORD` environment variable.
+> ⚠️ **Security:** There is no reusable default password. Set `TAXONOMY_ADMIN_PASSWORD` for any deployment. An unset non-production value creates a one-time owner-only credential file and logs only its path.
 | **3** | Click **Analyze with AI** | Button below the text area |
 | **4** | Explore the scored tree and architecture view | Left panel (tree) + right panel (architecture view card) |
 | **5** | Export your diagram | Left panel → ArchiMate / Visio / Mermaid / JSON buttons |
@@ -106,7 +106,7 @@ Open your web browser and navigate to the application URL (for example `http://l
 
 The application loads as a single page. A login page is presented on first access — sign in with the default credentials (`admin` / `admin`) or with the password configured via the `TAXONOMY_ADMIN_PASSWORD` environment variable. After login, all standard features are available; administrator features additionally require unlocking admin mode (see [Section 14](#14-administration)).
 
-> ⚠️ **Security:** The default password `admin` is intended for local development only. Set `TAXONOMY_ADMIN_PASSWORD` before exposing the application on any network. See [Security](SECURITY.md) for details.
+> ⚠️ **Security:** There is no reusable default password. Set `TAXONOMY_ADMIN_PASSWORD` before exposing the application on any network. See [Security](SECURITY.md) for the owner-only local bootstrap-file path.
 
 **First-time users** will see a **Welcome overlay** with a 3-step guide explaining how to get started:
 1. Describe your requirement in the text area

@@ -73,7 +73,7 @@ Klicken Sie auf eine Export-Schaltfläche, um die Architektur als ArchiMate XML,
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/analyze \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/analyze \
   -d "businessText=Provide+integrated+communication+platform+for+hospital+staff" \
   -d "includeArchitectureView=true"
 ```
@@ -101,7 +101,7 @@ Siehe auch [Benutzerhandbuch](USER_GUIDE.md) für Details zur Graph-Explorer-Obe
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ```
 
 </details>
@@ -138,7 +138,7 @@ curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Patient data sharing across hospital departments",
@@ -205,26 +205,26 @@ Nach dem Akzeptieren wird die Beziehung im Wissensgraphen sichtbar:
 
 ```bash
 # Vorschläge für einen Knoten generieren
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/propose \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
   -d '{"sourceCode": "CR-1047", "relationType": "SUPPORTS"}'
 
 # Ausstehende Vorschläge auflisten
-curl -u admin:admin "http://localhost:8080/api/proposals/pending"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/proposals/pending"
 
 # Einen Vorschlag akzeptieren
-curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/accept"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/proposals/42/accept"
 
 # Einen Vorschlag ablehnen
-curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/reject"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/proposals/42/reject"
 
 # Massenweise akzeptieren/ablehnen
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/bulk \
   -H "Content-Type: application/json" \
   -d '{"ids": [42, 43, 44], "action": "ACCEPT"}'
 
 # Eine Entscheidung zurücknehmen
-curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/revert"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/proposals/42/revert"
 ```
 
 </details>
@@ -250,7 +250,7 @@ Siehe auch [Benutzerhandbuch](USER_GUIDE.md) für Details zur Empfehlungs-Oberfl
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/recommend \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Reliable remote access and coordination services for distributed field teams",
@@ -296,7 +296,7 @@ Klicken Sie in der **Architekturansicht** auf die gewünschte Export-Schaltfläc
 ### ArchiMate XML
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.xml
@@ -307,7 +307,7 @@ Die resultierende XML-Datei kann in **Archi**, **BiZZdesign**, **MEGA** oder jed
 ### Visio
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.vsdx
@@ -316,7 +316,7 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
 ### Mermaid
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
   -d '{"businessText": "Integrierte Kommunikationsplattform für Krankenhauspersonal", "locale": "de"}'
 ```
@@ -419,7 +419,7 @@ Klicken Sie auf **ArchiMate**, um die Architektur als XML herunterzuladen. Impor
 ### Schritt 1 — Aktuellen Zustand als DSL exportieren
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/dsl/export"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/export"
 ```
 
 Gibt DSL-Text zurück wie:
@@ -450,7 +450,7 @@ relation CI-1023 REALIZES CP-1022 {
 Ändern Sie die DSL (Elemente, Beziehungen, Nachweise hinzufügen) und committen Sie:
 
 ```bash
-curl -u admin:admin -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=add+field+monitoring+relations" \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=add+field+monitoring+relations" \
   -H "Content-Type: text/plain" \
   -d @architecture.taxdsl
 ```
@@ -460,13 +460,13 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/commit?branch=draft&m
 Zeigen Sie den Diff zwischen zwei Commits an:
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/dsl/diff/semantic/{beforeId}/{afterId}"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/diff/semantic/{beforeId}/{afterId}"
 ```
 
 ### Schritt 4 — In accepted zusammenführen
 
 ```bash
-curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=draft&intoBranch=accepted"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/merge?fromBranch=draft&intoBranch=accepted"
 ```
 
 Die zusammengeführten Änderungen werden in die Beziehungsdatenbank materialisiert und werden im Graphen und in den Architekturansichten sichtbar.

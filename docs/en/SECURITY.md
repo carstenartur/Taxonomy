@@ -35,7 +35,7 @@ The local-user profile creates the `admin` account on the first startup of a new
 
 | Situation | Behaviour |
 |---|---|
-| `TAXONOMY_ADMIN_PASSWORD` is unset or blank in a non-production deployment | A high-entropy one-time bootstrap password is generated and printed once to the startup log. The account is marked for password replacement. |
+| `TAXONOMY_ADMIN_PASSWORD` is unset or blank in a non-production deployment | A high-entropy one-time bootstrap password is written to a uniquely named owner-only temporary file. Only its absolute path is logged. The account is marked for password replacement, and the file is removed after the successfully committed administrator password change. |
 | `TAXONOMY_ADMIN_PASSWORD` is set | The configured value is used for initial account creation. `TAXONOMY_REQUIRE_PASSWORD_CHANGE` controls whether it must be replaced at first login. |
 | A historical database still contains the removed `admin` credential | The account is marked for mandatory password replacement without re-locking normal accounts on every restart. |
 | The `production` profile is active | Startup fails before account creation when the password is missing, is a known placeholder, or contains fewer than 16 characters. |
@@ -47,7 +47,7 @@ export TAXONOMY_ADMIN_PASSWORD='use-a-unique-local-development-secret'
 ./mvnw -pl taxonomy-app -am spring-boot:run
 ```
 
-Do not copy a password from documentation, tests, screenshots, or examples into a deployed environment.
+Read an automatically generated credential file only from the trusted host account that owns the application process. If the filesystem cannot enforce owner-only POSIX permissions or an owner-only ACL, administrator creation fails closed. Do not copy a password from documentation, tests, screenshots, or examples into a deployed environment.
 
 ## Roles and permissions
 

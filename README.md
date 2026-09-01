@@ -120,7 +120,7 @@ cd Taxonomy
 
 Open `http://localhost:8080`.
 
-On a new local database, the application creates the `admin` account with a **random one-time bootstrap password** and prints that value once in the startup log. The password must be replaced at the first login. No reusable password is published in this repository.
+On a new local database, the application creates the `admin` account with a **random one-time bootstrap password** in a uniquely named owner-only temporary file. The startup log contains only the file path. Read the file once, sign in, and replace the password immediately; the application removes the file after the committed administrator password change. No reusable password is published in this repository.
 
 To provide the initial password explicitly for local development:
 

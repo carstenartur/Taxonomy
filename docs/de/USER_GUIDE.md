@@ -4,10 +4,10 @@
 
 | Schritt | Aktion | Wo |
 |:---:|---|---|
-| **1** | Melden Sie sich mit `admin` / `admin` an | Anmeldeseite unter `http://localhost:8080` |
+| **1** | Melden Sie sich als `admin` mit dem konfigurierten Passwort an oder lesen Sie die nur für den Prozesseigentümer zugängliche Bootstrap-Datei, deren Pfad im lokalen Startprotokoll steht | Anmeldeseite unter `http://localhost:8080` |
 | **2** | Geben Sie Ihre Anforderung ein | Rechtes Panel → Textbereich „Business Requirement Analysis" |
 
-> ⚠️ **Sicherheit:** Die Standard-Anmeldedaten (`admin` / `admin`) sind nur für die lokale Entwicklung gedacht. Setzen Sie `TAXONOMY_ADMIN_PASSWORD`, bevor Sie die Anwendung in einem Netzwerk bereitstellen.
+> ⚠️ **Sicherheit:** Es gibt kein wiederverwendbares Standardpasswort. Setzen Sie `TAXONOMY_ADMIN_PASSWORD` für jede Bereitstellung. Ein leerer Wert außerhalb der Produktion erzeugt eine einmalige, eigentümergeschützte Zugangsdaten-Datei und protokolliert nur deren Pfad.
 | **3** | Klicken Sie auf **Analyze with AI** | Schaltfläche unterhalb des Textbereichs |
 | **4** | Erkunden Sie den bewerteten Baum und die Architekturansicht | Linkes Panel (Baum) + rechtes Panel (Architekturansicht-Karte) |
 | **5** | Exportieren Sie Ihr Diagramm | Linkes Panel → ArchiMate / Visio / Mermaid / JSON Schaltflächen |
@@ -102,7 +102,7 @@ Der **Taxonomy Architecture Analyzer** ist eine Webanwendung, die Architekten, A
 
 Die Anwendung wird als einzelne Seite geladen. Beim ersten Zugriff wird eine Anmeldeseite angezeigt — melden Sie sich mit den Standard-Anmeldedaten (`admin` / `admin`) oder mit dem über die Umgebungsvariable `TAXONOMY_ADMIN_PASSWORD` konfigurierten Passwort an. Nach der Anmeldung sind alle Standardfunktionen verfügbar; Administratorfunktionen erfordern zusätzlich das Freischalten des Admin-Modus (siehe [Abschnitt 14](#14-administration)).
 
-> ⚠️ **Sicherheit:** Das Standardpasswort `admin` ist nur für die lokale Entwicklung gedacht. Setzen Sie `TAXONOMY_ADMIN_PASSWORD`, bevor Sie die Anwendung in einem Netzwerk bereitstellen. Siehe [Sicherheit](SECURITY.md) für Details.
+> ⚠️ **Sicherheit:** Es gibt kein wiederverwendbares Standardpasswort. Setzen Sie `TAXONOMY_ADMIN_PASSWORD`, bevor Sie die Anwendung in einem Netzwerk bereitstellen. Details zur eigentümergeschützten lokalen Bootstrap-Datei stehen unter [Sicherheit](SECURITY.md).
 
 **Erstbenutzer** sehen ein **Willkommens-Overlay** mit einer 3-Schritte-Anleitung, die erklärt, wie Sie beginnen:
 1. Beschreiben Sie Ihre Anforderung im Textbereich

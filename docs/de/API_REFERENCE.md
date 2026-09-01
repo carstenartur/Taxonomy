@@ -39,7 +39,7 @@ Interaktive Dokumentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui
 Alle `/api/**`-Endpunkte erfordern Authentifizierung über **HTTP Basic**:
 
 ```bash
-curl -u admin:admin http://localhost:8080/api/taxonomy
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" http://localhost:8080/api/taxonomy
 ```
 
 Standard-Anmeldedaten: `admin` / `admin` (konfigurierbar über `TAXONOMY_ADMIN_PASSWORD`).
@@ -59,7 +59,7 @@ POST /api/analyze
 **Anfrage:**
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/analyze \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/analyze \
   -H "Content-Type: application/json" \
   -d '{"businessText": "Provide integrated communication services for hospital staff", "includeArchitectureView": true}'
 ```
@@ -102,7 +102,7 @@ Generiert eine natürlichsprachliche Erklärung, warum ein bestimmter Blattknote
 **Anfrage:**
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/justify-leaf \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/justify-leaf \
   -H "Content-Type: application/json" \
   -d '{"nodeCode": "CR-1047", "businessText": "Secure voice communications", "scores": {"CR-1047": 87}}'
 ```
@@ -114,31 +114,31 @@ curl -u admin:admin -X POST http://localhost:8080/api/justify-leaf \
 ### Volltextsuche
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/search?q=voice+communications&maxResults=20"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search?q=voice+communications&maxResults=20"
 ```
 
 ### Semantische Suche (erfordert aktivierte Embeddings)
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/search/semantic?q=secure+communications&maxResults=20"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/semantic?q=secure+communications&maxResults=20"
 ```
 
 ### Hybride Suche (Reciprocal Rank Fusion)
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/search/hybrid?q=voice+communications&maxResults=20"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/hybrid?q=voice+communications&maxResults=20"
 ```
 
 ### Graph-semantische Suche
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/search/graph?q=communications&maxResults=20"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/graph?q=communications&maxResults=20"
 ```
 
 ### Ähnliche Knoten finden
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/search/similar/CR-1047?topK=5"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/search/similar/CR-1047?topK=5"
 ```
 
 ---
@@ -148,7 +148,7 @@ curl -u admin:admin "http://localhost:8080/api/search/similar/CR-1047?topK=5"
 ### Upstream-Nachbarn
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/upstream?maxHops=2"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/upstream?maxHops=2"
 ```
 
 **Antwort (200):**
@@ -166,19 +166,19 @@ curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/upstream?maxHo
 ### Downstream-Nachbarn
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/downstream?maxHops=2"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/downstream?maxHops=2"
 ```
 
 ### Ausfallwirkungsanalyse
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact?maxHops=3"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/graph/node/CR-1047/failure-impact?maxHops=3"
 ```
 
 ### Anforderungswirkungsanalyse
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/graph/impact \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/graph/impact \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CR-1047": 87, "CP-1023": 92}, "businessText": "Secure voice", "maxHops": 2}'
 ```
@@ -190,20 +190,20 @@ curl -u admin:admin -X POST http://localhost:8080/api/graph/impact \
 ### Alle Beziehungen auflisten
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/relations"
-curl -u admin:admin "http://localhost:8080/api/relations?type=REALIZES"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/relations"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/relations?type=REALIZES"
 ```
 
 ### Beziehungen für einen Knoten abrufen
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/node/CP-1023/relations"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/node/CP-1023/relations"
 ```
 
 ### Beziehung erstellen (erfordert ARCHITECT- oder ADMIN-Rolle)
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/relations \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/relations \
   -H "Content-Type: application/json" \
   -d '{"sourceCode": "CP-1023", "targetCode": "CR-1047", "relationType": "REALIZES"}'
 ```
@@ -211,7 +211,7 @@ curl -u admin:admin -X POST http://localhost:8080/api/relations \
 ### Beziehung löschen (erfordert ARCHITECT- oder ADMIN-Rolle)
 
 ```bash
-curl -u admin:admin -X DELETE http://localhost:8080/api/relations/42
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X DELETE http://localhost:8080/api/relations/42
 ```
 
 ---
@@ -221,7 +221,7 @@ curl -u admin:admin -X DELETE http://localhost:8080/api/relations/42
 ### KI-Vorschläge generieren
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/propose \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
   -d '{"sourceCode": "CR-1047", "relationType": "SUPPORTS"}'
 ```
@@ -229,21 +229,21 @@ curl -u admin:admin -X POST http://localhost:8080/api/proposals/propose \
 ### Ausstehende Vorschläge auflisten
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/proposals/pending"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/proposals/pending"
 ```
 
 ### Akzeptieren / Ablehnen / Zurücksetzen
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/42/accept
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/42/reject
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/42/revert
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/42/accept
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/42/reject
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/42/revert
 ```
 
 ### Massenaktion
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/proposals/bulk \
   -H "Content-Type: application/json" \
   -d '{"ids": [42, 43, 44], "action": "ACCEPT"}'
 ```
@@ -255,7 +255,7 @@ curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
 ### ArchiMate-XML
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88}}' \
   -o architecture.xml
@@ -264,7 +264,7 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
 ### Visio (.vsdx)
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88}}' \
   -o architecture.vsdx
@@ -273,7 +273,7 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
 ### Mermaid
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88}}'
 ```
@@ -282,12 +282,12 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
 
 ```bash
 # Exportieren
-curl -u admin:admin -X POST http://localhost:8080/api/scores/export \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/export \
   -H "Content-Type: application/json" \
   -d '{"requirement": "Secure voice comms", "scores": {"CP-1023": 92}}'
 
 # Importieren
-curl -u admin:admin -X POST http://localhost:8080/api/scores/import \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/import \
   -H "Content-Type: application/json" \
   -d @saved-analysis.json
 ```
@@ -302,18 +302,18 @@ Analyseergebnisse als formatierte Berichte exportieren:
 
 ```bash
 # Markdown
-curl -u admin:admin -X POST http://localhost:8080/api/report/markdown \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/report/markdown \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92}, "businessText": "Secure voice comms", "minScore": 50}'
 
 # HTML
-curl -u admin:admin -X POST http://localhost:8080/api/report/html ...
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/report/html ...
 
 # DOCX
-curl -u admin:admin -X POST http://localhost:8080/api/report/docx ... -o report.docx
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/report/docx ... -o report.docx
 
 # JSON
-curl -u admin:admin -X POST http://localhost:8080/api/report/json ...
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/report/json ...
 ```
 
 ---
@@ -323,7 +323,7 @@ curl -u admin:admin -X POST http://localhost:8080/api/report/json ...
 ### Lückenanalyse
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88}, "businessText": "Secure voice"}'
 ```
@@ -333,7 +333,7 @@ curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
 ### Empfehlungen
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/recommend \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CO-1056": 88, "CR-1047": 81}, "businessText": "Satellite communications"}'
 ```
@@ -344,10 +344,10 @@ curl -u admin:admin -X POST http://localhost:8080/api/recommend \
 
 ```bash
 # Für einen einzelnen Knoten
-curl -u admin:admin "http://localhost:8080/api/patterns/detect?nodeCode=CP-1023"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/patterns/detect?nodeCode=CP-1023"
 
 # Für bewertete Knoten
-curl -u admin:admin -X POST http://localhost:8080/api/patterns/detect \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/patterns/detect \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88}}'
 ```
@@ -359,13 +359,13 @@ curl -u admin:admin -X POST http://localhost:8080/api/patterns/detect \
 ### Aktuelle Architektur als DSL-Text exportieren
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/dsl/export"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/export"
 ```
 
 ### DSL-Text committen (erfordert ARCHITECT- oder ADMIN-Rolle)
 
 ```bash
-curl -u admin:admin -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=initial+architecture" \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=initial+architecture" \
   -H "Content-Type: text/plain" \
   -d 'meta { language: "taxdsl"; version: "2.0"; namespace: "example"; }
 element CP-1023 type Capability { title: "CIS Capabilities"; }
@@ -375,23 +375,23 @@ relation CR-1011 SUPPORTS BP-1327 { status: proposed; }'
 ### Commit-Verlauf anzeigen
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/dsl/history?branch=draft"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/history?branch=draft"
 ```
 
 ### Diff zwischen Commits
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/dsl/diff/semantic/{beforeId}/{afterId}"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/dsl/diff/semantic/{beforeId}/{afterId}"
 ```
 
 ### Branch und Merge
 
 ```bash
 # Branch erstellen
-curl -u admin:admin -X POST "http://localhost:8080/api/dsl/branches?name=review&fromBranch=draft"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/branches?name=review&fromBranch=draft"
 
 # Zusammenführen
-curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=review&intoBranch=accepted"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST "http://localhost:8080/api/dsl/merge?fromBranch=review&intoBranch=accepted"
 ```
 
 ---
@@ -404,7 +404,7 @@ Für die vollständige Feature-Beschreibung siehe [Dokumentimport](DOCUMENT_IMPO
 ### Dokument hochladen und parsen
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/documents/upload \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/documents/upload \
   -F "file=@vorschrift.pdf"
 ```
 
@@ -430,7 +430,7 @@ Maximale Upload-Größe: 50 MB. Unterstützte Formate: PDF, DOCX.
 ### KI-gestützte Anforderungsextraktion
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/documents/extract-ai \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/documents/extract-ai \
   -H "Content-Type: application/json" \
   -d '{"documentText": "Das System soll...", "title": "vorschrift.pdf"}'
 ```
@@ -440,7 +440,7 @@ Nutzt das konfigurierte LLM, um Anforderungen aus dem Dokumenttext zu identifizi
 ### Direkte Vorschriften-zu-Architektur-Zuordnung
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/documents/map-regulation \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/documents/map-regulation \
   -H "Content-Type: application/json" \
   -d '{"documentText": "Das System soll...", "title": "VV Digitale Anträge"}'
 ```
@@ -450,7 +450,7 @@ Ordnet Vorschrifteninhalte direkt per KI-Analyse den Taxonomie-Knoten zu.
 ### Extrahierte Kandidaten bestätigen
 
 ```bash
-curl -u admin:admin -X POST http://localhost:8080/api/documents/confirm-candidates \
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/documents/confirm-candidates \
   -H "Content-Type: application/json" \
   -d '{"sourceTitle": "vorschrift.pdf", "sourceType": "REGULATION", "candidates": [{"text": "Sichere Authentifizierung", "section": "§2"}]}'
 ```
@@ -460,7 +460,7 @@ Verknüpft ausgewählte Anforderungskandidaten mit dem Quell-Provenienz-Modell.
 ### Quellartefakte auflisten
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/provenance/sources"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/provenance/sources"
 ```
 
 Gibt alle registrierten Quellartefakte zurück (hochgeladene Dokumente, Vorschriften usw.).
@@ -468,7 +468,7 @@ Gibt alle registrierten Quellartefakte zurück (hochgeladene Dokumente, Vorschri
 ### Provenienz-Links für eine Anforderung abrufen
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/provenance/links/REQ-001"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/provenance/links/REQ-001"
 ```
 
 Gibt alle Provenienz-Links zurück, die eine Anforderung mit ihren Quellartefakten verbinden.
@@ -480,15 +480,15 @@ Gibt alle Provenienz-Links zurück, die eine Anforderung mit ihren Quellartefakt
 ### Systemstatus
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/ai-status"
-curl -u admin:admin "http://localhost:8080/api/status/startup"
-curl -u admin:admin "http://localhost:8080/api/embedding/status"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/ai-status"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/status/startup"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/embedding/status"
 ```
 
 ### LLM-Diagnose (nur ADMIN)
 
 ```bash
-curl -u admin:admin "http://localhost:8080/api/diagnostics"
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" "http://localhost:8080/api/diagnostics"
 ```
 
 ---

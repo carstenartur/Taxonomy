@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** Domain service for validating and applying local-user password changes. */
 @Service
@@ -25,10 +27,14 @@ public class PasswordChangeService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final BootstrapAdminCredentialStore bootstrapCredentialStore;
 
-    public PasswordChangeService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public PasswordChangeService(UserRepository userRepository,
+                                 PasswordEncoder passwordEncoder,
+                                 BootstrapAdminCredentialStore bootstrapCredentialStore) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.bootstrapCredentialStore = bootstrapCredentialStore;
     }
 
     @Transactional(readOnly = true)
@@ -63,6 +69,24 @@ public class PasswordChangeService {
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setMustChangePassword(false);
         userRepository.save(user);
+        removeBootstrapCredentialAfterCommit(username);
         return Result.CHANGED;
+    }
+
+    private void removeBootstrapCredentialAfterCommit(String username) {
+        if (!"admin".equals(username)) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            bootstrapCredentialStore.deletePublishedCredential();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        bootstrapCredentialStore.deletePublishedCredential();
+                    }
+                });
     }
 }

@@ -27,7 +27,7 @@ Diese Anleitung beschreibt, wie Sie von der Standard-Form-Login-Authentifizierun
 | Funktion | Form-Login (Standard) | Keycloak-Modus |
 |---|---|---|
 | Anmeldeseite | Spring-Standard `/login`-Formular | Keycloak-Anmeldeseite (OIDC-Redirect) |
-| API-Authentifizierung | HTTP Basic (`curl -u admin:admin`) | JWT Bearer Token (`Authorization: Bearer <token>`) |
+| API-Authentifizierung | HTTP Basic (`curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}"`) | JWT Bearer Token (`Authorization: Bearer <token>`) |
 | Benutzerverwaltung | `/api/admin/users` REST-API | Keycloak Admin Console |
 | Passwortänderungen | `/change-password`-Seite | Keycloak Account Console |
 | Benutzerdatenbank | Lokal (HSQLDB/PostgreSQL) | Keycloak (keine lokale Benutzer-DB) |
