@@ -3,6 +3,7 @@ package com.taxonomy.portfolio.workbench;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.ArchitectureSnapshotExportService.SnapshotArtifact;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -21,23 +22,33 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 /** Page and API adapter for the read-only architecture workbench. */
 @Controller
 @Tag(name = "Architecture Workbench")
 public class ArchitectureWorkbenchController {
 
-    private static final MediaType SVG = MediaType.parseMediaType("image/svg+xml");
+    static final String SNAPSHOT_HEADER = "X-Taxonomy-Architecture-Snapshot";
+    static final String COMMIT_HEADER = "X-Taxonomy-Architecture-Commit";
+    static final String GRAPH_SHA_HEADER = "X-Taxonomy-Architecture-Graph-SHA256";
+    static final String PROFILE_HEADER = "X-Taxonomy-Export-Profile";
+    static final String CONTENT_SHA_HEADER = "X-Taxonomy-Export-Content-SHA256";
+
+    private static final Pattern SAFE_HEADER_VALUE = Pattern.compile("[\\x21-\\x7E]{1,256}");
 
     private final ArchitectureWorkbenchService service;
+    private final ArchitectureSnapshotExportService exportService;
     private final ProjectPortfolioService projectService;
     private final WorkspaceResolver workspaceResolver;
 
     public ArchitectureWorkbenchController(
             ArchitectureWorkbenchService service,
+            ArchitectureSnapshotExportService exportService,
             ProjectPortfolioService projectService,
             WorkspaceResolver workspaceResolver) {
         this.service = service;
+        this.exportService = exportService;
         this.projectService = projectService;
         this.workspaceResolver = workspaceResolver;
     }
@@ -88,15 +99,10 @@ public class ArchitectureWorkbenchController {
             produces = "image/svg+xml")
     @ResponseBody
     @Operation(summary = "Export the architecture snapshot as deterministic standalone SVG")
-    public ResponseEntity<String> svg(
+    public ResponseEntity<byte[]> svg(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
-        RequestScope scope = scope();
-        String content = service.renderSvg(projectId, snapshotId, scope.username(), scope.context());
-        return ResponseEntity.ok()
-                .contentType(SVG)
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition("architecture", "svg"))
-                .body(content);
+        return export(projectId, snapshotId, "svg");
     }
 
     @GetMapping(value = "/api/projects/{projectId}/architecture-workbench/{snapshotId}.pdf",
@@ -106,26 +112,64 @@ public class ArchitectureWorkbenchController {
     public ResponseEntity<byte[]> pdf(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
+        return export(projectId, snapshotId, "pdf");
+    }
+
+    @GetMapping("/api/projects/{projectId}/architecture-workbench/{snapshotId}/exports/{formatId}")
+    @ResponseBody
+    @Operation(summary = "Download one format derived from the exact immutable architecture snapshot")
+    public ResponseEntity<byte[]> export(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId,
+            @PathVariable String formatId) {
         RequestScope scope = scope();
-        byte[] content = service.renderPdf(projectId, snapshotId, scope.username(), scope.context());
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
-                .contentLength(content.length)
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition("architecture", "pdf"))
-                .body(content);
+        SnapshotArtifact artifact = exportService.export(
+                projectId, snapshotId, scope.username(), scope.context(), formatId);
+        return response(artifact);
+    }
+
+    private static ResponseEntity<byte[]> response(SnapshotArtifact artifact) {
+        byte[] content = artifact.content();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(artifact.format().mediaType()));
+        headers.setContentLength(content.length);
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(artifact.format().fileName(), StandardCharsets.UTF_8)
+                .build());
+        headers.setCacheControl("private, no-store");
+        headers.setETag("\"sha256-" + artifact.contentSha256() + "\"");
+        headers.set(SNAPSHOT_HEADER, requiredHeader("snapshotId", artifact.snapshotId()));
+        setOptionalHeader(headers, COMMIT_HEADER, artifact.commitSha());
+        headers.set(GRAPH_SHA_HEADER,
+                requiredHeader("graphSha256", artifact.graphSha256()));
+        headers.set(PROFILE_HEADER,
+                requiredHeader("exportProfile", artifact.format().profileId()));
+        headers.set(CONTENT_SHA_HEADER,
+                requiredHeader("contentSha256", artifact.contentSha256()));
+        return ResponseEntity.ok().headers(headers).body(content);
+    }
+
+    private static String requiredHeader(String field, String value) {
+        String normalized = value == null ? "" : value.strip();
+        if (!SAFE_HEADER_VALUE.matcher(normalized).matches()) {
+            throw new IllegalStateException(
+                    "Architecture export " + field + " is not safe for an HTTP header");
+        }
+        return normalized;
+    }
+
+    private static void setOptionalHeader(
+            HttpHeaders headers, String name, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        headers.set(name, requiredHeader(name, value));
     }
 
     private RequestScope scope() {
         return new RequestScope(
                 workspaceResolver.resolveCurrentUsername(),
                 workspaceResolver.resolveCurrentContext());
-    }
-
-    private static String disposition(String name, String extension) {
-        return ContentDisposition.attachment()
-                .filename(name + "." + extension, StandardCharsets.UTF_8)
-                .build()
-                .toString();
     }
 
     private record RequestScope(String username, WorkspaceContext context) {
