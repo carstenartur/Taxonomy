@@ -328,7 +328,7 @@ The application uses **Spring Security** with a three-role authorisation model:
 - **Form login** — browser sessions via the `/login` page (CSRF-protected)
 - **HTTP Basic** — stateless REST clients (CSRF disabled for `/api/**`)
 
-A default `admin` user (with all three roles) is seeded on first startup via `SecurityDataInitializer`. The password is configurable through `TAXONOMY_ADMIN_PASSWORD` (default: `admin`).
+An `admin` user with all three roles is seeded on first startup via `SecurityDataInitializer`. `TAXONOMY_ADMIN_PASSWORD` can provide the initial password. When it is empty outside production, a random one-time password is delivered through an owner-only temporary file; there is no reusable default.
 
 **Public endpoints** (no authentication required): `/login`, `/error`, `/actuator/health/**`, `/v3/api-docs/**` (configurable), `/swagger-ui/**` (configurable), and static assets.
 

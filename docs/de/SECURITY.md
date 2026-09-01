@@ -35,7 +35,7 @@ Im lokalen Benutzermodus wird beim ersten Start einer neuen Datenbank das Konto 
 
 | Situation | Verhalten |
 |---|---|
-| `TAXONOMY_ADMIN_PASSWORD` ist in einer Nicht-Produktionsumgebung leer | Ein hochentropisches einmaliges Bootstrap-Passwort wird erzeugt und einmal im Startprotokoll ausgegeben. Das Konto muss das Passwort ersetzen. |
+| `TAXONOMY_ADMIN_PASSWORD` ist in einer Nicht-Produktionsumgebung leer | Ein hochentropisches einmaliges Bootstrap-Passwort wird in eine eindeutig benannte temporäre Datei geschrieben, die nur für den Prozesseigentümer zugänglich ist. Im Startprotokoll erscheint ausschließlich der absolute Dateipfad. Das Konto muss das Passwort ersetzen; nach dem erfolgreich committeten Administrator-Passwortwechsel wird die Datei entfernt. |
 | `TAXONOMY_ADMIN_PASSWORD` ist gesetzt | Der konfigurierte Wert wird für die initiale Kontoerstellung verwendet. `TAXONOMY_REQUIRE_PASSWORD_CHANGE` steuert, ob beim ersten Login ein Wechsel erforderlich ist. |
 | Eine historische Datenbank enthält noch das entfernte Kennwort `admin` | Das Konto wird einmalig zum Passwortwechsel verpflichtet, ohne normale Konten bei jedem Neustart erneut zu sperren. |
 | Das Profil `production` ist aktiv | Der Start wird vor der Kontoerstellung abgebrochen, wenn das Passwort fehlt, einem bekannten Platzhalter entspricht oder weniger als 16 Zeichen enthält. |
@@ -47,7 +47,7 @@ export TAXONOMY_ADMIN_PASSWORD='ein-eindeutiges-lokales-entwicklungssecret'
 ./mvnw -pl taxonomy-app -am spring-boot:run
 ```
 
-Übernehmen Sie niemals Passwörter aus Dokumentation, Tests, Screenshots oder Beispielen in eine Bereitstellung.
+Lesen Sie eine automatisch erzeugte Zugangsdaten-Datei ausschließlich mit dem vertrauenswürdigen Betriebssystemkonto des Anwendungsprozesses. Kann das Dateisystem weder POSIX-Eigentümerrechte noch eine Eigentümer-ACL erzwingen, bricht die Administratoranlage fail-closed ab. Übernehmen Sie niemals Passwörter aus Dokumentation, Tests, Screenshots oder Beispielen in eine Bereitstellung.
 
 ## Rollen und Berechtigungen
 
