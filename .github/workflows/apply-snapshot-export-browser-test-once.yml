@@ -35,24 +35,15 @@ jobs:
           path = Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkbenchUiIT.java')
           text = path.read_text(encoding='utf-8')
 
-          def replace_once(old, new, label):
-              global text
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected one occurrence, found {count}')
-              text = text.replace(old, new)
+          if 'architectureExportFormat' in text or 'requestTextArtifact(' in text:
+              raise SystemExit('browser acceptance appears to be already patched')
 
-          replace_once(
-              '''        assertThat(driver.findElement(By.id("architectureTitle")).getText())
-                  .isNotBlank()
-                  .doesNotStartWith("archview.");
-              fitAndWait();
-          ''',
-              '''        assertThat(driver.findElement(By.id("architectureTitle")).getText())
-                  .isNotBlank()
-                  .doesNotStartWith("archview.");
-
-              WebElement exportFormat = driver.findElement(By.id("architectureExportFormat"));
+          title_start = text.index(
+              '        assertThat(driver.findElement(By.id("architectureTitle")).getText())')
+          fit_marker = '        fitAndWait();'
+          fit_position = text.index(fit_marker, title_start)
+          controls = '''        WebElement exportFormat = driver.findElement(
+                  By.id("architectureExportFormat"));
               assertThat(exportFormat.isEnabled()).isTrue();
               assertThat(driver.findElement(By.id("downloadArchitectureExport")).isEnabled())
                   .isTrue();
@@ -63,28 +54,13 @@ jobs:
                   .containsExactly("json", "svg", "pdf", "archimate", "mermaid", "structurizr")
                   .doesNotContain("visio");
 
-              fitAndWait();
-          ''',
-              'export control assertions')
-
-          old_exports = '''        Map<String, Object> svg = requestText(
-                  "/api/projects/" + projectId + "/architecture-workbench/" + snapshotId + ".svg");
-              assertThat(number(svg.get("status"))).isEqualTo(200);
-              assertThat(String.valueOf(svg.get("contentType"))).startsWith("image/svg+xml");
-              assertThat(String.valueOf(svg.get("text")))
-                  .contains("<svg")
-                  .contains(nodeCode)
-                  .doesNotContain("<script")
-                  .doesNotContain("Download PDF");
-
-              Map<String, Object> pdf = requestBinaryPrefix(
-                  "/api/projects/" + projectId + "/architecture-workbench/" + snapshotId + ".pdf");
-              assertThat(number(pdf.get("status"))).isEqualTo(200);
-              assertThat(String.valueOf(pdf.get("contentType"))).startsWith("application/pdf");
-              assertThat(String.valueOf(pdf.get("prefix"))).isEqualTo("%PDF-");
-              assertThat(number(pdf.get("length"))).isGreaterThan(500);
           '''
-          new_exports = '''        String exportBase = "/api/projects/" + projectId
+          text = text[:fit_position] + controls + text[fit_position:]
+
+          exports_start = text.index('        Map<String, Object> svg = requestText(')
+          exports_end_marker = '\n\n\n        if (Boolean.getBoolean("generateScreenshots"))'
+          exports_end = text.index(exports_end_marker, exports_start)
+          exports = '''        String exportBase = "/api/projects/" + projectId
                   + "/architecture-workbench/" + snapshotId + "/exports/";
               Map<String, Object> evidence = requestTextArtifact(
                   exportBase + "json", "application/json");
@@ -150,26 +126,17 @@ jobs:
               assertThat(String.valueOf(structurizr.get("role")))
                   .isEqualTo("lossy-text-projection");
               assertThat(String.valueOf(structurizr.get("text")))
-                  .contains("workspace");
-          '''
-          replace_once(old_exports, new_exports, 'format export acceptance block')
+                  .contains("workspace");'''
+          text = text[:exports_start] + exports + text[exports_end:]
 
-          old_text_helper = '''    @SuppressWarnings("unchecked")
-              private static Map<String, Object> requestText(String path) {
-                  return (Map<String, Object>) javascript().executeAsyncScript("""
-                      const path = arguments[0];
-                      const done = arguments[arguments.length - 1];
-                      fetch(path, {headers: {Accept: 'image/svg+xml'}, credentials: 'same-origin'})
-                          .then(async response => done({
-                              status: response.status,
-                              contentType: response.headers.get('content-type') || '',
-                              text: await response.text()
-                          }))
-                          .catch(error => done({status: 0, error: String(error)}));
-                      """, path);
-              }
-          '''
-          new_text_helper = '''    @SuppressWarnings("unchecked")
+          helper_start = text.index(
+              '    @SuppressWarnings("unchecked")\n'
+              '    private static Map<String, Object> requestText(String path)')
+          binary_annotation = (
+              '\n\n    @SuppressWarnings("unchecked")\n'
+              '    private static Map<String, Object> requestBinaryPrefix')
+          helper_end = text.index(binary_annotation, helper_start)
+          text_helper = '''    @SuppressWarnings("unchecked")
               private static Map<String, Object> requestTextArtifact(String path, String accept) {
                   return (Map<String, Object>) javascript().executeAsyncScript("""
                       const path = arguments[0];
@@ -191,34 +158,31 @@ jobs:
                           text: await response.text()
                       })).catch(error => done({status: 0, error: String(error)}));
                       """, path, accept);
-              }
-          '''
-          replace_once(old_text_helper, new_text_helper, 'text artifact request helper')
+              }'''
+          text = text[:helper_start] + text_helper + text[helper_end:]
 
-          old_binary = '''                        done({
-                              status: response.status,
-                              contentType: response.headers.get('content-type') || '',
-                              prefix: prefix,
-                              length: bytes.length
-                          });
-          '''
-          new_binary = '''                        done({
-                              status: response.status,
-                              contentType: response.headers.get('content-type') || '',
-                              snapshotId: response.headers.get('x-taxonomy-architecture-snapshot') || '',
-                              commitSha: response.headers.get('x-taxonomy-architecture-commit') || '',
-                              graphSha: response.headers.get('x-taxonomy-architecture-graph-sha256') || '',
-                              profile: response.headers.get('x-taxonomy-export-profile') || '',
-                              role: response.headers.get('x-taxonomy-export-role') || '',
-                              contentSha: response.headers.get('x-taxonomy-export-content-sha256') || '',
-                              prefix: prefix,
-                              length: bytes.length
-                          });
-          '''
-          replace_once(old_binary, new_binary, 'binary artifact response headers')
+          binary_start = text.index(
+              '    private static Map<String, Object> requestBinaryPrefix')
+          binary_end = text.index('\n\n    private static JavascriptExecutor javascript()', binary_start)
+          binary_block = text[binary_start:binary_end]
+          needle = (
+              "contentType: response.headers.get('content-type') || '',\n"
+              "                            prefix: prefix,")
+          if binary_block.count(needle) != 1:
+              raise SystemExit('binary response marker was not found exactly once')
+          replacement = (
+              "contentType: response.headers.get('content-type') || '',\n"
+              "                            snapshotId: response.headers.get('x-taxonomy-architecture-snapshot') || '',\n"
+              "                            commitSha: response.headers.get('x-taxonomy-architecture-commit') || '',\n"
+              "                            graphSha: response.headers.get('x-taxonomy-architecture-graph-sha256') || '',\n"
+              "                            profile: response.headers.get('x-taxonomy-export-profile') || '',\n"
+              "                            role: response.headers.get('x-taxonomy-export-role') || '',\n"
+              "                            contentSha: response.headers.get('x-taxonomy-export-content-sha256') || '',\n"
+              "                            prefix: prefix,")
+          binary_block = binary_block.replace(needle, replacement)
+          text = text[:binary_start] + binary_block + text[binary_end:]
 
-          forbidden = ['requestText(', 'downloadArchitectureSvg', 'downloadArchitecturePdf']
-          for token in forbidden:
+          for token in ['requestText(', 'downloadArchitectureSvg', 'downloadArchitecturePdf']:
               if token in text:
                   raise SystemExit(f'legacy browser-test token remains: {token}')
           for token in [
