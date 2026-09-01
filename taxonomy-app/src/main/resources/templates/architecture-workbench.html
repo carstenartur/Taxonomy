@@ -23,12 +23,33 @@
 <header class="workbench-toolbar navbar navbar-dark bg-dark px-3">
     <a class="navbar-brand" th:href="@{/projects}" href="/projects">Taxonomy Copilot Architecture</a>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-        <button id="downloadArchitectureSvg" class="btn btn-sm btn-outline-light" type="button">
-            Download SVG
+        <label class="visually-hidden" for="architectureExportFormat">Export format</label>
+        <select id="architectureExportFormat"
+                class="form-select form-select-sm w-auto"
+                aria-describedby="architectureExportHint">
+            <optgroup label="Evidence">
+                <option value="json">Evidence JSON</option>
+            </optgroup>
+            <optgroup label="Stable human-readable views">
+                <option value="svg">SVG</option>
+                <option value="pdf" selected>PDF</option>
+            </optgroup>
+            <optgroup label="Architecture interchange">
+                <option value="archimate">ArchiMate Exchange XML (experimental)</option>
+            </optgroup>
+            <optgroup label="Text projections">
+                <option value="mermaid">Mermaid</option>
+                <option value="structurizr">Structurizr DSL</option>
+            </optgroup>
+        </select>
+        <button id="downloadArchitectureExport"
+                class="btn btn-sm btn-warning"
+                type="button">
+            Download selected format
         </button>
-        <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button">
-            Download PDF
-        </button>
+        <span id="architectureExportHint" class="visually-hidden">
+            Every format is generated from the exact persisted snapshot shown below; downloading does not run another analysis.
+        </span>
     </div>
 </header>
 
