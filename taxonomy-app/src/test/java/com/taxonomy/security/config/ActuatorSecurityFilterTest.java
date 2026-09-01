@@ -159,7 +159,8 @@ class ActuatorSecurityFilterTest {
         return response;
     }
 
-    private static void assertUnauthorized(MockHttpServletResponse response) {
+    private static void assertUnauthorized(MockHttpServletResponse response)
+            throws Exception {
         assertThat(response.getStatus()).isEqualTo(401);
         assertThat(response.getHeader(HttpHeaders.CACHE_CONTROL))
                 .isEqualTo("no-store");
