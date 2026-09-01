@@ -604,6 +604,14 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 
 ## 10. Exporting Results
 
+### Reviewed snapshot handoff versus ad-hoc convenience export
+
+For external review or evidence, open the persisted result in the **Copilot Architecture Workbench** and use its **Export format** selector. That workflow addresses one immutable project analysis snapshot and serializes the exact graph shown in the workbench; downloading does **not** invoke the LLM again.
+
+The buttons on the ad-hoc analysis screen described below are convenience exports from the current browser/analysis context. They are not yet proof that a file represents an immutable reviewed portfolio snapshot. Do not use them as authoritative handoff evidence.
+
+The snapshot-bound workbench offers Evidence JSON, SVG, PDF, experimental ArchiMate Exchange XML, Mermaid, and Structurizr DSL. Visio is deliberately withheld there until VSDX compatibility is certified. See **[Architecture Handoff from an Immutable Snapshot](ARCHITECTURE_HANDOFF.md)** for format roles, provenance headers, fingerprints, and current limitations.
+
 After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
 
 ![Export buttons](../images/23-export-buttons.png)
@@ -628,17 +636,17 @@ Click **📥 PDF** to trigger the browser's print dialogue, pre-configured to pr
 
 Click **📥 CSV** to download a comma-separated file containing all node codes, names, and their analysis scores. Open in a spreadsheet application for further analysis or reporting.
 
-### Visio (.vsdx) Architecture Diagram
+### Visio (.vsdx) Architecture Diagram — Experimental Convenience Export
 
-Click **📥 Visio** to download a structured Microsoft Visio file (`.vsdx`) representing the Architecture View. The diagram includes the anchor nodes, related elements, and labelled relationships.
+The existing **📥 Visio** button produces an experimental convenience export from the ad-hoc analysis path. It is not certified as a reliable editable Microsoft Visio handoff, is not offered by the immutable-snapshot workbench, and must not be used as authoritative evidence. Package/schema repair and real Microsoft Visio open-edit-save-reopen validation are tracked in #965.
 
-> **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
+> **Requires:** The Architecture View checkbox must have been enabled before running the analysis. Even then, use SVG/PDF plus snapshot Evidence JSON for a current review handoff.
 
-### ArchiMate XML Architecture Diagram
+### ArchiMate Exchange XML — Experimental Model Exchange
 
-Click **📥 ArchiMate** to download an ArchiMate 3.x XML file suitable for import into tools such as Archi or Sparx EA.
+For a reviewed result, select **ArchiMate Exchange XML (experimental)** in the immutable-snapshot workbench. It is derived from the same stored graph as the accompanying Evidence JSON, SVG, and PDF. The ad-hoc **📥 ArchiMate** button described by older screenshots is not snapshot-authoritative.
 
-> **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
+The exporter is being validated against the ArchiMate 3.1 exchange schemas, but its type mapping is intentionally lossy and independent-tool semantic round-trip evidence is not yet complete. Do not describe the file as universally lossless or fully interoperable; #967 tracks the remaining certification work.
 
 ### Mermaid Flowchart Export
 
@@ -665,6 +673,8 @@ Click **📥 JSON** (in the export group, visible after a successful analysis) t
 This file can be shared with colleagues or loaded back at a later time using the **📤 Load Scores** button, without re-running the AI analysis.
 
 > **Semantic distinction:** A score of `0` in the JSON means the node was _evaluated and found not relevant_. A node code that is _absent_ from the JSON was never evaluated.
+
+> **Different JSON contracts:** `SavedAnalysis` JSON supports score export/import on the ad-hoc analysis screen. **Evidence JSON** from the architecture workbench is the handoff record for an immutable architecture snapshot and additionally embeds snapshot/commit coordinates, the canonical graph fingerprint, render projection, warnings, and declared format roles.
 
 ### Loading a Saved Analysis (Import)
 

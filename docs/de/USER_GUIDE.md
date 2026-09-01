@@ -600,6 +600,14 @@ Die Spalte **Confidence** zeigt, wie stark die KI davon überzeugt ist, dass die
 
 ## 10. Ergebnisse exportieren
 
+### Geprüften Snapshot übergeben oder Ad-hoc-Komfortexport verwenden
+
+Für externe Reviews oder Nachweise öffnen Sie das persistierte Ergebnis in der **Copilot Architecture Workbench** und verwenden dort die Auswahl **Export format**. Dieser Ablauf adressiert genau einen unveränderlichen Projektanalyse-Snapshot und serialisiert den in der Workbench sichtbaren Graphen; beim Download wird das LLM **nicht** erneut aufgerufen.
+
+Die nachfolgend beschriebenen Schaltflächen der Ad-hoc-Analyseansicht sind Komfortexporte aus dem aktuellen Browser-/Analysekontext. Sie belegen noch nicht, dass eine Datei einen unveränderlichen geprüften Portfolio-Snapshot darstellt. Verwenden Sie sie nicht als autoritative Übergabeevidenz.
+
+Die snapshotgebundene Workbench bietet Evidenz-JSON, SVG, PDF, experimentelles ArchiMate Exchange XML, Mermaid und Structurizr DSL. Visio wird dort bewusst nicht angeboten, bis die VSDX-Kompatibilität zertifiziert ist. Siehe **[Architekturübergabe aus einem unveränderlichen Snapshot](ARCHITECTURE_HANDOFF.md)** für Formatrollen, Provenienz-Header, Fingerprints und aktuelle Grenzen.
+
 Nach einer erfolgreichen Analyse erscheinen Export-Schaltflächen am oberen Rand des linken Bereichs. Diese Schaltflächen sind nur sichtbar, wenn Analyse-Bewertungen vorhanden sind.
 
 ![Export-Schaltflächen](../images/23-export-buttons.png)
@@ -624,17 +632,17 @@ Klicken Sie auf **📥 PDF**, um den Druckdialog des Browsers auszulösen, der v
 
 Klicken Sie auf **📥 CSV**, um eine kommagetrennte Datei herunterzuladen, die alle Knoten-Codes, Namen und ihre Analyse-Bewertungen enthält. Öffnen Sie die Datei in einer Tabellenkalkulationsanwendung zur weiteren Analyse oder Berichterstellung.
 
-### Visio (.vsdx) Architekturdiagramm
+### Visio (.vsdx) Architekturdiagramm — experimenteller Komfortexport
 
-Klicken Sie auf **📥 Visio**, um eine strukturierte Microsoft Visio-Datei (`.vsdx`) herunterzuladen, die die Architekturansicht darstellt. Das Diagramm enthält die Anker-Knoten, verwandte Elemente und beschriftete Beziehungen.
+Die bisherige Schaltfläche **📥 Visio** erzeugt einen experimentellen Komfortexport aus dem Ad-hoc-Analysepfad. Er ist nicht als zuverlässige editierbare Microsoft-Visio-Übergabe zertifiziert, wird in der Workbench für unveränderliche Snapshots nicht angeboten und darf nicht als autoritative Evidenz verwendet werden. Paket-/Schemareparatur und ein realer Öffnen-Bearbeiten-Speichern-Wiederöffnen-Test in Microsoft Visio werden in #965 verfolgt.
 
-> **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
+> **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Analyse aktiviert worden sein. Verwenden Sie für eine derzeitige Review-Übergabe dennoch SVG/PDF zusammen mit dem snapshotgebundenen Evidenz-JSON.
 
-### ArchiMate XML-Architekturdiagramm
+### ArchiMate Exchange XML — experimenteller Modellaustausch
 
-Klicken Sie auf **📥 ArchiMate**, um eine ArchiMate 3.x XML-Datei herunterzuladen, die zum Import in Tools wie Archi oder Sparx EA geeignet ist.
+Wählen Sie für ein geprüftes Ergebnis in der Workbench für unveränderliche Snapshots **ArchiMate Exchange XML (experimental)**. Die Datei wird aus demselben gespeicherten Graphen wie Evidenz-JSON, SVG und PDF erzeugt. Die aus älteren Screenshots bekannte Ad-hoc-Schaltfläche **📥 ArchiMate** ist nicht snapshotautorativ.
 
-> **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
+Der Exporter wird gegen die ArchiMate-3.1-Exchange-Schemata validiert; seine Typabbildung ist jedoch bewusst verlustbehaftet, und der semantische Roundtrip durch unabhängige Werkzeuge ist noch nicht vollständig nachgewiesen. Bezeichnen Sie die Datei nicht als universell verlustfrei oder vollständig interoperabel; #967 verfolgt die verbleibende Zertifizierung.
 
 ### Mermaid-Flowchart-Export
 
@@ -661,6 +669,8 @@ Klicken Sie auf **📥 JSON** (in der Export-Gruppe, sichtbar nach einer erfolgr
 Diese Datei kann mit Kollegen geteilt oder zu einem späteren Zeitpunkt über die Schaltfläche **📤 Load Scores** wieder geladen werden, ohne die KI-Analyse erneut durchführen zu müssen.
 
 > **Semantische Unterscheidung:** Ein Wert von `0` im JSON bedeutet, dass der Knoten _bewertet und als nicht relevant eingestuft_ wurde. Ein Knoten-Code, der im JSON _fehlt_, wurde nie bewertet.
+
+> **Unterschiedliche JSON-Verträge:** `SavedAnalysis`-JSON dient dem Export und erneuten Laden von Bewertungen in der Ad-hoc-Analyseansicht. Das **Evidenz-JSON** der Architektur-Workbench ist der Übergabenachweis für einen unveränderlichen Architektur-Snapshot und enthält zusätzlich Snapshot-/Commit-Koordinaten, den kanonischen Graph-Fingerprint, Renderprojektion, Warnungen und deklarierte Formatrollen.
 
 ### Laden einer gespeicherten Analyse (Import)
 
