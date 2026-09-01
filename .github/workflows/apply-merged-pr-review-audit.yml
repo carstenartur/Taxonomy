@@ -1,0 +1,106 @@
+name: Apply trusted merged-PR review auditor reconstruction
+
+on:
+  push:
+    branches:
+      - automation/reconstruct-pr-959-8e2d41cb
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-merged-pr-review-audit
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out trusted reconstruction commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - name: Verify, reconstruct, test, and publish exact target branch
+        shell: bash
+        env:
+          EXPECTED_REPOSITORY: carstenartur/Taxonomy
+          EXPECTED_ACTOR: carstenartur
+          EXPECTED_MAIN: 8e2d41cb0fdaf34e8e0b0c13d72c7f42380a3669
+          EXPECTED_OLD_HEAD: e2c3f0647f61c460a46983c308f91565ee626248
+          TARGET_BRANCH: ci/merged-pr-review-audit
+          PAYLOAD_PATH: .github/reconstruction/merged-pr-review-audit-payload.tar.gz
+          PAYLOAD_SHA256: 4feb15b2900addd4c12cea7ab5aa6a81aa8ed81e92b65005edfb2685c576f49d
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$GITHUB_ACTOR" = "$EXPECTED_ACTOR"
+          test "$GITHUB_REF_NAME" = "automation/reconstruct-pr-959-8e2d41cb"
+          echo "$PAYLOAD_SHA256  $PAYLOAD_PATH" | sha256sum --check --strict
+
+          rm -rf /tmp/merged-pr-review-audit-payload
+          mkdir -p /tmp/merged-pr-review-audit-payload
+          tar -xzf "$PAYLOAD_PATH" -C /tmp/merged-pr-review-audit-payload
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/reconstruction-main" \
+            "+refs/heads/$TARGET_BRANCH:refs/remotes/origin/reconstruction-target"
+          test "$(git rev-parse refs/remotes/origin/reconstruction-main)" = "$EXPECTED_MAIN"
+          test "$(git rev-parse refs/remotes/origin/reconstruction-target)" = "$EXPECTED_OLD_HEAD"
+
+          git reset --hard "$EXPECTED_MAIN"
+          git clean -fdx
+
+          install -D -m 0644 \
+            /tmp/merged-pr-review-audit-payload/.github/scripts/merged-pr-review-audit.mjs \
+            .github/scripts/merged-pr-review-audit.mjs
+          install -D -m 0644 \
+            /tmp/merged-pr-review-audit-payload/.github/scripts/merged-pr-review-audit.test.mjs \
+            .github/scripts/merged-pr-review-audit.test.mjs
+          install -D -m 0644 \
+            /tmp/merged-pr-review-audit-payload/.github/workflows/merged-pr-review-audit.yml \
+            .github/workflows/merged-pr-review-audit.yml
+          install -D -m 0644 \
+            /tmp/merged-pr-review-audit-payload/.github/merged-pr-review-audit-policy.json \
+            .github/merged-pr-review-audit-policy.json
+          install -D -m 0644 \
+            /tmp/merged-pr-review-audit-payload/.github/package.json \
+            .github/package.json
+
+          echo "2b8e0c0b1ab1591d4111aec1cb64c3eaccb955b3c55abc748cf645ae6cbeb907  .github/scripts/merged-pr-review-audit.mjs" | sha256sum --check --strict
+          echo "ba7dfae71ccae53181003bc1f1eb88cd735ac3b197946bd928b7425a79a09f16  .github/scripts/merged-pr-review-audit.test.mjs" | sha256sum --check --strict
+          echo "c073c7e6379c1533b0ea109f4eb7c19256f904795c4e4e298659dd3b2fff3d07  .github/workflows/merged-pr-review-audit.yml" | sha256sum --check --strict
+          echo "93e1452296efcc8d64b8aa8e46b2bb95e866fdbc051854c1ead01b60dbaad345  .github/merged-pr-review-audit-policy.json" | sha256sum --check --strict
+          echo "af73e6730d7cba2f94e65f79e6355550266cd8762c4a3b38dbc9a58fe7ccf30b  .github/package.json" | sha256sum --check --strict
+
+          node --check .github/scripts/merged-pr-review-audit.mjs
+          node --test .github/scripts/merged-pr-review-audit.test.mjs
+          git diff --check
+
+          git add \
+            .github/scripts/merged-pr-review-audit.mjs \
+            .github/scripts/merged-pr-review-audit.test.mjs \
+            .github/workflows/merged-pr-review-audit.yml \
+            .github/merged-pr-review-audit-policy.json \
+            .github/package.json
+
+          mapfile -t changed < <(git diff --cached --name-only)
+          expected=(
+            .github/merged-pr-review-audit-policy.json
+            .github/package.json
+            .github/scripts/merged-pr-review-audit.mjs
+            .github/scripts/merged-pr-review-audit.test.mjs
+            .github/workflows/merged-pr-review-audit.yml
+          )
+          test "${#changed[@]}" -eq "${#expected[@]}"
+          printf '%s\n' "${changed[@]}" | diff -u <(printf '%s\n' "${expected[@]}") -
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Audit merged PR reviews from trusted default-branch code"
+          new_head="$(git rev-parse HEAD)"
+          git push origin \
+            "HEAD:refs/heads/$TARGET_BRANCH" \
+            "--force-with-lease=refs/heads/$TARGET_BRANCH:$EXPECTED_OLD_HEAD"
+          echo "Published $new_head to $TARGET_BRANCH"
