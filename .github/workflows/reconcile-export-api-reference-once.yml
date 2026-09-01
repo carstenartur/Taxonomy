@@ -1,0 +1,249 @@
+name: Reconcile architecture export API reference once
+
+on:
+  push:
+    branches:
+      - fix/snapshot-bound-architecture-exports
+    paths:
+      - .github/workflows/reconcile-export-api-reference-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-export-api-reference-once
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: github.repository == 'carstenartur/Taxonomy' && github.actor == 'carstenartur'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Replace the English and German export API sections
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_section(path, start_marker, end_marker, replacement):
+              text = path.read_text(encoding='utf-8')
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              if text.find(start_marker, start + 1) >= 0:
+                  raise SystemExit(f'duplicate section start in {path}')
+              path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+
+          en = Path('docs/en/API_REFERENCE.md')
+          replace_section(
+              en,
+              '## Export\n',
+              '---\n\n## Reports',
+              '''## Export
+
+          ### Authoritative architecture-snapshot handoff
+
+          Use this endpoint when the downloaded file must represent the exact persisted architecture snapshot selected by the caller:
+
+          ```text
+          GET /api/projects/{projectId}/architecture-workbench/{snapshotId}/exports/{formatId}
+          ```
+
+          Supported `formatId` values:
+
+          | Value | Media type | File role |
+          |---|---|---|
+          | `json` | `application/json` | Canonical snapshot evidence |
+          | `svg` | `image/svg+xml` | Stable human-readable vector view |
+          | `pdf` | `application/pdf` | Stable human-readable printable view |
+          | `archimate` | `application/xml` | Experimental ArchiMate 3.1 model exchange |
+          | `mermaid` | `text/plain` | Lossy text projection for Markdown/wiki use |
+          | `structurizr` | `text/plain` | Lossy C4/Structurizr-oriented projection |
+
+          Example:
+
+          ```bash
+          curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" \
+            -D architecture.headers \
+            "http://localhost:8080/api/projects/42/architecture-workbench/snapshot-1/exports/json" \
+            -o architecture-snapshot.json
+          ```
+
+          The endpoint loads the addressed persisted portfolio snapshot and performs no LLM call. It does not silently substitute the latest requirement version, analysis or branch state. The same canonical graph drives every supported format.
+
+          Responses include:
+
+          | Header | Meaning |
+          |---|---|
+          | `X-Taxonomy-Architecture-Snapshot` | Persisted snapshot ID |
+          | `X-Taxonomy-Architecture-Commit` | Snapshot's authoritative commit, when recorded |
+          | `X-Taxonomy-Architecture-Graph-SHA256` | Format-independent canonical graph fingerprint |
+          | `X-Taxonomy-Export-Profile` | Versioned exporter profile |
+          | `X-Taxonomy-Export-Role` | Canonical evidence, stable view, experimental exchange or lossy projection |
+          | `X-Taxonomy-Export-Content-SHA256` | Digest of the response bytes |
+          | `ETag` | Content digest in ETag form |
+
+          The snapshot-specific legacy-compatible SVG and PDF URLs remain available and use the same provenance contract:
+
+          ```text
+          GET /api/projects/{projectId}/architecture-workbench/{snapshotId}.svg
+          GET /api/projects/{projectId}/architecture-workbench/{snapshotId}.pdf
+          ```
+
+          See [Architecture Handoff](ARCHITECTURE_HANDOFF.md) for format roles and limits.
+
+          ### Legacy ad-hoc convenience exports
+
+          The following POST endpoints are retained for compatibility with the ad-hoc analysis screen. They are **not** evidence-bound to an immutable portfolio snapshot and must not be used to claim that a file is the exact reviewed result:
+
+          ```text
+          POST /api/diagram/archimate
+          POST /api/diagram/visio
+          POST /api/diagram/mermaid
+          ```
+
+          The VSDX output remains experimental and is not offered by the immutable-snapshot workflow until #965 is complete. ArchiMate remains experimental until its mapping and independent-tool interoperability evidence in #967 are complete.
+
+          ### JSON score exchange (SavedAnalysis)
+
+          `SavedAnalysis` JSON is a separate score import/export contract for the ad-hoc analysis screen. It is not the same as snapshot Evidence JSON.
+
+          ```bash
+          # Export scores
+          curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/export \
+            -H "Content-Type: application/json" \
+            -d '{"requirement": "Secure voice comms", "scores": {"CP-1023": 92}}'
+
+          # Import scores
+          curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/import \
+            -H "Content-Type: application/json" \
+            -d @saved-analysis.json
+          ```
+
+          Version 2 can additionally carry source provenance, but it does not replace the project/snapshot/commit evidence contract of the workbench export.
+
+          ''' )
+
+          de = Path('docs/de/API_REFERENCE.md')
+          replace_section(
+              de,
+              '## Export\n',
+              '---\n\n## Berichte',
+              '''## Export
+
+          ### Autoritative Übergabe eines Architektur-Snapshots
+
+          Verwenden Sie diesen Endpunkt, wenn die heruntergeladene Datei exakt den vom Aufrufer ausgewählten persistierten Architektur-Snapshot darstellen muss:
+
+          ```text
+          GET /api/projects/{projectId}/architecture-workbench/{snapshotId}/exports/{formatId}
+          ```
+
+          Unterstützte Werte für `formatId`:
+
+          | Wert | Medientyp | Rolle der Datei |
+          |---|---|---|
+          | `json` | `application/json` | Kanonische Snapshot-Evidenz |
+          | `svg` | `image/svg+xml` | Stabile menschenlesbare Vektoransicht |
+          | `pdf` | `application/pdf` | Stabile menschenlesbare Druckansicht |
+          | `archimate` | `application/xml` | Experimenteller ArchiMate-3.1-Modellaustausch |
+          | `mermaid` | `text/plain` | Verlustbehaftete Textprojektion für Markdown/Wiki |
+          | `structurizr` | `text/plain` | Verlustbehaftete C4-/Structurizr-Projektion |
+
+          Beispiel:
+
+          ```bash
+          curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" \
+            -D architecture.headers \
+            "http://localhost:8080/api/projects/42/architecture-workbench/snapshot-1/exports/json" \
+            -o architecture-snapshot.json
+          ```
+
+          Der Endpunkt lädt den adressierten persistierten Portfolio-Snapshot und führt keinen LLM-Aufruf aus. Er ersetzt ihn nicht stillschweigend durch die neueste Anforderungsversion, Analyse oder den aktuellen Branch-Zustand. Derselbe kanonische Graph treibt alle unterstützten Formate.
+
+          Die Antwort enthält:
+
+          | Header | Bedeutung |
+          |---|---|
+          | `X-Taxonomy-Architecture-Snapshot` | ID des persistierten Snapshots |
+          | `X-Taxonomy-Architecture-Commit` | Autoritativer Snapshot-Commit, sofern hinterlegt |
+          | `X-Taxonomy-Architecture-Graph-SHA256` | Formatunabhängiger kanonischer Graph-Fingerprint |
+          | `X-Taxonomy-Export-Profile` | Versioniertes Exportprofil |
+          | `X-Taxonomy-Export-Role` | Kanonische Evidenz, stabile Ansicht, experimenteller Austausch oder verlustbehaftete Projektion |
+          | `X-Taxonomy-Export-Content-SHA256` | Digest der Antwortbytes |
+          | `ETag` | Inhaltsdigest in ETag-Form |
+
+          Die bisherigen snapshotspezifischen SVG- und PDF-URLs bleiben kompatibel verfügbar und verwenden denselben Provenienzvertrag:
+
+          ```text
+          GET /api/projects/{projectId}/architecture-workbench/{snapshotId}.svg
+          GET /api/projects/{projectId}/architecture-workbench/{snapshotId}.pdf
+          ```
+
+          Siehe [Architekturübergabe](ARCHITECTURE_HANDOFF.md) für Formatrollen und Grenzen.
+
+          ### Bisherige Ad-hoc-Komfortexporte
+
+          Die folgenden POST-Endpunkte bleiben für die Ad-hoc-Analyseansicht kompatibel erhalten. Sie sind **nicht** beweissicher an einen unveränderlichen Portfolio-Snapshot gebunden und dürfen nicht als Nachweis verwendet werden, dass eine Datei exakt dem geprüften Ergebnis entspricht:
+
+          ```text
+          POST /api/diagram/archimate
+          POST /api/diagram/visio
+          POST /api/diagram/mermaid
+          ```
+
+          Die VSDX-Ausgabe bleibt experimentell und wird im unveränderlichen Snapshot-Workflow nicht angeboten, bis #965 abgeschlossen ist. ArchiMate bleibt experimentell, bis Mapping und unabhängige Interoperabilitätsnachweise aus #967 vollständig sind.
+
+          ### JSON-Bewertungsaustausch (SavedAnalysis)
+
+          `SavedAnalysis`-JSON ist ein separater Bewertungs-Import-/Exportvertrag der Ad-hoc-Analyseansicht. Es ist nicht dasselbe wie das Evidenz-JSON eines Snapshots.
+
+          ```bash
+          # Bewertungen exportieren
+          curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/export \
+            -H "Content-Type: application/json" \
+            -d '{"requirement": "Secure voice comms", "scores": {"CP-1023": 92}}'
+
+          # Bewertungen importieren
+          curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/import \
+            -H "Content-Type: application/json" \
+            -d @saved-analysis.json
+          ```
+
+          Version 2 kann zusätzlich Quellprovenienz tragen, ersetzt aber nicht den Projekt-/Snapshot-/Commit-Evidenzvertrag des Workbench-Exports.
+
+          ''' )
+          PY
+
+          git diff --check -- docs/en/API_REFERENCE.md docs/de/API_REFERENCE.md
+          grep -Fq '/exports/{formatId}' docs/en/API_REFERENCE.md
+          grep -Fq '/exports/{formatId}' docs/de/API_REFERENCE.md
+          grep -Fq 'Legacy ad-hoc convenience exports' docs/en/API_REFERENCE.md
+          grep -Fq 'Bisherige Ad-hoc-Komfortexporte' docs/de/API_REFERENCE.md
+          ! grep -Fq '### Visio (.vsdx)' docs/en/API_REFERENCE.md
+          ! grep -Fq '### Visio (.vsdx)' docs/de/API_REFERENCE.md
+          rm .github/workflows/reconcile-export-api-reference-once.yml
+
+      - name: Commit only the final API reference reconciliation
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/en/API_REFERENCE.md \
+            docs/de/API_REFERENCE.md \
+            .github/workflows/reconcile-export-api-reference-once.yml
+          actual=$(git diff --cached --name-only | sort)
+          expected=$(printf '%s\n' \
+            '.github/workflows/reconcile-export-api-reference-once.yml' \
+            'docs/de/API_REFERENCE.md' \
+            'docs/en/API_REFERENCE.md' | sort)
+          test "$actual" = "$expected"
+          git commit -m "Document snapshot-bound architecture export API"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
