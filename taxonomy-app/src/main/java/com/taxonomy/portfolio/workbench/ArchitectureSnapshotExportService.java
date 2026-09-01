@@ -126,10 +126,15 @@ public class ArchitectureSnapshotExportService {
                 graphSha256,
                 projection.projectId(),
                 projection.requirementId(),
+                projection.requirementVersionId(),
+                projection.requirementVersionNumber(),
+                projection.requirementContentHash(),
                 projection.workspaceId(),
                 projection.branchName(),
                 projection.provider(),
                 projection.modelName(),
+                projection.taxonomyFingerprint(),
+                projection.promptFingerprint(),
                 exportProfiles(),
                 projection);
         try {
@@ -310,10 +315,15 @@ public class ArchitectureSnapshotExportService {
             String graphSha256,
             Long projectId,
             Long requirementId,
+            Long requirementVersionId,
+            int requirementVersionNumber,
+            String requirementContentHash,
             String workspaceId,
             String branch,
             String provider,
             String modelName,
+            String taxonomyFingerprint,
+            String promptFingerprint,
             List<ExportProfile> exportProfiles,
             Projection projection) {
     }
