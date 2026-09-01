@@ -145,6 +145,18 @@ class ArchitectureWorkbenchUiIT {
         assertThat(driver.findElement(By.id("architectureTitle")).getText())
                 .isNotBlank()
                 .doesNotStartWith("archview.");
+        WebElement exportFormat = driver.findElement(
+        By.id("architectureExportFormat"));
+    assertThat(exportFormat.isEnabled()).isTrue();
+    assertThat(driver.findElement(By.id("downloadArchitectureExport")).isEnabled())
+        .isTrue();
+    List<String> exportFormats = exportFormat.findElements(By.tagName("option")).stream()
+        .map(option -> option.getAttribute("value"))
+        .toList();
+    assertThat(exportFormats)
+        .containsExactly("json", "svg", "pdf", "archimate", "mermaid", "structurizr")
+        .doesNotContain("visio");
+
         fitAndWait();
         assertDiagramFitsCanvas();
 
@@ -192,22 +204,73 @@ class ArchitectureWorkbenchUiIT {
         fitAndWait();
         assertDiagramFitsCanvas();
 
-        Map<String, Object> svg = requestText(
-                "/api/projects/" + projectId + "/architecture-workbench/" + snapshotId + ".svg");
-        assertThat(number(svg.get("status"))).isEqualTo(200);
-        assertThat(String.valueOf(svg.get("contentType"))).startsWith("image/svg+xml");
-        assertThat(String.valueOf(svg.get("text")))
-                .contains("<svg")
-                .contains(nodeCode)
-                .doesNotContain("<script")
-                .doesNotContain("Download PDF");
+        String exportBase = "/api/projects/" + projectId
+        + "/architecture-workbench/" + snapshotId + "/exports/";
+    Map<String, Object> evidence = requestTextArtifact(
+        exportBase + "json", "application/json");
+    Map<String, Object> svg = requestTextArtifact(
+        "/api/projects/" + projectId + "/architecture-workbench/"
+            + snapshotId + ".svg",
+        "image/svg+xml");
+    Map<String, Object> pdf = requestBinaryPrefix(
+        "/api/projects/" + projectId + "/architecture-workbench/"
+            + snapshotId + ".pdf");
+    Map<String, Object> archiMate = requestTextArtifact(
+        exportBase + "archimate", "application/xml");
+    Map<String, Object> mermaid = requestTextArtifact(
+        exportBase + "mermaid", "text/plain");
+    Map<String, Object> structurizr = requestTextArtifact(
+        exportBase + "structurizr", "text/plain");
 
-        Map<String, Object> pdf = requestBinaryPrefix(
-                "/api/projects/" + projectId + "/architecture-workbench/" + snapshotId + ".pdf");
-        assertThat(number(pdf.get("status"))).isEqualTo(200);
-        assertThat(String.valueOf(pdf.get("contentType"))).startsWith("application/pdf");
-        assertThat(String.valueOf(pdf.get("prefix"))).isEqualTo("%PDF-");
-        assertThat(number(pdf.get("length"))).isGreaterThan(500);
+    String graphSha = String.valueOf(evidence.get("graphSha"));
+    assertThat(graphSha).hasSize(64);
+    for (Map<String, Object> artifact : List.of(
+        evidence, svg, pdf, archiMate, mermaid, structurizr)) {
+        assertThat(number(artifact.get("status"))).isEqualTo(200);
+        assertThat(String.valueOf(artifact.get("snapshotId"))).isEqualTo(snapshotId);
+        assertThat(String.valueOf(artifact.get("graphSha"))).isEqualTo(graphSha);
+        assertThat(String.valueOf(artifact.get("contentSha"))).hasSize(64);
+        assertThat(String.valueOf(artifact.get("profile"))).isNotBlank();
+        assertThat(String.valueOf(artifact.get("role"))).isNotBlank();
+    }
+
+    assertThat(String.valueOf(evidence.get("contentType"))).startsWith("application/json");
+    assertThat(String.valueOf(evidence.get("role"))).isEqualTo("canonical-evidence");
+    assertThat(String.valueOf(evidence.get("text")))
+        .contains(snapshotId)
+        .contains(graphSha)
+        .contains("canonical-evidence")
+        .contains("experimental-model-exchange")
+        .contains("lossy-text-projection");
+
+    assertThat(String.valueOf(svg.get("contentType"))).startsWith("image/svg+xml");
+    assertThat(String.valueOf(svg.get("role"))).isEqualTo("stable-human-view");
+    assertThat(String.valueOf(svg.get("text")))
+        .contains("<svg")
+        .contains(nodeCode)
+        .doesNotContain("<script")
+        .doesNotContain("Download selected format");
+
+    assertThat(String.valueOf(pdf.get("contentType"))).startsWith("application/pdf");
+    assertThat(String.valueOf(pdf.get("role"))).isEqualTo("stable-human-view");
+    assertThat(String.valueOf(pdf.get("prefix"))).isEqualTo("%PDF-");
+    assertThat(number(pdf.get("length"))).isGreaterThan(500);
+
+    assertThat(String.valueOf(archiMate.get("contentType"))).startsWith("application/xml");
+    assertThat(String.valueOf(archiMate.get("role")))
+        .isEqualTo("experimental-model-exchange");
+    assertThat(String.valueOf(archiMate.get("text")))
+        .contains("<model")
+        .contains(nodeCode);
+
+    assertThat(String.valueOf(mermaid.get("role"))).isEqualTo("lossy-text-projection");
+    assertThat(String.valueOf(mermaid.get("text")))
+        .contains("flowchart")
+        .contains(nodeCode);
+    assertThat(String.valueOf(structurizr.get("role")))
+        .isEqualTo("lossy-text-projection");
+    assertThat(String.valueOf(structurizr.get("text")))
+        .contains("workspace");
 
 
         if (Boolean.getBoolean("generateScreenshots")) {
@@ -377,18 +440,27 @@ class ArchitectureWorkbenchUiIT {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> requestText(String path) {
+    private static Map<String, Object> requestTextArtifact(String path, String accept) {
         return (Map<String, Object>) javascript().executeAsyncScript("""
-                const path = arguments[0];
-                const done = arguments[arguments.length - 1];
-                fetch(path, {headers: {Accept: 'image/svg+xml'}, credentials: 'same-origin'})
-                    .then(async response => done({
-                        status: response.status,
-                        contentType: response.headers.get('content-type') || '',
-                        text: await response.text()
-                    }))
-                    .catch(error => done({status: 0, error: String(error)}));
-                """, path);
+            const path = arguments[0];
+            const accept = arguments[1];
+            const done = arguments[arguments.length - 1];
+            fetch(path, {
+                headers: {Accept: accept},
+                credentials: 'same-origin',
+                cache: 'no-store'
+            }).then(async response => done({
+                status: response.status,
+                contentType: response.headers.get('content-type') || '',
+                snapshotId: response.headers.get('x-taxonomy-architecture-snapshot') || '',
+                commitSha: response.headers.get('x-taxonomy-architecture-commit') || '',
+                graphSha: response.headers.get('x-taxonomy-architecture-graph-sha256') || '',
+                profile: response.headers.get('x-taxonomy-export-profile') || '',
+                role: response.headers.get('x-taxonomy-export-role') || '',
+                contentSha: response.headers.get('x-taxonomy-export-content-sha256') || '',
+                text: await response.text()
+            })).catch(error => done({status: 0, error: String(error)}));
+            """, path, accept);
     }
 
     @SuppressWarnings("unchecked")
@@ -403,6 +475,12 @@ class ArchitectureWorkbenchUiIT {
                         done({
                             status: response.status,
                             contentType: response.headers.get('content-type') || '',
+                            snapshotId: response.headers.get('x-taxonomy-architecture-snapshot') || '',
+                            commitSha: response.headers.get('x-taxonomy-architecture-commit') || '',
+                            graphSha: response.headers.get('x-taxonomy-architecture-graph-sha256') || '',
+                            profile: response.headers.get('x-taxonomy-export-profile') || '',
+                            role: response.headers.get('x-taxonomy-export-role') || '',
+                            contentSha: response.headers.get('x-taxonomy-export-content-sha256') || '',
                             prefix: prefix,
                             length: bytes.length
                         });
