@@ -95,6 +95,15 @@ class ArchitectureSnapshotExportServiceTest {
                 .extracting(artifact -> artifact.format().id())
                 .containsExactly("json", "svg", "pdf", "archimate", "mermaid", "structurizr");
         assertThat(artifacts)
+                .extracting(artifact -> artifact.format().handoffRole())
+                .containsExactly(
+                        "canonical-evidence",
+                        "stable-human-view",
+                        "stable-human-view",
+                        "experimental-model-exchange",
+                        "lossy-text-projection",
+                        "lossy-text-projection");
+        assertThat(artifacts)
                 .allSatisfy(artifact -> assertThat(artifact.contentSha256()).hasSize(64));
 
         verify(workbenchService, times(ExportFormat.values().length))
@@ -106,7 +115,7 @@ class ArchitectureSnapshotExportServiceTest {
     }
 
     @Test
-    void evidenceJsonCarriesTheImmutableSnapshotCoordinates() {
+    void evidenceJsonCarriesTheImmutableCoordinatesFingerprintAndFormatRoles() {
         WorkspaceContext context = new WorkspaceContext("alice", "workspace-a", "feature-a");
         Projection projection = projection(diagram());
         when(workbenchService.load(42L, "snapshot-1", "alice", context))
@@ -117,8 +126,16 @@ class ArchitectureSnapshotExportServiceTest {
         String json = new String(artifact.content(), StandardCharsets.UTF_8);
 
         assertThat(json)
+                .contains("\"schemaVersion\" : 1")
                 .contains("\"snapshotId\" : \"snapshot-1\"")
                 .contains("\"commitSha\" : \"0123456789abcdef\"")
+                .contains("\"graphSha256\" : \"" + artifact.graphSha256() + "\"")
+                .contains("\"workspaceId\" : \"workspace-a\"")
+                .contains("\"branch\" : \"feature-a\"")
+                .contains("\"exportProfiles\"")
+                .contains("\"handoffRole\" : \"experimental-model-exchange\"")
+                .contains("\"handoffRole\" : \"lossy-text-projection\"")
+                .contains("\"projection\"")
                 .contains("\"requirementText\" : \"Need secure communications\"")
                 .contains("\"diagram\"")
                 .contains("\"scene\"");
