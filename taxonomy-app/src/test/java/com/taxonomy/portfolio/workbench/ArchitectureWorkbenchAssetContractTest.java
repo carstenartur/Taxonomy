@@ -17,7 +17,11 @@ class ArchitectureWorkbenchAssetContractTest {
                 .contains("/js/api/architecture-workbench-api.js")
                 .contains("/js/architecture-workbench.js")
                 .contains("/webjars/d3/7.9.0/dist/d3.min.js")
-                .contains("Download PDF");
+                .contains("id=\"architectureExportFormat\"")
+                .contains("id=\"downloadArchitectureExport\"")
+                .contains("Evidence JSON")
+                .contains("ArchiMate Exchange XML (experimental)")
+                .contains("Every format is generated from the exact persisted snapshot");
         assertThat(page.indexOf("/js/api/architecture-workbench-api.js"))
                 .isLessThan(page.indexOf("/js/architecture-workbench.js"));
     }
@@ -29,10 +33,13 @@ class ArchitectureWorkbenchAssetContractTest {
         assertThat(adapter)
                 .doesNotContain("window.print")
                 .doesNotContain("fetch(")
+                .doesNotContain("downloadArchitectureSvg")
+                .doesNotContain("downloadArchitecturePdf")
                 .contains("Promise.resolve()")
                 .contains("return ArchitectureWorkbenchApi.load(projectId, snapshotId)")
                 .contains(".catch(showError)")
-                .contains("ArchitectureWorkbenchApi.pdfUrl");
+                .contains("ArchitectureWorkbenchApi.exportUrl(projectId, snapshotId, formatId)")
+                .contains("from persisted snapshot");
     }
 
     @Test
@@ -47,8 +54,21 @@ class ArchitectureWorkbenchAssetContractTest {
                 .contains("state.mode = 'overview'")
                 .contains("searchInput,")
                 .contains("contextCheckbox,")
-                .contains("fullscreenButton")
+                .contains("fullscreenButton,")
+                .contains("exportFormatSelect,")
+                .contains("exportButton")
                 .contains("control.disabled = true");
+    }
+
+    @Test
+    void apiBoundaryAllowsOnlyTheDeclaredSnapshotExportFormats() throws Exception {
+        String api = resource("static/js/api/architecture-workbench-api.js");
+
+        assertThat(api)
+                .contains("'json', 'svg', 'pdf', 'archimate', 'mermaid', 'structurizr'")
+                .contains("EXPORT_FORMATS.has(normalized)")
+                .contains("'/exports/' + encodeURIComponent(exportFormat(formatId))")
+                .doesNotContain("'visio'");
     }
 
     @Test
