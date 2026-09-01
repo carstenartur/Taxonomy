@@ -2,7 +2,7 @@ package com.taxonomy.security.config;
 
 import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.security.SecurityProperties;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,7 +36,7 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 public class ActuatorAdminTokenSecurityConfig {
 
     static final int ACTUATOR_FILTER_ORDER =
-            SecurityProperties.DEFAULT_FILTER_ORDER + 1;
+            SecurityFilterProperties.DEFAULT_FILTER_ORDER + 1;
 
     @Bean
     ActuatorSecurityFilter actuatorSecurityFilter(

@@ -3,7 +3,7 @@ package com.taxonomy.security.config;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.security.SecurityProperties;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -66,7 +66,7 @@ class ActuatorAdminTokenSecurityTests {
         assertThat(registration.isEnabled()).isTrue();
         assertThat(registration.getUrlPatterns()).containsExactly("/*");
         assertThat(registration.getOrder())
-                .isEqualTo(SecurityProperties.DEFAULT_FILTER_ORDER + 1)
+                .isEqualTo(SecurityFilterProperties.DEFAULT_FILTER_ORDER + 1)
                 .isEqualTo(ActuatorAdminTokenSecurityConfig.ACTUATOR_FILTER_ORDER);
         assertThat(ActuatorSecurityFilter.class.getAnnotation(
                 org.springframework.stereotype.Component.class)).isNull();
