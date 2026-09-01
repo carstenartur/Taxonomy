@@ -1,6 +1,8 @@
 name: Merged PR review audit
 
 on:
+  push:
+    branches: [ci/merged-pr-review-audit]
   pull_request_review:
     types: [submitted, edited, dismissed]
   schedule:
@@ -40,10 +42,16 @@ jobs:
           AUDIT_PR_NUMBER: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.number || '' }}
           AUDIT_SINCE_DAYS: ${{ inputs.since_days || '35' }}
           AUDIT_REVIEWERS: 'copilot-pull-request-reviewer[bot],Copilot'
-          AUDIT_COMMENT: 'true'
+          AUDIT_COMMENT: ${{ github.event_name == 'push' && 'false' || 'true' }}
           AUDIT_FAIL_SEVERITY: 'high'
           AUDIT_OUTPUT_ROOT: target/merged-pr-review-audit
         run: .cache/ui-frontend/node/node .github/scripts/merged-pr-review-audit.mjs
+      - name: Print review-audit evidence
+        if: always()
+        run: |
+          if [[ -f target/merged-pr-review-audit/audit.md ]]; then
+            cat target/merged-pr-review-audit/audit.md
+          fi
       - name: Upload review-audit evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
