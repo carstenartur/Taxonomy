@@ -1,0 +1,141 @@
+name: Apply snapshot export UI patch once
+
+on:
+  push:
+    branches:
+      - fix/snapshot-bound-architecture-exports
+    paths:
+      - .github/workflows/apply-snapshot-export-ui-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-snapshot-export-ui-once
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.repository == 'carstenartur/Taxonomy' && github.actor == 'carstenartur'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Replace only the architecture export control wiring
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('taxonomy-app/src/main/resources/static/js/architecture-workbench.js')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  """    const fullscreenButton = document.getElementById('fullscreenArchitecture');
+              const reducedMotion = window.matchMedia
+          """,
+                  """    const fullscreenButton = document.getElementById('fullscreenArchitecture');
+              const exportFormatSelect = document.getElementById('architectureExportFormat');
+              const exportButton = document.getElementById('downloadArchitectureExport');
+              const reducedMotion = window.matchMedia
+          """),
+              (
+                  """            zoomOutButton,
+              fullscreenButton
+          """,
+                  """            zoomOutButton,
+              fullscreenButton,
+              exportFormatSelect,
+              exportButton
+          """),
+              (
+                  """        [fitButton, zoomInButton, zoomOutButton, overviewButton].forEach(function (button) {
+              button.disabled = false;
+          });
+          """,
+                  """        [
+              fitButton,
+              zoomInButton,
+              zoomOutButton,
+              overviewButton,
+              exportFormatSelect,
+              exportButton
+          ].forEach(function (control) {
+              control.disabled = false;
+          });
+          """),
+              (
+                  """    document.getElementById('downloadArchitectureSvg').addEventListener('click', function () {
+              window.location.assign(ArchitectureWorkbenchApi.svgUrl(projectId, snapshotId));
+          });
+
+              document.getElementById('downloadArchitecturePdf').addEventListener('click', function () {
+              window.location.assign(ArchitectureWorkbenchApi.pdfUrl(projectId, snapshotId));
+          });
+          """,
+                  """    exportButton.addEventListener('click', function () {
+              const formatId = exportFormatSelect.value;
+              const option = exportFormatSelect.options[exportFormatSelect.selectedIndex];
+              const formatLabel = option ? option.text : formatId;
+              setStatus('Downloading ' + formatLabel
+                  + ' from persisted snapshot ' + snapshotId + '…');
+              window.location.assign(
+                  ArchitectureWorkbenchApi.exportUrl(projectId, snapshotId, formatId));
+          });
+          """)
+          ]
+
+          for old, new in replacements:
+              occurrences = text.count(old)
+              if occurrences != 1:
+                  raise SystemExit(
+                      f'expected exactly one occurrence, found {occurrences}: {old[:80]!r}')
+              text = text.replace(old, new)
+
+          forbidden = [
+              "downloadArchitectureSvg",
+              "downloadArchitecturePdf",
+              "ArchitectureWorkbenchApi.svgUrl(projectId, snapshotId)",
+              "ArchitectureWorkbenchApi.pdfUrl(projectId, snapshotId)",
+          ]
+          for token in forbidden:
+              if token in text:
+                  raise SystemExit(f'legacy export token remains: {token}')
+
+          required = [
+              "architectureExportFormat",
+              "downloadArchitectureExport",
+              "ArchitectureWorkbenchApi.exportUrl(projectId, snapshotId, formatId)",
+          ]
+          for token in required:
+              if token not in text:
+                  raise SystemExit(f'missing export token: {token}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/architecture-workbench.js
+          git diff --check -- taxonomy-app/src/main/resources/static/js/architecture-workbench.js
+          rm .github/workflows/apply-snapshot-export-ui-once.yml
+
+      - name: Commit only the final JavaScript patch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            taxonomy-app/src/main/resources/static/js/architecture-workbench.js \
+            .github/workflows/apply-snapshot-export-ui-once.yml
+          actual=$(git diff --cached --name-only | sort)
+          expected=$(printf '%s\n' \
+            '.github/workflows/apply-snapshot-export-ui-once.yml' \
+            'taxonomy-app/src/main/resources/static/js/architecture-workbench.js' | sort)
+          test "$actual" = "$expected"
+          git commit -m "Wire workbench downloads to immutable snapshot exports"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
