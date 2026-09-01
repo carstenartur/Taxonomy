@@ -3,6 +3,7 @@ package com.taxonomy.security.service;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
@@ -119,6 +120,110 @@ class BootstrapAdminCredentialStoreTest {
                 .isEqualTo("first-data-source-secret");
         assertThat(Files.readString(secondFile, StandardCharsets.UTF_8).strip())
                 .isEqualTo("second-data-source-secret");
+    }
+
+    @Test
+    void nullAndBlankStorageIdentityUseTheSameStableDefaultFileName() {
+        BootstrapAdminCredentialStore nullIdentity =
+                new BootstrapAdminCredentialStore(
+                        temporaryDirectory.resolve("null"), null);
+        BootstrapAdminCredentialStore blankIdentity =
+                new BootstrapAdminCredentialStore(
+                        temporaryDirectory.resolve("blank"), "   ");
+
+        Path nullFile = nullIdentity.publish("null-identity-secret");
+        Path blankFile = blankIdentity.publish("blank-identity-secret");
+
+        assertThat(nullFile.getFileName())
+                .isEqualTo(blankFile.getFileName());
+    }
+
+    @Test
+    void removesPublishedFileWhenFinalPermissionRestrictionFails()
+            throws Exception {
+        BootstrapAdminCredentialStore store =
+                new BootstrapAdminCredentialStore(temporaryDirectory) {
+                    private int restrictionCount;
+
+                    @Override
+                    Path createOwnerOnlyStagingFile() throws IOException {
+                        Files.createDirectories(temporaryDirectory);
+                        return Files.createTempFile(
+                                temporaryDirectory,
+                                "controlled-",
+                                ".pending");
+                    }
+
+                    @Override
+                    void restrictToOwner(Path file) throws IOException {
+                        restrictionCount++;
+                        if (restrictionCount == 2) {
+                            throw new IOException(
+                                    "simulated final permission failure");
+                        }
+                        super.restrictToOwner(file);
+                    }
+                };
+
+        assertThatIllegalStateException()
+                .isThrownBy(() -> store.publish("cleanup-published-secret"))
+                .withMessageContaining("owner-only")
+                .withCauseInstanceOf(IOException.class);
+
+        try (var files = Files.list(temporaryDirectory)) {
+            assertThat(files).isEmpty();
+        }
+    }
+
+    @Test
+    void preservesPrimaryFailureWhenStagingCleanupAlsoFails()
+            throws Exception {
+        Path nonEmptyStaging = temporaryDirectory.resolve("blocked.pending");
+        Files.createDirectory(nonEmptyStaging);
+        Files.writeString(nonEmptyStaging.resolve("blocker"), "block");
+
+        BootstrapAdminCredentialStore store =
+                new BootstrapAdminCredentialStore(temporaryDirectory) {
+                    @Override
+                    Path createOwnerOnlyStagingFile() {
+                        return nonEmptyStaging;
+                    }
+                };
+
+        assertThatIllegalStateException()
+                .isThrownBy(() -> store.publish("cleanup-failure-secret"))
+                .withMessageContaining("owner-only")
+                .withCauseInstanceOf(IOException.class);
+
+        assertThat(nonEmptyStaging).isDirectory();
+        assertThat(nonEmptyStaging.resolve("blocker")).exists();
+    }
+
+    @Test
+    void fallbackRestrictsTheEmptyStagingFileBeforeReturningIt()
+            throws Exception {
+        boolean[] restrictionObserved = {false};
+        BootstrapAdminCredentialStore store =
+                new BootstrapAdminCredentialStore(temporaryDirectory) {
+                    @Override
+                    boolean supportsPosixCreationAttributes() {
+                        return false;
+                    }
+
+                    @Override
+                    void restrictToOwner(Path file) throws IOException {
+                        assertThat(Files.size(file)).isZero();
+                        restrictionObserved[0] = true;
+                    }
+                };
+
+        Path stagingFile = store.createOwnerOnlyStagingFile();
+        try {
+            assertThat(restrictionObserved[0]).isTrue();
+            assertThat(Files.size(stagingFile)).isZero();
+        } finally {
+            Files.deleteIfExists(stagingFile);
+        }
     }
 
     @Test

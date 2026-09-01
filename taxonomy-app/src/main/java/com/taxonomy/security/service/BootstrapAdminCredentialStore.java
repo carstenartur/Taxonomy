@@ -143,9 +143,7 @@ public class BootstrapAdminCredentialStore {
      */
     Path createOwnerOnlyStagingFile() throws IOException {
         Files.createDirectories(directory);
-        PosixFileAttributeView posixView = Files.getFileAttributeView(
-                directory, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
-        if (posixView != null) {
+        if (supportsPosixCreationAttributes()) {
             try {
                 return Files.createTempFile(
                         directory,
@@ -170,6 +168,13 @@ public class BootstrapAdminCredentialStore {
             deleteQuietly(stagingFile);
             throw exception;
         }
+    }
+
+    boolean supportsPosixCreationAttributes() {
+        return Files.getFileAttributeView(
+                directory,
+                PosixFileAttributeView.class,
+                LinkOption.NOFOLLOW_LINKS) != null;
     }
 
     private static void moveReplacing(Path source, Path target) throws IOException {
@@ -199,7 +204,7 @@ public class BootstrapAdminCredentialStore {
         }
     }
 
-    private static void restrictToOwner(Path file) throws IOException {
+    void restrictToOwner(Path file) throws IOException {
         PosixFileAttributeView posixView = Files.getFileAttributeView(
                 file, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
         if (posixView != null) {
