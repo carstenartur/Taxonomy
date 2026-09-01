@@ -158,6 +158,10 @@ test('required Maven verification invokes the trusted exact-head gate', async ()
     assert.match(workflow,
         /types: \[opened, synchronize, reopened, ready_for_review\]/u);
     assert.match(workflow,
+        /name: Keep draft heads non-mergeable/u);
+    assert.match(workflow,
+        /github\.event\.pull_request\.draft == true/u);
+    assert.match(workflow,
         /name: Require complete review of the exact pull-request head/u);
     assert.match(workflow,
         /pull-requests: read/u);
