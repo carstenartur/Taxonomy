@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import {
     classifyReview,
@@ -149,4 +150,19 @@ test('blocks a stale workflow after the pull-request head advances', () => {
         reviewerLogins: REVIEWERS
     });
     assert.equal(result.code, 'STALE_REVIEW_GATE_RUN');
+});
+
+test('required Maven verification invokes the trusted exact-head gate', async () => {
+    const workflow = await readFile(
+        new URL('../workflows/ci-cd.yml', import.meta.url), 'utf8');
+    assert.match(workflow,
+        /types: \[opened, synchronize, reopened, ready_for_review\]/u);
+    assert.match(workflow,
+        /name: Require complete review of the exact pull-request head/u);
+    assert.match(workflow,
+        /pull-requests: read/u);
+    assert.match(workflow,
+        /git show "\$\{\{ github\.event\.pull_request\.base\.sha \}\}:\$gate"/u);
+    assert.match(workflow,
+        /\.cache\/ui-frontend\/node\/node "\$gate"/u);
 });
