@@ -252,45 +252,79 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/pro
 
 ## Export
 
-### ArchiMate-XML
+### Autoritative Übergabe eines Architektur-Snapshots
 
-```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/archimate \
-  -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-1023": 92, "CO-1011": 88}}' \
-  -o architecture.xml
+Verwenden Sie diesen Endpunkt, wenn die heruntergeladene Datei exakt den vom Aufrufer ausgewählten persistierten Architektur-Snapshot darstellen muss:
+
+```text
+GET /api/projects/{projectId}/architecture-workbench/{snapshotId}/exports/{formatId}
 ```
 
-### Visio (.vsdx)
+Unterstützte Werte für `formatId`:
+
+| Wert | Medientyp | Rolle der Datei |
+|---|---|---|
+| `json` | `application/json` | Kanonische Snapshot-Evidenz |
+| `svg` | `image/svg+xml` | Stabile menschenlesbare Vektoransicht |
+| `pdf` | `application/pdf` | Stabile menschenlesbare Druckansicht |
+| `archimate` | `application/xml` | Experimenteller ArchiMate-3.1-Modellaustausch |
+| `mermaid` | `text/plain` | Verlustbehaftete Textprojektion für Markdown/Wiki |
+| `structurizr` | `text/plain` | Verlustbehaftete C4-/Structurizr-Projektion |
+
+Beispiel:
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/visio \
-  -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-1023": 92, "CO-1011": 88}}' \
-  -o architecture.vsdx
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}"   -D architecture.headers   "http://localhost:8080/api/projects/42/architecture-workbench/snapshot-1/exports/json"   -o architecture-snapshot.json
 ```
 
-### Mermaid
+Der Endpunkt lädt den adressierten persistierten Portfolio-Snapshot und führt keinen LLM-Aufruf aus. Er ersetzt ihn nicht stillschweigend durch die neueste Anforderungsversion, Analyse oder den aktuellen Branch-Zustand. Derselbe kanonische Graph treibt alle unterstützten Formate.
+
+Die Antwort enthält:
+
+| Header | Bedeutung |
+|---|---|
+| `X-Taxonomy-Architecture-Snapshot` | ID des persistierten Snapshots |
+| `X-Taxonomy-Architecture-Commit` | Autoritativer Snapshot-Commit, sofern hinterlegt |
+| `X-Taxonomy-Architecture-Graph-SHA256` | Formatunabhängiger kanonischer Graph-Fingerprint |
+| `X-Taxonomy-Export-Profile` | Versioniertes Exportprofil |
+| `X-Taxonomy-Export-Role` | Kanonische Evidenz, stabile Ansicht, experimenteller Austausch oder verlustbehaftete Projektion |
+| `X-Taxonomy-Export-Content-SHA256` | Digest der Antwortbytes |
+| `ETag` | Inhaltsdigest in ETag-Form |
+
+Die bisherigen snapshotspezifischen SVG- und PDF-URLs bleiben kompatibel verfügbar und verwenden denselben Provenienzvertrag:
+
+```text
+GET /api/projects/{projectId}/architecture-workbench/{snapshotId}.svg
+GET /api/projects/{projectId}/architecture-workbench/{snapshotId}.pdf
+```
+
+Siehe [Architekturübergabe](ARCHITECTURE_HANDOFF.md) für Formatrollen und Grenzen.
+
+### Bisherige Ad-hoc-Komfortexporte
+
+Die folgenden POST-Endpunkte bleiben für die Ad-hoc-Analyseansicht kompatibel erhalten. Sie sind **nicht** beweissicher an einen unveränderlichen Portfolio-Snapshot gebunden und dürfen nicht als Nachweis verwendet werden, dass eine Datei exakt dem geprüften Ergebnis entspricht:
+
+```text
+POST /api/diagram/archimate
+POST /api/diagram/visio
+POST /api/diagram/mermaid
+```
+
+Die VSDX-Ausgabe bleibt experimentell und wird im unveränderlichen Snapshot-Workflow nicht angeboten, bis #965 abgeschlossen ist. ArchiMate bleibt experimentell, bis Mapping und unabhängige Interoperabilitätsnachweise aus #967 vollständig sind.
+
+### JSON-Bewertungsaustausch (SavedAnalysis)
+
+`SavedAnalysis`-JSON ist ein separater Bewertungs-Import-/Exportvertrag der Ad-hoc-Analyseansicht. Es ist nicht dasselbe wie das Evidenz-JSON eines Snapshots.
 
 ```bash
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/mermaid \
-  -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-1023": 92, "CO-1011": 88}}'
+# Bewertungen exportieren
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/export   -H "Content-Type: application/json"   -d '{"requirement": "Secure voice comms", "scores": {"CP-1023": 92}}'
+
+# Bewertungen importieren
+curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/import   -H "Content-Type: application/json"   -d @saved-analysis.json
 ```
 
-### JSON (Analyse speichern/laden)
-
-```bash
-# Exportieren
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/export \
-  -H "Content-Type: application/json" \
-  -d '{"requirement": "Secure voice comms", "scores": {"CP-1023": 92}}'
-
-# Importieren
-curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/scores/import \
-  -H "Content-Type: application/json" \
-  -d @saved-analysis.json
-```
+Version 2 kann zusätzlich Quellprovenienz tragen, ersetzt aber nicht den Projekt-/Snapshot-/Commit-Evidenzvertrag des Workbench-Exports.
 
 ---
 
