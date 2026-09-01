@@ -279,6 +279,11 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      - name: Keep draft heads non-mergeable
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft == true
+        run: |
+          echo "::error::Draft pull-request heads intentionally do not satisfy required Maven verification."
+          exit 1
       - name: Require every authoritative lane
         env:
           APPLICATION_RESULT: ${{ needs.application.result }}
