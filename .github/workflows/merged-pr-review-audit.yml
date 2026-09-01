@@ -1,0 +1,54 @@
+name: Merged PR review audit
+
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  schedule:
+    - cron: '37 3 * * *'
+  workflow_dispatch:
+    inputs:
+      since_days:
+        description: Number of recent days to audit
+        required: false
+        default: '35'
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: taxonomy-merged-pr-review-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit reviews of merged pull requests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install repository-pinned Node runtime
+        run: ./mvnw -B -ntp -f .github/ui-verification-pom.xml generate-resources -Pcontracts
+      - name: Audit merged pull-request review evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUDIT_PR_NUMBER: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.number || '' }}
+          AUDIT_SINCE_DAYS: ${{ inputs.since_days || '35' }}
+          AUDIT_REVIEWERS: 'copilot-pull-request-reviewer[bot],Copilot'
+          AUDIT_COMMENT: 'true'
+          AUDIT_FAIL_SEVERITY: 'high'
+          AUDIT_OUTPUT_ROOT: target/merged-pr-review-audit
+        run: .cache/ui-frontend/node/node .github/scripts/merged-pr-review-audit.mjs
+      - name: Upload review-audit evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: merged-pr-review-audit
+          path: target/merged-pr-review-audit/**
+          if-no-files-found: error
+          retention-days: 90
