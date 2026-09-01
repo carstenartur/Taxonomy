@@ -11,8 +11,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: verify-snapshot-exports-once
-  cancel-in-progress: false
+  group: verify-snapshot-exports-final-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Check out the exact branch head
+      - name: Check out the triggering exact head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
 
       - name: Set up Java 21
@@ -51,7 +51,9 @@ jobs:
             docs/en/FEATURE_MATRIX.md \
             docs/de/FEATURE_MATRIX.md \
             docs/en/USER_GUIDE.md \
-            docs/de/USER_GUIDE.md
+            docs/de/USER_GUIDE.md \
+            docs/en/API_REFERENCE.md \
+            docs/de/API_REFERENCE.md
 
           service=taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench/ArchitectureSnapshotExportService.java
           controller=taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench/ArchitectureWorkbenchController.java
@@ -85,10 +87,15 @@ jobs:
           grep -Fq 'nicht als zuverlässige editierbare Microsoft-Visio-Übergabe zertifiziert' docs/de/USER_GUIDE.md
           ! grep -Fq 'suitable for import into tools such as Archi or Sparx EA' docs/en/USER_GUIDE.md
           ! grep -Fq 'zum Import in Tools wie Archi oder Sparx EA geeignet' docs/de/USER_GUIDE.md
+          grep -Fq '/exports/{formatId}' docs/en/API_REFERENCE.md
+          grep -Fq '/exports/{formatId}' docs/de/API_REFERENCE.md
+          grep -Fq 'Legacy ad-hoc convenience exports' docs/en/API_REFERENCE.md
+          grep -Fq 'Bisherige Ad-hoc-Komfortexporte' docs/de/API_REFERENCE.md
 
           test ! -e .github/workflows/apply-snapshot-export-ui-once.yml
           test ! -e .github/workflows/apply-snapshot-export-browser-test-once.yml
           test ! -e .github/workflows/reconcile-export-user-guides-once.yml
+          test ! -e .github/workflows/reconcile-export-api-reference-once.yml
 
       - name: Run focused Maven tests and compile browser acceptance
         run: |
@@ -98,9 +105,14 @@ jobs:
             -Dtest=ArchitectureSnapshotExportServiceTest,ArchitectureWorkbenchControllerTest,ArchitectureWorkbenchAssetContractTest \
             -Dsurefire.failIfNoSpecifiedTests=false
 
-      - name: Remove the temporary workflow after successful verification
+      - name: Remove the temporary workflow after successful exact-head verification
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
         run: |
           set -euo pipefail
+          git fetch --no-tags origin "${GITHUB_REF_NAME}"
+          test "$(git rev-parse FETCH_HEAD)" = "${EXPECTED_HEAD}"
+          git checkout -B "${GITHUB_REF_NAME}" "${EXPECTED_HEAD}"
           rm .github/workflows/verify-snapshot-exports-once.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
