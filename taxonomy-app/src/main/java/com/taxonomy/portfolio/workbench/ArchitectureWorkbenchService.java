@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Replays an immutable portfolio analysis snapshot for browser, SVG and PDF adapters. */
+/** Replays an immutable portfolio analysis snapshot for browser and export adapters. */
 @Service
 public class ArchitectureWorkbenchService {
 
@@ -134,12 +134,30 @@ public class ArchitectureWorkbenchService {
         warnings.removeIf(value -> value == null || value.isBlank());
 
         return new Projection(
-                projectId, project.projectKey(), project.title(), requirementId,
-                requirement.requirementKey(), requirement.title(), version.text(),
-                snapshot.summary().id(), snapshot.summary().status(), snapshot.summary().createdAt(),
-                snapshot.summary().provider(), snapshot.summary().modelName(),
-                snapshot.summary().workspaceId(), snapshot.summary().branchName(),
-                snapshot.summary().commitSha(), diagram, scene, elements, relations,
+                projectId,
+                project.projectKey(),
+                project.title(),
+                requirementId,
+                snapshot.summary().requirementVersionId(),
+                snapshot.summary().requirementVersionNumber(),
+                version.contentHash(),
+                requirement.requirementKey(),
+                requirement.title(),
+                version.text(),
+                snapshot.summary().id(),
+                snapshot.summary().status(),
+                snapshot.summary().createdAt(),
+                snapshot.summary().provider(),
+                snapshot.summary().modelName(),
+                snapshot.summary().taxonomyFingerprint(),
+                snapshot.summary().promptFingerprint(),
+                snapshot.summary().workspaceId(),
+                snapshot.summary().branchName(),
+                snapshot.summary().commitSha(),
+                diagram,
+                scene,
+                elements,
+                relations,
                 new ArrayList<>(warnings));
     }
 
