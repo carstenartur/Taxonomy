@@ -127,7 +127,7 @@ public class ArchitectureSnapshotExportService {
                 projection.projectId(),
                 projection.requirementId(),
                 projection.workspaceId(),
-                projection.branch(),
+                projection.branchName(),
                 projection.provider(),
                 projection.modelName(),
                 exportProfiles(),
