@@ -1,0 +1,64 @@
+name: Verify snapshot-bound architecture exports once
+
+on:
+  push:
+    branches:
+      - fix/snapshot-bound-architecture-exports
+    paths:
+      - .github/workflows/verify-snapshot-exports-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: verify-snapshot-exports-once
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'carstenartur/Taxonomy' && github.actor == 'carstenartur'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out the exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Verify JavaScript syntax and final file scope
+        run: |
+          set -euo pipefail
+          node --check taxonomy-app/src/main/resources/static/js/api/architecture-workbench-api.js
+          node --check taxonomy-app/src/main/resources/static/js/architecture-workbench.js
+          git diff --check origin/main...HEAD -- \
+            taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench \
+            taxonomy-app/src/main/resources/static/js/api/architecture-workbench-api.js \
+            taxonomy-app/src/main/resources/static/js/architecture-workbench.js \
+            taxonomy-app/src/main/resources/templates/architecture-workbench.html \
+            taxonomy-app/src/test/java/com/taxonomy/portfolio/workbench
+
+      - name: Run focused Maven tests
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp \
+            -pl taxonomy-app -am test \
+            -Dtest=ArchitectureSnapshotExportServiceTest,ArchitectureWorkbenchControllerTest,ArchitectureWorkbenchAssetContractTest \
+            -Dsurefire.failIfNoSpecifiedTests=false
+
+      - name: Remove the temporary workflow after successful verification
+        run: |
+          set -euo pipefail
+          rm .github/workflows/verify-snapshot-exports-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/verify-snapshot-exports-once.yml
+          git commit -m "Remove one-shot snapshot export verification workflow"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
