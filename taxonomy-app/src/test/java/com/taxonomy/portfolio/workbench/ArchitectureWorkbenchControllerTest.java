@@ -101,6 +101,10 @@ class ArchitectureWorkbenchControllerTest {
         assertThat(pdf.getHeaders().getFirst("Content-Disposition")).contains("architecture.pdf");
         assertProvenanceHeaders(svg);
         assertProvenanceHeaders(pdf);
+        assertThat(svg.getHeaders().getFirst(ArchitectureWorkbenchController.ROLE_HEADER))
+                .isEqualTo("stable-human-view");
+        assertThat(pdf.getHeaders().getFirst(ArchitectureWorkbenchController.ROLE_HEADER))
+                .isEqualTo("stable-human-view");
         verify(exportService).export(42L, "snapshot-1", "alice", context, "svg");
         verify(exportService).export(42L, "snapshot-1", "alice", context, "pdf");
     }
@@ -130,6 +134,9 @@ class ArchitectureWorkbenchControllerTest {
         assertThat(response.getHeaders().getFirst(
                 ArchitectureWorkbenchController.PROFILE_HEADER))
                 .isEqualTo(ExportFormat.ARCHIMATE.profileId());
+        assertThat(response.getHeaders().getFirst(
+                ArchitectureWorkbenchController.ROLE_HEADER))
+                .isEqualTo(ExportFormat.ARCHIMATE.handoffRole());
         verify(exportService).export(42L, "snapshot-1", "alice", context, "archimate");
     }
 
