@@ -493,7 +493,8 @@ class ArchiMateDiagramTests {
         assertThat(xmlStr).contains("identifier=\"id-vn-N1\"");
         assertThat(xmlStr).contains("elementRef=\"id-N1\"");
         assertThat(xmlStr).contains("<fillColor ");
-        assertThat(xmlStr).contains("<lineWidth>3</lineWidth>");
+        assertThat(xmlStr).contains("<style lineWidth=\"3\">");
+        assertThat(xmlStr).doesNotContain("<lineWidth>");
     }
 
     @Test
