@@ -5,6 +5,7 @@ import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictExcep
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.controller.GitHttpPrecondition;
+import com.taxonomy.relations.controller.GitHttpPrecondition.InvalidPreconditionException;
 import com.taxonomy.relations.controller.RelationApiController;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
@@ -51,9 +52,19 @@ import java.util.regex.Pattern;
 @Order(Ordered.LOWEST_PRECEDENCE - 100)
 public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter {
 
+    static final int MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+
     private static final Pattern REVIEW_PATH = Pattern.compile(
             "^/api/dsl/hypotheses/(\\d+)/(accept|reject|revert)$");
+    private static final Pattern EXTERNAL_IDEMPOTENCY_KEY = Pattern.compile(
+            "[\\x21-\\x7e]{1," + MAX_IDEMPOTENCY_KEY_LENGTH + "}");
+    private static final Pattern HYPOTHESIS_NOT_FOUND_MESSAGE = Pattern.compile(
+            "^Hypothesis not found: \\d+$");
+    private static final Pattern HYPOTHESIS_NOT_REVIEWABLE_MESSAGE = Pattern.compile(
+            "^Hypothesis \\d+ cannot be "
+                    + "(?:(?:accepted|rejected) from|reverted from) [A-Z_]+$");
     private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
+    private static final String REVIEW_REJECTED = "REVIEW_REJECTED";
 
     private final GitAuthoritativeHypothesisService hypothesisService;
     private final RelationBranchProjectionReadinessService readinessService;
@@ -98,7 +109,27 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
             return;
         }
 
-        long hypothesisId = Long.parseLong(matcher.group(1));
+        String suppliedIdempotencyKey = request.getHeader(IDEMPOTENCY_KEY);
+        if (!isValidSuppliedIdempotencyKey(suppliedIdempotencyKey)) {
+            write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(
+                    "INVALID_IDEMPOTENCY_KEY",
+                    "Idempotency-Key must contain between 1 and "
+                            + MAX_IDEMPOTENCY_KEY_LENGTH
+                            + " visible ASCII characters without whitespace."));
+            return;
+        }
+        suppliedIdempotencyKey = normalizedSuppliedIdempotencyKey(
+                suppliedIdempotencyKey);
+
+        long hypothesisId;
+        try {
+            hypothesisId = Long.parseLong(matcher.group(1));
+        } catch (NumberFormatException error) {
+            write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(
+                    "INVALID_HYPOTHESIS_ID",
+                    "The hypothesis identifier is outside the supported range."));
+            return;
+        }
         ReviewAction action = ReviewAction.valueOf(
                 matcher.group(2).toUpperCase(Locale.ROOT));
         try {
@@ -131,7 +162,7 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
             }
 
             String causationId = idempotencyKey(
-                    request.getHeader(IDEMPOTENCY_KEY),
+                    suppliedIdempotencyKey,
                     hypothesisId,
                     action,
                     expectedHead);
@@ -170,18 +201,30 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
                     "expectedStatus", error.getExpectedStatus().name(),
                     "actualStatus", error.getActualStatus().name(),
                     "projectionStatus", "BOOKKEEPING_CONFLICT"));
+        } catch (InvalidPreconditionException error) {
+            write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(
+                    "INVALID_PRECONDITION",
+                    "If-Match must contain one strong quoted full Git commit ID."));
         } catch (IllegalArgumentException error) {
-            int status = error.getMessage() != null
-                    && error.getMessage().startsWith("Hypothesis not found:")
-                    ? HttpServletResponse.SC_NOT_FOUND
-                    : HttpServletResponse.SC_BAD_REQUEST;
-            write(response, status, errorPayload(error));
+            if (isKnownHypothesisNotFound(error)) {
+                write(response, HttpServletResponse.SC_NOT_FOUND, errorPayload(
+                        "HYPOTHESIS_NOT_FOUND",
+                        "Hypothesis is not available for review."));
+            } else {
+                write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(
+                        "INVALID_REVIEW_REQUEST",
+                        "The hypothesis review request is invalid."));
+            }
         } catch (IllegalStateException error) {
-            // Preserve the long-standing compatibility response for attempts
-            // to re-review a terminal hypothesis. Git head conflicts are still
-            // mapped separately to the explicit 412 precondition response.
-            write(response, HttpServletResponse.SC_BAD_REQUEST,
-                    errorPayload(error));
+            if (isKnownLifecycleRejection(error)) {
+                write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(
+                        "HYPOTHESIS_NOT_REVIEWABLE",
+                        "Hypothesis is not in a state that permits this review action."));
+            } else {
+                write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(
+                        "REVIEW_OPERATION_REJECTED",
+                        "The review operation cannot be completed in the current state."));
+            }
         } catch (IOException error) {
             write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                     Map.of("status", "GIT_UNAVAILABLE"));
@@ -215,22 +258,52 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
         return GitHttpPrecondition.expectedHead(ifMatch, null);
     }
 
+    /**
+     * Externally supplied idempotency keys are opaque, case-sensitive values of
+     * between 1 and 128 visible ASCII characters. Whitespace, control, format and
+     * non-ASCII characters are rejected before repository or Git work starts.
+     */
+    private static boolean isValidSuppliedIdempotencyKey(String supplied) {
+        return supplied == null
+                || supplied.length() <= MAX_IDEMPOTENCY_KEY_LENGTH
+                        && EXTERNAL_IDEMPOTENCY_KEY.matcher(supplied).matches();
+    }
+
+    private static String normalizedSuppliedIdempotencyKey(String supplied) {
+        return supplied;
+    }
+
     private static String idempotencyKey(
             String supplied,
             long hypothesisId,
             ReviewAction action,
             String expectedHead) {
-        if (supplied != null && !supplied.isBlank()) {
-            String normalized = supplied.strip();
-            if (normalized.indexOf('\n') >= 0 || normalized.indexOf('\r') >= 0) {
-                throw new IllegalArgumentException(
-                        "Idempotency-Key must be one line");
-            }
-            return normalized;
+        if (supplied != null) {
+            return supplied;
         }
-        return "legacy-hypothesis-"
+        String generated = "legacy-hypothesis-"
                 + action.name().toLowerCase(Locale.ROOT)
                 + "-" + hypothesisId + "-" + expectedHead;
+        if (generated.length() > MAX_IDEMPOTENCY_KEY_LENGTH
+                || !EXTERNAL_IDEMPOTENCY_KEY.matcher(generated).matches()) {
+            throw new IllegalStateException(
+                    "Generated legacy idempotency key violates the command boundary");
+        }
+        return generated;
+    }
+
+    private static boolean isKnownHypothesisNotFound(
+            IllegalArgumentException error) {
+        String message = error.getMessage();
+        return message != null
+                && HYPOTHESIS_NOT_FOUND_MESSAGE.matcher(message).matches();
+    }
+
+    private static boolean isKnownLifecycleRejection(
+            IllegalStateException error) {
+        String message = error.getMessage();
+        return message != null
+                && HYPOTHESIS_NOT_REVIEWABLE_MESSAGE.matcher(message).matches();
     }
 
     private static Map<String, Object> successPayload(ReviewResult result) {
@@ -282,13 +355,14 @@ public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter
         return payload;
     }
 
-    private static Map<String, Object> errorPayload(RuntimeException error) {
+    private static Map<String, Object> errorPayload(
+            String code,
+            String detail) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("status", "REVIEW_REJECTED");
-        if (error.getMessage() != null && !error.getMessage().isBlank()) {
-            payload.put("detail", error.getMessage());
-            payload.put("error", error.getMessage());
-        }
+        payload.put("status", REVIEW_REJECTED);
+        payload.put("code", code);
+        payload.put("detail", detail);
+        payload.put("error", detail);
         return payload;
     }
 
