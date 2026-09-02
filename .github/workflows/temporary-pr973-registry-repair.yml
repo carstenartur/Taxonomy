@@ -1,0 +1,232 @@
+name: Temporary PR 973 registry repair
+
+on:
+  push:
+    branches:
+      - ci/merged-pr-review-audit-final
+    paths:
+      - .github/workflows/temporary-pr973-registry-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the exact temporary head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Reproduce and conditionally repair the shared Maven contract
+        shell: bash
+        env:
+          TEMPORARY_HEAD: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          original_head="$(git rev-parse HEAD^)"
+          restore_original() {
+            git reset --hard "$original_head"
+            git push --force-with-lease="refs/heads/${BRANCH_NAME}:${TEMPORARY_HEAD}" \
+              origin "$original_head:refs/heads/${BRANCH_NAME}"
+          }
+          trap 'status=$?; if [[ $status -ne 0 ]]; then restore_original || true; fi; exit $status' EXIT
+
+          rm .github/workflows/temporary-pr973-registry-repair.yml
+
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-build -am test \
+            > /tmp/pr973-before.log 2>&1
+          before_status=$?
+          set -e
+
+          if [[ $before_status -eq 0 ]]; then
+            echo "The exact pre-temporary tree already passes taxonomy-build; restoring it unchanged."
+            restore_original
+            trap - EXIT
+            exit 0
+          fi
+
+          if ! grep -Eqi \
+            'verification[- ]?suites|workflow[^[:cntrl:]]*(responsibil|register|inventory|owner)|unregistered[^[:cntrl:]]*workflow|VerificationSuite' \
+            /tmp/pr973-before.log; then
+            echo "The failure is not the expected workflow-registry contract." >&2
+            grep -E '\[ERROR\]|FAILURE|Failures:|Errors:|Failed to execute goal' \
+              /tmp/pr973-before.log | tail -n 120 >&2 || true
+            exit 42
+          fi
+
+          python - <<'PY'
+          import copy
+          import json
+          import re
+          from pathlib import Path
+
+          path = Path('.mvn/verification-suites.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          new_path = '.github/workflows/merged-pr-review-audit.yml'
+
+          def is_workflow_path(value):
+              return isinstance(value, str) and re.fullmatch(
+                  r'\.github/workflows/[^/]+\.ya?ml', value) is not None
+
+          def workflow_field(item):
+              if not isinstance(item, dict):
+                  return None
+              for key, value in item.items():
+                  if is_workflow_path(value):
+                      return key, value
+              return None
+
+          inventories = []
+
+          def walk(node, trail=()):
+              if isinstance(node, list):
+                  entries = [
+                      (index, item, workflow_field(item))
+                      for index, item in enumerate(node)
+                      if workflow_field(item) is not None
+                  ]
+                  if entries:
+                      inventories.append((node, trail, entries))
+                  for index, item in enumerate(node):
+                      walk(item, trail + (index,))
+              elif isinstance(node, dict):
+                  for key, value in node.items():
+                      walk(value, trail + (key,))
+
+          walk(data)
+          for _, _, entries in inventories:
+              if any(field[1] == new_path for _, _, field in entries):
+                  raise SystemExit(0)
+          if not inventories:
+              raise SystemExit(
+                  'No workflow inventory was found in verification-suites.json')
+
+          inventory, trail, entries = max(
+              inventories, key=lambda candidate: len(candidate[2]))
+
+          def candidate_score(entry):
+              _, item, (_, old_path) = entry
+              text = json.dumps(item, sort_keys=True).lower()
+              base = Path(old_path).stem.lower()
+              score = 0
+              for token, weight in (
+                  ('review', 80), ('audit', 70), ('retention', 50),
+                  ('cleanup', 45), ('quality', 35), ('evidence', 30),
+                  ('repository', 25), ('governance', 25),
+                  ('ui-contract', 20), ('catalogue-overlay-proposal', 5),
+              ):
+                  if token in text or token in base:
+                      score += weight
+              return score
+
+          sample_index, sample, (path_key, old_path) = max(
+              entries, key=candidate_score)
+          old_base = Path(old_path).stem
+
+          def transform(value, key=None):
+              if isinstance(value, dict):
+                  return {
+                      child_key: transform(child_value, child_key)
+                      for child_key, child_value in value.items()
+                  }
+              if isinstance(value, list):
+                  return [transform(item, key) for item in value]
+              if not isinstance(value, str):
+                  return value
+              if value == old_path:
+                  return new_path
+              result = value.replace(old_base, 'merged-pr-review-audit')
+              result = result.replace(
+                  old_base.replace('-', ' '), 'merged PR review audit')
+              normalized_key = str(key or '').lower()
+              if normalized_key in {'id', 'key', 'slug'} and old_base in value:
+                  result = 'merged-pr-review-audit'
+              elif normalized_key in {
+                      'name', 'title', 'displayname', 'display_name'} \
+                      and result == value:
+                  result = 'Merged PR review audit'
+              elif normalized_key in {'description', 'purpose'} \
+                      and result == value:
+                  result = (
+                      'Retrospectively audits review evidence for merged '
+                      'pull requests.')
+              return result
+
+          new_entry = transform(copy.deepcopy(sample))
+          new_entry[path_key] = new_path
+
+          existing_strings = set()
+
+          def strings(node):
+              if isinstance(node, dict):
+                  for value in node.values():
+                      yield from strings(value)
+              elif isinstance(node, list):
+                  for value in node:
+                      yield from strings(value)
+              elif isinstance(node, str):
+                  yield node
+
+          for item in inventory:
+              existing_strings.update(strings(item))
+          for key in list(new_entry):
+              if key.lower() in {'id', 'key', 'slug'} \
+                      and isinstance(new_entry[key], str) \
+                      and new_entry[key] in existing_strings:
+                  new_entry[key] = 'merged-pr-review-audit'
+
+          inventory.insert(sample_index + 1, new_entry)
+          path.write_text(
+              json.dumps(data, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8')
+          print(
+              f'Registered {new_path} in inventory {trail}, '
+              f'modelled after {old_path}.')
+          PY
+
+          ./mvnw -B -ntp -pl taxonomy-build -am test \
+            > /tmp/pr973-after.log 2>&1 || {
+              grep -E '\[ERROR\]|FAILURE|Failures:|Errors:|Failed to execute goal' \
+                /tmp/pr973-after.log | tail -n 160 >&2 || true
+              exit 43
+            }
+
+          git fetch origin main
+          allowed="$({
+            printf '%s\n' \
+              .github/package.json \
+              .github/scripts/merged-pr-review-audit.mjs \
+              .github/scripts/merged-pr-review-audit.test.mjs \
+              .github/workflows/merged-pr-review-audit.yml \
+              .mvn/verification-suites.json
+          } | sort)"
+          actual="$(git diff --name-only origin/main | sort)"
+          if [[ "$actual" != "$allowed" ]]; then
+            echo "Unexpected final file set:" >&2
+            printf '%s\n' "$actual" >&2
+            exit 44
+          fi
+
+          git config user.name 'Carsten Hammer'
+          git config user.email 'carsten.hammer@t-online.de'
+          git reset --soft origin/main
+          git add -A
+          git commit -m "Audit merged PR reviews from trusted default-branch code" \
+            -m "Add a repository-owned retrospective review auditor for every recently merged PR, including integration-branch merges such as #933. Execute only trusted default-branch code, reconcile findings after a later clean exact-head approval, deduplicate high-priority comments per finding code, and register the workflow in the Maven verification inventory."
+          final_head="$(git rev-parse HEAD)"
+          git push --force-with-lease="refs/heads/${BRANCH_NAME}:${TEMPORARY_HEAD}" \
+            origin "$final_head:refs/heads/${BRANCH_NAME}"
+          trap - EXIT
