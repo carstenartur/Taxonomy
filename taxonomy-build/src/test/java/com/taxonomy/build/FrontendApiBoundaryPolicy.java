@@ -12,8 +12,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -31,9 +29,6 @@ final class FrontendApiBoundaryPolicy {
     private static final String TEMPLATE =
             "taxonomy-app/src/main/resources/templates/index.html";
     private static final String TEMPLATE_KEY = "templates/index.html";
-    private static final Pattern DIRECT_FETCH = Pattern.compile("\\bfetch\\s*\\(");
-    private static final Pattern DIRECT_API_FETCH = Pattern.compile(
-            "\\bfetch\\s*\\(\\s*['\"`]\\/api\\/");
     private static final Set<String> INFRASTRUCTURE_EXCEPTIONS = Set.of(
             "taxonomy-i18n.js");
     private static final Set<String> LEGACY_ALLOWLIST = Set.of(
@@ -101,9 +96,10 @@ final class FrontendApiBoundaryPolicy {
         for (Path path : files) {
             String relative = jsRoot.relativize(path).toString().replace('\\', '/');
             String text = readUtf8(path);
-            int fetchCount = countDirectFetch(text);
-            fetchCounts.put(relative, fetchCount);
-            List<Integer> apiLines = matchLines(text, DIRECT_API_FETCH);
+            List<JavaScriptFetchScanner.FetchCall> calls =
+                    JavaScriptFetchScanner.scan(text);
+            fetchCounts.put(relative, calls.size());
+            List<Integer> apiLines = directApiLines(calls);
             if (apiLines.isEmpty() || relative.startsWith("api/")) {
                 continue;
             }
@@ -118,8 +114,10 @@ final class FrontendApiBoundaryPolicy {
         Path template = root.resolve(TEMPLATE);
         if (Files.isRegularFile(template)) {
             String text = readUtf8(template);
-            fetchCounts.put(TEMPLATE_KEY, countDirectFetch(text));
-            List<Integer> templateLines = matchLines(text, DIRECT_API_FETCH);
+            List<JavaScriptFetchScanner.FetchCall> calls =
+                    JavaScriptFetchScanner.scan(text);
+            fetchCounts.put(TEMPLATE_KEY, calls.size());
+            List<Integer> templateLines = directApiLines(calls);
             if (!templateLines.isEmpty()) {
                 legacyApiInventory.put(TEMPLATE_KEY, templateLines.size());
             }
@@ -200,12 +198,7 @@ final class FrontendApiBoundaryPolicy {
     }
 
     static int countDirectFetch(String text) {
-        int count = 0;
-        Matcher matcher = DIRECT_FETCH.matcher(text);
-        while (matcher.find()) {
-            count++;
-        }
-        return count;
+        return JavaScriptFetchScanner.scan(text).size();
     }
 
     static boolean isTransportOwner(String relativePath) {
@@ -266,14 +259,12 @@ final class FrontendApiBoundaryPolicy {
         return Collections.unmodifiableMap(result);
     }
 
-    private static List<Integer> matchLines(String text, Pattern pattern) {
-        List<Integer> result = new ArrayList<>();
-        Matcher matcher = pattern.matcher(text);
-        while (matcher.find()) {
-            result.add(1 + Math.toIntExact(text.substring(0, matcher.start())
-                    .chars().filter(character -> character == '\n').count()));
-        }
-        return result;
+    private static List<Integer> directApiLines(
+            List<JavaScriptFetchScanner.FetchCall> calls) {
+        return calls.stream()
+                .filter(JavaScriptFetchScanner.FetchCall::directApi)
+                .map(JavaScriptFetchScanner.FetchCall::line)
+                .toList();
     }
 
     private static boolean isJavaScript(Path path) {
