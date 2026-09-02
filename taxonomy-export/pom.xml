@@ -22,7 +22,7 @@
             <artifactId>taxonomy-extension-api</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- XStream for Visio VDX serialization -->
+        <!-- XStream for Visio VSDX XML serialization -->
         <dependency>
             <groupId>com.thoughtworks.xstream</groupId>
             <artifactId>xstream</artifactId>
@@ -32,6 +32,13 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <!-- Independent VSDX reader contract (test scope only) -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+            <scope>test</scope>
         </dependency>
         <!-- JUnit + AssertJ for tests -->
         <dependency>
