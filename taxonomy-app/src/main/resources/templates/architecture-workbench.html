@@ -29,6 +29,16 @@
         <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button">
             Download PDF
         </button>
+        <button id="downloadArchitectureArchiMate"
+                class="btn btn-sm btn-outline-info"
+                type="button">
+            Download ArchiMate
+        </button>
+        <button id="downloadArchitectureVisio"
+                class="btn btn-sm btn-outline-info"
+                type="button">
+            Download Visio
+        </button>
     </div>
 </header>
 
@@ -143,5 +153,7 @@
         src="/js/api/architecture-workbench-api.js"></script>
 <script th:src="@{/js/architecture-workbench.js}"
         src="/js/architecture-workbench.js"></script>
+<script th:src="@{/js/architecture-workbench-export.js}"
+        src="/js/architecture-workbench-export.js"></script>
 </body>
 </html>

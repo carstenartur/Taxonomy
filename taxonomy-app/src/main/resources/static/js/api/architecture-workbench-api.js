@@ -47,6 +47,12 @@ window.ArchitectureWorkbenchApi = (function () {
         },
         pdfUrl: function (projectId, snapshotId) {
             return base(projectId, snapshotId) + '.pdf';
+        },
+        archiMateUrl: function (projectId, snapshotId) {
+            return base(projectId, snapshotId) + '.archimate.xml';
+        },
+        visioUrl: function (projectId, snapshotId) {
+            return base(projectId, snapshotId) + '.vsdx';
         }
     };
 }());

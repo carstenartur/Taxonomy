@@ -3,11 +3,13 @@ package com.taxonomy.portfolio.workbench;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.workbench.ArchitectureSnapshotExportService.Artifact;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -27,17 +29,37 @@ import java.nio.charset.StandardCharsets;
 @Tag(name = "Architecture Workbench")
 public class ArchitectureWorkbenchController {
 
-    private static final MediaType SVG = MediaType.parseMediaType("image/svg+xml");
+    private static final MediaType SVG =
+            MediaType.parseMediaType("image/svg+xml");
+    private static final String SNAPSHOT_HEADER =
+            "X-Taxonomy-Snapshot-Id";
+    private static final String SNAPSHOT_STATUS_HEADER =
+            "X-Taxonomy-Snapshot-Status";
+    private static final String WORKSPACE_HEADER =
+            "X-Taxonomy-Workspace-Id";
+    private static final String BRANCH_HEADER =
+            "X-Taxonomy-Branch";
+    private static final String COMMIT_HEADER =
+            "X-Taxonomy-Commit-Sha";
+    private static final String EXPORT_PROFILE_HEADER =
+            "X-Taxonomy-Exporter-Profile";
+    private static final String CANONICAL_GRAPH_HEADER =
+            "X-Taxonomy-Canonical-Graph-Sha256";
+    private static final String ARTIFACT_HEADER =
+            "X-Taxonomy-Artifact-Sha256";
 
     private final ArchitectureWorkbenchService service;
+    private final ArchitectureSnapshotExportService snapshotExportService;
     private final ProjectPortfolioService projectService;
     private final WorkspaceResolver workspaceResolver;
 
     public ArchitectureWorkbenchController(
             ArchitectureWorkbenchService service,
+            ArchitectureSnapshotExportService snapshotExportService,
             ProjectPortfolioService projectService,
             WorkspaceResolver workspaceResolver) {
         this.service = service;
+        this.snapshotExportService = snapshotExportService;
         this.projectService = projectService;
         this.workspaceResolver = workspaceResolver;
     }
@@ -58,12 +80,16 @@ public class ArchitectureWorkbenchController {
             @PathVariable Long requirementId) {
         RequestScope scope = scope();
         RequirementView requirement = projectService.getRequirement(
-                projectId, requirementId, scope.username(), scope.context());
+                projectId,
+                requirementId,
+                scope.username(),
+                scope.context());
         String snapshotId = requirement.currentAnalysisSnapshotId();
         if (snapshotId == null || snapshotId.isBlank()) {
             throw PortfolioException.conflict(
                     "Requirement " + requirement.requirementKey()
-                            + " has no current architecture snapshot. Analyze the current version first.");
+                            + " has no current architecture snapshot. "
+                            + "Analyze the current version first.");
         }
         String target = UriComponentsBuilder.fromPath("/architecture/workbench")
                 .queryParam("projectId", projectId)
@@ -76,30 +102,48 @@ public class ArchitectureWorkbenchController {
 
     @GetMapping("/api/projects/{projectId}/architecture-workbench/{snapshotId}")
     @ResponseBody
-    @Operation(summary = "Load one immutable architecture snapshot as a render-ready scene")
+    @Operation(
+            summary = "Load one immutable architecture snapshot "
+                    + "as a render-ready scene")
     public Projection projection(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
         RequestScope scope = scope();
-        return service.load(projectId, snapshotId, scope.username(), scope.context());
+        return service.load(
+                projectId,
+                snapshotId,
+                scope.username(),
+                scope.context());
     }
 
-    @GetMapping(value = "/api/projects/{projectId}/architecture-workbench/{snapshotId}.svg",
+    @GetMapping(
+            value = "/api/projects/{projectId}/architecture-workbench/"
+                    + "{snapshotId}.svg",
             produces = "image/svg+xml")
     @ResponseBody
-    @Operation(summary = "Export the architecture snapshot as deterministic standalone SVG")
+    @Operation(
+            summary = "Export the architecture snapshot "
+                    + "as deterministic standalone SVG")
     public ResponseEntity<String> svg(
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
         RequestScope scope = scope();
-        String content = service.renderSvg(projectId, snapshotId, scope.username(), scope.context());
+        String content = service.renderSvg(
+                projectId,
+                snapshotId,
+                scope.username(),
+                scope.context());
         return ResponseEntity.ok()
                 .contentType(SVG)
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition("architecture", "svg"))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        disposition("architecture", "svg"))
                 .body(content);
     }
 
-    @GetMapping(value = "/api/projects/{projectId}/architecture-workbench/{snapshotId}.pdf",
+    @GetMapping(
+            value = "/api/projects/{projectId}/architecture-workbench/"
+                    + "{snapshotId}.pdf",
             produces = MediaType.APPLICATION_PDF_VALUE)
     @ResponseBody
     @Operation(summary = "Export the architecture snapshot as a vector PDF")
@@ -107,12 +151,58 @@ public class ArchitectureWorkbenchController {
             @PathVariable Long projectId,
             @PathVariable String snapshotId) {
         RequestScope scope = scope();
-        byte[] content = service.renderPdf(projectId, snapshotId, scope.username(), scope.context());
+        byte[] content = service.renderPdf(
+                projectId,
+                snapshotId,
+                scope.username(),
+                scope.context());
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .contentLength(content.length)
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition("architecture", "pdf"))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        disposition("architecture", "pdf"))
                 .body(content);
+    }
+
+    @GetMapping(
+            value = "/api/projects/{projectId}/architecture-workbench/"
+                    + "{snapshotId}.archimate.xml",
+            produces = MediaType.APPLICATION_XML_VALUE)
+    @ResponseBody
+    @Operation(
+            summary = "Export the exact persisted architecture snapshot "
+                    + "as ArchiMate Exchange XML")
+    public ResponseEntity<byte[]> archiMate(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+        RequestScope scope = scope();
+        Artifact artifact = snapshotExportService.exportArchiMate(
+                projectId,
+                snapshotId,
+                scope.username(),
+                scope.context());
+        return artifactResponse(artifact);
+    }
+
+    @GetMapping(
+            value = "/api/projects/{projectId}/architecture-workbench/"
+                    + "{snapshotId}.vsdx",
+            produces = "application/vnd.ms-visio.drawing")
+    @ResponseBody
+    @Operation(
+            summary = "Export the exact persisted architecture snapshot "
+                    + "as editable Visio VSDX")
+    public ResponseEntity<byte[]> visio(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId) {
+        RequestScope scope = scope();
+        Artifact artifact = snapshotExportService.exportVisio(
+                projectId,
+                snapshotId,
+                scope.username(),
+                scope.context());
+        return artifactResponse(artifact);
     }
 
     private RequestScope scope() {
@@ -121,9 +211,41 @@ public class ArchitectureWorkbenchController {
                 workspaceResolver.resolveCurrentContext());
     }
 
+    private static ResponseEntity<byte[]> artifactResponse(Artifact artifact) {
+        byte[] content = artifact.content();
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(artifact.mediaType()))
+                .contentLength(content.length)
+                .cacheControl(CacheControl.noStore())
+                .eTag("\"sha256-" + artifact.artifactSha256() + "\"")
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        disposition(artifact.fileName()))
+                .header(SNAPSHOT_HEADER, artifact.snapshotId())
+                .header(
+                        SNAPSHOT_STATUS_HEADER,
+                        artifact.snapshotStatus().name())
+                .header(WORKSPACE_HEADER, artifact.workspaceId())
+                .header(BRANCH_HEADER, artifact.branchName())
+                .header(COMMIT_HEADER, artifact.commitSha())
+                .header(
+                        EXPORT_PROFILE_HEADER,
+                        artifact.exporterProfile())
+                .header(
+                        CANONICAL_GRAPH_HEADER,
+                        artifact.canonicalGraphSha256())
+                .header(ARTIFACT_HEADER, artifact.artifactSha256())
+                .header("X-Content-Type-Options", "nosniff")
+                .body(content);
+    }
+
     private static String disposition(String name, String extension) {
+        return disposition(name + "." + extension);
+    }
+
+    private static String disposition(String fileName) {
         return ContentDisposition.attachment()
-                .filename(name + "." + extension, StandardCharsets.UTF_8)
+                .filename(fileName, StandardCharsets.UTF_8)
                 .build()
                 .toString();
     }
