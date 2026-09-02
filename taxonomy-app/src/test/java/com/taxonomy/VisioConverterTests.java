@@ -116,7 +116,7 @@ class VisioConverterTests {
     }
 
     @Test
-    void pageContentsConverterWritesConnectorShape() {
+    void pageContentsConverterWritesMasterlessConnectorShape() {
         VisioPage page = new VisioPage("1", "Page");
         page.getShapes().add(new VisioShape("1", "A", 1.0, 1.0, 2.0, 0.75, "Capabilities", true));
         page.getShapes().add(new VisioShape("2", "B", 4.0, 1.0, 2.0, 0.75, "Services", false));
@@ -124,9 +124,14 @@ class VisioConverterTests {
 
         String xml = pageXstream.toXML(page);
 
-        assertThat(xml).contains("Dynamic connector");
+        assertThat(xml).contains("<Shapes>");
+        assertThat(xml).contains("<Connects>");
+        assertThat(xml).contains("NameU=\"TaxonomyConnector.3\"");
+        assertThat(xml).contains("N=\"OneD\" V=\"1\"");
         assertThat(xml).contains("BeginX");
         assertThat(xml).contains("EndX");
+        assertThat(xml).doesNotContain("Dynamic connector");
+        assertThat(xml).doesNotContain("Master=\"");
     }
 
     @Test
@@ -154,7 +159,7 @@ class VisioConverterTests {
 
         String xml = pageXstream.toXML(page);
 
-        // With 2 shapes, connector ID should be 3
+        // With maximum shape ID 2, the first connector ID is 3.
         assertThat(xml).contains("ID=\"3\"");
     }
 
@@ -195,21 +200,23 @@ class VisioConverterTests {
     }
 
     @Test
-    void documentConverterIncludesDocumentProperties() {
+    void documentConverterOmitsLegacyInlineDocumentProperties() {
         VisioDocument doc = new VisioDocument();
         String xml = documentXstream.toXML(doc);
-        assertThat(xml).contains("DocumentProperties");
-        assertThat(xml).contains("Taxonomy Architecture Analyzer");
-        assertThat(xml).contains("Architecture diagram generated from requirement analysis");
+
+        assertThat(xml).doesNotContain("DocumentProperties");
+        assertThat(xml).doesNotContain("Taxonomy Architecture Analyzer");
+        assertThat(xml).doesNotContain("Architecture diagram generated from requirement analysis");
     }
 
     @Test
-    void documentConverterIncludesRequiredSections() {
+    void documentConverterIncludesRequiredSettingsAndOmitsEmptyOptionalCollections() {
         VisioDocument doc = new VisioDocument();
         String xml = documentXstream.toXML(doc);
+
         assertThat(xml).contains("DocumentSettings");
-        assertThat(xml).contains("FaceNames");
-        assertThat(xml).contains("StyleSheets");
+        assertThat(xml).doesNotContain("FaceNames");
+        assertThat(xml).doesNotContain("StyleSheets");
     }
 
     @Test

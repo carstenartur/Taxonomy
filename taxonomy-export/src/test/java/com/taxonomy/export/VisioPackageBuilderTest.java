@@ -8,10 +8,12 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VisioPackageBuilderTest {
 
@@ -19,9 +21,7 @@ class VisioPackageBuilderTest {
 
     @Test
     void buildProducesNonEmptyByteArray() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
+        byte[] result = builder.build(createSimpleDocument());
 
         assertNotNull(result);
         assertTrue(result.length > 0);
@@ -29,158 +29,114 @@ class VisioPackageBuilderTest {
 
     @Test
     void buildProducesValidZipArchive() throws IOException {
-        var doc = createSimpleDocument();
+        byte[] result = builder.build(createSimpleDocument());
 
-        byte[] result = builder.build(doc);
-
-        // Should be parseable as a ZIP file
-        try (var zis = new ZipInputStream(new ByteArrayInputStream(result))) {
-            ZipEntry entry = zis.getNextEntry();
-            assertNotNull(entry, "ZIP archive should contain at least one entry");
+        try (var zip = new ZipInputStream(new ByteArrayInputStream(result))) {
+            assertNotNull(zip.getNextEntry(),
+                    "ZIP archive should contain at least one entry");
         }
     }
 
     @Test
-    void zipContainsContentTypesFile() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
+    void zipContainsRequiredPackageParts() throws IOException {
+        byte[] result = builder.build(createSimpleDocument());
 
         assertTrue(containsEntry(result, "[Content_Types].xml"));
-    }
-
-    @Test
-    void zipContainsRootRels() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
-
         assertTrue(containsEntry(result, "_rels/.rels"));
-    }
-
-    @Test
-    void zipContainsDocumentXml() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
-
+        assertTrue(containsEntry(result, "docProps/core.xml"));
         assertTrue(containsEntry(result, "visio/document.xml"));
-    }
-
-    @Test
-    void zipContainsDocumentRels() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
-
         assertTrue(containsEntry(result, "visio/_rels/document.xml.rels"));
-    }
-
-    @Test
-    void zipContainsPagesXml() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
-
         assertTrue(containsEntry(result, "visio/pages/pages.xml"));
-    }
-
-    @Test
-    void zipContainsPagesRels() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
-
         assertTrue(containsEntry(result, "visio/pages/_rels/pages.xml.rels"));
-    }
-
-    @Test
-    void zipContainsIndividualPageFile() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
-
         assertTrue(containsEntry(result, "visio/pages/page1.xml"));
     }
 
     @Test
     void multiplePagesProduceMultiplePageFiles() throws IOException {
-        var doc = new VisioDocument();
-        doc.getPages().add(new VisioPage("page1", "Page 1"));
-        doc.getPages().add(new VisioPage("page2", "Page 2"));
+        var document = new VisioDocument();
+        document.getPages().add(new VisioPage("page1", "Page 1"));
+        document.getPages().add(new VisioPage("page2", "Page 2"));
 
-        byte[] result = builder.build(doc);
+        byte[] result = builder.build(document);
 
         assertTrue(containsEntry(result, "visio/pages/page1.xml"));
         assertTrue(containsEntry(result, "visio/pages/page2.xml"));
     }
 
     @Test
-    void contentTypesContainsVisioContentTypes() throws IOException {
-        var doc = createSimpleDocument();
-
-        byte[] result = builder.build(doc);
+    void contentTypesContainsVisioAndCorePropertyTypes() throws IOException {
+        byte[] result = builder.build(createSimpleDocument());
         String contentTypes = readEntry(result, "[Content_Types].xml");
 
         assertTrue(contentTypes.contains("vnd.ms-visio.drawing.main+xml"));
         assertTrue(contentTypes.contains("vnd.ms-visio.pages+xml"));
         assertTrue(contentTypes.contains("vnd.ms-visio.page+xml"));
+        assertTrue(contentTypes.contains(
+                "vnd.openxmlformats-package.core-properties+xml"));
     }
 
     @Test
-    void rootRelsContainsDocumentRelationship() throws IOException {
-        var doc = createSimpleDocument();
+    void rootRelationshipsContainDocumentAndCoreProperties() throws IOException {
+        byte[] result = builder.build(createSimpleDocument());
+        String relationships = readEntry(result, "_rels/.rels");
 
-        byte[] result = builder.build(doc);
-        String rels = readEntry(result, "_rels/.rels");
-
-        assertTrue(rels.contains("visio/document.xml"));
-        assertTrue(rels.contains("relationships/document"));
+        assertTrue(relationships.contains("visio/document.xml"));
+        assertTrue(relationships.contains("relationships/document"));
+        assertTrue(relationships.contains("docProps/core.xml"));
+        assertTrue(relationships.contains("metadata/core-properties"));
     }
 
     @Test
-    void emptyDocumentStillProducesValidPackage() throws IOException {
-        var doc = new VisioDocument();
-
-        byte[] result = builder.build(doc);
+    void emptyDocumentStillProducesAParseablePackageSkeleton() throws IOException {
+        byte[] result = builder.build(new VisioDocument());
 
         assertNotNull(result);
         assertTrue(result.length > 0);
         assertTrue(containsEntry(result, "[Content_Types].xml"));
         assertTrue(containsEntry(result, "visio/document.xml"));
+        assertTrue(containsEntry(result, "visio/pages/pages.xml"));
     }
 
     @Test
-    void documentWithShapesAndConnectsProducesValidOutput() throws IOException {
-        var doc = new VisioDocument();
-        var page = new VisioPage("p1", "Architecture");
-        page.getShapes().add(new VisioShape("s1", "Capability A", 1.0, 1.0, 2.0, 1.0, "Capability", true));
-        page.getShapes().add(new VisioShape("s2", "Service B", 3.0, 1.0, 2.0, 1.0, "Service", false));
-        page.getConnects().add(new VisioConnect("s1", "s2", "REALIZES"));
-        doc.getPages().add(page);
+    void documentWithShapesAndConnectorsProducesPageContent() throws IOException {
+        var document = representativeDocument();
 
-        byte[] result = builder.build(doc);
+        byte[] result = builder.build(document);
 
-        assertNotNull(result);
-        assertTrue(result.length > 0);
         String pageXml = readEntry(result, "visio/pages/page1.xml");
         assertNotNull(pageXml);
+        assertTrue(pageXml.contains("Capability A"));
+        assertTrue(pageXml.contains("REALIZES"));
+        assertTrue(pageXml.contains("<Shapes>"));
+        assertTrue(pageXml.contains("<Connects>"));
     }
 
-    // --- helper methods ---
-
-    private VisioDocument createSimpleDocument() {
-        var doc = new VisioDocument();
+    private static VisioDocument createSimpleDocument() {
+        var document = new VisioDocument();
         var page = new VisioPage("page1", "Page 1");
-        page.getShapes().add(new VisioShape("s1", "Shape 1", 1.0, 1.0, 2.0, 1.0, "Default", false));
-        doc.getPages().add(page);
-        return doc;
+        page.getShapes().add(new VisioShape(
+                "1", "Shape 1", 1.0, 1.0, 2.0, 1.0, "Default", false));
+        document.getPages().add(page);
+        return document;
     }
 
-    private boolean containsEntry(byte[] zipBytes, String entryName) throws IOException {
-        try (var zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+    static VisioDocument representativeDocument() {
+        var document = new VisioDocument();
+        var page = new VisioPage("p1", "Architecture");
+        page.getShapes().add(new VisioShape(
+                "10", "Capability A", 1.5, 2.0, 2.0, 1.0, "Capability", true));
+        page.getShapes().add(new VisioShape(
+                "42", "Service B", 4.5, 2.0, 2.0, 1.0, "Service", false));
+        page.getConnects().add(new VisioConnect("10", "42", "REALIZES"));
+        document.getPages().add(page);
+        return document;
+    }
+
+    private static boolean containsEntry(byte[] zipBytes, String entryName)
+            throws IOException {
+        try (var zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
+            while ((entry = zip.getNextEntry()) != null) {
                 if (entry.getName().equals(entryName)) {
                     return true;
                 }
@@ -189,12 +145,12 @@ class VisioPackageBuilderTest {
         return false;
     }
 
-    private String readEntry(byte[] zipBytes, String entryName) throws IOException {
-        try (var zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+    static String readEntry(byte[] zipBytes, String entryName) throws IOException {
+        try (var zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
+            while ((entry = zip.getNextEntry()) != null) {
                 if (entry.getName().equals(entryName)) {
-                    return new String(zis.readAllBytes());
+                    return new String(zip.readAllBytes(), StandardCharsets.UTF_8);
                 }
             }
         }
