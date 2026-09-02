@@ -74,6 +74,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final LongSupplier monotonicNanos;
     private final int maxTrackedPrincipals;
     private long nextCleanupAt;
+    private long cleanupSweepCount;
 
     public RateLimitFilter() {
         this(System::nanoTime, DEFAULT_MAX_TRACKED_PRINCIPALS);
@@ -139,6 +140,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             counters.clear();
             overflowCounter.reset(now);
             nextCleanupAt = now + CLEANUP_INTERVAL_NANOS;
+            cleanupSweepCount = 0L;
         }
     }
 
@@ -149,17 +151,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
+    /** Visible for regression tests; no principal identity or quota state is exposed. */
+    long cleanupSweepCount() {
+        synchronized (stateMonitor) {
+            return cleanupSweepCount;
+        }
+    }
+
     private Acquisition acquire(
             String principalKey,
             int effectiveLimit,
             long now) {
         synchronized (stateMonitor) {
-            cleanupExpiredEntries(now, false);
+            cleanupExpiredEntries(now);
             WindowCounter counter = counters.get(principalKey);
             if (counter == null) {
-                if (counters.size() >= maxTrackedPrincipals) {
-                    cleanupExpiredEntries(now, true);
-                }
                 if (counters.size() >= maxTrackedPrincipals) {
                     counter = overflowCounter;
                 } else {
@@ -175,12 +181,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
-    private void cleanupExpiredEntries(long now, boolean force) {
-        if (!force && now - nextCleanupAt < 0) {
+    private void cleanupExpiredEntries(long now) {
+        if (now - nextCleanupAt < 0) {
             return;
         }
         counters.entrySet().removeIf(
                 entry -> entry.getValue().isExpired(now));
+        cleanupSweepCount++;
         nextCleanupAt = now + CLEANUP_INTERVAL_NANOS;
     }
 
