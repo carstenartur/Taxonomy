@@ -16,8 +16,10 @@ import java.util.Map;
 /**
  * Serializes an {@link ArchiMateModel} to the ArchiMate Model Exchange File Format (XML).
  * <p>
- * Produces a standards-compliant ArchiMate 3.x exchange file that can be imported into
- * Archi, ARIS, Sparx EA, BiZZdesign, and other ArchiMate-compatible tools.
+ * The generated document uses the unchanged ArchiMate 3.0 exchange namespace URI with
+ * the ArchiMate 3.1 schema revision and the repository's currently supported model and
+ * diagram subset. Full schema and product interoperability certification is tracked
+ * separately from this serializer.
  * <p>
  * No external XML libraries are used – XML is assembled with a {@link StringBuilder}
  * and all text content is properly escaped.
@@ -117,35 +119,44 @@ public class ArchiMateXmlExporter {
         }
         sb.append("  <views>\n");
         sb.append("    <diagrams>\n");
+        // diagrams/view is declared directly as the concrete Diagram type by the
+        // ArchiMate diagram XSD, so no redundant xsi:type is required here.
         sb.append("      <view identifier=\"id-").append(escapeXml(view.id()))
           .append("\" viewpoint=\"Layered\">\n");
         sb.append("        <name xml:lang=\"en\">").append(escapeXml(view.name()))
           .append("</name>\n");
 
         for (ArchiMateViewNode node : view.nodes()) {
+            // Diagram node declarations use the abstract ViewNodeType in the XSD.
+            // Element-backed nodes therefore have to identify their concrete subtype.
             sb.append("        <node identifier=\"id-vn-").append(escapeXml(node.id()))
-              .append("\" elementRef=\"id-").append(escapeXml(node.elementId()))
+              .append("\" xsi:type=\"Element\" elementRef=\"id-")
+              .append(escapeXml(node.elementId()))
               .append("\" x=\"").append(node.x())
               .append("\" y=\"").append(node.y())
               .append("\" w=\"").append(node.w())
               .append("\" h=\"").append(node.h()).append("\">\n");
             sb.append("          <label xml:lang=\"en\">").append(escapeXml(node.label()))
               .append("</label>\n");
-            sb.append("          <style>\n");
+            sb.append("          <style");
+            if (node.lineWidth() > 1) {
+                // lineWidth is an attribute of StyleType, not a child element.
+                sb.append(" lineWidth=\"").append(node.lineWidth()).append("\"");
+            }
+            sb.append(">\n");
             sb.append("            <fillColor r=\"").append(node.r())
               .append("\" g=\"").append(node.g())
               .append("\" b=\"").append(node.b()).append("\"/>\n");
-            if (node.lineWidth() > 1) {
-                sb.append("            <lineWidth>").append(node.lineWidth())
-                  .append("</lineWidth>\n");
-            }
             sb.append("          </style>\n");
             sb.append("        </node>\n");
         }
 
         for (ArchiMateViewConnection conn : view.connections()) {
+            // Diagram connection declarations use the abstract ConnectionType in the XSD.
+            // Relationship-backed connections therefore have to identify the concrete subtype.
             sb.append("        <connection identifier=\"id-vc-").append(escapeXml(conn.id()))
-              .append("\" relationshipRef=\"id-rel-").append(escapeXml(conn.relationshipId()))
+              .append("\" xsi:type=\"Relationship\" relationshipRef=\"id-rel-")
+              .append(escapeXml(conn.relationshipId()))
               .append("\" source=\"id-vn-").append(escapeXml(conn.sourceNodeId()))
               .append("\" target=\"id-vn-").append(escapeXml(conn.targetNodeId()))
               .append("\"/>\n");
