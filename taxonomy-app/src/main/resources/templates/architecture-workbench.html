@@ -29,6 +29,27 @@
         <button id="downloadArchitecturePdf" class="btn btn-sm btn-warning" type="button">
             Download PDF
         </button>
+        <div class="d-flex align-items-center gap-2 flex-wrap"
+             role="group"
+             aria-label="Experimental architecture export formats">
+            <span id="experimentalExportBadge" class="badge text-bg-secondary">
+                Experimental
+            </span>
+            <button id="downloadArchitectureArchiMate"
+                    class="btn btn-sm btn-outline-info"
+                    type="button"
+                    aria-describedby="experimentalExportBadge"
+                    title="Schema-validated ArchiMate 3.1 subset; mapping and loss manifest pending">
+                Download ArchiMate 3.1 subset
+            </button>
+            <button id="downloadArchitectureVisio"
+                    class="btn btn-sm btn-outline-info"
+                    type="button"
+                    aria-describedby="experimentalExportBadge"
+                    title="Bounded Visio 2012 OPC subset; Microsoft Visio desktop certification pending">
+                Download Visio 2012 subset
+            </button>
+        </div>
     </div>
 </header>
 
@@ -143,5 +164,7 @@
         src="/js/api/architecture-workbench-api.js"></script>
 <script th:src="@{/js/architecture-workbench.js}"
         src="/js/architecture-workbench.js"></script>
+<script th:src="@{/js/architecture-workbench-export.js}"
+        src="/js/architecture-workbench-export.js"></script>
 </body>
 </html>

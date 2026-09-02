@@ -62,7 +62,7 @@ public class ExportApiController {
             HttpHeaders headers = new HttpHeaders();
             headers.set(HttpHeaders.CONTENT_DISPOSITION,
                     "attachment; filename=\"requirement-architecture.vsdx\"");
-            headers.set(HttpHeaders.CONTENT_TYPE, "application/vnd.ms-visio.drawing.main+xml");
+            headers.set(HttpHeaders.CONTENT_TYPE, "application/vnd.ms-visio.drawing");
             return ResponseEntity.ok().headers(headers).body(vsdx);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
