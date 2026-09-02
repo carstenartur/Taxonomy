@@ -25,6 +25,19 @@ class JavaScriptFetchScannerTest {
     }
 
     @Test
+    void classifiesTriviallyParenthesizedDirectApiLiterals() {
+        String source = """
+                fetch((/* grouping */ '/api/grouped'));
+                fetch(((condition ? '/api/conditional' : '/other')));
+                """;
+
+        assertThat(JavaScriptFetchScanner.scan(source))
+                .containsExactly(
+                        new JavaScriptFetchScanner.FetchCall(1, true),
+                        new JavaScriptFetchScanner.FetchCall(2, false));
+    }
+
+    @Test
     void ignoresCommentsQuotedTextRegexAndTemplateLiteralText() {
         String source = """
                 // fetch('/api/comment')
@@ -37,6 +50,19 @@ class JavaScriptFetchScannerTest {
 
         assertThat(JavaScriptFetchScanner.scan(source)).isEmpty();
         assertThat(FrontendApiBoundaryPolicy.countDirectFetch(source)).isZero();
+    }
+
+    @Test
+    void ignoresRegexLiteralsAfterControlHeadersAndOperatorRuns() {
+        String source = """
+                if (ready) /fetch\\('\\/api\\/if'\\)/.test(value);
+                while (ready) /fetch\\('\\/api\\/while'\\)/.test(value);
+                const token = counter+++ /fetch\\('\\/api\\/operator'\\)/.test(value);
+                object.fetch('/api/member');
+                """;
+
+        assertThat(JavaScriptFetchScanner.scan(source))
+                .containsExactly(new JavaScriptFetchScanner.FetchCall(4, true));
     }
 
     @Test
@@ -90,18 +116,24 @@ class JavaScriptFetchScannerTest {
     }
 
     @Test
-    void ignoresNamedFunctionDeclarationsButCountsRealMemberCalls() {
+    void ignoresNamedAndMethodDeclarationsButCountsRealMemberCalls() {
         String source = """
                 function fetch() {}
                 const expression = function fetch() {};
                 function * fetch() {}
                 async function fetch() {}
+                class Transport {
+                    fetch() {}
+                    async fetch() {}
+                    *fetch() {}
+                }
+                const adapter = { fetch() {}, async fetch() {} };
                 object.fetch('/api/member');
                 """;
 
         assertThat(JavaScriptFetchScanner.scan(source))
                 .containsExactly(
-                        new JavaScriptFetchScanner.FetchCall(5, true));
+                        new JavaScriptFetchScanner.FetchCall(11, true));
     }
 
     @Test
