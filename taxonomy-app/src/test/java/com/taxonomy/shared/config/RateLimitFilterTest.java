@@ -240,6 +240,47 @@ class RateLimitFilterTest {
     }
 
     @Test
+    void capacityPressureUsesScheduledCleanupInsteadOfRepeatedFullSweeps()
+            throws Exception {
+        AtomicLong now = new AtomicLong(55_000L);
+        RateLimitFilter filter = filter(now, 1, 2);
+
+        perform(filter, "GET", "", "/api/analyze-node",
+                "alice", "192.0.2.1", null);
+        perform(filter, "GET", "", "/api/analyze-node",
+                "bob", "192.0.2.1", null);
+        assertThat(filter.cleanupSweepCount()).isZero();
+
+        for (int index = 0; index < 100; index++) {
+            perform(filter, "GET", "", "/api/analyze-node",
+                    "overflow-" + index, "192.0.2.1", null);
+        }
+        assertThat(filter.trackedPrincipalCount()).isEqualTo(2);
+        assertThat(filter.cleanupSweepCount()).isZero();
+
+        now.addAndGet(RateLimitFilter.CLEANUP_INTERVAL_NANOS);
+        perform(filter, "GET", "", "/api/analyze-node",
+                "scheduled-sweep", "192.0.2.1", null);
+        assertThat(filter.cleanupSweepCount()).isEqualTo(1L);
+        assertThat(filter.trackedPrincipalCount()).isEqualTo(2);
+
+        for (int index = 0; index < 25; index++) {
+            perform(filter, "GET", "", "/api/analyze-node",
+                    "same-interval-" + index, "192.0.2.1", null);
+        }
+        assertThat(filter.cleanupSweepCount()).isEqualTo(1L);
+
+        now.addAndGet(RateLimitFilter.CLEANUP_INTERVAL_NANOS);
+        MockHttpServletResponse admitted = perform(
+                filter, "GET", "", "/api/analyze-node",
+                "admitted-after-expiry", "192.0.2.1", null);
+
+        assertThat(filter.cleanupSweepCount()).isEqualTo(2L);
+        assertThat(filter.trackedPrincipalCount()).isEqualTo(1);
+        assertThat(admitted.getStatus()).isEqualTo(200);
+    }
+
+    @Test
     void cleanupAndConcurrentReadmissionCannotCreateParallelFreshCounters()
             throws Exception {
         AtomicLong now = new AtomicLong(60_000L);
