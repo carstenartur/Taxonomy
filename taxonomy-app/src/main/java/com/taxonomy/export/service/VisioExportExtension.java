@@ -22,7 +22,7 @@ public class VisioExportExtension implements ExportFormatExtension {
             FORMAT_ID,
             "Visio",
             "vsdx",
-            "application/vnd.ms-visio.drawing.main+xml",
+            "application/vnd.ms-visio.drawing",
             true);
 
     private final VisioDiagramService visioDiagramService;
