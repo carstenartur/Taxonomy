@@ -1,0 +1,78 @@
+name: Temporary rebuild of the rate-limit fix
+
+on:
+  push:
+    branches:
+      - fix/late-review-rate-limit-capacity-scan
+    paths:
+      - .github/workflows/temporary-rebuild-rate-limit-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-rebuild-rate-limit-fix
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the source branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/late-review-rate-limit-capacity-scan
+          fetch-depth: 0
+
+      - name: Record and validate the source head
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'SOURCE_SHA=%s\n' "$(git rev-parse HEAD^)" >> "$GITHUB_ENV"
+          test "$(git rev-parse HEAD^)" = "cd88f5ca14419a95bc03706b8b9c65aec8a0b27e"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = ".github/workflows/temporary-rebuild-rate-limit-fix.yml"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@7a445ee88d4e23b52c33d99c6b4577510303703d
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Rebuild the bounded two-file change on current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/workflows/merged-pr-review-audit.yml >/dev/null
+          git show origin/main:.mvn/verification-suites.json | grep -F 'merged-pr-review-audit' >/dev/null
+          git diff c87fbbcb09e554e01a80e604c25d6216a474daa4..cd88f5ca14419a95bc03706b8b9c65aec8a0b27e -- \
+            taxonomy-app/src/main/java/com/taxonomy/shared/config/RateLimitFilter.java \
+            taxonomy-app/src/test/java/com/taxonomy/shared/config/RateLimitFilterTest.java \
+            > /tmp/rate-limit.patch
+          test -s /tmp/rate-limit.patch
+          git reset --hard origin/main
+          git apply --check /tmp/rate-limit.patch
+          git apply /tmp/rate-limit.patch
+          mapfile -t paths < <(git diff --name-only)
+          test "${#paths[@]}" -eq 2
+          test "${paths[0]}" = 'taxonomy-app/src/main/java/com/taxonomy/shared/config/RateLimitFilter.java'
+          test "${paths[1]}" = 'taxonomy-app/src/test/java/com/taxonomy/shared/config/RateLimitFilterTest.java'
+          ./mvnw -B -ntp -pl taxonomy-app -am test \
+            -Dtest=RateLimitFilterTest \
+            -Dsurefire.failIfNoSpecifiedTests=false
+          git config user.name 'Carsten Hammer'
+          git config user.email 'carsten.hammer@t-online.de'
+          git add "${paths[@]}"
+          git commit \
+            -m 'Avoid repeated full LLM-quota cleanup scans at capacity' \
+            -m 'Run tracked-principal cleanup only on the existing monotonic schedule and route new identities directly to the shared fail-closed overflow counter while the bounded table remains full. Add regression coverage proving capacity pressure cannot trigger repeated full-map scans.'
+          git push --force origin HEAD:refs/heads/fix/late-review-rate-limit-capacity-scan-v2
+
+      - name: Restore the source branch without the temporary workflow
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force origin "${SOURCE_SHA}:refs/heads/fix/late-review-rate-limit-capacity-scan"
