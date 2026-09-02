@@ -18,6 +18,8 @@ final class JavaScriptFetchScanner {
     private static final Set<String> REGEX_PREFIX_KEYWORDS = Set.of(
             "await", "case", "delete", "do", "else", "in", "instanceof",
             "new", "of", "return", "throw", "typeof", "void", "yield");
+    private static final Set<String> REGEX_AFTER_CONTROL_HEADER = Set.of(
+            "for", "if", "while", "with");
     private static final char VALUE_SENTINEL = '0';
 
     private JavaScriptFetchScanner() {
@@ -31,10 +33,11 @@ final class JavaScriptFetchScanner {
         Matcher matcher = FETCH_CALL.matcher(executable);
         List<FetchCall> result = new ArrayList<>();
         while (matcher.find()) {
-            if (isNamedFunctionDeclaration(executable, matcher.start())) {
+            int openingParenthesis = executable.lastIndexOf('(', matcher.end() - 1);
+            if (isFunctionOrMethodDeclaration(
+                    executable, matcher.start(), openingParenthesis)) {
                 continue;
             }
-            int openingParenthesis = executable.lastIndexOf('(', matcher.end() - 1);
             result.add(new FetchCall(
                     lineNumber(source, matcher.start()),
                     beginsWithDirectApiLiteral(source, openingParenthesis + 1)));
@@ -207,9 +210,11 @@ final class JavaScriptFetchScanner {
         }
         char character = masked[previous];
         if ((character == '+' || character == '-')
-                && previous > 0
-                && masked[previous - 1] == character) {
+                && repeatedOperatorLength(masked, previous, character) == 2) {
             return false;
+        }
+        if (character == ')' && closesControlHeader(masked, previous)) {
+            return true;
         }
         if ("([{:;,=!?&|+-*%^~<>".indexOf(character) >= 0) {
             return true;
@@ -217,12 +222,49 @@ final class JavaScriptFetchScanner {
         if (!isIdentifierPart(character)) {
             return false;
         }
-        int start = previous;
-        while (start > 0 && isIdentifierPart(masked[start - 1])) {
-            start--;
-        }
+        int start = identifierStart(masked, previous);
         return REGEX_PREFIX_KEYWORDS.contains(
                 new String(masked, start, previous - start + 1));
+    }
+
+    private static int repeatedOperatorLength(
+            char[] value,
+            int end,
+            char operator) {
+        int start = end;
+        while (start > 0 && value[start - 1] == operator) {
+            start--;
+        }
+        return end - start + 1;
+    }
+
+    private static boolean closesControlHeader(char[] value, int closingParenthesis) {
+        int openingParenthesis = matchingOpeningParenthesis(
+                value, closingParenthesis);
+        if (openingParenthesis < 0) {
+            return false;
+        }
+        int keywordEnd = previousSignificant(value, openingParenthesis - 1);
+        if (keywordEnd < 0 || !isIdentifierPart(value[keywordEnd])) {
+            return false;
+        }
+        int keywordStart = identifierStart(value, keywordEnd);
+        return REGEX_AFTER_CONTROL_HEADER.contains(
+                new String(value, keywordStart, keywordEnd - keywordStart + 1));
+    }
+
+    private static int matchingOpeningParenthesis(
+            char[] value,
+            int closingParenthesis) {
+        int depth = 1;
+        for (int index = closingParenthesis - 1; index >= 0; index--) {
+            if (value[index] == ')') {
+                depth++;
+            } else if (value[index] == '(' && --depth == 0) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     private static int maskRegexLiteral(
@@ -275,6 +317,9 @@ final class JavaScriptFetchScanner {
             String source,
             int index) {
         index = skipTrivia(source, index);
+        while (index < source.length() && source.charAt(index) == '(') {
+            index = skipTrivia(source, index + 1);
+        }
         if (index >= source.length()) {
             return false;
         }
@@ -315,6 +360,21 @@ final class JavaScriptFetchScanner {
         return index;
     }
 
+    private static boolean isFunctionOrMethodDeclaration(
+            String executable,
+            int identifierStart,
+            int openingParenthesis) {
+        if (isNamedFunctionDeclaration(executable, identifierStart)) {
+            return true;
+        }
+        int closingParenthesis = matchingClosingParenthesis(
+                executable, openingParenthesis);
+        int next = nextSignificant(executable, closingParenthesis + 1);
+        return closingParenthesis >= 0
+                && next >= 0
+                && executable.charAt(next) == '{';
+    }
+
     private static boolean isNamedFunctionDeclaration(
             String executable,
             int identifierStart) {
@@ -332,6 +392,35 @@ final class JavaScriptFetchScanner {
         return "function".equals(executable.substring(start, previous + 1));
     }
 
+    private static int matchingClosingParenthesis(
+            String executable,
+            int openingParenthesis) {
+        if (openingParenthesis < 0) {
+            return -1;
+        }
+        int depth = 1;
+        for (int index = openingParenthesis + 1;
+                index < executable.length();
+                index++) {
+            char current = executable.charAt(index);
+            if (current == '(') {
+                depth++;
+            } else if (current == ')' && --depth == 0) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static int nextSignificant(String value, int index) {
+        while (index >= 0
+                && index < value.length()
+                && Character.isWhitespace(value.charAt(index))) {
+            index++;
+        }
+        return index >= 0 && index < value.length() ? index : -1;
+    }
+
     private static int previousSignificant(char[] value, int index) {
         while (index >= 0 && Character.isWhitespace(value[index])) {
             index--;
@@ -344,6 +433,14 @@ final class JavaScriptFetchScanner {
             index--;
         }
         return index;
+    }
+
+    private static int identifierStart(char[] value, int end) {
+        int start = end;
+        while (start > 0 && isIdentifierPart(value[start - 1])) {
+            start--;
+        }
+        return start;
     }
 
     private static boolean isIdentifierPart(char character) {
