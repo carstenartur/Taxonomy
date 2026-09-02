@@ -1,0 +1,270 @@
+name: Temporary PR 973 database contract repair
+
+on:
+  push:
+    branches:
+      - ci/merged-pr-review-audit-final
+    paths:
+      - .github/workflows/temporary-pr973-database-contract-repair.yml
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: temporary-pr973-database-contract-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out the repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ci/merged-pr-review-audit-final
+          fetch-depth: 0
+
+      - name: Record the pre-workflow head
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'START_SHA=%s\n' "$(git rev-parse HEAD^)" >> "$GITHUB_ENV"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = ".github/workflows/temporary-pr973-database-contract-repair.yml"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@7a445ee88d4e23b52c33d99c6b4577510303703d
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Verify and repair the missing workflow responsibility
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/pr973-repair
+          for job in 100059552734 100059552870 100059552918; do
+            curl --fail --location --silent --show-error \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/jobs/${job}/logs" \
+              -o "target/pr973-repair/${job}.log" || true
+          done
+          python3 <<'PY'
+          from __future__ import annotations
+          from pathlib import Path
+          import copy
+          import difflib
+          import json
+          import re
+          import subprocess
+          import sys
+
+          root = Path.cwd()
+          manifest = root / '.mvn/verification-suites.json'
+          workflow = '.github/workflows/merged-pr-review-audit.yml'
+          stem = 'merged-pr-review-audit'
+          evidence = '\n'.join(
+              path.read_text(errors='replace')
+              for path in sorted((root / 'target/pr973-repair').glob('*.log'))
+          )
+          original_text = manifest.read_text(encoding='utf-8')
+          original = json.loads(original_text)
+
+          def run(command: list[str], log_name: str) -> int:
+              with (root / 'target/pr973-repair' / log_name).open('wb') as output:
+                  return subprocess.run(
+                      command,
+                      cwd=root,
+                      stdout=output,
+                      stderr=subprocess.STDOUT,
+                      timeout=1500,
+                      check=False,
+                  ).returncode
+
+          focused_sources = []
+          for path in (root / 'taxonomy-build/src/test').rglob('*.java'):
+              text = path.read_text(errors='replace')
+              if 'verification-suites.json' in text or 'verification suite' in text.lower():
+                  focused_sources.append(path.stem)
+          focused_sources = sorted(set(focused_sources))
+          focused_command = [
+              './mvnw', '-B', '-ntp', '-pl', 'taxonomy-build', '-am', 'test',
+              '-Dsurefire.failIfNoSpecifiedTests=false'
+          ]
+          if focused_sources:
+              focused_command.append('-Dtest=' + ','.join(focused_sources))
+
+          baseline_rc = run(focused_command, 'baseline-focused.log')
+          baseline_log = (root / 'target/pr973-repair/baseline-focused.log').read_text(errors='replace')
+          evidence += '\n' + baseline_log
+
+          if stem in original_text:
+              if baseline_rc != 0:
+                  raise SystemExit('Workflow is already registered, but the focused responsibility contracts still fail.')
+          else:
+              lower = evidence.lower()
+              supported = stem in lower or (
+                  'workflow' in lower
+                  and any(token in lower for token in (
+                      'verification-suites', 'responsibil', 'register', 'unowned', 'ownership'
+                  ))
+              )
+              if baseline_rc == 0 or not supported:
+                  raise SystemExit('The failed database evidence does not uniquely support a missing workflow responsibility.')
+
+              def walk(node, path=()):
+                  yield path, node
+                  if isinstance(node, dict):
+                      for key, value in node.items():
+                          yield from walk(value, path + (key,))
+                  elif isinstance(node, list):
+                      for index, value in enumerate(node):
+                          yield from walk(value, path + (index,))
+
+              def get(node, path):
+                  for item in path:
+                      node = node[item]
+                  return node
+
+              def strings(node):
+                  return [value for _, value in walk(node) if isinstance(value, str)]
+
+              def workflow_strings(node):
+                  return [
+                      value for value in strings(node)
+                      if '.github/workflows/' in value or re.search(r'[^/]+\.ya?ml$', value)
+                  ]
+
+              def replace_template(node, old_path):
+                  old_name = Path(old_path).name
+                  old_stem = Path(old_path).stem
+
+                  def visit(value):
+                      if isinstance(value, str):
+                          if value == old_path or value.endswith('/' + old_name) or value == old_name:
+                              prefix = value[:-len(old_name)] if value.endswith(old_name) else ''
+                              return prefix + Path(workflow).name
+                          return value.replace(old_stem, stem)
+                      if isinstance(value, list):
+                          return [visit(item) for item in value]
+                      if isinstance(value, dict):
+                          return {
+                              visit(key) if isinstance(key, str) else key: visit(item)
+                              for key, item in value.items()
+                          }
+                      return value
+
+                  return visit(copy.deepcopy(node))
+
+              candidates = []
+              for path, node in walk(original):
+                  if isinstance(node, list):
+                      string_items = [item for item in node if isinstance(item, str)]
+                      workflow_items = [
+                          item for item in string_items
+                          if '.github/workflows/' in item or re.search(r'\.ya?ml$', item)
+                      ]
+                      if workflow_items and len(string_items) == len(node):
+                          candidate = copy.deepcopy(original)
+                          target = get(candidate, path)
+                          value = workflow if any('.github/workflows/' in item for item in workflow_items) else Path(workflow).name
+                          if value not in target:
+                              target.append(value)
+                              candidates.append((f'append-string:{path}', candidate))
+
+                      for index, item in enumerate(node):
+                          if not isinstance(item, dict):
+                              continue
+                          for old_path in workflow_strings(item):
+                              candidate = copy.deepcopy(original)
+                              clone = replace_template(item, old_path)
+                              if stem in json.dumps(clone):
+                                  get(candidate, path).append(clone)
+                                  candidates.append((f'clone-object:{path}:{index}:{old_path}', candidate))
+
+                  if isinstance(node, dict):
+                      for key, value in list(node.items()):
+                          if not isinstance(key, str):
+                              continue
+                          if '.github/workflows/' not in key and not re.search(r'\.ya?ml$', key):
+                              continue
+                          candidate = copy.deepcopy(original)
+                          target = get(candidate, path)
+                          replacement_key = key.replace(Path(key).stem, stem)
+                          if replacement_key not in target:
+                              target[replacement_key] = replace_template(value, key)
+                              candidates.append((f'clone-map:{path}:{key}', candidate))
+
+              unique = []
+              seen = set()
+              for label, candidate in candidates:
+                  canonical = json.dumps(candidate, sort_keys=True)
+                  if canonical in seen or stem not in canonical:
+                      continue
+                  seen.add(canonical)
+                  unique.append((label, candidate))
+
+              passing = []
+              for index, (label, candidate) in enumerate(unique):
+                  rendered = json.dumps(candidate, indent=2, ensure_ascii=False) + '\n'
+                  manifest.write_text(rendered, encoding='utf-8')
+                  rc = run(focused_command, f'candidate-{index}.log')
+                  if rc == 0:
+                      diff = ''.join(difflib.unified_diff(
+                          original_text.splitlines(True),
+                          rendered.splitlines(True),
+                          fromfile='before',
+                          tofile='after',
+                      ))
+                      passing.append((len(diff.splitlines()), index, label, rendered))
+
+              manifest.write_text(original_text, encoding='utf-8')
+              if not passing:
+                  raise SystemExit('No workflow-registration candidate satisfies the focused repository contracts.')
+              passing.sort()
+              if len(passing) > 1 and passing[0][0] == passing[1][0]:
+                  raise SystemExit('Multiple equally minimal registrations pass; refusing to guess.')
+              _, index, label, rendered = passing[0]
+              manifest.write_text(rendered, encoding='utf-8')
+              (root / 'target/pr973-repair/selected.txt').write_text(
+                  f'{index}: {label}\n', encoding='utf-8')
+
+          full_rc = run(
+              ['./mvnw', '-B', '-ntp', '-pl', 'taxonomy-build', '-am', 'test'],
+              'full-taxonomy-build.log',
+          )
+          if full_rc != 0:
+              raise SystemExit('Full taxonomy-build tests fail after the selected responsibility registration.')
+          PY
+
+      - name: Build the single final commit on current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/temporary-pr973-database-contract-repair.yml
+          git fetch origin main
+          mapfile -t changed < <(git diff --name-only origin/main...HEAD; printf '%s\n' .mvn/verification-suites.json)
+          allowed='^(.github/package.json|.github/scripts/merged-pr-review-audit.mjs|.github/scripts/merged-pr-review-audit.test.mjs|.github/workflows/merged-pr-review-audit.yml|.mvn/verification-suites.json)$'
+          while IFS= read -r path; do
+            [[ -z "$path" || "$path" =~ $allowed ]] || { echo "Unexpected path: $path" >&2; exit 1; }
+          done < <(printf '%s\n' "${changed[@]}" | sort -u)
+          git config user.name 'Carsten Hammer'
+          git config user.email 'carsten.hammer@t-online.de'
+          git reset --soft origin/main
+          git add -A
+          git diff --cached --quiet && { echo 'No final diff' >&2; exit 1; }
+          git commit -m 'Audit merged PR reviews from trusted default-branch code' -m 'Add a repository-owned retrospective review auditor for every recently merged PR, including integration-branch merges such as #933. Execute only trusted default-branch code, skip open-PR review events, reconcile findings only after a later clean exact-head approval, deduplicate bot comments per high-priority finding code, and register the new workflow in the executable verification responsibility manifest.'
+          git push --force origin HEAD:refs/heads/ci/merged-pr-review-audit-final-v2
+
+      - name: Restore the source branch without the temporary workflow
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force origin "${START_SHA}:refs/heads/ci/merged-pr-review-audit-final"
