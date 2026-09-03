@@ -280,9 +280,45 @@ test('review event workflow executes only trusted default-branch code', async ()
     assert.doesNotMatch(workflow, /ref: \$\{\{ github\.sha \}\}/u);
     assert.match(workflow, /fetch-depth: 1/u);
     assert.match(workflow, /pull-requests: read/u);
-    assert.match(workflow, /issues: write/u);
+    assertAuditWorkflowPermissions(workflow);
+    assert.match(workflow, /persist-credentials: false/u);
+    assert.match(workflow, /AUDIT_FAIL_SEVERITY: 'high'/u);
+    assert.doesNotMatch(workflow, /continue-on-error: true/u);
     assert.match(workflow, /AUDIT_COMMENT: 'true'/u);
     assert.match(workflow, /merged-pr-review-audit\.mjs/u);
+});
+
+function assertAuditWorkflowPermissions(workflow) {
+    // Parse only the two deliberately explicit permission maps, not arbitrary YAML.
+    const defaults = workflow.match(/^permissions:\n((?:  [\w-]+: \w+\n)+)/mu);
+    const auditJob = workflow.match(/^  audit:\n(?:(?:    .*|)\n)*/mu)?.[0] ?? '';
+    const job = auditJob.match(/^    permissions:\n((?:      [\w-]+: \w+\n)+)/mu);
+    const entries = block => Object.fromEntries(block.trim().split('\n')
+        .map(line => line.trim().split(': ')));
+    assert.ok(defaults, 'workflow must explicitly default to read-only permissions');
+    assert.ok(job, 'trusted audit job must explicitly grant PR comment access');
+    assert.deepEqual(entries(defaults[1]), {
+        contents: 'read', 'pull-requests': 'read'
+    });
+    assert.deepEqual(entries(job[1]), {
+        contents: 'read', 'pull-requests': 'write'
+    });
+}
+
+test('audit permissions reject the old PR-read-only scope and unrelated write grants', async () => {
+    const workflow = await readFile(
+        new URL('../workflows/merged-pr-review-audit.yml', import.meta.url), 'utf8');
+    assertAuditWorkflowPermissions(workflow);
+    for (const regression of [
+        workflow.replace('      pull-requests: write', '      pull-requests: read'),
+        workflow.replace('  pull-requests: read', '  pull-requests: write'),
+        workflow.replace('      contents: read', '      contents: write'),
+        workflow.replace('      pull-requests: write', '      issues: write'),
+        workflow.replace('      pull-requests: write',
+            '      pull-requests: write\n      issues: write')
+    ]) {
+        assert.throws(() => assertAuditWorkflowPermissions(regression));
+    }
 });
 
 test('Maven-owned UI contract chain retains both review gates', async () => {

@@ -15,7 +15,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  issues: write
 
 concurrency:
   group: taxonomy-merged-pr-review-audit-${{ github.event_name == 'pull_request_review' && github.event.pull_request.number || 'window' }}
@@ -25,6 +24,11 @@ jobs:
   audit:
     name: Audit reviews of merged pull requests
     if: github.event_name != 'pull_request_review' || github.event.pull_request.merged_at != null
+    # Findings are posted to PR discussions, even though the REST route is
+    # /issues/{number}/comments. Grant PR write only to this trusted-code job.
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
