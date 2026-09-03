@@ -41,21 +41,49 @@ jobs:
           fetch-depth: 1
       - name: Install repository-pinned Node runtime
         run: ./mvnw -B -ntp -f .github/ui-verification-pom.xml generate-resources -Pcontracts
-      - name: Audit merged pull-request review evidence
+      - name: Audit one merged pull request after a review event
+        if: github.event_name == 'pull_request_review'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          AUDIT_PR_NUMBER: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.number || '' }}
-          AUDIT_SINCE_DAYS: ${{ inputs.since_days || '35' }}
+          AUDIT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          AUDIT_SINCE_DAYS: '35'
           AUDIT_REVIEWERS: 'copilot-pull-request-reviewer[bot],Copilot'
           AUDIT_COMMENT: 'true'
           AUDIT_FAIL_SEVERITY: 'high'
           AUDIT_OUTPUT_ROOT: target/merged-pr-review-audit
         run: .cache/ui-frontend/node/node .github/scripts/merged-pr-review-audit.mjs
+      - name: Collect the retrospective audit window
+        if: github.event_name != 'pull_request_review'
+        # The collector deliberately exits non-zero when the complete historical
+        # report contains high findings. The next step applies the enforceable
+        # rollout boundary and fails closed on missing or malformed evidence.
+        continue-on-error: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUDIT_PR_NUMBER: ''
+          AUDIT_SINCE_DAYS: ${{ inputs.since_days || '35' }}
+          AUDIT_REVIEWERS: 'copilot-pull-request-reviewer[bot],Copilot'
+          AUDIT_COMMENT: 'false'
+          AUDIT_FAIL_SEVERITY: 'high'
+          AUDIT_OUTPUT_ROOT: target/merged-pr-review-audit
+        run: .cache/ui-frontend/node/node .github/scripts/merged-pr-review-audit.mjs
+      - name: Enforce review evidence from the audit rollout onward
+        if: always() && github.event_name != 'pull_request_review'
+        env:
+          AUDIT_PR_NUMBER: ''
+          AUDIT_FAIL_SEVERITY: 'high'
+          AUDIT_ENFORCE_MERGED_SINCE: '2026-09-02T04:59:06Z'
+          AUDIT_REPORT: target/merged-pr-review-audit/audit.json
+          AUDIT_ENFORCEMENT_OUTPUT_ROOT: target/merged-pr-review-audit/enforcement
+        run: .cache/ui-frontend/node/node .github/scripts/merged-pr-review-enforcement.mjs
       - name: Print review-audit evidence
         if: always()
         run: |
           if [[ -f target/merged-pr-review-audit/audit.md ]]; then
             cat target/merged-pr-review-audit/audit.md
+          fi
+          if [[ -f target/merged-pr-review-audit/enforcement/enforcement.md ]]; then
+            cat target/merged-pr-review-audit/enforcement/enforcement.md
           fi
       - name: Upload review-audit evidence
         if: always()
