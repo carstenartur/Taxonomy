@@ -67,6 +67,9 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Keep the complete Boot-managed Tomcat family on the released fixes
+             for CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525 (#989). -->
+        <tomcat.version>11.0.25</tomcat.version>
         <djl.version>0.36.0</djl.version>
         <skipITs>true</skipITs>
         <excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle</excludedGroups>
@@ -207,6 +210,9 @@
                                 <bannedDependencies>
                                     <searchTransitive>true</searchTransitive>
                                     <excludes>
+                                        <!-- Fixed floor is independent of overrides to tomcat.version. -->
+                                        <exclude>org.apache.tomcat.embed:*:(,11.0.25):jar:compile</exclude>
+                                        <exclude>org.apache.tomcat.embed:*:(,11.0.25):jar:runtime</exclude>
                                         <exclude>org.apache.pdfbox:*:(,3.0.0):jar:compile</exclude>
                                         <exclude>org.apache.pdfbox:*:(,3.0.0):jar:runtime</exclude>
                                         <exclude>org.apache.pdfbox:xmpbox:*:jar:compile</exclude>
