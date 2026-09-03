@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       since_days:
-        description: Number of recent days to audit
+        description: Number of recent days to audit manually
         required: false
         default: '35'
 
@@ -45,6 +45,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           AUDIT_PR_NUMBER: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.number || '' }}
+          # The audit contract was introduced by PR #974 on 2026-09-02. Scheduled
+          # enforcement starts there instead of making main permanently red for
+          # older merges that could not have followed a not-yet-existing policy.
+          # Manual dispatch deliberately retains the configurable historical window.
+          AUDIT_SINCE_DATE: ${{ github.event_name == 'schedule' && '2026-09-02' || '' }}
           AUDIT_SINCE_DAYS: ${{ inputs.since_days || '35' }}
           AUDIT_REVIEWERS: 'copilot-pull-request-reviewer[bot],Copilot'
           AUDIT_COMMENT: 'true'
