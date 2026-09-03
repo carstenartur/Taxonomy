@@ -93,7 +93,7 @@ graph TB
 | `ArchitectureRecommendationService` | Produces architecture recommendations by combining direct matches, gap analysis, and semantic search results to suggest additional nodes and relations relevant to a given requirement. |
 | `ArchitectureGapService` | Identifies missing relations and incomplete architecture patterns in the taxonomy graph relative to a given requirement. |
 | `ArchitecturePatternService` | Detects standard architecture patterns (Full Stack, App Chain, Role Chain) in scored taxonomy results. |
-| `ArchiMateDiagramService` | Converts architecture views into ArchiMate 3.x Model Exchange File Format XML, suitable for import into tools such as Archi, BiZZdesign, and MEGA. |
+| `ArchiMateDiagramService` | Produces the experimental bounded ArchiMate 3.1 subset; mapping/loss profiles, semantic round-trip evidence, and independent-tool interoperability remain pending in #967. |
 | `VisioDiagramService` | Generates Visio `.vsdx` diagram packages from architecture views. |
 | `MermaidExportService` | Exports architecture views as Mermaid flowchart code blocks. |
 | `DiagramProjectionService` | Projects architecture views into neutral diagram models that can be rendered by multiple exporters. |
@@ -504,8 +504,8 @@ Imported elements carry an `x-source-framework` extension attribute for traceabi
 
 | Format | Description |
 |---|---|
-| **ArchiMate XML** | ArchiMate 3.x Model Exchange File Format XML, importable into Archi, BiZZdesign, MEGA, and other ArchiMate-compatible tools. |
-| **Visio `.vsdx`** | Microsoft Visio diagram package, compatible with Visio 2013 and later. |
+| **ArchiMate XML** | **Experimental bounded ArchiMate 3.1 subset.** Representative output is validated against the pinned schema set; mapping/loss profiles, semantic round-trip evidence, and independent-tool interoperability remain pending in #967. |
+| **Visio `.vsdx`** | **Experimental bounded Visio 2012 subset.** The deterministic technical-reader contract is implemented; Microsoft Visio desktop open/edit/save/reopen certification and complete handoff/loss metadata remain pending in #965. |
 | **Mermaid flowchart** | Text-based Mermaid diagram (Markdown code block), renderable in GitHub, GitLab, Notion, Confluence, and most modern documentation platforms. |
 
 ---

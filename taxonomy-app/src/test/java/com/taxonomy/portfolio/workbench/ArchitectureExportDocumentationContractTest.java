@@ -14,12 +14,19 @@ class ArchitectureExportDocumentationContractTest {
             "compatible with Visio 2013 and later",
             "suitable for import into tools such as Archi",
             "importable into Archi, BiZZdesign, MEGA",
+            "compatible with Archi, BiZZdesign, MEGA",
+            "can be imported into **Archi**, **BiZZdesign**, **MEGA**",
+            "import into EA/Sparx",
             "production-ready editable Visio");
 
     private static final List<String> FORBIDDEN_GERMAN_CLAIMS = List.of(
             "kompatibel mit Visio 2013 und höher",
             "zum Import in Tools wie Archi oder Sparx EA geeignet",
             "importierbar in Archi, BiZZdesign, MEGA",
+            "geeignet für den Import in Tools wie Archi, BiZZdesign und MEGA",
+            "kompatibel mit Archi, BiZZdesign, MEGA",
+            "kann in **Archi**, **BiZZdesign**, **MEGA**",
+            "Import in EA/Sparx",
             "produktionsreifer editierbarer Visio");
 
     @Test
@@ -96,6 +103,45 @@ class ArchitectureExportDocumentationContractTest {
                 .contains("schema-validated ArchiMate 3.1 supported subset")
                 .contains("experimental bounded Visio 2012 VSDX package")
                 .doesNotContain("as editable Visio VSDX");
+    }
+
+
+    @Test
+    void publicGuidesUseTheBoundedExternalHandoffContract()
+            throws IOException {
+        Path repository = findRepositoryRoot();
+        String english = String.join("\n",
+                read(repository, "docs/en/ARCHITECTURE.md"),
+                read(repository, "docs/en/USER_GUIDE.md"),
+                read(repository, "docs/en/EXAMPLES.md"),
+                read(repository,
+                        "docs/en/USE_CASE_WISSENSKONSERVIERUNG.md"));
+        String german = String.join("\n",
+                read(repository, "docs/de/ARCHITECTURE.md"),
+                read(repository, "docs/de/USER_GUIDE.md"),
+                read(repository, "docs/de/EXAMPLES.md"),
+                read(repository,
+                        "docs/de/USE_CASE_WISSENSKONSERVIERUNG.md"));
+
+        assertThat(english)
+                .contains("Experimental bounded ArchiMate 3.1 subset")
+                .contains("independent-tool interoperability remain pending in #967")
+                .contains("Experimental bounded Visio 2012 subset")
+                .contains("Microsoft Visio desktop open/edit/save/reopen certification")
+                .contains("#965");
+        assertThat(german)
+                .contains("Experimentelle begrenzte ArchiMate-3.1-Teilmenge")
+                .contains("Interoperabilität mit unabhängigen Werkzeugen")
+                .contains("Experimentelle begrenzte Visio-2012-Teilmenge")
+                .contains("Microsoft-Visio-Desktop-Zertifizierung")
+                .contains("#965");
+
+        for (String claim : FORBIDDEN_ENGLISH_CLAIMS) {
+            assertThat(english).doesNotContain(claim);
+        }
+        for (String claim : FORBIDDEN_GERMAN_CLAIMS) {
+            assertThat(german).doesNotContain(claim);
+        }
     }
 
     private static String read(Path repository, String relativePath)

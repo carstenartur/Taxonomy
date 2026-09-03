@@ -630,13 +630,13 @@ Click **📥 CSV** to download a comma-separated file containing all node codes,
 
 ### Visio (.vsdx) Architecture Diagram
 
-Click **📥 Visio** to download a structured Microsoft Visio file (`.vsdx`) representing the Architecture View. The diagram includes the anchor nodes, related elements, and labelled relationships.
+Click **📥 Visio** to download an **experimental bounded Visio 2012 VSDX subset** representing the Architecture View. The package includes the anchor nodes, related elements, and labelled relationships; Microsoft Visio desktop open/edit/save/reopen certification and complete handoff/loss metadata remain pending in #965.
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 
 ### ArchiMate XML Architecture Diagram
 
-Click **📥 ArchiMate** to download an ArchiMate 3.x XML file suitable for import into tools such as Archi or Sparx EA.
+Click **📥 ArchiMate** to download an **experimental bounded ArchiMate 3.1 subset**. Representative output is schema-validated, while mapping/loss profiles, semantic round-trip evidence, and independent-tool interoperability remain pending in #967.
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 

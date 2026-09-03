@@ -179,7 +179,7 @@ The Taxonomy Analyzer can support procurement decisions:
 
 | Obligation | Implementation |
 |---|---|
-| **IT Reference Architecture** | Export as ArchiMate XML → import into EA/Sparx |
+| **IT Reference Architecture** | Experimental bounded ArchiMate 3.1 export; independent-tool interoperability pending in #967 |
 | **Architecture Overview** | Export as Mermaid → embed in Confluence/Wiki |
 | **Audit Report** | DOCX report with ratings and justifications |
 | **Change History** | Git log as a traceable audit trail |

@@ -626,13 +626,13 @@ Klicken Sie auf **📥 CSV**, um eine kommagetrennte Datei herunterzuladen, die 
 
 ### Visio (.vsdx) Architekturdiagramm
 
-Klicken Sie auf **📥 Visio**, um eine strukturierte Microsoft Visio-Datei (`.vsdx`) herunterzuladen, die die Architekturansicht darstellt. Das Diagramm enthält die Anker-Knoten, verwandte Elemente und beschriftete Beziehungen.
+Klicken Sie auf **📥 Visio**, um eine **experimentelle begrenzte Visio-2012-VSDX-Teilmenge** herunterzuladen, die die Architekturansicht darstellt. Das Paket enthält die Anker-Knoten, verwandte Elemente und beschriftete Beziehungen; Microsoft-Visio-Desktop-Zertifizierung für Öffnen, Bearbeiten, Speichern und erneutes Öffnen sowie vollständige Übergabe-/Verlustmetadaten bleiben in #965 ausstehend.
 
 > **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
 
 ### ArchiMate XML-Architekturdiagramm
 
-Klicken Sie auf **📥 ArchiMate**, um eine ArchiMate 3.x XML-Datei herunterzuladen, die zum Import in Tools wie Archi oder Sparx EA geeignet ist.
+Klicken Sie auf **📥 ArchiMate**, um eine **experimentelle begrenzte ArchiMate-3.1-Teilmenge** herunterzuladen. Repräsentative Ausgaben sind schemavalidiert; Mapping-/Verlustprofile, semantischer Roundtrip-Nachweis und Interoperabilität mit unabhängigen Werkzeugen bleiben in #967 ausstehend.
 
 > **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
 

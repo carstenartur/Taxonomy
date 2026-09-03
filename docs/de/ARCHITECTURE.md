@@ -93,7 +93,7 @@ graph TB
 | `ArchitectureRecommendationService` | Erzeugt Architekturempfehlungen durch Kombination direkter Treffer, Lückenanalyse und semantischer Suchergebnisse, um zusätzliche relevante Knoten und Beziehungen vorzuschlagen. |
 | `ArchitectureGapService` | Identifiziert fehlende Beziehungen und unvollständige Architekturmuster im Taxonomiegraphen bezüglich einer gegebenen Anforderung. |
 | `ArchitecturePatternService` | Erkennt Standard-Architekturmuster (Full Stack, App Chain, Role Chain) in bewerteten Taxonomieergebnissen. |
-| `ArchiMateDiagramService` | Konvertiert Architekturansichten in ArchiMate 3.x Model Exchange File Format XML, geeignet für den Import in Tools wie Archi, BiZZdesign und MEGA. |
+| `ArchiMateDiagramService` | Erzeugt die experimentelle begrenzte ArchiMate-3.1-Teilmenge; Mapping-/Verlustprofile, semantischer Roundtrip-Nachweis und Interoperabilität mit unabhängigen Werkzeugen bleiben in #967 ausstehend. |
 | `VisioDiagramService` | Generiert Visio-`.vsdx`-Diagrammpakete aus Architekturansichten. |
 | `MermaidExportService` | Exportiert Architekturansichten als Mermaid-Flussdiagramm-Codeblöcke. |
 | `DiagramProjectionService` | Projiziert Architekturansichten in neutrale Diagrammmodelle, die von mehreren Exportern gerendert werden können. |
@@ -499,8 +499,8 @@ Importierte Elemente tragen ein `x-source-framework`-Erweiterungsattribut für d
 
 | Format | Beschreibung |
 |---|---|
-| **ArchiMate-XML** | ArchiMate 3.x Model Exchange File Format XML, importierbar in Archi, BiZZdesign, MEGA und andere ArchiMate-kompatible Tools. |
-| **Visio `.vsdx`** | Microsoft Visio-Diagrammpaket, kompatibel mit Visio 2013 und höher. |
+| **ArchiMate-XML** | **Experimentelle begrenzte ArchiMate-3.1-Teilmenge.** Repräsentative Ausgaben werden gegen den fixierten Schemasatz validiert; Mapping-/Verlustprofile, semantischer Roundtrip-Nachweis und Interoperabilität mit unabhängigen Werkzeugen bleiben in #967 ausstehend. |
+| **Visio `.vsdx`** | **Experimentelle begrenzte Visio-2012-Teilmenge.** Der deterministische technische Lesevertrag ist umgesetzt; Microsoft-Visio-Desktop-Zertifizierung für Öffnen, Bearbeiten, Speichern und erneutes Öffnen sowie vollständige Übergabe-/Verlustmetadaten bleiben in #965 ausstehend. |
 | **Mermaid-Flussdiagramm** | Textbasiertes Mermaid-Diagramm (Markdown-Codeblock), renderbar in GitHub, GitLab, Notion, Confluence und den meisten modernen Dokumentationsplattformen. |
 
 ---
