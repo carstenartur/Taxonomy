@@ -268,13 +268,19 @@ test('comment deduplication is per high finding code and trusts only the bot mar
         ['SECOND_HIGH']);
 });
 
-test('review event workflow executes only trusted default-branch code', async () => {
+test('merged-close workflow executes only trusted default-branch code', async () => {
     const workflow = await readFile(
         new URL('../workflows/merged-pr-review-audit.yml', import.meta.url), 'utf8');
-    assert.match(workflow, /pull_request_review:/u);
+    assert.match(workflow, /pull_request_target:\n    types: \[closed\]/u);
+    assert.doesNotMatch(workflow, /pull_request_review:/u);
     assert.match(workflow, /schedule:/u);
+    assert.match(workflow, /workflow_dispatch:/u);
     assert.match(workflow,
-        /if: github\.event_name != 'pull_request_review' \|\| github\.event\.pull_request\.merged_at != null/u);
+        /pr_number:\n        description: Optional merged pull request number to audit/u);
+    assert.match(workflow,
+        /if: github\.event_name != 'pull_request_target' \|\| github\.event\.pull_request\.merged == true/u);
+    assert.match(workflow,
+        /AUDIT_PR_NUMBER: \$\{\{ github\.event_name == 'pull_request_target' && github\.event\.pull_request\.number \|\| inputs\.pr_number \|\| '' \}\}/u);
     assert.match(workflow,
         /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/u);
     assert.doesNotMatch(workflow, /ref: \$\{\{ github\.sha \}\}/u);
