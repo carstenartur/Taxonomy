@@ -30,7 +30,7 @@ The application is a single Spring Boot 4 / Java 21 web application with the fol
 - **In-process HSQLDB** — the zero-configuration profile uses embedded HSQLDB; file-backed deployments persist catalogue and JGit data, while an empty database or an explicit reload imports the bundled workbook. No external database is required by default.
 - **Multi-provider LLM integration** — business requirements can be analysed by any of six supported language model providers (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral), or by a local offline model (`bge-small-en-v1.5` via DJL / ONNX Runtime) that requires no API key.
 - **Taxonomy tree visualisation** — the hierarchy is rendered as a collapsible Bootstrap 5 tree with colour-coded match overlays.
-- **Architecture intelligence** — scored analysis results are automatically assembled into architecture views, which can be exported to ArchiMate XML, Visio `.vsdx`, and Mermaid flowcharts.
+- **Architecture intelligence** — scored analysis results are assembled into architecture views. Mermaid is available as a text projection; ArchiMate 3.1 and Visio 2012 downloads are experimental bounded subsets whose interoperability and desktop acceptance are tracked separately.
 
 ---
 
@@ -41,9 +41,9 @@ The system design follows these guiding principles, aligned with the
 
 | Principle | How it is applied |
 |---|---|
-| **Open Standards** | All exports use open formats (ArchiMate 3.x XML, OpenAPI, Mermaid, ONNX, CycloneDX). No proprietary data formats are required. |
+| **Open Standards** | The REST API uses OpenAPI; Mermaid, ONNX, and CycloneDX are open formats. ArchiMate output is an experimental bounded 3.1 subset, while the optional VSDX handoff is tracked separately as a proprietary interoperability surface. |
 | **Open Source First** | MIT license. Full source code public. openCode-compatible. |
-| **Interoperability** | REST API with OpenAPI spec. Framework import pipeline (UAF, APQC, C4). Export to 5+ formats. |
+| **Interoperability** | REST API with an OpenAPI specification, a framework import pipeline (UAF, APQC, C4), and format-specific export boundaries documented in the feature matrix. |
 | **Modularity & Reuse** | 5 Maven modules with minimal coupling. 4 modules are Spring-free and independently testable. |
 | **Integration** | Import pipelines for UAF/DoDAF, APQC PCF, C4/Structurizr. Keycloak SSO. External Git sync. |
 | **Scalability** | Stateless REST API. Pluggable database backend (HSQLDB, PostgreSQL, MSSQL, Oracle). Container-ready. |
@@ -93,8 +93,8 @@ graph TB
 | `ArchitectureRecommendationService` | Produces architecture recommendations by combining direct matches, gap analysis, and semantic search results to suggest additional nodes and relations relevant to a given requirement. |
 | `ArchitectureGapService` | Identifies missing relations and incomplete architecture patterns in the taxonomy graph relative to a given requirement. |
 | `ArchitecturePatternService` | Detects standard architecture patterns (Full Stack, App Chain, Role Chain) in scored taxonomy results. |
-| `ArchiMateDiagramService` | Converts architecture views into ArchiMate 3.x Model Exchange File Format XML, suitable for import into tools such as Archi, BiZZdesign, and MEGA. |
-| `VisioDiagramService` | Generates Visio `.vsdx` diagram packages from architecture views. |
+| `ArchiMateDiagramService` | Generates the experimental bounded ArchiMate 3.1 XML subset. Representative output is validated against the pinned XSD set; independent-tool interoperability, a versioned mapping, and a loss profile remain pending. |
+| `VisioDiagramService` | Generates the experimental bounded Visio 2012 VSDX subset; Microsoft Visio desktop certification and complete handoff/loss evidence remain pending. |
 | `MermaidExportService` | Exports architecture views as Mermaid flowchart code blocks. |
 | `DiagramProjectionService` | Projects architecture views into neutral diagram models that can be rendered by multiple exporters. |
 | `RelevancePropagationService` | Propagates relevance scores from anchor nodes through taxonomy relations, expanding the architecture view to include indirectly relevant elements. |
@@ -125,8 +125,8 @@ flowchart TD
     D --> E["5. Relevance propagation<br/>through taxonomy relations"]
     E --> F["6. Element & relationship<br/>building"]
     F --> G["7. Diagram projection"]
-    G --> H1["ArchiMate 3.x XML"]
-    G --> H2["Visio .vsdx"]
+    G --> H1["Experimental ArchiMate 3.1 subset"]
+    G --> H2["Experimental Visio 2012 subset"]
     G --> H3["Mermaid flowchart"]
 ```
 
@@ -137,9 +137,11 @@ flowchart TD
 5. **Element and relationship building** — architecture elements and their relationships are assembled from the propagated graph, respecting the taxonomy hierarchy. This high-level step internally encompasses leaf enrichment, impact relation generation, scoring trace construction, impact selection, and more (11 steps total; see [Decision Pipeline](DECISION_PIPELINE.md) § Phase 3).
 6. **Diagram projection** — `DiagramProjectionService` converts the architecture model into a neutral representation that can be rendered by multiple exporters. A configurable `DiagramSelectionPolicy` curates the diagram (root suppression, clustering, node/edge limits).
 7. **Export** — the projected model is exported to the chosen format:
-   - `ArchiMateDiagramService` → ArchiMate 3.x XML (`.archimate` / `.xml`)
-   - `VisioDiagramService` → Visio `.vsdx`
+   - `ArchiMateDiagramService` → experimental bounded ArchiMate 3.1 subset (`.archimate` / `.xml`)
+   - `VisioDiagramService` → experimental bounded Visio 2012 VSDX subset
    - `MermaidExportService` → Mermaid flowchart (`.md`)
+
+The ordinary analysis export controls are not evidence of persisted-snapshot equivalence. Only an endpoint explicitly bound to a selected read-only Architecture Workbench snapshot carries that authority. See the [Architecture export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary); common artifact-envelope and authority evidence remain tracked in #966.
 
 > 📖 For detailed documentation of all pipeline steps, constants,
 > propagation algorithm, impact selection formula, relation lifecycle, and
@@ -504,9 +506,11 @@ Imported elements carry an `x-source-framework` extension attribute for traceabi
 
 | Format | Description |
 |---|---|
-| **ArchiMate XML** | ArchiMate 3.x Model Exchange File Format XML, importable into Archi, BiZZdesign, MEGA, and other ArchiMate-compatible tools. |
-| **Visio `.vsdx`** | Microsoft Visio diagram package, compatible with Visio 2013 and later. |
+| **ArchiMate 3.1 XML** | Experimental bounded ArchiMate 3.1 subset. Representative output is validated against the pinned XSD set; independent-tool interoperability, stable external identity/property preservation, a versioned mapping/loss profile, and semantic round-trip behavior remain uncertified and tracked in #967. |
+| **Visio 2012 `.vsdx`** | Experimental bounded Visio 2012 VSDX subset. Package-level checks exist, but Microsoft Visio desktop open/edit/save/reopen certification and a complete handoff/loss manifest remain pending in #965. |
 | **Mermaid flowchart** | Text-based Mermaid diagram (Markdown code block), renderable in GitHub, GitLab, Notion, Confluence, and most modern documentation platforms. |
+
+This table describes generated formats, not broad third-party certification. Snapshot authority and format-loss boundaries are defined by the [Architecture export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary).
 
 ---
 
@@ -590,8 +594,8 @@ flowchart TB
 
     subgraph Output["Output Layer"]
         UI["Bootstrap 5 SPA<br/>(11 JS modules)"]
-        Visio["Visio .vsdx"]
-        ArchiEx["ArchiMate XML"]
+        Visio["Experimental Visio 2012<br/>subset"]
+        ArchiEx["Experimental ArchiMate 3.1<br/>subset"]
         Mermaid["Mermaid Flowchart"]
         Reports["Reports<br/>(MD, HTML, DOCX, JSON)"]
         JSONAPI["REST API<br/>(97 endpoints)"]

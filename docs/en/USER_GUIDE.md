@@ -612,6 +612,8 @@ The Export tab provides a dedicated panel with all available export formats orga
 
 ![Export tab — full view](../images/33-export-tab.png)
 
+> **Support boundary:** Browser/SVG/vector-PDF views are human-readable views of the selected result. Mermaid and JSON are special-purpose projections. ArchiMate 3.1 and Visio 2012 downloads are experimental bounded subsets; named-tool interoperability and Microsoft Visio desktop open/edit/save/reopen behavior are not certified. These controls do not by themselves prove equivalence with a persisted snapshot; use an explicitly snapshot-bound Architecture Workbench endpoint for that authority. See the [Architecture export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary), [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966), and [#967](https://github.com/carstenartur/Taxonomy/issues/967).
+
 ### SVG Export
 
 Click **📥 SVG** to download the current taxonomy view as a scalable vector graphics (SVG) file. Suitable for embedding in documents or further editing in vector graphics software.
@@ -628,15 +630,15 @@ Click **📥 PDF** to trigger the browser's print dialogue, pre-configured to pr
 
 Click **📥 CSV** to download a comma-separated file containing all node codes, names, and their analysis scores. Open in a spreadsheet application for further analysis or reporting.
 
-### Visio (.vsdx) Architecture Diagram
+### Experimental Visio 2012 VSDX Subset
 
-Click **📥 Visio** to download a structured Microsoft Visio file (`.vsdx`) representing the Architecture View. The diagram includes the anchor nodes, related elements, and labelled relationships.
+Click **📥 Visio 2012 subset** to download the experimental bounded Visio 2012 VSDX subset representing the Architecture View. The package includes anchor nodes, related elements, and labelled relationships. Package-level checks do not certify Microsoft Visio desktop open/edit/save/reopen behavior; the complete handoff and loss manifest remains pending in [#965](https://github.com/carstenartur/Taxonomy/issues/965).
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 
-### ArchiMate XML Architecture Diagram
+### Experimental ArchiMate 3.1 Subset
 
-Click **📥 ArchiMate** to download an ArchiMate 3.x XML file suitable for import into tools such as Archi or Sparx EA.
+Click **📥 ArchiMate 3.1 subset** to download the experimental bounded ArchiMate 3.1 subset. Representative output is validated against the pinned 3.1 XSD set, but independent-tool interoperability, stable external identity/property preservation, a versioned mapping and loss profile, and semantic round-trip behavior remain uncertified and tracked in [#967](https://github.com/carstenartur/Taxonomy/issues/967).
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 

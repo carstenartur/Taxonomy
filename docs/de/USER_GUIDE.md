@@ -608,6 +608,8 @@ Der Export-Tab bietet ein dediziertes Panel mit allen verfügbaren Exportformate
 
 ![Export-Tab — Gesamtansicht](../images/33-export-tab.png)
 
+> **Unterstützungsgrenze:** Browser-/SVG-/Vektor-PDF-Ansichten sind menschenlesbare Ansichten des ausgewählten Ergebnisses. Mermaid und JSON sind zweckgebundene Projektionen. ArchiMate-3.1- und Visio-2012-Downloads sind experimentelle begrenzte Teilmengen; Interoperabilität mit benannten Drittwerkzeugen sowie Öffnen/Bearbeiten/Speichern/erneutes Öffnen in Microsoft Visio Desktop sind nicht zertifiziert. Diese Bedienelemente belegen allein keine Gleichheit mit einem persistierten Snapshot; dafür ist ein ausdrücklich Snapshot-gebundener Architektur-Workbench-Endpunkt zu verwenden. Siehe die [Unterstützungsgrenze der Architekturexporte](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) sowie [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966) und [#967](https://github.com/carstenartur/Taxonomy/issues/967).
+
 ### SVG-Export
 
 Klicken Sie auf **📥 SVG**, um die aktuelle Taxonomie-Ansicht als skalierbare Vektorgrafik (SVG-Datei) herunterzuladen. Geeignet zum Einbetten in Dokumente oder zur weiteren Bearbeitung in Vektorgrafiksoftware.
@@ -624,15 +626,15 @@ Klicken Sie auf **📥 PDF**, um den Druckdialog des Browsers auszulösen, der v
 
 Klicken Sie auf **📥 CSV**, um eine kommagetrennte Datei herunterzuladen, die alle Knoten-Codes, Namen und ihre Analyse-Bewertungen enthält. Öffnen Sie die Datei in einer Tabellenkalkulationsanwendung zur weiteren Analyse oder Berichterstellung.
 
-### Visio (.vsdx) Architekturdiagramm
+### Experimentelle Visio-2012-VSDX-Teilmenge
 
-Klicken Sie auf **📥 Visio**, um eine strukturierte Microsoft Visio-Datei (`.vsdx`) herunterzuladen, die die Architekturansicht darstellt. Das Diagramm enthält die Anker-Knoten, verwandte Elemente und beschriftete Beziehungen.
+Klicken Sie auf **📥 Visio 2012 subset**, um die experimentelle begrenzte Visio-2012-VSDX-Teilmenge der Architekturansicht herunterzuladen. Das Paket enthält Ankerknoten, verwandte Elemente und beschriftete Beziehungen. Paketprüfungen zertifizieren nicht das Öffnen, Bearbeiten, Speichern und erneute Öffnen in Microsoft Visio Desktop; das vollständige Übergabe- und Verlustmanifest bleibt in [#965](https://github.com/carstenartur/Taxonomy/issues/965) offen.
 
 > **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
 
-### ArchiMate XML-Architekturdiagramm
+### Experimentelle ArchiMate-3.1-Teilmenge
 
-Klicken Sie auf **📥 ArchiMate**, um eine ArchiMate 3.x XML-Datei herunterzuladen, die zum Import in Tools wie Archi oder Sparx EA geeignet ist.
+Klicken Sie auf **📥 ArchiMate 3.1 subset**, um die experimentelle begrenzte ArchiMate-3.1-Teilmenge herunterzuladen. Repräsentative Ausgabe wird gegen den festgeschriebenen 3.1-XSD-Satz validiert; Interoperabilität mit unabhängigen Werkzeugen, stabile externe Identitäten/Eigenschaften, ein versioniertes Mapping- und Verlustprofil sowie semantischer Roundtrip bleiben unzertifiziert und werden in [#967](https://github.com/carstenartur/Taxonomy/issues/967) verfolgt.
 
 > **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
 
