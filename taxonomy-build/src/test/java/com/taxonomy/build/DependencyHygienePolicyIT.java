@@ -47,6 +47,33 @@ class DependencyHygienePolicyIT {
         }
     }
 
+    @Test
+    void resolvedEmbeddedTomcatFamilyMeetsTheSecurityFloor() {
+        Path root = findRepositoryRoot();
+        // Read the generated aggregate directly: an unrelated fallback SBOM
+        // must not satisfy the embedded-server acceptance gate.
+        var tomcat = new DependencyHygieneInputs()
+                .readComponents(root.resolve("target/taxonomy-sbom.json"))
+                .stream()
+                .filter(component -> "org.apache.tomcat.embed".equals(component.group()))
+                .toList();
+
+        assertThat(tomcat)
+                .extracting(DependencyHygienePolicy.Component::name)
+                .contains("tomcat-embed-core", "tomcat-embed-el", "tomcat-embed-websocket");
+        var versions = tomcat.stream()
+                .map(DependencyHygienePolicy.Component::version)
+                .distinct()
+                .toList();
+        assertThat(versions).as("embedded Tomcat modules must remain aligned").hasSize(1);
+        String version = versions.getFirst();
+        assertThat(version).as("a released Tomcat 11.0.x servlet stack").matches("11\\.0\\.\\d+");
+        assertThat(Integer.parseInt(version.substring("11.0.".length())))
+                .as("Tomcat security fixes for CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525")
+                .isGreaterThanOrEqualTo(25);
+        System.out.println("Resolved embedded Tomcat security baseline: " + version);
+    }
+
     private static Path findRepositoryRoot() {
         Path current = Path.of(System.getProperty("user.dir"))
                 .toAbsolutePath().normalize();
