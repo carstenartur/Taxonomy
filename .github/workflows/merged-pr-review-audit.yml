@@ -1,12 +1,19 @@
 name: Merged PR review audit
 
 on:
-  pull_request_review:
-    types: [submitted, edited, dismissed]
+  # A direct pull_request_review subscription creates approval-gated, jobless
+  # runs when the external Copilot reviewer submits a review. Audit the trusted
+  # merged-close event instead; the scheduled run still detects later reviews.
+  pull_request_target:
+    types: [closed]
   schedule:
     - cron: '37 3 * * *'
   workflow_dispatch:
     inputs:
+      pr_number:
+        description: Optional merged pull request number to audit
+        required: false
+        default: ''
       since_days:
         description: Number of recent days to audit manually
         required: false
@@ -17,13 +24,13 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: taxonomy-merged-pr-review-audit-${{ github.event_name == 'pull_request_review' && github.event.pull_request.number || 'window' }}
+  group: taxonomy-merged-pr-review-audit-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || inputs.pr_number || 'window' }}
   cancel-in-progress: false
 
 jobs:
   audit:
     name: Audit reviews of merged pull requests
-    if: github.event_name != 'pull_request_review' || github.event.pull_request.merged_at != null
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.merged == true
     # Findings are posted to PR discussions, even though the REST route is
     # /issues/{number}/comments. Grant PR write only to this trusted-code job.
     permissions:
@@ -34,8 +41,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          # pull_request_review uses the PR merge ref for github.sha. Resolve the
-          # repository-owned default branch instead, so reviewed code is never run.
+          # pull_request_target and workflow_dispatch execute repository-owned
+          # default-branch code. Never resolve or execute the pull-request head.
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           fetch-depth: 1
@@ -44,7 +51,7 @@ jobs:
       - name: Audit merged pull-request review evidence
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          AUDIT_PR_NUMBER: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.number || '' }}
+          AUDIT_PR_NUMBER: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || inputs.pr_number || '' }}
           # The audit contract was introduced by PR #974 on 2026-09-02. Scheduled
           # enforcement starts there instead of making main permanently red for
           # older merges that could not have followed a not-yet-existing policy.
