@@ -458,7 +458,7 @@ The main visualization is a **stable impact graph arranged by architecture layer
 - Use **search** to find elements by code, title, or layer. Press Enter to move to the first match.
 - The **Context nodes** switch shows or hides propagated elements while preserving direct matches.
 - Switch between **Overview** and **Focus**. Focus mode shows the selected element and its immediate neighbours; double-clicking a card also activates it.
-- Use **Fit**, **zoom**, canvas panning, and **fullscreen** to inspect small or extensive results. On narrow views the map starts centred on the most important match at a readable scale.
+- Use **Fit**, **zoom**, canvas panning, and **fullscreen** to inspect small or extensive results. On initial display, the complete graph is fitted inside the canvas. Responsive resizing repeats that fit until you zoom or pan manually; use **Fit** to restore the complete overview.
 - **Click** an element card or connection to view its relevance, distance, inclusion reason, and connected elements in the detail area. From there you can open the element in Graph Explorer.
 - Toggle to **"🏗️ Layer View"** for the compact swimlane representation grouped by architecture layer.
 
