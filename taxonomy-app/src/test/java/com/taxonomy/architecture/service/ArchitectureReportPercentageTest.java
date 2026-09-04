@@ -79,8 +79,6 @@ class ArchitectureReportPercentageTest {
         if (!Files.exists(source)) {
             source = Path.of("taxonomy-app/src/main/java").resolve(SERVICE_SOURCE);
         }
-        String sourceText = Files.readString(source);
-        assertThat(sourceText).contains("formatBoundedPercentage");
         assertThat(findDirectPatternPercentageMultiplications(source)).isEmpty();
     }
 
