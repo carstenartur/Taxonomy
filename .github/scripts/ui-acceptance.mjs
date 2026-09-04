@@ -2,6 +2,7 @@ import { chromium, firefox } from '@playwright/test';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { observeHttpFailures } from './ui-http-failure-evidence.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const username = process.env.TAXONOMY_UI_USERNAME || 'admin';
@@ -34,6 +35,7 @@ const context = await browser.newContext({ viewport, reducedMotion: 'reduce' });
 const page = await context.newPage();
 const externalRequests = [];
 const consoleErrors = [];
+const httpFailures = observeHttpFailures(page);
 const checks = [];
 
 function passed(name) { checks.push(name); }
@@ -237,7 +239,7 @@ try {
   await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
   await writeFile(reportPath, JSON.stringify({
     profile, browser: browserName, mode, viewport, checks,
-    externalRequests, consoleErrors, auditError
+    externalRequests, consoleErrors, httpFailures, auditError
   }, null, 2) + '\n', 'utf8');
   await context.close();
   await browser.close();
