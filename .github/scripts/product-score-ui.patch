@@ -1,0 +1,334 @@
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js
+@@ -8,6 +8,12 @@
+ 
+     var state = {
+         taxonomyData: [],
++        currentRawScores: {}, // provider evidence; PRODUCT values are independent suitability
++        currentEffectiveScores: {}, // comparable relevance for generic downstream consumers
++        currentScoreDetails: {}, // code → typed score-semantics envelope
++        currentProductSuitabilityScores: {}, // concrete product code → independent suitability
++        scoreSemanticsVersion: 0,
++        currentScoreSemanticsWarnings: [],
+         currentReasons: {},   // code → reason string
+         currentDiscrepancies: [], // TaxonomyDiscrepancy list from analysis
+         currentProductCoverageGaps: [], // relevant product families without a suitable product
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js
+@@ -327,6 +327,12 @@
+             lastAnalyzedText: S.lastAnalyzedText,
+             storedBusinessText: S.storedBusinessText,
+             scores: S.currentScores,
++            rawScores: S.currentRawScores || {},
++            effectiveScores: S.currentEffectiveScores || S.currentScores || {},
++            scoreDetails: S.currentScoreDetails || {},
++            productSuitabilityScores: S.currentProductSuitabilityScores || {},
++            scoreSemanticsVersion: S.scoreSemanticsVersion || 0,
++            scoreSemanticsWarnings: S.currentScoreSemanticsWarnings || [],
+             reasons: S.currentReasons || {},
+             discrepancies: S.currentDiscrepancies || [],
+             productCoverageGaps: S.currentProductCoverageGaps || [],
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js
+@@ -229,7 +229,13 @@
+ 
+         var input = businessTextElement();
+         if (input) input.value = payload.businessText || '';
+-        S.currentScores = payload.scores || null;
++        S.currentRawScores = payload.rawScores || payload.scores || {};
++        S.currentEffectiveScores = payload.effectiveScores || payload.scores || {};
++        S.currentScoreDetails = payload.scoreDetails || {};
++        S.currentProductSuitabilityScores = payload.productSuitabilityScores || {};
++        S.scoreSemanticsVersion = payload.scoreSemanticsVersion || 0;
++        S.currentScoreSemanticsWarnings = payload.scoreSemanticsWarnings || [];
++        S.currentScores = S.currentEffectiveScores;
+         S.currentReasons = payload.reasons || {};
+         S.currentDiscrepancies = payload.discrepancies || [];
+         S.currentProductCoverageGaps = payload.productCoverageGaps || [];
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-ui.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-ui.js
+@@ -131,6 +131,12 @@
+ 
+         runtime.invalidating = true;
+         S.currentScores = null;
++        S.currentRawScores = {};
++        S.currentEffectiveScores = {};
++        S.currentScoreDetails = {};
++        S.currentProductSuitabilityScores = {};
++        S.scoreSemanticsVersion = 0;
++        S.currentScoreSemanticsWarnings = [];
+         S.currentReasons = {};
+         S.currentDiscrepancies = [];
+         S.currentProductCoverageGaps = [];
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
+@@ -933,6 +933,11 @@
+                 || 'unknown';
+             var request = {
+                 scores: S.currentScores,
++                rawScores: S.currentRawScores || {},
++                effectiveScores: S.currentEffectiveScores || S.currentScores || {},
++                scoreDetails: S.currentScoreDetails || {},
++                productSuitabilityScores: S.currentProductSuitabilityScores || {},
++                scoreSemanticsVersion: S.scoreSemanticsVersion || 0,
+                 reasons: S.currentReasons || {},
+                 businessText: decisionText,
+                 provider: decisionProvider,
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+@@ -38,6 +38,77 @@
+     // ── Utility ───────────────────────────────────────────────────────────────
+     var escapeHtml = TaxonomyUtils.escapeHtml;
+ 
++    function isProductScore(detail) {
++        return detail && detail.kind === 'PRODUCT_SUITABILITY';
++    }
++
++    function clampScore(value) {
++        var numeric = Number(value);
++        if (!Number.isFinite(numeric)) return 0;
++        return Math.max(0, Math.min(100, Math.round(numeric)));
++    }
++
++    function effectiveProductScore(rawScore, detail) {
++        var parentScore = detail && detail.parentCode
++            ? S.currentRawScores[detail.parentCode] : null;
++        if (!Number.isFinite(Number(parentScore))) {
++            parentScore = detail ? detail.parentScore : null;
++        }
++        if (!Number.isFinite(Number(parentScore))) return 0;
++        return clampScore(clampScore(parentScore) * clampScore(rawScore) / 100);
++    }
++
++    function effectiveIncrementalScores(rawScores, details) {
++        var effective = {};
++        Object.entries(rawScores || {}).forEach(function ([code, raw]) {
++            var detail = details && details[code] ? details[code] : null;
++            effective[code] = isProductScore(detail)
++                ? effectiveProductScore(raw, detail)
++                : clampScore(raw);
++        });
++        return effective;
++    }
++
++    function isGermanLocale() {
++        var locale = window.TaxonomyI18n && typeof window.TaxonomyI18n.getLocale === 'function'
++            ? window.TaxonomyI18n.getLocale()
++            : document.documentElement.lang;
++        return String(locale || '').toLowerCase().startsWith('de');
++    }
++
++    function scoreLabel(code, effective, raw, detail) {
++        if (isProductScore(detail)) {
++            return isGermanLocale()
++                ? 'Eignung ' + clampScore(raw) + '% · effektiv ' + clampScore(effective) + '/100'
++                : 'Suitability ' + clampScore(raw) + '% · effective ' + clampScore(effective) + '/100';
++        }
++        return clampScore(effective) + '%';
++    }
++
++    function scoreAriaLabel(code, effective, raw, detail) {
++        if (isProductScore(detail)) {
++            return isGermanLocale()
++                ? 'Produkteignung: ' + clampScore(raw)
++                    + ' Prozent, effektive Relevanz: ' + clampScore(effective) + ' von 100'
++                : 'Product suitability: ' + clampScore(raw)
++                    + ' percent, effective relevance: ' + clampScore(effective) + ' of 100';
++        }
++        return isGermanLocale()
++            ? 'Bewertung: ' + clampScore(effective) + ' Prozent'
++            : 'Score: ' + clampScore(effective) + ' percent';
++    }
++
++    function applyScoreEnvelope(envelope) {
++        envelope = envelope || {};
++        S.currentRawScores = envelope.rawScores || envelope.scores || {};
++        S.currentEffectiveScores = envelope.effectiveScores || envelope.scores || {};
++        S.currentScoreDetails = envelope.scoreDetails || {};
++        S.currentProductSuitabilityScores = envelope.productSuitabilityScores || {};
++        S.scoreSemanticsVersion = envelope.scoreSemanticsVersion || 0;
++        S.currentScoreSemanticsWarnings = envelope.scoreSemanticsWarnings || [];
++        S.currentScores = S.currentEffectiveScores;
++    }
++
+     // ── UI helpers ────────────────────────────────────────────────────────────
+     function setAnalyzing(on) {
+         const btn = document.getElementById('analyzeBtn');
+@@ -78,7 +149,12 @@
+ 
+         const timeStr = info.timestamp.toLocaleTimeString();
+         const matchedList = info.matchedEntries.length > 0
+-            ? info.matchedEntries.map(([k, v]) => escapeHtml(k) + ': ' + v + '%').join(', ')
++            ? info.matchedEntries.map(([k, v]) => {
++                var detail = S.currentScoreDetails ? S.currentScoreDetails[k] : null;
++                var raw = S.currentRawScores && S.currentRawScores[k] !== undefined
++                    ? S.currentRawScores[k] : v;
++                return escapeHtml(k) + ': ' + escapeHtml(scoreLabel(k, v, raw, detail));
++            }).join(', ')
+             : '(none)';
+         const warnHtml = info.warnings.length > 0
+             ? '<div class="text-warning mt-1"><strong>Warnings:</strong><ul class="mb-0 ps-3">' +
+@@ -141,9 +217,16 @@
+         let reasonsHtml = '';
+         if (reasonEntries.length > 0) {
+             const reasonLines = reasonEntries.map(([code, reason]) => {
+-                const pct = scores && scores[code] !== undefined ? scores[code] : '?';
++                const raw = scores && scores[code] !== undefined ? scores[code] : 0;
++                const scoreDetail = detail && detail.scoreDetails
++                    ? detail.scoreDetails[code] : (S.currentScoreDetails || {})[code];
++                const effective = S.currentScores && S.currentScores[code] !== undefined
++                    ? S.currentScores[code]
++                    : (isProductScore(scoreDetail)
++                        ? effectiveProductScore(raw, scoreDetail) : raw);
+                 return '<div class="llm-log-reason-entry"><code>' + escapeHtml(code) + '</code> '
+-                    + '(' + pct + '%): ' + escapeHtml(reason) + '</div>';
++                    + '(' + escapeHtml(scoreLabel(code, effective, raw, scoreDetail)) + '): '
++                    + escapeHtml(reason) + '</div>';
+             }).join('');
+             reasonsHtml = '<div class="mt-1"><strong>&#128172; REASONS:</strong>'
+                 + '<div class="llm-log-reasons">' + reasonLines + '</div></div>';
+@@ -202,7 +285,7 @@
+             .then(result => {
+                 setAnalyzing(false);
+                 S.taxonomyData = result.tree;
+-                S.currentScores = result.scores;
++                applyScoreEnvelope(result);
+                 S.currentReasons = result.reasons || {};
+                 S.currentDiscrepancies = result.discrepancies || [];
+                 S.currentProductCoverageGaps = result.productCoverageGaps || [];
+@@ -332,6 +415,10 @@
+         S.lastAnalyzedText = text;
+         S.evaluatedNodes = new Set();
+         S.currentScores = {};
++        S.currentRawScores = {};
++        S.currentEffectiveScores = {};
++        S.currentScoreDetails = {};
++        S.currentProductSuitabilityScores = {};
+         S.currentReasons = {};
+         var interactiveProvider = document.getElementById('providerSelect');
+         S.lastAnalysisProvider = interactiveProvider ? interactiveProvider.value : null;
+@@ -365,6 +452,12 @@
+             llmCommLogEl.innerHTML = '';
+         }
+         S.currentScores = {};
++        S.currentRawScores = {};
++        S.currentEffectiveScores = {};
++        S.currentScoreDetails = {};
++        S.currentProductSuitabilityScores = {};
++        S.scoreSemanticsVersion = 0;
++        S.currentScoreSemanticsWarnings = [];
+         S.currentReasons = {};
+         S.lastAnalysisStatus = 'IN_PROGRESS';
+         S.storedBusinessText = text;
+@@ -389,11 +482,25 @@
+ 
+         eventSource.addEventListener('scores', function (e) {
+             const data = JSON.parse(e.data);
+-            Object.assign(S.currentScores, data.scores);
++            var rawScores = data.rawScores || data.scores || {};
++            var details = data.scoreDetails || {};
++            Object.assign(S.currentRawScores, rawScores);
++            Object.assign(S.currentScoreDetails, details);
++            var effectiveScores = effectiveIncrementalScores(rawScores, details);
++            Object.assign(S.currentEffectiveScores, effectiveScores);
++            Object.assign(S.currentScores, effectiveScores);
+             if (data.reasons) { Object.assign(S.currentReasons, data.reasons); }
+             if (data.provider) { S.lastAnalysisProvider = data.provider; }
+-            Object.entries(data.scores).forEach(function ([code, pct]) {
+-                applyScoreToNode(code, pct, data.reasons ? data.reasons[code] : null);
++            if (data.scoreSemanticsVersion) {
++                S.scoreSemanticsVersion = data.scoreSemanticsVersion;
++            }
++            Object.entries(rawScores).forEach(function ([code, raw]) {
++                applyScoreToNode(
++                    code,
++                    effectiveScores[code],
++                    data.reasons ? data.reasons[code] : null,
++                    details[code],
++                    raw);
+             });
+             if (data.prompt !== undefined || data.rawResponse !== undefined) {
+                 appendLlmLogEntry(
+@@ -405,6 +512,7 @@
+                         provider: data.provider || '',
+                         durationMs: data.durationMs || 0,
+                         reasons: data.reasons || {},
++                        scoreDetails: details,
+                         error: data.error || null
+                     }
+                 );
+@@ -423,7 +531,15 @@
+             const data = JSON.parse(e.data);
+             eventSource.close();
+             setAnalyzing(false);
+-            S.currentScores = data.totalScores;
++            applyScoreEnvelope({
++                scores: data.totalScores,
++                rawScores: data.rawScores,
++                effectiveScores: data.effectiveScores || data.totalScores,
++                scoreDetails: data.scoreDetails,
++                productSuitabilityScores: data.productSuitabilityScores,
++                scoreSemanticsVersion: data.scoreSemanticsVersion,
++                scoreSemanticsWarnings: data.scoreSemanticsWarnings
++            });
+             S.currentDiscrepancies = data.discrepancies || [];
+             S.currentProductCoverageGaps = data.productCoverageGaps || [];
+             S.lastAnalysisStatus = data.status || 'SUCCESS';
+@@ -451,6 +567,15 @@
+                     eventSource.close();
+                     setAnalyzing(false);
+                     S.lastAnalysisStatus = data.status || 'PARTIAL';
++                    applyScoreEnvelope({
++                        scores: data.partialScores,
++                        rawScores: data.rawScores,
++                        effectiveScores: data.effectiveScores || data.partialScores,
++                        scoreDetails: data.scoreDetails,
++                        productSuitabilityScores: data.productSuitabilityScores,
++                        scoreSemanticsVersion: data.scoreSemanticsVersion,
++                        scoreSemanticsWarnings: data.scoreSemanticsWarnings
++                    });
+                     S.currentDiscrepancies = data.discrepancies || [];
+                     S.currentProductCoverageGaps = data.productCoverageGaps || [];
+                     B().showStatus('warning', '⚠️ ' + data.errorMessage);
+@@ -471,7 +596,7 @@
+     // ── Incremental DOM update helpers ────────────────────────────────────────
+ 
+     /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
+-    function applyScoreToNode(code, pct, reason) {
++    function applyScoreToNode(code, pct, reason, detail, rawScore) {
+         B().ensureNodeRendered(code, S.currentScores);
+         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+         if (!el) return;
+@@ -495,7 +620,13 @@
+                 badge.setAttribute('aria-hidden', 'true');
+                 header.appendChild(badge);
+             }
+-            badge.textContent = pct + '%';
++            var raw = rawScore === undefined
++                ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
++            var scoreDetail = detail || (S.currentScoreDetails || {})[code];
++            badge.textContent = scoreLabel(code, pct, raw, scoreDetail);
++            badge.title = isProductScore(scoreDetail)
++                ? 'Independent product suitability and comparable effective relevance'
++                : 'Comparable relevance';
+ 
+             // Add/update reason icon
+             if (reason) {
+@@ -517,12 +648,11 @@
+         // Update ARIA label with score info (WCAG 4.1.2)
+         var nameEl = header.querySelector('.tax-name');
+         var ariaLabel = code + ' ' + (nameEl ? nameEl.textContent : '');
+-        if (pct > 0) {
+-            ariaLabel += ', Score: ' + pct + ' percent';
+-            if (reason) { ariaLabel += ', Reason: ' + reason; }
+-        } else {
+-            ariaLabel += ', Score: 0 percent';
+-        }
++        var rawForAria = rawScore === undefined
++            ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
++        var detailForAria = detail || (S.currentScoreDetails || {})[code];
++        ariaLabel += ', ' + scoreAriaLabel(code, pct, rawForAria, detailForAria);
++        if (reason) { ariaLabel += ', Reason: ' + reason; }
+         el.setAttribute('aria-label', ariaLabel);
+     }
+ 
