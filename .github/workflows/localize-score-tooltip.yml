@@ -1,0 +1,99 @@
+name: Localize score semantics tooltip
+
+on:
+  push:
+    branches:
+      - fix/1006-product-score-semantics
+    paths:
+      - .github/workflows/localize-score-tooltip.yml
+
+permissions:
+  contents: write
+
+jobs:
+  localize:
+    name: Apply and verify score tooltip localization
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/1006-product-score-semantics
+          fetch-depth: 0
+
+      - name: Apply deterministic localization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          js_path = Path('taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js')
+          js = js_path.read_text(encoding='utf-8')
+          old = """            badge.title = isProductScore(scoreDetail)
+                ? 'Independent product suitability and comparable effective relevance'
+                : 'Comparable relevance';"""
+          new = """            badge.title = isProductScore(scoreDetail)
+                ? t('scoring.score.tooltip.product')
+                : t('scoring.score.tooltip.relevance');"""
+          if js.count(old) != 1:
+              raise SystemExit(f'expected one tooltip block, found {js.count(old)}')
+          js_path.write_text(js.replace(old, new, 1), encoding='utf-8')
+
+          additions = {
+              Path('taxonomy-app/src/main/resources/i18n/messages.properties'): (
+                  'scoring.analyze.btn=Analyze with AI\n',
+                  'scoring.analyze.btn=Analyze with AI\n'
+                  'scoring.score.tooltip.product=Independent product suitability and comparable effective relevance\n'
+                  'scoring.score.tooltip.relevance=Comparable relevance\n'),
+              Path('taxonomy-app/src/main/resources/i18n/messages_de.properties'): (
+                  'scoring.analyze.btn=Mit KI analysieren\n',
+                  'scoring.analyze.btn=Mit KI analysieren\n'
+                  'scoring.score.tooltip.product=Unabh\\u00e4ngige Produkteignung und vergleichbare effektive Relevanz\n'
+                  'scoring.score.tooltip.relevance=Vergleichbare Relevanz\n'),
+          }
+          for path, (old_line, replacement) in additions.items():
+              text = path.read_text(encoding='utf-8')
+              if text.count(old_line) != 1:
+                  raise SystemExit(f'{path}: expected one insertion anchor, found {text.count(old_line)}')
+              path.write_text(text.replace(old_line, replacement, 1), encoding='utf-8')
+          PY
+
+          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def keys(path):
+              return {
+                  line.split('=', 1)[0]
+                  for line in Path(path).read_text(encoding='utf-8').splitlines()
+                  if line and not line.startswith(('#', '!')) and '=' in line
+              }
+
+          english = keys('taxonomy-app/src/main/resources/i18n/messages.properties')
+          german = keys('taxonomy-app/src/main/resources/i18n/messages_de.properties')
+          required = {
+              'scoring.score.tooltip.product',
+              'scoring.score.tooltip.relevance',
+          }
+          if not required <= english or not required <= german:
+              raise SystemExit('localized tooltip keys missing')
+          if english != german:
+              missing_de = sorted(english - german)
+              missing_en = sorted(german - english)
+              raise SystemExit(f'i18n key mismatch; missing DE={missing_de}, missing EN={missing_en}')
+          PY
+          git diff --check
+
+      - name: Commit verified localization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/localize-score-tooltip.yml
+          git add taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js \
+                  taxonomy-app/src/main/resources/i18n/messages.properties \
+                  taxonomy-app/src/main/resources/i18n/messages_de.properties
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "Localize score semantics tooltip"
+          git push origin HEAD:fix/1006-product-score-semantics
