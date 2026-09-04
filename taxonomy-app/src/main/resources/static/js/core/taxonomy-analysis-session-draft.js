@@ -215,6 +215,32 @@
         return (!input || !input.value.trim()) && !hasDerivedAnalysis();
     }
 
+    function clearRestoredAnalysisState() {
+        var input = businessTextElement();
+        if (input) {
+            input.value = '';
+            input.classList.remove('stale-results');
+        }
+        S.currentScores = null;
+        S.currentRawScores = {};
+        S.currentEffectiveScores = {};
+        S.currentScoreDetails = {};
+        S.currentProductSuitabilityScores = {};
+        S.scoreSemanticsVersion = 0;
+        S.currentScoreSemanticsWarnings = [];
+        S.currentReasons = {};
+        S.currentDiscrepancies = [];
+        S.currentProductCoverageGaps = [];
+        S.currentArchView = null;
+        S.storedBusinessText = null;
+        S.lastAnalyzedText = null;
+        S.evaluatedNodes = new Set();
+        S.pendingProposalNodeCode = null;
+        S.currentView = 'list';
+        window._taxonomyCurrentScores = null;
+        window._currentProvisionalRelations = [];
+    }
+
     function applyDraft(view) {
         if (!view || !view.payload) {
             runtime.restoring = false;
@@ -227,25 +253,32 @@
         runtime.version = view.version;
         runtime.restoredPayload = payload;
 
-        var input = businessTextElement();
-        if (input) input.value = payload.businessText || '';
-        S.currentRawScores = payload.rawScores || payload.scores || {};
-        S.currentEffectiveScores = payload.effectiveScores || payload.scores || {};
-        S.currentScoreDetails = payload.scoreDetails || {};
-        S.currentProductSuitabilityScores = payload.productSuitabilityScores || {};
-        S.scoreSemanticsVersion = payload.scoreSemanticsVersion || 0;
-        S.currentScoreSemanticsWarnings = payload.scoreSemanticsWarnings || [];
-        S.currentScores = S.currentEffectiveScores;
-        S.currentReasons = payload.reasons || {};
-        S.currentDiscrepancies = payload.discrepancies || [];
-        S.currentProductCoverageGaps = payload.productCoverageGaps || [];
-        S.currentArchView = payload.architectureView || null;
-        S.storedBusinessText = payload.storedBusinessText || null;
-        S.lastAnalyzedText = payload.lastAnalyzedText === undefined
-            ? null : payload.lastAnalyzedText;
-        S.evaluatedNodes = new Set(payload.evaluatedNodes || []);
-        window._taxonomyCurrentScores = S.currentScores;
-        window._currentProvisionalRelations = payload.provisionalRelations || [];
+        if (payload.draftState === 'EMPTY') {
+            // EMPTY is an authoritative tombstone. Never hydrate stale score-envelope fields that
+            // may survive in an older or malformed payload; the visible and in-memory state must
+            // satisfy the same invariant as a freshly started analysis session.
+            clearRestoredAnalysisState();
+        } else {
+            var input = businessTextElement();
+            if (input) input.value = payload.businessText || '';
+            S.currentRawScores = payload.rawScores || payload.scores || {};
+            S.currentEffectiveScores = payload.effectiveScores || payload.scores || {};
+            S.currentScoreDetails = payload.scoreDetails || {};
+            S.currentProductSuitabilityScores = payload.productSuitabilityScores || {};
+            S.scoreSemanticsVersion = payload.scoreSemanticsVersion || 0;
+            S.currentScoreSemanticsWarnings = payload.scoreSemanticsWarnings || [];
+            S.currentScores = S.currentEffectiveScores;
+            S.currentReasons = payload.reasons || {};
+            S.currentDiscrepancies = payload.discrepancies || [];
+            S.currentProductCoverageGaps = payload.productCoverageGaps || [];
+            S.currentArchView = payload.architectureView || null;
+            S.storedBusinessText = payload.storedBusinessText || null;
+            S.lastAnalyzedText = payload.lastAnalyzedText === undefined
+                ? null : payload.lastAnalyzedText;
+            S.evaluatedNodes = new Set(payload.evaluatedNodes || []);
+            window._taxonomyCurrentScores = S.currentScores;
+            window._currentProvisionalRelations = payload.provisionalRelations || [];
+        }
 
         runtime.lastSavedComparable = comparable(payload);
         runtime.lastObservedComparable = runtime.lastSavedComparable;
