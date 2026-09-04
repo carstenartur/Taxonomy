@@ -7,6 +7,7 @@
     var INITIALIZATION_RETRY_LIMIT = 30;
     var initializationRetryCount = 0;
     var initializationRetryScheduled = false;
+    var initializationAfterI18nScheduled = false;
     var taskObserverInstalled = false;
     var overlayObserverInstalled = false;
     var onboardingTaskProgressPatched = false;
@@ -375,13 +376,33 @@
             && onboardingTaskProgressPatched;
     }
 
-    function scheduleInitializationRetry() {
+    function scheduleInitializationAfterI18n() {
         if (initializationComplete() || !analysisSurfacePresent()
-                || initializationRetryScheduled
-                || initializationRetryCount >= INITIALIZATION_RETRY_LIMIT
-                || typeof window.setTimeout !== 'function') {
+                || initializationAfterI18nScheduled) {
             return;
         }
+        var i18n = window.TaxonomyI18n;
+        if (!i18n || typeof i18n.ready !== 'function') return;
+        initializationAfterI18nScheduled = true;
+        i18n.ready().then(function () {
+            if (typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(initializeUi);
+            } else {
+                initializeUi();
+            }
+        });
+    }
+
+    function scheduleInitializationRetry() {
+        if (initializationComplete() || !analysisSurfacePresent()
+                || initializationRetryScheduled) {
+            return;
+        }
+        if (initializationRetryCount >= INITIALIZATION_RETRY_LIMIT) {
+            scheduleInitializationAfterI18n();
+            return;
+        }
+        if (typeof window.setTimeout !== 'function') return;
         initializationRetryScheduled = true;
         initializationRetryCount += 1;
         window.setTimeout(function () {
