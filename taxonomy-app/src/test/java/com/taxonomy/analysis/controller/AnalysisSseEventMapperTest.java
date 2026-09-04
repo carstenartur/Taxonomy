@@ -51,8 +51,7 @@ class AnalysisSseEventMapperTest {
                 .containsEntry("durationMs", 42L)
                 .containsEntry("error", "minor")
                 .doesNotContainKey("effectiveScores");
-        Map<?, ?> scoreDetails = (Map<?, ?>) payload.get("scoreDetails");
-        Map<?, ?> hint = (Map<?, ?>) scoreDetails.get("CP");
+        Map<String, Object> hint = scoreDetailHint(payload, "CP");
         assertThat(hint)
                 .containsEntry("nodeCode", "CP")
                 .containsEntry("rawScore", 80)
@@ -70,8 +69,7 @@ class AnalysisSseEventMapperTest {
                         Map.of("IP-P", 80), Map.of(), "product batch", null));
 
         Map<String, Object> payload = payload(mapped);
-        Map<?, ?> scoreDetails = (Map<?, ?>) payload.get("scoreDetails");
-        Map<?, ?> hint = (Map<?, ?>) scoreDetails.get("IP-P");
+        Map<String, Object> hint = scoreDetailHint(payload, "IP-P");
         assertThat(payload)
                 .doesNotContainKey("effectiveScores")
                 .containsKey("scoreSemanticsWarnings");
@@ -185,6 +183,17 @@ class AnalysisSseEventMapperTest {
     private Map<String, Object> payload(AnalysisSseEventMapper.MappedEvent event) {
         assertThat(event.payload()).isInstanceOf(Map.class);
         return (Map<String, Object>) event.payload();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> scoreDetailHint(
+            Map<String, Object> payload,
+            String code) {
+        Object detailsValue = payload.get("scoreDetails");
+        assertThat(detailsValue).isInstanceOf(Map.class);
+        Object hintValue = ((Map<?, ?>) detailsValue).get(code);
+        assertThat(hintValue).isInstanceOf(Map.class);
+        return (Map<String, Object>) hintValue;
     }
 
     private TaxonomyNodeDto node(String code, String parentCode, String role) {
