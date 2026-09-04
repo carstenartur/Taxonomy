@@ -8,7 +8,6 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport.PathStep;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -198,7 +197,7 @@ public class DecisionRationaleScoreSemanticsAdapter {
                 ? "Produkteignung: " + detail.rawScore()
                         + " %; effektive Relevanz: " + detail.effectiveRelevance() + "/100."
                 : "Product suitability: " + detail.rawScore()
-                        + "% ; effective relevance: " + detail.effectiveRelevance() + "/100.";
+                        + "%; effective relevance: " + detail.effectiveRelevance() + "/100.";
     }
 
     private Double bounded(Double value) {
