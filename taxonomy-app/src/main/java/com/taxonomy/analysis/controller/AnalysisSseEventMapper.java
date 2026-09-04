@@ -84,11 +84,12 @@ public class AnalysisSseEventMapper {
     private Map<String, Object> mapScores(AnalysisStreamEvent.Scores scores) {
         AnalysisScoreSemantics.Derived semantics = derive(scores.newScores());
         Map<String, Object> payload = new LinkedHashMap<>();
-        // Keep the incremental compatibility field raw. The browser has the previously emitted
-        // parent value and can therefore derive an exact product effective score immediately.
+        // Incremental batches deliberately remain raw. A product batch usually does not contain
+        // its already emitted family score, so publishing a batch-local effective value would be
+        // false. The typed details retain kind/parent identity and the browser combines them with
+        // its accumulated raw parent score. Terminal events contain the authoritative envelope.
         payload.put("scores", scores.newScores());
         payload.put("rawScores", scores.newScores());
-        payload.put("effectiveScores", semantics.effectiveScores());
         payload.put("scoreDetails", semantics.scoreDetails());
         payload.put("scoreSemanticsVersion", AnalysisScoreSemantics.CURRENT_VERSION);
         payload.put("reasons", scores.reasons() != null ? scores.reasons() : Map.of());
