@@ -201,13 +201,13 @@ public class ArchitectureReportService {
         PatternDetectionView patterns = report.getPatternDetection();
         if (patterns != null) {
             md.append("**Pattern Coverage:** ").append(
-                    String.format("%.1f%%", patterns.getPatternCoverage() * 100)).append("\n\n");
+                    formatBoundedPercentage(patterns.getPatternCoverage(), 1)).append("\n\n");
 
             if (!patterns.getMatchedPatterns().isEmpty()) {
                 md.append("### Matched Patterns\n\n");
                 for (DetectedPattern dp : patterns.getMatchedPatterns()) {
                     md.append("- **").append(dp.getPatternName()).append("** — ");
-                    md.append(String.format("%.0f%%", dp.getCompleteness() * 100)).append(" complete");
+                    md.append(formatBoundedPercentage(dp.getCompleteness(), 0)).append(" complete");
                     if (!dp.getPresentSteps().isEmpty()) {
                         md.append(" (").append(String.join(", ", dp.getPresentSteps())).append(")");
                     }
@@ -220,7 +220,7 @@ public class ArchitectureReportService {
                 md.append("### Incomplete Patterns\n\n");
                 for (DetectedPattern dp : patterns.getIncompletePatterns()) {
                     md.append("- **").append(dp.getPatternName()).append("** — ");
-                    md.append(String.format("%.0f%%", dp.getCompleteness() * 100)).append(" complete, missing: ");
+                    md.append(formatBoundedPercentage(dp.getCompleteness(), 0)).append(" complete, missing: ");
                     md.append(String.join(", ", dp.getMissingSteps()));
                     md.append("\n");
                 }
@@ -407,6 +407,18 @@ public class ArchitectureReportService {
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────
+
+    private static String formatBoundedPercentage(double value, int fractionDigits) {
+        double bounded = Double.isFinite(value)
+                ? Math.max(0.0, Math.min(100.0, value))
+                : 0.0;
+        return switch (fractionDigits) {
+            case 0 -> String.format(Locale.ROOT, "%.0f%%", bounded);
+            case 1 -> String.format(Locale.ROOT, "%.1f%%", bounded);
+            default -> throw new IllegalArgumentException(
+                    "Unsupported percentage precision: " + fractionDigits);
+        };
+    }
 
     private String formatTimestamp(Instant instant) {
         if (instant == null) return "N/A";
