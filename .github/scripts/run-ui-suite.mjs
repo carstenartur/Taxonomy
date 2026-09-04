@@ -7,6 +7,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import { groupScenarios } from './ui-suite-plan.mjs';
+import { UI_READINESS_GROUP, waitForApplication } from './ui-application-readiness.mjs';
 import {
   scenarioKey,
   shardScenarioKeys,
@@ -99,25 +100,6 @@ function runProcess(executable, args, options = {}) {
   });
 }
 
-async function waitForApplication(application, logPath) {
-  const deadline = Date.now() + 180_000;
-  while (Date.now() < deadline) {
-    if (application.exitCode !== null) {
-      throw new Error(
-        `Taxonomy application exited early with code ${application.exitCode}; see ${logPath}`);
-    }
-    try {
-      const response = await fetch(`${baseUrl}/login`, { redirect: 'manual' });
-      if (response.status >= 200 && response.status < 500) return;
-    } catch {
-      // The process is still starting.
-    }
-    await new Promise(resolve => setTimeout(resolve, 2_000));
-  }
-  throw new Error(
-    `Taxonomy application did not become ready within 180 seconds; see ${logPath}`);
-}
-
 async function stopApplication(application) {
   if (!application || application.exitCode !== null) return;
   application.kill('SIGTERM');
@@ -135,6 +117,7 @@ function applicationEnvironment() {
     TAXONOMY_REQUIRE_PASSWORD_CHANGE: 'false',
     TAXONOMY_EMBEDDING_ENABLED: 'false',
     TAXONOMY_INIT_ASYNC: 'true',
+    MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: UI_READINESS_GROUP,
     TAXONOMY_THYMELEAF_CACHE: 'false',
     LLM_MOCK: 'true'
   };
@@ -207,6 +190,7 @@ async function runGroup(group, jar, report) {
     scenarioCount: group.scenarios.length,
     startedAt: new Date().toISOString(),
     outcome: 'running',
+    readiness: {},
     scenarios: []
   };
   report.groups.push(groupTiming);
@@ -219,7 +203,7 @@ async function runGroup(group, jar, report) {
 
   try {
     const startupStarted = performance.now();
-    await waitForApplication(application, logPath);
+    await waitForApplication(application, { baseUrl, evidence: groupTiming.readiness });
     groupTiming.startupMs = Math.round(performance.now() - startupStarted);
     console.log(
       `\n=== UI application group ${group.id}: ${group.scenarios.length} scenario(s), `
