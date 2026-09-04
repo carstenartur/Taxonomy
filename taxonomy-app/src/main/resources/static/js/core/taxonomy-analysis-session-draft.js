@@ -229,7 +229,13 @@
 
         var input = businessTextElement();
         if (input) input.value = payload.businessText || '';
-        S.currentScores = payload.scores || null;
+        S.currentRawScores = payload.rawScores || payload.scores || {};
+        S.currentEffectiveScores = payload.effectiveScores || payload.scores || {};
+        S.currentScoreDetails = payload.scoreDetails || {};
+        S.currentProductSuitabilityScores = payload.productSuitabilityScores || {};
+        S.scoreSemanticsVersion = payload.scoreSemanticsVersion || 0;
+        S.currentScoreSemanticsWarnings = payload.scoreSemanticsWarnings || [];
+        S.currentScores = S.currentEffectiveScores;
         S.currentReasons = payload.reasons || {};
         S.currentDiscrepancies = payload.discrepancies || [];
         S.currentProductCoverageGaps = payload.productCoverageGaps || [];
