@@ -59,6 +59,18 @@ class AnalysisScoreDiffTest {
         assertThat(change.newKind()).isEqualTo(AnalysisScoreKind.ROOT_RELEVANCE);
     }
 
+    @Test
+    void changesRetainCanonicalCodeOrder() {
+        AnalysisResult older = new AnalysisResult(
+                Map.of("Z", 1, "A", 1), List.of());
+        AnalysisResult newer = new AnalysisResult(
+                Map.of("Z", 2, "M", 3, "A", 2), List.of());
+
+        Map<String, ScoreChange> changes = AnalysisScoreDiff.between(older, newer);
+
+        assertThat(changes.keySet()).containsExactly("A", "M", "Z");
+    }
+
     private AnalysisResult productAnalysis(
             int familyScore,
             int suitability,

@@ -5,6 +5,7 @@ import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreKind;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ScoreChange;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -71,7 +72,7 @@ final class AnalysisScoreDiff {
                     oldParentScore,
                     newParentScore));
         }
-        return Map.copyOf(changes);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(changes));
     }
 
     private static Integer rawValue(
