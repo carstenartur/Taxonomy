@@ -1,39 +1,33 @@
 package com.taxonomy.portfolio.service;
 
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.TaxonomyDataFingerprint;
 import com.taxonomy.shared.service.PromptTemplateService;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Comparator;
 
 /** Creates stable fingerprints needed to interpret and reproduce analysis snapshots. */
 @Service
 public class PortfolioFingerprintService {
 
-    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyService taxonomyService;
     private final PromptTemplateService promptTemplateService;
 
-    public PortfolioFingerprintService(TaxonomyNodeRepository nodeRepository,
+    public PortfolioFingerprintService(TaxonomyService taxonomyService,
                                        PromptTemplateService promptTemplateService) {
-        this.nodeRepository = nodeRepository;
+        this.taxonomyService = taxonomyService;
         this.promptTemplateService = promptTemplateService;
     }
 
+    /**
+     * Fingerprints the same frozen DTO representation that is persisted with an analysis.
+     * Parent identity and analysis role are therefore part of the reproducibility contract.
+     */
     public String taxonomyFingerprint() {
-        StringBuilder canonical = new StringBuilder();
-        nodeRepository.findAll().stream()
-                .sorted(Comparator.comparing(TaxonomyNode::getCode))
-                .forEach(node -> canonical
-                        .append(safe(node.getCode())).append('\u001f')
-                        .append(safe(node.getNameEn())).append('\u001f')
-                        .append(safe(node.getDescriptionEn())).append('\u001f')
-                        .append(safe(node.getTaxonomyRoot())).append('\u001f')
-                        .append(node.getLevel()).append('\n'));
-        return sha256(canonical.toString());
+        return TaxonomyDataFingerprint.sha256(taxonomyService.getFullTree());
     }
 
     public String promptFingerprint() {
@@ -59,9 +53,5 @@ public class PortfolioFingerprintService {
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is required by the Java platform", impossible);
         }
-    }
-
-    private static String safe(String value) {
-        return value != null ? value : "";
     }
 }
