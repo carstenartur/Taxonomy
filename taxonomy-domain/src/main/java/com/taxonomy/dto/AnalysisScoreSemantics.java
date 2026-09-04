@@ -94,7 +94,7 @@ public final class AnalysisScoreSemantics {
         }
     }
 
-    private static Map<String, Integer> normalizeScores(Map<String, Integer> source) {
+    static Map<String, Integer> normalizeScores(Map<String, Integer> source) {
         if (source == null || source.isEmpty()) {
             return Map.of();
         }

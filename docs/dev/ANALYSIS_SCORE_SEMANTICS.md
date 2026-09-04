@@ -39,7 +39,9 @@ The product is displayed as `Suitability 80%; effective relevance 32/100`. It is
 
 `AnalysisResult` exposes:
 
-- `rawScores`: original provider evidence, including independent product suitability;
+- `rawScores`: canonical provider evidence before product-relevance weighting; malformed legacy
+  entries with blank keys or null values are discarded once, keys are trimmed and values are
+  bounded to 0–100;
 - `scores` and `effectiveScores`: comparable relevance used by existing generic consumers;
 - `productSuitabilityScores`: raw values for concrete products only;
 - `scoreDetails`: node-level kind, raw value, effective value, parent identity and parent value;

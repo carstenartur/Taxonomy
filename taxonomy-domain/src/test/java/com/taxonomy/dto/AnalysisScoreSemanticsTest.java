@@ -8,6 +8,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -126,6 +127,25 @@ class AnalysisScoreSemanticsTest {
         assertEquals(1L, derived.warnings().stream()
                 .filter(warning -> warning.contains("were suppressed"))
                 .count());
+    }
+
+    @Test
+    void malformedRawScoresAreCanonicalizedOnceAndRemainComplete() {
+        Map<String, Integer> rawScores = new LinkedHashMap<>();
+        rawScores.put(" NODE ", 80);
+        rawScores.put("HIGH", 120);
+        rawScores.put("LOW", -5);
+        rawScores.put("NULL", null);
+        rawScores.put(" ", 50);
+
+        AnalysisResult result = new AnalysisResult();
+        result.setScores(rawScores);
+
+        assertEquals(Map.of("NODE", 80, "HIGH", 100, "LOW", 0), result.getRawScores());
+        Map<String, AnalysisScoreDetail> firstRead = result.getScoreDetails();
+        Map<String, AnalysisScoreDetail> secondRead = result.getScoreDetails();
+        assertSame(firstRead, secondRead);
+        assertEquals(result.getRawScores().keySet(), firstRead.keySet());
     }
 
     @Test

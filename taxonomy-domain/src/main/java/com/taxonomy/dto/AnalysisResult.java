@@ -81,7 +81,7 @@ public class AnalysisResult {
     public AnalysisResult() {}
 
     public AnalysisResult(Map<String, Integer> rawScores, List<TaxonomyNodeDto> tree) {
-        this.rawScores = rawScores;
+        this.rawScores = normalizeRawScores(rawScores);
         this.tree = tree;
         refreshScoreSemantics();
     }
@@ -102,7 +102,7 @@ public class AnalysisResult {
      */
     public void setScores(Map<String, Integer> scores) {
         if (!explicitRawScores) {
-            this.rawScores = scores;
+            this.rawScores = normalizeRawScores(scores);
         }
     }
 
@@ -111,7 +111,7 @@ public class AnalysisResult {
     }
 
     public void setRawScores(Map<String, Integer> rawScores) {
-        this.rawScores = rawScores;
+        this.rawScores = normalizeRawScores(rawScores);
         this.explicitRawScores = true;
     }
 
@@ -169,6 +169,7 @@ public class AnalysisResult {
 
     /** Rebuilds all derived score views from the original scores and frozen taxonomy tree. */
     public final void refreshScoreSemantics() {
+        rawScores = normalizeRawScores(rawScores);
         AnalysisScoreSemantics.Derived derived = AnalysisScoreSemantics.derive(rawScores, tree);
         scoreSemanticsVersion = AnalysisScoreSemantics.CURRENT_VERSION;
         scoreDetails = new LinkedHashMap<>(derived.scoreDetails());
@@ -178,6 +179,10 @@ public class AnalysisResult {
         scoreSemanticsFingerprintSha256 =
                 AnalysisScoreSemanticsFingerprint.sha256(scoreDetails);
         scoreSemanticsTree = tree;
+    }
+
+    private static Map<String, Integer> normalizeRawScores(Map<String, Integer> scores) {
+        return new LinkedHashMap<>(AnalysisScoreSemantics.normalizeScores(scores));
     }
 
     private void ensureScoreSemantics() {
