@@ -11,11 +11,20 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 @Component
 public class AnalysisSseEventMapper {
 
+    private static final long TREE_CACHE_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);
+
     private final TaxonomyService taxonomyService;
+    private final LongSupplier nanoTime;
+    private final long treeCacheTtlNanos;
+    private final Object treeCacheMonitor = new Object();
+    private volatile CachedTaxonomyTree cachedTaxonomyTree;
 
     /** Retained for focused mapper tests that do not need catalogue semantics. */
     public AnalysisSseEventMapper() {
@@ -24,7 +33,16 @@ public class AnalysisSseEventMapper {
 
     @Autowired
     public AnalysisSseEventMapper(TaxonomyService taxonomyService) {
+        this(taxonomyService, System::nanoTime, TREE_CACHE_TTL_NANOS);
+    }
+
+    AnalysisSseEventMapper(
+            TaxonomyService taxonomyService,
+            LongSupplier nanoTime,
+            long treeCacheTtlNanos) {
         this.taxonomyService = taxonomyService;
+        this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
+        this.treeCacheTtlNanos = Math.max(0L, treeCacheTtlNanos);
     }
 
     public MappedEvent map(AnalysisStreamEvent event) {
@@ -109,9 +127,39 @@ public class AnalysisSseEventMapper {
     }
 
     private AnalysisScoreSemantics.Derived derive(Map<String, Integer> rawScores) {
-        List<TaxonomyNodeDto> tree = taxonomyService == null
-                ? List.of() : taxonomyService.getFullTree();
-        return AnalysisScoreSemantics.derive(rawScores, tree);
+        return AnalysisScoreSemantics.derive(rawScores, taxonomyTree());
+    }
+
+    private List<TaxonomyNodeDto> taxonomyTree() {
+        if (taxonomyService == null) {
+            return List.of();
+        }
+        long now = nanoTime.getAsLong();
+        CachedTaxonomyTree current = cachedTaxonomyTree;
+        if (current != null && current.isValidAt(now)) {
+            return current.tree();
+        }
+        synchronized (treeCacheMonitor) {
+            now = nanoTime.getAsLong();
+            current = cachedTaxonomyTree;
+            if (current != null && current.isValidAt(now)) {
+                return current.tree();
+            }
+            List<TaxonomyNodeDto> loaded = taxonomyService.getFullTree();
+            List<TaxonomyNodeDto> snapshot = loaded == null ? List.of() : List.copyOf(loaded);
+            cachedTaxonomyTree = new CachedTaxonomyTree(
+                    snapshot, now + treeCacheTtlNanos);
+            return snapshot;
+        }
+    }
+
+    private record CachedTaxonomyTree(
+            List<TaxonomyNodeDto> tree,
+            long expiresAtNanos) {
+
+        private boolean isValidAt(long nowNanos) {
+            return nowNanos - expiresAtNanos < 0;
+        }
     }
 
     public record MappedEvent(String name, Object payload) {
