@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class AnalysisResult {
 
@@ -25,6 +26,9 @@ public class AnalysisResult {
 
     /** Version of the explicit score-semantics envelope. */
     private int scoreSemanticsVersion;
+
+    /** SHA-256 of raw, effective, kind and parent score evidence. */
+    private String scoreSemanticsFingerprintSha256;
 
     /** Node code → typed interpretation of the original score. */
     private Map<String, AnalysisScoreDetail> scoreDetails = new LinkedHashMap<>();
@@ -119,6 +123,14 @@ public class AnalysisResult {
         this.scoreSemanticsVersion = scoreSemanticsVersion;
     }
 
+    public String getScoreSemanticsFingerprintSha256() {
+        ensureScoreSemantics();
+        return scoreSemanticsFingerprintSha256;
+    }
+    public void setScoreSemanticsFingerprintSha256(String scoreSemanticsFingerprintSha256) {
+        this.scoreSemanticsFingerprintSha256 = scoreSemanticsFingerprintSha256;
+    }
+
     public Map<String, AnalysisScoreDetail> getScoreDetails() {
         ensureScoreSemantics();
         return scoreDetails;
@@ -163,6 +175,8 @@ public class AnalysisResult {
         effectiveScores = new LinkedHashMap<>(derived.effectiveScores());
         productSuitabilityScores = new LinkedHashMap<>(derived.productSuitabilityScores());
         scoreSemanticsWarnings = new ArrayList<>(derived.warnings());
+        scoreSemanticsFingerprintSha256 =
+                AnalysisScoreSemanticsFingerprint.sha256(scoreDetails);
         scoreSemanticsTree = tree;
     }
 
@@ -172,6 +186,10 @@ public class AnalysisResult {
             if (effectiveScores == null) effectiveScores = new LinkedHashMap<>();
             if (productSuitabilityScores == null) productSuitabilityScores = new LinkedHashMap<>();
             if (scoreSemanticsWarnings == null) scoreSemanticsWarnings = new ArrayList<>();
+            if (scoreSemanticsFingerprintSha256 == null) {
+                scoreSemanticsFingerprintSha256 =
+                        AnalysisScoreSemanticsFingerprint.sha256(scoreDetails);
+            }
             return;
         }
         if (!hasCompleteScoreSemantics()) {
@@ -183,8 +201,8 @@ public class AnalysisResult {
         if (scoreSemanticsTree != tree
                 || scoreSemanticsVersion != AnalysisScoreSemantics.CURRENT_VERSION
                 || scoreDetails == null || effectiveScores == null
-                || !scoreDetails.keySet().containsAll(rawScores.keySet())
-                || !effectiveScores.keySet().containsAll(rawScores.keySet())) {
+                || !scoreDetails.keySet().equals(rawScores.keySet())
+                || !effectiveScores.keySet().equals(rawScores.keySet())) {
             return false;
         }
         for (Map.Entry<String, Integer> entry : rawScores.entrySet()) {
@@ -201,7 +219,9 @@ public class AnalysisResult {
                 return false;
             }
         }
-        return true;
+        return Objects.equals(
+                scoreSemanticsFingerprintSha256,
+                AnalysisScoreSemanticsFingerprint.sha256(scoreDetails));
     }
 
     public Map<String, String> getReasons() { return reasons; }
@@ -217,6 +237,7 @@ public class AnalysisResult {
         this.tree = tree;
         this.scoreSemanticsTree = null;
         this.scoreSemanticsVersion = 0;
+        this.scoreSemanticsFingerprintSha256 = null;
     }
 
     public String getStatus() { return status; }
