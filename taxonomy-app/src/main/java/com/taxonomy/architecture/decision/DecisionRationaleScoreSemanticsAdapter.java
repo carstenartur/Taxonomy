@@ -5,7 +5,9 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport.DecisionChapte
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ExecutiveSummary;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.LeafCandidate;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.PathStep;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata;
 import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.AnalysisScoreSemanticsFingerprint;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -74,13 +76,20 @@ public class DecisionRationaleScoreSemanticsAdapter {
         List<LeafCandidate> leaves = report.leadingLeaves().stream()
                 .map(leaf -> adaptLeaf(leaf, details, german))
                 .toList();
+        ReportMetadata metadata = report.metadata();
+        boolean alreadyAdapted = !details.isEmpty() && details.equals(report.scoreDetails());
+        if (metadata != null && !alreadyAdapted && !details.isEmpty()) {
+            metadata = metadata.withAnalysisSnapshotFingerprintSha256(
+                    AnalysisScoreSemanticsFingerprint.extend(
+                            metadata.analysisSnapshotFingerprintSha256(), details));
+        }
 
         return new DecisionRationaleReport(
                 report.title(),
                 report.languageTag(),
                 report.requirement(),
                 report.status(),
-                report.metadata(),
+                metadata,
                 adaptedSummary,
                 chapters,
                 leaves,
