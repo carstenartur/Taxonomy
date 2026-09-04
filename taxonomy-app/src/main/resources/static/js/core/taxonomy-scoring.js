@@ -625,8 +625,8 @@
             var scoreDetail = detail || (S.currentScoreDetails || {})[code];
             badge.textContent = scoreLabel(code, pct, raw, scoreDetail);
             badge.title = isProductScore(scoreDetail)
-                ? 'Independent product suitability and comparable effective relevance'
-                : 'Comparable relevance';
+                ? t('scoring.score.tooltip.product')
+                : t('scoring.score.tooltip.relevance');
 
             // Add/update reason icon
             if (reason) {
