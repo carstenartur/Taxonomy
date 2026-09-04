@@ -8,6 +8,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AnalysisEvidenceFingerprintTest {
 
@@ -66,8 +67,12 @@ class AnalysisEvidenceFingerprintTest {
         TaxonomyNodeDto reverseRoot = node("IP", null, "CATEGORY");
         reverseRoot.setChildren(List.of(reverseFamily));
 
-        String baseline = TaxonomyDataFingerprint.sha256(List.of(root));
+        List<TaxonomyNodeDto> tree = List.of(root);
+        String baseline = TaxonomyDataFingerprint.sha256(tree);
         assertEquals(baseline, TaxonomyDataFingerprint.sha256(List.of(reverseRoot)));
+        assertTrue(TaxonomyDataFingerprint.matchesRecorded(baseline, tree));
+        assertTrue(TaxonomyDataFingerprint.matchesRecorded(
+                TaxonomyDataFingerprint.legacySha256(tree), tree));
 
         TaxonomyNodeDto changedRoleFamily = node("IP-F", "IP", "PRODUCT_FAMILY");
         changedRoleFamily.setChildren(List.of(
