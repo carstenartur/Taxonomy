@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,6 +20,11 @@ class ArchitectureReportPercentageTest {
 
     private static final String SERVICE_SOURCE =
             "com/taxonomy/architecture/service/ArchitectureReportService.java";
+    private static final Pattern DUPLICATE_PATTERN_SCALING = Pattern.compile(
+            "(?:get(?:PatternCoverage|Completeness)\\s*\\(\\s*\\)\\s*\\*\\s*"
+                    + "100(?:\\.0+)?(?:[dDfF])?"
+                    + "|100(?:\\.0+)?(?:[dDfF])?\\s*\\*\\s*"
+                    + "get(?:PatternCoverage|Completeness)\\s*\\(\\s*\\))");
 
     private final ArchitectureReportService reportService = new ArchitectureReportService(
             null, null, null, null, null, null, null, null);
@@ -67,9 +73,9 @@ class ArchitectureReportPercentageTest {
         if (!Files.exists(source)) {
             source = Path.of("taxonomy-app/src/main/java").resolve(SERVICE_SOURCE);
         }
-        assertThat(Files.readString(source))
-                .contains("formatBoundedPercentage")
-                .doesNotContain("getPatternCoverage() * 100", "getCompleteness() * 100");
+        String sourceText = Files.readString(source);
+        assertThat(sourceText).contains("formatBoundedPercentage");
+        assertThat(DUPLICATE_PATTERN_SCALING.matcher(sourceText).find()).isFalse();
     }
 
     private List<String> renderedPlainText(ArchitectureReport report) throws IOException {
