@@ -20,7 +20,7 @@ class AnalysisSseEventMapperTest {
     private final AnalysisSseEventMapper mapper = new AnalysisSseEventMapper();
 
     @Test
-    void mapScoresPreservesExistingPayloadFieldsAndAddsScoreEnvelope() {
+    void incrementalScoresStayRawUntilCompleteFamilyContextExists() {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setPrompt("prompt");
         detail.setRawResponse("raw");
@@ -40,7 +40,6 @@ class AnalysisSseEventMapperTest {
         assertThat(payload)
                 .containsEntry("scores", Map.of("CP", 80))
                 .containsEntry("rawScores", Map.of("CP", 80))
-                .containsEntry("effectiveScores", Map.of("CP", 80))
                 .containsEntry("reasons", Map.of("CP", "reason"))
                 .containsEntry("description", "Capabilities scored 80/100")
                 .containsEntry("message", "Capabilities scored 80/100")
@@ -48,7 +47,8 @@ class AnalysisSseEventMapperTest {
                 .containsEntry("rawResponse", "raw")
                 .containsEntry("provider", "GEMINI")
                 .containsEntry("durationMs", 42L)
-                .containsEntry("error", "minor");
+                .containsEntry("error", "minor")
+                .doesNotContainKey("effectiveScores");
         assertThat((Map<?, ?>) payload.get("scoreDetails")).containsKey("CP");
     }
 
