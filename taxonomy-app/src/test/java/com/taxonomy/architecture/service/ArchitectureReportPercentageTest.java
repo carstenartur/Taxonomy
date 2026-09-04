@@ -1,17 +1,28 @@
 package com.taxonomy.architecture.service;
 
+import com.sun.source.tree.BinaryTree;
+import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.Tree;
+import com.sun.source.util.JavacTask;
+import com.sun.source.util.TreeScanner;
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.dto.DetectedPattern;
 import com.taxonomy.dto.PatternDetectionView;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
 
+import javax.tools.JavaCompiler;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.ToolProvider;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,11 +31,6 @@ class ArchitectureReportPercentageTest {
 
     private static final String SERVICE_SOURCE =
             "com/taxonomy/architecture/service/ArchitectureReportService.java";
-    private static final Pattern DUPLICATE_PATTERN_SCALING = Pattern.compile(
-            "(?:get(?:PatternCoverage|Completeness)\\s*\\(\\s*\\)\\s*\\*\\s*"
-                    + "100(?:\\.0+)?(?:[dDfF])?"
-                    + "|100(?:\\.0+)?(?:[dDfF])?\\s*\\*\\s*"
-                    + "get(?:PatternCoverage|Completeness)\\s*\\(\\s*\\))");
 
     private final ArchitectureReportService reportService = new ArchitectureReportService(
             null, null, null, null, null, null, null, null);
@@ -68,14 +74,57 @@ class ArchitectureReportPercentageTest {
     }
 
     @Test
-    void rendererSourceCannotReintroduceDuplicatePatternScaling() throws IOException {
+    void rendererSourceCannotReintroduceDirectPatternScaling() throws IOException {
         Path source = Path.of("src/main/java").resolve(SERVICE_SOURCE);
         if (!Files.exists(source)) {
             source = Path.of("taxonomy-app/src/main/java").resolve(SERVICE_SOURCE);
         }
         String sourceText = Files.readString(source);
         assertThat(sourceText).contains("formatBoundedPercentage");
-        assertThat(DUPLICATE_PATTERN_SCALING.matcher(sourceText).find()).isFalse();
+        assertThat(findDirectPatternPercentageMultiplications(source)).isEmpty();
+    }
+
+    private static List<String> findDirectPatternPercentageMultiplications(Path source)
+            throws IOException {
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertThat(compiler).as("JDK compiler required for the source contract").isNotNull();
+        List<String> violations = new ArrayList<>();
+        try (StandardJavaFileManager files = compiler.getStandardFileManager(
+                null, Locale.ROOT, StandardCharsets.UTF_8)) {
+            JavacTask task = (JavacTask) compiler.getTask(
+                    null, files, null, List.of("-proc:none"), null,
+                    files.getJavaFileObjects(source.toFile()));
+            for (CompilationUnitTree unit : task.parse()) {
+                new TreeScanner<Void, Void>() {
+                    @Override
+                    public Void visitBinary(BinaryTree node, Void unused) {
+                        if (node.getKind() == Tree.Kind.MULTIPLY
+                                && (containsPatternPercentageGetter(node.getLeftOperand())
+                                || containsPatternPercentageGetter(node.getRightOperand()))) {
+                            violations.add(node.toString());
+                        }
+                        return super.visitBinary(node, unused);
+                    }
+                }.scan(unit, null);
+            }
+        }
+        return violations;
+    }
+
+    private static boolean containsPatternPercentageGetter(Tree tree) {
+        boolean[] found = { false };
+        new TreeScanner<Void, Void>() {
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
+                String invocation = node.getMethodSelect().toString();
+                if (invocation.endsWith("getPatternCoverage")
+                        || invocation.endsWith("getCompleteness")) {
+                    found[0] = true;
+                }
+                return super.visitMethodInvocation(node, unused);
+            }
+        }.scan(tree, null);
+        return found[0];
     }
 
     private List<String> renderedPlainText(ArchitectureReport report) throws IOException {
