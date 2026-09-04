@@ -1,0 +1,35 @@
+--- a/taxonomy-app/src/main/resources/static/css/taxonomy-analysis-workflow.css
++++ b/taxonomy-app/src/main/resources/static/css/taxonomy-analysis-workflow.css
+@@ -48,7 +48,15 @@
+     color: #fff;
+ }
+ .analysis-secondary-action {
+     font-weight: 600;
++    --bs-btn-disabled-color: var(--bs-primary-text-emphasis, #052c65);
++    --bs-btn-disabled-bg: transparent;
++    --bs-btn-disabled-border-color: var(--bs-primary-text-emphasis, #052c65);
++}
++.analysis-secondary-action:disabled,
++.analysis-secondary-action.disabled {
++    opacity: 1;
+ }
+ .analysis-cancel-action {
+     grid-column: 1 / -1;
+--- a/.github/scripts/copilot-session-ui-regression.test.mjs
++++ b/.github/scripts/copilot-session-ui-regression.test.mjs
+@@ -247,6 +247,16 @@ test('disabled controls remain overlay-testable without weakening application s
+   assert.match(browserWorkflowSource, /finally\s*\{[\s\S]*removeProperty\('pointer-events'\)/);
+ });
+ 
++test('disabled secondary analysis action preserves accessible contrast', () => {
++  assert.match(workflowCssSource,
++    /\.analysis-secondary-action\s*\{[^}]*--bs-btn-disabled-color:\s*var\(--bs-primary-text-emphasis,\s*#052c65\);[^}]*--bs-btn-disabled-bg:\s*transparent;[^}]*--bs-btn-disabled-border-color:\s*var\(--bs-primary-text-emphasis,\s*#052c65\);[^}]*\}/s);
++  assert.match(workflowCssSource,
++    /\.analysis-secondary-action:disabled,\s*\.analysis-secondary-action\.disabled\s*\{[^}]*opacity:\s*1;[^}]*\}/s);
++  assert.doesNotMatch(workflowCssSource,
++    /\.analysis-secondary-action:disabled[^}]*opacity:\s*0\.[0-9]+;/s);
++});
++
+ test('short-height task stages stay labelled without a separate horizontal scroll region', () => {
+   assert.match(workflowCssSource,
+     /@media \(max-height: 32rem\)[\s\S]*?\.analysis-task-stages\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);[^}]*overflow-x:\s*visible;/s);
