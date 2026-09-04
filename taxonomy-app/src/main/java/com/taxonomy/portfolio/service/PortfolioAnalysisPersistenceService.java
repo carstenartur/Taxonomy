@@ -368,21 +368,8 @@ public class PortfolioAnalysisPersistenceService {
         AnalysisResult newerAnalysis = jsonCodec.read(
                 newer.getAnalysisPayload(), AnalysisResult.class);
 
-        Map<String, Integer> oldScores = olderAnalysis.getScores() != null
-                ? olderAnalysis.getScores() : Map.of();
-        Map<String, Integer> newScores = newerAnalysis.getScores() != null
-                ? newerAnalysis.getScores() : Map.of();
-        Set<String> scoreKeys = new TreeSet<>();
-        scoreKeys.addAll(oldScores.keySet());
-        scoreKeys.addAll(newScores.keySet());
-        Map<String, ScoreChange> scoreChanges = new LinkedHashMap<>();
-        for (String code : scoreKeys) {
-            Integer oldScore = oldScores.get(code);
-            Integer newScore = newScores.get(code);
-            if (!Objects.equals(oldScore, newScore)) {
-                scoreChanges.put(code, new ScoreChange(oldScore, newScore));
-            }
-        }
+        Map<String, ScoreChange> scoreChanges =
+                AnalysisScoreDiff.between(olderAnalysis, newerAnalysis);
 
         Set<String> oldElements = elementRepository
                 .findBySnapshotIdAndScopeKeyOrderByTaxonomyRootAscNodeCodeAsc(

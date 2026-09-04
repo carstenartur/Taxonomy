@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.dto;
 
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScoreKind;
 import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.PatternDetectionView;
@@ -315,7 +316,26 @@ public final class PortfolioDtos {
             boolean providerChanged) {
     }
 
-    public record ScoreChange(Integer oldScore, Integer newScore) {
+    /**
+     * One node's effective-score change plus the complete meaning of that value.
+     * The two original components remain first for source and JSON compatibility.
+     */
+    public record ScoreChange(
+            Integer oldScore,
+            Integer newScore,
+            Integer oldRawScore,
+            Integer newRawScore,
+            AnalysisScoreKind oldKind,
+            AnalysisScoreKind newKind,
+            String oldParentCode,
+            String newParentCode,
+            Integer oldParentScore,
+            Integer newParentScore) {
+
+        public ScoreChange(Integer oldScore, Integer newScore) {
+            this(oldScore, newScore, oldScore, newScore,
+                    null, null, null, null, null, null);
+        }
     }
 
     // ── Solutions ───────────────────────────────────────────────────────────
