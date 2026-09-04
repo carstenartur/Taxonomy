@@ -454,7 +454,7 @@ Die Hauptvisualisierung ist ein **stabiler, nach Architekturebenen geordneter Au
 - Mit der **Suche** finden Sie Elemente anhand von Code, Bezeichnung oder Ebene. Drücken Sie die Eingabetaste, um zum ersten Treffer zu springen.
 - Der Schalter **Kontextknoten** blendet propagierte Elemente ein oder aus. Direkte Treffer bleiben sichtbar.
 - Wechseln Sie zwischen **Übersicht** und **Fokus**. Der Fokusmodus zeigt das ausgewählte Element mit seinen direkten Nachbarn; ein Doppelklick auf eine Karte aktiviert ihn ebenfalls.
-- Nutzen Sie **Einpassen**, **Zoom**, Verschieben der Zeichenfläche und **Vollbild**, um kleine oder umfangreiche Ergebnisse zu untersuchen. Auf schmalen Ansichten startet die Darstellung auf dem wichtigsten Treffer in lesbarer Größe.
+- Nutzen Sie **Einpassen**, **Zoom**, Verschieben der Zeichenfläche und **Vollbild**, um kleine oder umfangreiche Ergebnisse zu untersuchen. Beim ersten Anzeigen wird der vollständige Graph in die Zeichenfläche eingepasst. Responsive Größenänderungen wiederholen dies, bis Sie manuell zoomen oder verschieben; mit **Einpassen** stellen Sie anschließend die vollständige Übersicht wieder her.
 - **Klicken** Sie auf eine Elementkarte oder Verbindung, um im Detailbereich Relevanz, Entfernung, Begründung und verbundene Elemente anzuzeigen. Von dort können Sie das Element im Graph Explorer öffnen.
 - Wechseln Sie zu **„🏗️ Layer View"** für die kompakte Swimlane-Darstellung nach Architekturebene.
 
