@@ -44,6 +44,21 @@ class AnalysisScoreDiffTest {
         assertThat(change.oldParentScore()).isEqualTo(change.newParentScore()).isEqualTo(40);
     }
 
+    @Test
+    void addedScorePreservesNullEvidenceOnTheMissingSide() {
+        TaxonomyNodeDto root = node("CP", null, "CATEGORY");
+        AnalysisResult newer = new AnalysisResult(Map.of("CP", 75), List.of(root));
+
+        ScoreChange change = AnalysisScoreDiff.between(null, newer).get("CP");
+
+        assertThat(change).isNotNull();
+        assertThat(change.oldScore()).isNull();
+        assertThat(change.oldRawScore()).isNull();
+        assertThat(change.newScore()).isEqualTo(75);
+        assertThat(change.newRawScore()).isEqualTo(75);
+        assertThat(change.newKind()).isEqualTo(AnalysisScoreKind.ROOT_RELEVANCE);
+    }
+
     private AnalysisResult productAnalysis(
             int familyScore,
             int suitability,

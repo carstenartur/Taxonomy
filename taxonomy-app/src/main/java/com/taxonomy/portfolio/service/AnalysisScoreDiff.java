@@ -77,7 +77,10 @@ final class AnalysisScoreDiff {
     private static Integer rawValue(
             Integer rawScore,
             AnalysisScoreDetail detail) {
-        return detail == null ? rawScore : detail.rawScore();
+        if (detail != null) {
+            return detail.rawScore();
+        }
+        return rawScore;
     }
 
     private static Map<String, Integer> safeScores(Map<String, Integer> scores) {
