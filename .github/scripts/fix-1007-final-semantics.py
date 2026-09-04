@@ -9,387 +9,107 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-service_path = Path(
-    "taxonomy-app/src/main/java/com/taxonomy/architecture/decision/"
-    "DecisionRationaleReportService.java"
+# Preserve null on the missing side of an added/removed snapshot score. The former
+# conditional expression unboxed a nullable Integer because its other branch was int.
+diff_path = Path(
+    "taxonomy-app/src/main/java/com/taxonomy/portfolio/service/AnalysisScoreDiff.java"
 )
-service = service_path.read_text(encoding="utf-8")
-service = replace_once(
-    service,
-    "import com.taxonomy.catalog.service.TaxonomyService;\n"
-    "import com.taxonomy.dto.ProductCoverageGap;\n",
-    "import com.taxonomy.catalog.service.TaxonomyService;\n"
-    "import com.taxonomy.dto.AnalysisScoreDetail;\n"
-    "import com.taxonomy.dto.ProductCoverageGap;\n",
-    "report service score-detail import",
+diff_text = diff_path.read_text(encoding="utf-8")
+diff_text = replace_once(
+    diff_text,
+    "        return detail == null ? rawScore : detail.rawScore();",
+    "        if (detail != null) {\n"
+    "            return detail.rawScore();\n"
+    "        }\n"
+    "        return rawScore;",
+    "null-safe raw score",
 )
-service = replace_once(
-    service,
-    "  List<ProductCoverageGap> productCoverageGaps,\n"
-    "  List<TaxonomyNodeDto> taxonomyTree,\n"
-    "  AnalysisSnapshotProvenance snapshotProvenance) {",
-    "  List<ProductCoverageGap> productCoverageGaps,\n"
-    "  List<TaxonomyNodeDto> taxonomyTree,\n"
-    "  AnalysisSnapshotProvenance snapshotProvenance,\n"
-    "  Map<String, AnalysisScoreDetail> scoreDetails) {",
-    "decision input score details",
-)
-service = replace_once(
-    service,
-    "  taxonomyTree = taxonomyTree == null ? List.of() : List.copyOf(taxonomyTree);\n"
-    "        }",
-    "  taxonomyTree = taxonomyTree == null ? List.of() : List.copyOf(taxonomyTree);\n"
-    "  scoreDetails = scoreDetails == null ? Map.of() : Map.copyOf(scoreDetails);\n"
-    "        }",
-    "decision input normalization",
-)
-compatibility = '''        /** Backward-compatible full input without typed score evidence. */
-        public DecisionAnalysisInput(
-      String businessText,
-      Map<String, Integer> scores,
-      Map<String, String> reasons,
-      String provider,
-      String analysisStatus,
-      List<TaxonomyDiscrepancy> discrepancies,
-      List<ProductCoverageGap> productCoverageGaps,
-      List<TaxonomyNodeDto> taxonomyTree,
-      AnalysisSnapshotProvenance snapshotProvenance) {
-  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
-          productCoverageGaps, taxonomyTree, snapshotProvenance, Map.of());
-        }
+diff_path.write_text(diff_text, encoding="utf-8")
 
-'''
-service = replace_once(
-    service,
-    "        /** Backward-compatible ad-hoc analysis input using the currently loaded hierarchy. */\n",
-    compatibility
-    + "        /** Backward-compatible ad-hoc analysis input using the currently loaded hierarchy. */\n",
-    "decision input compatibility constructor",
-)
-service = replace_once(
-    service,
-    "          List.of(), List.of(), null);",
-    "          List.of(), List.of(), null, Map.of());",
-    "six-argument decision input constructor",
-)
-service = replace_once(
-    service,
-    "          productCoverageGaps, List.of(), null);",
-    "          productCoverageGaps, List.of(), null, Map.of());",
-    "seven-argument decision input constructor",
-)
-service = replace_once(
-    service,
-    "          List.of(), taxonomyTree, snapshotProvenance);",
-    "          List.of(), taxonomyTree, snapshotProvenance, Map.of());",
-    "snapshot compatibility constructor",
-)
-old_budget = '''            List<TaxonomyNode> children = entry.getValue();
-            boolean allEvaluated = children.stream()
-                    .map(TaxonomyNode::getCode)
-                    .allMatch(scores::containsKey);
-            if (!allEvaluated) {
-                continue;
-            }
-            int childTotal = children.stream()
-                    .map(TaxonomyNode::getCode)
-                    .mapToInt(code -> scores.getOrDefault(code, 0))
-                    .sum();'''
-new_budget = '''            List<TaxonomyNode> budgetChildren = entry.getValue().stream()
-                    .filter(child -> {
-                        AnalysisScoreDetail detail = input.scoreDetails().get(child.getCode());
-                        return detail == null || !detail.isProductSuitability();
-                    })
-                    .toList();
-            if (budgetChildren.isEmpty()) {
-                continue;
-            }
-            boolean allEvaluated = budgetChildren.stream()
-                    .map(TaxonomyNode::getCode)
-                    .allMatch(scores::containsKey);
-            if (!allEvaluated) {
-                continue;
-            }
-            int childTotal = budgetChildren.stream()
-                    .map(TaxonomyNode::getCode)
-                    .mapToInt(code -> scores.getOrDefault(code, 0))
-                    .sum();'''
-service = replace_once(
-    service, old_budget, new_budget, "product-aware budget warning"
-)
-service_path.write_text(service, encoding="utf-8")
 
-controller_path = Path(
-    "taxonomy-app/src/main/java/com/taxonomy/versioning/controller/"
-    "DecisionRationaleReportController.java"
+diff_test_path = Path(
+    "taxonomy-app/src/test/java/com/taxonomy/portfolio/service/AnalysisScoreDiffTest.java"
 )
-controller = controller_path.read_text(encoding="utf-8")
-controller = replace_once(
-    controller,
-    "        Map<String, AnalysisScoreDetail> scoreDetails = resolveScoreDetails(request);\n"
-    "        Map<String, Integer> effectiveScores = resolveEffectiveScores(request, scoreDetails);",
-    "        AnalysisScoreSemantics.Derived scoreSemantics = resolveScoreSemantics(request);\n"
-    "        Map<String, AnalysisScoreDetail> scoreDetails = scoreSemantics.scoreDetails();\n"
-    "        Map<String, Integer> effectiveScores = scoreSemantics.effectiveScores();",
-    "controller authoritative score envelope",
-)
-controller = replace_once(
-    controller,
-    "                request.discrepancies(),\n"
-    "                request.productCoverageGaps());",
-    "                request.discrepancies(),\n"
-    "                request.productCoverageGaps(),\n"
-    "                List.of(),\n"
-    "                null,\n"
-    "                scoreDetails);",
-    "controller decision input details",
-)
-start = controller.find(
-    "    private Map<String, AnalysisScoreDetail> resolveScoreDetails("
-)
-end = controller.find("    private Locale resolveLocale(", start)
-if start < 0 or end < 0:
-    raise SystemExit("controller score resolver block not found")
-resolver = '''    private AnalysisScoreSemantics.Derived resolveScoreSemantics(
-            DecisionReportRequest request) {
-        Map<String, Integer> suppliedRaw = request.rawScores() != null
-                && !request.rawScores().isEmpty()
-                ? request.rawScores() : request.scores();
-        Map<String, Integer> authoritativeRaw = new LinkedHashMap<>();
-        request.scores().forEach((code, score) -> authoritativeRaw.put(
-                code, suppliedRaw.getOrDefault(code, score)));
-        return AnalysisScoreSemantics.derive(
-                authoritativeRaw,
-                taxonomyService == null ? List.of() : taxonomyService.getFullTree());
+diff_test = diff_test_path.read_text(encoding="utf-8")
+added_score_test = '''    @Test
+    void addedScorePreservesNullEvidenceOnTheMissingSide() {
+        TaxonomyNodeDto root = node("CP", null, "CATEGORY");
+        AnalysisResult newer = new AnalysisResult(Map.of("CP", 75), List.of(root));
+
+        ScoreChange change = AnalysisScoreDiff.between(null, newer).get("CP");
+
+        assertThat(change).isNotNull();
+        assertThat(change.oldScore()).isNull();
+        assertThat(change.oldRawScore()).isNull();
+        assertThat(change.newScore()).isEqualTo(75);
+        assertThat(change.newRawScore()).isEqualTo(75);
+        assertThat(change.newKind()).isEqualTo(AnalysisScoreKind.ROOT_RELEVANCE);
     }
 
 '''
-controller = controller[:start] + resolver + controller[end:]
-controller_path.write_text(controller, encoding="utf-8")
-
-snapshot_path = Path(
-    "taxonomy-app/src/main/java/com/taxonomy/portfolio/report/"
-    "DecisionRationaleSnapshotReportService.java"
+diff_test = replace_once(
+    diff_test,
+    "    private AnalysisResult productAnalysis(\n",
+    added_score_test + "    private AnalysisResult productAnalysis(\n",
+    "added score regression",
 )
-snapshot = snapshot_path.read_text(encoding="utf-8")
-snapshot = replace_once(
-    snapshot,
-    "                analysis.getTree(),\n"
-    "                provenance);",
-    "                analysis.getTree(),\n"
-    "                provenance,\n"
-    "                scoreDetails);",
-    "snapshot decision input details",
+diff_test_path.write_text(diff_test, encoding="utf-8")
+
+
+# Snapshot report generation deliberately enriches the format-neutral report with
+# typed score evidence and an evidence-bound digest. Test value preservation rather
+# than obsolete object identity.
+snapshot_test_path = Path(
+    "taxonomy-app/src/test/java/com/taxonomy/portfolio/report/"
+    "DecisionRationaleSnapshotReportTest.java"
 )
-snapshot_path.write_text(snapshot, encoding="utf-8")
-
-controller_test = Path(
-    "taxonomy-app/src/test/java/com/taxonomy/versioning/controller/"
-    "DecisionRationaleReportControllerScoreSemanticsTest.java"
+snapshot_test = snapshot_test_path.read_text(encoding="utf-8")
+snapshot_test = replace_once(
+    snapshot_test,
+    "        assertThat(actual).isSameAs(expected);",
+    "        assertThat(actual).isNotSameAs(expected);\n"
+    "        assertThat(actual.title()).isEqualTo(expected.title());\n"
+    "        assertThat(actual.requirement()).isEqualTo(expected.requirement());\n"
+    "        assertThat(actual.status()).isEqualTo(expected.status());\n"
+    "        assertThat(actual.scoreDetails()).containsKey(\"CP\");\n"
+    "        assertThat(actual.metadata().analysisSnapshotFingerprintSha256())\n"
+    "                .hasSize(64)\n"
+    "                .isNotEqualTo(\n"
+    "                        expected.metadata().analysisSnapshotFingerprintSha256());",
+    "snapshot enrichment expectation",
 )
-controller_test.write_text(
-    '''package com.taxonomy.versioning.controller;
-
-import com.taxonomy.architecture.decision.DecisionRationaleReportService;
-import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
-import com.taxonomy.architecture.report.ReportRendererRegistry;
-import com.taxonomy.catalog.service.TaxonomyService;
-import com.taxonomy.dto.AnalysisScoreDetail;
-import com.taxonomy.dto.AnalysisScoreKind;
-import com.taxonomy.dto.AnalysisScoreSemantics;
-import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.versioning.controller.DecisionRationaleReportController.DecisionReportRequest;
-import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceResolver;
-import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
-
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-class DecisionRationaleReportControllerScoreSemanticsTest {
-
-    @Test
-    void derivesEffectiveScoresFromBoundedRawEvidenceAndIgnoresInjectedDerivedMaps() {
-        TaxonomyService taxonomyService = mock(TaxonomyService.class);
-        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
-        TaxonomyNodeDto family = node("IP-F", "IP", "PRODUCT_FAMILY");
-        TaxonomyNodeDto product = node("IP-P", "IP-F", "PRODUCT");
-        family.setChildren(List.of(product));
-        root.setChildren(List.of(family));
-        when(taxonomyService.getFullTree()).thenReturn(List.of(root));
-
-        DecisionRationaleReportController controller = new DecisionRationaleReportController(
-                mock(DecisionRationaleReportService.class),
-                mock(ReportRendererRegistry.class),
-                mock(RepositoryStateService.class),
-                mock(WorkspaceResolver.class),
-                new DecisionRationaleScoreSemanticsAdapter(),
-                taxonomyService);
-
-        AnalysisScoreDetail injectedProduct = new AnalysisScoreDetail(
-                "IP-P", AnalysisScoreKind.PRODUCT_SUITABILITY,
-                100, 100, "IP-F", 100);
-        AnalysisScoreDetail injectedExtra = new AnalysisScoreDetail(
-                "EXTRA", AnalysisScoreKind.ROOT_RELEVANCE,
-                100, 100, null, null);
-        DecisionReportRequest request = new DecisionReportRequest(
-                Map.of("IP", 100, "IP-F", 40, "IP-P", 100),
-                Map.of("IP", 100, "IP-F", 40, "IP-P", 80, "EXTRA", 100),
-                Map.of("IP", 100, "IP-F", 40, "IP-P", 100, "EXTRA", 100),
-                Map.of("IP-P", injectedProduct, "EXTRA", injectedExtra),
-                Map.of("IP-P", 100, "EXTRA", 100),
-                AnalysisScoreSemantics.CURRENT_VERSION,
-                Map.of(),
-                "requirement",
-                "MOCK",
-                "SUCCESS",
-                List.of(),
-                List.of(),
-                "en");
-
-        AnalysisScoreSemantics.Derived derived = ReflectionTestUtils.invokeMethod(
-                controller, "resolveScoreSemantics", request);
-
-        assertThat(derived).isNotNull();
-        assertThat(derived.effectiveScores())
-                .containsExactlyInAnyOrderEntriesOf(
-                        Map.of("IP", 100, "IP-F", 40, "IP-P", 32))
-                .doesNotContainKey("EXTRA");
-        assertThat(derived.scoreDetails().get("IP-P").rawScore()).isEqualTo(80);
-        assertThat(derived.scoreDetails().get("IP-P").parentScore()).isEqualTo(40);
-        assertThat(derived.scoreDetails().get("IP-P").kind())
-                .isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
-    }
-
-    private TaxonomyNodeDto node(String code, String parentCode, String role) {
-        TaxonomyNodeDto node = new TaxonomyNodeDto();
-        node.setCode(code);
-        node.setParentCode(parentCode);
-        node.setAnalysisRole(role);
-        return node;
-    }
-}
-''',
-    encoding="utf-8",
+snapshot_test = replace_once(
+    snapshot_test,
+    "        assertThat(input.scores()).containsEntry(\"CP\", 100);",
+    "        assertThat(input.scores()).containsEntry(\"CP\", 100);\n"
+    "        assertThat(input.scoreDetails()).containsKey(\"CP\");",
+    "snapshot input score details",
 )
+snapshot_test_path.write_text(snapshot_test, encoding="utf-8")
 
-budget_test = Path(
-    "taxonomy-app/src/test/java/com/taxonomy/architecture/decision/"
-    "DecisionRationaleProductBudgetWarningTest.java"
+
+# Exercise the same complete typed score envelope that the browser export action
+# sends. Reusing effective scores as raw suitability would apply product weighting twice.
+e2e_path = Path(".github/scripts/document-template-report-download.mjs")
+e2e = e2e_path.read_text(encoding="utf-8")
+e2e = replace_once(
+    e2e,
+    "      scores: state?.currentScores || {},\n"
+    "      reasons: state?.currentReasons || {},",
+    "      scores: state?.currentScores || {},\n"
+    "      rawScores: state?.currentRawScores || state?.currentScores || {},\n"
+    "      effectiveScores: state?.currentEffectiveScores || state?.currentScores || {},\n"
+    "      scoreDetails: state?.currentScoreDetails || {},\n"
+    "      productSuitabilityScores: state?.currentProductSuitabilityScores || {},\n"
+    "      scoreSemanticsVersion: state?.scoreSemanticsVersion || 0,\n"
+    "      reasons: state?.currentReasons || {},",
+    "document E2E score envelope",
 )
-budget_test.write_text(
-    '''package com.taxonomy.architecture.decision;
-
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.catalog.service.TaxonomyService;
-import com.taxonomy.dto.AnalysisScoreDetail;
-import com.taxonomy.dto.AnalysisScoreKind;
-import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.workspace.service.WorkspaceContext;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
-class DecisionRationaleProductBudgetWarningTest {
-
-    @Test
-    void independentProductSuitabilityDoesNotCreateFalseHierarchyBudgetWarning() {
-        TaxonomyService taxonomyService = mock(TaxonomyService.class);
-        TaxonomyNode root = node("IP", null, 0);
-        TaxonomyNode family = node("IP-F", "IP", 1);
-        TaxonomyNode product = node("IP-P", "IP-F", 2);
-        when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
-        when(taxonomyService.getChildrenMap()).thenReturn(Map.of(
-                "IP", List.of(family),
-                "IP-F", List.of(product)));
-
-        TaxonomyNodeDto rootDto = dto("IP", null, "CATEGORY", 0);
-        TaxonomyNodeDto familyDto = dto("IP-F", "IP", "PRODUCT_FAMILY", 1);
-        TaxonomyNodeDto productDto = dto("IP-P", "IP-F", "PRODUCT", 2);
-        familyDto.setChildren(List.of(productDto));
-        rootDto.setChildren(List.of(familyDto));
-        when(taxonomyService.getFullTree()).thenReturn(List.of(rootDto));
-
-        TaxonomyCatalogueMetadataService catalogue =
-                mock(TaxonomyCatalogueMetadataService.class);
-        when(catalogue.getMetadata()).thenReturn(
-                new TaxonomyCatalogueMetadataService.CatalogueMetadata(
-                        "catalogue.xlsx", "test", "data", "test",
-                        "base", "overlay", "mapping", "overlay-sha"));
-        DecisionReportBuildMetadataService build =
-                mock(DecisionReportBuildMetadataService.class);
-        when(build.current()).thenReturn(
-                new DecisionReportBuildMetadataService.BuildMetadata("test", "commit"));
-
-        DecisionRationaleReportService service = new DecisionRationaleReportService(
-                taxonomyService, catalogue, build, "Europe/Berlin");
-        Map<String, Integer> scores = Map.of(
-                "IP", 40, "IP-F", 40, "IP-P", 32);
-        Map<String, AnalysisScoreDetail> details = Map.of(
-                "IP", new AnalysisScoreDetail(
-                        "IP", AnalysisScoreKind.ROOT_RELEVANCE,
-                        40, 40, null, null),
-                "IP-F", new AnalysisScoreDetail(
-                        "IP-F", AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
-                        40, 40, "IP", 40),
-                "IP-P", new AnalysisScoreDetail(
-                        "IP-P", AnalysisScoreKind.PRODUCT_SUITABILITY,
-                        80, 32, "IP-F", 40));
-        DecisionRationaleReportService.DecisionAnalysisInput input =
-                new DecisionRationaleReportService.DecisionAnalysisInput(
-                        "requirement",
-                        scores,
-                        Map.of("IP", "root", "IP-F", "family", "IP-P", "product"),
-                        "MOCK",
-                        "SUCCESS",
-                        List.of(),
-                        List.of(),
-                        List.of(),
-                        null,
-                        details);
-
-        DecisionRationaleReport report = service.generate(
-                input, WorkspaceContext.SHARED, null, Locale.ENGLISH);
-
-        assertThat(report.warnings()).noneMatch(warning ->
-                warning.contains("sum of fully evaluated direct children"));
-    }
-
-    private TaxonomyNode node(String code, String parentCode, int level) {
-        TaxonomyNode node = new TaxonomyNode();
-        node.setCode(code);
-        node.setNameEn(code);
-        node.setDescriptionEn(code);
-        node.setParentCode(parentCode);
-        node.setTaxonomyRoot("IP");
-        node.setLevel(level);
-        return node;
-    }
-
-    private TaxonomyNodeDto dto(
-            String code, String parentCode, String role, int level) {
-        TaxonomyNodeDto node = new TaxonomyNodeDto();
-        node.setCode(code);
-        node.setNameEn(code);
-        node.setDescriptionEn(code);
-        node.setParentCode(parentCode);
-        node.setTaxonomyRoot("IP");
-        node.setLevel(level);
-        node.setAnalysisRole(role);
-        return node;
-    }
-}
-''',
-    encoding="utf-8",
+e2e = replace_once(
+    e2e,
+    "      `Completed product coverage gaps require FINAL_WITH_WARNINGS, got ${report.status}`);",
+    "      `Completed product coverage gaps require FINAL_WITH_WARNINGS, got ${report.status}; `\n"
+    "        + `warnings=${JSON.stringify(report.warnings || [])}`);",
+    "document E2E status diagnostic",
 )
+e2e_path.write_text(e2e, encoding="utf-8")
