@@ -42,8 +42,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "b3ae10e26b6f1be5d776d1e9364a4ca1ffc194a2"
+          test "$(git rev-parse HEAD)" = "374ec1371e880a373a1bc6419bd8eeb3c99d2865"
           python3 "$RUNNER_TEMP/fix-1007-final-semantics.py"
+          node --check .github/scripts/document-template-report-download.mjs
           git diff --check
 
       - name: Verify focused contracts
@@ -51,19 +52,18 @@ jobs:
         run: |
           set -euo pipefail
           ./mvnw -B -ntp -pl taxonomy-app -am \
-            -Dtest=AnalysisScoreSemanticsTest,DecisionRationaleReportControllerScoreSemanticsTest,DecisionRationaleReportControllerValidationTest,DecisionRationaleProductBudgetWarningTest,DecisionRationaleScoreSemanticsAdapterTest \
+            -Dtest=AnalysisScoreDiffTest,PortfolioAnalysisCoverageRegressionTest,DecisionRationaleSnapshotReportTest,DecisionRationaleReportControllerScoreSemanticsTest \
             -Dsurefire.failIfNoSpecifiedTests=false test
 
       - name: Commit verified correction
         shell: bash
         run: |
           set -euo pipefail
-          git add taxonomy-app/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportService.java \
-                  taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DecisionRationaleReportController.java \
-                  taxonomy-app/src/main/java/com/taxonomy/portfolio/report/DecisionRationaleSnapshotReportService.java \
-                  taxonomy-app/src/test/java/com/taxonomy/versioning/controller/DecisionRationaleReportControllerScoreSemanticsTest.java \
-                  taxonomy-app/src/test/java/com/taxonomy/architecture/decision/DecisionRationaleProductBudgetWarningTest.java
+          git add .github/scripts/document-template-report-download.mjs \
+                  taxonomy-app/src/main/java/com/taxonomy/portfolio/service/AnalysisScoreDiff.java \
+                  taxonomy-app/src/test/java/com/taxonomy/portfolio/service/AnalysisScoreDiffTest.java \
+                  taxonomy-app/src/test/java/com/taxonomy/portfolio/report/DecisionRationaleSnapshotReportTest.java
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git commit -m "Harden report score semantics at the HTTP boundary"
+          git commit -m "Fix snapshot score diff and report E2E evidence"
           git push origin HEAD:fix/1006-product-score-semantics
