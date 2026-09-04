@@ -53,6 +53,11 @@ Canonical score maps and typed detail maps are ordered by their stripped node co
 pre-normalization source strings. This keeps fingerprints, snapshots, reports and diffs stable even
 when legacy input contains harmless surrounding whitespace.
 
+`SnapshotDiff.scoreChanges` preserves sorted node-code order at the REST DTO boundary. Its constructor
+makes an unmodifiable defensive copy, so changing the caller's map cannot alter an existing diff.
+An absent score-change map becomes an immutable empty map. The persistence service passes the
+ordered changes directly to this constructor rather than replacing them with an unordered copy.
+
 Old snapshots that contain only `scores` remain readable. Taxonomy derives their semantics from the
 frozen taxonomy tree. An unresolved product parent fails closed to effective relevance zero and
 produces a warning instead of promoting conditional suitability to global relevance. Duplicate node
