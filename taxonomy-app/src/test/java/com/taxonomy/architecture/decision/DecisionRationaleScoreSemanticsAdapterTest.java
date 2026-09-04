@@ -7,11 +7,14 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport.ExecutiveSumma
 import com.taxonomy.architecture.decision.DecisionRationaleReport.LeafCandidate;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.PathStep;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ReasonSource;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
 import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreKind;
+import com.taxonomy.dto.AnalysisScoreSemanticsFingerprint;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,12 +46,13 @@ class DecisionRationaleScoreSemanticsAdapterTest {
                 true, "summary", "comparison", List.of(child), List.of());
         DecisionRationaleReport report = new DecisionRationaleReport(
                 "Report", "en", "requirement", ReportStatus.FINAL,
-                null,
+                metadata("base-analysis-fingerprint"),
                 new ExecutiveSummary(leaf, List.of(pathStep), "conclusion", "method"),
                 List.of(chapter), List.of(leaf), List.of(), List.of(), List.of(), null);
 
+        Map<String, AnalysisScoreDetail> details = Map.of("IP-P", detail);
         DecisionRationaleReport adapted = adapter.adapt(
-                report, Map.of("IP-P", detail), Locale.ENGLISH);
+                report, details, Locale.ENGLISH);
 
         assertThat(adapted.executiveSummary().leadingLeaf().score()).isEqualTo(32);
         assertThat(adapted.executiveSummary().path().get(0).absoluteScore()).isEqualTo(32);
@@ -60,6 +64,14 @@ class DecisionRationaleScoreSemanticsAdapterTest {
         assertThat(adapted.scoreDetails()).containsEntry("IP-P", detail);
         assertThat(adapted.executiveSummary().methodologyNote())
                 .contains("product-family relevance");
+        assertThat(adapted.metadata().analysisSnapshotFingerprintSha256()).isEqualTo(
+                AnalysisScoreSemanticsFingerprint.extend(
+                        "base-analysis-fingerprint", details));
+
+        DecisionRationaleReport adaptedAgain = adapter.adapt(
+                adapted, details, Locale.ENGLISH);
+        assertThat(adaptedAgain.metadata().analysisSnapshotFingerprintSha256())
+                .isEqualTo(adapted.metadata().analysisSnapshotFingerprintSha256());
     }
 
     @Test
@@ -80,5 +92,46 @@ class DecisionRationaleScoreSemanticsAdapterTest {
 
         assertThat(adapted.chapters().get(0).children().get(0).localSharePercent())
                 .isEqualTo(100.0);
+    }
+
+    private ReportMetadata metadata(String analysisFingerprint) {
+        return new ReportMetadata(
+                Instant.EPOCH,
+                "user",
+                "1.0",
+                "build",
+                "catalogue",
+                "version",
+                "catalogue-resource-fingerprint",
+                "taxonomy-data-fingerprint",
+                analysisFingerprint,
+                "source",
+                3,
+                1,
+                "repository",
+                "workspace",
+                "main",
+                "commit",
+                Instant.EPOCH,
+                false,
+                false,
+                "provider",
+                "SUCCESS",
+                "model",
+                "snapshot",
+                1L,
+                2L,
+                3L,
+                1,
+                Instant.EPOCH,
+                "user",
+                "recorded-taxonomy-fingerprint",
+                "prompt-fingerprint",
+                true,
+                "Europe/Berlin",
+                1,
+                3,
+                3,
+                100.0);
     }
 }
