@@ -15,11 +15,13 @@ import com.taxonomy.dto.AnalysisScoreSemanticsFingerprint;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DecisionRationaleScoreSemanticsAdapterTest {
 
@@ -92,6 +94,21 @@ class DecisionRationaleScoreSemanticsAdapterTest {
 
         assertThat(adapted.chapters().get(0).children().get(0).localSharePercent())
                 .isEqualTo(100.0);
+    }
+
+    @Test
+    void canonicalScoreDetailKeyCollisionsFailClosed() {
+        AnalysisScoreDetail detail = new AnalysisScoreDetail(
+                "IP-P", AnalysisScoreKind.PRODUCT_SUITABILITY,
+                80, 32, "IP-F", 40);
+        Map<String, AnalysisScoreDetail> details = new LinkedHashMap<>();
+        details.put("IP-P", detail);
+        details.put("IP-P ", detail);
+
+        assertThatThrownBy(() -> adapter.enrichReasons(
+                Map.of(), details, Locale.ENGLISH))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("canonical node code IP-P");
     }
 
     private ReportMetadata metadata(String analysisFingerprint) {

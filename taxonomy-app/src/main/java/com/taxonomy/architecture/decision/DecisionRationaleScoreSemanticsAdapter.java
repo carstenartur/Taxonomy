@@ -226,7 +226,15 @@ public class DecisionRationaleScoreSemanticsAdapter {
                 .filter(entry -> entry.getKey() != null && !entry.getKey().isBlank()
                         && entry.getValue() != null)
                 .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> result.put(entry.getKey().strip(), entry.getValue()));
+                .forEach(entry -> {
+                    String code = entry.getKey().strip();
+                    if (result.containsKey(code)) {
+                        throw new IllegalArgumentException(
+                                "Score details contain multiple entries for canonical node code "
+                                        + code);
+                    }
+                    result.put(code, entry.getValue());
+                });
         return Map.copyOf(result);
     }
 }

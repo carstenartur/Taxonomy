@@ -163,6 +163,26 @@ class AnalysisSseEventMapperTest {
         verify(taxonomyService, times(2)).getFullTree();
     }
 
+    @Test
+    void cacheWindowRemainsCorrectAcrossNanoTimeWrapAround() {
+        TaxonomyService taxonomyService = mock(TaxonomyService.class);
+        when(taxonomyService.getFullTree()).thenReturn(List.of(productTree()));
+        AtomicLong nanoTime = new AtomicLong(Long.MAX_VALUE - 5L);
+        AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(
+                taxonomyService, nanoTime::get, 10L);
+
+        semanticMapper.map(completeProductEvent());
+        nanoTime.set(Long.MIN_VALUE + 3L);
+        semanticMapper.map(completeProductEvent());
+
+        verify(taxonomyService, times(1)).getFullTree();
+
+        nanoTime.set(Long.MIN_VALUE + 4L);
+        semanticMapper.map(completeProductEvent());
+
+        verify(taxonomyService, times(2)).getFullTree();
+    }
+
     private AnalysisStreamEvent.Complete completeProductEvent() {
         return new AnalysisStreamEvent.Complete(
                 "SUCCESS",

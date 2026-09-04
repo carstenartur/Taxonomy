@@ -168,17 +168,21 @@ public class AnalysisSseEventMapper {
             List<TaxonomyNodeDto> loaded = taxonomyService.getFullTree();
             List<TaxonomyNodeDto> snapshot = loaded == null ? List.of() : List.copyOf(loaded);
             cachedTaxonomyTree = new CachedTaxonomyTree(
-                    snapshot, now + treeCacheTtlNanos);
+                    snapshot, now, treeCacheTtlNanos);
             return snapshot;
         }
     }
 
     private record CachedTaxonomyTree(
             List<TaxonomyNodeDto> tree,
-            long expiresAtNanos) {
+            long loadedAtNanos,
+            long timeToLiveNanos) {
 
         private boolean isValidAt(long nowNanos) {
-            return nowNanos - expiresAtNanos < 0;
+            // nanoTime values may wrap; an elapsed-duration comparison remains correct for this
+            // bounded TTL as long as less than half the long range elapses between observations.
+            long elapsedNanos = nowNanos - loadedAtNanos;
+            return elapsedNanos >= 0 && elapsedNanos < timeToLiveNanos;
         }
     }
 
