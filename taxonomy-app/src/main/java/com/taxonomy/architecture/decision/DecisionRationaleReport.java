@@ -109,6 +109,47 @@ public record DecisionRationaleReport(
             int evaluatedNodeCount,
             int positiveNodeCount,
             double completenessPercent) {
+
+        public ReportMetadata withAnalysisSnapshotFingerprintSha256(String fingerprint) {
+            return new ReportMetadata(
+                    generatedAt,
+                    generatedBy,
+                    taxonomyApplicationVersion,
+                    taxonomyBuildCommit,
+                    taxonomyCatalogueFile,
+                    taxonomyDataVersion,
+                    taxonomyCatalogueResourceSha256,
+                    taxonomyDataFingerprintSha256,
+                    fingerprint,
+                    taxonomyDataSource,
+                    taxonomyNodeCount,
+                    taxonomyRootCount,
+                    repositoryId,
+                    workspaceId,
+                    branch,
+                    basedOnCommit,
+                    basedOnCommitTimestamp,
+                    projectionStale,
+                    indexStale,
+                    analysisProvider,
+                    analysisStatus,
+                    analysisModel,
+                    analysisSnapshotId,
+                    projectId,
+                    requirementId,
+                    requirementVersionId,
+                    requirementVersionNumber,
+                    analysisCreatedAt,
+                    analysisCreatedBy,
+                    recordedTaxonomyFingerprintSha256,
+                    promptFingerprintSha256,
+                    hierarchyFromImmutableSnapshot,
+                    reportTimeZone,
+                    suppliedReasonCount,
+                    evaluatedNodeCount,
+                    positiveNodeCount,
+                    completenessPercent);
+        }
     }
 
     public record ExecutiveSummary(
