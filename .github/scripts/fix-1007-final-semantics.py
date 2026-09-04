@@ -9,107 +9,246 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-# Preserve null on the missing side of an added/removed snapshot score. The former
-# conditional expression unboxed a nullable Integer because its other branch was int.
-diff_path = Path(
-    "taxonomy-app/src/main/java/com/taxonomy/portfolio/service/AnalysisScoreDiff.java"
+# Incremental SSE events may identify score kind and parent, but they must not
+# serialize a batch-local effective product value before the family batch exists.
+mapper_path = Path(
+    "taxonomy-app/src/main/java/com/taxonomy/analysis/controller/"
+    "AnalysisSseEventMapper.java"
 )
-diff_text = diff_path.read_text(encoding="utf-8")
-diff_text = replace_once(
-    diff_text,
-    "        return detail == null ? rawScore : detail.rawScore();",
-    "        if (detail != null) {\n"
-    "            return detail.rawScore();\n"
+mapper = mapper_path.read_text(encoding="utf-8")
+mapper = replace_once(
+    mapper,
+    "import com.taxonomy.dto.AnalysisScoreSemantics;\n",
+    "import com.taxonomy.dto.AnalysisScoreDetail;\n"
+    "import com.taxonomy.dto.AnalysisScoreKind;\n"
+    "import com.taxonomy.dto.AnalysisScoreSemantics;\n",
+    "mapper score imports",
+)
+mapper = mapper.replace(
+    '            payload.put("scoreSemanticsVersion", '
+    'AnalysisScoreSemantics.CURRENT_VERSION);\n',
+    '            payload.put("scoreSemanticsVersion", '
+    'AnalysisScoreSemantics.CURRENT_VERSION);\n'
+    '            payload.put("scoreSemanticsComplete", true);\n',
+    2,
+)
+if mapper.count('payload.put("scoreSemanticsComplete", true);') != 2:
+    raise SystemExit("terminal completeness markers were not added exactly twice")
+mapper = replace_once(
+    mapper,
+    '        payload.put("scoreDetails", semantics.scoreDetails());\n'
+    '        payload.put("scoreSemanticsVersion", AnalysisScoreSemantics.CURRENT_VERSION);\n'
+    '        payload.put("reasons", scores.reasons() != null ? scores.reasons() : Map.of());',
+    '        payload.put("scoreDetails", incrementalScoreDetails(semantics.scoreDetails()));\n'
+    '        payload.put("scoreSemanticsVersion", AnalysisScoreSemantics.CURRENT_VERSION);\n'
+    '        payload.put("scoreSemanticsComplete", false);\n'
+    '        payload.put("reasons", scores.reasons() != null ? scores.reasons() : Map.of());',
+    "incremental structural score details",
+)
+mapper = replace_once(
+    mapper,
+    "    private AnalysisScoreSemantics.Derived derive(Map<String, Integer> rawScores) {\n"
+    "        return AnalysisScoreSemantics.derive(rawScores, taxonomyTree());\n"
+    "    }\n\n",
+    "    private AnalysisScoreSemantics.Derived derive(Map<String, Integer> rawScores) {\n"
+    "        return AnalysisScoreSemantics.derive(rawScores, taxonomyTree());\n"
+    "    }\n\n"
+    "    private Map<String, IncrementalScoreDetail> incrementalScoreDetails(\n"
+    "            Map<String, AnalysisScoreDetail> scoreDetails) {\n"
+    "        Map<String, IncrementalScoreDetail> result = new LinkedHashMap<>();\n"
+    "        if (scoreDetails != null) {\n"
+    "            scoreDetails.forEach((code, detail) -> {\n"
+    "                if (code != null && detail != null) {\n"
+    "                    result.put(code, IncrementalScoreDetail.from(detail));\n"
+    "                }\n"
+    "            });\n"
     "        }\n"
-    "        return rawScore;",
-    "null-safe raw score",
+    "        return Map.copyOf(result);\n"
+    "    }\n\n",
+    "incremental score detail projection",
 )
-diff_path.write_text(diff_text, encoding="utf-8")
-
-
-diff_test_path = Path(
-    "taxonomy-app/src/test/java/com/taxonomy/portfolio/service/AnalysisScoreDiffTest.java"
+mapper = replace_once(
+    mapper,
+    "    private record CachedTaxonomyTree(\n",
+    "    /** Structural metadata safe to publish before the complete score context exists. */\n"
+    "    public record IncrementalScoreDetail(\n"
+    "            String nodeCode,\n"
+    "            AnalysisScoreKind kind,\n"
+    "            int rawScore,\n"
+    "            String parentCode) {\n\n"
+    "        private static IncrementalScoreDetail from(AnalysisScoreDetail detail) {\n"
+    "            return new IncrementalScoreDetail(\n"
+    "                    detail.nodeCode(), detail.kind(), detail.rawScore(),\n"
+    "                    detail.parentCode());\n"
+    "        }\n"
+    "    }\n\n"
+    "    private record CachedTaxonomyTree(\n",
+    "incremental score detail record",
 )
-diff_test = diff_test_path.read_text(encoding="utf-8")
-added_score_test = '''    @Test
-    void addedScorePreservesNullEvidenceOnTheMissingSide() {
-        TaxonomyNodeDto root = node("CP", null, "CATEGORY");
-        AnalysisResult newer = new AnalysisResult(Map.of("CP", 75), List.of(root));
+mapper_path.write_text(mapper, encoding="utf-8")
 
-        ScoreChange change = AnalysisScoreDiff.between(null, newer).get("CP");
 
-        assertThat(change).isNotNull();
-        assertThat(change.oldScore()).isNull();
-        assertThat(change.oldRawScore()).isNull();
-        assertThat(change.newScore()).isEqualTo(75);
-        assertThat(change.newRawScore()).isEqualTo(75);
-        assertThat(change.newKind()).isEqualTo(AnalysisScoreKind.ROOT_RELEVANCE);
+mapper_test_path = Path(
+    "taxonomy-app/src/test/java/com/taxonomy/analysis/controller/"
+    "AnalysisSseEventMapperTest.java"
+)
+mapper_test = mapper_test_path.read_text(encoding="utf-8")
+mapper_test = replace_once(
+    mapper_test,
+    '                .containsEntry("error", "minor")\n'
+    '                .doesNotContainKey("effectiveScores");\n'
+    '        assertThat(((Map<?, ?>) payload.get("scoreDetails")).get("CP")).isNotNull();',
+    '                .containsEntry("error", "minor")\n'
+    '                .containsEntry("scoreSemanticsComplete", false)\n'
+    '                .doesNotContainKey("effectiveScores");\n'
+    '        AnalysisSseEventMapper.IncrementalScoreDetail scoreDetail =\n'
+    '                (AnalysisSseEventMapper.IncrementalScoreDetail)\n'
+    '                        ((Map<?, ?>) payload.get("scoreDetails")).get("CP");\n'
+    '        assertThat(scoreDetail.rawScore()).isEqualTo(80);\n'
+    '        assertThat(scoreDetail.kind()).isEqualTo(\n'
+    '                AnalysisScoreKind.HIERARCHICAL_RELEVANCE);',
+    "incremental mapper assertion",
+)
+mapper_test = replace_once(
+    mapper_test,
+    '                .containsEntry("effectiveScores", Map.of("CP", 80, "CR", 0))\n'
+    '                .containsEntry("totalMatched", 1)',
+    '                .containsEntry("effectiveScores", Map.of("CP", 80, "CR", 0))\n'
+    '                .containsEntry("scoreSemanticsComplete", true)\n'
+    '                .containsEntry("totalMatched", 1)',
+    "complete event completeness assertion",
+)
+mapper_test = replace_once(
+    mapper_test,
+    '                .containsEntry("effectiveScores", Map.of("CP", 80))\n'
+    '                .containsEntry("warnings", List.of("warn"))',
+    '                .containsEntry("effectiveScores", Map.of("CP", 80))\n'
+    '                .containsEntry("scoreSemanticsComplete", true)\n'
+    '                .containsEntry("warnings", List.of("warn"))',
+    "error event completeness assertion",
+)
+product_incremental_test = '''    @Test
+    void incrementalProductDetailOmitsBatchLocalEffectiveRelevance() {
+        TaxonomyService taxonomyService = mock(TaxonomyService.class);
+        when(taxonomyService.getFullTree()).thenReturn(List.of(productTree()));
+        AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(taxonomyService);
+
+        AnalysisSseEventMapper.MappedEvent mapped = semanticMapper.map(
+                new AnalysisStreamEvent.Scores(
+                        Map.of("IP-P", 80), Map.of(), "product batch", null));
+
+        Map<String, Object> payload = payload(mapped);
+        AnalysisSseEventMapper.IncrementalScoreDetail detail =
+                (AnalysisSseEventMapper.IncrementalScoreDetail)
+                        ((Map<?, ?>) payload.get("scoreDetails")).get("IP-P");
+        assertThat(detail.kind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
+        assertThat(detail.rawScore()).isEqualTo(80);
+        assertThat(detail.parentCode()).isEqualTo("IP-F");
+        assertThat(payload)
+                .containsEntry("scoreSemanticsComplete", false)
+                .doesNotContainKeys(
+                        "effectiveScores", "productSuitabilityScores",
+                        "scoreSemanticsWarnings");
     }
 
 '''
-diff_test = replace_once(
-    diff_test,
-    "    private AnalysisResult productAnalysis(\n",
-    added_score_test + "    private AnalysisResult productAnalysis(\n",
-    "added score regression",
+mapper_test = replace_once(
+    mapper_test,
+    "    @Test\n    void mapTerminalEventsPreserveExistingNamesAndAddEffectiveScores() {\n",
+    product_incremental_test
+    + "    @Test\n    void mapTerminalEventsPreserveExistingNamesAndAddEffectiveScores() {\n",
+    "product incremental regression",
 )
-diff_test_path.write_text(diff_test, encoding="utf-8")
+mapper_test_path.write_text(mapper_test, encoding="utf-8")
 
 
-# Snapshot report generation deliberately enriches the format-neutral report with
-# typed score evidence and an evidence-bound digest. Test value preservation rather
-# than obsolete object identity.
-snapshot_test_path = Path(
-    "taxonomy-app/src/test/java/com/taxonomy/portfolio/report/"
-    "DecisionRationaleSnapshotReportTest.java"
+# Conflicting duplicate taxonomy codes must not make role/parent interpretation
+# depend on traversal order.
+semantics_path = Path(
+    "taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisScoreSemantics.java"
 )
-snapshot_test = snapshot_test_path.read_text(encoding="utf-8")
-snapshot_test = replace_once(
-    snapshot_test,
-    "        assertThat(actual).isSameAs(expected);",
-    "        assertThat(actual).isNotSameAs(expected);\n"
-    "        assertThat(actual.title()).isEqualTo(expected.title());\n"
-    "        assertThat(actual.requirement()).isEqualTo(expected.requirement());\n"
-    "        assertThat(actual.status()).isEqualTo(expected.status());\n"
-    "        assertThat(actual.scoreDetails()).containsKey(\"CP\");\n"
-    "        assertThat(actual.metadata().analysisSnapshotFingerprintSha256())\n"
-    "                .hasSize(64)\n"
-    "                .isNotEqualTo(\n"
-    "                        expected.metadata().analysisSnapshotFingerprintSha256());",
-    "snapshot enrichment expectation",
+semantics = semantics_path.read_text(encoding="utf-8")
+old_visit = '''        String code = node.getCode().strip();
+        if (!activeCodes.add(code)) {
+            return;
+        }
+        String parentCode = firstNonBlank(node.getParentCode(), inheritedParentCode);
+        String role = node.getAnalysisRole() == null
+                ? "CATEGORY" : node.getAnalysisRole().strip().toUpperCase(Locale.ROOT);
+        result.putIfAbsent(code, new NodeContext(parentCode, role));'''
+new_visit = '''        String code = node.getCode().strip();
+        String parentCode = firstNonBlank(node.getParentCode(), inheritedParentCode);
+        String role = node.getAnalysisRole() == null
+                ? "CATEGORY" : node.getAnalysisRole().strip().toUpperCase(Locale.ROOT);
+        NodeContext context = new NodeContext(parentCode, role);
+        NodeContext previous = result.putIfAbsent(code, context);
+        if (previous != null && !previous.equals(context)) {
+            throw new IllegalArgumentException(
+                    "Taxonomy tree contains conflicting score-semantics definitions for node "
+                            + code + ": " + previous + " versus " + context);
+        }
+        if (!activeCodes.add(code)) {
+            return;
+        }'''
+semantics = replace_once(
+    semantics, old_visit, new_visit, "conflicting duplicate taxonomy codes"
 )
-snapshot_test = replace_once(
-    snapshot_test,
-    "        assertThat(input.scores()).containsEntry(\"CP\", 100);",
-    "        assertThat(input.scores()).containsEntry(\"CP\", 100);\n"
-    "        assertThat(input.scoreDetails()).containsKey(\"CP\");",
-    "snapshot input score details",
-)
-snapshot_test_path.write_text(snapshot_test, encoding="utf-8")
+semantics_path.write_text(semantics, encoding="utf-8")
 
 
-# Exercise the same complete typed score envelope that the browser export action
-# sends. Reusing effective scores as raw suitability would apply product weighting twice.
-e2e_path = Path(".github/scripts/document-template-report-download.mjs")
-e2e = e2e_path.read_text(encoding="utf-8")
-e2e = replace_once(
-    e2e,
-    "      scores: state?.currentScores || {},\n"
-    "      reasons: state?.currentReasons || {},",
-    "      scores: state?.currentScores || {},\n"
-    "      rawScores: state?.currentRawScores || state?.currentScores || {},\n"
-    "      effectiveScores: state?.currentEffectiveScores || state?.currentScores || {},\n"
-    "      scoreDetails: state?.currentScoreDetails || {},\n"
-    "      productSuitabilityScores: state?.currentProductSuitabilityScores || {},\n"
-    "      scoreSemanticsVersion: state?.scoreSemanticsVersion || 0,\n"
-    "      reasons: state?.currentReasons || {},",
-    "document E2E score envelope",
+semantics_test_path = Path(
+    "taxonomy-domain/src/test/java/com/taxonomy/dto/AnalysisScoreSemanticsTest.java"
 )
-e2e = replace_once(
-    e2e,
-    "      `Completed product coverage gaps require FINAL_WITH_WARNINGS, got ${report.status}`);",
-    "      `Completed product coverage gaps require FINAL_WITH_WARNINGS, got ${report.status}; `\n"
-    "        + `warnings=${JSON.stringify(report.warnings || [])}`);",
-    "document E2E status diagnostic",
+semantics_test = semantics_test_path.read_text(encoding="utf-8")
+semantics_test = replace_once(
+    semantics_test,
+    "import static org.junit.jupiter.api.Assertions.assertTrue;\n",
+    "import static org.junit.jupiter.api.Assertions.assertThrows;\n"
+    "import static org.junit.jupiter.api.Assertions.assertTrue;\n",
+    "assertThrows import",
 )
-e2e_path.write_text(e2e, encoding="utf-8")
+duplicate_test = '''    @Test
+    void conflictingDuplicateNodeDefinitionsFailIndependentlyOfTraversalOrder() {
+        TaxonomyNodeDto first = node("IP-P", "IP-F1", "PRODUCT");
+        TaxonomyNodeDto second = node("IP-P", "IP-F2", "CATEGORY");
+
+        for (List<TaxonomyNodeDto> order : List.of(
+                List.of(first, second), List.of(second, first))) {
+            IllegalArgumentException failure = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> AnalysisScoreSemantics.derive(Map.of("IP-P", 80), order));
+            assertTrue(failure.getMessage().contains(
+                    "conflicting score-semantics definitions for node IP-P"));
+        }
+    }
+
+'''
+semantics_test = replace_once(
+    semantics_test,
+    "    @Test\n    void explicitRawScoresWinRegardlessOfLegacyJsonPropertyOrder() {\n",
+    duplicate_test
+    + "    @Test\n    void explicitRawScoresWinRegardlessOfLegacyJsonPropertyOrder() {\n",
+    "duplicate semantics regression",
+)
+semantics_test_path.write_text(semantics_test, encoding="utf-8")
+
+
+# An empty JavaScript record is the canonical no-score state after common startup
+# initialization. The browser acceptance must not require the narrower null value.
+ui_path = Path(".github/scripts/ui-primary-session-workflow.mjs")
+ui = ui_path.read_text(encoding="utf-8")
+old_state = "      && !state?.currentScores\n"
+new_state = "      && Object.keys(state?.currentScores || {}).length === 0\n"
+if ui.count(old_state) != 2:
+    raise SystemExit(
+        f"UI currentScores empty-state checks: expected two, found {ui.count(old_state)}"
+    )
+ui = ui.replace(old_state, new_state)
+old_legacy = "      && !window._taxonomyCurrentScores\n"
+new_legacy = "      && Object.keys(window._taxonomyCurrentScores || {}).length === 0\n"
+if ui.count(old_legacy) != 2:
+    raise SystemExit(
+        f"UI legacy score empty-state checks: expected two, found {ui.count(old_legacy)}"
+    )
+ui = ui.replace(old_legacy, new_legacy)
+ui_path.write_text(ui, encoding="utf-8")
