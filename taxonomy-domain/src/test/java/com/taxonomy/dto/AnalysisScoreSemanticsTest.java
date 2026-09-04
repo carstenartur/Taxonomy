@@ -2,6 +2,7 @@ package com.taxonomy.dto;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -106,6 +107,25 @@ class AnalysisScoreSemanticsTest {
                 () -> AnalysisScoreSemantics.derive(Map.of("IP-DUP", 80), List.of(root)));
 
         assertTrue(failure.getMessage().contains("duplicate node code IP-DUP"));
+    }
+
+    @Test
+    void semanticsWarningsRemainBoundedWithOneSuppressionMarker() {
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        for (int index = 0; index < 150; index++) {
+            scores.put("UNKNOWN-" + String.format("%03d", index), 50);
+        }
+
+        AnalysisScoreSemantics.Derived derived =
+                AnalysisScoreSemantics.derive(scores, List.of());
+
+        assertEquals(150, derived.effectiveScores().size());
+        assertEquals(100, derived.warnings().size());
+        assertEquals("Additional score-semantics warnings were suppressed.",
+                derived.warnings().get(derived.warnings().size() - 1));
+        assertEquals(1L, derived.warnings().stream()
+                .filter(warning -> warning.contains("were suppressed"))
+                .count());
     }
 
     @Test

@@ -8,6 +8,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AnalysisEvidenceFingerprintTest {
@@ -89,6 +90,42 @@ class AnalysisEvidenceFingerprintTest {
         TaxonomyNodeDto changedParentRoot = node("IP", null, "CATEGORY");
         changedParentRoot.setChildren(List.of(changedParentFamily));
         assertNotEquals(baseline, TaxonomyDataFingerprint.sha256(List.of(changedParentRoot)));
+    }
+
+    @Test
+    void taxonomyFingerprintRejectsReusedNodeInstances() {
+        TaxonomyNodeDto shared = node("IP-P", null, "PRODUCT");
+        TaxonomyNodeDto firstFamily = node("IP-F1", "IP", "PRODUCT_FAMILY");
+        firstFamily.setChildren(List.of(shared));
+        TaxonomyNodeDto secondFamily = node("IP-F2", "IP", "PRODUCT_FAMILY");
+        secondFamily.setChildren(List.of(shared));
+        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
+        root.setChildren(List.of(firstFamily, secondFamily));
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> TaxonomyDataFingerprint.sha256(List.of(root)));
+
+        assertTrue(failure.getMessage().contains("reuses node IP-P"));
+    }
+
+    @Test
+    void taxonomyFingerprintRejectsCyclesAndDuplicateCodes() {
+        TaxonomyNodeDto cycleRoot = node("IP", null, "CATEGORY");
+        cycleRoot.setChildren(List.of(cycleRoot));
+        IllegalArgumentException cycleFailure = assertThrows(
+                IllegalArgumentException.class,
+                () -> TaxonomyDataFingerprint.sha256(List.of(cycleRoot)));
+        assertTrue(cycleFailure.getMessage().contains("cycle at node IP"));
+
+        TaxonomyNodeDto duplicateRoot = node("IP", null, "CATEGORY");
+        duplicateRoot.setChildren(List.of(
+                node("IP-DUP", "IP", "CATEGORY"),
+                node("IP-DUP", "IP", "CATEGORY")));
+        IllegalArgumentException duplicateFailure = assertThrows(
+                IllegalArgumentException.class,
+                () -> TaxonomyDataFingerprint.sha256(List.of(duplicateRoot)));
+        assertTrue(duplicateFailure.getMessage().contains("duplicate node code IP-DUP"));
     }
 
     private TaxonomyNodeDto node(String code, String parentCode, String role) {

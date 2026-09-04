@@ -25,6 +25,10 @@ public final class AnalysisScoreSemantics {
     public static final int CURRENT_VERSION = 1;
     public static final String ROLE_PRODUCT = "PRODUCT";
 
+    private static final int MAX_WARNINGS = 100;
+    private static final String SUPPRESSED_WARNINGS_MESSAGE =
+            "Additional score-semantics warnings were suppressed.";
+
     private AnalysisScoreSemantics() {
     }
 
@@ -49,14 +53,14 @@ public final class AnalysisScoreSemantics {
 
             if (context == null) {
                 kind = AnalysisScoreKind.HIERARCHICAL_RELEVANCE;
-                warnings.add("Score semantics could not resolve taxonomy node " + code
+                addWarning(warnings, "Score semantics could not resolve taxonomy node " + code
                         + "; treating its value as hierarchical relevance.");
             } else if (ROLE_PRODUCT.equals(context.analysisRole())) {
                 kind = AnalysisScoreKind.PRODUCT_SUITABILITY;
                 productSuitabilityScores.put(code, rawScore);
                 if (parentCode == null || parentScore == null) {
                     effectiveRelevance = 0;
-                    warnings.add("Concrete product " + code
+                    addWarning(warnings, "Concrete product " + code
                             + " has no evaluated direct family score; its effective relevance is 0.");
                 } else {
                     effectiveRelevance = effectiveProductRelevance(parentScore, rawScore);
@@ -80,6 +84,14 @@ public final class AnalysisScoreSemantics {
         int family = clamp(familyRelevance);
         int product = clamp(suitability);
         return clamp((int) Math.round(family * product / 100.0));
+    }
+
+    private static void addWarning(List<String> warnings, String warning) {
+        if (warnings.size() < MAX_WARNINGS - 1) {
+            warnings.add(warning);
+        } else if (warnings.size() == MAX_WARNINGS - 1) {
+            warnings.add(SUPPRESSED_WARNINGS_MESSAGE);
+        }
     }
 
     private static Map<String, Integer> normalizeScores(Map<String, Integer> source) {

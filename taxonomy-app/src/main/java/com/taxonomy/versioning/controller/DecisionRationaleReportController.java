@@ -278,7 +278,7 @@ public class DecisionRationaleReportController {
 
     private boolean validScoreMap(Map<String, Integer> scores) {
         return scores != null && scores.entrySet().stream().allMatch(entry ->
-                boundedText(entry.getKey(), MAX_NODE_CODE_LENGTH, false)
+                boundedNodeCode(entry.getKey())
                         && entry.getValue() != null
                         && entry.getValue() >= 0
                         && entry.getValue() <= 100);

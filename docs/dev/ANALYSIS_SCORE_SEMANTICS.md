@@ -44,12 +44,15 @@ The product is displayed as `Suitability 80%; effective relevance 32/100`. It is
 - `productSuitabilityScores`: raw values for concrete products only;
 - `scoreDetails`: node-level kind, raw value, effective value, parent identity and parent value;
 - `scoreSemanticsVersion`: version of this interpretation contract;
-- `scoreSemanticsWarnings`: bounded compatibility warnings.
+- `scoreSemanticsWarnings`: at most 100 compatibility warnings, including one final suppression
+  marker when further warnings exist.
 
 Old snapshots that contain only `scores` remain readable. Taxonomy derives their semantics from the
 frozen taxonomy tree. An unresolved product parent fails closed to effective relevance zero and
 produces a warning instead of promoting conditional suitability to global relevance. Duplicate node
-codes or hierarchy cycles are rejected rather than resolved by traversal order.
+codes, reused node objects and hierarchy cycles are rejected rather than resolved by traversal
+order. HTTP report requests must use canonical, already-trimmed score keys so semantic normalization
+cannot collapse distinct request entries.
 
 ## Streaming
 

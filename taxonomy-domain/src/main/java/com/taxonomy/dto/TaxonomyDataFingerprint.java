@@ -58,9 +58,10 @@ public final class TaxonomyDataFingerprint {
     private static List<NodeEvidence> evidence(List<TaxonomyNodeDto> roots) {
         Map<String, NodeEvidence> byCode = new LinkedHashMap<>();
         Set<TaxonomyNodeDto> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<TaxonomyNodeDto> active = Collections.newSetFromMap(new IdentityHashMap<>());
         if (roots != null) {
             for (TaxonomyNodeDto root : roots) {
-                collect(root, null, byCode, visited);
+                collect(root, null, byCode, visited, active);
             }
         }
         return byCode.values().stream()
@@ -72,32 +73,45 @@ public final class TaxonomyDataFingerprint {
             TaxonomyNodeDto node,
             String inheritedParentCode,
             Map<String, NodeEvidence> byCode,
-            Set<TaxonomyNodeDto> visited) {
-        if (node == null || !visited.add(node)
-                || node.getCode() == null || node.getCode().isBlank()) {
+            Set<TaxonomyNodeDto> visited,
+            Set<TaxonomyNodeDto> active) {
+        if (node == null || node.getCode() == null || node.getCode().isBlank()) {
             return;
         }
         String code = node.getCode().strip();
-        NodeEvidence current = new NodeEvidence(
-                code,
-                safe(node.getNameEn()),
-                safe(node.getDescriptionEn()),
-                safe(node.getTaxonomyRoot()),
-                node.getLevel(),
-                safe(firstNonBlank(node.getParentCode(), inheritedParentCode)),
-                normalizedRole(node.getAnalysisRole()));
-        NodeEvidence previous = byCode.putIfAbsent(code, current);
-        if (previous != null && !previous.equals(current)) {
+        if (!active.add(node)) {
             throw new IllegalArgumentException(
-                    "Taxonomy tree contains conflicting definitions for node " + code);
+                    "Taxonomy tree contains a cycle at node " + code);
         }
+        if (!visited.add(node)) {
+            active.remove(node);
+            throw new IllegalArgumentException(
+                    "Taxonomy tree reuses node " + code + " more than once");
+        }
+        try {
+            NodeEvidence current = new NodeEvidence(
+                    code,
+                    safe(node.getNameEn()),
+                    safe(node.getDescriptionEn()),
+                    safe(node.getTaxonomyRoot()),
+                    node.getLevel(),
+                    safe(firstNonBlank(node.getParentCode(), inheritedParentCode)),
+                    normalizedRole(node.getAnalysisRole()));
+            NodeEvidence previous = byCode.putIfAbsent(code, current);
+            if (previous != null) {
+                throw new IllegalArgumentException(
+                        "Taxonomy tree contains duplicate node code " + code);
+            }
 
-        List<TaxonomyNodeDto> children = node.getChildren() == null
-                ? List.of() : new ArrayList<>(node.getChildren());
-        children.sort(Comparator.comparing(
-                child -> child == null || child.getCode() == null ? "" : child.getCode()));
-        for (TaxonomyNodeDto child : children) {
-            collect(child, code, byCode, visited);
+            List<TaxonomyNodeDto> children = node.getChildren() == null
+                    ? List.of() : new ArrayList<>(node.getChildren());
+            children.sort(Comparator.comparing(
+                    child -> child == null || child.getCode() == null ? "" : child.getCode()));
+            for (TaxonomyNodeDto child : children) {
+                collect(child, code, byCode, visited, active);
+            }
+        } finally {
+            active.remove(node);
         }
     }
 

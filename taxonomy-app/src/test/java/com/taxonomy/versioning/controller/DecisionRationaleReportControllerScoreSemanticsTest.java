@@ -14,6 +14,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,13 +34,7 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
         root.setChildren(List.of(family));
         when(taxonomyService.getFullTree()).thenReturn(List.of(root));
 
-        DecisionRationaleReportController controller = new DecisionRationaleReportController(
-                mock(DecisionRationaleReportService.class),
-                mock(ReportRendererRegistry.class),
-                mock(RepositoryStateService.class),
-                mock(WorkspaceResolver.class),
-                new DecisionRationaleScoreSemanticsAdapter(),
-                taxonomyService);
+        DecisionRationaleReportController controller = controller(taxonomyService);
 
         AnalysisScoreDetail injectedProduct = new AnalysisScoreDetail(
                 "IP-P", AnalysisScoreKind.PRODUCT_SUITABILITY,
@@ -74,6 +69,38 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
         assertThat(derived.scoreDetails().get("IP-P").parentScore()).isEqualTo(40);
         assertThat(derived.scoreDetails().get("IP-P").kind())
                 .isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
+    }
+
+    @Test
+    void rejectsNonCanonicalScoreKeysBeforeSemanticNormalization() {
+        DecisionRationaleReportController controller = controller(null);
+        Map<String, Integer> colliding = new LinkedHashMap<>();
+        colliding.put("IP", 40);
+        colliding.put("IP ", 60);
+
+        Boolean canonical = ReflectionTestUtils.invokeMethod(
+                controller, "validScoreMap", Map.of("IP", 40));
+        Boolean leadingWhitespace = ReflectionTestUtils.invokeMethod(
+                controller, "validScoreMap", Map.of(" IP", 40));
+        Boolean trailingWhitespace = ReflectionTestUtils.invokeMethod(
+                controller, "validScoreMap", Map.of("IP ", 40));
+        Boolean stripCollision = ReflectionTestUtils.invokeMethod(
+                controller, "validScoreMap", colliding);
+
+        assertThat(canonical).isTrue();
+        assertThat(leadingWhitespace).isFalse();
+        assertThat(trailingWhitespace).isFalse();
+        assertThat(stripCollision).isFalse();
+    }
+
+    private DecisionRationaleReportController controller(TaxonomyService taxonomyService) {
+        return new DecisionRationaleReportController(
+                mock(DecisionRationaleReportService.class),
+                mock(ReportRendererRegistry.class),
+                mock(RepositoryStateService.class),
+                mock(WorkspaceResolver.class),
+                new DecisionRationaleScoreSemanticsAdapter(),
+                taxonomyService);
     }
 
     private TaxonomyNodeDto node(String code, String parentCode, String role) {
