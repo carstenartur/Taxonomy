@@ -112,6 +112,19 @@ class DecisionRationaleScoreSemanticsAdapterTest {
     }
 
     @Test
+    void mismatchedScoreDetailNodeCodeFailsClosed() {
+        AnalysisScoreDetail detail = new AnalysisScoreDetail(
+                "OTHER", AnalysisScoreKind.PRODUCT_SUITABILITY,
+                80, 32, "IP-F", 40);
+
+        assertThatThrownBy(() -> adapter.enrichReasons(
+                Map.of(), Map.of("IP-P", detail), Locale.ENGLISH))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Score detail key IP-P")
+                .hasMessageContaining("detail node code OTHER");
+    }
+
+    @Test
     void adaptedScoreDetailsRetainCanonicalOrderAndRemainImmutable() {
         AnalysisScoreDetail zDetail = new AnalysisScoreDetail(
                 "Z", AnalysisScoreKind.HIERARCHICAL_RELEVANCE,

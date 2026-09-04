@@ -229,12 +229,19 @@ public class DecisionRationaleScoreSemanticsAdapter {
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> {
                     String code = entry.getKey().strip();
+                    AnalysisScoreDetail detail = entry.getValue();
+                    if (!code.equals(detail.nodeCode())) {
+                        throw new IllegalArgumentException(
+                                "Score detail key " + code
+                                        + " does not match detail node code "
+                                        + detail.nodeCode());
+                    }
                     if (result.containsKey(code)) {
                         throw new IllegalArgumentException(
                                 "Score details contain multiple entries for canonical node code "
                                         + code);
                     }
-                    result.put(code, entry.getValue());
+                    result.put(code, detail);
                 });
         return Collections.unmodifiableMap(new LinkedHashMap<>(result));
     }

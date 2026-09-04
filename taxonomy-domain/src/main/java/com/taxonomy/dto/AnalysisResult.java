@@ -214,6 +214,7 @@ public class AnalysisResult {
             AnalysisScoreDetail detail = scoreDetails.get(entry.getKey());
             Integer effective = effectiveScores.get(entry.getKey());
             if (entry.getValue() == null || detail == null || effective == null
+                    || !entry.getKey().equals(detail.nodeCode())
                     || detail.rawScore() != Math.max(0, Math.min(100, entry.getValue()))
                     || detail.effectiveRelevance() != effective) {
                 return false;

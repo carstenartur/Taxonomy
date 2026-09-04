@@ -162,6 +162,28 @@ class AnalysisScoreSemanticsTest {
     }
 
     @Test
+    void mismatchedScoreDetailNodeCodeForcesRecomputation() {
+        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
+        AnalysisResult result = new AnalysisResult(Map.of("IP", 100), List.of(root));
+        AnalysisScoreDetail forged = new AnalysisScoreDetail(
+                "OTHER", AnalysisScoreKind.ROOT_RELEVANCE,
+                100, 100, null, null);
+        Map<String, AnalysisScoreDetail> forgedDetails = Map.of("IP", forged);
+        result.setScoreDetails(forgedDetails);
+        result.setEffectiveScores(Map.of("IP", 100));
+        result.setScoreSemanticsVersion(AnalysisScoreSemantics.CURRENT_VERSION);
+        result.setScoreSemanticsFingerprintSha256(
+                AnalysisScoreSemanticsFingerprint.sha256(forgedDetails));
+
+        AnalysisScoreDetail repaired = result.getScoreDetails().get("IP");
+
+        assertEquals("IP", repaired.nodeCode());
+        assertEquals(AnalysisScoreKind.ROOT_RELEVANCE, repaired.kind());
+        assertEquals(result.getScoreSemanticsFingerprintSha256(),
+                AnalysisScoreSemanticsFingerprint.sha256(result.getScoreDetails()));
+    }
+
+    @Test
     void explicitRawScoresWinRegardlessOfLegacyJsonPropertyOrder() {
         AnalysisResult result = new AnalysisResult();
         result.setRawScores(Map.of("P", 80));
