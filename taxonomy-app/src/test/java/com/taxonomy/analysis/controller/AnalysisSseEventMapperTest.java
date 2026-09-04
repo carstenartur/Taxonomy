@@ -35,8 +35,7 @@ class AnalysisSseEventMapperTest {
                 detail));
 
         assertThat(mapped.name()).isEqualTo("scores");
-        assertThat(mapped.payload()).isInstanceOf(Map.class);
-        Map<?, ?> payload = (Map<?, ?>) mapped.payload();
+        Map<String, Object> payload = payload(mapped);
         assertThat(payload)
                 .containsEntry("scores", Map.of("CP", 80))
                 .containsEntry("rawScores", Map.of("CP", 80))
@@ -49,7 +48,7 @@ class AnalysisSseEventMapperTest {
                 .containsEntry("durationMs", 42L)
                 .containsEntry("error", "minor")
                 .doesNotContainKey("effectiveScores");
-        assertThat((Map<?, ?>) payload.get("scoreDetails")).containsKey("CP");
+        assertThat(((Map<?, ?>) payload.get("scoreDetails")).get("CP")).isNotNull();
     }
 
     @Test
@@ -69,7 +68,7 @@ class AnalysisSseEventMapperTest {
                 List.of()));
 
         assertThat(complete.name()).isEqualTo("complete");
-        Map<?, ?> completePayload = (Map<?, ?>) complete.payload();
+        Map<String, Object> completePayload = payload(complete);
         assertThat(completePayload)
                 .containsEntry("status", "SUCCESS")
                 .containsEntry("totalScores", Map.of("CP", 80, "CR", 0))
@@ -81,7 +80,7 @@ class AnalysisSseEventMapperTest {
                 .containsEntry("productCoverageGaps", List.of());
 
         assertThat(error.name()).isEqualTo("error");
-        Map<?, ?> errorPayload = (Map<?, ?>) error.payload();
+        Map<String, Object> errorPayload = payload(error);
         assertThat(errorPayload)
                 .containsEntry("status", "PARTIAL")
                 .containsEntry("errorMessage", "boom")
@@ -110,17 +109,21 @@ class AnalysisSseEventMapperTest {
                         Map.of("IP", 100, "IP-F", 40, "IP-P", 80),
                         List.of(), List.of(), List.of()));
 
-        Map<?, ?> payload = (Map<?, ?>) mapped.payload();
-        assertThat((Map<?, ?>) payload.get("totalScores"))
-                .containsEntry("IP-P", 32);
-        assertThat((Map<?, ?>) payload.get("rawScores"))
-                .containsEntry("IP-P", 80);
-        assertThat((Map<?, ?>) payload.get("productSuitabilityScores"))
-                .containsEntry("IP-P", 80);
+        Map<String, Object> payload = payload(mapped);
+        assertThat(((Map<?, ?>) payload.get("totalScores")).get("IP-P")).isEqualTo(32);
+        assertThat(((Map<?, ?>) payload.get("rawScores")).get("IP-P")).isEqualTo(80);
+        assertThat(((Map<?, ?>) payload.get("productSuitabilityScores")).get("IP-P"))
+                .isEqualTo(80);
         AnalysisScoreDetail productDetail = (AnalysisScoreDetail)
                 ((Map<?, ?>) payload.get("scoreDetails")).get("IP-P");
         assertThat(productDetail.kind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
         assertThat(productDetail.effectiveRelevance()).isEqualTo(32);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> payload(AnalysisSseEventMapper.MappedEvent event) {
+        assertThat(event.payload()).isInstanceOf(Map.class);
+        return (Map<String, Object>) event.payload();
     }
 
     private TaxonomyNodeDto node(String code, String parentCode, String role) {
