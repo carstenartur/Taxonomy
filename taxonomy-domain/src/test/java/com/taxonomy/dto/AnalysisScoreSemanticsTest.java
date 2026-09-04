@@ -111,6 +111,19 @@ class AnalysisScoreSemanticsTest {
     }
 
     @Test
+    void canonicalScoreKeyCollisionsFailClosed() {
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        scores.put("IP", 40);
+        scores.put("IP ", 60);
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> AnalysisScoreSemantics.derive(scores, List.of()));
+
+        assertTrue(failure.getMessage().contains("canonical node code IP"));
+    }
+
+    @Test
     void semanticsWarningsRemainBoundedWithOneSuppressionMarker() {
         Map<String, Integer> scores = new LinkedHashMap<>();
         for (int index = 0; index < 150; index++) {

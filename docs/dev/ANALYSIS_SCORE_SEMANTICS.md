@@ -41,7 +41,7 @@ The product is displayed as `Suitability 80%; effective relevance 32/100`. It is
 
 - `rawScores`: canonical provider evidence before product-relevance weighting; malformed legacy
   entries with blank keys or null values are discarded once, keys are trimmed and values are
-  bounded to 0–100;
+  bounded to 0–100; multiple source keys that collapse to the same canonical code fail closed;
 - `scores` and `effectiveScores`: comparable relevance used by existing generic consumers;
 - `productSuitabilityScores`: raw values for concrete products only;
 - `scoreDetails`: node-level kind, raw value, effective value, parent identity and parent value;

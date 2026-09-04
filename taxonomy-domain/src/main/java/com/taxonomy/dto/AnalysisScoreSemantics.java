@@ -103,7 +103,15 @@ public final class AnalysisScoreSemantics {
                 .filter(entry -> entry.getKey() != null && !entry.getKey().isBlank()
                         && entry.getValue() != null)
                 .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> result.put(entry.getKey().strip(), clamp(entry.getValue())));
+                .forEach(entry -> {
+                    String code = entry.getKey().strip();
+                    if (result.containsKey(code)) {
+                        throw new IllegalArgumentException(
+                                "Score map contains multiple entries for canonical node code "
+                                        + code);
+                    }
+                    result.put(code, clamp(entry.getValue()));
+                });
         return result;
     }
 
