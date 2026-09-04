@@ -72,6 +72,28 @@ class AnalysisScoreSemanticsTest {
     }
 
     @Test
+    void settingFrozenTreeAfterAnEarlyReadRecomputesScoreSemantics() {
+        AnalysisResult result = new AnalysisResult();
+        result.setScores(Map.of("IP-F", 40, "IP-P", 80));
+
+        assertEquals(80, result.getScores().get("IP-P"));
+        assertEquals(AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
+                result.getScoreDetails().get("IP-P").kind());
+
+        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
+        TaxonomyNodeDto family = node("IP-F", "IP", "PRODUCT_FAMILY");
+        TaxonomyNodeDto product = node("IP-P", "IP-F", "PRODUCT");
+        family.setChildren(List.of(product));
+        root.setChildren(List.of(family));
+        result.setTree(List.of(root));
+
+        assertEquals(32, result.getScores().get("IP-P"));
+        assertEquals(80, result.getProductSuitabilityScores().get("IP-P"));
+        assertEquals(AnalysisScoreKind.PRODUCT_SUITABILITY,
+                result.getScoreDetails().get("IP-P").kind());
+    }
+
+    @Test
     void explicitRawScoresWinRegardlessOfLegacyJsonPropertyOrder() {
         AnalysisResult result = new AnalysisResult();
         result.setRawScores(Map.of("P", 80));
