@@ -28,43 +28,66 @@ public final class TaxonomyDataFingerprint {
      * the fingerprint even when its title and description remain unchanged.
      */
     public static String sha256(List<TaxonomyNodeDto> roots) {
-        Map<String, String> canonicalByCode = new LinkedHashMap<>();
+        MessageDigest digest = sha256Digest();
+        update(digest, VERSION);
+        evidence(roots).forEach(node -> update(digest, node.semanticLine()));
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    /**
+     * Reproduces the pre-score-semantics catalogue digest so historical snapshots remain
+     * verifiable after the stronger fingerprint algorithm is introduced.
+     */
+    public static String legacySha256(List<TaxonomyNodeDto> roots) {
+        StringBuilder canonical = new StringBuilder();
+        evidence(roots).forEach(node -> canonical.append(node.legacyLine()));
+        return rawSha256(canonical.toString());
+    }
+
+    public static boolean matchesRecorded(
+            String recordedFingerprint,
+            List<TaxonomyNodeDto> roots) {
+        if (recordedFingerprint == null || recordedFingerprint.isBlank()) {
+            return false;
+        }
+        String normalized = recordedFingerprint.strip();
+        return normalized.equalsIgnoreCase(sha256(roots))
+                || normalized.equalsIgnoreCase(legacySha256(roots));
+    }
+
+    private static List<NodeEvidence> evidence(List<TaxonomyNodeDto> roots) {
+        Map<String, NodeEvidence> byCode = new LinkedHashMap<>();
         Set<TaxonomyNodeDto> visited = Collections.newSetFromMap(new IdentityHashMap<>());
         if (roots != null) {
             for (TaxonomyNodeDto root : roots) {
-                collect(root, null, canonicalByCode, visited);
+                collect(root, null, byCode, visited);
             }
         }
-
-        MessageDigest digest = sha256Digest();
-        update(digest, VERSION);
-        canonicalByCode.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> update(digest, entry.getValue()));
-        return HexFormat.of().formatHex(digest.digest());
+        return byCode.values().stream()
+                .sorted(Comparator.comparing(NodeEvidence::code))
+                .toList();
     }
 
     private static void collect(
             TaxonomyNodeDto node,
             String inheritedParentCode,
-            Map<String, String> canonicalByCode,
+            Map<String, NodeEvidence> byCode,
             Set<TaxonomyNodeDto> visited) {
         if (node == null || !visited.add(node)
                 || node.getCode() == null || node.getCode().isBlank()) {
             return;
         }
         String code = node.getCode().strip();
-        String parentCode = firstNonBlank(node.getParentCode(), inheritedParentCode);
-        String canonical = String.join("\u001f",
+        NodeEvidence current = new NodeEvidence(
                 code,
                 safe(node.getNameEn()),
                 safe(node.getDescriptionEn()),
                 safe(node.getTaxonomyRoot()),
-                Integer.toString(node.getLevel()),
-                safe(parentCode),
+                node.getLevel(),
+                safe(firstNonBlank(node.getParentCode(), inheritedParentCode)),
                 normalizedRole(node.getAnalysisRole()));
-        String previous = canonicalByCode.putIfAbsent(code, canonical);
-        if (previous != null && !previous.equals(canonical)) {
+        NodeEvidence previous = byCode.putIfAbsent(code, current);
+        if (previous != null && !previous.equals(current)) {
             throw new IllegalArgumentException(
                     "Taxonomy tree contains conflicting definitions for node " + code);
         }
@@ -74,7 +97,7 @@ public final class TaxonomyDataFingerprint {
         children.sort(Comparator.comparing(
                 child -> child == null || child.getCode() == null ? "" : child.getCode()));
         for (TaxonomyNodeDto child : children) {
-            collect(child, code, canonicalByCode, visited);
+            collect(child, code, byCode, visited);
         }
     }
 
@@ -98,6 +121,12 @@ public final class TaxonomyDataFingerprint {
         }
     }
 
+    private static String rawSha256(String value) {
+        MessageDigest digest = sha256Digest();
+        return HexFormat.of().formatHex(
+                digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+    }
+
     private static void update(MessageDigest digest, String value) {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         digest.update((byte) (bytes.length >>> 24));
@@ -109,5 +138,35 @@ public final class TaxonomyDataFingerprint {
 
     private static String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private record NodeEvidence(
+            String code,
+            String nameEn,
+            String descriptionEn,
+            String taxonomyRoot,
+            int level,
+            String parentCode,
+            String analysisRole) {
+
+        private String semanticLine() {
+            return String.join("\u001f",
+                    code,
+                    nameEn,
+                    descriptionEn,
+                    taxonomyRoot,
+                    Integer.toString(level),
+                    parentCode,
+                    analysisRole);
+        }
+
+        private String legacyLine() {
+            return String.join("\u001f",
+                    code,
+                    nameEn,
+                    descriptionEn,
+                    taxonomyRoot,
+                    Integer.toString(level)) + "\n";
+        }
     }
 }
