@@ -1,0 +1,90 @@
+package com.taxonomy.dto;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class AnalysisScoreSemanticsTest {
+
+    @Test
+    void productSuitabilityIsRetainedWhileGenericScoresUseFamilyWeightedRelevance() {
+        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
+        TaxonomyNodeDto family = node("IP-F", "IP", "PRODUCT_FAMILY");
+        TaxonomyNodeDto first = node("IP-P1", "IP-F", "PRODUCT");
+        TaxonomyNodeDto second = node("IP-P2", "IP-F", "PRODUCT");
+        TaxonomyNodeDto ordinaryLeaf = node("IP-C", "IP", "CATEGORY");
+        family.setChildren(List.of(first, second));
+        root.setChildren(List.of(family, ordinaryLeaf));
+
+        AnalysisResult result = new AnalysisResult(
+                Map.of("IP", 100, "IP-F", 40, "IP-P1", 80, "IP-P2", 70, "IP-C", 60),
+                List.of(root));
+
+        assertEquals(80, result.getRawScores().get("IP-P1"));
+        assertEquals(80, result.getProductSuitabilityScores().get("IP-P1"));
+        assertEquals(32, result.getScores().get("IP-P1"));
+        assertEquals(28, result.getEffectiveScores().get("IP-P2"));
+        assertEquals(60, result.getScores().get("IP-C"));
+        assertEquals(AnalysisScoreKind.PRODUCT_SUITABILITY,
+                result.getScoreDetails().get("IP-P1").kind());
+        assertEquals(40, result.getScoreDetails().get("IP-P1").parentScore());
+        assertEquals(AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
+                result.getScoreDetails().get("IP-F").kind());
+        assertTrue(result.getScoreSemanticsWarnings().isEmpty());
+    }
+
+    @Test
+    void perfectProductOnWeakFamilyCannotOutrankStrongOrdinaryLeaf() {
+        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
+        TaxonomyNodeDto weakFamily = node("IP-F", "IP", "PRODUCT_FAMILY");
+        TaxonomyNodeDto product = node("IP-P", "IP-F", "PRODUCT");
+        TaxonomyNodeDto ordinaryLeaf = node("IP-C", "IP", "CATEGORY");
+        weakFamily.setChildren(List.of(product));
+        root.setChildren(List.of(weakFamily, ordinaryLeaf));
+
+        AnalysisResult result = new AnalysisResult(
+                Map.of("IP", 100, "IP-F", 10, "IP-P", 100, "IP-C", 80),
+                List.of(root));
+
+        assertEquals(100, result.getProductSuitabilityScores().get("IP-P"));
+        assertEquals(10, result.getScores().get("IP-P"));
+        assertTrue(result.getScores().get("IP-P") < result.getScores().get("IP-C"));
+    }
+
+    @Test
+    void missingProductFamilyScoreFailsClosedInsteadOfPromotingSuitability() {
+        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
+        TaxonomyNodeDto family = node("IP-F", "IP", "PRODUCT_FAMILY");
+        TaxonomyNodeDto product = node("IP-P", "IP-F", "PRODUCT");
+        family.setChildren(List.of(product));
+        root.setChildren(List.of(family));
+
+        AnalysisResult result = new AnalysisResult(Map.of("IP-P", 95), List.of(root));
+
+        assertEquals(95, result.getRawScores().get("IP-P"));
+        assertEquals(0, result.getScores().get("IP-P"));
+        assertFalse(result.getScoreSemanticsWarnings().isEmpty());
+    }
+
+    @Test
+    void explicitRawScoresWinRegardlessOfLegacyJsonPropertyOrder() {
+        AnalysisResult result = new AnalysisResult();
+        result.setRawScores(Map.of("P", 80));
+        result.setScores(Map.of("P", 32));
+
+        assertEquals(80, result.getRawScores().get("P"));
+    }
+
+    private TaxonomyNodeDto node(String code, String parentCode, String role) {
+        TaxonomyNodeDto node = new TaxonomyNodeDto();
+        node.setCode(code);
+        node.setParentCode(parentCode);
+        node.setAnalysisRole(role);
+        return node;
+    }
+}
