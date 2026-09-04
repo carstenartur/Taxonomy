@@ -20,6 +20,9 @@ public class AnalysisResult {
      */
     private transient boolean explicitRawScores;
 
+    /** Taxonomy-tree instance used to derive the currently cached score semantics. */
+    private transient List<TaxonomyNodeDto> scoreSemanticsTree;
+
     /** Version of the explicit score-semantics envelope. */
     private int scoreSemanticsVersion;
 
@@ -160,6 +163,7 @@ public class AnalysisResult {
         effectiveScores = new LinkedHashMap<>(derived.effectiveScores());
         productSuitabilityScores = new LinkedHashMap<>(derived.productSuitabilityScores());
         scoreSemanticsWarnings = new ArrayList<>(derived.warnings());
+        scoreSemanticsTree = tree;
     }
 
     private void ensureScoreSemantics() {
@@ -176,7 +180,8 @@ public class AnalysisResult {
     }
 
     private boolean hasCompleteScoreSemantics() {
-        if (scoreSemanticsVersion != AnalysisScoreSemantics.CURRENT_VERSION
+        if (scoreSemanticsTree != tree
+                || scoreSemanticsVersion != AnalysisScoreSemantics.CURRENT_VERSION
                 || scoreDetails == null || effectiveScores == null
                 || !scoreDetails.keySet().containsAll(rawScores.keySet())
                 || !effectiveScores.keySet().containsAll(rawScores.keySet())) {
@@ -208,7 +213,11 @@ public class AnalysisResult {
     public void setProvider(String provider) { this.provider = provider; }
 
     public List<TaxonomyNodeDto> getTree() { return tree; }
-    public void setTree(List<TaxonomyNodeDto> tree) { this.tree = tree; }
+    public void setTree(List<TaxonomyNodeDto> tree) {
+        this.tree = tree;
+        this.scoreSemanticsTree = null;
+        this.scoreSemanticsVersion = 0;
+    }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
