@@ -7,6 +7,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AnalysisScoreSemanticsTest {
@@ -91,6 +92,20 @@ class AnalysisScoreSemanticsTest {
         assertEquals(80, result.getProductSuitabilityScores().get("IP-P"));
         assertEquals(AnalysisScoreKind.PRODUCT_SUITABILITY,
                 result.getScoreDetails().get("IP-P").kind());
+    }
+
+    @Test
+    void duplicateTaxonomyCodesFailClosed() {
+        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
+        TaxonomyNodeDto first = node("IP-DUP", "IP", "CATEGORY");
+        TaxonomyNodeDto second = node("IP-DUP", "IP", "PRODUCT");
+        root.setChildren(List.of(first, second));
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> AnalysisScoreSemantics.derive(Map.of("IP-DUP", 80), List.of(root)));
+
+        assertTrue(failure.getMessage().contains("duplicate node code IP-DUP"));
     }
 
     @Test

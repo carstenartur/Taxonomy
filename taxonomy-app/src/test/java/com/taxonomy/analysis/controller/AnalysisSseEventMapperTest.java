@@ -51,7 +51,36 @@ class AnalysisSseEventMapperTest {
                 .containsEntry("durationMs", 42L)
                 .containsEntry("error", "minor")
                 .doesNotContainKey("effectiveScores");
-        assertThat(((Map<?, ?>) payload.get("scoreDetails")).get("CP")).isNotNull();
+        Map<?, ?> scoreDetails = (Map<?, ?>) payload.get("scoreDetails");
+        Map<?, ?> hint = (Map<?, ?>) scoreDetails.get("CP");
+        assertThat(hint)
+                .containsEntry("nodeCode", "CP")
+                .containsEntry("rawScore", 80)
+                .doesNotContainKeys("effectiveRelevance", "parentScore");
+    }
+
+    @Test
+    void incrementalProductDetailOmitsBatchLocalEffectiveValue() {
+        TaxonomyService taxonomyService = mock(TaxonomyService.class);
+        when(taxonomyService.getFullTree()).thenReturn(List.of(productTree()));
+        AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(taxonomyService);
+
+        AnalysisSseEventMapper.MappedEvent mapped = semanticMapper.map(
+                new AnalysisStreamEvent.Scores(
+                        Map.of("IP-P", 80), Map.of(), "product batch", null));
+
+        Map<String, Object> payload = payload(mapped);
+        Map<?, ?> scoreDetails = (Map<?, ?>) payload.get("scoreDetails");
+        Map<?, ?> hint = (Map<?, ?>) scoreDetails.get("IP-P");
+        assertThat(payload)
+                .doesNotContainKey("effectiveScores")
+                .containsKey("scoreSemanticsWarnings");
+        assertThat(hint)
+                .containsEntry("nodeCode", "IP-P")
+                .containsEntry("kind", AnalysisScoreKind.PRODUCT_SUITABILITY)
+                .containsEntry("rawScore", 80)
+                .containsEntry("parentCode", "IP-F")
+                .doesNotContainKeys("effectiveRelevance", "parentScore");
     }
 
     @Test

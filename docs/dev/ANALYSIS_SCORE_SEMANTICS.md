@@ -48,14 +48,17 @@ The product is displayed as `Suitability 80%; effective relevance 32/100`. It is
 
 Old snapshots that contain only `scores` remain readable. Taxonomy derives their semantics from the
 frozen taxonomy tree. An unresolved product parent fails closed to effective relevance zero and
-produces a warning instead of promoting conditional suitability to global relevance.
+produces a warning instead of promoting conditional suitability to global relevance. Duplicate node
+codes or hierarchy cycles are rejected rather than resolved by traversal order.
 
 ## Streaming
 
 Incremental SSE score batches remain raw because a concrete-product batch normally does not repeat
-its already emitted family score. They carry score kind and parent identity, allowing the browser to
-combine the batch with accumulated raw family evidence. Only complete and terminal-error events
-publish the authoritative full raw/effective envelope.
+its already emitted family score. Their `scoreDetails` entries are deliberately incomplete semantic
+hints containing only node identity, score kind, raw value and known parent identity. They do not
+publish `effectiveRelevance` or `parentScore`, and `scoreSemanticsWarnings` exposes unresolved
+batch-local context. The browser combines these hints with accumulated raw family evidence. Only
+complete and terminal-error events publish the authoritative full raw/effective envelope.
 
 ## Downstream rules
 

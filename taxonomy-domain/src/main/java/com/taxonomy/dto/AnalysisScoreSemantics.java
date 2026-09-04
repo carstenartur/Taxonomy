@@ -118,24 +118,37 @@ public final class AnalysisScoreSemantics {
             Map<String, NodeContext> result,
             Set<TaxonomyNodeDto> visited,
             Set<String> activeCodes) {
-        if (node == null || !visited.add(node) || node.getCode() == null
-                || node.getCode().isBlank()) {
+        if (node == null || node.getCode() == null || node.getCode().isBlank()) {
             return;
         }
         String code = node.getCode().strip();
         if (!activeCodes.add(code)) {
-            return;
+            throw new IllegalArgumentException(
+                    "The frozen taxonomy hierarchy contains a cycle at node code " + code);
         }
-        String parentCode = firstNonBlank(node.getParentCode(), inheritedParentCode);
-        String role = node.getAnalysisRole() == null
-                ? "CATEGORY" : node.getAnalysisRole().strip().toUpperCase(Locale.ROOT);
-        result.putIfAbsent(code, new NodeContext(parentCode, role));
-        List<TaxonomyNodeDto> children = node.getChildren() == null
-                ? List.of() : node.getChildren();
-        for (TaxonomyNodeDto child : children) {
-            visit(child, code, result, visited, activeCodes);
+        if (!visited.add(node)) {
+            activeCodes.remove(code);
+            throw new IllegalArgumentException(
+                    "The frozen taxonomy hierarchy reuses node " + code + " more than once");
         }
-        activeCodes.remove(code);
+        try {
+            String parentCode = firstNonBlank(node.getParentCode(), inheritedParentCode);
+            String role = node.getAnalysisRole() == null
+                    ? "CATEGORY" : node.getAnalysisRole().strip().toUpperCase(Locale.ROOT);
+            NodeContext context = new NodeContext(parentCode, role);
+            NodeContext previous = result.putIfAbsent(code, context);
+            if (previous != null) {
+                throw new IllegalArgumentException(
+                        "The frozen taxonomy hierarchy contains duplicate node code " + code);
+            }
+            List<TaxonomyNodeDto> children = node.getChildren() == null
+                    ? List.of() : node.getChildren();
+            for (TaxonomyNodeDto child : children) {
+                visit(child, code, result, visited, activeCodes);
+            }
+        } finally {
+            activeCodes.remove(code);
+        }
     }
 
     private static String firstNonBlank(String first, String second) {

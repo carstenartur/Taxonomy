@@ -2,12 +2,14 @@ package com.taxonomy.analysis.controller;
 
 import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,13 +105,15 @@ public class AnalysisSseEventMapper {
         AnalysisScoreSemantics.Derived semantics = derive(scores.newScores());
         Map<String, Object> payload = new LinkedHashMap<>();
         // Incremental batches deliberately remain raw. A product batch usually does not contain
-        // its already emitted family score, so publishing a batch-local effective value would be
-        // false. The typed details retain kind/parent identity and the browser combines them with
-        // its accumulated raw parent score. Terminal events contain the authoritative envelope.
+        // its already emitted family score, so neither an effective map nor a batch-local
+        // effective value is authoritative. scoreDetails therefore carries only raw kind/parent
+        // hints; the browser combines them with accumulated raw family evidence. Terminal events
+        // contain the complete authoritative envelope.
         payload.put("scores", scores.newScores());
         payload.put("rawScores", scores.newScores());
-        payload.put("scoreDetails", semantics.scoreDetails());
+        payload.put("scoreDetails", incrementalScoreDetails(semantics.scoreDetails()));
         payload.put("scoreSemanticsVersion", AnalysisScoreSemantics.CURRENT_VERSION);
+        payload.put("scoreSemanticsWarnings", semantics.warnings());
         payload.put("reasons", scores.reasons() != null ? scores.reasons() : Map.of());
         payload.put("description", scores.description());
         payload.put("message", scores.description());
@@ -124,6 +128,22 @@ public class AnalysisSseEventMapper {
             }
         }
         return payload;
+    }
+
+    private Map<String, Map<String, Object>> incrementalScoreDetails(
+            Map<String, AnalysisScoreDetail> details) {
+        Map<String, Map<String, Object>> result = new LinkedHashMap<>();
+        details.forEach((code, detail) -> {
+            Map<String, Object> hint = new LinkedHashMap<>();
+            hint.put("nodeCode", detail.nodeCode());
+            hint.put("kind", detail.kind());
+            hint.put("rawScore", detail.rawScore());
+            if (detail.parentCode() != null) {
+                hint.put("parentCode", detail.parentCode());
+            }
+            result.put(code, Collections.unmodifiableMap(hint));
+        });
+        return Collections.unmodifiableMap(result);
     }
 
     private AnalysisScoreSemantics.Derived derive(Map<String, Integer> rawScores) {
