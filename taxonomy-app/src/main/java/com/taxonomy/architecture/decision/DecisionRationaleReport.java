@@ -1,11 +1,14 @@
 package com.taxonomy.architecture.decision;
 
+import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.ViewContext;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Immutable, format-neutral model for a hierarchical decision rationale report.
@@ -26,7 +29,8 @@ public record DecisionRationaleReport(
         List<String> warnings,
         List<ProductCoverageGap> productCoverageGaps,
         List<TaxonomyDiscrepancy> discrepancies,
-        ViewContext viewContext) {
+        ViewContext viewContext,
+        Map<String, AnalysisScoreDetail> scoreDetails) {
 
     public DecisionRationaleReport {
         languageTag = normalized(languageTag, "en");
@@ -37,6 +41,27 @@ public record DecisionRationaleReport(
         warnings = immutable(warnings);
         productCoverageGaps = immutable(productCoverageGaps);
         discrepancies = immutable(discrepancies);
+        scoreDetails = scoreDetails == null
+                ? Map.of() : Map.copyOf(new LinkedHashMap<>(scoreDetails));
+    }
+
+    /** Backward-compatible constructor used by the hierarchy builder before score adaptation. */
+    public DecisionRationaleReport(
+            String title,
+            String languageTag,
+            String requirement,
+            ReportStatus status,
+            ReportMetadata metadata,
+            ExecutiveSummary executiveSummary,
+            List<DecisionChapter> chapters,
+            List<LeafCandidate> leadingLeaves,
+            List<String> warnings,
+            List<ProductCoverageGap> productCoverageGaps,
+            List<TaxonomyDiscrepancy> discrepancies,
+            ViewContext viewContext) {
+        this(title, languageTag, requirement, status, metadata, executiveSummary,
+                chapters, leadingLeaves, warnings, productCoverageGaps, discrepancies,
+                viewContext, Map.of());
     }
 
     public enum ReportStatus {
