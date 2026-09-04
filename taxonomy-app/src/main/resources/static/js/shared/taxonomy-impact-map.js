@@ -142,6 +142,36 @@
         return Number.isFinite(number) ? number : fallback;
     }
 
+    function calculateFitTransform(layout, viewport, options) {
+        options = options || {};
+        var padding = Math.max(0, safeNumber(options.padding, 34));
+        var minimumScale = Math.max(0.001, safeNumber(options.minimumScale, 0.01));
+        var maximumScale = Math.max(minimumScale, safeNumber(options.maximumScale, 1.25));
+        var layoutWidth = Math.max(1, safeNumber(layout && layout.width, 1));
+        var layoutHeight = Math.max(1, safeNumber(layout && layout.height, 1));
+        var viewportWidth = Math.max(padding * 2 + 1,
+            safeNumber(viewport && viewport.width, 320));
+        var viewportHeight = Math.max(padding * 2 + 1,
+            safeNumber(viewport && viewport.height, 300));
+        var scale = Math.min(
+            (viewportWidth - padding * 2) / layoutWidth,
+            (viewportHeight - padding * 2) / layoutHeight,
+            maximumScale
+        );
+        scale = clamp(scale, minimumScale, maximumScale);
+        var x = (viewportWidth - layoutWidth * scale) / 2;
+        var y = (viewportHeight - layoutHeight * scale) / 2;
+        return {
+            scale: scale,
+            x: x,
+            y: y,
+            left: x,
+            top: y,
+            right: x + layoutWidth * scale,
+            bottom: y + layoutHeight * scale
+        };
+    }
+
     function shouldMuteEdge(options) {
         if (options.edgeId === options.selectedEdgeId) return false;
         var mutedBySelection = Boolean(options.selectedNodeId) && !options.connected;
@@ -549,18 +579,12 @@
         var normalizedEdges = normalizeEdges(edges, nodeById);
         var instanceId = 'taxonomy-impact-map-' + (++instanceSequence);
         var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        var defaultSelection = normalizedNodes.slice().sort(function (left, right) {
-            if (left.anchor !== right.anchor) return left.anchor ? -1 : 1;
-            return right.relevance - left.relevance;
-        })[0];
-
         var state = {
             allNodes: normalizedNodes,
             allEdges: normalizedEdges,
             nodeById: nodeById,
             showContext: true,
             mode: 'overview',
-            initialNodeId: defaultSelection ? defaultSelection.id : null,
             selectedNodeId: null,
             selectedEdgeId: null,
             searchQuery: '',
@@ -569,6 +593,8 @@
             nodeElements: new Map(),
             edgeElements: new Map(),
             autoFit: true,
+            fitFrame: null,
+            fitGeneration: 0,
             destroyed: false
         };
 
@@ -670,21 +696,49 @@
         var svgSelection = window.d3.select(svg);
         var viewportSelection = window.d3.select(viewport);
         var zoomBehavior = window.d3.zoom()
-            .scaleExtent([0.28, 2.8])
+            .scaleExtent([0.01, 2.8])
             .on('zoom', function (event) {
+                if (event.sourceEvent) markUserControlled();
                 viewportSelection.attr('transform', event.transform);
             });
         svgSelection.call(zoomBehavior).on('dblclick.zoom', null);
 
-        function viewportSize() {
+        function measuredViewportSize() {
             return {
-                width: Math.max(320, canvas.clientWidth || container.clientWidth || 900),
-                height: Math.max(300, canvas.clientHeight || 540)
+                width: Math.max(0, canvas.clientWidth || container.clientWidth || 0),
+                height: Math.max(0, canvas.clientHeight || 0)
             };
         }
 
-        function applyTransform(transform) {
+        function viewportSize() {
+            var measured = measuredViewportSize();
+            return {
+                width: Math.max(320, measured.width || 900),
+                height: Math.max(300, measured.height || 540)
+            };
+        }
+
+        function setFitState(value) {
+            root.dataset.fitState = value;
+        }
+
+        function cancelScheduledFit(nextState) {
+            state.fitGeneration += 1;
+            if (state.fitFrame !== null) {
+                window.cancelAnimationFrame(state.fitFrame);
+                state.fitFrame = null;
+            }
+            if (nextState) setFitState(nextState);
+        }
+
+        function markUserControlled() {
             state.autoFit = false;
+            cancelScheduledFit('user-controlled');
+            svgSelection.interrupt();
+        }
+
+        function applyTransform(transform) {
+            markUserControlled();
             if (reducedMotion) {
                 svgSelection.call(zoomBehavior.transform, transform);
             } else {
@@ -692,25 +746,70 @@
             }
         }
 
-        function fitView() {
-            if (!state.layout) return;
-            var size = viewportSize();
-            var padding = 34;
-            var scale = Math.min(
-                (size.width - padding * 2) / state.layout.width,
-                (size.height - padding * 2) / state.layout.height,
-                1.25
-            );
-            scale = clamp(scale, 0.28, 1.25);
-            var translateX = (size.width - state.layout.width * scale) / 2;
-            var translateY = (size.height - state.layout.height * scale) / 2;
+        function fitView(options) {
+            options = options || {};
+            if (!state.layout || state.destroyed) return null;
+            cancelScheduledFit();
+            setFitState('pending');
             state.autoFit = true;
-            var transform = window.d3.zoomIdentity.translate(translateX, translateY).scale(scale);
-            if (reducedMotion) {
+            var fit = calculateFitTransform(state.layout, viewportSize(), {
+                padding: 34,
+                minimumScale: 0.01,
+                maximumScale: 1.25
+            });
+            root.dataset.fitScale = fit.scale.toFixed(6);
+            var transform = window.d3.zoomIdentity.translate(fit.x, fit.y).scale(fit.scale);
+            svgSelection.interrupt();
+            if (options.immediate || reducedMotion) {
                 svgSelection.call(zoomBehavior.transform, transform);
+                setFitState('complete');
             } else {
-                svgSelection.transition().duration(220).call(zoomBehavior.transform, transform);
+                svgSelection.transition().duration(220)
+                    .call(zoomBehavior.transform, transform)
+                    .on('end', function () {
+                        if (!state.destroyed && state.autoFit) setFitState('complete');
+                    });
             }
+            return fit;
+        }
+
+        function scheduleFitWhenStable() {
+            if (!state.layout || state.destroyed) return;
+            cancelScheduledFit();
+            state.autoFit = true;
+            setFitState('pending');
+            var generation = state.fitGeneration;
+            var attempts = 0;
+            var stableFrames = 0;
+            var previousSize = null;
+
+            function measureAndFit() {
+                state.fitFrame = null;
+                if (state.destroyed || !state.autoFit || generation !== state.fitGeneration) return;
+                var measured = measuredViewportSize();
+                var measurable = measured.width > 0 && measured.height > 0;
+                if (measurable) {
+                    if (previousSize &&
+                            Math.abs(previousSize.width - measured.width) <= 1 &&
+                            Math.abs(previousSize.height - measured.height) <= 1) {
+                        stableFrames += 1;
+                    } else {
+                        stableFrames = 0;
+                    }
+                    previousSize = measured;
+                    if (stableFrames >= 1 || attempts >= 11) {
+                        updateViewBox();
+                        fitView({ immediate: true });
+                        return;
+                    }
+                }
+                attempts += 1;
+                if (attempts < 12) {
+                    state.fitFrame = window.requestAnimationFrame(measureAndFit);
+                }
+            }
+
+            state.fitFrame = window.requestAnimationFrame(measureAndFit);
         }
 
         function centerOnNode(nodeId, requestedScale) {
@@ -726,23 +825,6 @@
             applyTransform(window.d3.zoomIdentity
                 .translate(size.width / 2 - centerX * scale, size.height / 2 - centerY * scale)
                 .scale(scale));
-        }
-
-        function showReadableInitialView() {
-            if (!state.layout) return;
-            var size = viewportSize();
-            var padding = 34;
-            var fullFitScale = Math.min(
-                (size.width - padding * 2) / state.layout.width,
-                (size.height - padding * 2) / state.layout.height,
-                1.25
-            );
-            var focusNodeId = state.selectedNodeId || state.initialNodeId;
-            if (fullFitScale >= 0.62 || !focusNodeId) {
-                fitView();
-            } else {
-                centerOnNode(focusNodeId, 0.82);
-            }
         }
 
         function updateViewBox() {
@@ -1260,7 +1342,7 @@
                 state.layout.layers.length
             ));
             if (autoFit !== false) {
-                window.requestAnimationFrame(fitView);
+                scheduleFitWhenStable();
             }
         }
 
@@ -1326,14 +1408,16 @@
             renderDiagram(true);
         });
         zoomInButton.addEventListener('click', function () {
-            state.autoFit = false;
+            markUserControlled();
             svgSelection.call(zoomBehavior.scaleBy, 1.25);
         });
         zoomOutButton.addEventListener('click', function () {
-            state.autoFit = false;
+            markUserControlled();
             svgSelection.call(zoomBehavior.scaleBy, 0.8);
         });
-        fitButton.addEventListener('click', fitView);
+        fitButton.addEventListener('click', function () {
+            fitView({ immediate: false });
+        });
         fullscreenButton.addEventListener('click', function () {
             if (document.fullscreenElement === root) {
                 document.exitFullscreen();
@@ -1354,11 +1438,7 @@
             fullscreenButton.setAttribute('aria-label', fullscreenButton.title);
             window.setTimeout(function () {
                 updateViewBox();
-                if (full) {
-                    fitView();
-                } else {
-                    showReadableInitialView();
-                }
+                scheduleFitWhenStable();
             }, 0);
         }
         document.addEventListener('fullscreenchange', onFullscreenChange);
@@ -1369,7 +1449,7 @@
                 window.clearTimeout(resizeTimer);
                 resizeTimer = window.setTimeout(function () {
                     updateViewBox();
-                    if (state.autoFit) fitView();
+                    if (state.autoFit) scheduleFitWhenStable();
                 }, 80);
             })
             : null;
@@ -1378,14 +1458,14 @@
         container.__taxonomyImpactMapCleanup = function () {
             state.destroyed = true;
             window.clearTimeout(resizeTimer);
+            cancelScheduledFit();
             document.removeEventListener('fullscreenchange', onFullscreenChange);
             if (resizeObserver) resizeObserver.disconnect();
             svgSelection.on('.zoom', null);
             delete container.__taxonomyImpactMapCleanup;
         };
 
-        renderDiagram(false);
-        window.requestAnimationFrame(showReadableInitialView);
+        renderDiagram(true);
         return state;
     }
 
@@ -1403,6 +1483,7 @@
             normalizeNodes: normalizeNodes,
             normalizeEdges: normalizeEdges,
             buildLayout: buildLayout,
+            calculateFitTransform: calculateFitTransform,
             visibleModel: visibleModel,
             shouldMuteEdge: shouldMuteEdge,
             shouldMuteNode: shouldMuteNode,

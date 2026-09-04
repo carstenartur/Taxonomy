@@ -84,6 +84,7 @@ test('installs a replacement renderer while preserving the legacy renderer', () 
   assert.equal(typeof api.render, 'function');
   assert.equal(typeof api.normalizeNodes, 'function');
   assert.equal(typeof api.buildLayout, 'function');
+  assert.equal(typeof api.calculateFitTransform, 'function');
   assert.equal(graph.renderImpactForceGraphLegacy, originalRenderer);
   assert.equal(graph.renderImpactForceGraph, api.render);
 });
@@ -159,6 +160,36 @@ test('builds a deterministic layer layout instead of a force simulation', () => 
   assert.ok(first.positions.get('CR-2').x > first.positions.get('CP-1').x);
   assert.ok(first.positions.get('CP-3').y > first.positions.get('CP-1').y);
   assert.doesNotMatch(graphSource, /forceSimulation\s*\(/);
+});
+
+test('fits a wide seven-layer graph completely inside the viewport', () => {
+  const { api } = loadApi();
+  const model = {
+    nodes: Array.from({ length: 7 }, (_, index) => ({
+      id: `L${index}`,
+      title: `Layer ${index}`,
+      sheet: `L${index}`,
+      sheetLabel: `Layer ${index}`,
+      layerOrder: index,
+      relevance: 0.9 - index / 20,
+      anchor: index === 0,
+      hotspot: false,
+    })),
+    edges: [],
+  };
+  const layout = api.buildLayout(model);
+  const viewport = { width: 781, height: 620 };
+  const fit = api.calculateFitTransform(layout, viewport, {
+    padding: 34,
+    minimumScale: 0.01,
+    maximumScale: 1.25,
+  });
+
+  assert.ok(fit.scale < 0.62, 'fixture must exercise the former clipping branch');
+  assert.ok(fit.left >= 34 - 0.001);
+  assert.ok(fit.right <= viewport.width - 34 + 0.001);
+  assert.ok(fit.top >= 34 - 0.001);
+  assert.ok(fit.bottom <= viewport.height - 34 + 0.001);
 });
 
 test('context and focus modes reduce the visible graph predictably', () => {
@@ -278,7 +309,7 @@ test('uses locale-independent matching and avoids per-edge graph scans', () => {
   assert.match(graphSource, /mutedBySelection \|\| mutedBySearch/);
 });
 
-test('provides orientation, search, focus, detail and accessibility controls', () => {
+test('provides orientation, stable fit, detail and accessibility controls', () => {
   for (const requiredContract of [
     'impact-map-search',
     'impact-map-kpis',
@@ -290,16 +321,33 @@ test('provides orientation, search, focus, detail and accessibility controls', (
     'openGraphExplorer',
     'requestFullscreen',
     'ResizeObserver',
-    'showReadableInitialView',
+    'calculateFitTransform',
+    'scheduleFitWhenStable',
+    "root.dataset.fitState = value",
+    "if (event.sourceEvent) markUserControlled()",
+    'fitGeneration',
+    'fitFrame',
     'renderAndCenterNode',
-    "initialNodeId: defaultSelection ? defaultSelection.id : null",
     'selectedNodeId: null',
-    'state.selectedNodeId || state.initialNodeId',
-    'fullFitScale >= 0.62',
+    'minimumScale: 0.01',
     "fullscreenButton.hidden = typeof root.requestFullscreen !== 'function'",
   ]) {
     assert.ok(graphSource.includes(requiredContract), `missing contract: ${requiredContract}`);
   }
+  assert.match(
+    graphSource,
+    /function markUserControlled\(\) \{[^}]*svgSelection\.interrupt\(\);/,
+  );
+  assert.match(
+    graphSource,
+    /\.on\('zoom', function \(event\) \{\s*if \(event\.sourceEvent\) markUserControlled\(\);/,
+  );
+  assert.doesNotMatch(
+    graphSource,
+    /\.on\('start', function \(event\) \{[^}]*markUserControlled/,
+  );
+  assert.doesNotMatch(graphSource, /showReadableInitialView/);
+  assert.doesNotMatch(graphSource, /fullFitScale\s*>=\s*0\.62/);
 });
 
 test('passes relationship derivation reasons into the impact-map detail model', () => {
