@@ -86,10 +86,19 @@ def patch_decision_report_fingerprint() -> None:
     text = replace_once(
         text,
         "        String actualDataFingerprint = fingerprint(nodesByCode.values());",
-        "        String actualDataFingerprint = TaxonomyDataFingerprint.sha256(\n"
-        "                input.taxonomyTree().isEmpty()\n"
-        "                        ? taxonomyService.getFullTree() : input.taxonomyTree());",
+        "        List<TaxonomyNodeDto> fingerprintTree = input.taxonomyTree().isEmpty()\n"
+        "                ? taxonomyService.getFullTree() : input.taxonomyTree();\n"
+        "        String actualDataFingerprint = TaxonomyDataFingerprint.sha256(fingerprintTree);",
         "DecisionRationaleReportService fingerprint call",
+    )
+    text = replace_once(
+        text,
+        "                && !input.snapshotProvenance().taxonomyFingerprintSha256()\n"
+        "                        .equalsIgnoreCase(actualDataFingerprint)) {",
+        "                && !TaxonomyDataFingerprint.matchesRecorded(\n"
+        "                        input.snapshotProvenance().taxonomyFingerprintSha256(),\n"
+        "                        fingerprintTree)) {",
+        "DecisionRationaleReportService legacy fingerprint match",
     )
     start_marker = "    private String fingerprint(Collection<TaxonomyNode> nodes) {"
     end_marker = "    private String fingerprintAnalysis("
