@@ -124,19 +124,44 @@ class AnalysisScoreSemanticsTest {
     }
 
     @Test
-    void semanticsWarningsRemainBoundedWithOneSuppressionMarker() {
+    void canonicalScoreKeysAreSortedAfterNormalization() {
         Map<String, Integer> scores = new LinkedHashMap<>();
-        for (int index = 0; index < 150; index++) {
-            scores.put("UNKNOWN-" + String.format("%03d", index), 50);
-        }
+        scores.put(" Z", 20);
+        scores.put("A", 10);
+        scores.put(" M ", 15);
+
+        AnalysisResult result = new AnalysisResult();
+        result.setScores(scores);
+
+        assertEquals(List.of("A", "M", "Z"),
+                result.getRawScores().keySet().stream().toList());
+    }
+
+    @Test
+    void exactlyOneHundredWarningsRetainAllWarningsWithoutSuppressionMarker() {
+        Map<String, Integer> scores = unknownScores(100);
+
+        AnalysisScoreSemantics.Derived derived =
+                AnalysisScoreSemantics.derive(scores, List.of());
+
+        assertEquals(100, derived.warnings().size());
+        assertTrue(derived.warnings().stream()
+                .noneMatch(warning -> warning.contains("were suppressed")));
+        assertTrue(derived.warnings().get(99).contains("UNKNOWN-099"));
+    }
+
+    @Test
+    void moreThanOneHundredWarningsKeepOneHundredWarningsAndOneSuppressionMarker() {
+        Map<String, Integer> scores = unknownScores(150);
 
         AnalysisScoreSemantics.Derived derived =
                 AnalysisScoreSemantics.derive(scores, List.of());
 
         assertEquals(150, derived.effectiveScores().size());
-        assertEquals(100, derived.warnings().size());
+        assertEquals(101, derived.warnings().size());
+        assertTrue(derived.warnings().get(99).contains("UNKNOWN-099"));
         assertEquals("Additional score-semantics warnings were suppressed.",
-                derived.warnings().get(derived.warnings().size() - 1));
+                derived.warnings().get(100));
         assertEquals(1L, derived.warnings().stream()
                 .filter(warning -> warning.contains("were suppressed"))
                 .count());
@@ -190,6 +215,14 @@ class AnalysisScoreSemanticsTest {
         result.setScores(Map.of("P", 32));
 
         assertEquals(80, result.getRawScores().get("P"));
+    }
+
+    private Map<String, Integer> unknownScores(int count) {
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        for (int index = 0; index < count; index++) {
+            scores.put("UNKNOWN-" + String.format("%03d", index), 50);
+        }
+        return scores;
     }
 
     private TaxonomyNodeDto node(String code, String parentCode, String role) {

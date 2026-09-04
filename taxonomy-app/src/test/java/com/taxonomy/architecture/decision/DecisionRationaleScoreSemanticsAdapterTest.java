@@ -132,9 +132,13 @@ class DecisionRationaleScoreSemanticsAdapterTest {
         AnalysisScoreDetail aDetail = new AnalysisScoreDetail(
                 "A", AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
                 10, 10, "ROOT", 100);
+        AnalysisScoreDetail mDetail = new AnalysisScoreDetail(
+                "M", AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
+                15, 15, "ROOT", 100);
         Map<String, AnalysisScoreDetail> details = new LinkedHashMap<>();
-        details.put("Z", zDetail);
+        details.put(" Z", zDetail);
         details.put("A", aDetail);
+        details.put(" M ", mDetail);
         DecisionRationaleReport report = new DecisionRationaleReport(
                 "Report", "en", "requirement", ReportStatus.FINAL,
                 null, new ExecutiveSummary(null, List.of(), "conclusion", "method"),
@@ -143,7 +147,7 @@ class DecisionRationaleScoreSemanticsAdapterTest {
         DecisionRationaleReport adapted = adapter.adapt(
                 report, details, Locale.ENGLISH);
 
-        assertThat(adapted.scoreDetails().keySet()).containsExactly("A", "Z");
+        assertThat(adapted.scoreDetails().keySet()).containsExactly("A", "M", "Z");
         assertThatThrownBy(adapted.scoreDetails()::clear)
                 .isInstanceOf(UnsupportedOperationException.class);
     }

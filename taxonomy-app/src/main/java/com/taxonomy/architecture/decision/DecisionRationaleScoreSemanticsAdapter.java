@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Applies explicit product-score semantics to the format-neutral decision report.
@@ -222,27 +223,25 @@ public class DecisionRationaleScoreSemanticsAdapter {
         if (scoreDetails == null || scoreDetails.isEmpty()) {
             return Map.of();
         }
-        Map<String, AnalysisScoreDetail> result = new LinkedHashMap<>();
-        scoreDetails.entrySet().stream()
-                .filter(entry -> entry.getKey() != null && !entry.getKey().isBlank()
-                        && entry.getValue() != null)
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> {
-                    String code = entry.getKey().strip();
-                    AnalysisScoreDetail detail = entry.getValue();
-                    if (!code.equals(detail.nodeCode())) {
-                        throw new IllegalArgumentException(
-                                "Score detail key " + code
-                                        + " does not match detail node code "
-                                        + detail.nodeCode());
-                    }
-                    if (result.containsKey(code)) {
-                        throw new IllegalArgumentException(
-                                "Score details contain multiple entries for canonical node code "
-                                        + code);
-                    }
-                    result.put(code, detail);
-                });
-        return Collections.unmodifiableMap(new LinkedHashMap<>(result));
+        Map<String, AnalysisScoreDetail> canonicalDetails = new TreeMap<>();
+        for (Map.Entry<String, AnalysisScoreDetail> entry : scoreDetails.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isBlank()
+                    || entry.getValue() == null) {
+                continue;
+            }
+            String code = entry.getKey().strip();
+            AnalysisScoreDetail detail = entry.getValue();
+            if (!code.equals(detail.nodeCode())) {
+                throw new IllegalArgumentException(
+                        "Score detail key " + code
+                                + " does not match detail node code " + detail.nodeCode());
+            }
+            if (canonicalDetails.containsKey(code)) {
+                throw new IllegalArgumentException(
+                        "Score details contain multiple entries for canonical node code " + code);
+            }
+            canonicalDetails.put(code, detail);
+        }
+        return Collections.unmodifiableMap(new LinkedHashMap<>(canonicalDetails));
     }
 }

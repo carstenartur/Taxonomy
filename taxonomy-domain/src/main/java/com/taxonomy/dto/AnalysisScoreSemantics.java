@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Deterministically separates raw product suitability from comparable hierarchical relevance.
@@ -87,9 +88,9 @@ public final class AnalysisScoreSemantics {
     }
 
     private static void addWarning(List<String> warnings, String warning) {
-        if (warnings.size() < MAX_WARNINGS - 1) {
+        if (warnings.size() < MAX_WARNINGS) {
             warnings.add(warning);
-        } else if (warnings.size() == MAX_WARNINGS - 1) {
+        } else if (warnings.size() == MAX_WARNINGS) {
             warnings.add(SUPPRESSED_WARNINGS_MESSAGE);
         }
     }
@@ -98,21 +99,20 @@ public final class AnalysisScoreSemantics {
         if (source == null || source.isEmpty()) {
             return Map.of();
         }
-        Map<String, Integer> result = new LinkedHashMap<>();
-        source.entrySet().stream()
-                .filter(entry -> entry.getKey() != null && !entry.getKey().isBlank()
-                        && entry.getValue() != null)
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> {
-                    String code = entry.getKey().strip();
-                    if (result.containsKey(code)) {
-                        throw new IllegalArgumentException(
-                                "Score map contains multiple entries for canonical node code "
-                                        + code);
-                    }
-                    result.put(code, clamp(entry.getValue()));
-                });
-        return result;
+        Map<String, Integer> canonicalScores = new TreeMap<>();
+        for (Map.Entry<String, Integer> entry : source.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isBlank()
+                    || entry.getValue() == null) {
+                continue;
+            }
+            String code = entry.getKey().strip();
+            if (canonicalScores.containsKey(code)) {
+                throw new IllegalArgumentException(
+                        "Score map contains multiple entries for canonical node code " + code);
+            }
+            canonicalScores.put(code, clamp(entry.getValue()));
+        }
+        return new LinkedHashMap<>(canonicalScores);
     }
 
     private static int clamp(int value) {

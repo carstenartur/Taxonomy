@@ -46,8 +46,12 @@ The product is displayed as `Suitability 80%; effective relevance 32/100`. It is
 - `productSuitabilityScores`: raw values for concrete products only;
 - `scoreDetails`: node-level kind, raw value, effective value, parent identity and parent value;
 - `scoreSemanticsVersion`: version of this interpretation contract;
-- `scoreSemanticsWarnings`: at most 100 compatibility warnings, including one final suppression
-  marker when further warnings exist.
+- `scoreSemanticsWarnings`: up to 100 concrete compatibility warnings; when further warnings exist,
+  one additional final suppression marker is appended.
+
+Canonical score maps and typed detail maps are ordered by their stripped node codes, not by the
+pre-normalization source strings. This keeps fingerprints, snapshots, reports and diffs stable even
+when legacy input contains harmless surrounding whitespace.
 
 Old snapshots that contain only `scores` remain readable. Taxonomy derives their semantics from the
 frozen taxonomy tree. An unresolved product parent fails closed to effective relevance zero and
