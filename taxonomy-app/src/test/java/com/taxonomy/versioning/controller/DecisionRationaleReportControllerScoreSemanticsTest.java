@@ -20,6 +20,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class DecisionRationaleReportControllerScoreSemanticsTest {
@@ -57,6 +58,9 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
                 List.of(),
                 "en");
 
+        Boolean valid = ReflectionTestUtils.invokeMethod(controller, "isValid", request);
+        assertThat(valid).isTrue();
+
         AnalysisScoreSemantics.Derived derived = ReflectionTestUtils.invokeMethod(
                 controller, "resolveScoreSemantics", request);
 
@@ -91,6 +95,81 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
         assertThat(leadingWhitespace).isFalse();
         assertThat(trailingWhitespace).isFalse();
         assertThat(stripCollision).isFalse();
+    }
+
+    @Test
+    void rejectsIncompleteRawEvidenceInEveryFormatBeforeAnyReportSideEffects() {
+        DecisionRationaleReportService reportService = mock(DecisionRationaleReportService.class);
+        ReportRendererRegistry registry = mock(ReportRendererRegistry.class);
+        RepositoryStateService repositoryState = mock(RepositoryStateService.class);
+        WorkspaceResolver workspaceResolver = mock(WorkspaceResolver.class);
+        TaxonomyService taxonomy = mock(TaxonomyService.class);
+        DecisionRationaleReportController controller = new DecisionRationaleReportController(
+                reportService, registry, repositoryState, workspaceResolver,
+                new DecisionRationaleScoreSemanticsAdapter(), taxonomy);
+        Map<String, Integer> scores = Map.of("IP", 100, "IP-2072", 40, "IP-1286", 32);
+        List<Map<String, Integer>> incompleteRawMaps = List.of(
+                Map.of("IP", 100, "IP-2072", 40),
+                Map.of("IP", 100, "IP-1286", 80),
+                Map.of("IP-2072", 40, "IP-1286", 80),
+                Map.of(),
+                Map.of("UA", 0),
+                Map.of("IP", 100, "IP-2072", 40, "UA", 80));
+
+        for (Map<String, Integer> raw : incompleteRawMaps) {
+            assertRejectedInEveryFormat(controller, request(scores, raw));
+        }
+        verifyNoInteractions(reportService, registry, repositoryState, workspaceResolver, taxonomy);
+    }
+
+    @Test
+    void rejectsInvalidRawValuesEvenWhenEverySelectedCodeIsPresent() {
+        DecisionRationaleReportController controller = controller(null);
+        Map<String, Integer> scores = Map.of("IP", 100, "IP-2072", 40, "IP-1286", 32);
+        for (Integer invalidValue : new Integer[] {null, -1, 101}) {
+            Map<String, Integer> raw = new LinkedHashMap<>(scores);
+            raw.put("IP-1286", invalidValue);
+            assertRejectedInEveryFormat(controller, request(scores, raw));
+        }
+    }
+
+    @Test
+    void acceptsLegacyRequestsAndCompleteRawEvidenceIncludingExplicitZero() {
+        DecisionRationaleReportController controller = controller(null);
+        Map<String, Integer> raw = Map.of("IP", 100, "IP-2072", 40, "IP-1286", 80);
+        DecisionReportRequest legacy = new DecisionReportRequest(
+                raw, Map.of(), "requirement", "MOCK", "SUCCESS", List.of(), List.of(), "en");
+        Boolean legacyValid = ReflectionTestUtils.invokeMethod(controller, "isValid", legacy);
+        Boolean nullRawValid = ReflectionTestUtils.invokeMethod(
+                controller, "isValid", request(raw, null));
+        Map<String, Integer> scores = Map.of("IP", 100, "IP-2072", 40, "IP-1286", 0);
+        Boolean zeroValid = ReflectionTestUtils.invokeMethod(
+                controller, "isValid", request(scores, scores));
+        Map<String, Integer> withExtra = new LinkedHashMap<>(raw);
+        withExtra.put("UA", 0);
+        Boolean extraValid = ReflectionTestUtils.invokeMethod(
+                controller, "isValid", request(scores, withExtra));
+
+        assertThat(legacyValid).isTrue();
+        assertThat(nullRawValid).isTrue();
+        assertThat(zeroValid).isTrue();
+        assertThat(extraValid).isTrue();
+    }
+
+    private void assertRejectedInEveryFormat(
+            DecisionRationaleReportController controller, DecisionReportRequest request) {
+        for (var response : List.of(controller.exportJson(request),
+                controller.exportHtml(request), controller.exportDocx(request))) {
+            assertThat(response.getStatusCode().value()).isEqualTo(400);
+            assertThat(response.getBody()).isNull();
+            assertThat(response.getHeaders().getFirst("Content-Disposition")).isNull();
+        }
+    }
+
+    private DecisionReportRequest request(
+            Map<String, Integer> scores, Map<String, Integer> rawScores) {
+        return new DecisionReportRequest(scores, rawScores, null, null, null, null,
+                Map.of(), "requirement", "MOCK", "SUCCESS", List.of(), List.of(), "en");
     }
 
     private DecisionRationaleReportController controller(TaxonomyService taxonomyService) {

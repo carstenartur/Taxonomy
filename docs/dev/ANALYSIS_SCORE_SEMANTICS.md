@@ -65,6 +65,19 @@ codes, reused node objects and hierarchy cycles are rejected rather than resolve
 order. HTTP report requests must use canonical, already-trimmed score keys so semantic normalization
 cannot collapse distinct request entries.
 
+## HTTP decision-report input
+
+The required `scores` map selects the report's node codes. When `rawScores` is absent or null,
+`scores` retains its legacy meaning as raw analysis evidence. New-format clients supplying
+comparable values in `scores` must also supply `rawScores` for every selected code.
+
+A non-null `rawScores` map must cover the complete `scores` key set with valid 0–100 values.
+An empty or partial raw map is rejected with HTTP 400 by all three export endpoints before
+workspace resolution, catalogue access or report rendering. Zero is valid explicit evidence,
+not a missing value. Additional raw entries remain bounded and validated but are excluded from
+the report's selected key set. Derived maps never fill gaps in raw evidence, and the controller
+never silently mixes or falls back between raw and effective values within one request.
+
 ## Streaming
 
 Incremental SSE score batches remain raw because a concrete-product batch normally does not repeat

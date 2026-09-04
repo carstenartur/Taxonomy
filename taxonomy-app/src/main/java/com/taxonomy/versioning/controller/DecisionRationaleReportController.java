@@ -143,7 +143,7 @@ public class DecisionRationaleReportController {
                     + "one parent/children decision chapter per positive hierarchy decision, diagrams, "
                     + "and account/version provenance in the footer.")
     @ApiResponse(responseCode = "200", description = "DOCX report returned")
-    @ApiResponse(responseCode = "400", description = "Requirement or scores are missing")
+    @ApiResponse(responseCode = "400", description = "Requirement or score evidence is missing, invalid or incomplete")
     @PostMapping("/docx")
     public ResponseEntity<byte[]> exportDocx(@RequestBody DecisionReportRequest request) {
         return render(request, "docx");
@@ -153,7 +153,7 @@ public class DecisionRationaleReportController {
             summary = "Export hierarchical decision rationale as HTML",
             description = "Creates a self-contained, print-ready HTML report with inline SVG diagrams.")
     @ApiResponse(responseCode = "200", description = "HTML report returned")
-    @ApiResponse(responseCode = "400", description = "Requirement or scores are missing")
+    @ApiResponse(responseCode = "400", description = "Requirement or score evidence is missing, invalid or incomplete")
     @PostMapping("/html")
     public ResponseEntity<byte[]> exportHtml(@RequestBody DecisionReportRequest request) {
         return render(request, "html");
@@ -163,7 +163,7 @@ public class DecisionRationaleReportController {
             summary = "Export hierarchical decision rationale as JSON",
             description = "Returns the format-neutral report model including all chapters and provenance.")
     @ApiResponse(responseCode = "200", description = "Structured report returned")
-    @ApiResponse(responseCode = "400", description = "Requirement or scores are missing")
+    @ApiResponse(responseCode = "400", description = "Requirement or score evidence is missing, invalid or incomplete")
     @PostMapping("/json")
     public ResponseEntity<byte[]> exportJson(@RequestBody DecisionReportRequest request) {
         return render(request, "json");
@@ -225,12 +225,13 @@ public class DecisionRationaleReportController {
 
     private AnalysisScoreSemantics.Derived resolveScoreSemantics(
             DecisionReportRequest request) {
+        // Validation requires an explicit raw map to cover every selected code.
+        // Never fill missing raw evidence with possibly weighted values from scores.
         Map<String, Integer> suppliedRaw = request.rawScores() != null
-                && !request.rawScores().isEmpty()
                 ? request.rawScores() : request.scores();
         Map<String, Integer> authoritativeRaw = new LinkedHashMap<>();
-        request.scores().forEach((code, score) -> authoritativeRaw.put(
-                code, suppliedRaw.getOrDefault(code, score)));
+        request.scores().keySet().forEach(code -> authoritativeRaw.put(
+                code, suppliedRaw.get(code)));
         return AnalysisScoreSemantics.derive(
                 authoritativeRaw,
                 taxonomyService == null ? List.of() : taxonomyService.getFullTree());
@@ -253,6 +254,8 @@ public class DecisionRationaleReportController {
                 || request.scores().size() > MAX_SCORE_ENTRIES
                 || !validScoreMap(request.scores())
                 || !validOptionalScoreMap(request.rawScores())
+                || (request.rawScores() != null
+                        && !request.rawScores().keySet().containsAll(request.scores().keySet()))
                 || !validOptionalScoreMap(request.effectiveScores())
                 || !validOptionalScoreMap(request.productSuitabilityScores())
                 || !validScoreDetails(request.scoreDetails())
