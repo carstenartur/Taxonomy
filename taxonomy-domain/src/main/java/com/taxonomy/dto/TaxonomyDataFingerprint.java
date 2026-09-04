@@ -10,6 +10,7 @@ import java.util.HexFormat;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -78,7 +79,8 @@ public final class TaxonomyDataFingerprint {
     }
 
     private static String normalizedRole(String role) {
-        return role == null || role.isBlank() ? "CATEGORY" : role.strip().toUpperCase();
+        return role == null || role.isBlank()
+                ? "CATEGORY" : role.strip().toUpperCase(Locale.ROOT);
     }
 
     private static String firstNonBlank(String first, String second) {
