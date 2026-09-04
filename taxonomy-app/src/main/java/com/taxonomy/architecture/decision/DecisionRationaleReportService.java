@@ -11,6 +11,7 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDataFingerprint;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -80,7 +81,8 @@ public class DecisionRationaleReportService {
   List<TaxonomyDiscrepancy> discrepancies,
   List<ProductCoverageGap> productCoverageGaps,
   List<TaxonomyNodeDto> taxonomyTree,
-  AnalysisSnapshotProvenance snapshotProvenance) {
+  AnalysisSnapshotProvenance snapshotProvenance,
+  Map<String, AnalysisScoreDetail> scoreDetails) {
 
         public DecisionAnalysisInput {
   scores = scores == null ? Map.of() : Map.copyOf(scores);
@@ -89,6 +91,22 @@ public class DecisionRationaleReportService {
   productCoverageGaps = productCoverageGaps == null
           ? List.of() : List.copyOf(productCoverageGaps);
   taxonomyTree = taxonomyTree == null ? List.of() : List.copyOf(taxonomyTree);
+  scoreDetails = scoreDetails == null ? Map.of() : Map.copyOf(scoreDetails);
+        }
+
+        /** Backward-compatible full input without typed score evidence. */
+        public DecisionAnalysisInput(
+      String businessText,
+      Map<String, Integer> scores,
+      Map<String, String> reasons,
+      String provider,
+      String analysisStatus,
+      List<TaxonomyDiscrepancy> discrepancies,
+      List<ProductCoverageGap> productCoverageGaps,
+      List<TaxonomyNodeDto> taxonomyTree,
+      AnalysisSnapshotProvenance snapshotProvenance) {
+  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
+          productCoverageGaps, taxonomyTree, snapshotProvenance, Map.of());
         }
 
         /** Backward-compatible ad-hoc analysis input using the currently loaded hierarchy. */
@@ -100,7 +118,7 @@ public class DecisionRationaleReportService {
       String analysisStatus,
       List<TaxonomyDiscrepancy> discrepancies) {
   this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
-          List.of(), List.of(), null);
+          List.of(), List.of(), null, Map.of());
         }
 
         /** Ad-hoc analysis input including explicit concrete-product coverage evidence. */
@@ -113,7 +131,7 @@ public class DecisionRationaleReportService {
       List<TaxonomyDiscrepancy> discrepancies,
       List<ProductCoverageGap> productCoverageGaps) {
   this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
-          productCoverageGaps, List.of(), null);
+          productCoverageGaps, List.of(), null, Map.of());
         }
 
         /** Backward-compatible immutable-snapshot input without product-gap evidence. */
@@ -127,7 +145,7 @@ public class DecisionRationaleReportService {
       List<TaxonomyNodeDto> taxonomyTree,
       AnalysisSnapshotProvenance snapshotProvenance) {
   this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
-          List.of(), taxonomyTree, snapshotProvenance);
+          List.of(), taxonomyTree, snapshotProvenance, Map.of());
         }
     }
 
@@ -878,14 +896,22 @@ public class DecisionRationaleReportService {
             if (parentScore == null || parentScore <= 0) {
                 continue;
             }
-            List<TaxonomyNode> children = entry.getValue();
-            boolean allEvaluated = children.stream()
+            List<TaxonomyNode> budgetChildren = entry.getValue().stream()
+                    .filter(child -> {
+                        AnalysisScoreDetail detail = input.scoreDetails().get(child.getCode());
+                        return detail == null || !detail.isProductSuitability();
+                    })
+                    .toList();
+            if (budgetChildren.isEmpty()) {
+                continue;
+            }
+            boolean allEvaluated = budgetChildren.stream()
                     .map(TaxonomyNode::getCode)
                     .allMatch(scores::containsKey);
             if (!allEvaluated) {
                 continue;
             }
-            int childTotal = children.stream()
+            int childTotal = budgetChildren.stream()
                     .map(TaxonomyNode::getCode)
                     .mapToInt(code -> scores.getOrDefault(code, 0))
                     .sum();

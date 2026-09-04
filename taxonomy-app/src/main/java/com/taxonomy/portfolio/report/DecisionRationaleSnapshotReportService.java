@@ -116,7 +116,8 @@ public class DecisionRationaleSnapshotReportService {
                 analysis.getDiscrepancies(),
                 analysis.getProductCoverageGaps(),
                 analysis.getTree(),
-                provenance);
+                provenance,
+                scoreDetails);
         DecisionRationaleReport report = reportService.generate(
                 input, workspaceContext, historicalViewContext, effectiveLocale);
         return scoreSemanticsAdapter.adapt(report, scoreDetails, effectiveLocale);

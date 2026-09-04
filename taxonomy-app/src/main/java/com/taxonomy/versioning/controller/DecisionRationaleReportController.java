@@ -202,8 +202,9 @@ public class DecisionRationaleReportController {
         ViewContext viewContext = repositoryStateService.getViewContext(
                 context.username(), branch, context);
         Locale locale = resolveLocale(request.language());
-        Map<String, AnalysisScoreDetail> scoreDetails = resolveScoreDetails(request);
-        Map<String, Integer> effectiveScores = resolveEffectiveScores(request, scoreDetails);
+        AnalysisScoreSemantics.Derived scoreSemantics = resolveScoreSemantics(request);
+        Map<String, AnalysisScoreDetail> scoreDetails = scoreSemantics.scoreDetails();
+        Map<String, Integer> effectiveScores = scoreSemantics.effectiveScores();
         Map<String, String> reasons = scoreSemanticsAdapter.enrichReasons(
                 request.reasons(), scoreDetails, locale);
         DecisionAnalysisInput input = new DecisionAnalysisInput(
@@ -213,39 +214,26 @@ public class DecisionRationaleReportController {
                 request.provider(),
                 request.analysisStatus(),
                 request.discrepancies(),
-                request.productCoverageGaps());
+                request.productCoverageGaps(),
+                List.of(),
+                null,
+                scoreDetails);
         DecisionRationaleReport report = reportService.generate(
                 input, context, viewContext, locale);
         return scoreSemanticsAdapter.adapt(report, scoreDetails, locale);
     }
 
-    private Map<String, AnalysisScoreDetail> resolveScoreDetails(
+    private AnalysisScoreSemantics.Derived resolveScoreSemantics(
             DecisionReportRequest request) {
-        if (request.scoreDetails() != null && !request.scoreDetails().isEmpty()) {
-            return request.scoreDetails();
-        }
-        Map<String, Integer> raw = request.rawScores() != null
+        Map<String, Integer> suppliedRaw = request.rawScores() != null
                 && !request.rawScores().isEmpty()
                 ? request.rawScores() : request.scores();
+        Map<String, Integer> authoritativeRaw = new LinkedHashMap<>();
+        request.scores().forEach((code, score) -> authoritativeRaw.put(
+                code, suppliedRaw.getOrDefault(code, score)));
         return AnalysisScoreSemantics.derive(
-                raw,
-                taxonomyService == null ? List.of() : taxonomyService.getFullTree())
-                .scoreDetails();
-    }
-
-    private Map<String, Integer> resolveEffectiveScores(
-            DecisionReportRequest request,
-            Map<String, AnalysisScoreDetail> scoreDetails) {
-        if (request.effectiveScores() != null && !request.effectiveScores().isEmpty()) {
-            return request.effectiveScores();
-        }
-        Map<String, Integer> effective = new LinkedHashMap<>(request.scores());
-        scoreDetails.forEach((code, detail) -> {
-            if (detail != null) {
-                effective.put(code, detail.effectiveRelevance());
-            }
-        });
-        return effective;
+                authoritativeRaw,
+                taxonomyService == null ? List.of() : taxonomyService.getFullTree());
     }
 
     private Locale resolveLocale(String language) {
