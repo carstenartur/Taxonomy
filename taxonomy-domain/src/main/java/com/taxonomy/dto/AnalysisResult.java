@@ -8,15 +8,22 @@ import java.util.Map;
 public class AnalysisResult {
 
     /**
-     * Raw node scores returned by analysis. Concrete PRODUCT entries are independent suitability
-     * values; use {@link #getEffectiveScores()} for generic ranking, architecture and relations.
+     * Original node scores returned by analysis. Concrete PRODUCT entries are independent
+     * suitability values and are retained separately from comparable relevance.
      */
-    private Map<String, Integer> scores;
+    private Map<String, Integer> rawScores;
+
+    /**
+     * True after a new-format payload explicitly supplied {@code rawScores}. It makes JSON
+     * deserialization order-independent when both legacy {@code scores} and {@code rawScores}
+     * are present.
+     */
+    private transient boolean explicitRawScores;
 
     /** Version of the explicit score-semantics envelope. */
     private int scoreSemanticsVersion;
 
-    /** Node code → typed interpretation of the raw score. */
+    /** Node code → typed interpretation of the original score. */
     private Map<String, AnalysisScoreDetail> scoreDetails = new LinkedHashMap<>();
 
     /** Node code → comparable 0–100 relevance used by generic downstream consumers. */
@@ -66,14 +73,40 @@ public class AnalysisResult {
 
     public AnalysisResult() {}
 
-    public AnalysisResult(Map<String, Integer> scores, List<TaxonomyNodeDto> tree) {
-        this.scores = scores;
+    public AnalysisResult(Map<String, Integer> rawScores, List<TaxonomyNodeDto> tree) {
+        this.rawScores = rawScores;
         this.tree = tree;
         refreshScoreSemantics();
     }
 
-    public Map<String, Integer> getScores() { return scores; }
-    public void setScores(Map<String, Integer> scores) { this.scores = scores; }
+    /**
+     * Returns comparable relevance values. Existing generic consumers therefore cannot silently
+     * rank conditional product suitability as though it were absolute hierarchical relevance.
+     * Use {@link #getRawScores()} or {@link #getProductSuitabilityScores()} for scoring evidence.
+     */
+    public Map<String, Integer> getScores() {
+        ensureScoreSemantics();
+        return effectiveScores;
+    }
+
+    /**
+     * Legacy JSON input. Old payloads contain only {@code scores}; new payloads also contain
+     * {@code rawScores}, which takes precedence independently of property order.
+     */
+    public void setScores(Map<String, Integer> scores) {
+        if (!explicitRawScores) {
+            this.rawScores = scores;
+        }
+    }
+
+    public Map<String, Integer> getRawScores() {
+        return rawScores;
+    }
+
+    public void setRawScores(Map<String, Integer> rawScores) {
+        this.rawScores = rawScores;
+        this.explicitRawScores = true;
+    }
 
     public int getScoreSemanticsVersion() {
         ensureScoreSemantics();
@@ -119,9 +152,9 @@ public class AnalysisResult {
                 ? new ArrayList<>(scoreSemanticsWarnings) : new ArrayList<>();
     }
 
-    /** Rebuilds all derived score views from the raw scores and frozen taxonomy tree. */
+    /** Rebuilds all derived score views from the original scores and frozen taxonomy tree. */
     public final void refreshScoreSemantics() {
-        AnalysisScoreSemantics.Derived derived = AnalysisScoreSemantics.derive(scores, tree);
+        AnalysisScoreSemantics.Derived derived = AnalysisScoreSemantics.derive(rawScores, tree);
         scoreSemanticsVersion = AnalysisScoreSemantics.CURRENT_VERSION;
         scoreDetails = new LinkedHashMap<>(derived.scoreDetails());
         effectiveScores = new LinkedHashMap<>(derived.effectiveScores());
@@ -130,7 +163,7 @@ public class AnalysisResult {
     }
 
     private void ensureScoreSemantics() {
-        if (scores == null || scores.isEmpty()) {
+        if (rawScores == null || rawScores.isEmpty()) {
             if (scoreDetails == null) scoreDetails = new LinkedHashMap<>();
             if (effectiveScores == null) effectiveScores = new LinkedHashMap<>();
             if (productSuitabilityScores == null) productSuitabilityScores = new LinkedHashMap<>();
@@ -145,11 +178,11 @@ public class AnalysisResult {
     private boolean hasCompleteScoreSemantics() {
         if (scoreSemanticsVersion != AnalysisScoreSemantics.CURRENT_VERSION
                 || scoreDetails == null || effectiveScores == null
-                || !scoreDetails.keySet().containsAll(scores.keySet())
-                || !effectiveScores.keySet().containsAll(scores.keySet())) {
+                || !scoreDetails.keySet().containsAll(rawScores.keySet())
+                || !effectiveScores.keySet().containsAll(rawScores.keySet())) {
             return false;
         }
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Integer> entry : rawScores.entrySet()) {
             AnalysisScoreDetail detail = scoreDetails.get(entry.getKey());
             Integer effective = effectiveScores.get(entry.getKey());
             if (entry.getValue() == null || detail == null || effective == null
