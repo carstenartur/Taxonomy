@@ -389,7 +389,7 @@ public class PortfolioAnalysisPersistenceService {
         return new SnapshotDiff(
                 olderSnapshotId,
                 newerSnapshotId,
-                Map.copyOf(scoreChanges),
+                scoreChanges,
                 difference(newElements, oldElements),
                 difference(oldElements, newElements),
                 difference(newRelations, oldRelations),

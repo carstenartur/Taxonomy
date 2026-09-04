@@ -26,8 +26,11 @@ import com.taxonomy.portfolio.model.PortfolioTypes.SolutionType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /** Framework-neutral REST contracts for the project requirement portfolio. */
 public final class PortfolioDtos {
@@ -314,6 +317,15 @@ public final class PortfolioDtos {
             boolean taxonomyFingerprintChanged,
             boolean promptFingerprintChanged,
             boolean providerChanged) {
+
+        public SnapshotDiff {
+            Map<String, ScoreChange> canonicalScoreChanges = new TreeMap<>();
+            if (scoreChanges != null) {
+                canonicalScoreChanges.putAll(scoreChanges);
+            }
+            scoreChanges = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(canonicalScoreChanges));
+        }
     }
 
     /**
