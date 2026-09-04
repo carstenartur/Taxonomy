@@ -6,6 +6,7 @@ import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.ViewContext;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,8 @@ public record DecisionRationaleReport(
         productCoverageGaps = immutable(productCoverageGaps);
         discrepancies = immutable(discrepancies);
         scoreDetails = scoreDetails == null
-                ? Map.of() : Map.copyOf(new LinkedHashMap<>(scoreDetails));
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(scoreDetails));
     }
 
     /** Backward-compatible constructor used by the hierarchy builder before score adaptation. */

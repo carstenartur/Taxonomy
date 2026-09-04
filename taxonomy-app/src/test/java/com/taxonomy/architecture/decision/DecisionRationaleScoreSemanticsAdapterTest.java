@@ -111,6 +111,30 @@ class DecisionRationaleScoreSemanticsAdapterTest {
                 .hasMessageContaining("canonical node code IP-P");
     }
 
+    @Test
+    void adaptedScoreDetailsRetainCanonicalOrderAndRemainImmutable() {
+        AnalysisScoreDetail zDetail = new AnalysisScoreDetail(
+                "Z", AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
+                20, 20, "ROOT", 100);
+        AnalysisScoreDetail aDetail = new AnalysisScoreDetail(
+                "A", AnalysisScoreKind.HIERARCHICAL_RELEVANCE,
+                10, 10, "ROOT", 100);
+        Map<String, AnalysisScoreDetail> details = new LinkedHashMap<>();
+        details.put("Z", zDetail);
+        details.put("A", aDetail);
+        DecisionRationaleReport report = new DecisionRationaleReport(
+                "Report", "en", "requirement", ReportStatus.FINAL,
+                null, new ExecutiveSummary(null, List.of(), "conclusion", "method"),
+                List.of(), List.of(), List.of(), List.of(), List.of(), null);
+
+        DecisionRationaleReport adapted = adapter.adapt(
+                report, details, Locale.ENGLISH);
+
+        assertThat(adapted.scoreDetails().keySet()).containsExactly("A", "Z");
+        assertThatThrownBy(adapted.scoreDetails()::clear)
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
     private ReportMetadata metadata(String analysisFingerprint) {
         return new ReportMetadata(
                 Instant.EPOCH,

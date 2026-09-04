@@ -10,6 +10,7 @@ import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreSemanticsFingerprint;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -235,6 +236,6 @@ public class DecisionRationaleScoreSemanticsAdapter {
                     }
                     result.put(code, entry.getValue());
                 });
-        return Map.copyOf(result);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(result));
     }
 }
