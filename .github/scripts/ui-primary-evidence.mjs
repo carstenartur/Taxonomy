@@ -24,16 +24,28 @@ export function createEvidence(page, outputDir) {
     checks.push(check);
   }
 
-  async function saveState(state, selector = '#mainContent') {
+  async function captureState(state, selector, {
+    required = false,
+    viewport = false
+  } = {}) {
     const resolvedSelector = normalizeEvidenceSelector(selector);
     const target = page.locator(resolvedSelector);
     await target.waitFor({ state: 'visible', timeout: 20_000 });
-    const captured = policy.shouldCapture(state);
-    states.push({ state, selector: resolvedSelector, captured });
+    const captured = required || policy.shouldCapture(state);
+    states.push({
+      state,
+      selector: resolvedSelector,
+      captured,
+      captureStrategy: viewport ? 'viewport' : 'element'
+    });
     if (!captured) return;
 
     const file = path.join(outputDir, `${state}.png`);
-    await target.screenshot({ path: file, animations: 'disabled' });
+    if (viewport) {
+      await page.screenshot({ path: file, fullPage: false, animations: 'disabled' });
+    } else {
+      await target.screenshot({ path: file, animations: 'disabled' });
+    }
     screenshots.push(path.basename(file));
     await writeFile(path.join(outputDir, `${state}.html`),
       await target.evaluate(node => node.outerHTML), 'utf8');
@@ -41,6 +53,14 @@ export function createEvidence(page, outputDir) {
       ? await target.ariaSnapshot().catch(error => `ARIA snapshot unavailable: ${error}`)
       : 'ARIA snapshot API unavailable';
     await writeFile(path.join(outputDir, `${state}.aria.txt`), `${aria}\n`, 'utf8');
+  }
+
+  async function saveState(state, selector = '#mainContent') {
+    await captureState(state, selector);
+  }
+
+  async function saveRequiredViewportState(state, selector = '#mainContent') {
+    await captureState(state, selector, { required: true, viewport: true });
   }
 
   async function axeState(state, selector = '#mainContent') {
@@ -72,6 +92,7 @@ export function createEvidence(page, outputDir) {
     assert,
     passed,
     saveState,
+    saveRequiredViewportState,
     axeState,
     waitForText,
     report: auditError => ({

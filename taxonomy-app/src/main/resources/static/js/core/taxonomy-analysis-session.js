@@ -15,6 +15,7 @@
         '/js/core/taxonomy-analysis-session-draft.js',
         '/js/core/taxonomy-analysis-session-projects.js'
     ];
+    var copilotSessionUiSettled = false;
 
     function applicationUrl(source) {
         return window.TaxonomyI18n
@@ -23,9 +24,35 @@
             : source;
     }
 
+    function loadCopilotSessionUi(done) {
+        if (!document.head || typeof document.head.insertBefore !== 'function') {
+            done();
+            return;
+        }
+        var script = document.createElement('script');
+        script.src = applicationUrl('/js/core/taxonomy-copilot-session-ui.js');
+        script.async = false;
+        script.dataset.taxonomyAnalysisSessionPart = 'copilot-session-ui';
+        script.addEventListener('load', done, { once: true });
+        script.addEventListener('error', function () {
+            if (window.console) {
+                window.console.error(
+                    '[Taxonomy] Could not load Copilot session UI module', script.src);
+            }
+            done();
+        }, { once: true });
+        document.head.insertBefore(script, document.head.firstChild || null);
+    }
+
     function load(index) {
         if (index >= sources.length) {
             window.__taxonomyAnalysisSessionLoading = false;
+            return;
+        }
+        if (!copilotSessionUiSettled
+                && sources[index] === '/js/core/taxonomy-operation-coordinator.js') {
+            copilotSessionUiSettled = true;
+            loadCopilotSessionUi(function () { load(index); });
             return;
         }
         var script = document.createElement('script');

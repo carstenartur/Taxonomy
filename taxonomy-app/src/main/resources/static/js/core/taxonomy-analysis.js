@@ -31,6 +31,12 @@
         return scores && Object.keys(scores).length > 0;
     }
 
+    function displayPercent(value) {
+        var numeric = Number(value);
+        if (!Number.isFinite(numeric)) return '0';
+        return Math.max(0, Math.min(100, numeric)).toFixed(0);
+    }
+
     function showPanelLoading(contentId) {
         var el = document.getElementById(contentId);
         if (el) {
@@ -135,7 +141,7 @@
                 html += '<td><code>' + escapeHtml(cg.nodeCode) + '</code></td>';
                 html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(cg.taxonomyRoot) + '</span></td>';
                 html += '<td>' + cg.coverageScore + '%</td>';
-                html += '<td class="small text-muted">' + escapeHtml(cg.gapDescription) + '</td>';
+                html += '<td class="small text-muted">' + escapeHtml(cg.gapDescription || '') + '</td>';
                 html += '</tr>';
             });
             html += '</tbody></table></div>';
@@ -195,7 +201,7 @@
         html += '<div class="d-flex gap-3 mb-2 flex-wrap">';
         html += '<span class="badge bg-success">' + t('analyze.patterns.complete', (data.matchedPatterns ? data.matchedPatterns.length : 0)) + '</span>';
         html += '<span class="badge bg-warning text-dark">' + t('analyze.patterns.incomplete.count', (data.incompletePatterns ? data.incompletePatterns.length : 0)) + '</span>';
-        html += '<span class="badge bg-primary">' + t('analyze.patterns.coverage', (data.patternCoverage * 100).toFixed(0) + '%') + '</span>';
+        html += '<span class="badge bg-primary">' + t('analyze.patterns.coverage', displayPercent(data.patternCoverage) + '%') + '</span>';
         html += '</div>';
 
         // Matched patterns
@@ -230,7 +236,7 @@
     }
 
     function renderPatternCard(pattern, color) {
-        var pct = (pattern.completeness * 100).toFixed(0);
+        var pct = displayPercent(pattern.completeness);
         var html = '<div class="card mb-2 border-' + color + '">';
         html += '<div class="card-body py-2 px-3">';
         html += '<div class="d-flex justify-content-between align-items-center">';
@@ -697,7 +703,7 @@
         html += '</div></div></div>';
 
         // Patterns summary card
-        var patternPct = results.patterns ? (results.patterns.patternCoverage * 100).toFixed(0) : 0;
+        var patternPct = results.patterns ? displayPercent(results.patterns.patternCoverage) : '0';
         var patternColor = patternPct >= 70 ? 'success' : (patternPct >= 40 ? 'warning' : 'danger');
         html += '<div class="col-4">';
         html += '<div class="card text-center border-' + patternColor + '">';
