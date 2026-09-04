@@ -10,9 +10,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AnalysisSseEventMapperTest {
@@ -95,19 +98,12 @@ class AnalysisSseEventMapperTest {
     @Test
     void terminalProductScoresExposeSuitabilityAndFamilyWeightedRelevance() {
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
-        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
-        TaxonomyNodeDto family = node("IP-F", "IP", "PRODUCT_FAMILY");
-        TaxonomyNodeDto product = node("IP-P", "IP-F", "PRODUCT");
-        family.setChildren(List.of(product));
-        root.setChildren(List.of(family));
+        TaxonomyNodeDto root = productTree();
         when(taxonomyService.getFullTree()).thenReturn(List.of(root));
 
         AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(taxonomyService);
         AnalysisSseEventMapper.MappedEvent mapped = semanticMapper.map(
-                new AnalysisStreamEvent.Complete(
-                        "SUCCESS",
-                        Map.of("IP", 100, "IP-F", 40, "IP-P", 80),
-                        List.of(), List.of(), List.of()));
+                completeProductEvent());
 
         Map<String, Object> payload = payload(mapped);
         assertThat(((Map<?, ?>) payload.get("totalScores")).get("IP-P")).isEqualTo(32);
@@ -118,6 +114,42 @@ class AnalysisSseEventMapperTest {
                 ((Map<?, ?>) payload.get("scoreDetails")).get("IP-P");
         assertThat(productDetail.kind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
         assertThat(productDetail.effectiveRelevance()).isEqualTo(32);
+    }
+
+    @Test
+    void reusesFullTaxonomyTreeWithinBoundedCacheWindow() {
+        TaxonomyService taxonomyService = mock(TaxonomyService.class);
+        when(taxonomyService.getFullTree()).thenReturn(List.of(productTree()));
+        AtomicLong nanoTime = new AtomicLong(100L);
+        AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(
+                taxonomyService, nanoTime::get, 10L);
+
+        semanticMapper.map(new AnalysisStreamEvent.Scores(
+                Map.of("IP-P", 80), Map.of(), "product batch", null));
+        semanticMapper.map(completeProductEvent());
+
+        verify(taxonomyService, times(1)).getFullTree();
+
+        nanoTime.addAndGet(10L);
+        semanticMapper.map(completeProductEvent());
+
+        verify(taxonomyService, times(2)).getFullTree();
+    }
+
+    private AnalysisStreamEvent.Complete completeProductEvent() {
+        return new AnalysisStreamEvent.Complete(
+                "SUCCESS",
+                Map.of("IP", 100, "IP-F", 40, "IP-P", 80),
+                List.of(), List.of(), List.of());
+    }
+
+    private TaxonomyNodeDto productTree() {
+        TaxonomyNodeDto root = node("IP", null, "CATEGORY");
+        TaxonomyNodeDto family = node("IP-F", "IP", "PRODUCT_FAMILY");
+        TaxonomyNodeDto product = node("IP-P", "IP-F", "PRODUCT");
+        family.setChildren(List.of(product));
+        root.setChildren(List.of(family));
+        return root;
     }
 
     @SuppressWarnings("unchecked")
