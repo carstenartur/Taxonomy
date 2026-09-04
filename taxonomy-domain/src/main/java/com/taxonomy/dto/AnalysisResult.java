@@ -186,18 +186,8 @@ public class AnalysisResult {
     }
 
     private void ensureScoreSemantics() {
-        if (rawScores == null || rawScores.isEmpty()) {
-            if (scoreDetails == null) scoreDetails = new LinkedHashMap<>();
-            if (effectiveScores == null) effectiveScores = new LinkedHashMap<>();
-            if (productSuitabilityScores == null) productSuitabilityScores = new LinkedHashMap<>();
-            if (scoreSemanticsWarnings == null) scoreSemanticsWarnings = new ArrayList<>();
-            if (scoreSemanticsFingerprintSha256 == null) {
-                scoreSemanticsFingerprintSha256 =
-                        AnalysisScoreSemanticsFingerprint.sha256(scoreDetails);
-            }
-            return;
-        }
-        if (!hasCompleteScoreSemantics()) {
+        // Empty or absent raw evidence must invalidate stale derived views too.
+        if (rawScores == null || !hasCompleteScoreSemantics()) {
             refreshScoreSemantics();
         }
     }
@@ -206,10 +196,12 @@ public class AnalysisResult {
         if (scoreSemanticsTree != tree
                 || scoreSemanticsVersion != AnalysisScoreSemantics.CURRENT_VERSION
                 || scoreDetails == null || effectiveScores == null
+                || productSuitabilityScores == null
                 || !scoreDetails.keySet().equals(rawScores.keySet())
                 || !effectiveScores.keySet().equals(rawScores.keySet())) {
             return false;
         }
+        int productCount = 0;
         for (Map.Entry<String, Integer> entry : rawScores.entrySet()) {
             AnalysisScoreDetail detail = scoreDetails.get(entry.getKey());
             Integer effective = effectiveScores.get(entry.getKey());
@@ -219,15 +211,16 @@ public class AnalysisResult {
                     || detail.effectiveRelevance() != effective) {
                 return false;
             }
-            if (detail.isProductSuitability()
-                    && (productSuitabilityScores == null
-                    || !productSuitabilityScores.containsKey(entry.getKey()))) {
-                return false;
+            if (detail.isProductSuitability()) {
+                productCount++;
+                if (!Objects.equals(productSuitabilityScores.get(entry.getKey()), detail.rawScore())) {
+                    return false;
+                }
             }
         }
-        return Objects.equals(
-                scoreSemanticsFingerprintSha256,
-                AnalysisScoreSemanticsFingerprint.sha256(scoreDetails));
+        return productSuitabilityScores.size() == productCount
+                && Objects.equals(scoreSemanticsFingerprintSha256,
+                        AnalysisScoreSemanticsFingerprint.sha256(scoreDetails));
     }
 
     public Map<String, String> getReasons() { return reasons; }
