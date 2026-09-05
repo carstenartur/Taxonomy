@@ -289,8 +289,32 @@
 .btn-outline-warning:active,
 .btn-outline-primary:hover,
 .btn-outline-primary:focus-visible,
-.btn-outline-primary:active {
+.btn-outline-primary:active,
+.btn-check:checked + .btn-outline-secondary,
+.btn-outline-secondary.active,
+.btn-outline-secondary.show,
+.btn-check:checked + .btn-outline-info,
+.btn-outline-info.active,
+.btn-outline-info.show,
+.btn-check:checked + .btn-outline-success,
+.btn-outline-success.active,
+.btn-outline-success.show,
+.btn-check:checked + .btn-outline-warning,
+.btn-outline-warning.active,
+.btn-outline-warning.show,
+.btn-check:checked + .btn-outline-primary,
+.btn-outline-primary.active,
+.btn-outline-primary.show {
     color: #fff !important;
+}
+/* Bootstrap leaves unchecked radio labels transparent on hover. Do not turn
+   their text white while fixing the separate, persistently checked state. */
+.btn-check:not(:checked) + .btn-outline-secondary:hover,
+.btn-check:not(:checked) + .btn-outline-info:hover,
+.btn-check:not(:checked) + .btn-outline-success:hover,
+.btn-check:not(:checked) + .btn-outline-warning:hover,
+.btn-check:not(:checked) + .btn-outline-primary:hover {
+    color: var(--bs-btn-color) !important;
 }
 #aiUnavailableWarning code,
 .alert-warning code,
