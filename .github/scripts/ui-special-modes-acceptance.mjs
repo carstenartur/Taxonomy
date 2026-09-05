@@ -1,4 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
+import { verifyImportModeContrast } from './ui-outline-button-contrast.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { navigateToPage, openRoleSession, ROLE_ACCOUNTS } from './ui-role-fixtures.mjs';
@@ -7,6 +8,7 @@ const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const outputDir = path.resolve(process.env.TAXONOMY_UI_OUTPUT_DIR || 'target/ui-special-modes');
 const checks = [];
 const findings = [];
+const buttonContrast = [];
 let auditError = null;
 let browser;
 let context;
@@ -289,6 +291,9 @@ async function testTextSpacing() {
   assert(spacing.scrollWidth <= spacing.clientWidth + 2,
     `Text spacing introduced horizontal scrolling: ${JSON.stringify(spacing)}`);
   checks.push('WCAG text spacing and reflow');
+  buttonContrast.push(...await verifyImportModeContrast(page));
+  checks.push('checked and unchecked import-mode label contrast');
+  await screenshot('import-mode-checked-unfocused', '#documentImportPanel');
   await runAxe('text-spacing', '#tab-analyze');
   await screenshot('text-spacing', '#documentImportPanel');
 }
@@ -330,7 +335,7 @@ try {
   auditError = error?.stack || String(error);
   process.exitCode = 1;
 } finally {
-  const report = { checks, findings, auditError };
+  const report = { checks, findings, buttonContrast, auditError };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   if (auditError) console.error(auditError);
   if (context) await context.close().catch(() => undefined);
