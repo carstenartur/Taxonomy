@@ -28,6 +28,8 @@
         wordHttpsRequired: 'Direktes Öffnen in Word ist außerhalb lokaler Entwicklung nur über HTTPS verfügbar.',
         wordAuthenticationUnavailable: 'Direktes Öffnen in Word ist für den aktuellen Anmeldemodus nicht aktiviert.',
         downloadRevision: 'Diese Version herunterladen',
+        localEdit: 'Lokal bearbeiten (ohne WebDAV)',
+        useLocalEdit: 'Für bestehende Vorlagen bitte „Lokal bearbeiten“ verwenden. So bleibt die Version beim Herunterladen erhalten.',
         manage: 'Vergleichen und wiederherstellen',
         ooxmlParts: 'OOXML-Bestandteile'
     } : {
@@ -44,6 +46,8 @@
         wordHttpsRequired: 'Direct Word opening requires HTTPS outside local development.',
         wordAuthenticationUnavailable: 'Direct Word opening is not enabled for the current sign-in mode.',
         downloadRevision: 'Download this version',
+        localEdit: 'Edit locally (without WebDAV)',
+        useLocalEdit: 'For existing templates use “Edit locally” to preserve the version downloaded for editing.',
         manage: 'Compare and restore',
         ooxmlParts: 'OOXML parts'
     };
@@ -153,12 +157,16 @@
         const word = document.createElement('td');
         const wordActions = element('div', 'd-flex flex-wrap gap-2');
         const webDavUrl = templateWebDavUrl(template);
-        const edit = actionLink(labels.edit || 'Edit template in Word', 'btn btn-sm btn-primary');
+        const localEdit = actionLink(text.localEdit, 'btn btn-sm btn-primary');
+        const localUrl = new URL(detailUrl(template.templateId) + '/local-edit');
+        localUrl.searchParams.set('revision', template.headCommit);
+        localEdit.href = localUrl.href;
+        const edit = actionLink(labels.edit || 'Edit template in Word', 'btn btn-sm btn-outline-secondary');
         configureWordAction(edit, webDavUrl, 'edit');
         const create = actionLink(labels.new || 'New document from template',
             'btn btn-sm btn-outline-primary');
         configureWordAction(create, webDavUrl, 'new');
-        wordActions.append(edit, create);
+        wordActions.append(localEdit, edit, create);
         word.append(wordActions, element('code', 'small text-break d-block mt-2', webDavUrl));
 
         const actions = document.createElement('td');
@@ -234,11 +242,15 @@
             fileInput.setCustomValidity(text.invalidDotx);
         }
         if (!uploadForm.reportValidity()) return;
-        const templateId = idInput.value; const existing = templatesById.get(templateId);
+        const templateId = idInput.value;
+        if (templatesById.has(templateId)) {
+            showError(text.useLocalEdit);
+            return;
+        }
         const url = new URL(apiBase + '/' + encodeURIComponent(templateId), window.location.href);
         url.searchParams.set('displayName', nameInput.value);
         const headers = { Accept: 'application/json', 'Content-Type': links.DOTX_MEDIA_TYPE };
-        if (existing && existing.headCommit) headers['If-Match'] = '"' + existing.headCommit + '"';
+        // Create-only: even a stale/failed list must never authorize replacement.
         setUploadBusy(true);
         try {
             const saved = await api.upload(url.href, file, headers, text.uploadFailed);

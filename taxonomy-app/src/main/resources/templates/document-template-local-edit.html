@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title th:text="#{document.templates.local.title}">Edit a template locally — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#documentTemplateLocalEdit" th:text="#{document.templates.skip}">Skip to template</a>
+<nav class="navbar navbar-dark bg-dark" th:attr="aria-label=#{document.templates.nav.aria}">
+    <div class="container gap-2">
+        <a class="navbar-brand" th:href="@{/}">Taxonomy</a>
+        <a class="btn btn-outline-light" th:href="@{/admin/document-templates}"
+           th:text="#{document.templates.local.back}">Back to templates</a>
+    </div>
+</nav>
+<main id="documentTemplateLocalEdit" class="container py-4"
+      th:attr="data-template-id=${template.templateId},data-revision=${template.headCommit},data-max-bytes=${maxArchiveBytes},data-upload-url=@{/api/admin/document-templates/{id}(id=${template.templateId},displayName=${template.displayName})}">
+    <h1 class="h2" th:text="#{document.templates.local.heading}">Edit a template locally</h1>
+    <h2 class="h4" th:text="${template.displayName}">Template</h2>
+    <p th:text="#{document.templates.local.intro}">Download, edit in Word, then upload in this browser. WebDAV is not required.</p>
+    <p class="small text-body-secondary">
+        <span th:text="#{document.templates.local.base}">Fixed starting version:</span>
+        <code class="text-break" th:text="${template.headCommit}">Revision</code>
+    </p>
+    <div class="alert alert-warning" th:text="#{document.templates.local.keep}">
+        Keep this page or bookmark its address. Reloading preserves the starting version.
+    </div>
+    <section class="card mb-3" aria-labelledby="localTemplateDownloadHeading">
+        <div class="card-body">
+            <h2 id="localTemplateDownloadHeading" class="h5" th:text="#{document.templates.local.download.heading}">1. Download and edit</h2>
+            <p th:text="#{document.templates.local.word}">In Word, use File → Open, edit the template and save as DOTX, not DOCX.</p>
+            <a id="localTemplateDownload" class="btn btn-primary"
+               th:href="@{/api/admin/document-templates/{id}/download(id=${template.templateId},revision=${template.headCommit})}"
+               th:download="${template.fileName}"
+               type="application/vnd.openxmlformats-officedocument.wordprocessingml.template"
+               th:text="#{document.templates.local.download}">Download this starting version</a>
+        </div>
+    </section>
+    <section class="card mb-3" aria-labelledby="localTemplateUploadHeading">
+        <div class="card-body">
+            <h2 id="localTemplateUploadHeading" class="h5" th:text="#{document.templates.local.upload.heading}">2. Upload the edited template</h2>
+            <p th:text="#{document.templates.local.check}">The server checks the DOTX and required placeholders before creating a new active Git version.</p>
+            <form id="localTemplateForm" novalidate aria-busy="false">
+                <fieldset id="localTemplateFields" disabled>
+                    <legend class="visually-hidden" th:text="#{document.templates.local.upload.heading}">Upload edited template</legend>
+                    <label for="localTemplateFile" class="form-label" th:text="#{document.templates.upload.file}">DOTX file</label>
+                    <input id="localTemplateFile" type="file" class="form-control mb-3" required
+                           accept=".dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.template"
+                           aria-describedby="localTemplateFileHelp"/>
+                    <p id="localTemplateFileHelp" class="form-text" th:text="#{document.templates.local.file.help}">Select the file edited from the starting version above. The original file remains on your computer.</p>
+                    <button id="localTemplateSave" type="submit" class="btn btn-primary">
+                        <span id="localTemplateSpinner" class="spinner-border spinner-border-sm d-none me-1" aria-hidden="true"></span>
+                        <span th:text="#{document.templates.local.save}">Validate and save as a new version</span>
+                    </button>
+                </fieldset>
+            </form>
+            <noscript><p class="alert alert-warning" th:text="#{document.templates.local.javascript}">JavaScript is required for the version-protected upload.</p></noscript>
+        </div>
+    </section>
+    <div id="localTemplateMessage" hidden role="status" tabindex="-1"></div>
+    <section id="localTemplateResult" class="card mb-3" hidden aria-labelledby="localTemplateResultHeading">
+        <div class="card-body">
+            <h2 id="localTemplateResultHeading" class="h5" th:text="#{document.templates.local.result}">3. Review the saved result</h2>
+            <p><code id="localTemplateSavedRevision" class="text-break"></code></p>
+            <a id="localTemplateCompare" class="btn btn-outline-primary mb-2"
+               th:href="@{/admin/document-templates/{id}(id=${template.templateId})}"
+               th:text="#{document.templates.local.compare}">Compare the saved changes</a>
+            <a th:if="${decisionReportTemplate}" class="btn btn-outline-secondary mb-2"
+               th:href="@{/admin/document-templates/{id}/test.docx(id=${template.templateId})}"
+               th:text="#{document.templates.local.sample}">Download a test report from the current template</a>
+            <p class="small text-body-secondary mb-0" th:text="#{document.templates.local.sample.help}">The test report uses the current server version, which may have changed since this save. It is not a pre-publication check.</p>
+        </div>
+    </section>
+    <a id="localTemplateHistory" class="btn btn-outline-secondary"
+       th:href="@{/admin/document-templates/{id}(id=${template.templateId},from=${template.headCommit})}"
+       th:text="#{document.templates.local.history}">Inspect history and compare with the starting version</a>
+    <div id="localTemplateLabels" hidden
+         th:attr="data-failed=#{document.templates.local.failed},data-invalid=#{document.templates.local.invalid},data-too-large=#{document.templates.local.too-large},data-busy=#{document.templates.local.busy},data-saved=#{document.templates.local.saved},data-conflict=#{document.templates.local.conflict},data-authentication=#{document.templates.local.authentication},data-uncertain=#{document.templates.local.uncertain}"></div>
+</main>
+<script th:src="@{/js/api/document-templates-api.js}"></script>
+<script th:src="@{/js/document-templates/document-template-local-edit.js}"></script>
+</body>
+</html>

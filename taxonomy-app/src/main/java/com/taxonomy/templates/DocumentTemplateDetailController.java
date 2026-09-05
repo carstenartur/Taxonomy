@@ -7,6 +7,7 @@ import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.io.IOException;
@@ -32,6 +34,24 @@ public final class DocumentTemplateDetailController {
             DocumentTemplateReportPreview preview) {
         this.templates = templates;
         this.preview = preview;
+    }
+
+    /** The URL, download and upload all retain the same immutable starting revision. */
+    @GetMapping("/admin/document-templates/{templateId}/local-edit")
+    public String localEdit(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            Model model) throws IOException {
+        if (revision == null || !revision.matches("[0-9a-f]{40}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A full immutable template revision is required");
+        }
+        TemplateFile original = templates.download(templateId, revision);
+        model.addAttribute("template", descriptor(original));
+        model.addAttribute("maxArchiveBytes", OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);
+        model.addAttribute("decisionReportTemplate",
+                DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId));
+        return "document-template-local-edit";
     }
 
     @GetMapping("/admin/document-templates/{templateId}")
