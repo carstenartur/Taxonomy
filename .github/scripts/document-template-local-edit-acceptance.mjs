@@ -39,6 +39,23 @@ export function assertUploadRequests(uploads, revision, expectedBodies) {
   }
 }
 
+/** Release and drain held routes before closing their page; failures remain blocking. */
+export function createUploadHold(failures) {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  return {
+    release,
+    async handler(route) {
+      try {
+        if (route.request().method() === 'PUT') await held;
+        await route.continue(); // Never supply a synthetic response.
+      } catch (error) {
+        failures.push('Held upload failed: ' + (error.message || String(error)));
+      }
+    }
+  };
+}
+
 /** Modify only the document part of a server-validated, downloaded QA fixture. */
 export async function editDownloadedTemplate(original, edited, marker) {
   assert.match(marker, /^[a-z0-9-]+$/);
@@ -173,11 +190,11 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     assert.equal(new URL(await link.getAttribute('href')).searchParams.get('revision'), initial);
     await link.click();
     const checkout = first.url();
-    await expect(first.locator('#localTemplateFields')).toBeEnabled();
+    await expectEditingDisabled(first, false);
     await expect(first.locator('#documentTemplateLocalEdit')).toHaveAttribute('data-revision', initial);
     const second = await context.newPage();
     await second.goto(checkout);
-    await expect(second.locator('#localTemplateFields')).toBeEnabled();
+    await expectEditingDisabled(second, false);
     const original = path.join(directory, 'original.dotx');
     const secondOriginal = path.join(directory, 'second-original.dotx');
     await download(first, original);
@@ -200,42 +217,42 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     assert.equal(invalid.status(), 400);
     await expect(first.locator('#localTemplateMessage')).toContainText(language === 'de'
       ? 'gültige, nicht leere DOTX' : 'valid, non-empty DOTX');
-    await expect(first.locator('#localTemplateFields')).toBeEnabled();
+    await expectEditingDisabled(first, false);
     assert.equal(await selectedName(first), 'invalid.dotx');
     assert.equal((await history()).length, 1);
     await capture(first, directory, 'invalid-file-retained');
 
     await first.locator('#localTemplateFile').setInputFiles(winnerFile);
-    let release;
-    const held = new Promise(resolve => { release = resolve; });
+    const hold = createUploadHold(browserErrors);
     const routePattern = api + '?*';
-    const holdUpload = async route => {
-      if (route.request().method() === 'PUT') await held;
-      await route.continue(); // Never supply a synthetic response.
-    };
-    await first.route(routePattern, holdUpload);
+    await first.route(routePattern, hold.handler);
     let saved;
     try {
-      const received = first.waitForResponse(isUpload);
+      // A UI assertion can fail before this response is awaited. Observe rejection now.
+      const received = first.waitForResponse(isUpload).catch(error => {
+        browserErrors.push('Held upload response failed: ' + error.message);
+        return null;
+      });
       await first.locator('#localTemplateSave').click();
       await expect(first.locator('#localTemplateForm')).toHaveAttribute('aria-busy', 'true');
-      await expect(first.locator('#localTemplateFields')).toBeDisabled();
+      await expectEditingDisabled(first, true);
       await expect(first.locator('#localTemplateSpinner')).toBeVisible();
       await first.locator('#localTemplateForm').evaluate(form => form.requestSubmit());
       await capture(first, directory, 'upload-progress');
-      release();
+      hold.release();
       saved = await received;
     } finally {
-      release();
-      await first.unroute(routePattern, holdUpload);
+      hold.release();
+      await first.unrouteAll({ behavior: 'wait' });
     }
+    assert.ok(saved, 'The held real upload must produce a response');
     assert.equal(saved.status(), 201);
     const head = (await saved.json()).headCommit;
     assert.match(head, /^[a-f0-9]{40}$/);
     assert.notEqual(head, initial);
     await expect(first.locator('#localTemplateResult')).toBeVisible();
     await expect(first.locator('#localTemplateSavedRevision')).toHaveText(head);
-    await expect(first.locator('#localTemplateFields')).toBeDisabled();
+    await expectEditingDisabled(first, true);
     await first.locator('#localTemplateForm').evaluate(form => form.requestSubmit());
     await capture(first, directory, 'saved');
     const beforeConflict = await currentBytes();
@@ -261,7 +278,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     assert.equal(conflict.status(), 412);
     await expect(second.locator('#localTemplateMessage')).toContainText(language === 'de'
       ? 'hat nichts überschrieben' : 'Nothing was overwritten');
-    await expect(second.locator('#localTemplateFields')).toBeEnabled();
+    await expectEditingDisabled(second, false);
     await expect(second.locator('#localTemplateResult')).toBeHidden();
     assert.equal(await selectedName(second), 'stale.dotx');
     assert.equal(sha256(await currentBytes()), sha256(beforeConflict));
@@ -330,6 +347,14 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     }
     async function selectedName(target) {
       return target.locator('#localTemplateFile').evaluate(input => input.files[0]?.name);
+    }
+  }
+
+  async function expectEditingDisabled(target, disabled) {
+    // Playwright's actionability state is defined for native controls, not fieldset.
+    await expect(target.locator('#localTemplateFields')).toHaveJSProperty('disabled', disabled);
+    for (const selector of ['#localTemplateFile', '#localTemplateSave']) {
+      await expect(target.locator(selector)).toBeEnabled({ enabled: !disabled });
     }
   }
 

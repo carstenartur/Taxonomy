@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests } from './document-template-local-edit-acceptance.mjs';
+import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests, createUploadHold } from './document-template-local-edit-acceptance.mjs';
 
 const original = fileURLToPath(new URL(
   '../../taxonomy-app/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
@@ -83,4 +83,42 @@ test('an observation error is retained as a blocking failure, not an uncaught ca
   }, uploads, failures));
   assert.deepEqual(uploads, []);
   assert.deepEqual(failures, ['Upload observation failed: capture failed']);
+});
+
+test('a held upload continues exactly once after release and is awaited before cleanup', async () => {
+  const failures = [];
+  const hold = createUploadHold(failures);
+  let calls = 0;
+  let finish;
+  const continued = new Promise(resolve => { finish = resolve; });
+  const pending = hold.handler({
+    request: () => ({ method: () => 'PUT' }),
+    async continue() { calls++; await continued; }
+  });
+  await Promise.resolve();
+  assert.equal(calls, 0);
+  hold.release();
+  hold.release();
+  await Promise.resolve();
+  assert.equal(calls, 1);
+  let done = false;
+  pending.then(() => { done = true; });
+  await Promise.resolve();
+  assert.equal(done, false);
+  finish();
+  await pending;
+  assert.equal(done, true);
+  assert.deepEqual(failures, []);
+});
+
+test('held-route errors are retained instead of escaping as unhandled rejections', async () => {
+  const failures = [];
+  const hold = createUploadHold(failures);
+  const pending = hold.handler({
+    request: () => ({ method: () => 'PUT' }),
+    async continue() { throw new Error('Route is already handled!'); }
+  });
+  hold.release();
+  await assert.doesNotReject(pending);
+  assert.deepEqual(failures, ['Held upload failed: Route is already handled!']);
 });
