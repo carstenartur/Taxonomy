@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests, createUploadHold } from './document-template-local-edit-acceptance.mjs';
+import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests, createUploadHold, withUploadHold } from './document-template-local-edit-acceptance.mjs';
 
 const original = fileURLToPath(new URL(
   '../../taxonomy-app/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
@@ -121,4 +121,66 @@ test('held-route errors are retained instead of escaping as unhandled rejections
   hold.release();
   await assert.doesNotReject(pending);
   assert.deepEqual(failures, ['Held upload failed: Route is already handled!']);
+});
+
+
+test('held upload consumes the actual response body before removing network interception', async () => {
+  const events = [];
+  let interception = false;
+  const page = {
+    async route(pattern, handler) {
+      assert.equal(pattern, '/template?*');
+      assert.equal(typeof handler, 'function');
+      interception = true;
+      events.push('route');
+    },
+    async unrouteAll(options) {
+      assert.deepEqual(options, { behavior: 'wait' });
+      interception = false;
+      events.push('unroute');
+    }
+  };
+  const receipt = { templateId: 'qa-template', headCommit: 'b'.repeat(40) };
+  const actualResponse = {
+    async json() {
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(interception, true, 'Unrouting must not evict the response before consumption');
+      events.push('body');
+      return receipt;
+    }
+  };
+  const result = await withUploadHold(page, '/template?*', [], async hold => {
+    hold.release();
+    events.push('response');
+    return actualResponse.json();
+  });
+  assert.equal(result, receipt);
+  assert.deepEqual(events, ['route', 'response', 'body', 'unroute']);
+});
+
+test('held upload cleanup releases an outstanding route and preserves response failures', async () => {
+  for (const failure of [new Error('UI assertion failed'), new SyntaxError('Invalid response JSON')]) {
+    const failures = [];
+    let pending;
+    let continued = 0;
+    let cleaned = 0;
+    const page = {
+      async route(_pattern, handler) {
+        pending = handler({ request: () => ({ method: () => 'PUT' }),
+          async continue() { continued++; } });
+      },
+      async unrouteAll(options) {
+        assert.deepEqual(options, { behavior: 'wait' });
+        await pending;
+        cleaned++;
+      }
+    };
+    await assert.rejects(withUploadHold(page, '/template?*', failures, async () => {
+      await Promise.resolve();
+      throw failure;
+    }), error => error === failure);
+    assert.equal(continued, 1);
+    assert.equal(cleaned, 1);
+    assert.deepEqual(failures, []);
+  }
 });

@@ -56,6 +56,19 @@ export function createUploadHold(failures) {
   };
 }
 
+/** Consume the upload result before unrouteAll changes Chromium's network/cache state. */
+export async function withUploadHold(page, pattern, failures, operation) {
+  const hold = createUploadHold(failures);
+  await page.route(pattern, hold.handler);
+  try {
+    // Await the operation, including its response body, before running the finally block.
+    return await operation(hold);
+  } finally {
+    hold.release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+}
+
 /** Modify only the document part of a server-validated, downloaded QA fixture. */
 export async function editDownloadedTemplate(original, edited, marker) {
   assert.match(marker, /^[a-z0-9-]+$/);
@@ -223,11 +236,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     await capture(first, directory, 'invalid-file-retained');
 
     await first.locator('#localTemplateFile').setInputFiles(winnerFile);
-    const hold = createUploadHold(browserErrors);
-    const routePattern = api + '?*';
-    await first.route(routePattern, hold.handler);
-    let saved;
-    try {
+    const receipt = await withUploadHold(first, api + '?*', browserErrors, async hold => {
       // A UI assertion can fail before this response is awaited. Observe rejection now.
       const received = first.waitForResponse(isUpload).catch(error => {
         browserErrors.push('Held upload response failed: ' + error.message);
@@ -240,14 +249,13 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
       await first.locator('#localTemplateForm').evaluate(form => form.requestSubmit());
       await capture(first, directory, 'upload-progress');
       hold.release();
-      saved = await received;
-    } finally {
-      hold.release();
-      await first.unrouteAll({ behavior: 'wait' });
-    }
-    assert.ok(saved, 'The held real upload must produce a response');
-    assert.equal(saved.status(), 201);
-    const head = (await saved.json()).headCommit;
+      const saved = await received;
+      assert.ok(saved, 'The held real upload must produce a response');
+      assert.equal(saved.status(), 201);
+      // Keep interception active until the real response body has been consumed.
+      return saved.json();
+    });
+    const head = receipt.headCommit;
     assert.match(head, /^[a-f0-9]{40}$/);
     assert.notEqual(head, initial);
     await expect(first.locator('#localTemplateResult')).toBeVisible();
