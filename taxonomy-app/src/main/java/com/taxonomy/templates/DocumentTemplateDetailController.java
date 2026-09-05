@@ -2,6 +2,7 @@ package com.taxonomy.templates;
 
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
 import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
 import org.springframework.http.CacheControl;
@@ -46,7 +47,13 @@ public final class DocumentTemplateDetailController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A full immutable template revision is required");
         }
-        TemplateFile original = templates.download(templateId, revision);
+        TemplateFile original;
+        try {
+            original = templates.download(templateId, revision);
+        } catch (TemplateNotFoundException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "The requested template starting revision does not exist");
+        }
         model.addAttribute("template", descriptor(original));
         model.addAttribute("maxArchiveBytes", OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);
         model.addAttribute("decisionReportTemplate",

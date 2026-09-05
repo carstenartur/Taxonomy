@@ -78,3 +78,41 @@ in both existing UI contract entry points. `DocumentTemplateLocalEditControllerT
 checks immutable server-side reload behavior and rejects mutable/abbreviated refs.
 These tests do not replace the full Maven/database/security/browser/deployment gates
 or a test with the installed Microsoft Word version on the affected workstation.
+
+## Packaged-application browser acceptance
+
+The existing `DocumentTemplateReportDownloadIT` runs
+`.github/scripts/document-template-local-edit-acceptance.mjs` before the unchanged
+hospital/report journey, against the **same disposable packaged application**.
+No extra workflow or application start is added. The ordinary `document-template-report-e2e`
+profile now also fails when local editing or its screenshot evidence fails.
+
+The German desktop (1280 × 900) and English narrow-screen (390 × 844) cases each
+create a uniquely named QA template from the server's bundled DOTX. Two tabs open
+the same starting revision and download it through the visible controls. The fixture
+helper uses the existing JDK `jar` utility to insert a marked paragraph without
+changing the source archive or moving final Word section properties. This simulates
+returning a locally edited DOTX; **it does not automate or certify desktop Word**.
+
+Each case checks a real invalid upload (400), file retention, a visible busy state,
+duplicate-submit prevention, an accepted save, the actual saved comparison and
+OOXML inspection. The second tab reloads its original address after the first saves,
+redownloads exactly the original bytes and submits its stale edit. The server must
+return 412 while preserving the winning bytes and the exact two-entry history.
+There are no fabricated server responses or changed preconditions. The progress
+check temporarily holds the outgoing request, then continues it to the real server.
+
+Missing, mutable and abbreviated revision parameters return 400; a syntactically
+valid but absent starting revision returns 404, never an automatic checkout of HEAD.
+Page-script errors and unexpected console errors fail the scenario. The only allowed
+HTTP console errors are the deliberately rejected 400/412 uploads on that case's
+unique template URL. Enabled download, save and history controls are checked for
+occlusion, and horizontal page overflow is rejected.
+
+Evidence is written below
+`target/ui-verification/document-template-report/local-edit/`: one JSON report and
+six screenshots per language (`checkout`, `invalid-file-retained`, `upload-progress`,
+`saved`, `conflict-after-reload`, `saved-diff`). These describe the executed test only
+when the corresponding exact-head CI succeeds; their implementation alone is not
+an acceptance result. The supplementary fixture tests run with the existing Node
+contract suite and do not need a browser.

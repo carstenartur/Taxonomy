@@ -2,6 +2,7 @@ package com.taxonomy.templates;
 
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,6 +59,19 @@ class DocumentTemplateLocalEditControllerTest {
         new DocumentTemplateDetailController(templates, preview)
                 .localEdit("organisation", REVISION, model);
         assertThat(model.getAttribute("decisionReportTemplate")).isEqualTo(false);
+    }
+
+    @Test
+    void missingStartingRevisionIsNotFoundAndNeverFallsBackToHead() throws Exception {
+        when(templates.download("organisation", REVISION))
+                .thenThrow(new TemplateNotFoundException("organisation", REVISION));
+        var controller = new DocumentTemplateDetailController(templates, preview);
+        assertThatThrownBy(() -> controller.localEdit("organisation", REVISION, new ConcurrentModel()))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+        verify(templates).download("organisation", REVISION);
+        verifyNoMoreInteractions(templates);
+        verifyNoInteractions(preview);
     }
 
     @ParameterizedTest

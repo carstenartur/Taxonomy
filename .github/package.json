@@ -34,7 +34,7 @@
     "verify:ui-shard": "node scripts/run-ui-suite.mjs",
     "verify:ui-shards": "node scripts/verify-ui-shards.mjs",
     "test:api-transport": "node scripts/test-taxonomy-api-client.mjs",
-    "test:document-template-local-edit": "node --test scripts/document-template-local-edit.test.mjs"
+    "test:document-template-local-edit": "node --test scripts/document-template-local-edit.test.mjs scripts/document-template-local-edit-fixtures.test.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
