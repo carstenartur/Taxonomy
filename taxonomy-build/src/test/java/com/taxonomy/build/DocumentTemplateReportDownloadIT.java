@@ -69,11 +69,14 @@ class DocumentTemplateReportDownloadIT {
                 .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false")
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "false")
                 .withEnv("TAXONOMY_INIT_ASYNC", "true")
+                // Ordinary browser journeys must start after the asynchronous catalogue is ready.
+                .withEnv("MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE",
+                        "readinessState,taxonomy")
                 .withEnv("TAXONOMY_THYMELEAF_CACHE", "false")
                 .withEnv("LLM_MOCK", "true")
                 .withExposedPorts(8080)
                 .withStartupTimeout(Duration.ofMinutes(4))
-                .waitingFor(Wait.forHttp("/login")
+                .waitingFor(Wait.forHttp("/actuator/health/readiness")
                         .forPort(8080)
                         .forStatusCode(200))) {
             application.start();
