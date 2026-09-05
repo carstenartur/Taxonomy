@@ -15,11 +15,14 @@ public class AnalysisResult {
     private Map<String, Integer> rawScores = new LinkedHashMap<>();
 
     /**
-     * True after a new-format payload explicitly supplied {@code rawScores}. It makes JSON
-     * deserialization order-independent when both legacy {@code scores} and {@code rawScores}
+     * True after a constructor or setter supplied non-null {@code rawScores}, even an empty
+     * map. It makes JSON deserialization order-independent when both legacy {@code scores} and {@code rawScores}
      * are present.
      */
     private transient boolean explicitRawScores;
+
+    /** Whether the current raw evidence came from the legacy JSON setter. */
+    private transient boolean legacyScoresSupplied;
 
     /** Taxonomy-tree instance used to derive the currently cached score semantics. */
     private transient List<TaxonomyNodeDto> scoreSemanticsTree;
@@ -81,7 +84,7 @@ public class AnalysisResult {
     public AnalysisResult() {}
 
     public AnalysisResult(Map<String, Integer> rawScores, List<TaxonomyNodeDto> tree) {
-        this.rawScores = normalizeRawScores(rawScores);
+        setRawScores(rawScores);
         this.tree = tree;
         refreshScoreSemantics();
     }
@@ -103,6 +106,7 @@ public class AnalysisResult {
     public void setScores(Map<String, Integer> scores) {
         if (!explicitRawScores) {
             this.rawScores = normalizeRawScores(scores);
+            this.legacyScoresSupplied = true;
         }
     }
 
@@ -110,9 +114,18 @@ public class AnalysisResult {
         return rawScores;
     }
 
+    /**
+     * Non-null raw evidence always wins over the legacy alias, including an explicit empty map.
+     * Null means no new-format evidence: preserve an accepted legacy input, or clear a previous
+     * constructor/explicit raw value. This also covers property-based JSON construction.
+     */
     public void setRawScores(Map<String, Integer> rawScores) {
+        if (rawScores == null && legacyScoresSupplied) {
+            return;
+        }
         this.rawScores = normalizeRawScores(rawScores);
-        this.explicitRawScores = true;
+        this.explicitRawScores = rawScores != null;
+        this.legacyScoresSupplied = false;
     }
 
     public int getScoreSemanticsVersion() {

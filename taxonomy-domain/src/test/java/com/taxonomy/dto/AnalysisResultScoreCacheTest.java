@@ -59,6 +59,13 @@ class AnalysisResultScoreCacheTest {
     void clearingRawEvidenceClearsEveryDerivedScoreView() {
         for (int mode = 0; mode < 4; mode++) {
             AnalysisResult result = productResult();
+            if (mode == 3) {
+                // The legacy clear path must start with legacy input, not authoritative raw input.
+                AnalysisResult legacy = new AnalysisResult();
+                legacy.setTree(result.getTree());
+                legacy.setScores(result.getRawScores());
+                result = legacy;
+            }
             result.setScoreSemanticsWarnings(List.of("Stale compatibility warning"));
             switch (mode) {
                 case 0 -> result.setRawScores(Map.of());
@@ -123,6 +130,50 @@ class AnalysisResultScoreCacheTest {
             result.getRawScores().clear();
             assertEmptyScoreEvidence(result);
         }
+    }
+
+    @Test
+    void nullRawSetterRetainsLegacyEvidenceInEitherOrder() {
+        AnalysisResult first = new AnalysisResult();
+        first.setScores(Map.of("IP", 40));
+        first.setRawScores(null);
+        AnalysisResult second = new AnalysisResult();
+        second.setRawScores(null);
+        second.setScores(Map.of("IP", 40));
+        for (AnalysisResult result : List.of(first, second)) {
+            assertEquals(Map.of("IP", 40), result.getRawScores());
+            assertEquals(Map.of("IP", 40), result.getScores());
+        }
+    }
+
+    @Test
+    void constructorRawEvidenceHasTheSameAuthorityAsExplicitSetterInput() {
+        AnalysisResult result = productResult();
+        String fingerprint = result.getScoreSemanticsFingerprintSha256();
+        result.setScores(Map.of("IP", 100, "IP-F", 40, "IP-P", 32));
+        assertEquals(80, result.getRawScores().get("IP-P"));
+        assertEquals(32, result.getScores().get("IP-P"));
+        assertEquals(fingerprint, result.getScoreSemanticsFingerprintSha256());
+
+        AnalysisResult empty = new AnalysisResult(Map.of(), result.getTree());
+        empty.setScores(Map.of("IP", 99));
+        assertEmptyScoreEvidence(empty);
+    }
+
+    @Test
+    void explicitRawClearDoesNotResurrectAnEarlierLegacyAlias() {
+        AnalysisResult result = new AnalysisResult();
+        result.setScores(Map.of("IP", 40));
+        result.setRawScores(Map.of("IP", 80));
+        result.setScores(Map.of("IP", 32));
+        result.setRawScores(null);
+        assertEmptyScoreEvidence(result);
+
+        result.setScores(Map.of("IP", 25));
+        assertEquals(Map.of("IP", 25), result.getRawScores());
+        result.setRawScores(Map.of());
+        result.setScores(Map.of("IP", 99));
+        assertEmptyScoreEvidence(result);
     }
 
     private void assertEmptyScoreEvidence(AnalysisResult result) {
