@@ -208,7 +208,7 @@ public class DecisionRationaleReportService {
         DecisionReportBuildMetadataService.BuildMetadata buildMetadata =
                 buildMetadataService.current();
         List<TaxonomyNodeDto> fingerprintTree = input.taxonomyTree().isEmpty()
-                ? taxonomyService.getFullTree() : input.taxonomyTree();
+                ? taxonomyService.toFingerprintTree(nodesByCode.values()) : input.taxonomyTree();
         String actualDataFingerprint = TaxonomyDataFingerprint.sha256(fingerprintTree);
         String analysisSnapshotFingerprint = fingerprintAnalysis(
                 input, scores, reasons, productCoverageGaps);

@@ -23,11 +23,11 @@ public class PortfolioFingerprintService {
     }
 
     /**
-     * Fingerprints the same frozen DTO representation that is persisted with an analysis.
+     * Fingerprints the same semantic fields persisted with an analysis, without mapping relations.
      * Parent identity and analysis role are therefore part of the reproducibility contract.
      */
     public String taxonomyFingerprint() {
-        return TaxonomyDataFingerprint.sha256(taxonomyService.getFullTree());
+        return TaxonomyDataFingerprint.sha256(taxonomyService.getFingerprintTree());
     }
 
     public String promptFingerprint() {
