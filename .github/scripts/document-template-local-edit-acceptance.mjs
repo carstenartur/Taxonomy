@@ -11,6 +11,34 @@ const exec = promisify(execFile);
 const mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.template';
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
+/** Browser File uploads can omit the body in Playwright's request event. */
+export function recordUploadRequest(request, uploads, failures) {
+  try {
+    const body = request.postDataBuffer();
+    uploads.push({ ifMatch: request.headers()['if-match'],
+      bodyCaptured: body !== null,
+      sha256: body === null ? null : sha256(body) });
+  } catch (error) {
+    // Do not throw out of an EventEmitter callback and lose the failure artifact.
+    failures.push('Upload observation failed: ' + (error.message || String(error)));
+  }
+}
+
+export function assertUploadRequests(uploads, revision, expectedBodies) {
+  assert.equal(uploads.length, expectedBodies.length,
+    'Exactly invalid, accepted and conflicting uploads; no retries');
+  for (const [index, upload] of uploads.entries()) {
+    assert.equal(upload.ifMatch, '"' + revision + '"');
+    if (upload.bodyCaptured) {
+      assert.equal(upload.sha256, sha256(expectedBodies[index]),
+        'Captured upload differs from the selected file');
+    } else {
+      assert.equal(upload.bodyCaptured, false);
+      assert.equal(upload.sha256, null, 'Unavailable bodies must not claim a digest');
+    }
+  }
+}
+
 /** Modify only the document part of a server-validated, downloaded QA fixture. */
 export async function editDownloadedTemplate(original, edited, marker) {
   assert.match(marker, /^[a-z0-9-]+$/);
@@ -106,8 +134,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
       });
       target.on('request', request => {
         if (request.method() === 'PUT' && request.url().split('?')[0] === api) {
-          uploads.push({ ifMatch: request.headers()['if-match'],
-            sha256: sha256(request.postDataBuffer()) });
+          recordUploadRequest(request, uploads, browserErrors);
         }
       });
     });
@@ -165,8 +192,9 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     await capture(first, directory, 'checkout');
 
     // Real server rejection, not a stubbed response: the chosen file survives.
+    const invalidBytes = Buffer.from('not an OOXML archive');
     await first.locator('#localTemplateFile').setInputFiles({
-      name: 'invalid.dotx', mimeType: mediaType, buffer: Buffer.from('not an OOXML archive')
+      name: 'invalid.dotx', mimeType: mediaType, buffer: invalidBytes
     });
     const invalid = await save(first);
     assert.equal(invalid.status(), 400);
@@ -213,8 +241,12 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     const beforeConflict = await currentBytes();
     const current = path.join(directory, 'server-winner.dotx');
     await writeFile(current, beforeConflict);
-    assert.ok((await readDocumentPart(current)).includes(winnerMarker));
-    assert.ok(!(await readDocumentPart(current)).includes(staleMarker));
+    const winnerXml = await readDocumentPart(winnerFile);
+    const storedXml = await readDocumentPart(current);
+    // ZIP metadata is normalized by the server, but original OOXML bytes are retained.
+    assert.equal(storedXml, winnerXml, 'Stored document must match the actual selected file');
+    assert.ok(storedXml.includes(winnerMarker));
+    assert.ok(!storedXml.includes(staleMarker));
     const beforeHistory = await history();
     assert.equal(beforeHistory.length, 2);
 
@@ -257,12 +289,12 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
       routeStatuses.push({ query, status: response.status() });
     }
     // A protocol-only credential is never used; these are ordinary browser sessions.
-    assert.equal(uploads.length, 3, 'Exactly invalid, accepted and conflicting uploads; no retries');
-    assert.ok(uploads.every(upload => upload.ifMatch === '"' + initial + '"'));
-    assert.equal(uploads[1].sha256, sha256(await readFile(winnerFile)));
-    assert.equal(uploads[2].sha256, sha256(await readFile(staleFile)));
+    const expectedBodies = [invalidBytes, await readFile(winnerFile), await readFile(staleFile)];
+    assertUploadRequests(uploads, initial, expectedBodies);
     assert.deepEqual(browserErrors, []);
     return { ...configuration, templateId: id, initial, head, uploads, routeStatuses,
+      selectedFileSha256: expectedBodies.map(sha256),
+      storedDocumentMatchesSelectedFile: true, storedDocumentSha256: sha256(storedXml),
       historyEntries: beforeHistory.length, winnerSha256: sha256(beforeConflict),
       originalDownloadSha256: sha256(await readFile(original)),
       conflictStatus: conflict.status(), invalidStatus: invalid.status(),

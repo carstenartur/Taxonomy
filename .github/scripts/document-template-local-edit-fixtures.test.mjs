@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { editDownloadedTemplate, readDocumentPart } from './document-template-local-edit-acceptance.mjs';
+import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests } from './document-template-local-edit-acceptance.mjs';
 
 const original = fileURLToPath(new URL(
   '../../taxonomy-app/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
@@ -37,4 +37,50 @@ test('fixture marker cannot inject XML or filesystem syntax', async () => {
   for (const marker of ['<w:p/>', '../unsafe', 'name&value', '']) {
     await assert.rejects(editDownloadedTemplate(original, '/unused.dotx', marker));
   }
+});
+
+const revision = 'a'.repeat(40);
+const request = body => ({
+  headers: () => ({ 'if-match': '"' + revision + '"' }),
+  postDataBuffer: () => body
+});
+
+test('a File request with an unavailable body records no invented or empty digest', () => {
+  const uploads = [];
+  const failures = [];
+  recordUploadRequest(request(null), uploads, failures);
+  assert.deepEqual(failures, []);
+  assert.deepEqual(uploads, [{ ifMatch: '"' + revision + '"', bodyCaptured: false, sha256: null }]);
+  assertUploadRequests(uploads, revision, [Buffer.from('selected file')]);
+});
+
+test('captured bodies including empty buffers retain strict byte verification', () => {
+  const uploads = [];
+  const failures = [];
+  const bodies = [Buffer.from('original bytes'), Buffer.alloc(0)];
+  for (const body of bodies) recordUploadRequest(request(body), uploads, failures);
+  assert.deepEqual(failures, []);
+  assert.ok(uploads.every(upload => upload.bodyCaptured));
+  assertUploadRequests(uploads, revision, bodies);
+  assert.throws(() => assertUploadRequests(uploads, revision, [Buffer.from('changed'), bodies[1]]));
+});
+
+test('missing request bodies do not relax count or original revision checks', () => {
+  const uploads = [];
+  recordUploadRequest(request(null), uploads, []);
+  const bodies = [Buffer.from('selected file')];
+  assert.throws(() => assertUploadRequests([], revision, bodies));
+  assert.throws(() => assertUploadRequests([...uploads, ...uploads], revision, bodies));
+  assert.throws(() => assertUploadRequests(uploads, 'b'.repeat(40), bodies));
+  assert.throws(() => assertUploadRequests([{ ...uploads[0], sha256: digest(bodies[0]) }], revision, bodies));
+});
+
+test('an observation error is retained as a blocking failure, not an uncaught callback', () => {
+  const uploads = [];
+  const failures = [];
+  assert.doesNotThrow(() => recordUploadRequest({
+    postDataBuffer() { throw new Error('capture failed'); }
+  }, uploads, failures));
+  assert.deepEqual(uploads, []);
+  assert.deepEqual(failures, ['Upload observation failed: capture failed']);
 });
