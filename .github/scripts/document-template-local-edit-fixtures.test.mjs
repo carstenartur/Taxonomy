@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests, createUploadHold, withUploadHold, savedRevisionFromResponse } from './document-template-local-edit-acceptance.mjs';
+import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests, createUploadHold, withUploadHold, savedRevisionFromResponse, verifyLocalEditing } from './document-template-local-edit-acceptance.mjs';
 
 const original = fileURLToPath(new URL(
   '../../taxonomy-app/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
@@ -222,4 +222,51 @@ test('sample action and its explanation share the server-side availability condi
       'Generic templates must render neither the sample action nor its explanation');
   }
   assert.match(action, /\baria-describedby="localTemplateSampleHelp"/);
+});
+
+// Intentionally omit credentials: reaching that assertion proves URL validation
+// succeeded, but stops before Playwright import, browser launch or file writes.
+const probeLocalEditingTarget = baseUrl => verifyLocalEditing({ baseUrl });
+const credentialsRequired = {
+  code: 'ERR_ASSERTION', message: /Explicit disposable-instance credentials are required/
+};
+
+test('WHATWG IPv6 loopback hostname retains brackets and passes the real target guard', async () => {
+  // URL.hostname uses the host serializer: https://url.spec.whatwg.org/#dom-url-hostname
+  for (const protocol of ['http:', 'https:']) {
+    for (const host of ['[::1]', '[0:0:0:0:0:0:0:1]']) {
+      const baseUrl = protocol + '//' + host + ':8080/taxonomy';
+      assert.equal(new URL(baseUrl).hostname, '[::1]');
+      await assert.rejects(probeLocalEditingTarget(baseUrl), credentialsRequired);
+    }
+  }
+});
+
+test('existing IPv4 and localhost targets pass validation without starting a browser', async () => {
+  for (const protocol of ['http:', 'https:']) {
+    for (const host of ['127.0.0.1', 'localhost']) {
+      await assert.rejects(probeLocalEditingTarget(protocol + '//' + host + ':8080/taxonomy'),
+        credentialsRequired);
+    }
+  }
+});
+
+test('nonlocal and lookalike targets are rejected by the real guard before credentials', async () => {
+  for (const host of ['example.invalid', 'localhost.invalid', '127.0.0.1.invalid',
+    '192.0.2.1', '[::]', '[2001:db8::1]']) {
+    await assert.rejects(probeLocalEditingTarget('http://' + host + ':8080/taxonomy'), {
+      code: 'ERR_ASSERTION', message: /isolated loopback application/
+    });
+  }
+});
+
+test('loopback URL credentials query and fragment remain forbidden before browser startup', async () => {
+  for (const baseUrl of ['http://user:password@localhost:8080/taxonomy',
+    'http://localhost:8080/taxonomy?revision=main', 'http://[::1]:8080/taxonomy#section']) {
+    const url = new URL(baseUrl);
+    await assert.rejects(probeLocalEditingTarget(baseUrl), {
+      code: 'ERR_ASSERTION', expected: '',
+      actual: url.search + url.hash + url.username + url.password
+    });
+  }
 });
