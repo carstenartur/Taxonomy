@@ -52,7 +52,7 @@ public final class DocumentTemplateDetailController {
             original = templates.download(templateId, revision);
         } catch (TemplateNotFoundException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "The requested template starting revision does not exist");
+                    "The requested template starting revision does not exist", exception);
         }
         model.addAttribute("template", descriptor(original));
         model.addAttribute("maxArchiveBytes", OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);

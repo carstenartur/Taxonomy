@@ -1,5 +1,6 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.shared.config.GlobalExceptionHandler;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
@@ -11,7 +12,10 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.support.StaticMessageSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.ui.ConcurrentModel;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -24,9 +28,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
-class DocumentTemplateLocalEditControllerTest {
+class DocumentTemplateDetailControllerLocalEditTest {
     private static final String REVISION = "b".repeat(40);
     @Mock DocumentTemplateService templates;
     @Mock DocumentTemplateReportPreview preview;
@@ -63,12 +69,40 @@ class DocumentTemplateLocalEditControllerTest {
 
     @Test
     void missingStartingRevisionIsNotFoundAndNeverFallsBackToHead() throws Exception {
-        when(templates.download("organisation", REVISION))
-                .thenThrow(new TemplateNotFoundException("organisation", REVISION));
+        var missing = new TemplateNotFoundException("organisation", REVISION);
+        when(templates.download("organisation", REVISION)).thenThrow(missing);
         var controller = new DocumentTemplateDetailController(templates, preview);
         assertThatThrownBy(() -> controller.localEdit("organisation", REVISION, new ConcurrentModel()))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+                    assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                    assertThat(error.getCause()).isSameAs(missing);
+                    assertThat(error.getReason())
+                            .isEqualTo("The requested template starting revision does not exist");
+                });
+        verify(templates).download("organisation", REVISION);
+        verifyNoMoreInteractions(templates);
+        verifyNoInteractions(preview);
+    }
+
+    @Test
+    void missingStartingRevisionRetainsCauseWithoutExposingItInMvcResponse() throws Exception {
+        var missing = new TemplateNotFoundException("private-storage-marker", REVISION);
+        when(templates.download("organisation", REVISION)).thenThrow(missing);
+        var controller = new DocumentTemplateDetailController(templates, preview);
+        var mvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new DocumentTemplateExceptionHandler(),
+                        new GlobalExceptionHandler(new StaticMessageSource()))
+                .build();
+        var result = mvc.perform(get("/admin/document-templates/organisation/local-edit")
+                        .param("revision", REVISION).accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andReturn();
+        assertThat(result.getResolvedException())
                 .isInstanceOfSatisfying(ResponseStatusException.class,
-                        error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+                        error -> assertThat(error.getCause()).isSameAs(missing));
+        assertThat(result.getResponse().getContentAsString())
+                .contains("The requested template starting revision does not exist")
+                .doesNotContain("private-storage-marker", TemplateNotFoundException.class.getName());
         verify(templates).download("organisation", REVISION);
         verifyNoMoreInteractions(templates);
         verifyNoInteractions(preview);

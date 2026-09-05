@@ -74,7 +74,7 @@ any external transfer client.
 
 `npm --prefix .github run test:document-template-local-edit` exercises the real
 browser controller and API boundary with deterministic HTTP fixtures. It is included
-in both existing UI contract entry points. `DocumentTemplateLocalEditControllerTest`
+in both existing UI contract entry points. `DocumentTemplateDetailControllerLocalEditTest`
 checks immutable server-side reload behavior and rejects mutable/abbreviated refs.
 These tests do not replace the full Maven/database/security/browser/deployment gates
 or a test with the installed Microsoft Word version on the affected workstation.
