@@ -198,6 +198,18 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     const source = await context.request.get(
       endpoint('/api/admin/document-templates/decision-rationale-report/download'));
     assert.equal(source.status(), 200);
+    // Verify the positive branch without modifying the bundled decision template.
+    const decisionTag = source.headers()['etag'];
+    assert.match(decisionTag, /^"[a-f0-9]{40}"$/);
+    await first.goto(endpoint('/admin/document-templates/decision-rationale-report/local-edit')
+      + '?revision=' + decisionTag.slice(1, -1) + '&lang=' + language);
+    await expect(first.locator('#localTemplateSample')).toHaveCount(1);
+    await expect(first.locator('#localTemplateSampleHelp')).toHaveCount(1);
+    await expect(first.locator('#localTemplateSample')).toHaveAttribute(
+      'aria-describedby', 'localTemplateSampleHelp');
+    await expect(first.locator('#localTemplateSampleHelp')).toContainText(language === 'de'
+      ? 'keine Prüfung vor der Veröffentlichung' : 'not a pre-publication check');
+    await first.goto(endpoint('/admin/document-templates?lang=' + language));
     const seeded = await context.request.put(api + '?displayName=Local-edit-QA-' + language, {
       data: await source.body(), headers: { 'Content-Type': mediaType, [csrf.name]: csrf.value }
     });
@@ -266,6 +278,9 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     assert.match(head, /^[a-f0-9]{40}$/);
     assert.notEqual(head, initial);
     await expect(first.locator('#localTemplateResult')).toBeVisible();
+    // Generic templates have neither a sample action nor an explanation for it.
+    await expect(first.locator('#localTemplateSample')).toHaveCount(0);
+    await expect(first.locator('#localTemplateSampleHelp')).toHaveCount(0);
     await expect(first.locator('#localTemplateSavedRevision')).toHaveText(head);
     await expectEditingDisabled(first, true);
     await first.locator('#localTemplateForm').evaluate(form => form.requestSubmit());
@@ -329,6 +344,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     return { ...configuration, templateId: id, initial, head, uploads, routeStatuses,
       saveReceiptSource: 'HTTP_201_ETAG_AND_RENDERED_JSON_RESULT',
       selectedFileSha256: expectedBodies.map(sha256),
+      sampleHelpScopedToDecisionTemplate: true,
       storedDocumentMatchesSelectedFile: true, storedDocumentSha256: sha256(storedXml),
       historyEntries: beforeHistory.length, winnerSha256: sha256(beforeConflict),
       originalDownloadSha256: sha256(await readFile(original)),

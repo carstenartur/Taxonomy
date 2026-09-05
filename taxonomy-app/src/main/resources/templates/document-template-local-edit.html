@@ -71,10 +71,12 @@
             <a id="localTemplateCompare" class="btn btn-outline-primary mb-2"
                th:href="@{/admin/document-templates/{id}(id=${template.templateId})}"
                th:text="#{document.templates.local.compare}">Compare the saved changes</a>
-            <a th:if="${decisionReportTemplate}" class="btn btn-outline-secondary mb-2"
+            <a id="localTemplateSample" th:if="${decisionReportTemplate}" class="btn btn-outline-secondary mb-2"
+               aria-describedby="localTemplateSampleHelp"
                th:href="@{/admin/document-templates/{id}/test.docx(id=${template.templateId})}"
                th:text="#{document.templates.local.sample}">Download a test report from the current template</a>
-            <p class="small text-body-secondary mb-0" th:text="#{document.templates.local.sample.help}">The test report uses the current server version, which may have changed since this save. It is not a pre-publication check.</p>
+            <p id="localTemplateSampleHelp" th:if="${decisionReportTemplate}"
+               class="small text-body-secondary mb-0" th:text="#{document.templates.local.sample.help}">The test report uses the current server version, which may have changed since this save. It is not a pre-publication check.</p>
         </div>
     </section>
     <a id="localTemplateHistory" class="btn btn-outline-secondary"

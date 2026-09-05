@@ -208,3 +208,18 @@ test('missing or non-immutable upload receipts and unsuccessful writes fail clos
   }
   assert.throws(() => savedRevisionFromResponse(null));
 });
+
+
+test('sample action and its explanation share the server-side availability condition', async () => {
+  const html = await readFile(new URL(
+    '../../taxonomy-app/src/main/resources/templates/document-template-local-edit.html',
+    import.meta.url), 'utf8');
+  const action = html.match(/<a\b(?=[^>]*\bid="localTemplateSample")[^>]*>/)?.[0];
+  const explanation = html.match(/<p\b(?=[^>]*\bid="localTemplateSampleHelp")[^>]*>/)?.[0];
+  for (const tag of [action, explanation]) {
+    assert.ok(tag, 'Both sample elements must be identifiable');
+    assert.match(tag, /\bth:if="\$\{decisionReportTemplate\}"/,
+      'Generic templates must render neither the sample action nor its explanation');
+  }
+  assert.match(action, /\baria-describedby="localTemplateSampleHelp"/);
+});
