@@ -1,6 +1,7 @@
 package com.taxonomy.build;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,8 +30,22 @@ class QualityToolMetadataTest {
     @Test
     void publishedConfigurationMatchesEveryCodeqlWorkflowUse() throws IOException {
         Path root = repositoryRoot();
-        verify(Files.readString(root.resolve(".github/workflows/codeql.yml")),
+        verify(readWorkflows(root),
                 Files.readString(root.resolve(".github/scripts/finalize-quality-evidence.sh")));
+    }
+
+    @Test
+    void aDifferentPinInAnotherWorkflowIsNotMissed(@TempDir Path root) throws IOException {
+        Path workflows = Files.createDirectories(root.resolve(".github/workflows"));
+        Files.writeString(workflows.resolve("codeql.yml"), workflow(FIRST));
+        Files.writeString(workflows.resolve("security.yaml"), workflow(FIRST));
+        Files.writeString(workflows.resolve("notes.txt"), workflow(SECOND));
+        Files.createDirectory(workflows.resolve("not-a-file.yml"));
+        assertDoesNotThrow(() -> verify(readWorkflows(root), metadata(FIRST)));
+
+        Files.writeString(workflows.resolve("security.yaml"),
+                "steps:\n  - uses: github/codeql-action/upload-sarif@" + SECOND + "\n");
+        assertThrows(AssertionError.class, () -> verify(readWorkflows(root), metadata(FIRST)));
     }
 
     @Test
@@ -76,6 +91,20 @@ class QualityToolMetadataTest {
         assertDoesNotThrow(() -> verify(yaml, metadata(FIRST)));
     }
 
+    private static String readWorkflows(Path root) throws IOException {
+        StringBuilder content = new StringBuilder();
+        try (var files = Files.list(root.resolve(".github/workflows"))) {
+            for (Path file : files.filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+                        return name.endsWith(".yml") || name.endsWith(".yaml");
+                    }).sorted().toList()) {
+                content.append(Files.readString(file)).append('\n');
+            }
+        }
+        return content.toString();
+    }
+
     private static void verify(String workflow, String finalizer) {
         var references = CODEQL_USE.matcher(workflow).results().map(match -> match.group(3)).toList();
         assertFalse(references.isEmpty(), "No supported CodeQL uses entries found");
@@ -106,7 +135,7 @@ class QualityToolMetadataTest {
     private static Path repositoryRoot() {
         Path candidate = Path.of("").toAbsolutePath().normalize();
         while (candidate != null) {
-            if (Files.isRegularFile(candidate.resolve(".github/workflows/codeql.yml"))
+            if (Files.isRegularFile(candidate.resolve(".github/scripts/finalize-quality-evidence.sh"))
                     && Files.isDirectory(candidate.resolve("taxonomy-build"))) {
                 return candidate;
             }
