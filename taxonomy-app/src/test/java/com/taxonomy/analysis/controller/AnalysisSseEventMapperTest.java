@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,7 +62,7 @@ class AnalysisSseEventMapperTest {
     @Test
     void incrementalProductDetailOmitsBatchLocalEffectiveValue() {
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
-        when(taxonomyService.getFullTree()).thenReturn(List.of(productTree()));
+        when(taxonomyService.getFingerprintTree()).thenReturn(List.of(productTree()));
         AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(taxonomyService);
 
         AnalysisSseEventMapper.MappedEvent mapped = semanticMapper.map(
@@ -126,7 +127,7 @@ class AnalysisSseEventMapperTest {
     void terminalProductScoresExposeSuitabilityAndFamilyWeightedRelevance() {
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
         TaxonomyNodeDto root = productTree();
-        when(taxonomyService.getFullTree()).thenReturn(List.of(root));
+        when(taxonomyService.getFingerprintTree()).thenReturn(List.of(root));
 
         AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(taxonomyService);
         AnalysisSseEventMapper.MappedEvent mapped = semanticMapper.map(
@@ -141,12 +142,14 @@ class AnalysisSseEventMapperTest {
                 ((Map<?, ?>) payload.get("scoreDetails")).get("IP-P");
         assertThat(productDetail.kind()).isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
         assertThat(productDetail.effectiveRelevance()).isEqualTo(32);
+        verify(taxonomyService).getFingerprintTree();
+        verify(taxonomyService, never()).getFullTree();
     }
 
     @Test
-    void reusesFullTaxonomyTreeWithinBoundedCacheWindow() {
+    void reusesLightweightTaxonomyTreeWithinBoundedCacheWindow() {
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
-        when(taxonomyService.getFullTree()).thenReturn(List.of(productTree()));
+        when(taxonomyService.getFingerprintTree()).thenReturn(List.of(productTree()));
         AtomicLong nanoTime = new AtomicLong(100L);
         AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(
                 taxonomyService, nanoTime::get, 10L);
@@ -155,18 +158,19 @@ class AnalysisSseEventMapperTest {
                 Map.of("IP-P", 80), Map.of(), "product batch", null));
         semanticMapper.map(completeProductEvent());
 
-        verify(taxonomyService, times(1)).getFullTree();
+        verify(taxonomyService, times(1)).getFingerprintTree();
 
         nanoTime.addAndGet(10L);
         semanticMapper.map(completeProductEvent());
 
-        verify(taxonomyService, times(2)).getFullTree();
+        verify(taxonomyService, times(2)).getFingerprintTree();
+        verify(taxonomyService, never()).getFullTree();
     }
 
     @Test
     void cacheWindowRemainsCorrectAcrossNanoTimeWrapAround() {
         TaxonomyService taxonomyService = mock(TaxonomyService.class);
-        when(taxonomyService.getFullTree()).thenReturn(List.of(productTree()));
+        when(taxonomyService.getFingerprintTree()).thenReturn(List.of(productTree()));
         AtomicLong nanoTime = new AtomicLong(Long.MAX_VALUE - 5L);
         AnalysisSseEventMapper semanticMapper = new AnalysisSseEventMapper(
                 taxonomyService, nanoTime::get, 10L);
@@ -175,12 +179,13 @@ class AnalysisSseEventMapperTest {
         nanoTime.set(Long.MIN_VALUE + 3L);
         semanticMapper.map(completeProductEvent());
 
-        verify(taxonomyService, times(1)).getFullTree();
+        verify(taxonomyService, times(1)).getFingerprintTree();
 
         nanoTime.set(Long.MIN_VALUE + 4L);
         semanticMapper.map(completeProductEvent());
 
-        verify(taxonomyService, times(2)).getFullTree();
+        verify(taxonomyService, times(2)).getFingerprintTree();
+        verify(taxonomyService, never()).getFullTree();
     }
 
     private AnalysisStreamEvent.Complete completeProductEvent() {

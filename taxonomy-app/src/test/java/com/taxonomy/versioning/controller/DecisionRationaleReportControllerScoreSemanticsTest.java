@@ -20,6 +20,8 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -33,7 +35,7 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
         TaxonomyNodeDto product = node("IP-P", "IP-F", "PRODUCT");
         family.setChildren(List.of(product));
         root.setChildren(List.of(family));
-        when(taxonomyService.getFullTree()).thenReturn(List.of(root));
+        when(taxonomyService.getFingerprintTree()).thenReturn(List.of(root));
 
         DecisionRationaleReportController controller = controller(taxonomyService);
 
@@ -73,6 +75,8 @@ class DecisionRationaleReportControllerScoreSemanticsTest {
         assertThat(derived.scoreDetails().get("IP-P").parentScore()).isEqualTo(40);
         assertThat(derived.scoreDetails().get("IP-P").kind())
                 .isEqualTo(AnalysisScoreKind.PRODUCT_SUITABILITY);
+        verify(taxonomyService).getFingerprintTree();
+        verify(taxonomyService, never()).getFullTree();
     }
 
     @Test

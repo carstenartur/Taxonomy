@@ -165,7 +165,7 @@ public class AnalysisSseEventMapper {
             if (current != null && current.isValidAt(now)) {
                 return current.tree();
             }
-            List<TaxonomyNodeDto> loaded = taxonomyService.getFullTree();
+            List<TaxonomyNodeDto> loaded = taxonomyService.getFingerprintTree();
             List<TaxonomyNodeDto> snapshot = loaded == null ? List.of() : List.copyOf(loaded);
             cachedTaxonomyTree = new CachedTaxonomyTree(
                     snapshot, now, treeCacheTtlNanos);

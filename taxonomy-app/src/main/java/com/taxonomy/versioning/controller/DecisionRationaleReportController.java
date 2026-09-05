@@ -234,7 +234,7 @@ public class DecisionRationaleReportController {
                 code, suppliedRaw.get(code)));
         return AnalysisScoreSemantics.derive(
                 authoritativeRaw,
-                taxonomyService == null ? List.of() : taxonomyService.getFullTree());
+                taxonomyService == null ? List.of() : taxonomyService.getFingerprintTree());
     }
 
     private Locale resolveLocale(String language) {
