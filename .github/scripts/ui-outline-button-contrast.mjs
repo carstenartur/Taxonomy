@@ -34,6 +34,8 @@ export async function readButtonContrast(locator) {
       text: node.textContent.trim(),
       foreground: style.color,
       background: style.backgroundColor,
+      compositedForeground: foreground,
+      compositedBackground: background,
       contrast: (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
         / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
     };
@@ -62,9 +64,10 @@ export async function verifyImportModeContrast(page) {
         node.checked && document.activeElement !== node);
       if (!selected) throw new Error(`Import mode ${id} is not checked and unfocused`);
       for (const candidate of ids) await record(candidate, candidate === id ? 'checked-unfocused' : 'unchecked');
-      const unchecked = ids.find(candidate => candidate !== id);
-      await page.locator(`label[for="${unchecked}"]`).hover();
-      await record(unchecked, 'unchecked-hover');
+      for (const unchecked of ids.filter(candidate => candidate !== id)) {
+        await page.locator(`label[for="${unchecked}"]`).hover();
+        await record(unchecked, 'unchecked-hover');
+      }
       await page.mouse.move(0, 0);
       await page.locator(`#${id}`).focus();
       await record(id, 'checked-focus');
