@@ -12,6 +12,8 @@
     var overlayObserverInstalled = false;
     var onboardingTaskProgressPatched = false;
     var previousCopilotBusy = false;
+    var resultFreshnessObserverInstalled = false;
+    var resultEvidence = new WeakMap();
     var taskRewriteFrame = null;
     var overlayRepositionFrame = null;
 
@@ -365,6 +367,67 @@
         scheduleOverlayReposition();
     }
 
+    function syncCopilotResultFreshness() {
+        var content = document.getElementById('copilotContent');
+        var input = document.getElementById('businessText');
+        var header = content && content.firstElementChild;
+        var title = header && header.querySelector('strong');
+        if (!header || !title) return;
+
+        var evidence = resultEvidence.get(header);
+        if (!evidence) {
+            // Only the completed legacy summary has a direct success alert with a title.
+            // Running/failed operation cards and their actions must remain untouched.
+            if (!header.classList.contains('alert-success')) return;
+            evidence = {
+                sourceText: C.S && typeof C.S.lastAnalyzedText === 'string'
+                    ? C.S.lastAnalyzedText : null,
+                title: title.textContent
+            };
+            resultEvidence.set(header, evidence);
+        }
+        var stale = evidence.sourceText === null || !input
+            || input.value !== evidence.sourceText
+            || (typeof C.isStale === 'function' && C.isStale());
+        var state = stale ? 'stale' : 'current';
+        var message = stale ? text('browse.stale.warning',
+            'Der Anforderungstext wurde geändert — die bisherigen Ergebnisse sind nicht mehr gültig.',
+            'The requirement text has changed — the previous results are no longer valid.')
+            : evidence.title;
+        if (title.textContent !== message) title.textContent = message;
+        if (header.classList.contains('alert-success') === stale) {
+            header.classList.toggle('alert-success', !stale);
+        }
+        if (header.classList.contains('alert-warning') !== stale) {
+            header.classList.toggle('alert-warning', stale);
+        }
+        if (header.dataset.copilotResultState !== state) {
+            header.dataset.copilotResultState = state;
+        }
+        header.setAttribute('role', 'status');
+        header.setAttribute('aria-live', 'polite');
+    }
+
+    function installResultFreshness() {
+        if (resultFreshnessObserverInstalled) return;
+        var input = document.getElementById('businessText');
+        var content = document.getElementById('copilotContent');
+        if (!input || !content) return;
+        resultFreshnessObserverInstalled = true;
+        input.addEventListener('input', syncCopilotResultFreshness);
+        input.addEventListener('change', syncCopilotResultFreshness);
+        if (typeof MutationObserver === 'function') {
+            var observer = new MutationObserver(syncCopilotResultFreshness);
+            observer.observe(input, { attributes: true, attributeFilter: ['class'] });
+            observer.observe(content, { childList: true, subtree: true });
+        }
+        ['taxonomy:analysis-draft-restored', 'taxonomy:analysis-invalidated',
+            'taxonomy:view-rendered'].forEach(function (eventName) {
+            document.addEventListener(eventName, syncCopilotResultFreshness);
+        });
+        syncCopilotResultFreshness();
+    }
+
     function analysisSurfacePresent() {
         return Boolean(document.getElementById('tab-analyze')
             || document.getElementById('businessText')
@@ -417,6 +480,7 @@
         patchOnboardingTaskProgress();
         installTaskRouting();
         installOverlayHardening();
+        installResultFreshness();
         scheduleInitializationRetry();
     }
 

@@ -48,13 +48,22 @@
         return Math.max(0, Math.min(100, Math.round(numeric)));
     }
 
-    function effectiveProductScore(rawScore, detail) {
+    function productParentScore(detail) {
         var parentScore = detail && detail.parentCode
-            ? S.currentRawScores[detail.parentCode] : null;
-        if (!Number.isFinite(Number(parentScore))) {
-            parentScore = detail ? detail.parentScore : null;
-        }
-        if (!Number.isFinite(Number(parentScore))) return 0;
+            ? (S.currentRawScores || {})[detail.parentCode] : null;
+        // Null, blank text and booleans are not measured zeroes.
+        if (Number.isFinite(parentScore)) return parentScore;
+        return detail && Number.isFinite(detail.parentScore) ? detail.parentScore : null;
+    }
+
+    function productRelevancePending(detail) {
+        return isProductScore(detail) && productParentScore(detail) === null
+            && !Number.isFinite(detail.effectiveRelevance);
+    }
+
+    function effectiveProductScore(rawScore, detail) {
+        var parentScore = productParentScore(detail);
+        if (parentScore === null) return 0;
         return clampScore(clampScore(parentScore) * clampScore(rawScore) / 100);
     }
 
@@ -78,6 +87,11 @@
 
     function scoreLabel(code, effective, raw, detail) {
         if (isProductScore(detail)) {
+            if (productRelevancePending(detail)) {
+                return isGermanLocale()
+                    ? 'Eignung ' + clampScore(raw) + '% · effektive Relevanz ausstehend'
+                    : 'Suitability ' + clampScore(raw) + '% · effective relevance pending';
+            }
             return isGermanLocale()
                 ? 'Eignung ' + clampScore(raw) + '% · effektiv ' + clampScore(effective) + '/100'
                 : 'Suitability ' + clampScore(raw) + '% · effective ' + clampScore(effective) + '/100';
@@ -87,6 +101,11 @@
 
     function scoreAriaLabel(code, effective, raw, detail) {
         if (isProductScore(detail)) {
+            if (productRelevancePending(detail)) {
+                return isGermanLocale()
+                    ? 'Produkteignung: ' + clampScore(raw) + ' Prozent, effektive Relevanz ausstehend'
+                    : 'Product suitability: ' + clampScore(raw) + ' percent, effective relevance pending';
+            }
             return isGermanLocale()
                 ? 'Produkteignung: ' + clampScore(raw)
                     + ' Prozent, effektive Relevanz: ' + clampScore(effective) + ' von 100'
@@ -486,7 +505,15 @@
             var details = data.scoreDetails || {};
             Object.assign(S.currentRawScores, rawScores);
             Object.assign(S.currentScoreDetails, details);
-            var effectiveScores = effectiveIncrementalScores(rawScores, details);
+            // A later family batch must reconcile products that already arrived.
+            var changedScores = Object.assign({}, rawScores);
+            Object.entries(S.currentScoreDetails).forEach(function ([code, detail]) {
+                if (isProductScore(detail) && Object.hasOwn(S.currentRawScores, code)
+                        && Object.hasOwn(rawScores, detail.parentCode)) {
+                    changedScores[code] = S.currentRawScores[code];
+                }
+            });
+            var effectiveScores = effectiveIncrementalScores(changedScores, S.currentScoreDetails);
             Object.assign(S.currentEffectiveScores, effectiveScores);
             Object.assign(S.currentScores, effectiveScores);
             if (data.reasons) { Object.assign(S.currentReasons, data.reasons); }
@@ -494,13 +521,10 @@
             if (data.scoreSemanticsVersion) {
                 S.scoreSemanticsVersion = data.scoreSemanticsVersion;
             }
-            Object.entries(rawScores).forEach(function ([code, raw]) {
-                applyScoreToNode(
-                    code,
-                    effectiveScores[code],
-                    data.reasons ? data.reasons[code] : null,
-                    details[code],
-                    raw);
+            Object.entries(changedScores).forEach(function ([code, raw]) {
+                var detail = S.currentScoreDetails[code];
+                if (isProductScore(detail)) S.currentProductSuitabilityScores[code] = clampScore(raw);
+                applyScoreToNode(code, effectiveScores[code], S.currentReasons[code], detail, raw);
             });
             if (data.prompt !== undefined || data.rawResponse !== undefined) {
                 appendLlmLogEntry(
@@ -540,6 +564,7 @@
                 scoreSemanticsVersion: data.scoreSemanticsVersion,
                 scoreSemanticsWarnings: data.scoreSemanticsWarnings
             });
+            syncVisibleScoreNodes();
             S.currentDiscrepancies = data.discrepancies || [];
             S.currentProductCoverageGaps = data.productCoverageGaps || [];
             S.lastAnalysisStatus = data.status || 'SUCCESS';
@@ -576,6 +601,7 @@
                         scoreSemanticsVersion: data.scoreSemanticsVersion,
                         scoreSemanticsWarnings: data.scoreSemanticsWarnings
                     });
+                    syncVisibleScoreNodes();
                     S.currentDiscrepancies = data.discrepancies || [];
                     S.currentProductCoverageGaps = data.productCoverageGaps || [];
                     B().showStatus('warning', '⚠️ ' + data.errorMessage);
@@ -595,6 +621,16 @@
 
     // ── Incremental DOM update helpers ────────────────────────────────────────
 
+    function syncVisibleScoreNodes() {
+        // Reconcile terminal evidence without rebuilding the tree or losing focus/scroll.
+        document.querySelectorAll('.tax-node[data-code]').forEach(function (node) {
+            var code = node.getAttribute('data-code');
+            applyScoreToNode(code, (S.currentScores || {})[code] || 0,
+                (S.currentReasons || {})[code], (S.currentScoreDetails || {})[code],
+                (S.currentRawScores || {})[code]);
+        });
+    }
+
     /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
     function applyScoreToNode(code, pct, reason, detail, rawScore) {
         B().ensureNodeRendered(code, S.currentScores);
@@ -606,13 +642,22 @@
         // Remove evaluating animation
         el.classList.remove('tax-evaluating');
 
+        var raw = rawScore === undefined
+            ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
+        var scoreDetail = detail || (S.currentScoreDetails || {})[code];
+        // Highlight comparable relevance only; pending suitability is not global relevance.
         if (pct > 0) {
             const alpha = Math.min(pct / 100, 1).toFixed(2);
             header.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
             // Contrast-safe text color (WCAG 1.4.3)
             if (pct >= 75) { header.style.color = '#fff'; }
             else { header.style.color = '#1a1a1a'; }
+        } else {
+            header.style.backgroundColor = '';
+            header.style.color = '';
+        }
 
+        if (pct > 0 || isProductScore(scoreDetail)) {
             let badge = header.querySelector('.tax-pct');
             if (!badge) {
                 badge = document.createElement('span');
@@ -620,9 +665,6 @@
                 badge.setAttribute('aria-hidden', 'true');
                 header.appendChild(badge);
             }
-            var raw = rawScore === undefined
-                ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
-            var scoreDetail = detail || (S.currentScoreDetails || {})[code];
             badge.textContent = scoreLabel(code, pct, raw, scoreDetail);
             badge.title = isProductScore(scoreDetail)
                 ? t('scoring.score.tooltip.product')
@@ -640,9 +682,9 @@
                 reasonIcon.title = reason;
             }
         } else {
-            // Explicitly scored zero – clear any previous highlight
-            header.style.backgroundColor = '';
-            header.style.color = '';
+            // A later explicit zero must remove an earlier positive badge as well.
+            var previousBadge = header.querySelector('.tax-pct');
+            if (previousBadge) previousBadge.remove();
         }
 
         // Update ARIA label with score info (WCAG 4.1.2)
