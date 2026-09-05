@@ -1,5 +1,12 @@
 # Local Word-template editing without WebDAV / Lokale Vorlagenbearbeitung ohne WebDAV
 
+> **Dokumentationsort:** Diese Anleitung liegt im Quellcode-Repository und ist nicht
+> als eigener Eintrag unter `/help` registriert. Die Bearbeitungsseite selbst zeigt
+> die erforderlichen Schritte zum Herunterladen, Bearbeiten und Zurückladen an.
+>
+> **Documentation location:** This guide is repository-only, not a registered
+> `/help` entry. The editing page itself provides the download, edit and upload steps.
+
 ## Deutsch
 
 Unter `/admin/document-templates` bei der vorhandenen Vorlage **Lokal bearbeiten
