@@ -140,7 +140,7 @@ class DocumentTemplateGitHttpIT {
     private HttpResponse<byte[]> request(String method, String path, byte[] body,
                                          String authorization, String contentType) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create(base() + path)).timeout(Duration.ofSeconds(30))
-                .header("Accept", "application/x-git-upload-pack-advertisement")
+                .header("Accept", "*/*")
                 .method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofByteArray(body));
         if (authorization != null) builder.header("Authorization", authorization);
