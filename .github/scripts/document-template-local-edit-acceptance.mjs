@@ -56,17 +56,26 @@ export function createUploadHold(failures) {
   };
 }
 
-/** Consume the upload result before unrouteAll changes Chromium's network/cache state. */
+/** Keep routing active through receipt verification, then release and drain it. */
 export async function withUploadHold(page, pattern, failures, operation) {
   const hold = createUploadHold(failures);
   await page.route(pattern, hold.handler);
   try {
-    // Await the operation, including its response body, before running the finally block.
+    // Await all receipt verification before running the finally block.
     return await operation(hold);
   } finally {
     hold.release();
     await page.unrouteAll({ behavior: 'wait' });
   }
+}
+
+/** The server binds every successful upload to a strong, immutable ETag. */
+export function savedRevisionFromResponse(response) {
+  assert.ok(response, 'The held real upload must produce a response');
+  assert.equal(response.status(), 201);
+  const etag = response.headers().etag;
+  assert.match(etag || '', /^"[a-f0-9]{40}"$/, 'Upload must return a full strong revision ETag');
+  return etag.slice(1, -1);
 }
 
 /** Modify only the document part of a server-validated, downloaded QA fixture. */
@@ -236,7 +245,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     await capture(first, directory, 'invalid-file-retained');
 
     await first.locator('#localTemplateFile').setInputFiles(winnerFile);
-    const receipt = await withUploadHold(first, api + '?*', browserErrors, async hold => {
+    const head = await withUploadHold(first, api + '?*', browserErrors, async hold => {
       // A UI assertion can fail before this response is awaited. Observe rejection now.
       const received = first.waitForResponse(isUpload).catch(error => {
         browserErrors.push('Held upload response failed: ' + error.message);
@@ -249,13 +258,11 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
       await first.locator('#localTemplateForm').evaluate(form => form.requestSubmit());
       await capture(first, directory, 'upload-progress');
       hold.release();
-      const saved = await received;
-      assert.ok(saved, 'The held real upload must produce a response');
-      assert.equal(saved.status(), 201);
-      // Keep interception active until the real response body has been consumed.
-      return saved.json();
+      // File-upload response bodies may be unavailable in Chromium's inspector cache.
+      // Use the actual 201 ETag, then independently require the UI's parsed JSON result
+      // and the persisted version/content to agree. Never substitute a later HEAD.
+      return savedRevisionFromResponse(await received);
     });
-    const head = receipt.headCommit;
     assert.match(head, /^[a-f0-9]{40}$/);
     assert.notEqual(head, initial);
     await expect(first.locator('#localTemplateResult')).toBeVisible();
@@ -274,6 +281,8 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     assert.ok(!storedXml.includes(staleMarker));
     const beforeHistory = await history();
     assert.equal(beforeHistory.length, 2);
+    assert.equal(beforeHistory.filter(revision => revision.commitId === head).length, 1);
+    assert.equal(beforeHistory.filter(revision => revision.commitId === initial).length, 1);
 
     // Reload the OLD address after the other tab saved. It must not adopt HEAD.
     await second.reload();
@@ -318,6 +327,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     assertUploadRequests(uploads, initial, expectedBodies);
     assert.deepEqual(browserErrors, []);
     return { ...configuration, templateId: id, initial, head, uploads, routeStatuses,
+      saveReceiptSource: 'HTTP_201_ETAG_AND_RENDERED_JSON_RESULT',
       selectedFileSha256: expectedBodies.map(sha256),
       storedDocumentMatchesSelectedFile: true, storedDocumentSha256: sha256(storedXml),
       historyEntries: beforeHistory.length, winnerSha256: sha256(beforeConflict),
@@ -339,6 +349,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     async function currentBytes() {
       const response = await context.request.get(api + '/download');
       assert.equal(response.status(), 200);
+      assert.equal(response.headers().etag, '"' + head + '"', 'Downloaded winner must match the upload receipt');
       return response.body();
     }
     async function history() {

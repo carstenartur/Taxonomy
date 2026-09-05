@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests, createUploadHold, withUploadHold } from './document-template-local-edit-acceptance.mjs';
+import { editDownloadedTemplate, readDocumentPart, recordUploadRequest, assertUploadRequests, createUploadHold, withUploadHold, savedRevisionFromResponse } from './document-template-local-edit-acceptance.mjs';
 
 const original = fileURLToPath(new URL(
   '../../taxonomy-app/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
@@ -183,4 +183,28 @@ test('held upload cleanup releases an outstanding route and preserves response f
     assert.equal(cleaned, 1);
     assert.deepEqual(failures, []);
   }
+});
+
+
+test('saved revision comes from the actual upload ETag without reading the inspector body', () => {
+  const head = 'b'.repeat(40);
+  const response = {
+    status: () => 201,
+    headers: () => ({ etag: '"' + head + '"' }),
+    json() { throw new Error('Inspector cache must not be used for the receipt'); }
+  };
+  assert.equal(savedRevisionFromResponse(response), head);
+});
+
+test('missing or non-immutable upload receipts and unsuccessful writes fail closed', () => {
+  for (const etag of [undefined, '', '*', 'main', 'b'.repeat(40), '"bbbbbbb"',
+    'W/"' + 'b'.repeat(40) + '"', '"' + 'B'.repeat(40) + '"', '"' + 'b'.repeat(40) + '","other"']) {
+    assert.throws(() => savedRevisionFromResponse({ status: () => 201, headers: () => ({ etag }) }));
+  }
+  for (const status of [200, 204, 400, 401, 403, 409, 412, 500]) {
+    assert.throws(() => savedRevisionFromResponse({
+      status: () => status, headers: () => ({ etag: '"' + 'b'.repeat(40) + '"' })
+    }));
+  }
+  assert.throws(() => savedRevisionFromResponse(null));
 });
