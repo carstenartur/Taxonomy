@@ -84,6 +84,47 @@ class AnalysisResultScoreCacheTest {
         assertEmptyScoreEvidence(result);
     }
 
+    @Test
+    void defaultRawEvidenceIsImmediatelyEmptyMutableAndInstanceLocal() {
+        AnalysisResult first = new AnalysisResult();
+        AnalysisResult second = new AnalysisResult();
+
+        assertTrue(first.getRawScores().isEmpty());
+        assertSame(first.getRawScores(), first.getRawScores());
+        first.getRawScores().clear();
+        first.getRawScores().put("IP", 40);
+        assertEquals(Map.of("IP", 40), first.getRawScores());
+        assertTrue(second.getRawScores().isEmpty());
+        assertEquals(Map.of("IP", 40), first.getScores());
+    }
+
+    @Test
+    void firstRawReadDoesNotOverrideLegacyInputPrecedence() {
+        AnalysisResult result = new AnalysisResult();
+        result.getRawScores().clear();
+        result.setScores(Map.of("IP", 40));
+        assertEquals(Map.of("IP", 40), result.getRawScores());
+
+        result.setRawScores(Map.of("IP", 80));
+        result.setScores(Map.of("IP", 32));
+        assertEquals(Map.of("IP", 80), result.getRawScores());
+    }
+
+    @Test
+    void nullInputsExposeEmptyRawEvidenceBeforeAnyDerivedRead() {
+        AnalysisResult rawNull = new AnalysisResult();
+        rawNull.setRawScores(null);
+        AnalysisResult legacyNull = new AnalysisResult();
+        legacyNull.setScores(null);
+
+        for (AnalysisResult result : List.of(
+                new AnalysisResult(), new AnalysisResult(null, List.of()), rawNull, legacyNull)) {
+            assertTrue(result.getRawScores().isEmpty());
+            result.getRawScores().clear();
+            assertEmptyScoreEvidence(result);
+        }
+    }
+
     private void assertEmptyScoreEvidence(AnalysisResult result) {
         assertTrue(result.getScores().isEmpty());
         assertTrue(result.getRawScores().isEmpty());

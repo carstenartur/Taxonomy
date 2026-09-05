@@ -12,7 +12,7 @@ public class AnalysisResult {
      * Original node scores returned by analysis. Concrete PRODUCT entries are independent
      * suitability values and are retained separately from comparable relevance.
      */
-    private Map<String, Integer> rawScores;
+    private Map<String, Integer> rawScores = new LinkedHashMap<>();
 
     /**
      * True after a new-format payload explicitly supplied {@code rawScores}. It makes JSON
