@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureCommitIndex.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.model</a> &gt; <span class="el_source">ArchitectureCommitIndex.java</span></div><h1>ArchitectureCommitIndex.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.Nationalized;
+import org.hibernate.search.engine.backend.types.Sortable;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.GenericField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.Indexed;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.KeywordField;
+
+import java.time.Instant;
+
+/**
+ * Repository-scoped index entry for one DSL commit on one branch.
+ *
+ * &lt;p&gt;The same Git commit may legitimately occur in independent central
+ * repositories, personal workspaces and multiple branches. The relational and
+ * Lucene identity is therefore tenant/branch-local rather than globally keyed by
+ * {@code commitId}. Full-text queries must always filter {@code repositoryId}
+ * and {@code workspaceScopeKey} before applying content predicates.&lt;/p&gt;
+ */
+@Entity
+@Indexed
+@Table(name = &quot;architecture_commit_index&quot;,
+       indexes = {
+           @Index(name = &quot;idx_commit_index_repository&quot;, columnList = &quot;repository_id&quot;),
+           @Index(name = &quot;idx_commit_index_repository_workspace&quot;,
+                   columnList = &quot;repository_id, workspace_id&quot;),
+           @Index(name = &quot;idx_commit_index_scope_branch&quot;,
+                   columnList = &quot;repository_id, workspace_scope_key, branch&quot;)
+       },
+       uniqueConstraints = @UniqueConstraint(
+               name = &quot;uq_commit_index_repository_workspace_branch_commit&quot;,
+               columnNames = {
+                       &quot;repository_id&quot;,
+                       &quot;workspace_scope_key&quot;,
+                       &quot;branch&quot;,
+                       &quot;commit_id&quot;
+               }))
+<span class="fc" id="L49">public class ArchitectureCommitIndex {</span>
+
+    public static final String CENTRAL_SCOPE_KEY = &quot;__shared__&quot;;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255)
+    @KeywordField
+    private String repositoryId;
+
+    @Column(name = &quot;workspace_id&quot;, length = 255)
+    @KeywordField
+    private String workspaceId;
+
+    /** Non-null key used for central/workspace uniqueness and search filters. */
+<span class="fc" id="L66">    @Column(name = &quot;workspace_scope_key&quot;, nullable = false, length = 255)</span>
+    @KeywordField
+    private String workspaceScopeKey = CENTRAL_SCOPE_KEY;
+
+    @Nationalized
+    @Column(name = &quot;commit_id&quot;, nullable = false, length = 40)
+    @KeywordField
+    private String commitId;
+
+    @Nationalized
+    @Column
+    @KeywordField
+    private String author;
+
+    @Column(name = &quot;commit_timestamp&quot;, nullable = false)
+    @GenericField(sortable = Sortable.YES)
+    private Instant commitTimestamp;
+
+    @Nationalized
+    @Column(length = 500)
+    @FullTextField(analyzer = &quot;english&quot;)
+    private String message;
+
+    @Nationalized
+    @Column(name = &quot;changed_files&quot;, length = 2000)
+    private String changedFiles;
+
+    @Nationalized
+    @Column(name = &quot;tokenized_change_text&quot;, length = 10000)
+    @FullTextField(analyzer = &quot;dsl&quot;)
+    private String tokenizedChangeText;
+
+    @Nationalized
+    @Column(name = &quot;affected_element_ids&quot;, length = 2000)
+    @FullTextField(analyzer = &quot;csv-keyword&quot;)
+    private String affectedElementIds;
+
+    @Nationalized
+    @Column(name = &quot;affected_relation_ids&quot;, length = 2000)
+    @FullTextField(analyzer = &quot;csv-keyword&quot;)
+    private String affectedRelationIds;
+
+    @Nationalized
+    @Column(nullable = false, length = 255)
+    @KeywordField
+    private String branch;
+
+    @Column(name = &quot;indexed_at&quot;, nullable = false)
+    private Instant indexedAt;
+
+    @PrePersist
+    protected void onCreate() {
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        if (indexedAt == null) {</span>
+<span class="fc" id="L119">            indexedAt = Instant.now();</span>
+        }
+<span class="fc" id="L121">        synchronizeTenantKeys();</span>
+<span class="fc" id="L122">    }</span>
+
+    @PreUpdate
+    protected void onUpdate() {
+<span class="nc" id="L126">        synchronizeTenantKeys();</span>
+<span class="nc" id="L127">    }</span>
+
+    private void synchronizeTenantKeys() {
+<span class="fc" id="L130">        repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L131">        workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L132">        workspaceScopeKey = scopeKeyFor(workspaceId);</span>
+<span class="fc" id="L133">        commitId = requireText(commitId, &quot;commitId&quot;);</span>
+<span class="fc" id="L134">        branch = requireText(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L135">        author = normalizeOptional(author);</span>
+<span class="fc" id="L136">    }</span>
+
+    public static String scopeKeyFor(String workspaceId) {
+<span class="fc" id="L139">        String normalized = normalizeOptional(workspaceId);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        return normalized == null ? CENTRAL_SCOPE_KEY : normalized;</span>
+    }
+
+<span class="fc" id="L143">    public Long getId() { return id; }</span>
+<span class="nc" id="L144">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L146">    public String getRepositoryId() { return repositoryId; }</span>
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L148">        this.repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L149">    }</span>
+
+<span class="fc" id="L151">    public String getWorkspaceId() { return workspaceId; }</span>
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L153">        this.workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L154">        this.workspaceScopeKey = scopeKeyFor(this.workspaceId);</span>
+<span class="fc" id="L155">    }</span>
+
+<span class="fc" id="L157">    public String getWorkspaceScopeKey() { return workspaceScopeKey; }</span>
+
+<span class="fc" id="L159">    public String getCommitId() { return commitId; }</span>
+    public void setCommitId(String commitId) {
+<span class="fc" id="L161">        this.commitId = requireText(commitId, &quot;commitId&quot;);</span>
+<span class="fc" id="L162">    }</span>
+
+<span class="fc" id="L164">    public String getAuthor() { return author; }</span>
+<span class="fc" id="L165">    public void setAuthor(String author) { this.author = normalizeOptional(author); }</span>
+
+<span class="fc" id="L167">    public Instant getCommitTimestamp() { return commitTimestamp; }</span>
+    public void setCommitTimestamp(Instant commitTimestamp) {
+<span class="fc" id="L169">        this.commitTimestamp = commitTimestamp;</span>
+<span class="fc" id="L170">    }</span>
+
+<span class="fc" id="L172">    public String getMessage() { return message; }</span>
+<span class="fc" id="L173">    public void setMessage(String message) { this.message = message; }</span>
+
+<span class="fc" id="L175">    public String getChangedFiles() { return changedFiles; }</span>
+<span class="fc" id="L176">    public void setChangedFiles(String changedFiles) { this.changedFiles = changedFiles; }</span>
+
+<span class="fc" id="L178">    public String getTokenizedChangeText() { return tokenizedChangeText; }</span>
+    public void setTokenizedChangeText(String tokenizedChangeText) {
+<span class="fc" id="L180">        this.tokenizedChangeText = tokenizedChangeText;</span>
+<span class="fc" id="L181">    }</span>
+
+<span class="fc" id="L183">    public String getAffectedElementIds() { return affectedElementIds; }</span>
+    public void setAffectedElementIds(String affectedElementIds) {
+<span class="fc" id="L185">        this.affectedElementIds = affectedElementIds;</span>
+<span class="fc" id="L186">    }</span>
+
+<span class="fc" id="L188">    public String getAffectedRelationIds() { return affectedRelationIds; }</span>
+    public void setAffectedRelationIds(String affectedRelationIds) {
+<span class="fc" id="L190">        this.affectedRelationIds = affectedRelationIds;</span>
+<span class="fc" id="L191">    }</span>
+
+<span class="fc" id="L193">    public String getBranch() { return branch; }</span>
+    public void setBranch(String branch) {
+<span class="fc" id="L195">        this.branch = requireText(branch, &quot;branch&quot;);</span>
+<span class="fc" id="L196">    }</span>
+
+<span class="fc" id="L198">    public Instant getIndexedAt() { return indexedAt; }</span>
+<span class="nc" id="L199">    public void setIndexedAt(Instant indexedAt) { this.indexedAt = indexedAt; }</span>
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L202" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L206" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L207">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L209">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

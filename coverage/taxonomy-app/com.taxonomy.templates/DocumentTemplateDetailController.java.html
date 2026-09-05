@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateDetailController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateDetailController.java</span></div><h1>DocumentTemplateDetailController.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
+import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import java.io.IOException;
+import java.security.Principal;
+
+/** Accessible server-rendered history, comparison, inspection and restore workspace. */
+@Controller
+public final class DocumentTemplateDetailController {
+
+    private final DocumentTemplateService templates;
+    private final DocumentTemplateReportPreview preview;
+
+    public DocumentTemplateDetailController(
+            DocumentTemplateService templates,
+<span class="fc" id="L32">            DocumentTemplateReportPreview preview) {</span>
+<span class="fc" id="L33">        this.templates = templates;</span>
+<span class="fc" id="L34">        this.preview = preview;</span>
+<span class="fc" id="L35">    }</span>
+
+    @GetMapping(&quot;/admin/document-templates/{templateId}&quot;)
+    public String detail(
+            @PathVariable String templateId,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String partRevision,
+            @RequestParam(required = false) String partPath,
+            Model model) throws IOException {
+<span class="fc" id="L45">        TemplateFile current = templates.downloadCurrent(templateId);</span>
+<span class="fc" id="L46">        TemplateDescriptor descriptor = descriptor(current);</span>
+<span class="fc" id="L47">        model.addAttribute(&quot;template&quot;, descriptor);</span>
+<span class="fc" id="L48">        model.addAttribute(&quot;history&quot;, templates.history(templateId));</span>
+<span class="fc" id="L49">        model.addAttribute(&quot;decisionReportTemplate&quot;,</span>
+<span class="fc" id="L50">                DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId));</span>
+
+<span class="pc bpc" id="L52" title="3 of 4 branches missed.">        if (from != null &amp;&amp; !from.isBlank()) {</span>
+<span class="nc bnc" id="L53" title="All 4 branches missed.">            String right = to == null || to.isBlank() ? current.commitId() : to;</span>
+<span class="nc" id="L54">            TemplateDiff diff = templates.diff(templateId, from, right);</span>
+<span class="nc" id="L55">            model.addAttribute(&quot;diff&quot;, diff);</span>
+<span class="nc" id="L56">            model.addAttribute(&quot;fromRevision&quot;, from);</span>
+<span class="nc" id="L57">            model.addAttribute(&quot;toRevision&quot;, right);</span>
+        }
+<span class="pc bpc" id="L59" title="5 of 6 branches missed.">        if (partRevision != null &amp;&amp; !partRevision.isBlank()</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">                &amp;&amp; partPath != null &amp;&amp; !partPath.isBlank()) {</span>
+<span class="nc" id="L61">            TemplatePartView part = templates.readPart(</span>
+                    templateId, partRevision, partPath);
+<span class="nc" id="L63">            model.addAttribute(&quot;part&quot;, part);</span>
+<span class="nc" id="L64">            model.addAttribute(&quot;partRevision&quot;, partRevision);</span>
+        }
+<span class="fc" id="L66">        return &quot;document-template-detail&quot;;</span>
+    }
+
+    @PostMapping(&quot;/admin/document-templates/{templateId}/restore&quot;)
+    public String restore(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            @RequestParam String expectedHead,
+            Principal principal,
+            RedirectAttributes redirect) throws IOException {
+<span class="fc" id="L76">        TemplateDescriptor restored = templates.restore(</span>
+                templateId,
+                revision,
+                expectedHead,
+<span class="fc" id="L80">                principal.getName());</span>
+<span class="fc" id="L81">        redirect.addFlashAttribute(&quot;successMessage&quot;,</span>
+<span class="fc" id="L82">                &quot;Restored as new Git version &quot; + restored.headCommit().substring(0, 12));</span>
+<span class="fc" id="L83">        return &quot;redirect:/admin/document-templates/&quot; + templateId;</span>
+    }
+
+    @GetMapping(&quot;/admin/document-templates/{templateId}/test.docx&quot;)
+    public ResponseEntity&lt;byte[]&gt; testReport(@PathVariable String templateId) {
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (!DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId)) {</span>
+<span class="nc" id="L89">            throw new IllegalArgumentException(</span>
+                    &quot;A generated test report is available only for the decision report template&quot;);
+        }
+<span class="fc" id="L92">        byte[] docx = preview.renderPreview();</span>
+<span class="fc" id="L93">        return ResponseEntity.ok()</span>
+<span class="fc" id="L94">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L95">                .contentType(MediaType.parseMediaType(</span>
+                        &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;))
+<span class="fc" id="L97">                .contentLength(docx.length)</span>
+<span class="fc" id="L98">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+<span class="fc" id="L99">                        ContentDisposition.attachment()</span>
+<span class="fc" id="L100">                                .filename(&quot;decision-rationale-template-test.docx&quot;)</span>
+<span class="fc" id="L101">                                .build().toString())</span>
+<span class="fc" id="L102">                .body(docx);</span>
+    }
+
+    private static TemplateDescriptor descriptor(TemplateFile file) {
+<span class="fc" id="L106">        var manifest = file.manifest();</span>
+<span class="fc" id="L107">        return new TemplateDescriptor(</span>
+<span class="fc" id="L108">                manifest.templateId(), manifest.displayName(), manifest.fileName(),</span>
+<span class="fc" id="L109">                file.commitId(), manifest.updatedAt(), manifest.updatedBy(),</span>
+<span class="fc" id="L110">                manifest.uncompressedSize(), manifest.partCount(), manifest.packageSha256());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

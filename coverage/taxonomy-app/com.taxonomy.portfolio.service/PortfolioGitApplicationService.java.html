@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioGitApplicationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioGitApplicationService.java</span></div><h1>PortfolioGitApplicationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.ExportedPortfolioDsl;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.MaterializationPreview;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.MaterializePortfolioResult;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.MergePortfolioResult;
+import com.taxonomy.portfolio.dto.PortfolioGitDtos.PortfolioCommitResult;
+import com.taxonomy.versioning.service.SemanticGitMergeService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * GUI-oriented application facade over the established portfolio Git services.
+ *
+ * &lt;p&gt;This class intentionally does not duplicate JGit or TaxDSL merge logic.
+ * Projection and materialization are delegated to {@link PortfolioGitService};
+ * branch merging is delegated to {@link SemanticGitMergeService}.&lt;/p&gt;
+ */
+@Service
+public class PortfolioGitApplicationService {
+
+    private static final int PREVIEW_LIMIT = 20;
+
+    private final PortfolioGitService portfolioGitService;
+    private final ProjectPortfolioService projectService;
+    private final SolutionPortfolioService solutionService;
+    private final ProductCatalogService productService;
+    private final ProjectConflictService conflictService;
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final SemanticGitMergeService semanticMergeService;
+
+    public PortfolioGitApplicationService(PortfolioGitService portfolioGitService,
+                                          ProjectPortfolioService projectService,
+                                          SolutionPortfolioService solutionService,
+                                          ProductCatalogService productService,
+                                          ProjectConflictService conflictService,
+                                          DslGitRepositoryFactory repositoryFactory,
+<span class="fc" id="L52">                                          SemanticGitMergeService semanticMergeService) {</span>
+<span class="fc" id="L53">        this.portfolioGitService = portfolioGitService;</span>
+<span class="fc" id="L54">        this.projectService = projectService;</span>
+<span class="fc" id="L55">        this.solutionService = solutionService;</span>
+<span class="fc" id="L56">        this.productService = productService;</span>
+<span class="fc" id="L57">        this.conflictService = conflictService;</span>
+<span class="fc" id="L58">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L59">        this.semanticMergeService = semanticMergeService;</span>
+<span class="fc" id="L60">    }</span>
+
+    public ExportedPortfolioDsl export(WorkspaceContext context) throws IOException {
+<span class="nc" id="L63">        String username = username(context);</span>
+<span class="nc" id="L64">        String branch = activeBranch(context);</span>
+<span class="nc" id="L65">        DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+<span class="nc" id="L66">        Counts counts = counts(username, context);</span>
+<span class="nc" id="L67">        return new ExportedPortfolioDsl(</span>
+<span class="nc" id="L68">                context.workspaceId(),</span>
+                username,
+                branch,
+<span class="nc" id="L71">                repository.getHeadCommit(branch),</span>
+<span class="nc" id="L72">                portfolioGitService.exportPortfolio(username, context),</span>
+<span class="nc" id="L73">                counts.projects(),</span>
+<span class="nc" id="L74">                counts.requirements(),</span>
+<span class="nc" id="L75">                counts.solutions(),</span>
+<span class="nc" id="L76">                counts.products(),</span>
+<span class="nc" id="L77">                Instant.now());</span>
+    }
+
+    public PortfolioCommitResult commit(String branch,
+                                        String message,
+                                        WorkspaceContext context) throws IOException {
+<span class="nc" id="L83">        String normalizedBranch = requireBranch(branch);</span>
+<span class="nc" id="L84">        String username = username(context);</span>
+<span class="nc" id="L85">        DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+<span class="nc" id="L86">        String parent = repository.getHeadCommit(normalizedBranch);</span>
+<span class="nc" id="L87">        PortfolioGitService.CommitResult committed = portfolioGitService.commit(</span>
+                normalizedBranch, message, username, context);
+<span class="nc" id="L89">        Counts counts = counts(username, context);</span>
+<span class="nc" id="L90">        return new PortfolioCommitResult(</span>
+                normalizedBranch,
+<span class="nc" id="L92">                committed.commitId(),</span>
+                parent,
+<span class="nc" id="L94">                counts.projects(),</span>
+<span class="nc" id="L95">                counts.requirements(),</span>
+<span class="nc" id="L96">                counts.solutions(),</span>
+<span class="nc" id="L97">                counts.products(),</span>
+<span class="nc" id="L98">                counts.conflicts(),</span>
+<span class="nc" id="L99">                Instant.now());</span>
+    }
+
+    /**
+     * Compares the reviewed database projection with one immutable branch HEAD.
+     * Non-portfolio DSL blocks are preserved on both sides of the comparison.
+     */
+    public MaterializationPreview previewMaterialize(String branch,
+                                                      WorkspaceContext context) throws IOException {
+<span class="fc" id="L108">        String normalizedBranch = requireBranch(branch);</span>
+<span class="fc" id="L109">        String username = username(context);</span>
+<span class="fc" id="L110">        DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+<span class="fc" id="L111">        String targetHead = requireHead(repository, normalizedBranch);</span>
+<span class="fc" id="L112">        String targetDsl = repository.getDslAtHead(normalizedBranch);</span>
+<span class="fc" id="L113">        String currentProjection = portfolioGitService.contributeTo(</span>
+                targetDsl, username, context);
+
+<span class="fc" id="L116">        List&lt;String&gt; currentLines = lines(currentProjection);</span>
+<span class="fc" id="L117">        List&lt;String&gt; targetLines = lines(targetDsl);</span>
+<span class="fc" id="L118">        List&lt;String&gt; added = multisetDifference(targetLines, currentLines);</span>
+<span class="fc" id="L119">        List&lt;String&gt; removed = multisetDifference(currentLines, targetLines);</span>
+<span class="fc" id="L120">        return new MaterializationPreview(</span>
+                normalizedBranch,
+                targetHead,
+<span class="fc" id="L123">                sha256(currentProjection),</span>
+<span class="fc" id="L124">                sha256(targetDsl),</span>
+<span class="fc" id="L125">                currentLines.size(),</span>
+<span class="fc" id="L126">                targetLines.size(),</span>
+<span class="fc" id="L127">                added.size(),</span>
+<span class="fc" id="L128">                removed.size(),</span>
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">                !added.isEmpty() || !removed.isEmpty(),</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">                !removed.isEmpty(),</span>
+<span class="fc" id="L131">                added.stream().limit(PREVIEW_LIMIT).toList(),</span>
+<span class="fc" id="L132">                removed.stream().limit(PREVIEW_LIMIT).toList());</span>
+    }
+
+    /** Apply only when the branch still points at the reviewed HEAD. */
+    public MaterializePortfolioResult materialize(String branch,
+                                                   String expectedHead,
+                                                   WorkspaceContext context) throws IOException {
+<span class="fc" id="L139">        String normalizedBranch = requireBranch(branch);</span>
+<span class="fc" id="L140">        DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+<span class="fc" id="L141">        String actualHead = requireHead(repository, normalizedBranch);</span>
+<span class="pc bpc" id="L142" title="2 of 4 branches missed.">        if (expectedHead != null &amp;&amp; !expectedHead.isBlank()</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                &amp;&amp; !Objects.equals(expectedHead.strip(), actualHead)) {</span>
+<span class="fc" id="L144">            throw PortfolioException.conflict(</span>
+                    &quot;Branch changed after materialization preview; expected &quot;
+<span class="fc" id="L146">                            + expectedHead.strip() + &quot; but found &quot; + actualHead);</span>
+        }
+<span class="nc" id="L148">        PortfolioGitService.MaterializeResult materialized =</span>
+<span class="nc" id="L149">                portfolioGitService.materializeHead(</span>
+<span class="nc" id="L150">                        normalizedBranch, username(context), context);</span>
+<span class="nc" id="L151">        return new MaterializePortfolioResult(</span>
+                normalizedBranch,
+                actualHead,
+<span class="nc" id="L154">                materialized.projectsCreated(),</span>
+<span class="nc" id="L155">                materialized.requirementsCreated(),</span>
+<span class="nc" id="L156">                materialized.versionsCreated(),</span>
+<span class="nc" id="L157">                materialized.warnings().size(),</span>
+<span class="nc" id="L158">                Instant.now());</span>
+    }
+
+    public MergePortfolioResult merge(String sourceBranch,
+                                      String targetBranch,
+                                      String message,
+                                      WorkspaceContext context) throws IOException {
+<span class="nc" id="L165">        String source = requireBranch(sourceBranch);</span>
+<span class="nc" id="L166">        String target = requireBranch(targetBranch);</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        if (source.equals(target)) {</span>
+<span class="nc" id="L168">            throw PortfolioException.validation(&quot;Source and target branch must differ&quot;);</span>
+        }
+<span class="nc" id="L170">        String mergeMessage = ProjectPortfolioService.limited(message, 1000, &quot;message&quot;);</span>
+
+<span class="nc" id="L172">        DslGitRepository repository = repositoryFactory.resolveRepository(context);</span>
+<span class="nc" id="L173">        String sourceHead = requireHead(repository, source);</span>
+<span class="nc" id="L174">        String targetHead = requireHead(repository, target);</span>
+<span class="nc" id="L175">        SemanticGitMergeService.MergeOutcome outcome = semanticMergeService.mergeBranches(</span>
+<span class="nc" id="L176">                repository, source, target, username(context), mergeMessage);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (!outcome.success()) {</span>
+<span class="nc" id="L178">            throw PortfolioException.conflict(</span>
+<span class="nc" id="L179">                    &quot;Portfolio merge conflict: &quot; + String.join(&quot;, &quot;, outcome.conflicts()));</span>
+        }
+
+<span class="nc" id="L182">        portfolioGitService.materializeHead(target, username(context), context);</span>
+<span class="nc" id="L183">        Counts counts = counts(username(context), context);</span>
+<span class="nc" id="L184">        return new MergePortfolioResult(</span>
+                source,
+                target,
+                sourceHead,
+                targetHead,
+<span class="nc" id="L189">                outcome.commitId(),</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                outcome.semanticFallback() ? &quot;SEMANTIC_FALLBACK&quot; : &quot;GIT&quot;,</span>
+<span class="nc" id="L191">                counts.projects(),</span>
+<span class="nc" id="L192">                counts.requirements(),</span>
+<span class="nc" id="L193">                counts.solutions(),</span>
+<span class="nc" id="L194">                counts.products(),</span>
+<span class="nc" id="L195">                counts.conflicts(),</span>
+<span class="nc" id="L196">                Instant.now());</span>
+    }
+
+    private Counts counts(String username, WorkspaceContext context) {
+<span class="nc" id="L200">        List&lt;ProjectView&gt; projects = projectService.listProjects(username, context);</span>
+<span class="nc" id="L201">        int requirements = projects.stream()</span>
+<span class="nc" id="L202">                .mapToInt(project -&gt; projectService</span>
+<span class="nc" id="L203">                        .listRequirements(project.id(), username, context).size())</span>
+<span class="nc" id="L204">                .sum();</span>
+<span class="nc" id="L205">        int conflicts = projects.stream()</span>
+<span class="nc" id="L206">                .mapToInt(project -&gt; conflictService</span>
+<span class="nc" id="L207">                        .list(project.id(), username, context).size())</span>
+<span class="nc" id="L208">                .sum();</span>
+<span class="nc" id="L209">        return new Counts(</span>
+<span class="nc" id="L210">                projects.size(),</span>
+                requirements,
+<span class="nc" id="L212">                solutionService.listSolutions(username, context).size(),</span>
+<span class="nc" id="L213">                productService.listProducts(username, context).size(),</span>
+                conflicts);
+    }
+
+    private static List&lt;String&gt; lines(String value) {
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        return Arrays.asList((value == null ? &quot;&quot; : value).split(&quot;\\R&quot;, -1));</span>
+    }
+
+    /**
+     * Returns the ordered multiset difference. Each matching line consumes only
+     * one occurrence in the baseline, so repeated TaxDSL lines remain visible.
+     */
+    private static List&lt;String&gt; multisetDifference(List&lt;String&gt; candidates,
+                                                   List&lt;String&gt; baseline) {
+<span class="fc" id="L227">        Map&lt;String, Integer&gt; remaining = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L228">        baseline.forEach(line -&gt; remaining.merge(line, 1, Integer::sum));</span>
+<span class="fc" id="L229">        List&lt;String&gt; difference = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        for (String line : candidates) {</span>
+<span class="fc" id="L231">            Integer count = remaining.get(line);</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">            if (count == null) {</span>
+<span class="fc" id="L233">                difference.add(line);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            } else if (count == 1) {</span>
+<span class="fc" id="L235">                remaining.remove(line);</span>
+            } else {
+<span class="fc" id="L237">                remaining.put(line, count - 1);</span>
+            }
+<span class="fc" id="L239">        }</span>
+<span class="fc" id="L240">        return difference;</span>
+    }
+
+    private static String username(WorkspaceContext context) {
+<span class="fc" id="L244">        return PortfolioScope.username(context.username(), context);</span>
+    }
+
+    private static String activeBranch(WorkspaceContext context) {
+<span class="nc bnc" id="L248" title="All 4 branches missed.">        return context.currentBranch() == null || context.currentBranch().isBlank()</span>
+<span class="nc" id="L249">                ? &quot;draft&quot; : requireBranch(context.currentBranch());</span>
+    }
+
+    private static String requireHead(DslGitRepository repository,
+                                      String branch) throws IOException {
+<span class="fc" id="L254">        String head = repository.getHeadCommit(branch);</span>
+<span class="pc bpc" id="L255" title="2 of 4 branches missed.">        if (head == null || head.isBlank()) {</span>
+<span class="nc" id="L256">            throw PortfolioException.notFound(&quot;Branch has no commits: &quot; + branch);</span>
+        }
+<span class="fc" id="L258">        return head;</span>
+    }
+
+    private static String requireBranch(String branch) {
+<span class="fc" id="L262">        String normalized = ProjectPortfolioService.requireText(branch, &quot;branch&quot;, 200);</span>
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">        if (normalized.startsWith(&quot;-&quot;)</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">                || normalized.endsWith(&quot;/&quot;)</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                || normalized.contains(&quot;..&quot;)</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">                || normalized.contains(&quot;\\&quot;)</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">                || normalized.contains(&quot; &quot;)</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">                || normalized.contains(&quot;~&quot;)</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                || normalized.contains(&quot;^&quot;)</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">                || normalized.contains(&quot;:&quot;)) {</span>
+<span class="nc" id="L271">            throw PortfolioException.validation(&quot;Invalid Git branch name&quot;);</span>
+        }
+<span class="fc" id="L273">        return normalized;</span>
+    }
+
+    private static String sha256(String value) {
+        try {
+<span class="fc" id="L278">            byte[] digest = MessageDigest.getInstance(&quot;SHA-256&quot;)</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                    .digest((value == null ? &quot;&quot; : value)</span>
+<span class="fc" id="L280">                            .getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L281">            return java.util.HexFormat.of().formatHex(digest);</span>
+<span class="nc" id="L282">        } catch (Exception error) {</span>
+<span class="nc" id="L283">            throw new IllegalStateException(&quot;Unable to fingerprint portfolio DSL&quot;, error);</span>
+        }
+    }
+
+<span class="nc" id="L287">    private record Counts(int projects,</span>
+                          int requirements,
+                          int solutions,
+                          int products,
+                          int conflicts) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

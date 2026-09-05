@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CanonicalDiagramExportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.service</a> &gt; <span class="el_source">CanonicalDiagramExportService.java</span></div><h1>CanonicalDiagramExportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.service;
+
+import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.export.ArchiMateDiagramService;
+import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.export.VisioDiagramService;
+import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.visio.VisioDocument;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Serializes an already selected canonical diagram without analysis, selection
+ * or mutable preference lookups.
+ */
+@Service
+public class CanonicalDiagramExportService {
+
+    private final VisioDiagramService visioDiagramService;
+    private final VisioPackageBuilder visioPackageBuilder;
+    private final ArchiMateDiagramService archiMateDiagramService;
+    private final ArchiMateXmlExporter archiMateXmlExporter;
+
+    public CanonicalDiagramExportService(
+            VisioDiagramService visioDiagramService,
+            VisioPackageBuilder visioPackageBuilder,
+            ArchiMateDiagramService archiMateDiagramService,
+<span class="fc" id="L36">            ArchiMateXmlExporter archiMateXmlExporter) {</span>
+<span class="fc" id="L37">        this.visioDiagramService = visioDiagramService;</span>
+<span class="fc" id="L38">        this.visioPackageBuilder = visioPackageBuilder;</span>
+<span class="fc" id="L39">        this.archiMateDiagramService = archiMateDiagramService;</span>
+<span class="fc" id="L40">        this.archiMateXmlExporter = archiMateXmlExporter;</span>
+<span class="fc" id="L41">    }</span>
+
+    public byte[] exportAsArchiMate(DiagramModel canonicalDiagram) {
+<span class="fc" id="L44">        DiagramModel diagram = requireCanonicalDiagram(canonicalDiagram);</span>
+<span class="fc" id="L45">        ArchiMateModel model = archiMateDiagramService.convert(diagram);</span>
+<span class="fc" id="L46">        return archiMateXmlExporter.export(model);</span>
+    }
+
+    public byte[] exportAsVisio(DiagramModel canonicalDiagram) {
+<span class="fc" id="L50">        DiagramModel diagram = requireCanonicalDiagram(canonicalDiagram);</span>
+<span class="fc" id="L51">        VisioDocument document = visioDiagramService.convert(diagram);</span>
+        try {
+<span class="fc" id="L53">            return visioPackageBuilder.build(document);</span>
+<span class="nc" id="L54">        } catch (IOException exception) {</span>
+<span class="nc" id="L55">            throw new UncheckedIOException(</span>
+                    &quot;Could not serialize the canonical diagram as VSDX&quot;,
+                    exception);
+        }
+    }
+
+    private static DiagramModel requireCanonicalDiagram(DiagramModel diagram) {
+<span class="fc" id="L62">        Objects.requireNonNull(diagram, &quot;canonicalDiagram&quot;);</span>
+<span class="fc" id="L63">        Objects.requireNonNull(diagram.nodes(), &quot;canonicalDiagram.nodes&quot;);</span>
+<span class="fc" id="L64">        Objects.requireNonNull(diagram.edges(), &quot;canonicalDiagram.edges&quot;);</span>
+<span class="fc" id="L65">        Objects.requireNonNull(diagram.layout(), &quot;canonicalDiagram.layout&quot;);</span>
+<span class="fc" id="L66">        requireNonBlank(</span>
+<span class="fc" id="L67">                diagram.layout().direction(),</span>
+                &quot;canonicalDiagram.layout.direction&quot;);
+
+<span class="fc" id="L70">        Set&lt;String&gt; nodeIds = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        for (int index = 0; index &lt; diagram.nodes().size(); index++) {</span>
+<span class="fc" id="L72">            DiagramNode node = diagram.nodes().get(index);</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">            if (node == null) {</span>
+<span class="nc" id="L74">                throw invalid(&quot;Canonical node &quot; + index + &quot; must not be null&quot;);</span>
+            }
+<span class="fc" id="L76">            String id = requireNonBlank(</span>
+<span class="fc" id="L77">                    node.id(), &quot;Canonical node &quot; + index + &quot; identifier&quot;);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (!nodeIds.add(id)) {</span>
+<span class="fc" id="L79">                throw invalid(&quot;Duplicate canonical node identifier &quot; + id);</span>
+            }
+<span class="fc" id="L81">            requireNonBlank(node.label(), &quot;Canonical node &quot; + id + &quot; label&quot;);</span>
+<span class="fc" id="L82">            requireNonBlank(node.type(), &quot;Canonical node &quot; + id + &quot; type&quot;);</span>
+<span class="fc" id="L83">            requireUnitInterval(</span>
+<span class="fc" id="L84">                    node.relevance(), &quot;Canonical node &quot; + id + &quot; relevance&quot;);</span>
+        }
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (DiagramNode node : diagram.nodes()) {</span>
+<span class="fc" id="L88">            String parentId = node.parentId();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (parentId == null) {</span>
+<span class="fc" id="L90">                continue;</span>
+            }
+<span class="fc" id="L92">            parentId = requireNonBlank(</span>
+<span class="fc" id="L93">                    parentId, &quot;Canonical node &quot; + node.id() + &quot; parent&quot;);</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">            if (!nodeIds.contains(parentId)) {</span>
+<span class="fc" id="L95">                throw invalid(&quot;Canonical node &quot; + node.id()</span>
+                        + &quot; parent does not resolve: &quot; + parentId);
+            }
+<span class="nc bnc" id="L98" title="All 2 branches missed.">            if (node.id().equals(parentId)) {</span>
+<span class="nc" id="L99">                throw invalid(&quot;Canonical node &quot; + node.id()</span>
+                        + &quot; must not be its own parent&quot;);
+            }
+<span class="nc" id="L102">        }</span>
+
+<span class="fc" id="L104">        Set&lt;String&gt; edgeIds = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        for (int index = 0; index &lt; diagram.edges().size(); index++) {</span>
+<span class="fc" id="L106">            DiagramEdge edge = diagram.edges().get(index);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (edge == null) {</span>
+<span class="nc" id="L108">                throw invalid(&quot;Canonical relation &quot; + index + &quot; must not be null&quot;);</span>
+            }
+<span class="fc" id="L110">            String id = requireNonBlank(</span>
+<span class="fc" id="L111">                    edge.id(), &quot;Canonical relation &quot; + index + &quot; identifier&quot;);</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            if (!edgeIds.add(id)) {</span>
+<span class="nc" id="L113">                throw invalid(&quot;Duplicate canonical relation identifier &quot; + id);</span>
+            }
+<span class="fc" id="L115">            String sourceId = requireNonBlank(</span>
+<span class="fc" id="L116">                    edge.sourceId(), &quot;Canonical relation &quot; + id + &quot; source&quot;);</span>
+<span class="fc" id="L117">            String targetId = requireNonBlank(</span>
+<span class="fc" id="L118">                    edge.targetId(), &quot;Canonical relation &quot; + id + &quot; target&quot;);</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">            if (!nodeIds.contains(sourceId)) {</span>
+<span class="nc" id="L120">                throw invalid(&quot;Canonical relation &quot; + id</span>
+                        + &quot; source does not resolve: &quot; + sourceId);
+            }
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            if (!nodeIds.contains(targetId)) {</span>
+<span class="fc" id="L124">                throw invalid(&quot;Canonical relation &quot; + id</span>
+                        + &quot; target does not resolve: &quot; + targetId);
+            }
+<span class="fc" id="L127">            requireNonBlank(</span>
+<span class="fc" id="L128">                    edge.relationType(),</span>
+                    &quot;Canonical relation &quot; + id + &quot; type&quot;);
+<span class="fc" id="L130">            requireUnitInterval(</span>
+<span class="fc" id="L131">                    edge.relevance(),</span>
+                    &quot;Canonical relation &quot; + id + &quot; relevance&quot;);
+        }
+<span class="fc" id="L134">        return diagram;</span>
+    }
+
+    private static String requireNonBlank(String value, String field) {
+<span class="pc bpc" id="L138" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L139">            throw invalid(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L141">        return value;</span>
+    }
+
+    private static void requireUnitInterval(double value, String field) {
+<span class="pc bpc" id="L145" title="2 of 6 branches missed.">        if (!Double.isFinite(value) || value &lt; 0.0 || value &gt; 1.0) {</span>
+<span class="fc" id="L146">            throw invalid(field</span>
+                    + &quot; must be a finite value between 0.0 and 1.0, but was &quot;
+                    + value);
+        }
+<span class="fc" id="L150">    }</span>
+
+    private static IllegalArgumentException invalid(String message) {
+<span class="fc" id="L153">        return new IllegalArgumentException(message);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

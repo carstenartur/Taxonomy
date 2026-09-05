@@ -1,0 +1,562 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateWebDavServlet.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateWebDavServlet.java</span></div><h1>DocumentTemplateWebDavServlet.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.DocumentTemplateWebDavLockManager.LockConflictException;
+import com.taxonomy.templates.DocumentTemplateWebDavLockManager.LockedWriteResult;
+import com.taxonomy.templates.DocumentTemplateWebDavLockManager.TemplateLock;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.security.Principal;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Virtual WebDAV collection exposing only real DOTX resources.
+ *
+ * &lt;p&gt;The unzipped package files remain available through Git and the Taxonomy
+ * inspection API, but are intentionally not projected as WebDAV children.&lt;/p&gt;
+ */
+public final class DocumentTemplateWebDavServlet extends HttpServlet {
+
+<span class="fc" id="L40">    private static final Logger log =</span>
+<span class="fc" id="L41">            LoggerFactory.getLogger(DocumentTemplateWebDavServlet.class);</span>
+
+    private static final int SC_MULTI_STATUS = 207;
+    private static final int SC_LOCKED = 423;
+    private static final int SC_PRECONDITION_REQUIRED = 428;
+    private static final String DAV_NAMESPACE = &quot;DAV:&quot;;
+<span class="fc" id="L47">    private static final Pattern LOCK_TOKEN =</span>
+<span class="fc" id="L48">            Pattern.compile(&quot;opaquelocktoken:[^&gt;\\s)]+&quot;, Pattern.CASE_INSENSITIVE);</span>
+<span class="fc" id="L49">    private static final DateTimeFormatter HTTP_DATE =</span>
+<span class="fc" id="L50">            DateTimeFormatter.RFC_1123_DATE_TIME.withZone(ZoneOffset.UTC);</span>
+<span class="fc" id="L51">    private static final XMLOutputFactory XML_OUTPUT_FACTORY =</span>
+<span class="fc" id="L52">            XMLOutputFactory.newFactory();</span>
+
+    private final DocumentTemplateService templates;
+    private final DocumentTemplateWebDavLockManager locks;
+
+    public DocumentTemplateWebDavServlet(
+            DocumentTemplateService templates,
+<span class="fc" id="L59">            DocumentTemplateWebDavLockManager locks) {</span>
+<span class="fc" id="L60">        this.templates = templates;</span>
+<span class="fc" id="L61">        this.locks = locks;</span>
+<span class="fc" id="L62">    }</span>
+
+    @Override
+    protected void service(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+<span class="fc" id="L67">        addDavHeaders(response);</span>
+        try {
+<span class="pc bpc" id="L69" title="3 of 8 branches missed.">            switch (request.getMethod().toUpperCase(Locale.ROOT)) {</span>
+<span class="nc" id="L70">                case &quot;OPTIONS&quot; -&gt; options(response);</span>
+<span class="fc" id="L71">                case &quot;PROPFIND&quot; -&gt; propfind(request, response);</span>
+<span class="fc" id="L72">                case &quot;GET&quot; -&gt; get(request, response, true);</span>
+<span class="nc" id="L73">                case &quot;HEAD&quot; -&gt; get(request, response, false);</span>
+<span class="fc" id="L74">                case &quot;PUT&quot; -&gt; put(request, response);</span>
+<span class="fc" id="L75">                case &quot;LOCK&quot; -&gt; lock(request, response);</span>
+<span class="fc" id="L76">                case &quot;UNLOCK&quot; -&gt; unlock(request, response);</span>
+                default -&gt; {
+<span class="nc" id="L78">                    response.setHeader(&quot;Allow&quot;,</span>
+                            &quot;OPTIONS, PROPFIND, GET, HEAD, PUT, LOCK, UNLOCK&quot;);
+<span class="nc" id="L80">                    response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);</span>
+                }
+            }
+<span class="nc" id="L83">        } catch (TemplateNotFoundException exception) {</span>
+<span class="nc" id="L84">            response.sendError(HttpServletResponse.SC_NOT_FOUND, exception.getMessage());</span>
+<span class="fc" id="L85">        } catch (TemplateConflictException exception) {</span>
+<span class="fc" id="L86">            response.sendError(HttpServletResponse.SC_PRECONDITION_FAILED,</span>
+<span class="fc" id="L87">                    exception.getMessage());</span>
+<span class="nc" id="L88">        } catch (LockConflictException exception) {</span>
+<span class="nc" id="L89">            response.sendError(SC_LOCKED, exception.getMessage());</span>
+<span class="fc" id="L90">        } catch (SecurityException exception) {</span>
+<span class="fc" id="L91">            response.sendError(HttpServletResponse.SC_FORBIDDEN, exception.getMessage());</span>
+<span class="nc" id="L92">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L93">            response.sendError(HttpServletResponse.SC_BAD_REQUEST, exception.getMessage());</span>
+<span class="nc" id="L94">        } catch (IOException exception) {</span>
+<span class="nc" id="L95">            log.warn(&quot;WebDAV template operation failed: {}&quot;, exception.getMessage());</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">            if (!response.isCommitted()) {</span>
+<span class="nc" id="L97">                response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,</span>
+                        &quot;Template operation failed&quot;);
+            }
+<span class="pc" id="L100">        }</span>
+<span class="fc" id="L101">    }</span>
+
+    private void options(HttpServletResponse response) {
+<span class="nc" id="L104">        response.setHeader(&quot;Allow&quot;, &quot;OPTIONS, PROPFIND, GET, HEAD, PUT, LOCK, UNLOCK&quot;);</span>
+<span class="nc" id="L105">        response.setStatus(HttpServletResponse.SC_OK);</span>
+<span class="nc" id="L106">    }</span>
+
+    private void propfind(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+<span class="fc" id="L110">        Resource resource = resource(request);</span>
+<span class="fc" id="L111">        String depth = request.getHeader(&quot;Depth&quot;);</span>
+<span class="fc" id="L112">        response.setStatus(SC_MULTI_STATUS);</span>
+<span class="fc" id="L113">        response.setContentType(&quot;application/xml&quot;);</span>
+<span class="fc" id="L114">        response.setCharacterEncoding(StandardCharsets.UTF_8.name());</span>
+
+        try {
+<span class="fc" id="L117">            XMLStreamWriter writer = XML_OUTPUT_FACTORY.createXMLStreamWriter(</span>
+<span class="fc" id="L118">                    response.getOutputStream(), StandardCharsets.UTF_8.name());</span>
+<span class="fc" id="L119">            writer.writeStartDocument(StandardCharsets.UTF_8.name(), &quot;1.0&quot;);</span>
+<span class="fc" id="L120">            start(writer, &quot;multistatus&quot;);</span>
+<span class="fc" id="L121">            writer.writeNamespace(&quot;D&quot;, DAV_NAMESPACE);</span>
+
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">            if (resource.collection()) {</span>
+<span class="fc" id="L124">                writeCollectionResponse(writer, collectionHref(request));</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                if (!&quot;0&quot;.equals(depth)) {</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                    for (TemplateDescriptor descriptor : templates.list()) {</span>
+<span class="fc" id="L127">                        TemplateFile file = templates.downloadCurrent(</span>
+<span class="fc" id="L128">                                descriptor.templateId());</span>
+<span class="fc" id="L129">                        byte[] content = file.content();</span>
+<span class="fc" id="L130">                        writeTemplateResponse(</span>
+                                writer,
+<span class="fc" id="L132">                                templateHref(request, file.manifest().fileName()),</span>
+<span class="fc" id="L133">                                file.manifest().displayName(),</span>
+<span class="fc" id="L134">                                file.commitId(),</span>
+<span class="fc" id="L135">                                file.manifest().updatedAt(),</span>
+                                content.length,
+<span class="fc" id="L137">                                locks.find(descriptor.templateId()));</span>
+<span class="fc" id="L138">                    }</span>
+                }
+            } else {
+<span class="nc" id="L141">                TemplateFile file = templates.downloadCurrent(resource.templateId());</span>
+<span class="nc" id="L142">                byte[] content = file.content();</span>
+<span class="nc" id="L143">                writeTemplateResponse(</span>
+                        writer,
+<span class="nc" id="L145">                        templateHref(request, file.manifest().fileName()),</span>
+<span class="nc" id="L146">                        file.manifest().displayName(),</span>
+<span class="nc" id="L147">                        file.commitId(),</span>
+<span class="nc" id="L148">                        file.manifest().updatedAt(),</span>
+                        content.length,
+<span class="nc" id="L150">                        locks.find(resource.templateId()));</span>
+            }
+
+<span class="fc" id="L153">            writer.writeEndElement();</span>
+<span class="fc" id="L154">            writer.writeEndDocument();</span>
+<span class="fc" id="L155">            writer.flush();</span>
+<span class="nc" id="L156">        } catch (XMLStreamException exception) {</span>
+<span class="nc" id="L157">            throw new IOException(&quot;Could not produce WebDAV multistatus XML&quot;, exception);</span>
+<span class="fc" id="L158">        }</span>
+<span class="fc" id="L159">    }</span>
+
+    private void get(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            boolean includeBody) throws IOException {
+<span class="fc" id="L165">        Resource resource = resource(request);</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">        if (resource.collection()) {</span>
+<span class="nc" id="L167">            response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);</span>
+<span class="nc" id="L168">            return;</span>
+        }
+<span class="fc" id="L170">        TemplateFile file = templates.downloadCurrent(resource.templateId());</span>
+<span class="fc" id="L171">        byte[] content = file.content();</span>
+<span class="fc" id="L172">        response.setContentType(OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);</span>
+<span class="fc" id="L173">        response.setHeader(&quot;ETag&quot;, file.etag());</span>
+<span class="fc" id="L174">        response.setHeader(&quot;Last-Modified&quot;, HTTP_DATE.format(file.lastModified()));</span>
+<span class="fc" id="L175">        response.setHeader(&quot;Content-Disposition&quot;,</span>
+<span class="fc" id="L176">                &quot;inline; filename=\&quot;&quot; + file.manifest().fileName() + &quot;\&quot;&quot;);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (etagMatches(request.getHeader(&quot;If-None-Match&quot;), file.commitId())) {</span>
+<span class="fc" id="L178">            response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);</span>
+<span class="fc" id="L179">            return;</span>
+        }
+
+<span class="fc" id="L182">        response.setContentLengthLong(content.length);</span>
+<span class="fc" id="L183">        response.setStatus(HttpServletResponse.SC_OK);</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">        if (includeBody) {</span>
+<span class="fc" id="L185">            response.getOutputStream().write(content);</span>
+        }
+<span class="fc" id="L187">    }</span>
+
+    private void put(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+<span class="fc" id="L191">        requireTemplateWriter(request);</span>
+<span class="fc" id="L192">        Resource resource = resource(request);</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">        if (resource.collection()) {</span>
+<span class="nc" id="L194">            response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);</span>
+<span class="nc" id="L195">            return;</span>
+        }
+
+<span class="fc" id="L198">        String owner = principalName(request);</span>
+<span class="fc" id="L199">        TemplateFile current = currentOrNull(resource.templateId());</span>
+<span class="fc" id="L200">        String suppliedToken = requestLockToken(request);</span>
+<span class="fc" id="L201">        TemplateLock observedLock = locks.find(resource.templateId());</span>
+
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if (current != null</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">                &amp;&amp; etagMatches(request.getHeader(&quot;If-None-Match&quot;), current.commitId())) {</span>
+<span class="fc" id="L205">            response.sendError(HttpServletResponse.SC_PRECONDITION_FAILED,</span>
+                    &quot;If-None-Match precondition failed for the current template&quot;);
+<span class="fc" id="L207">            return;</span>
+        }
+
+<span class="fc" id="L210">        String ifMatch = request.getHeader(&quot;If-Match&quot;);</span>
+<span class="fc" id="L211">        String expectedWithoutLock = null;</span>
+<span class="pc bpc" id="L212" title="1 of 4 branches missed.">        if (ifMatch != null &amp;&amp; !ifMatch.isBlank()) {</span>
+            // Evaluate every If-Match precondition even when a DAV lock is active.
+            // The service implements strong comparison and comma-separated tag lists.
+<span class="fc" id="L215">            expectedWithoutLock = templates.resolveExpectedVersion(</span>
+<span class="fc" id="L216">                    resource.templateId(), ifMatch);</span>
+<span class="pc bpc" id="L217" title="1 of 4 branches missed.">        } else if (observedLock == null &amp;&amp; current != null) {</span>
+<span class="nc" id="L218">            response.sendError(SC_PRECONDITION_REQUIRED,</span>
+                    &quot;Use WebDAV LOCK or If-Match before replacing a template&quot;);
+<span class="nc" id="L220">            return;</span>
+        }
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        String displayName = current == null</span>
+<span class="fc" id="L224">                ? resource.templateId()</span>
+<span class="fc" id="L225">                : current.manifest().displayName();</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        String fallbackExpected = observedLock == null ? expectedWithoutLock : null;</span>
+<span class="fc" id="L227">        TemplateDescriptor saved = locks.executeWrite(</span>
+<span class="fc" id="L228">                resource.templateId(),</span>
+                suppliedToken,
+                owner,
+                fallbackExpected,
+                expectedCommit -&gt; {
+<span class="fc" id="L233">                    TemplateDescriptor committed = templates.upload(</span>
+<span class="fc" id="L234">                            resource.templateId(),</span>
+                            displayName,
+<span class="fc" id="L236">                            request.getInputStream(),</span>
+                            expectedCommit,
+                            owner,
+                            &quot;Update document template through WebDAV&quot;);
+<span class="fc" id="L240">                    return new LockedWriteResult&lt;&gt;(</span>
+<span class="fc" id="L241">                            committed, committed.headCommit());</span>
+                });
+
+<span class="fc" id="L244">        response.setHeader(&quot;ETag&quot;, &quot;\&quot;&quot; + saved.headCommit() + &quot;\&quot;&quot;);</span>
+<span class="fc" id="L245">        response.setHeader(&quot;Location&quot;,</span>
+<span class="fc" id="L246">                templateHref(request, saved.fileName()));</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        response.setStatus(current == null</span>
+<span class="fc" id="L248">                ? HttpServletResponse.SC_CREATED</span>
+<span class="fc" id="L249">                : HttpServletResponse.SC_NO_CONTENT);</span>
+<span class="fc" id="L250">    }</span>
+
+    private void lock(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+<span class="fc" id="L254">        requireTemplateWriter(request);</span>
+<span class="fc" id="L255">        Resource resource = resource(request);</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (resource.collection()) {</span>
+<span class="nc" id="L257">            response.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);</span>
+<span class="nc" id="L258">            return;</span>
+        }
+<span class="fc" id="L260">        String owner = principalName(request);</span>
+<span class="fc" id="L261">        TemplateFile current = currentOrNull(resource.templateId());</span>
+<span class="fc" id="L262">        String refreshToken = requestLockToken(request);</span>
+<span class="fc" id="L263">        TemplateLock lock = locks.acquire(</span>
+<span class="fc" id="L264">                resource.templateId(),</span>
+                owner,
+<span class="fc bfc" id="L266" title="All 2 branches covered.">                current == null ? null : current.commitId(),</span>
+<span class="fc" id="L267">                parseTimeout(request.getHeader(&quot;Timeout&quot;)),</span>
+                refreshToken);
+
+<span class="fc" id="L270">        response.setStatus(HttpServletResponse.SC_OK);</span>
+<span class="fc" id="L271">        response.setHeader(&quot;Lock-Token&quot;, &quot;&lt;&quot; + lock.token() + &quot;&gt;&quot;);</span>
+<span class="fc" id="L272">        response.setContentType(&quot;application/xml&quot;);</span>
+<span class="fc" id="L273">        response.setCharacterEncoding(StandardCharsets.UTF_8.name());</span>
+<span class="fc" id="L274">        writeLockResponse(</span>
+                response,
+                lock,
+<span class="fc" id="L277">                templateHref(request, resource.templateId() + &quot;.dotx&quot;));</span>
+<span class="fc" id="L278">    }</span>
+
+    private void unlock(HttpServletRequest request, HttpServletResponse response) {
+<span class="fc" id="L281">        requireTemplateWriter(request);</span>
+<span class="fc" id="L282">        Resource resource = resource(request);</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">        if (resource.collection()) {</span>
+<span class="nc" id="L284">            response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);</span>
+<span class="nc" id="L285">            return;</span>
+        }
+<span class="fc" id="L287">        locks.release(</span>
+<span class="fc" id="L288">                resource.templateId(),</span>
+<span class="fc" id="L289">                request.getHeader(&quot;Lock-Token&quot;),</span>
+<span class="fc" id="L290">                principalName(request));</span>
+<span class="fc" id="L291">        response.setStatus(HttpServletResponse.SC_NO_CONTENT);</span>
+<span class="fc" id="L292">    }</span>
+
+    private TemplateFile currentOrNull(String templateId) throws IOException {
+        try {
+<span class="fc" id="L296">            return templates.downloadCurrent(templateId);</span>
+<span class="fc" id="L297">        } catch (TemplateNotFoundException exception) {</span>
+<span class="fc" id="L298">            return null;</span>
+        }
+    }
+
+    private static void requireTemplateWriter(HttpServletRequest request) {
+<span class="fc bfc" id="L303" title="All 2 branches covered.">        if (request.isUserInRole(&quot;ADMIN&quot;)</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">                || request.isUserInRole(&quot;ROLE_ADMIN&quot;)) {</span>
+<span class="fc" id="L305">            return;</span>
+        }
+<span class="fc" id="L307">        throw new SecurityException(</span>
+                &quot;Administrator role is required to modify document templates&quot;);
+    }
+
+    private static String principalName(HttpServletRequest request) {
+<span class="fc" id="L312">        Principal principal = request.getUserPrincipal();</span>
+<span class="pc bpc" id="L313" title="2 of 4 branches missed.">        if (principal == null || principal.getName() == null</span>
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">                || principal.getName().isBlank()) {</span>
+<span class="nc" id="L315">            throw new SecurityException(&quot;Authentication is required&quot;);</span>
+        }
+<span class="fc" id="L317">        return principal.getName();</span>
+    }
+
+    private static Resource resource(HttpServletRequest request) {
+<span class="fc" id="L321">        String path = request.getPathInfo();</span>
+<span class="pc bpc" id="L322" title="2 of 6 branches missed.">        if (path == null || path.isBlank() || &quot;/&quot;.equals(path)) {</span>
+<span class="fc" id="L323">            return new Resource(true, null);</span>
+        }
+<span class="pc bpc" id="L325" title="2 of 4 branches missed.">        if (!path.startsWith(&quot;/&quot;) || path.indexOf('/', 1) &gt;= 0</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">                || !path.endsWith(&quot;.dotx&quot;)) {</span>
+<span class="nc" id="L327">            throw new IllegalArgumentException(</span>
+                    &quot;WebDAV exposes only one level of .dotx template files&quot;);
+        }
+<span class="fc" id="L330">        String templateId = path.substring(1, path.length() - &quot;.dotx&quot;.length());</span>
+<span class="fc" id="L331">        DocumentTemplateGitRepository.validateTemplateId(templateId);</span>
+<span class="fc" id="L332">        return new Resource(false, templateId);</span>
+    }
+
+    private static String collectionHref(HttpServletRequest request) {
+<span class="fc" id="L336">        String contextPath = request.getContextPath();</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        return (contextPath == null ? &quot;&quot; : contextPath) + &quot;/dav/templates/&quot;;</span>
+    }
+
+    private static String templateHref(HttpServletRequest request, String fileName) {
+<span class="fc" id="L341">        return collectionHref(request) + encode(fileName);</span>
+    }
+
+    private static String requestLockToken(HttpServletRequest request) {
+<span class="fc" id="L345">        String direct = request.getHeader(&quot;Lock-Token&quot;);</span>
+<span class="pc bpc" id="L346" title="3 of 4 branches missed.">        if (direct != null &amp;&amp; !direct.isBlank()) {</span>
+<span class="nc" id="L347">            return DocumentTemplateWebDavLockManager.normalizeToken(direct);</span>
+        }
+<span class="fc" id="L349">        String condition = request.getHeader(&quot;If&quot;);</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">        if (condition == null) {</span>
+<span class="fc" id="L351">            return null;</span>
+        }
+<span class="fc" id="L353">        Matcher matcher = LOCK_TOKEN.matcher(condition);</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">        return matcher.find() ? matcher.group() : null;</span>
+    }
+
+    private static Duration parseTimeout(String header) {
+<span class="pc bpc" id="L358" title="3 of 4 branches missed.">        if (header == null || header.isBlank()) {</span>
+<span class="fc" id="L359">            return DocumentTemplateWebDavLockManager.DEFAULT_TIMEOUT;</span>
+        }
+<span class="nc bnc" id="L361" title="All 2 branches missed.">        for (String candidate : header.split(&quot;,&quot;)) {</span>
+<span class="nc" id="L362">            String value = candidate.strip();</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">            if (&quot;Infinite&quot;.equalsIgnoreCase(value)) {</span>
+<span class="nc" id="L364">                return DocumentTemplateWebDavLockManager.MAX_TIMEOUT;</span>
+            }
+<span class="nc bnc" id="L366" title="All 2 branches missed.">            if (value.regionMatches(true, 0, &quot;Second-&quot;, 0, 7)) {</span>
+                try {
+<span class="nc" id="L368">                    return Duration.ofSeconds(Long.parseLong(value.substring(7)));</span>
+<span class="nc" id="L369">                } catch (NumberFormatException ignored) {</span>
+                    // Fall through to the safe default.
+                }
+            }
+        }
+<span class="nc" id="L374">        return DocumentTemplateWebDavLockManager.DEFAULT_TIMEOUT;</span>
+    }
+
+    private static boolean etagMatches(String header, String commitId) {
+<span class="fc bfc" id="L378" title="All 2 branches covered.">        if (header == null) {</span>
+<span class="fc" id="L379">            return false;</span>
+        }
+<span class="pc bpc" id="L381" title="1 of 2 branches missed.">        for (String candidate : header.split(&quot;,&quot;)) {</span>
+<span class="fc" id="L382">            String value = DocumentTemplateService.stripEtag(candidate);</span>
+<span class="pc bpc" id="L383" title="1 of 4 branches missed.">            if (&quot;*&quot;.equals(value) || commitId.equals(value)) {</span>
+<span class="fc" id="L384">                return true;</span>
+            }
+        }
+<span class="nc" id="L387">        return false;</span>
+    }
+
+    private static void addDavHeaders(HttpServletResponse response) {
+<span class="fc" id="L391">        response.setHeader(&quot;DAV&quot;, &quot;1, 2&quot;);</span>
+<span class="fc" id="L392">        response.setHeader(&quot;MS-Author-Via&quot;, &quot;DAV&quot;);</span>
+<span class="fc" id="L393">        response.setHeader(&quot;Cache-Control&quot;, &quot;private, no-cache&quot;);</span>
+<span class="fc" id="L394">    }</span>
+
+    private static void writeCollectionResponse(
+            XMLStreamWriter writer,
+            String href) throws XMLStreamException {
+<span class="fc" id="L399">        start(writer, &quot;response&quot;);</span>
+<span class="fc" id="L400">        element(writer, &quot;href&quot;, href);</span>
+<span class="fc" id="L401">        start(writer, &quot;propstat&quot;);</span>
+<span class="fc" id="L402">        start(writer, &quot;prop&quot;);</span>
+<span class="fc" id="L403">        element(writer, &quot;displayname&quot;, &quot;Taxonomy document templates&quot;);</span>
+<span class="fc" id="L404">        start(writer, &quot;resourcetype&quot;);</span>
+<span class="fc" id="L405">        empty(writer, &quot;collection&quot;);</span>
+<span class="fc" id="L406">        writer.writeEndElement();</span>
+<span class="fc" id="L407">        writeSupportedLock(writer);</span>
+<span class="fc" id="L408">        writer.writeEndElement();</span>
+<span class="fc" id="L409">        element(writer, &quot;status&quot;, &quot;HTTP/1.1 200 OK&quot;);</span>
+<span class="fc" id="L410">        writer.writeEndElement();</span>
+<span class="fc" id="L411">        writer.writeEndElement();</span>
+<span class="fc" id="L412">    }</span>
+
+    private static void writeTemplateResponse(
+            XMLStreamWriter writer,
+            String href,
+            String displayName,
+            String commitId,
+            String updatedAt,
+            long contentLength,
+            TemplateLock lock) throws XMLStreamException {
+<span class="fc" id="L422">        start(writer, &quot;response&quot;);</span>
+<span class="fc" id="L423">        element(writer, &quot;href&quot;, href);</span>
+<span class="fc" id="L424">        start(writer, &quot;propstat&quot;);</span>
+<span class="fc" id="L425">        start(writer, &quot;prop&quot;);</span>
+<span class="fc" id="L426">        element(writer, &quot;displayname&quot;, safeXmlText(displayName));</span>
+<span class="fc" id="L427">        empty(writer, &quot;resourcetype&quot;);</span>
+<span class="fc" id="L428">        element(writer, &quot;getcontenttype&quot;,</span>
+                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE);
+<span class="fc" id="L430">        element(writer, &quot;getcontentlength&quot;, Long.toString(contentLength));</span>
+<span class="fc" id="L431">        element(writer, &quot;getetag&quot;, &quot;\&quot;&quot; + commitId + &quot;\&quot;&quot;);</span>
+<span class="fc" id="L432">        element(writer, &quot;getlastmodified&quot;, httpDate(updatedAt));</span>
+<span class="fc" id="L433">        writeSupportedLock(writer);</span>
+<span class="fc" id="L434">        writeLockDiscovery(writer, lock, href);</span>
+<span class="fc" id="L435">        writer.writeEndElement();</span>
+<span class="fc" id="L436">        element(writer, &quot;status&quot;, &quot;HTTP/1.1 200 OK&quot;);</span>
+<span class="fc" id="L437">        writer.writeEndElement();</span>
+<span class="fc" id="L438">        writer.writeEndElement();</span>
+<span class="fc" id="L439">    }</span>
+
+    private static void writeSupportedLock(XMLStreamWriter writer)
+            throws XMLStreamException {
+<span class="fc" id="L443">        start(writer, &quot;supportedlock&quot;);</span>
+<span class="fc" id="L444">        start(writer, &quot;lockentry&quot;);</span>
+<span class="fc" id="L445">        start(writer, &quot;lockscope&quot;);</span>
+<span class="fc" id="L446">        empty(writer, &quot;exclusive&quot;);</span>
+<span class="fc" id="L447">        writer.writeEndElement();</span>
+<span class="fc" id="L448">        start(writer, &quot;locktype&quot;);</span>
+<span class="fc" id="L449">        empty(writer, &quot;write&quot;);</span>
+<span class="fc" id="L450">        writer.writeEndElement();</span>
+<span class="fc" id="L451">        writer.writeEndElement();</span>
+<span class="fc" id="L452">        writer.writeEndElement();</span>
+<span class="fc" id="L453">    }</span>
+
+    private static void writeLockDiscovery(
+            XMLStreamWriter writer,
+            TemplateLock lock,
+            String href) throws XMLStreamException {
+<span class="fc" id="L459">        start(writer, &quot;lockdiscovery&quot;);</span>
+<span class="pc bpc" id="L460" title="1 of 2 branches missed.">        if (lock != null) {</span>
+<span class="nc" id="L461">            writeActiveLock(writer, lock, href);</span>
+        }
+<span class="fc" id="L463">        writer.writeEndElement();</span>
+<span class="fc" id="L464">    }</span>
+
+    private static void writeActiveLock(
+            XMLStreamWriter writer,
+            TemplateLock lock,
+            String href) throws XMLStreamException {
+<span class="fc" id="L470">        start(writer, &quot;activelock&quot;);</span>
+<span class="fc" id="L471">        start(writer, &quot;locktype&quot;);</span>
+<span class="fc" id="L472">        empty(writer, &quot;write&quot;);</span>
+<span class="fc" id="L473">        writer.writeEndElement();</span>
+<span class="fc" id="L474">        start(writer, &quot;lockscope&quot;);</span>
+<span class="fc" id="L475">        empty(writer, &quot;exclusive&quot;);</span>
+<span class="fc" id="L476">        writer.writeEndElement();</span>
+<span class="fc" id="L477">        element(writer, &quot;depth&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L478">        start(writer, &quot;owner&quot;);</span>
+<span class="fc" id="L479">        element(writer, &quot;href&quot;, safeXmlText(lock.owner()));</span>
+<span class="fc" id="L480">        writer.writeEndElement();</span>
+<span class="fc" id="L481">        element(writer, &quot;timeout&quot;, &quot;Second-&quot; + Math.max(1,</span>
+<span class="fc" id="L482">                Duration.between(Instant.now(), lock.expiresAt()).toSeconds()));</span>
+<span class="fc" id="L483">        start(writer, &quot;locktoken&quot;);</span>
+<span class="fc" id="L484">        element(writer, &quot;href&quot;, lock.token());</span>
+<span class="fc" id="L485">        writer.writeEndElement();</span>
+<span class="fc" id="L486">        start(writer, &quot;lockroot&quot;);</span>
+<span class="fc" id="L487">        element(writer, &quot;href&quot;, href);</span>
+<span class="fc" id="L488">        writer.writeEndElement();</span>
+<span class="fc" id="L489">        writer.writeEndElement();</span>
+<span class="fc" id="L490">    }</span>
+
+    private static void writeLockResponse(
+            HttpServletResponse response,
+            TemplateLock lock,
+            String href) throws IOException {
+        try {
+<span class="fc" id="L497">            XMLStreamWriter writer = XML_OUTPUT_FACTORY.createXMLStreamWriter(</span>
+<span class="fc" id="L498">                    response.getOutputStream(), StandardCharsets.UTF_8.name());</span>
+<span class="fc" id="L499">            writer.writeStartDocument(StandardCharsets.UTF_8.name(), &quot;1.0&quot;);</span>
+<span class="fc" id="L500">            start(writer, &quot;prop&quot;);</span>
+<span class="fc" id="L501">            writer.writeNamespace(&quot;D&quot;, DAV_NAMESPACE);</span>
+<span class="fc" id="L502">            start(writer, &quot;lockdiscovery&quot;);</span>
+<span class="fc" id="L503">            writeActiveLock(writer, lock, href);</span>
+<span class="fc" id="L504">            writer.writeEndElement();</span>
+<span class="fc" id="L505">            writer.writeEndElement();</span>
+<span class="fc" id="L506">            writer.writeEndDocument();</span>
+<span class="fc" id="L507">            writer.flush();</span>
+<span class="nc" id="L508">        } catch (XMLStreamException exception) {</span>
+<span class="nc" id="L509">            throw new IOException(&quot;Could not produce WebDAV lock XML&quot;, exception);</span>
+<span class="fc" id="L510">        }</span>
+<span class="fc" id="L511">    }</span>
+
+    private static void start(XMLStreamWriter writer, String localName)
+            throws XMLStreamException {
+<span class="fc" id="L515">        writer.writeStartElement(&quot;D&quot;, localName, DAV_NAMESPACE);</span>
+<span class="fc" id="L516">    }</span>
+
+    private static void empty(XMLStreamWriter writer, String localName)
+            throws XMLStreamException {
+<span class="fc" id="L520">        writer.writeEmptyElement(&quot;D&quot;, localName, DAV_NAMESPACE);</span>
+<span class="fc" id="L521">    }</span>
+
+    private static void element(
+            XMLStreamWriter writer,
+            String localName,
+            String value) throws XMLStreamException {
+<span class="fc" id="L527">        start(writer, localName);</span>
+<span class="fc" id="L528">        writer.writeCharacters(safeXmlText(value));</span>
+<span class="fc" id="L529">        writer.writeEndElement();</span>
+<span class="fc" id="L530">    }</span>
+
+    private static String safeXmlText(String value) {
+<span class="pc bpc" id="L533" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L534">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L536">        StringBuilder safe = new StringBuilder(value.length());</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">        for (int offset = 0; offset &lt; value.length();) {</span>
+<span class="fc" id="L538">            int codePoint = value.codePointAt(offset);</span>
+<span class="pc bpc" id="L539" title="1 of 2 branches missed.">            safe.appendCodePoint(DocumentTemplateService.isValidXml10CodePoint(codePoint)</span>
+<span class="pc" id="L540">                    ? codePoint : 0xFFFD);</span>
+<span class="fc" id="L541">            offset += Character.charCount(codePoint);</span>
+<span class="fc" id="L542">        }</span>
+<span class="fc" id="L543">        return safe.toString();</span>
+    }
+
+    private static String httpDate(String instant) {
+        try {
+<span class="fc" id="L548">            return HTTP_DATE.format(Instant.parse(instant));</span>
+<span class="nc" id="L549">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L550">            return HTTP_DATE.format(Instant.EPOCH);</span>
+        }
+    }
+
+    private static String encode(String value) {
+<span class="fc" id="L555">        return URLEncoder.encode(value, StandardCharsets.UTF_8)</span>
+<span class="fc" id="L556">                .replace(&quot;+&quot;, &quot;%20&quot;);</span>
+    }
+
+<span class="fc" id="L559">    private record Resource(boolean collection, String templateId) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

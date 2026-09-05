@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AiStatusResponse.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AiStatusResponse.java</span></div><h1>AiStatusResponse.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+
+/**
+ * Response payload for {@code GET /api/ai-status}.
+ *
+ * &lt;p&gt;The {@code level} field is the primary indicator of AI capability:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link AiAvailabilityLevel#FULL} – cloud LLM with API key active&lt;/li&gt;
+ *   &lt;li&gt;{@link AiAvailabilityLevel#LIMITED} – only local ONNX embedding available&lt;/li&gt;
+ *   &lt;li&gt;{@link AiAvailabilityLevel#UNAVAILABLE} – no AI capabilities&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;The {@code available} boolean is kept for backward compatibility
+ * ({@code true} for FULL and LIMITED, {@code false} for UNAVAILABLE).
+ * The {@code limited} boolean is a convenience flag for the LIMITED state.
+ */
+public class AiStatusResponse {
+
+    private final AiAvailabilityLevel level;
+    private final boolean available;
+    private final boolean limited;
+    private final String provider;
+    private final List&lt;String&gt; availableProviders;
+
+<span class="fc" id="L27">    public AiStatusResponse(AiAvailabilityLevel level, String provider, List&lt;String&gt; availableProviders) {</span>
+<span class="fc" id="L28">        this.level              = level;</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">        this.available          = level != AiAvailabilityLevel.UNAVAILABLE;</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        this.limited            = level == AiAvailabilityLevel.LIMITED;</span>
+<span class="fc" id="L31">        this.provider           = provider;</span>
+<span class="fc" id="L32">        this.availableProviders = availableProviders;</span>
+<span class="fc" id="L33">    }</span>
+
+    public AiAvailabilityLevel getLevel() {
+<span class="fc" id="L36">        return level;</span>
+    }
+
+    public boolean isAvailable() {
+<span class="fc" id="L40">        return available;</span>
+    }
+
+    public boolean isLimited() {
+<span class="fc" id="L44">        return limited;</span>
+    }
+
+    public String getProvider() {
+<span class="fc" id="L48">        return provider;</span>
+    }
+
+    public List&lt;String&gt; getAvailableProviders() {
+<span class="fc" id="L52">        return availableProviders;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

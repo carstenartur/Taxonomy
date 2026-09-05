@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPackageValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioPackageValidator.java</span></div><h1>VisioPackageValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.visio.VisioConnect;
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioShape;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Validates the bounded in-memory model before any VSDX bytes are emitted. */
+final class VisioPackageValidator {
+
+    static final long MAX_VISIO_ID = 0xffff_ffffL;
+
+    private VisioPackageValidator() {
+    }
+
+    static void validate(VisioDocument document) {
+<span class="pc bpc" id="L21" title="1 of 2 branches missed.">        if (document == null) {</span>
+<span class="nc" id="L22">            throw invalid(&quot;Visio document must not be null&quot;);</span>
+        }
+<span class="fc" id="L24">        List&lt;VisioPage&gt; pages = document.getPages();</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">        if (pages == null) {</span>
+<span class="nc" id="L26">            throw invalid(&quot;Visio page collection must not be null&quot;);</span>
+        }
+
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        for (int pageIndex = 0; pageIndex &lt; pages.size(); pageIndex++) {</span>
+<span class="fc" id="L30">            VisioPage page = pages.get(pageIndex);</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">            if (page == null) {</span>
+<span class="nc" id="L32">                throw invalid(&quot;Page &quot; + pageIndex + &quot; must not be null&quot;);</span>
+            }
+<span class="fc" id="L34">            validateXmlText(page.getName(), &quot;Page &quot; + pageIndex + &quot; name&quot;);</span>
+
+<span class="fc" id="L36">            List&lt;VisioShape&gt; shapes = page.getShapes();</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">            if (shapes == null) {</span>
+<span class="nc" id="L38">                throw invalid(&quot;Shape collection on page &quot; + pageIndex + &quot; must not be null&quot;);</span>
+            }
+<span class="fc" id="L40">            List&lt;VisioConnect&gt; connects = page.getConnects();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (connects == null) {</span>
+<span class="nc" id="L42">                throw invalid(&quot;Connect collection on page &quot; + pageIndex + &quot; must not be null&quot;);</span>
+            }
+
+<span class="fc" id="L45">            Map&lt;Long, VisioShape&gt; shapesById = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L46">            long maximumShapeId = 0;</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            for (int shapeIndex = 0; shapeIndex &lt; shapes.size(); shapeIndex++) {</span>
+<span class="fc" id="L48">                VisioShape shape = shapes.get(shapeIndex);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">                if (shape == null) {</span>
+<span class="nc" id="L50">                    throw invalid(&quot;Shape &quot; + shapeIndex + &quot; on page &quot; + pageIndex</span>
+                            + &quot; must not be null&quot;);
+                }
+
+<span class="fc" id="L54">                long shapeId = parseShapeId(</span>
+<span class="fc" id="L55">                        shape.getId(), &quot;Shape &quot; + shapeIndex + &quot; on page &quot; + pageIndex);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                if (shapesById.putIfAbsent(shapeId, shape) != null) {</span>
+<span class="fc" id="L57">                    throw invalid(&quot;Duplicate Visio shape ID &quot; + shapeId</span>
+                            + &quot; on page &quot; + pageIndex);
+                }
+<span class="fc" id="L60">                maximumShapeId = Math.max(maximumShapeId, shapeId);</span>
+
+<span class="fc" id="L62">                validateXmlText(shape.getText(), &quot;Text of shape &quot; + shapeId);</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">                if (shape.getType() != null) {</span>
+<span class="fc" id="L64">                    validateXmlText(shape.getType(), &quot;Type of shape &quot; + shapeId);</span>
+                }
+<span class="fc" id="L66">                validateCoordinate(shape.getX(), &quot;PinX of shape &quot; + shapeId, true);</span>
+<span class="fc" id="L67">                validateCoordinate(shape.getY(), &quot;PinY of shape &quot; + shapeId, true);</span>
+<span class="fc" id="L68">                validateCoordinate(shape.getWidth(), &quot;Width of shape &quot; + shapeId, false);</span>
+<span class="fc" id="L69">                validateCoordinate(shape.getHeight(), &quot;Height of shape &quot; + shapeId, false);</span>
+<span class="fc" id="L70">                validateCoordinate(</span>
+<span class="fc" id="L71">                        shape.getX() + shape.getWidth() / 2.0,</span>
+                        &quot;Right page extent of shape &quot; + shapeId,
+                        false);
+<span class="fc" id="L74">                validateCoordinate(</span>
+<span class="fc" id="L75">                        shape.getY() + shape.getHeight() / 2.0,</span>
+                        &quot;Top page extent of shape &quot; + shapeId,
+                        false);
+            }
+
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">            if (maximumShapeId &gt; MAX_VISIO_ID - connects.size()) {</span>
+<span class="nc" id="L81">                throw invalid(&quot;Connector IDs overflow the Visio unsigned-int range on page &quot;</span>
+                        + pageIndex);
+            }
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            for (int connectIndex = 0; connectIndex &lt; connects.size(); connectIndex++) {</span>
+<span class="fc" id="L86">                VisioConnect connect = connects.get(connectIndex);</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                if (connect == null) {</span>
+<span class="nc" id="L88">                    throw invalid(&quot;Connector &quot; + connectIndex + &quot; on page &quot; + pageIndex</span>
+                            + &quot; must not be null&quot;);
+                }
+
+<span class="fc" id="L92">                long fromId = parseShapeId(</span>
+<span class="fc" id="L93">                        connect.getFromShape(), &quot;Source of connector &quot; + connectIndex);</span>
+<span class="fc" id="L94">                long toId = parseShapeId(</span>
+<span class="fc" id="L95">                        connect.getToShape(), &quot;Target of connector &quot; + connectIndex);</span>
+<span class="fc" id="L96">                VisioShape source = shapesById.get(fromId);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                if (source == null) {</span>
+<span class="nc" id="L98">                    throw invalid(&quot;Connector &quot; + connectIndex</span>
+                            + &quot; references missing source shape &quot; + fromId);
+                }
+<span class="fc" id="L101">                VisioShape target = shapesById.get(toId);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                if (target == null) {</span>
+<span class="fc" id="L103">                    throw invalid(&quot;Connector &quot; + connectIndex</span>
+                            + &quot; references missing target shape &quot; + toId);
+                }
+<span class="fc" id="L106">                validateCoordinate(</span>
+<span class="fc" id="L107">                        Math.hypot(</span>
+<span class="fc" id="L108">                                target.getX() - source.getX(),</span>
+<span class="fc" id="L109">                                target.getY() - source.getY()),</span>
+                        &quot;Straight-line length of connector &quot; + connectIndex,
+                        false);
+<span class="fc" id="L112">                validateXmlText(</span>
+<span class="fc" id="L113">                        connect.getRelationType(), &quot;Label of connector &quot; + connectIndex);</span>
+            }
+        }
+<span class="fc" id="L116">    }</span>
+
+    static long parseShapeId(String value, String field) {
+<span class="pc bpc" id="L119" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L120">            throw invalid(field + &quot; must contain a positive numeric Visio ID&quot;);</span>
+        }
+
+        try {
+<span class="fc" id="L124">            long id = Long.parseLong(value);</span>
+<span class="pc bpc" id="L125" title="2 of 4 branches missed.">            if (id &lt;= 0 || id &gt; MAX_VISIO_ID) {</span>
+<span class="nc" id="L126">                throw invalid(field + &quot; must be between 1 and &quot; + MAX_VISIO_ID</span>
+                        + &quot;, but was &quot; + value);
+            }
+<span class="fc" id="L129">            return id;</span>
+<span class="fc" id="L130">        } catch (NumberFormatException exception) {</span>
+<span class="fc" id="L131">            throw invalid(field + &quot; must contain a positive numeric Visio ID, but was &quot;</span>
+                    + value, exception);
+        }
+    }
+
+    private static void validateCoordinate(double value, String field, boolean allowZero) {
+<span class="pc bpc" id="L137" title="1 of 8 branches missed.">        boolean inRange = Double.isFinite(value) &amp;&amp; (allowZero ? value &gt;= 0 : value &gt; 0);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (!inRange) {</span>
+<span class="fc" id="L139">            throw invalid(field + &quot; must be &quot;</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                    + (allowZero ? &quot;finite and non-negative&quot; : &quot;finite and positive&quot;)</span>
+                    + &quot;, but was &quot; + value);
+        }
+<span class="fc" id="L143">    }</span>
+
+    private static void validateXmlText(String value, String field) {
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L147">            throw invalid(field + &quot; must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (int offset = 0; offset &lt; value.length();) {</span>
+<span class="fc" id="L150">            int codePoint = value.codePointAt(offset);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (!isXml10CodePoint(codePoint)) {</span>
+<span class="fc" id="L152">                throw invalid(field + &quot; contains an XML 1.0 control or surrogate character: U+&quot;</span>
+<span class="fc" id="L153">                        + Integer.toHexString(codePoint).toUpperCase());</span>
+            }
+<span class="fc" id="L155">            offset += Character.charCount(codePoint);</span>
+<span class="fc" id="L156">        }</span>
+<span class="fc" id="L157">    }</span>
+
+    private static boolean isXml10CodePoint(int codePoint) {
+<span class="pc bpc" id="L160" title="10 of 18 branches missed.">        return codePoint == 0x9</span>
+                || codePoint == 0xA
+                || codePoint == 0xD
+                || (codePoint &gt;= 0x20 &amp;&amp; codePoint &lt;= 0xD7FF)
+                || (codePoint &gt;= 0xE000 &amp;&amp; codePoint &lt;= 0xFFFD)
+                || (codePoint &gt;= 0x10000 &amp;&amp; codePoint &lt;= 0x10FFFF);
+    }
+
+    private static IllegalArgumentException invalid(String message) {
+<span class="fc" id="L169">        return new IllegalArgumentException(message);</span>
+    }
+
+    private static IllegalArgumentException invalid(String message, Exception cause) {
+<span class="fc" id="L173">        return new IllegalArgumentException(message, cause);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

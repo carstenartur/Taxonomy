@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CommitIndexSearchLifecycle.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">CommitIndexSearchLifecycle.java</span></div><h1>CommitIndexSearchLifecycle.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.architecture.repository.ArchitectureCommitIndexRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.stereotype.Component;
+
+/**
+ * Keeps the persistent Lucene commit index aligned after the tenant migration.
+ *
+ * &lt;p&gt;V8 intentionally removes legacy relational rows whose repository provenance
+ * cannot be reconstructed. If the projection table is empty, rebuilding this one
+ * Hibernate Search scope purges any corresponding legacy documents that a JDBC
+ * migration could not remove through ORM events.&lt;/p&gt;
+ */
+@Component
+@Order(Ordered.HIGHEST_PRECEDENCE + 200)
+@ConditionalOnProperty(
+        name = &quot;taxonomy.commit-index.search-rebuild-empty&quot;,
+        havingValue = &quot;true&quot;,
+        matchIfMissing = true)
+public class CommitIndexSearchLifecycle implements ApplicationRunner {
+
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(</span>
+            CommitIndexSearchLifecycle.class);
+
+    private final ArchitectureCommitIndexRepository indexRepository;
+    private final CommitIndexSearchRebuilder searchRebuilder;
+
+    public CommitIndexSearchLifecycle(
+            ArchitectureCommitIndexRepository indexRepository,
+<span class="fc" id="L37">            CommitIndexSearchRebuilder searchRebuilder) {</span>
+<span class="fc" id="L38">        this.indexRepository = indexRepository;</span>
+<span class="fc" id="L39">        this.searchRebuilder = searchRebuilder;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    public void run(ApplicationArguments args) {
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (indexRepository.count() &gt; 0) {</span>
+<span class="fc" id="L45">            return;</span>
+        }
+        try {
+<span class="fc" id="L48">            searchRebuilder.rebuildAll();</span>
+<span class="fc" id="L49">            log.info(&quot;Purged/rebuilt the empty repository-scoped commit search index&quot;);</span>
+<span class="fc" id="L50">        } catch (InterruptedException exception) {</span>
+<span class="fc" id="L51">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L52">            throw new IllegalStateException(</span>
+                    &quot;Commit search index rebuild was interrupted&quot;, exception);
+<span class="fc" id="L54">        }</span>
+<span class="fc" id="L55">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

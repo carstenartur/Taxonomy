@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectAutopilotService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ProjectAutopilotService.java</span></div><h1>ProjectAutopilotService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
+import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
+import com.taxonomy.portfolio.dto.CopilotDtos.ProjectAutopilotRunRequest;
+import com.taxonomy.portfolio.dto.CopilotDtos.ProjectAutopilotRunView;
+import com.taxonomy.portfolio.dto.CopilotDtos.ProjectAutopilotStatus;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/** Bounded, exact-tenant project-level dispatch for explicitly enabled Autopilot. */
+@Service
+public class ProjectAutopilotService {
+
+    private static final int MAX_CONFIGURED_BATCH = 500;
+
+    private final CopilotAutomationService automationService;
+    private final ProjectPortfolioService projectService;
+    private final int maximumBatchRequirements;
+
+    public ProjectAutopilotService(
+            CopilotAutomationService automationService,
+            ProjectPortfolioService projectService,
+            @Value(&quot;${taxonomy.ai.autopilot.max-project-requirements:50}&quot;)
+<span class="fc" id="L35">            int maximumBatchRequirements) {</span>
+<span class="fc" id="L36">        this.automationService = automationService;</span>
+<span class="fc" id="L37">        this.projectService = projectService;</span>
+<span class="pc bpc" id="L38" title="2 of 4 branches missed.">        if (maximumBatchRequirements &lt; 1</span>
+                || maximumBatchRequirements &gt; MAX_CONFIGURED_BATCH) {
+<span class="nc" id="L40">            throw new IllegalArgumentException(</span>
+                    &quot;taxonomy.ai.autopilot.max-project-requirements must be between 1 and &quot;
+                            + MAX_CONFIGURED_BATCH);
+        }
+<span class="fc" id="L44">        this.maximumBatchRequirements = maximumBatchRequirements;</span>
+<span class="fc" id="L45">    }</span>
+
+    public ProjectAutopilotStatus status(
+            Long projectId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L51">        List&lt;RequirementView&gt; requirements = projectService.listRequirements(</span>
+                projectId, username, context);
+<span class="fc" id="L53">        AiAutomationStatus automation = automationService.status();</span>
+<span class="fc" id="L54">        return new ProjectAutopilotStatus(</span>
+                projectId,
+<span class="fc" id="L56">                automation.autopilotReady(),</span>
+<span class="fc" id="L57">                automation.runAfterRequirementSave(),</span>
+<span class="fc" id="L58">                requirements.size(),</span>
+                maximumBatchRequirements,
+<span class="fc" id="L60">                automation.reason());</span>
+    }
+
+    public ProjectAutopilotRunView run(
+            Long projectId,
+            ProjectAutopilotRunRequest request,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L68">        AiAutomationStatus automation = automationService.status();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (!automation.autopilotReady()) {</span>
+<span class="fc" id="L70">            throw PortfolioException.validation(automation.reason());</span>
+        }
+
+<span class="fc" id="L73">        List&lt;RequirementView&gt; requirements = projectService.listRequirements(</span>
+                projectId, username, context);
+<span class="fc" id="L75">        List&lt;RequirementView&gt; selected = selectRequirements(requirements, request);</span>
+<span class="fc" id="L76">        int requestedLimit = requestedLimit(request);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (selected.size() &gt; requestedLimit) {</span>
+<span class="fc" id="L78">            throw PortfolioException.validation(</span>
+<span class="fc" id="L79">                    &quot;Project Autopilot selected &quot; + selected.size()</span>
+                            + &quot; requirements, exceeding the bounded batch limit of &quot;
+                            + requestedLimit
+                            + &quot;. Supply explicit requirementIds or increase the operator limit.&quot;);
+        }
+
+<span class="fc" id="L85">        List&lt;String&gt; operationIds = new ArrayList&lt;&gt;(selected.size());</span>
+<span class="fc" id="L86">        boolean complete = true;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        for (RequirementView requirement : selected) {</span>
+<span class="fc" id="L88">            Optional&lt;CopilotOperationView&gt; operation = automationService.tryAutopilot(</span>
+                    projectId,
+<span class="fc" id="L90">                    requirement.id(),</span>
+                    username,
+                    context);
+<span class="fc" id="L93">            String operationId = operation</span>
+<span class="fc" id="L94">                    .map(CopilotOperationView::operationId)</span>
+<span class="fc" id="L95">                    .orElse(null);</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (operationId == null) {</span>
+<span class="fc" id="L97">                complete = false;</span>
+<span class="fc" id="L98">                break;</span>
+            }
+<span class="fc" id="L100">            operationIds.add(operationId);</span>
+<span class="fc" id="L101">        }</span>
+
+        String message;
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (complete) {</span>
+<span class="fc" id="L105">            message = &quot;Autopilot operations were persisted; every generated decision remains subject to human review.&quot;;</span>
+        } else {
+<span class="fc" id="L107">            message = &quot;Autopilot became unavailable after &quot;</span>
+<span class="fc" id="L108">                    + operationIds.size()</span>
+                    + &quot; of &quot;
+<span class="fc" id="L110">                    + selected.size()</span>
+                    + &quot; operations were persisted; already-started operations remain active, &quot;
+                    + &quot;and the remaining requirements can be submitted again. Every generated &quot;
+                    + &quot;decision remains subject to human review.&quot;;
+        }
+<span class="fc" id="L115">        return new ProjectAutopilotRunView(</span>
+                projectId,
+<span class="fc" id="L117">                selected.size(),</span>
+<span class="fc" id="L118">                operationIds.size(),</span>
+<span class="fc" id="L119">                List.copyOf(operationIds),</span>
+                message);
+    }
+
+    private List&lt;RequirementView&gt; selectRequirements(
+            List&lt;RequirementView&gt; requirements,
+            ProjectAutopilotRunRequest request) {
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (request == null</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">                || request.requirementIds() == null</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                || request.requirementIds().isEmpty()) {</span>
+<span class="fc" id="L129">            return requirements;</span>
+        }
+
+<span class="fc" id="L132">        Set&lt;Long&gt; requestedIds = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for (Long id : request.requirementIds()) {</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            if (id == null) {</span>
+<span class="nc" id="L135">                throw PortfolioException.validation(</span>
+                        &quot;Project Autopilot requirementIds must not contain null&quot;);
+            }
+<span class="fc" id="L138">            requestedIds.add(id);</span>
+<span class="fc" id="L139">        }</span>
+<span class="fc" id="L140">        Map&lt;Long, RequirementView&gt; byId = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (RequirementView requirement : requirements) {</span>
+<span class="fc" id="L142">            byId.put(requirement.id(), requirement);</span>
+<span class="fc" id="L143">        }</span>
+
+<span class="fc" id="L145">        List&lt;RequirementView&gt; selected = new ArrayList&lt;&gt;(requestedIds.size());</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        for (Long id : requestedIds) {</span>
+<span class="fc" id="L147">            RequirementView requirement = byId.get(id);</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">            if (requirement == null) {</span>
+<span class="nc" id="L149">                throw PortfolioException.notFound(</span>
+                        &quot;Requirement &quot; + id + &quot; was not found in project Autopilot scope&quot;);
+            }
+<span class="fc" id="L152">            selected.add(requirement);</span>
+<span class="fc" id="L153">        }</span>
+<span class="fc" id="L154">        return List.copyOf(selected);</span>
+    }
+
+    private int requestedLimit(ProjectAutopilotRunRequest request) {
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">        if (request == null || request.maxRequirements() == null) {</span>
+<span class="fc" id="L159">            return maximumBatchRequirements;</span>
+        }
+<span class="fc" id="L161">        int requested = request.maxRequirements();</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">        if (requested &lt; 1 || requested &gt; maximumBatchRequirements) {</span>
+<span class="nc" id="L163">            throw PortfolioException.validation(</span>
+                    &quot;maxRequirements must be between 1 and the operator limit of &quot;
+                            + maximumBatchRequirements);
+        }
+<span class="fc" id="L167">        return requested;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

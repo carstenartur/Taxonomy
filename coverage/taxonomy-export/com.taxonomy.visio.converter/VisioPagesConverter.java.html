@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPagesConverter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio.converter</a> &gt; <span class="el_source">VisioPagesConverter.java</span></div><h1>VisioPagesConverter.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio.converter;
+
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioPage;
+import com.thoughtworks.xstream.converters.Converter;
+import com.thoughtworks.xstream.converters.MarshallingContext;
+import com.thoughtworks.xstream.converters.UnmarshallingContext;
+import com.thoughtworks.xstream.io.HierarchicalStreamReader;
+import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
+
+import java.math.BigDecimal;
+
+/** Marshals the Visio page index part used inside a {@code .vsdx} package. */
+<span class="fc" id="L14">public class VisioPagesConverter implements Converter {</span>
+
+    private static final String VISIO_NS =
+            &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private static final String REL_NS =
+            &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+    private static final double MINIMUM_PAGE_WIDTH = 11.0;
+    private static final double MINIMUM_PAGE_HEIGHT = 8.5;
+    private static final double PAGE_MARGIN = 1.0;
+
+    @Override
+    public boolean canConvert(Class type) {
+<span class="fc" id="L26">        return VisioDocument.class.equals(type);</span>
+    }
+
+    @Override
+    public void marshal(
+            Object source,
+            HierarchicalStreamWriter writer,
+            MarshallingContext context) {
+<span class="fc" id="L34">        VisioDocument document = (VisioDocument) source;</span>
+<span class="fc" id="L35">        writer.addAttribute(&quot;xmlns&quot;, VISIO_NS);</span>
+<span class="fc" id="L36">        writer.addAttribute(&quot;xmlns:r&quot;, REL_NS);</span>
+
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (int index = 0; index &lt; document.getPages().size(); index++) {</span>
+<span class="fc" id="L39">            VisioPage page = document.getPages().get(index);</span>
+<span class="fc" id="L40">            writer.startNode(&quot;Page&quot;);</span>
+<span class="fc" id="L41">            writer.addAttribute(&quot;ID&quot;, String.valueOf(index));</span>
+<span class="fc" id="L42">            writer.addAttribute(&quot;Name&quot;, page.getName());</span>
+<span class="fc" id="L43">            writer.addAttribute(&quot;NameU&quot;, &quot;TaxonomyPage.&quot; + index);</span>
+<span class="fc" id="L44">            writer.addAttribute(&quot;IsCustomName&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L45">            writer.addAttribute(&quot;IsCustomNameU&quot;, &quot;1&quot;);</span>
+
+<span class="fc" id="L47">            writer.startNode(&quot;PageSheet&quot;);</span>
+<span class="fc" id="L48">            writeCell(writer, &quot;PageWidth&quot;, decimal(pageWidth(page)));</span>
+<span class="fc" id="L49">            writeCell(writer, &quot;PageHeight&quot;, decimal(pageHeight(page)));</span>
+<span class="fc" id="L50">            writeCell(writer, &quot;PageScale&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L51">            writeCell(writer, &quot;DrawingScale&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L52">            writer.endNode();</span>
+
+<span class="fc" id="L54">            writer.startNode(&quot;Rel&quot;);</span>
+<span class="fc" id="L55">            writer.addAttribute(&quot;r:id&quot;, &quot;rId&quot; + (index + 1));</span>
+<span class="fc" id="L56">            writer.endNode();</span>
+<span class="fc" id="L57">            writer.endNode();</span>
+        }
+<span class="fc" id="L59">    }</span>
+
+    @Override
+    public Object unmarshal(
+            HierarchicalStreamReader reader,
+            UnmarshallingContext context) {
+<span class="fc" id="L65">        throw new UnsupportedOperationException(</span>
+                &quot;VisioPagesConverter does not support unmarshaling&quot;);
+    }
+
+    private static double pageWidth(VisioPage page) {
+<span class="fc" id="L70">        double right = page.getShapes().stream()</span>
+<span class="fc" id="L71">                .mapToDouble(shape -&gt; shape.getX() + shape.getWidth() / 2.0)</span>
+<span class="fc" id="L72">                .max()</span>
+<span class="fc" id="L73">                .orElse(0.0);</span>
+<span class="fc" id="L74">        return Math.max(MINIMUM_PAGE_WIDTH, right + PAGE_MARGIN);</span>
+    }
+
+    private static double pageHeight(VisioPage page) {
+<span class="fc" id="L78">        double top = page.getShapes().stream()</span>
+<span class="fc" id="L79">                .mapToDouble(shape -&gt; shape.getY() + shape.getHeight() / 2.0)</span>
+<span class="fc" id="L80">                .max()</span>
+<span class="fc" id="L81">                .orElse(0.0);</span>
+<span class="fc" id="L82">        return Math.max(MINIMUM_PAGE_HEIGHT, top + PAGE_MARGIN);</span>
+    }
+
+    private static void writeCell(
+            HierarchicalStreamWriter writer,
+            String name,
+            String value) {
+<span class="fc" id="L89">        writer.startNode(&quot;Cell&quot;);</span>
+<span class="fc" id="L90">        writer.addAttribute(&quot;N&quot;, name);</span>
+<span class="fc" id="L91">        writer.addAttribute(&quot;V&quot;, value);</span>
+<span class="fc" id="L92">        writer.endNode();</span>
+<span class="fc" id="L93">    }</span>
+
+    private static String decimal(double value) {
+<span class="fc" id="L96">        return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

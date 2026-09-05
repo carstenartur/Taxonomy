@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HypothesisHeadApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.controller</a> &gt; <span class="el_source">HypothesisHeadApiController.java</span></div><h1>HypothesisHeadApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.controller;
+
+import com.taxonomy.relations.controller.GitHttpPrecondition;
+import com.taxonomy.relations.controller.RelationApiController;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/** Lightweight strong-ETag endpoint for direct hypothesis review clients. */
+@RestController
+@RequestMapping(&quot;/api/dsl/hypotheses&quot;)
+@Tag(name = &quot;DSL Versioning&quot;)
+public class HypothesisHeadApiController {
+
+    private final RelationBranchProjectionReadinessService readinessService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public HypothesisHeadApiController(
+            RelationBranchProjectionReadinessService readinessService,
+<span class="fc" id="L29">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L30">        this.readinessService = readinessService;</span>
+<span class="fc" id="L31">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L32">    }</span>
+
+    @Operation(
+            summary = &quot;Read the exact Git head used as hypothesis review precondition&quot;,
+            description = &quot;Returns the selected repository/workspace branch head as a strong ETag without loading projection rows&quot;)
+    @GetMapping(&quot;/head&quot;)
+    public ResponseEntity&lt;Void&gt; readHead() {
+<span class="fc" id="L39">        RepositoryContext context = workspaceResolver</span>
+<span class="fc" id="L40">                .resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L41">        String head = readinessService.readCurrentHead(context);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        if (head == null) {</span>
+<span class="fc" id="L43">            return ResponseEntity.status(HttpStatus.NOT_FOUND)</span>
+<span class="fc" id="L44">                    .header(</span>
+                            RelationApiController.PROJECTION_STATE_HEADER,
+<span class="fc" id="L46">                            ReadinessState.BRANCH_MISSING.name())</span>
+<span class="fc" id="L47">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L48">                    .build();</span>
+        }
+<span class="fc" id="L50">        return ResponseEntity.noContent()</span>
+<span class="fc" id="L51">                .header(HttpHeaders.ETAG, GitHttpPrecondition.etag(head))</span>
+<span class="fc" id="L52">                .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L53">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

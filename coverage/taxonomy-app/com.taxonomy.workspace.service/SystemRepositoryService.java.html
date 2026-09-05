@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SystemRepositoryService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">SystemRepositoryService.java</span></div><h1>SystemRepositoryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
+import com.taxonomy.workspace.model.RepositoryOwnerType;
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.regex.Pattern;
+
+/** Manages the catalog of central architecture repositories. */
+@Service
+public class SystemRepositoryService {
+
+    /** Historic storage name that must remain stable for existing installations. */
+    public static final String PRIMARY_STORAGE_NAME = &quot;taxonomy-dsl&quot;;
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(SystemRepositoryService.class);</span>
+<span class="fc" id="L28">    private static final Pattern SLUG_PATTERN = Pattern.compile(&quot;[a-z0-9]+(?:-[a-z0-9]+)*&quot;);</span>
+    private static final int MAX_PROVISIONING_ERROR_LENGTH = 2000;
+
+    private final SystemRepositoryRepository repository;
+
+<span class="fc" id="L33">    public SystemRepositoryService(SystemRepositoryRepository repository) {</span>
+<span class="fc" id="L34">        this.repository = repository;</span>
+<span class="fc" id="L35">    }</span>
+
+    /**
+     * Ensure a primary catalog entry exists, backfill multi-repository metadata,
+     * and erase credentials persisted by releases that stored external Git tokens
+     * in plaintext.
+     *
+     * &lt;p&gt;This method is invoked by {@link SystemRepositoryCatalogInitializer}
+     * through the Spring-managed service proxy. Initialization therefore runs in
+     * one real transaction and fails closed before later application runners use
+     * repository-owned state.&lt;/p&gt;
+     */
+    @Transactional
+    public void ensureSystemRepository() {
+        try {
+<span class="fc" id="L50">            var primaryRepository = repository.findByPrimaryRepoTrue();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (primaryRepository.isEmpty()) {</span>
+<span class="fc" id="L52">                SystemRepository systemRepository = new SystemRepository();</span>
+<span class="fc" id="L53">                systemRepository.setRepositoryId(UUID.randomUUID().toString());</span>
+<span class="fc" id="L54">                systemRepository.setStorageRepositoryName(PRIMARY_STORAGE_NAME);</span>
+<span class="fc" id="L55">                systemRepository.setSlug(&quot;shared-architecture&quot;);</span>
+<span class="fc" id="L56">                systemRepository.setDisplayName(&quot;Shared Architecture Repository&quot;);</span>
+<span class="fc" id="L57">                systemRepository.setDescription(&quot;Default central architecture repository&quot;);</span>
+<span class="fc" id="L58">                systemRepository.setVisibility(RepositoryVisibility.ORGANIZATION);</span>
+<span class="fc" id="L59">                systemRepository.setLifecycleState(RepositoryLifecycleState.ACTIVE);</span>
+<span class="fc" id="L60">                systemRepository.setProvisioningError(null);</span>
+<span class="fc" id="L61">                systemRepository.setOwnerType(RepositoryOwnerType.SYSTEM);</span>
+<span class="fc" id="L62">                systemRepository.setOwnerId(&quot;system&quot;);</span>
+<span class="fc" id="L63">                systemRepository.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);</span>
+<span class="fc" id="L64">                systemRepository.setDefaultBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L65">                systemRepository.setPrimaryRepo(true);</span>
+<span class="fc" id="L66">                systemRepository.setCreatedBy(&quot;system&quot;);</span>
+<span class="fc" id="L67">                systemRepository.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L68">                systemRepository.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L69">                repository.save(systemRepository);</span>
+<span class="fc" id="L70">                log.info(&quot;Created primary architecture repository catalog entry &quot;</span>
+                        + &quot;(storage={}, topology=INTERNAL_SHARED, branch=draft)&quot;,
+                        PRIMARY_STORAGE_NAME);
+<span class="fc" id="L73">                return;</span>
+            }
+
+<span class="fc" id="L76">            SystemRepository existing = primaryRepository.get();</span>
+<span class="fc" id="L77">            boolean changed = backfillPrimaryCatalogMetadata(existing);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (existing.hasLegacyPlaintextCredential()) {</span>
+<span class="fc" id="L79">                existing.clearLegacyPlaintextCredential();</span>
+<span class="fc" id="L80">                changed = true;</span>
+<span class="fc" id="L81">                log.warn(&quot;Removed a legacy plaintext external Git credential from the database. &quot;</span>
+                        + &quot;Configure TAXONOMY_EXTERNAL_GIT_TOKEN through deployment secret storage.&quot;);
+            }
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (changed) {</span>
+<span class="fc" id="L85">                existing.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L86">                repository.save(existing);</span>
+            }
+<span class="fc" id="L88">        } catch (RuntimeException exception) {</span>
+<span class="fc" id="L89">            log.error(&quot;Could not initialize the architecture repository catalog safely&quot;, exception);</span>
+<span class="fc" id="L90">            throw new IllegalStateException(</span>
+                    &quot;Architecture repository initialization or credential cleanup failed&quot;,
+                    exception);
+<span class="fc" id="L93">        }</span>
+<span class="fc" id="L94">    }</span>
+
+    /** Compatibility adapter for callers not yet migrated to explicit repository IDs. */
+    public SystemRepository getPrimaryRepository() {
+<span class="fc" id="L98">        return repository.findByPrimaryRepoTrue()</span>
+<span class="fc" id="L99">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;No primary architecture repository configured&quot;));
+    }
+
+    public SystemRepository getRepository(String repositoryId) {
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">        if (repositoryId == null || repositoryId.isBlank()) {</span>
+<span class="nc" id="L105">            throw new IllegalArgumentException(&quot;repositoryId must not be blank&quot;);</span>
+        }
+<span class="fc" id="L107">        return repository.findByRepositoryId(repositoryId)</span>
+<span class="pc" id="L108">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Architecture repository not found: &quot; + repositoryId));
+    }
+
+    public List&lt;SystemRepository&gt; listActiveRepositories() {
+<span class="fc" id="L113">        return repository.findByLifecycleStateOrderByDisplayNameAsc(</span>
+                RepositoryLifecycleState.ACTIVE);
+    }
+
+    /**
+     * Reserve a new central repository identity in the catalog.
+     *
+     * &lt;p&gt;The entry remains {@link RepositoryLifecycleState#PROVISIONING} until the
+     * caller has created the logical JGit repository and its initial branch. A
+     * failed allocation therefore remains diagnosable and can be retried or cleaned
+     * explicitly instead of appearing as an active but unusable repository.&lt;/p&gt;
+     */
+    @Transactional
+    public SystemRepository createCentralRepository(
+            String displayName,
+            String requestedSlug,
+            String description,
+            RepositoryVisibility visibility,
+            String ownerId,
+            String defaultBranch) {
+<span class="fc" id="L133">        String name = requireText(displayName, &quot;displayName&quot;);</span>
+<span class="pc bpc" id="L134" title="2 of 4 branches missed.">        String slug = normalizeSlug(requestedSlug != null &amp;&amp; !requestedSlug.isBlank()</span>
+<span class="pc" id="L135">                ? requestedSlug : name);</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (repository.findBySlug(slug).isPresent()) {</span>
+<span class="nc" id="L137">            throw new IllegalArgumentException(&quot;Repository slug already exists: &quot; + slug);</span>
+        }
+
+<span class="fc" id="L140">        String repositoryId = UUID.randomUUID().toString();</span>
+<span class="fc" id="L141">        String storageName = &quot;central-&quot; + repositoryId;</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        if (repository.findByStorageRepositoryName(storageName).isPresent()) {</span>
+<span class="nc" id="L143">            throw new IllegalStateException(&quot;Generated repository storage name already exists&quot;);</span>
+        }
+
+<span class="fc" id="L146">        String owner = requireText(ownerId, &quot;ownerId&quot;);</span>
+<span class="fc" id="L147">        Instant now = Instant.now();</span>
+<span class="fc" id="L148">        SystemRepository architectureRepository = new SystemRepository();</span>
+<span class="fc" id="L149">        architectureRepository.setRepositoryId(repositoryId);</span>
+<span class="fc" id="L150">        architectureRepository.setStorageRepositoryName(storageName);</span>
+<span class="fc" id="L151">        architectureRepository.setSlug(slug);</span>
+<span class="fc" id="L152">        architectureRepository.setDisplayName(name);</span>
+<span class="fc" id="L153">        architectureRepository.setDescription(description);</span>
+<span class="fc" id="L154">        architectureRepository.setVisibility(</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">                visibility != null ? visibility : RepositoryVisibility.PRIVATE);</span>
+<span class="fc" id="L156">        architectureRepository.setLifecycleState(RepositoryLifecycleState.PROVISIONING);</span>
+<span class="fc" id="L157">        architectureRepository.setProvisioningError(null);</span>
+<span class="fc" id="L158">        architectureRepository.setOwnerType(RepositoryOwnerType.USER);</span>
+<span class="fc" id="L159">        architectureRepository.setOwnerId(owner);</span>
+<span class="fc" id="L160">        architectureRepository.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);</span>
+<span class="fc" id="L161">        architectureRepository.setDefaultBranch(</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">                defaultBranch == null || defaultBranch.isBlank() ? &quot;draft&quot; : defaultBranch.strip());</span>
+<span class="fc" id="L163">        architectureRepository.setPrimaryRepo(false);</span>
+<span class="fc" id="L164">        architectureRepository.setCreatedBy(owner);</span>
+<span class="fc" id="L165">        architectureRepository.setCreatedAt(now);</span>
+<span class="fc" id="L166">        architectureRepository.setUpdatedAt(now);</span>
+<span class="fc" id="L167">        return repository.save(architectureRepository);</span>
+    }
+
+    @Transactional
+    public SystemRepository createForkMetadata(
+            String sourceRepositoryId,
+            String sourceBranch,
+            String forkPointCommit,
+            String displayName,
+            String slug,
+            String description,
+            RepositoryVisibility visibility,
+            String ownerId) {
+<span class="nc" id="L180">        SystemRepository source = getRepository(sourceRepositoryId);</span>
+<span class="nc bnc" id="L181" title="All 4 branches missed.">        String branch = sourceBranch == null || sourceBranch.isBlank()</span>
+<span class="nc" id="L182">                ? source.getDefaultBranch()</span>
+<span class="nc" id="L183">                : sourceBranch.strip();</span>
+<span class="nc" id="L184">        SystemRepository fork = createCentralRepository(</span>
+                displayName,
+                slug,
+                description,
+                visibility,
+                ownerId,
+                branch);
+<span class="nc" id="L191">        fork.setUpstreamRepositoryId(source.getRepositoryId());</span>
+<span class="nc" id="L192">        fork.setUpstreamBranch(branch);</span>
+<span class="nc" id="L193">        fork.setForkPointCommit(forkPointCommit);</span>
+<span class="nc" id="L194">        fork.setUpdatedAt(Instant.now());</span>
+<span class="nc" id="L195">        return repository.save(fork);</span>
+    }
+
+    @Transactional
+    public SystemRepository markProvisioningReady(String repositoryId) {
+<span class="fc" id="L200">        SystemRepository architectureRepository = getRepository(repositoryId);</span>
+<span class="fc" id="L201">        architectureRepository.setLifecycleState(RepositoryLifecycleState.ACTIVE);</span>
+<span class="fc" id="L202">        architectureRepository.setProvisioningError(null);</span>
+<span class="fc" id="L203">        architectureRepository.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L204">        return repository.save(architectureRepository);</span>
+    }
+
+    @Transactional
+    public SystemRepository markProvisioningFailed(String repositoryId, String reason) {
+<span class="fc" id="L209">        SystemRepository architectureRepository = getRepository(repositoryId);</span>
+<span class="fc" id="L210">        architectureRepository.setLifecycleState(RepositoryLifecycleState.FAILED);</span>
+<span class="fc" id="L211">        architectureRepository.setProvisioningError(normalizeProvisioningError(reason));</span>
+<span class="fc" id="L212">        architectureRepository.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L213">        return repository.save(architectureRepository);</span>
+    }
+
+    /** Return the configured primary branch, falling back during early startup. */
+    public String getSharedBranch() {
+        try {
+<span class="fc" id="L219">            return getPrimaryRepository().getDefaultBranch();</span>
+<span class="fc" id="L220">        } catch (Exception exception) {</span>
+<span class="fc" id="L221">            log.debug(&quot;Primary repository not available, falling back to 'draft': {}&quot;,</span>
+<span class="fc" id="L222">                    exception.getMessage());</span>
+<span class="fc" id="L223">            return &quot;draft&quot;;</span>
+        }
+    }
+
+    public String getDefaultBranch(String repositoryId) {
+<span class="nc" id="L228">        return getRepository(repositoryId).getDefaultBranch();</span>
+    }
+
+    @Transactional
+    public SystemRepository save(SystemRepository systemRepository) {
+<span class="fc" id="L233">        systemRepository.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L234">        return repository.save(systemRepository);</span>
+    }
+
+    private boolean backfillPrimaryCatalogMetadata(SystemRepository existing) {
+<span class="fc" id="L238">        boolean changed = false;</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (existing.getStorageRepositoryName() == null</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">                || existing.getStorageRepositoryName().isBlank()) {</span>
+<span class="fc" id="L241">            existing.setStorageRepositoryName(PRIMARY_STORAGE_NAME);</span>
+<span class="fc" id="L242">            changed = true;</span>
+        }
+<span class="pc bpc" id="L244" title="1 of 4 branches missed.">        if (existing.getSlug() == null || existing.getSlug().isBlank()) {</span>
+<span class="fc" id="L245">            existing.setSlug(&quot;shared-architecture&quot;);</span>
+<span class="fc" id="L246">            changed = true;</span>
+        }
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (existing.getVisibility() == null) {</span>
+<span class="fc" id="L249">            existing.setVisibility(RepositoryVisibility.ORGANIZATION);</span>
+<span class="fc" id="L250">            changed = true;</span>
+        }
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        if (existing.getLifecycleState() == null) {</span>
+<span class="fc" id="L253">            existing.setLifecycleState(RepositoryLifecycleState.ACTIVE);</span>
+<span class="fc" id="L254">            changed = true;</span>
+        }
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (existing.getOwnerType() == null) {</span>
+<span class="fc" id="L257">            existing.setOwnerType(RepositoryOwnerType.SYSTEM);</span>
+<span class="fc" id="L258">            changed = true;</span>
+        }
+<span class="pc bpc" id="L260" title="1 of 4 branches missed.">        if (existing.getOwnerId() == null || existing.getOwnerId().isBlank()) {</span>
+<span class="fc" id="L261">            existing.setOwnerId(&quot;system&quot;);</span>
+<span class="fc" id="L262">            changed = true;</span>
+        }
+<span class="pc bpc" id="L264" title="1 of 4 branches missed.">        if (existing.getCreatedBy() == null || existing.getCreatedBy().isBlank()) {</span>
+<span class="fc" id="L265">            existing.setCreatedBy(&quot;system&quot;);</span>
+<span class="fc" id="L266">            changed = true;</span>
+        }
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        if (existing.getUpdatedAt() == null) {</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">            existing.setUpdatedAt(existing.getCreatedAt() != null</span>
+<span class="pc" id="L270">                    ? existing.getCreatedAt() : Instant.now());</span>
+<span class="fc" id="L271">            changed = true;</span>
+        }
+<span class="fc" id="L273">        return changed;</span>
+    }
+
+    private static String normalizeSlug(String value) {
+<span class="fc" id="L277">        String normalized = requireText(value, &quot;slug&quot;)</span>
+<span class="fc" id="L278">                .toLowerCase(Locale.ROOT)</span>
+<span class="fc" id="L279">                .replaceAll(&quot;[^a-z0-9]+&quot;, &quot;-&quot;)</span>
+<span class="fc" id="L280">                .replaceAll(&quot;^-+|-+$&quot;, &quot;&quot;);</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">        if (!SLUG_PATTERN.matcher(normalized).matches()) {</span>
+<span class="nc" id="L282">            throw new IllegalArgumentException(&quot;Repository slug is invalid: &quot; + value);</span>
+        }
+<span class="fc" id="L284">        return normalized;</span>
+    }
+
+    private static String normalizeProvisioningError(String reason) {
+<span class="pc bpc" id="L288" title="2 of 4 branches missed.">        if (reason == null || reason.isBlank()) {</span>
+<span class="nc" id="L289">            return &quot;Repository provisioning failed&quot;;</span>
+        }
+<span class="fc" id="L291">        String normalized = reason.strip();</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">        return normalized.length() &lt;= MAX_PROVISIONING_ERROR_LENGTH</span>
+<span class="fc" id="L293">                ? normalized</span>
+<span class="nc" id="L294">                : normalized.substring(0, MAX_PROVISIONING_ERROR_LENGTH);</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L298" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L299">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L301">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleReport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.decision</a> &gt; <span class="el_source">DecisionRationaleReport.java</span></div><h1>DecisionRationaleReport.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.decision;
+
+import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import com.taxonomy.dto.ViewContext;
+
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * Immutable, format-neutral model for a hierarchical decision rationale report.
+ *
+ * &lt;p&gt;The model intentionally distinguishes a missing score (not evaluated) from an
+ * explicit score of {@code 0} (evaluated and rejected). Renderers must preserve that
+ * distinction and must never infer or change scores, hierarchy links, or provenance.&lt;/p&gt;
+ */
+public record DecisionRationaleReport(
+        String title,
+        String languageTag,
+        String requirement,
+        ReportStatus status,
+        ReportMetadata metadata,
+        ExecutiveSummary executiveSummary,
+        List&lt;DecisionChapter&gt; chapters,
+        List&lt;LeafCandidate&gt; leadingLeaves,
+        List&lt;String&gt; warnings,
+        List&lt;ProductCoverageGap&gt; productCoverageGaps,
+        List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+        ViewContext viewContext) {
+
+<span class="fc" id="L31">    public DecisionRationaleReport {</span>
+<span class="fc" id="L32">        languageTag = normalized(languageTag, &quot;en&quot;);</span>
+<span class="fc" id="L33">        requirement = normalized(requirement, &quot;&quot;);</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        status = status == null ? ReportStatus.DRAFT_INCOMPLETE : status;</span>
+<span class="fc" id="L35">        chapters = immutable(chapters);</span>
+<span class="fc" id="L36">        leadingLeaves = immutable(leadingLeaves);</span>
+<span class="fc" id="L37">        warnings = immutable(warnings);</span>
+<span class="fc" id="L38">        productCoverageGaps = immutable(productCoverageGaps);</span>
+<span class="fc" id="L39">        discrepancies = immutable(discrepancies);</span>
+<span class="fc" id="L40">    }</span>
+
+<span class="fc" id="L42">    public enum ReportStatus {</span>
+<span class="fc" id="L43">        FINAL,</span>
+<span class="fc" id="L44">        FINAL_WITH_WARNINGS,</span>
+<span class="fc" id="L45">        DRAFT_INCOMPLETE,</span>
+<span class="fc" id="L46">        NO_RESULT</span>
+    }
+
+<span class="fc" id="L49">    public record ReportMetadata(</span>
+            Instant generatedAt,
+            String generatedBy,
+            String taxonomyApplicationVersion,
+            String taxonomyBuildCommit,
+            String taxonomyCatalogueFile,
+            String taxonomyDataVersion,
+            String taxonomyCatalogueResourceSha256,
+            String taxonomyDataFingerprintSha256,
+            String analysisSnapshotFingerprintSha256,
+            String taxonomyDataSource,
+            int taxonomyNodeCount,
+            int taxonomyRootCount,
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String basedOnCommit,
+            Instant basedOnCommitTimestamp,
+            boolean projectionStale,
+            boolean indexStale,
+            String analysisProvider,
+            String analysisStatus,
+            String analysisModel,
+            String analysisSnapshotId,
+            Long projectId,
+            Long requirementId,
+            Long requirementVersionId,
+            Integer requirementVersionNumber,
+            Instant analysisCreatedAt,
+            String analysisCreatedBy,
+            String recordedTaxonomyFingerprintSha256,
+            String promptFingerprintSha256,
+            boolean hierarchyFromImmutableSnapshot,
+            String reportTimeZone,
+            int suppliedReasonCount,
+            int evaluatedNodeCount,
+            int positiveNodeCount,
+            double completenessPercent) {
+    }
+
+    public record ExecutiveSummary(
+            LeafCandidate leadingLeaf,
+            List&lt;PathStep&gt; path,
+            String conciseConclusion,
+            String methodologyNote) {
+
+<span class="fc" id="L95">        public ExecutiveSummary {</span>
+<span class="fc" id="L96">            path = immutable(path);</span>
+<span class="fc" id="L97">        }</span>
+    }
+
+<span class="fc" id="L100">    public record LeafCandidate(</span>
+            String code,
+            String title,
+            int score,
+            String taxonomyRoot,
+            int depth,
+            String hierarchyPath,
+            String reason,
+            ReasonSource reasonSource) {
+    }
+
+<span class="fc" id="L111">    public record PathStep(</span>
+            int position,
+            String code,
+            String title,
+            Integer absoluteScore,
+            Double localSharePercent,
+            String reason,
+            ReasonSource reasonSource) {
+    }
+
+    public record DecisionChapter(
+            int number,
+            String parentCode,
+            String parentTitle,
+            String parentDescription,
+            Integer parentScore,
+            int hierarchyLevel,
+            boolean complete,
+            String decisionSummary,
+            String comparativeRationale,
+            List&lt;ChildDecision&gt; children,
+            List&lt;String&gt; missingChildCodes) {
+
+<span class="fc" id="L134">        public DecisionChapter {</span>
+<span class="fc" id="L135">            children = immutable(children);</span>
+<span class="fc" id="L136">            missingChildCodes = immutable(missingChildCodes);</span>
+<span class="fc" id="L137">        }</span>
+    }
+
+<span class="fc" id="L140">    public enum Disposition {</span>
+<span class="fc" id="L141">        CONTINUED,</span>
+<span class="fc" id="L142">        LEAF_CANDIDATE,</span>
+<span class="fc" id="L143">        REJECTED,</span>
+<span class="fc" id="L144">        NOT_EVALUATED</span>
+    }
+
+<span class="fc" id="L147">    public enum ReasonSource {</span>
+<span class="fc" id="L148">        AI_SCORING,</span>
+<span class="fc" id="L149">        DETERMINISTIC_TRACE,</span>
+<span class="fc" id="L150">        MISSING</span>
+    }
+
+<span class="fc" id="L153">    public record ChildDecision(</span>
+            String code,
+            String title,
+            String description,
+            Integer absoluteScore,
+            Double localSharePercent,
+            Integer rank,
+            boolean leadingSibling,
+            Disposition disposition,
+            String reason,
+            ReasonSource reasonSource,
+            boolean leaf) {
+    }
+
+    private static String normalized(String value, String fallback) {
+<span class="pc bpc" id="L168" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? fallback : value.strip();</span>
+    }
+
+    private static &lt;T&gt; List&lt;T&gt; immutable(List&lt;T&gt; value) {
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        return value == null ? List.of() : List.copyOf(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

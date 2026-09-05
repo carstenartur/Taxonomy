@@ -1,0 +1,1010 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>JgitStorageSchemaMigrationConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.storage</a> &gt; <span class="el_source">JgitStorageSchemaMigrationConfig.java</span></div><h1>JgitStorageSchemaMigrationConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.storage;
+
+import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
+import io.github.carstenartur.jgit.storage.hibernate.schema.LegacyCoreSchemaAdoption;
+
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+import javax.sql.DataSource;
+
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.configuration.Configuration;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
+import org.springframework.context.annotation.Bean;
+
+/**
+ * Runs the versioned JGit Core schema before Hibernate initializes its persistence unit.
+ *
+ * &lt;p&gt;Fresh installation and history establishment are automatic only after the existing
+ * schema has been classified. Adoption of Taxonomy's pre-library schema, including the
+ * 0.1.8-to-0.1.9 adoption correction, is fail-closed and requires an explicit operator flag
+ * after backup and the released read-only preflight.&lt;/p&gt;
+ */
+@org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(name = &quot;spring.flyway.enabled&quot;, havingValue = &quot;true&quot;)
+<span class="fc" id="L43">public class JgitStorageSchemaMigrationConfig {</span>
+
+<span class="fc" id="L45">    private static final Logger log =</span>
+<span class="fc" id="L46">            LoggerFactory.getLogger(JgitStorageSchemaMigrationConfig.class);</span>
+
+    private static final int REQUIRED_PACK_EXTENSION_LENGTH = 32;
+    private static final int LEGACY_TAXONOMY_PACK_EXTENSION_LENGTH = 255;
+    private static final int REQUIRED_REF_NAME_LENGTH = 1024;
+    private static final int LEGACY_TAXONOMY_REF_NAME_LENGTH = 255;
+    private static final String PRE_PACK_DESCRIPTION_SCHEMA_VERSION = &quot;0.1.14.2&quot;;
+    private static final String PRE_PACK_DESCRIPTION_BASELINE_DESCRIPTION =
+            &quot;jgit-storage-hibernate-core 0.1.14&quot;;
+    private static final String PRE_REFLOG_KEY_SCHEMA_VERSION = &quot;0.1.18&quot;;
+    private static final String PRE_REFLOG_KEY_BASELINE_DESCRIPTION =
+            &quot;jgit-storage-hibernate-core 0.1.18&quot;;
+    private static final String LATEST_CORE_SCHEMA_VERSION = &quot;0.9.1&quot;;
+    private static final String LATEST_CORE_BASELINE_DESCRIPTION =
+            &quot;jgit-storage-hibernate-core 0.9.1&quot;;
+    private static final String DELIVERY_ID_SCHEMA_VERSION = &quot;0.9.2&quot;;
+    private static final String DELIVERY_ID_BASELINE_DESCRIPTION =
+            &quot;jgit-storage-hibernate-core 0.9.2&quot;;
+
+<span class="fc" id="L65">    private static final Set&lt;String&gt; LEGACY_PACK_COLUMNS = Set.of(</span>
+            &quot;ID&quot;,
+            &quot;REPOSITORY_NAME&quot;,
+            &quot;PACK_NAME&quot;,
+            &quot;PACK_EXTENSION&quot;,
+            &quot;DATA&quot;,
+            &quot;FILE_SIZE&quot;,
+            &quot;CREATED_AT&quot;);
+
+    /** Exact physical pack shape released from 0.1.4 through 0.1.14.1. */
+<span class="fc" id="L75">    private static final Set&lt;String&gt; PRE_WRITE_LEASE_PACK_COLUMNS = Set.of(</span>
+            &quot;ID&quot;,
+            &quot;REPOSITORY_NAME&quot;,
+            &quot;PACK_NAME&quot;,
+            &quot;PACK_EXTENSION&quot;,
+            &quot;DATA&quot;,
+            &quot;FILE_SIZE&quot;,
+            &quot;COMMITTED&quot;,
+            &quot;CREATED_AT&quot;,
+            &quot;COMMITTED_AT&quot;);
+
+    /** Exact physical pack shape released from 0.1.14.2 through 0.1.17. */
+<span class="fc" id="L87">    private static final Set&lt;String&gt; PRE_PACK_DESCRIPTION_PACK_COLUMNS = Set.of(</span>
+            &quot;ID&quot;,
+            &quot;REPOSITORY_NAME&quot;,
+            &quot;PACK_NAME&quot;,
+            &quot;PACK_EXTENSION&quot;,
+            &quot;DATA&quot;,
+            &quot;FILE_SIZE&quot;,
+            &quot;COMMITTED&quot;,
+            &quot;CREATED_AT&quot;,
+            &quot;COMMITTED_AT&quot;,
+            &quot;WRITE_TOKEN&quot;,
+            &quot;WRITE_LEASE_UNTIL&quot;);
+
+    /** Exact physical pack shape released by jgit-storage-hibernate 0.1.18. */
+<span class="fc" id="L101">    private static final Set&lt;String&gt; CURRENT_PACK_COLUMNS = Set.of(</span>
+            &quot;ID&quot;,
+            &quot;REPOSITORY_NAME&quot;,
+            &quot;PACK_NAME&quot;,
+            &quot;PACK_EXTENSION&quot;,
+            &quot;DATA&quot;,
+            &quot;FILE_SIZE&quot;,
+            &quot;COMMITTED&quot;,
+            &quot;CREATED_AT&quot;,
+            &quot;COMMITTED_AT&quot;,
+            &quot;WRITE_TOKEN&quot;,
+            &quot;WRITE_LEASE_UNTIL&quot;,
+            &quot;PACK_SOURCE&quot;,
+            &quot;LAST_MODIFIED&quot;,
+            &quot;OBJECT_COUNT&quot;,
+            &quot;DELTA_COUNT&quot;,
+            &quot;INDEX_VERSION&quot;,
+            &quot;MIN_UPDATE_INDEX&quot;,
+            &quot;MAX_UPDATE_INDEX&quot;);
+
+    /** Exact physical reflog shape released through Core 0.1.18. */
+<span class="fc" id="L122">    private static final Set&lt;String&gt; PRE_REFLOG_KEY_COLUMNS = Set.of(</span>
+            &quot;ID&quot;,
+            &quot;VERSION&quot;,
+            &quot;REPOSITORY_NAME&quot;,
+            &quot;REF_NAME&quot;,
+            &quot;OLD_ID&quot;,
+            &quot;NEW_ID&quot;,
+            &quot;WHO_NAME&quot;,
+            &quot;WHO_EMAIL&quot;,
+            &quot;WHO_WHEN&quot;,
+            &quot;MESSAGE&quot;);
+
+    /** Exact physical reflog shape released by Core 0.9.1. */
+<span class="fc" id="L135">    private static final Set&lt;String&gt; REFLOG_KEY_COLUMNS = Set.of(</span>
+            &quot;ID&quot;,
+            &quot;VERSION&quot;,
+            &quot;REPOSITORY_NAME&quot;,
+            &quot;REF_NAME&quot;,
+            &quot;REF_NAME_KEY&quot;,
+            &quot;OLD_ID&quot;,
+            &quot;NEW_ID&quot;,
+            &quot;WHO_NAME&quot;,
+            &quot;WHO_EMAIL&quot;,
+            &quot;WHO_WHEN&quot;,
+            &quot;MESSAGE&quot;);
+
+    /** Exact physical reflog shape released by Core 0.9.2. */
+<span class="fc" id="L149">    private static final Set&lt;String&gt; CURRENT_REFLOG_COLUMNS = Set.of(</span>
+            &quot;ID&quot;,
+            &quot;VERSION&quot;,
+            &quot;REPOSITORY_NAME&quot;,
+            &quot;REF_NAME&quot;,
+            &quot;REF_NAME_KEY&quot;,
+            &quot;OLD_ID&quot;,
+            &quot;NEW_ID&quot;,
+            &quot;WHO_NAME&quot;,
+            &quot;WHO_EMAIL&quot;,
+            &quot;WHO_WHEN&quot;,
+            &quot;MESSAGE&quot;,
+            &quot;DELIVERY_ID&quot;);
+
+    /** Restrict the Boot-managed Flyway instance to the released Core migration stream. */
+    @Bean
+    public FlywayConfigurationCustomizer jgitStorageFlywayConfigurationCustomizer() {
+<span class="fc" id="L166">        return configuration -&gt; {</span>
+<span class="fc" id="L167">            DatabaseFamily family = DatabaseFamily.detect(configuration.getDataSource());</span>
+<span class="fc" id="L168">            configureNormalMigration(configuration, family);</span>
+<span class="fc" id="L169">        };</span>
+    }
+
+    /**
+     * Classify the existing schema and select the only safe migration path.
+     *
+     * @param legacyAdoptionEnabled explicit one-time operator opt-in for legacy adoption DDL
+     */
+    @Bean
+    public FlywayMigrationStrategy jgitStorageFlywayMigrationStrategy(
+            @Value(&quot;${taxonomy.jgit-storage.legacy-adoption:false}&quot;)
+            boolean legacyAdoptionEnabled) {
+<span class="nc" id="L181">        return flyway -&gt; migrateCoreSchema(flyway, legacyAdoptionEnabled);</span>
+    }
+
+    static void migrateCoreSchema(Flyway flyway, boolean legacyAdoptionEnabled) {
+<span class="fc" id="L185">        Configuration configuration = flyway.getConfiguration();</span>
+<span class="fc" id="L186">        DataSource dataSource = configuration.getDataSource();</span>
+<span class="fc" id="L187">        DatabaseFamily family = DatabaseFamily.detect(dataSource);</span>
+<span class="fc" id="L188">        SchemaSnapshot schema = SchemaSnapshot.inspect(dataSource);</span>
+
+<span class="fc" id="L190">        boolean hasCoreHistory = schema.hasTable(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);</span>
+<span class="fc" id="L191">        boolean hasAdoptionHistory =</span>
+<span class="fc" id="L192">                schema.hasTable(CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE);</span>
+
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (hasCoreHistory) {</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            if (hasAdoptionHistory) {</span>
+<span class="fc" id="L196">                migratePendingAdoptionCorrections(</span>
+                        configuration,
+                        family,
+                        dataSource,
+                        schema,
+                        legacyAdoptionEnabled);
+<span class="fc" id="L202">                schema = SchemaSnapshot.inspect(dataSource);</span>
+            }
+
+<span class="fc" id="L205">            requireMigratableCoreShape(schema);</span>
+<span class="fc" id="L206">            requireManagedReflogHistoryConsistency(flyway, schema);</span>
+<span class="fc" id="L207">            log.info(&quot;Migrating managed JGit Core schema for {}&quot;, family.displayName());</span>
+<span class="fc" id="L208">            flyway.migrate();</span>
+<span class="fc" id="L209">            SchemaSnapshot migratedSchema = SchemaSnapshot.inspect(dataSource);</span>
+<span class="fc" id="L210">            requireCurrentCoreShape(migratedSchema);</span>
+<span class="fc" id="L211">            requireManagedReflogHistoryConsistency(flyway, migratedSchema);</span>
+<span class="fc" id="L212">            return;</span>
+        }
+
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        if (hasAdoptionHistory) {</span>
+<span class="nc" id="L216">            throw unsafeSchema(</span>
+                    &quot;The legacy-adoption history exists without the normal Core history. &quot;
+                            + &quot;Restore the pre-migration backup or complete the documented &quot;
+                            + &quot;history-establishment step before startup.&quot;);
+        }
+
+<span class="fc" id="L222">        boolean hasPacks = schema.hasTable(&quot;git_packs&quot;);</span>
+<span class="fc" id="L223">        boolean hasReflog = schema.hasTable(&quot;git_reflog&quot;);</span>
+<span class="pc bpc" id="L224" title="1 of 4 branches missed.">        if (!hasPacks &amp;&amp; !hasReflog) {</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            if (schema.tables().isEmpty()) {</span>
+<span class="fc" id="L226">                log.info(&quot;Installing JGit Core schema into empty {} database&quot;, family.displayName());</span>
+<span class="fc" id="L227">                flyway.migrate();</span>
+            } else {
+<span class="fc" id="L229">                log.info(</span>
+                        &quot;Installing JGit Core schema into shared {} schema with pre-migration baseline&quot;,
+<span class="fc" id="L231">                        family.displayName());</span>
+<span class="fc" id="L232">                migrateNormalWithBaseline(</span>
+                        configuration,
+                        family,
+                        CoreSchemaMigrations.PRE_MIGRATION_BASELINE_VERSION,
+                        CoreSchemaMigrations.PRE_MIGRATION_BASELINE_DESCRIPTION);
+<span class="fc" id="L237">                flyway.migrate();</span>
+            }
+<span class="fc" id="L239">            requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));</span>
+<span class="fc" id="L240">            return;</span>
+        }
+
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (hasPacks != hasReflog) {</span>
+<span class="fc" id="L244">            throw unsafeSchema(</span>
+                    &quot;Only one of git_packs and git_reflog exists. Refusing to repair a partial &quot;
+                            + &quot;JGit storage schema automatically.&quot;);
+        }
+
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        if (schema.packColumns().equals(LEGACY_PACK_COLUMNS)) {</span>
+<span class="fc" id="L250">            requirePreReflogKeyColumns(schema);</span>
+<span class="fc" id="L251">            migrateLegacyTaxonomySchema(</span>
+                    configuration, family, dataSource, schema, legacyAdoptionEnabled);
+<span class="fc" id="L253">            requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));</span>
+<span class="fc" id="L254">            return;</span>
+        }
+
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (schema.packColumns().equals(PRE_WRITE_LEASE_PACK_COLUMNS)) {</span>
+<span class="nc" id="L258">            requirePreReflogKeyColumns(schema);</span>
+<span class="nc" id="L259">            establishUnversionedPreWriteLeaseSchema(configuration, family, dataSource, schema);</span>
+<span class="nc" id="L260">            return;</span>
+        }
+
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        if (schema.packColumns().equals(PRE_PACK_DESCRIPTION_PACK_COLUMNS)) {</span>
+<span class="fc" id="L264">            requirePreReflogKeyColumns(schema);</span>
+<span class="fc" id="L265">            establishUnversionedPrePackDescriptionSchema(</span>
+                    configuration, family, dataSource, schema);
+<span class="fc" id="L267">            return;</span>
+        }
+
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {</span>
+<span class="fc" id="L271">            establishUnversionedCurrentSchema(configuration, family, dataSource, schema);</span>
+<span class="fc" id="L272">            return;</span>
+        }
+
+<span class="nc" id="L275">        throw unsupportedPackColumns(schema.packColumns());</span>
+    }
+
+    private static void establishUnversionedPreWriteLeaseSchema(
+            Configuration configuration,
+            DatabaseFamily family,
+            DataSource dataSource,
+            SchemaSnapshot schema) {
+<span class="nc" id="L283">        requireSafePackRows(dataSource, false);</span>
+<span class="nc" id="L284">        requireCurrentCoreColumnLengths(schema);</span>
+<span class="nc" id="L285">        requirePreWriteLeaseCoreIndexes(schema);</span>
+<span class="nc" id="L286">        log.info(</span>
+                &quot;Establishing Flyway history for an exact pre-0.1.14.2 JGit Core schema on {}&quot;,
+<span class="nc" id="L288">                family.displayName());</span>
+<span class="nc" id="L289">        migrateNormalWithBaseline(</span>
+                configuration,
+                family,
+                CoreSchemaMigrations.CURRENT_SCHEMA_VERSION,
+                &quot;verified pre-0.1.14.2 JGit Core schema&quot;);
+<span class="nc" id="L294">        requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));</span>
+<span class="nc" id="L295">    }</span>
+
+    private static void establishUnversionedPrePackDescriptionSchema(
+            Configuration configuration,
+            DatabaseFamily family,
+            DataSource dataSource,
+            SchemaSnapshot schema) {
+<span class="fc" id="L302">        requireSafePackRows(dataSource, false);</span>
+<span class="fc" id="L303">        requireCurrentCoreColumnLengths(schema);</span>
+<span class="fc" id="L304">        requireRepositoryLockTable(schema);</span>
+<span class="fc" id="L305">        requireMigratableCurrentCoreIndexes(schema);</span>
+<span class="fc" id="L306">        log.info(</span>
+                &quot;Establishing Flyway history for an exact unversioned 0.1.14.2-0.1.17 schema on {}&quot;,
+<span class="fc" id="L308">                family.displayName());</span>
+<span class="fc" id="L309">        migrateNormalWithBaseline(</span>
+                configuration,
+                family,
+                PRE_PACK_DESCRIPTION_SCHEMA_VERSION,
+                PRE_PACK_DESCRIPTION_BASELINE_DESCRIPTION);
+<span class="fc" id="L314">        requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));</span>
+<span class="fc" id="L315">    }</span>
+
+    private static void establishUnversionedCurrentSchema(
+            Configuration configuration,
+            DatabaseFamily family,
+            DataSource dataSource,
+            SchemaSnapshot schema) {
+<span class="fc" id="L322">        requireSafePackRows(dataSource, false);</span>
+<span class="fc" id="L323">        requireCurrentCoreColumnLengths(schema);</span>
+<span class="fc" id="L324">        requireCurrentCoreTables(schema);</span>
+<span class="fc" id="L325">        requireSupportedReflogColumns(schema);</span>
+<span class="fc" id="L326">        requireCurrentCoreIndexes(schema);</span>
+        String baselineVersion;
+        String baselineDescription;
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">        if (hasReflogDeliveryId(schema)) {</span>
+<span class="fc" id="L330">            baselineVersion = DELIVERY_ID_SCHEMA_VERSION;</span>
+<span class="fc" id="L331">            baselineDescription = DELIVERY_ID_BASELINE_DESCRIPTION;</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        } else if (hasReflogReferenceKey(schema)) {</span>
+<span class="nc" id="L333">            baselineVersion = LATEST_CORE_SCHEMA_VERSION;</span>
+<span class="nc" id="L334">            baselineDescription = LATEST_CORE_BASELINE_DESCRIPTION;</span>
+        } else {
+<span class="nc" id="L336">            baselineVersion = PRE_REFLOG_KEY_SCHEMA_VERSION;</span>
+<span class="nc" id="L337">            baselineDescription = PRE_REFLOG_KEY_BASELINE_DESCRIPTION;</span>
+        }
+<span class="fc" id="L339">        log.info(</span>
+                &quot;Establishing Flyway history for an exact unversioned {} schema on {}&quot;,
+                baselineVersion,
+<span class="fc" id="L342">                family.displayName());</span>
+<span class="fc" id="L343">        migrateNormalWithBaseline(</span>
+                configuration,
+                family,
+                baselineVersion,
+                baselineDescription);
+<span class="fc" id="L348">        requireCurrentCoreShape(SchemaSnapshot.inspect(dataSource));</span>
+<span class="fc" id="L349">    }</span>
+
+    private static void migrateLegacyTaxonomySchema(
+            Configuration configuration,
+            DatabaseFamily family,
+            DataSource dataSource,
+            SchemaSnapshot schema,
+            boolean legacyAdoptionEnabled) {
+<span class="fc" id="L357">        requireLegacyCoreIndexes(schema);</span>
+<span class="fc" id="L358">        requireLegacyColumnLengths(schema);</span>
+
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        if (!legacyAdoptionEnabled) {</span>
+<span class="fc" id="L361">            throw unsafeSchema(</span>
+                    &quot;Detected the pre-library Taxonomy JGit schema. Stop all writers, take a &quot;
+                            + &quot;restorable backup, verify pack BLOB checksums and reflog rows, then &quot;
+                            + &quot;restart once with TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true.&quot;);
+        }
+
+<span class="fc" id="L367">        LegacyCoreSchemaAdoption.LegacySchemaReport report = requireSafePackRows(dataSource, true);</span>
+<span class="fc" id="L368">        log.warn(</span>
+                &quot;Adopting {} pre-library JGit pack rows on {} through the released migration stream&quot;,
+<span class="fc" id="L370">                report.packRows(),</span>
+<span class="fc" id="L371">                family.displayName());</span>
+
+<span class="fc" id="L373">        migrateAdoptionWithBaseline(configuration, family);</span>
+<span class="fc" id="L374">        migrateNormalWithBaseline(</span>
+                configuration,
+                family,
+                CoreSchemaMigrations.CURRENT_SCHEMA_VERSION,
+                &quot;adopted pre-library core schema&quot;);
+<span class="fc" id="L379">    }</span>
+
+    private static void migratePendingAdoptionCorrections(
+            Configuration configuration,
+            DatabaseFamily family,
+            DataSource dataSource,
+            SchemaSnapshot schema,
+            boolean legacyAdoptionEnabled) {
+<span class="fc" id="L387">        requireMigratableCoreContract(schema);</span>
+
+<span class="fc" id="L389">        boolean currentLengths = hasCurrentCoreColumnLengths(schema);</span>
+<span class="fc bfc" id="L390" title="All 2 branches covered.">        if (!currentLengths) {</span>
+<span class="fc" id="L391">            requireLegacyColumnLengths(schema);</span>
+<span class="fc bfc" id="L392" title="All 2 branches covered.">            if (!legacyAdoptionEnabled) {</span>
+<span class="fc" id="L393">                throw unsafeSchema(</span>
+                        &quot;Detected an adoption history that still has the 0.1.8 Taxonomy column &quot;
+                                + &quot;lengths. Stop all writers, take a new backup, verify pack BLOB &quot;
+                                + &quot;checksums and reflog rows, then restart once with &quot;
+                                + &quot;TAXONOMY_JGIT_STORAGE_LEGACY_ADOPTION=true so released adoption &quot;
+                                + &quot;migration V2 can run.&quot;);
+            }
+        }
+
+<span class="fc" id="L402">        LegacyCoreSchemaAdoption.LegacySchemaReport report = requireSafePackRows(dataSource, false);</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">        if (!currentLengths) {</span>
+<span class="fc" id="L404">            log.warn(</span>
+                    &quot;Applying released adoption correction through version {} to {} existing pack rows on {}&quot;,
+                    CoreSchemaMigrations.LEGACY_ADOPTION_VERSION,
+<span class="fc" id="L407">                    report.packRows(),</span>
+<span class="fc" id="L408">                    family.displayName());</span>
+        }
+
+<span class="fc" id="L411">        migrateExistingAdoptionStream(configuration, family);</span>
+<span class="fc" id="L412">        requireMigratableCoreShape(SchemaSnapshot.inspect(dataSource));</span>
+<span class="fc" id="L413">    }</span>
+
+    private static LegacyCoreSchemaAdoption.LegacySchemaReport requireSafePackRows(
+            DataSource dataSource, boolean requireAdoption) {
+<span class="fc" id="L417">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L418">            LegacyCoreSchemaAdoption.LegacySchemaReport report =</span>
+<span class="fc" id="L419">                    LegacyCoreSchemaAdoption.requireSafeToAdopt(connection);</span>
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">            if (report.requiresAdoption() != requireAdoption) {</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">                throw unsafeSchema(requireAdoption</span>
+<span class="nc" id="L422">                        ? &quot;The schema changed while the legacy-adoption preflight was running.&quot;</span>
+<span class="nc" id="L423">                        : &quot;The existing adopted Core schema unexpectedly requires adoption V1.&quot;);</span>
+            }
+<span class="fc" id="L425">            return report;</span>
+<span class="nc" id="L426">        } catch (SQLException exception) {</span>
+<span class="nc" id="L427">            throw new IllegalStateException(</span>
+                    &quot;Could not open the database for JGit Core schema preflight&quot;, exception);
+        }
+    }
+
+    private static void migrateAdoptionWithBaseline(
+            Configuration source, DatabaseFamily family) {
+<span class="fc" id="L434">        newMigrationConfiguration(source)</span>
+<span class="fc" id="L435">                .locations(family.legacyAdoptionLocation())</span>
+<span class="fc" id="L436">                .table(CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE)</span>
+<span class="fc" id="L437">                .baselineOnMigrate(true)</span>
+<span class="fc" id="L438">                .baselineVersion(CoreSchemaMigrations.PRE_MIGRATION_BASELINE_VERSION)</span>
+<span class="fc" id="L439">                .baselineDescription(&quot;before pre-library core adoption&quot;)</span>
+<span class="fc" id="L440">                .load()</span>
+<span class="fc" id="L441">                .migrate();</span>
+<span class="fc" id="L442">    }</span>
+
+    private static void migrateExistingAdoptionStream(
+            Configuration source, DatabaseFamily family) {
+<span class="fc" id="L446">        newMigrationConfiguration(source)</span>
+<span class="fc" id="L447">                .locations(family.legacyAdoptionLocation())</span>
+<span class="fc" id="L448">                .table(CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE)</span>
+<span class="fc" id="L449">                .load()</span>
+<span class="fc" id="L450">                .migrate();</span>
+<span class="fc" id="L451">    }</span>
+
+    private static void migrateNormalWithBaseline(
+            Configuration source,
+            DatabaseFamily family,
+            String baselineVersion,
+            String baselineDescription) {
+<span class="fc" id="L458">        newMigrationConfiguration(source)</span>
+<span class="fc" id="L459">                .locations(family.normalLocation())</span>
+<span class="fc" id="L460">                .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE)</span>
+<span class="fc" id="L461">                .baselineOnMigrate(true)</span>
+<span class="fc" id="L462">                .baselineVersion(baselineVersion)</span>
+<span class="fc" id="L463">                .baselineDescription(baselineDescription)</span>
+<span class="fc" id="L464">                .load()</span>
+<span class="fc" id="L465">                .migrate();</span>
+<span class="fc" id="L466">    }</span>
+
+    private static FluentConfiguration newMigrationConfiguration(Configuration source) {
+<span class="fc" id="L469">        return new FluentConfiguration(source.getClassLoader())</span>
+<span class="fc" id="L470">                .dataSource(source.getDataSource());</span>
+    }
+
+    private static void configureNormalMigration(
+            FluentConfiguration configuration, DatabaseFamily family) {
+<span class="fc" id="L475">        configuration</span>
+<span class="fc" id="L476">                .locations(family.normalLocation())</span>
+<span class="fc" id="L477">                .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE);</span>
+<span class="fc" id="L478">    }</span>
+
+    private static void requireManagedReflogHistoryConsistency(
+            Flyway flyway, SchemaSnapshot schema) {
+<span class="fc" id="L482">        boolean deliveryIdMigrationApplied =</span>
+<span class="fc" id="L483">                isCoreMigrationApplied(flyway, DELIVERY_ID_SCHEMA_VERSION);</span>
+<span class="fc" id="L484">        boolean referenceKeyMigrationApplied =</span>
+<span class="pc bpc" id="L485" title="1 of 4 branches missed.">                isCoreMigrationApplied(flyway, LATEST_CORE_SCHEMA_VERSION)</span>
+                        || deliveryIdMigrationApplied;
+<span class="fc" id="L487">        requireManagedReflogHistoryConsistency(</span>
+                schema,
+                LATEST_CORE_SCHEMA_VERSION + &quot; or later&quot;,
+                &quot;REF_NAME_KEY&quot;,
+                referenceKeyMigrationApplied,
+<span class="fc" id="L492">                hasReflogReferenceKey(schema));</span>
+<span class="fc" id="L493">        requireManagedReflogHistoryConsistency(</span>
+                schema,
+                DELIVERY_ID_SCHEMA_VERSION,
+                &quot;DELIVERY_ID&quot;,
+                deliveryIdMigrationApplied,
+<span class="fc" id="L498">                hasReflogDeliveryId(schema));</span>
+<span class="fc" id="L499">    }</span>
+
+    private static void requireManagedReflogHistoryConsistency(
+            SchemaSnapshot schema,
+            String migrationVersion,
+            String column,
+            boolean migrationApplied,
+            boolean columnPresent) {
+<span class="fc bfc" id="L507" title="All 2 branches covered.">        if (migrationApplied == columnPresent) {</span>
+<span class="fc" id="L508">            return;</span>
+        }
+<span class="fc" id="L510">        throw unsafeSchema(</span>
+                &quot;Core migration &quot; + migrationVersion
+                        + &quot; and git_reflog.&quot; + column + &quot; must appear together; &quot;
+                        + &quot;migration applied=&quot; + migrationApplied
+<span class="fc" id="L514">                        + &quot;, reflog columns=&quot; + schema.reflogColumns()</span>
+<span class="fc" id="L515">                        + &quot;, reflog indexes=&quot; + schema.reflogIndexes());</span>
+    }
+
+    private static boolean isCoreMigrationApplied(Flyway flyway, String version) {
+<span class="fc bfc" id="L519" title="All 2 branches covered.">        for (var migration : flyway.info().applied()) {</span>
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">            if (migration.getVersion() != null</span>
+<span class="fc bfc" id="L521" title="All 2 branches covered.">                    &amp;&amp; version.equals(migration.getVersion().toString())) {</span>
+<span class="fc" id="L522">                return true;</span>
+            }
+        }
+<span class="fc" id="L525">        return false;</span>
+    }
+
+    /** Accept only exact released shapes that Flyway can safely advance to the pinned release. */
+    private static void requireMigratableCoreShape(SchemaSnapshot schema) {
+<span class="fc" id="L530">        requireMigratableCoreContract(schema);</span>
+<span class="fc" id="L531">        requireCurrentCoreColumnLengths(schema);</span>
+<span class="fc" id="L532">    }</span>
+
+    private static void requireMigratableCoreContract(SchemaSnapshot schema) {
+<span class="fc" id="L535">        requireCoreTables(schema);</span>
+<span class="fc" id="L536">        requireSupportedReflogColumns(schema);</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">        if (schema.packColumns().equals(PRE_WRITE_LEASE_PACK_COLUMNS)) {</span>
+<span class="fc" id="L538">            requirePreWriteLeaseCoreIndexes(schema);</span>
+<span class="fc" id="L539">            return;</span>
+        }
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        if (schema.packColumns().equals(PRE_PACK_DESCRIPTION_PACK_COLUMNS)) {</span>
+<span class="fc" id="L542">            requireRepositoryLockTable(schema);</span>
+<span class="fc" id="L543">            requireMigratableCurrentCoreIndexes(schema);</span>
+<span class="fc" id="L544">            return;</span>
+        }
+<span class="pc bpc" id="L546" title="1 of 2 branches missed.">        if (schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {</span>
+<span class="fc" id="L547">            requireCurrentCoreTables(schema);</span>
+<span class="fc" id="L548">            requireCurrentCoreIndexes(schema);</span>
+<span class="fc" id="L549">            return;</span>
+        }
+<span class="nc" id="L551">        throw unsupportedPackColumns(schema.packColumns());</span>
+    }
+
+    private static void requireCurrentCoreShape(SchemaSnapshot schema) {
+<span class="fc" id="L555">        requireCoreTables(schema);</span>
+<span class="fc" id="L556">        requireCurrentCoreTables(schema);</span>
+<span class="fc" id="L557">        requireExactColumns(&quot;git_packs&quot;, schema.packColumns(), CURRENT_PACK_COLUMNS);</span>
+<span class="fc" id="L558">        requireSupportedReflogColumns(schema);</span>
+<span class="fc" id="L559">        requireCurrentCoreColumnLengths(schema);</span>
+<span class="fc" id="L560">        requireCurrentCoreIndexes(schema);</span>
+<span class="fc" id="L561">    }</span>
+
+    private static void requireCoreTables(SchemaSnapshot schema) {
+<span class="pc bpc" id="L564" title="2 of 4 branches missed.">        if (!schema.hasTable(&quot;git_packs&quot;) || !schema.hasTable(&quot;git_reflog&quot;)) {</span>
+<span class="nc" id="L565">            throw unsafeSchema(</span>
+                    &quot;The Core Flyway history exists but one or both owned tables are missing.&quot;);
+        }
+<span class="fc" id="L568">    }</span>
+
+    private static void requireRepositoryLockTable(SchemaSnapshot schema) {
+<span class="pc bpc" id="L571" title="1 of 2 branches missed.">        if (!schema.hasTable(&quot;git_repository_lock&quot;)) {</span>
+<span class="nc" id="L572">            throw unsafeSchema(</span>
+                    &quot;The released Core schema requires the git_repository_lock table.&quot;);
+        }
+<span class="fc" id="L575">    }</span>
+
+    private static void requireCurrentCoreTables(SchemaSnapshot schema) {
+<span class="fc" id="L578">        requireRepositoryLockTable(schema);</span>
+<span class="pc bpc" id="L579" title="1 of 2 branches missed.">        if (!schema.hasTable(&quot;git_repository_lifecycle&quot;)) {</span>
+<span class="nc" id="L580">            throw unsafeSchema(</span>
+                    &quot;The released Core schema requires the git_repository_lifecycle table.&quot;);
+        }
+<span class="fc" id="L583">    }</span>
+
+    private static boolean hasCurrentCoreColumnLengths(SchemaSnapshot schema) {
+<span class="fc bfc" id="L586" title="All 2 branches covered.">        return schema.packExtensionLength() == REQUIRED_PACK_EXTENSION_LENGTH</span>
+<span class="pc bpc" id="L587" title="1 of 2 branches missed.">                &amp;&amp; schema.reflogRefNameLength() &gt;= REQUIRED_REF_NAME_LENGTH;</span>
+    }
+
+    private static void requireCurrentCoreColumnLengths(SchemaSnapshot schema) {
+<span class="pc bpc" id="L591" title="1 of 2 branches missed.">        if (!hasCurrentCoreColumnLengths(schema)) {</span>
+<span class="nc" id="L592">            throw unsafeSchema(</span>
+                    &quot;The released Core contract requires git_packs.pack_extension length &quot;
+                            + REQUIRED_PACK_EXTENSION_LENGTH
+                            + &quot; and git_reflog.ref_name capacity at least &quot;
+                            + REQUIRED_REF_NAME_LENGTH
+                            + &quot;; actual lengths are &quot;
+<span class="nc" id="L598">                            + schema.packExtensionLength()</span>
+                            + &quot; and &quot;
+<span class="nc" id="L600">                            + schema.reflogRefNameLength()</span>
+                            + &quot;.&quot;);
+        }
+<span class="fc" id="L603">    }</span>
+
+    private static void requireLegacyColumnLengths(SchemaSnapshot schema) {
+<span class="pc bpc" id="L606" title="1 of 2 branches missed.">        if (schema.packExtensionLength() != LEGACY_TAXONOMY_PACK_EXTENSION_LENGTH</span>
+<span class="pc bpc" id="L607" title="1 of 2 branches missed.">                || schema.reflogRefNameLength() != LEGACY_TAXONOMY_REF_NAME_LENGTH) {</span>
+<span class="nc" id="L608">            throw unsafeSchema(</span>
+                    &quot;Legacy Taxonomy adoption accepts only the exact pre-library column lengths &quot;
+                            + LEGACY_TAXONOMY_PACK_EXTENSION_LENGTH
+                            + &quot; for git_packs.pack_extension and &quot;
+                            + LEGACY_TAXONOMY_REF_NAME_LENGTH
+                            + &quot; for git_reflog.ref_name; actual lengths are &quot;
+<span class="nc" id="L614">                            + schema.packExtensionLength()</span>
+                            + &quot; and &quot;
+<span class="nc" id="L616">                            + schema.reflogRefNameLength()</span>
+                            + &quot;.&quot;);
+        }
+<span class="fc" id="L619">    }</span>
+
+    private static void requireLegacyCoreIndexes(SchemaSnapshot schema) {
+<span class="fc" id="L622">        requireIndex(</span>
+                &quot;git_packs&quot;,
+<span class="fc" id="L624">                schema.packIndexes(),</span>
+                false,
+<span class="fc" id="L626">                List.of(&quot;REPOSITORY_NAME&quot;));</span>
+<span class="fc" id="L627">        requireIndex(</span>
+                &quot;git_packs&quot;,
+<span class="fc" id="L629">                schema.packIndexes(),</span>
+                false,
+<span class="fc" id="L631">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;PACK_NAME&quot;));</span>
+<span class="fc" id="L632">        requireIndex(</span>
+                &quot;git_reflog&quot;,
+<span class="fc" id="L634">                schema.reflogIndexes(),</span>
+                false,
+<span class="fc" id="L636">                List.of(&quot;REPOSITORY_NAME&quot;));</span>
+<span class="fc" id="L637">        requireIndex(</span>
+                &quot;git_reflog&quot;,
+<span class="fc" id="L639">                schema.reflogIndexes(),</span>
+                false,
+<span class="fc" id="L641">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;REF_NAME&quot;));</span>
+<span class="fc" id="L642">    }</span>
+
+    /** Validate the pack lookup paths shared by every managed post-0.1.5 schema. */
+    private static void requireManagedPackIndexes(SchemaSnapshot schema) {
+<span class="fc" id="L646">        requireIndexPrefix(</span>
+                &quot;git_packs&quot;,
+<span class="fc" id="L648">                schema.packIndexes(),</span>
+<span class="fc" id="L649">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;PACK_NAME&quot;));</span>
+<span class="fc" id="L650">        requireIndex(</span>
+                &quot;git_packs&quot;,
+<span class="fc" id="L652">                schema.packIndexes(),</span>
+                true,
+<span class="fc" id="L654">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;PACK_NAME&quot;, &quot;PACK_EXTENSION&quot;));</span>
+<span class="fc" id="L655">        requireIndex(</span>
+                &quot;git_packs&quot;,
+<span class="fc" id="L657">                schema.packIndexes(),</span>
+                false,
+<span class="fc" id="L659">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;COMMITTED&quot;));</span>
+<span class="fc" id="L660">    }</span>
+
+    /**
+     * Accept released historical reflog indexes before Flyway advances the schema.
+     * A schema already carrying the 0.9.1 reference key must already carry its final index.
+     */
+    private static void requireMigratableReflogIndex(SchemaSnapshot schema) {
+<span class="pc bpc" id="L667" title="1 of 2 branches missed.">        if (hasReflogReferenceKey(schema)) {</span>
+<span class="nc" id="L668">            requireIndexPrefix(</span>
+                    &quot;git_reflog&quot;,
+<span class="nc" id="L670">                    schema.reflogIndexes(),</span>
+<span class="nc" id="L671">                    List.of(&quot;REPOSITORY_NAME&quot;, &quot;REF_NAME_KEY&quot;, &quot;ID&quot;));</span>
+<span class="nc" id="L672">            return;</span>
+        }
+<span class="fc" id="L674">        requireIndexPrefix(</span>
+                &quot;git_reflog&quot;,
+<span class="fc" id="L676">                schema.reflogIndexes(),</span>
+<span class="fc" id="L677">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;REF_NAME&quot;));</span>
+<span class="fc" id="L678">    }</span>
+
+    /** Require the lookup path produced by the released migration stream. */
+    private static void requireCurrentReflogIndex(SchemaSnapshot schema) {
+<span class="fc bfc" id="L682" title="All 2 branches covered.">        if (hasReflogReferenceKey(schema)) {</span>
+<span class="fc" id="L683">            requireIndexPrefix(</span>
+                    &quot;git_reflog&quot;,
+<span class="fc" id="L685">                    schema.reflogIndexes(),</span>
+<span class="fc" id="L686">                    List.of(&quot;REPOSITORY_NAME&quot;, &quot;REF_NAME_KEY&quot;, &quot;ID&quot;));</span>
+<span class="fc" id="L687">            return;</span>
+        }
+<span class="fc" id="L689">        requireIndexPrefix(</span>
+                &quot;git_reflog&quot;,
+<span class="fc" id="L691">                schema.reflogIndexes(),</span>
+<span class="fc" id="L692">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;REF_NAME&quot;, &quot;ID&quot;));</span>
+<span class="fc" id="L693">    }</span>
+
+    private static void requirePreWriteLeaseCoreIndexes(SchemaSnapshot schema) {
+<span class="fc" id="L696">        requireManagedPackIndexes(schema);</span>
+<span class="fc" id="L697">        requireMigratableReflogIndex(schema);</span>
+<span class="fc" id="L698">    }</span>
+
+    private static void requireMigratableCurrentCoreIndexes(SchemaSnapshot schema) {
+<span class="fc" id="L701">        requirePreWriteLeaseCoreIndexes(schema);</span>
+<span class="fc" id="L702">        requireIndex(</span>
+                &quot;git_packs&quot;,
+<span class="fc" id="L704">                schema.packIndexes(),</span>
+                false,
+<span class="fc" id="L706">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;COMMITTED&quot;, &quot;WRITE_LEASE_UNTIL&quot;));</span>
+<span class="fc" id="L707">    }</span>
+
+    private static void requireCurrentCoreIndexes(SchemaSnapshot schema) {
+<span class="fc" id="L710">        requireManagedPackIndexes(schema);</span>
+<span class="fc" id="L711">        requireCurrentReflogIndex(schema);</span>
+<span class="fc" id="L712">        requireIndex(</span>
+                &quot;git_packs&quot;,
+<span class="fc" id="L714">                schema.packIndexes(),</span>
+                false,
+<span class="fc" id="L716">                List.of(&quot;REPOSITORY_NAME&quot;, &quot;COMMITTED&quot;, &quot;WRITE_LEASE_UNTIL&quot;));</span>
+<span class="fc" id="L717">    }</span>
+
+    private static void requireIndexPrefix(
+            String table,
+            Map&lt;String, IndexSignature&gt; indexes,
+            List&lt;String&gt; columns) {
+<span class="fc" id="L723">        boolean covered = indexes.values().stream()</span>
+<span class="fc" id="L724">                .map(IndexSignature::columns)</span>
+<span class="fc bfc" id="L725" title="All 2 branches covered.">                .anyMatch(indexColumns -&gt; indexColumns.size() &gt;= columns.size()</span>
+<span class="fc bfc" id="L726" title="All 2 branches covered.">                        &amp;&amp; indexColumns.subList(0, columns.size()).equals(columns));</span>
+<span class="fc bfc" id="L727" title="All 2 branches covered.">        if (covered) {</span>
+<span class="fc" id="L728">            return;</span>
+        }
+<span class="fc" id="L730">        throw unsafeSchema(</span>
+                table + &quot; is missing an index with leading columns &quot; + columns
+                        + &quot;; actual indexes=&quot; + indexes);
+    }
+
+    private static void requireIndex(
+            String table,
+            Map&lt;String, IndexSignature&gt; indexes,
+            boolean unique,
+            List&lt;String&gt; columns) {
+<span class="fc" id="L740">        IndexSignature required = new IndexSignature(unique, columns);</span>
+<span class="fc bfc" id="L741" title="All 2 branches covered.">        if (indexes.containsValue(required)) {</span>
+<span class="fc" id="L742">            return;</span>
+        }
+<span class="fc" id="L744">        throw unsafeSchema(</span>
+                table + &quot; is missing the required &quot;
+<span class="pc bpc" id="L746" title="1 of 2 branches missed.">                        + (unique ? &quot;unique &quot; : &quot;&quot;)</span>
+                        + &quot;index on &quot; + columns + &quot;; actual indexes=&quot; + indexes);
+    }
+
+    private static boolean hasReflogReferenceKey(SchemaSnapshot schema) {
+<span class="fc bfc" id="L751" title="All 2 branches covered.">        return schema.reflogColumns().equals(REFLOG_KEY_COLUMNS)</span>
+<span class="fc bfc" id="L752" title="All 2 branches covered.">                || schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS);</span>
+    }
+
+    private static boolean hasReflogDeliveryId(SchemaSnapshot schema) {
+<span class="fc" id="L756">        return schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS);</span>
+    }
+
+    private static void requirePreReflogKeyColumns(SchemaSnapshot schema) {
+<span class="fc" id="L760">        requireExactColumns(</span>
+<span class="fc" id="L761">                &quot;git_reflog&quot;, schema.reflogColumns(), PRE_REFLOG_KEY_COLUMNS);</span>
+<span class="fc" id="L762">    }</span>
+
+    private static void requireSupportedReflogColumns(SchemaSnapshot schema) {
+<span class="fc bfc" id="L765" title="All 2 branches covered.">        if (schema.reflogColumns().equals(PRE_REFLOG_KEY_COLUMNS)) {</span>
+<span class="fc" id="L766">            return;</span>
+        }
+<span class="fc bfc" id="L768" title="All 2 branches covered.">        if (schema.reflogColumns().equals(REFLOG_KEY_COLUMNS)</span>
+<span class="fc bfc" id="L769" title="All 2 branches covered.">                || schema.reflogColumns().equals(CURRENT_REFLOG_COLUMNS)) {</span>
+<span class="fc bfc" id="L770" title="All 2 branches covered.">            if (!schema.packColumns().equals(CURRENT_PACK_COLUMNS)) {</span>
+<span class="fc" id="L771">                throw unsafeSchema(</span>
+                        &quot;git_reflog carries a released REF_NAME_KEY shape, but git_packs &quot;
+                                + &quot;does not match the current Core pack schema; expected &quot;
+                                + &quot;git_packs columns=&quot; + CURRENT_PACK_COLUMNS
+<span class="fc" id="L775">                                + &quot;, actual git_packs columns=&quot; + schema.packColumns());</span>
+            }
+<span class="fc" id="L777">            return;</span>
+        }
+<span class="fc" id="L779">        throw unsafeSchema(</span>
+                &quot;git_reflog is neither the exact pre-0.9.1, 0.9.1 nor 0.9.2 shape; &quot;
+<span class="fc" id="L781">                        + &quot;actual=&quot; + schema.reflogColumns());</span>
+    }
+
+    private static void requireExactColumns(
+            String table, Set&lt;String&gt; actual, Set&lt;String&gt; expected) {
+<span class="pc bpc" id="L786" title="1 of 2 branches missed.">        if (!actual.equals(expected)) {</span>
+<span class="nc" id="L787">            Set&lt;String&gt; missing = new LinkedHashSet&lt;&gt;(expected);</span>
+<span class="nc" id="L788">            missing.removeAll(actual);</span>
+<span class="nc" id="L789">            Set&lt;String&gt; unexpected = new LinkedHashSet&lt;&gt;(actual);</span>
+<span class="nc" id="L790">            unexpected.removeAll(expected);</span>
+<span class="nc" id="L791">            throw unsafeSchema(</span>
+                    table + &quot; does not match the supported schema; missing=&quot; + missing
+                            + &quot;, unexpected=&quot; + unexpected);
+        }
+<span class="fc" id="L795">    }</span>
+
+    private static IllegalStateException unsupportedPackColumns(Set&lt;String&gt; actual) {
+<span class="nc" id="L798">        Set&lt;String&gt; missing = new LinkedHashSet&lt;&gt;(CURRENT_PACK_COLUMNS);</span>
+<span class="nc" id="L799">        missing.removeAll(actual);</span>
+<span class="nc" id="L800">        Set&lt;String&gt; unexpected = new LinkedHashSet&lt;&gt;(actual);</span>
+<span class="nc" id="L801">        unexpected.removeAll(CURRENT_PACK_COLUMNS);</span>
+<span class="nc" id="L802">        return unsafeSchema(</span>
+                &quot;git_packs is neither the exact pre-library Taxonomy shape nor an exact released &quot;
+                        + &quot;Core shape; missing from current=&quot; + missing
+                        + &quot;, unexpected=&quot; + unexpected
+                        + &quot;, actual=&quot; + actual);
+    }
+
+    private static IllegalStateException unsafeSchema(String message) {
+<span class="fc" id="L810">        return new IllegalStateException(&quot;Unsafe JGit Core schema state: &quot; + message);</span>
+    }
+
+    private record IndexSignature(boolean unique, List&lt;String&gt; columns) {
+
+<span class="fc" id="L815">        private IndexSignature {</span>
+<span class="fc" id="L816">            columns = List.copyOf(columns);</span>
+<span class="fc" id="L817">        }</span>
+    }
+
+<span class="fc" id="L820">    enum DatabaseFamily {</span>
+<span class="fc" id="L821">        HSQLDB(</span>
+                &quot;HSQLDB&quot;,
+                CoreSchemaMigrations.HSQLDB_LOCATION,
+                CoreSchemaMigrations.HSQLDB_LEGACY_ADOPTION_LOCATION),
+<span class="fc" id="L825">        POSTGRESQL(</span>
+                &quot;PostgreSQL&quot;,
+                CoreSchemaMigrations.POSTGRESQL_LOCATION,
+                CoreSchemaMigrations.POSTGRESQL_LEGACY_ADOPTION_LOCATION);
+
+        private final String displayName;
+        private final String normalLocation;
+        private final String legacyAdoptionLocation;
+
+        DatabaseFamily(
+                String displayName,
+                String normalLocation,
+<span class="fc" id="L837">                String legacyAdoptionLocation) {</span>
+<span class="fc" id="L838">            this.displayName = displayName;</span>
+<span class="fc" id="L839">            this.normalLocation = normalLocation;</span>
+<span class="fc" id="L840">            this.legacyAdoptionLocation = legacyAdoptionLocation;</span>
+<span class="fc" id="L841">        }</span>
+
+        String displayName() {
+<span class="fc" id="L844">            return displayName;</span>
+        }
+
+        String normalLocation() {
+<span class="fc" id="L848">            return normalLocation;</span>
+        }
+
+        String legacyAdoptionLocation() {
+<span class="fc" id="L852">            return legacyAdoptionLocation;</span>
+        }
+
+        static DatabaseFamily detect(DataSource dataSource) {
+<span class="fc" id="L856">            try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L857">                String product = connection.getMetaData().getDatabaseProductName()</span>
+<span class="fc" id="L858">                        .toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L859" title="All 2 branches covered.">                if (product.contains(&quot;hsql&quot;)) {</span>
+<span class="fc" id="L860">                    return HSQLDB;</span>
+                }
+<span class="pc bpc" id="L862" title="1 of 2 branches missed.">                if (product.contains(&quot;postgresql&quot;)) {</span>
+<span class="fc" id="L863">                    return POSTGRESQL;</span>
+                }
+<span class="nc" id="L865">                throw new IllegalStateException(</span>
+                        &quot;JGit Core Flyway migrations are supported only for HSQLDB and PostgreSQL; &quot;
+<span class="nc" id="L867">                                + &quot;detected &quot; + connection.getMetaData().getDatabaseProductName());</span>
+<span class="pc bpc" id="L868" title="1 of 2 branches missed.">            } catch (SQLException exception) {</span>
+<span class="nc" id="L869">                throw new IllegalStateException(</span>
+                        &quot;Could not identify the database for JGit Core migrations&quot;, exception);
+            }
+        }
+    }
+
+<span class="fc" id="L875">    record SchemaSnapshot(</span>
+            Map&lt;String, String&gt; tables,
+            Set&lt;String&gt; packColumns,
+            Set&lt;String&gt; reflogColumns,
+            int packExtensionLength,
+            int reflogRefNameLength,
+            Map&lt;String, IndexSignature&gt; packIndexes,
+            Map&lt;String, IndexSignature&gt; reflogIndexes) {
+
+        boolean hasTable(String table) {
+<span class="fc" id="L885">            return tables.containsKey(normalize(table));</span>
+        }
+
+        static SchemaSnapshot inspect(DataSource dataSource) {
+<span class="fc" id="L889">            try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L890">                String schema = connection.getSchema();</span>
+<span class="fc" id="L891">                DatabaseMetaData metadata = connection.getMetaData();</span>
+<span class="fc" id="L892">                Map&lt;String, String&gt; tables = readTables(metadata, schema);</span>
+<span class="fc" id="L893">                String packTable = tables.get(&quot;GIT_PACKS&quot;);</span>
+<span class="fc" id="L894">                String reflogTable = tables.get(&quot;GIT_REFLOG&quot;);</span>
+<span class="fc" id="L895">                Set&lt;String&gt; packColumns = readColumns(metadata, schema, packTable);</span>
+<span class="fc" id="L896">                Set&lt;String&gt; reflogColumns = readColumns(metadata, schema, reflogTable);</span>
+<span class="fc" id="L897">                int packExtensionLength = readColumnSize(</span>
+                        metadata, schema, packTable, &quot;PACK_EXTENSION&quot;);
+<span class="fc" id="L899">                int refNameLength = readColumnSize(</span>
+                        metadata, schema, reflogTable, &quot;REF_NAME&quot;);
+<span class="fc" id="L901">                Map&lt;String, IndexSignature&gt; packIndexes =</span>
+<span class="fc" id="L902">                        readIndexes(metadata, schema, packTable);</span>
+<span class="fc" id="L903">                Map&lt;String, IndexSignature&gt; reflogIndexes =</span>
+<span class="fc" id="L904">                        readIndexes(metadata, schema, reflogTable);</span>
+<span class="fc" id="L905">                return new SchemaSnapshot(</span>
+<span class="fc" id="L906">                        Collections.unmodifiableMap(tables),</span>
+<span class="fc" id="L907">                        Collections.unmodifiableSet(packColumns),</span>
+<span class="fc" id="L908">                        Collections.unmodifiableSet(reflogColumns),</span>
+                        packExtensionLength,
+                        refNameLength,
+<span class="fc" id="L911">                        Collections.unmodifiableMap(packIndexes),</span>
+<span class="fc" id="L912">                        Collections.unmodifiableMap(reflogIndexes));</span>
+<span class="nc" id="L913">            } catch (SQLException exception) {</span>
+<span class="nc" id="L914">                throw new IllegalStateException(</span>
+                        &quot;Could not inspect the existing JGit Core schema&quot;, exception);
+            }
+        }
+
+        private static Map&lt;String, String&gt; readTables(
+                DatabaseMetaData metadata, String schema) throws SQLException {
+<span class="fc" id="L921">            Map&lt;String, String&gt; tables = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L922">            try (ResultSet resultSet =</span>
+<span class="fc" id="L923">                         metadata.getTables(null, schema, &quot;%&quot;, new String[] {&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L924" title="All 2 branches covered.">                while (resultSet.next()) {</span>
+<span class="fc" id="L925">                    String table = resultSet.getString(&quot;TABLE_NAME&quot;);</span>
+<span class="fc" id="L926">                    tables.put(normalize(table), table);</span>
+<span class="fc" id="L927">                }</span>
+            }
+<span class="fc" id="L929">            return tables;</span>
+        }
+
+        private static Set&lt;String&gt; readColumns(
+                DatabaseMetaData metadata, String schema, String table) throws SQLException {
+<span class="fc bfc" id="L934" title="All 2 branches covered.">            if (table == null) {</span>
+<span class="fc" id="L935">                return new LinkedHashSet&lt;&gt;();</span>
+            }
+<span class="fc" id="L937">            Set&lt;String&gt; columns = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L938">            try (ResultSet resultSet = metadata.getColumns(null, schema, table, &quot;%&quot;)) {</span>
+<span class="fc bfc" id="L939" title="All 2 branches covered.">                while (resultSet.next()) {</span>
+<span class="fc" id="L940">                    columns.add(normalize(resultSet.getString(&quot;COLUMN_NAME&quot;)));</span>
+                }
+            }
+<span class="fc" id="L943">            return columns;</span>
+        }
+
+        private static int readColumnSize(
+                DatabaseMetaData metadata, String schema, String table, String column)
+                throws SQLException {
+<span class="fc bfc" id="L949" title="All 2 branches covered.">            if (table == null) {</span>
+<span class="fc" id="L950">                return -1;</span>
+            }
+<span class="fc" id="L952">            try (ResultSet resultSet = metadata.getColumns(null, schema, table, &quot;%&quot;)) {</span>
+<span class="pc bpc" id="L953" title="1 of 2 branches missed.">                while (resultSet.next()) {</span>
+<span class="fc bfc" id="L954" title="All 2 branches covered.">                    if (normalize(resultSet.getString(&quot;COLUMN_NAME&quot;)).equals(column)) {</span>
+<span class="fc" id="L955">                        return resultSet.getInt(&quot;COLUMN_SIZE&quot;);</span>
+                    }
+                }
+<span class="pc bpc" id="L958" title="1 of 2 branches missed.">            }</span>
+<span class="nc" id="L959">            return -1;</span>
+        }
+
+        private static Map&lt;String, IndexSignature&gt; readIndexes(
+                DatabaseMetaData metadata, String schema, String table) throws SQLException {
+<span class="fc bfc" id="L964" title="All 2 branches covered.">            if (table == null) {</span>
+<span class="fc" id="L965">                return new LinkedHashMap&lt;&gt;();</span>
+            }
+
+<span class="fc" id="L968">            Map&lt;String, Boolean&gt; uniqueness = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L969">            Map&lt;String, Map&lt;Integer, String&gt;&gt; columnsByIndex = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L970">            try (ResultSet resultSet =</span>
+<span class="fc" id="L971">                         metadata.getIndexInfo(null, schema, table, false, false)) {</span>
+<span class="fc bfc" id="L972" title="All 2 branches covered.">                while (resultSet.next()) {</span>
+<span class="fc" id="L973">                    String indexName = resultSet.getString(&quot;INDEX_NAME&quot;);</span>
+<span class="fc" id="L974">                    String columnName = resultSet.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="fc" id="L975">                    int position = resultSet.getInt(&quot;ORDINAL_POSITION&quot;);</span>
+<span class="pc bpc" id="L976" title="3 of 6 branches missed.">                    if (indexName == null || columnName == null || position &lt;= 0) {</span>
+<span class="nc" id="L977">                        continue;</span>
+                    }
+<span class="fc" id="L979">                    String normalizedName = normalize(indexName);</span>
+<span class="fc" id="L980">                    uniqueness.putIfAbsent(</span>
+<span class="fc bfc" id="L981" title="All 2 branches covered.">                            normalizedName, !resultSet.getBoolean(&quot;NON_UNIQUE&quot;));</span>
+<span class="fc" id="L982">                    columnsByIndex</span>
+<span class="fc" id="L983">                            .computeIfAbsent(normalizedName, ignored -&gt; new TreeMap&lt;&gt;())</span>
+<span class="fc" id="L984">                            .put(position, normalize(columnName));</span>
+<span class="fc" id="L985">                }</span>
+            }
+
+<span class="fc" id="L988">            Map&lt;String, IndexSignature&gt; indexes = new LinkedHashMap&lt;&gt;();</span>
+            for (Map.Entry&lt;String, Map&lt;Integer, String&gt;&gt; entry :
+<span class="fc bfc" id="L990" title="All 2 branches covered.">                    columnsByIndex.entrySet()) {</span>
+<span class="fc" id="L991">                List&lt;String&gt; columns = new ArrayList&lt;&gt;(entry.getValue().values());</span>
+<span class="fc" id="L992">                indexes.put(</span>
+<span class="fc" id="L993">                        entry.getKey(),</span>
+                        new IndexSignature(
+<span class="fc" id="L995">                                Boolean.TRUE.equals(uniqueness.get(entry.getKey())),</span>
+                                columns));
+<span class="fc" id="L997">            }</span>
+<span class="fc" id="L998">            return indexes;</span>
+        }
+
+        private static String normalize(String identifier) {
+<span class="fc" id="L1002">            return JgitStorageSchemaMigrationConfig.normalize(identifier);</span>
+        }
+    }
+
+    private static String normalize(String identifier) {
+<span class="fc" id="L1007">        return identifier.toUpperCase(Locale.ROOT);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

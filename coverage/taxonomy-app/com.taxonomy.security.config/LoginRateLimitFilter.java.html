@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LoginRateLimitFilter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">LoginRateLimitFilter.java</span></div><h1>LoginRateLimitFilter.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.LongSupplier;
+
+/**
+ * Bounded peer lockout for new local form-login and HTTP-Basic authentication attempts.
+ *
+ * &lt;p&gt;The filter is installed inside Spring Security after the security context has been
+ * restored and before the form-login and HTTP-Basic authentication filters. An existing
+ * authenticated session therefore bypasses peer lockout, while a new authentication attempt
+ * from a locked peer is rejected before credentials are evaluated.&lt;/p&gt;
+ *
+ * &lt;p&gt;Only authoritative authentication outcomes are counted: a failed {@code POST /login}
+ * response and an HTTP {@code 401} response to an explicit Basic credential on
+ * {@code /api/**}. Missing credentials, bearer credentials and unrelated authorization
+ * failures do not allocate peer state.&lt;/p&gt;
+ */
+@Component
+@Profile(&quot;!keycloak&quot;)
+@ConditionalOnProperty(name = &quot;taxonomy.security.login-rate-limit.enabled&quot;,
+        havingValue = &quot;true&quot;, matchIfMissing = true)
+public class LoginRateLimitFilter extends OncePerRequestFilter {
+
+    static final int DEFAULT_MAX_TRACKED_PEERS = 10_000;
+<span class="fc" id="L52">    private static final long MAX_CLEANUP_INTERVAL_NANOS =</span>
+<span class="fc" id="L53">            Duration.ofMinutes(1).toNanos();</span>
+<span class="fc" id="L54">    private static final long NANOS_PER_SECOND = Duration.ofSeconds(1).toNanos();</span>
+<span class="fc" id="L55">    private static final Logger log =</span>
+<span class="fc" id="L56">            LoggerFactory.getLogger(LoginRateLimitFilter.class);</span>
+
+<span class="fc" id="L58">    private final Object stateMonitor = new Object();</span>
+<span class="fc" id="L59">    private final Map&lt;String, FailureTracker&gt; trackers = new HashMap&lt;&gt;();</span>
+    private final FailureTracker overflowTracker;
+    private final LongSupplier monotonicNanos;
+    private final int maxTrackedPeers;
+    private final int maxAttempts;
+    private final long lockoutNanos;
+    private final long cleanupIntervalNanos;
+    private long nextCleanupAt;
+
+    @Autowired
+    public LoginRateLimitFilter(
+            @Value(&quot;${taxonomy.security.login-rate-limit.max-attempts:5}&quot;)
+            int maxAttempts,
+            @Value(&quot;${taxonomy.security.login-rate-limit.lockout-seconds:300}&quot;)
+            int lockoutSeconds) {
+<span class="fc" id="L74">        this(System::nanoTime, DEFAULT_MAX_TRACKED_PEERS,</span>
+                maxAttempts, lockoutSeconds);
+<span class="fc" id="L76">    }</span>
+
+    LoginRateLimitFilter(
+            LongSupplier monotonicNanos,
+            int maxTrackedPeers,
+            int maxAttempts,
+<span class="fc" id="L82">            int lockoutSeconds) {</span>
+<span class="fc" id="L83">        this.monotonicNanos = Objects.requireNonNull(</span>
+                monotonicNanos, &quot;monotonicNanos&quot;);
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (maxTrackedPeers &lt;= 0) {</span>
+<span class="fc" id="L86">            throw new IllegalArgumentException(</span>
+                    &quot;maxTrackedPeers must be positive&quot;);
+        }
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (maxAttempts &lt;= 0) {</span>
+<span class="fc" id="L90">            throw new IllegalArgumentException(</span>
+                    &quot;taxonomy.security.login-rate-limit.max-attempts must be positive&quot;);
+        }
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (lockoutSeconds &lt;= 0) {</span>
+<span class="fc" id="L94">            throw new IllegalArgumentException(</span>
+                    &quot;taxonomy.security.login-rate-limit.lockout-seconds must be positive&quot;);
+        }
+<span class="fc" id="L97">        this.maxTrackedPeers = maxTrackedPeers;</span>
+<span class="fc" id="L98">        this.maxAttempts = maxAttempts;</span>
+<span class="fc" id="L99">        this.lockoutNanos = Duration.ofSeconds(lockoutSeconds).toNanos();</span>
+<span class="fc" id="L100">        this.cleanupIntervalNanos = Math.min(</span>
+                lockoutNanos, MAX_CLEANUP_INTERVAL_NANOS);
+<span class="fc" id="L102">        long now = monotonicNanos.getAsLong();</span>
+<span class="fc" id="L103">        this.overflowTracker = new FailureTracker(now);</span>
+<span class="fc" id="L104">        this.nextCleanupAt = now + cleanupIntervalNanos;</span>
+<span class="fc" id="L105">    }</span>
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
+<span class="fc" id="L112">        String path = applicationPath(request);</span>
+<span class="fc" id="L113">        boolean formLoginAttempt = isFormLoginAttempt(request.getMethod(), path);</span>
+<span class="fc" id="L114">        boolean basicApiAttempt = isBasicApiAttempt(request, path);</span>
+
+<span class="fc bfc" id="L116" title="All 4 branches covered.">        if (!formLoginAttempt &amp;&amp; !basicApiAttempt) {</span>
+<span class="fc" id="L117">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L118">            return;</span>
+        }
+
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (isAuthenticated()) {</span>
+<span class="fc" id="L122">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L123">            return;</span>
+        }
+
+<span class="fc" id="L126">        String peerKey = peerKey(request);</span>
+<span class="fc" id="L127">        long now = monotonicNanos.getAsLong();</span>
+<span class="fc" id="L128">        LockState currentLock = currentLock(peerKey, now);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (currentLock.locked()) {</span>
+<span class="fc" id="L130">            log.warn(&quot;LOGIN_LOCKED peerDigest={} attempts={}&quot;,</span>
+<span class="fc" id="L131">                    peerKey, currentLock.failureCount());</span>
+<span class="fc" id="L132">            writeLockedResponse(response, currentLock.retryAfterSeconds());</span>
+<span class="fc" id="L133">            return;</span>
+        }
+
+<span class="fc" id="L136">        filterChain.doFilter(request, response);</span>
+
+<span class="fc" id="L138">        int responseStatus = response.getStatus();</span>
+<span class="fc" id="L139">        boolean errorRedirect = hasErrorRedirect(response);</span>
+<span class="pc bpc" id="L140" title="2 of 8 branches missed.">        boolean failed = (formLoginAttempt &amp;&amp; errorRedirect)</span>
+                || (basicApiAttempt
+                    &amp;&amp; responseStatus == HttpServletResponse.SC_UNAUTHORIZED);
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (failed) {</span>
+<span class="fc" id="L144">            int count = recordFailure(peerKey, monotonicNanos.getAsLong());</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (count &gt;= maxAttempts) {</span>
+<span class="fc" id="L146">                log.warn(&quot;LOGIN_RATE_LIMIT_TRIGGERED peerDigest={} attempts={}&quot;,</span>
+<span class="fc" id="L147">                        peerKey, count);</span>
+            }
+<span class="fc" id="L149">            return;</span>
+        }
+
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        boolean successfulFormResponse = formLoginAttempt</span>
+<span class="pc bnc" id="L153" title="All 4 branches missed.">                &amp;&amp; isRedirect(responseStatus)</span>
+                &amp;&amp; !errorRedirect;
+<span class="pc bpc" id="L155" title="3 of 4 branches missed.">        if (isAuthenticated() || successfulFormResponse) {</span>
+<span class="fc" id="L156">            clearFailures(peerKey);</span>
+        }
+<span class="fc" id="L158">    }</span>
+
+    /** Removes the servlet context path before matching security routes. */
+    static String applicationPath(HttpServletRequest request) {
+<span class="fc" id="L162">        String servletPath = request.getServletPath();</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        if (servletPath != null</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                &amp;&amp; !servletPath.isBlank()</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                &amp;&amp; !&quot;/&quot;.equals(servletPath)) {</span>
+<span class="fc" id="L166">            return servletPath;</span>
+        }
+
+<span class="fc" id="L169">        String requestUri = request.getRequestURI();</span>
+<span class="fc" id="L170">        String contextPath = request.getContextPath();</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (contextPath != null</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">                &amp;&amp; !contextPath.isBlank()</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                &amp;&amp; requestUri.startsWith(contextPath)) {</span>
+<span class="fc" id="L174">            return requestUri.substring(contextPath.length());</span>
+        }
+<span class="fc" id="L176">        return requestUri;</span>
+    }
+
+    static boolean isFormLoginAttempt(String method, String path) {
+<span class="fc bfc" id="L180" title="All 4 branches covered.">        return &quot;POST&quot;.equalsIgnoreCase(method) &amp;&amp; &quot;/login&quot;.equals(path);</span>
+    }
+
+    static boolean isBasicApiAttempt(HttpServletRequest request, String path) {
+<span class="pc bpc" id="L184" title="1 of 4 branches missed.">        if (path == null || !path.startsWith(&quot;/api/&quot;)) {</span>
+<span class="fc" id="L185">            return false;</span>
+        }
+<span class="fc" id="L187">        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        return authorization != null</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">                &amp;&amp; authorization.regionMatches(true, 0, &quot;Basic &quot;, 0, 6);</span>
+    }
+
+    /** Visible for test isolation without exposing peer identities or mutable state. */
+    public void clearTrackers() {
+<span class="fc" id="L194">        long now = monotonicNanos.getAsLong();</span>
+<span class="fc" id="L195">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L196">            trackers.clear();</span>
+<span class="fc" id="L197">            overflowTracker.reset(now);</span>
+<span class="fc" id="L198">            nextCleanupAt = now + cleanupIntervalNanos;</span>
+<span class="fc" id="L199">        }</span>
+<span class="fc" id="L200">    }</span>
+
+    /** Visible for tests and diagnostics; peer keys remain private. */
+    public int trackedPeerCount() {
+<span class="fc" id="L204">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L205">            return trackers.size();</span>
+        }
+    }
+
+    int overflowFailureCount() {
+<span class="fc" id="L210">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L211">            return overflowTracker.failureCount();</span>
+        }
+    }
+
+    private LockState currentLock(String peerKey, long now) {
+<span class="fc" id="L216">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L217">            cleanupExpiredEntries(now, false);</span>
+<span class="fc" id="L218">            FailureTracker tracker = trackers.get(peerKey);</span>
+<span class="fc bfc" id="L219" title="All 4 branches covered.">            if (tracker == null &amp;&amp; trackers.size() &gt;= maxTrackedPeers) {</span>
+<span class="fc" id="L220">                cleanupExpiredEntries(now, true);</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                if (trackers.size() &gt;= maxTrackedPeers) {</span>
+<span class="fc" id="L222">                    tracker = overflowTracker;</span>
+                }
+            }
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            return tracker == null</span>
+<span class="fc" id="L226">                    ? LockState.unlocked()</span>
+<span class="fc" id="L227">                    : tracker.lockState(maxAttempts, now, lockoutNanos);</span>
+        }
+    }
+
+    private int recordFailure(String peerKey, long now) {
+<span class="fc" id="L232">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L233">            cleanupExpiredEntries(now, false);</span>
+<span class="fc" id="L234">            FailureTracker tracker = trackers.get(peerKey);</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">            if (tracker == null) {</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">                if (trackers.size() &gt;= maxTrackedPeers) {</span>
+<span class="fc" id="L237">                    cleanupExpiredEntries(now, true);</span>
+                }
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                if (trackers.size() &gt;= maxTrackedPeers) {</span>
+<span class="fc" id="L240">                    tracker = overflowTracker;</span>
+                } else {
+<span class="fc" id="L242">                    tracker = new FailureTracker(now);</span>
+<span class="fc" id="L243">                    trackers.put(peerKey, tracker);</span>
+                }
+            }
+<span class="fc" id="L246">            return tracker.recordFailure(now, lockoutNanos);</span>
+        }
+    }
+
+    private void clearFailures(String peerKey) {
+<span class="fc" id="L251">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L252">            trackers.remove(peerKey);</span>
+<span class="fc" id="L253">        }</span>
+<span class="fc" id="L254">    }</span>
+
+    private void cleanupExpiredEntries(long now, boolean force) {
+<span class="fc bfc" id="L257" title="All 4 branches covered.">        if (!force &amp;&amp; now - nextCleanupAt &lt; 0) {</span>
+<span class="fc" id="L258">            return;</span>
+        }
+<span class="fc" id="L260">        trackers.entrySet().removeIf(</span>
+<span class="fc" id="L261">                entry -&gt; entry.getValue().isExpired(now, lockoutNanos));</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (overflowTracker.isExpired(now, lockoutNanos)) {</span>
+<span class="fc" id="L263">            overflowTracker.reset(now);</span>
+        }
+<span class="fc" id="L265">        nextCleanupAt = now + cleanupIntervalNanos;</span>
+<span class="fc" id="L266">    }</span>
+
+    private static boolean isAuthenticated() {
+<span class="fc" id="L269">        Authentication authentication = SecurityContextHolder.getContext()</span>
+<span class="fc" id="L270">                .getAuthentication();</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        return authentication != null</span>
+<span class="pc bpc" id="L272" title="2 of 4 branches missed.">                &amp;&amp; authentication.isAuthenticated()</span>
+                &amp;&amp; !(authentication instanceof AnonymousAuthenticationToken);
+    }
+
+    private static boolean hasErrorRedirect(HttpServletResponse response) {
+<span class="fc" id="L277">        String location = response.getHeader(HttpHeaders.LOCATION);</span>
+<span class="pc bpc" id="L278" title="1 of 4 branches missed.">        return isRedirect(response.getStatus())</span>
+                &amp;&amp; location != null
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                &amp;&amp; location.contains(&quot;login?error&quot;);</span>
+    }
+
+    private static boolean isRedirect(int status) {
+<span class="fc bfc" id="L284" title="All 4 branches covered.">        return status &gt;= 300 &amp;&amp; status &lt; 400;</span>
+    }
+
+    private static String peerKey(HttpServletRequest request) {
+<span class="fc" id="L288">        String remoteAddress = request.getRemoteAddr();</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        return digestPeer(remoteAddress == null ? &quot;&quot; : remoteAddress);</span>
+    }
+
+    private static String digestPeer(String remoteAddress) {
+        try {
+<span class="fc" id="L294">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L295">            digest.update(&quot;login-peer&quot;.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L296">            digest.update((byte) 0);</span>
+<span class="fc" id="L297">            return HexFormat.of().formatHex(</span>
+<span class="fc" id="L298">                    digest.digest(remoteAddress.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="nc" id="L299">        } catch (NoSuchAlgorithmException impossible) {</span>
+<span class="nc" id="L300">            throw new IllegalStateException(&quot;SHA-256 is unavailable&quot;, impossible);</span>
+        }
+    }
+
+    private static void writeLockedResponse(
+            HttpServletResponse response,
+            long retryAfterSeconds) throws IOException {
+<span class="fc" id="L307">        response.setStatus(423);</span>
+<span class="fc" id="L308">        response.setCharacterEncoding(StandardCharsets.UTF_8.name());</span>
+<span class="fc" id="L309">        response.setContentType(MediaType.APPLICATION_JSON_VALUE);</span>
+<span class="fc" id="L310">        response.setHeader(HttpHeaders.RETRY_AFTER,</span>
+<span class="fc" id="L311">                Long.toString(retryAfterSeconds));</span>
+<span class="fc" id="L312">        response.setHeader(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="fc" id="L313">        response.getWriter().write(</span>
+                &quot;{\&quot;error\&quot;:\&quot;Too many failed login attempts.\&quot;,&quot;
+                        + &quot;\&quot;status\&quot;:423,&quot;
+                        + &quot;\&quot;retryAfterSeconds\&quot;:&quot; + retryAfterSeconds + &quot;}&quot;);
+<span class="fc" id="L317">    }</span>
+
+<span class="fc" id="L319">    private record LockState(</span>
+            boolean locked,
+            long retryAfterSeconds,
+            int failureCount) {
+
+        private static LockState unlocked() {
+<span class="fc" id="L325">            return new LockState(false, 0, 0);</span>
+        }
+    }
+
+    private static final class FailureTracker {
+        private int failureCount;
+        private long windowStartedAt;
+
+<span class="fc" id="L333">        private FailureTracker(long now) {</span>
+<span class="fc" id="L334">            reset(now);</span>
+<span class="fc" id="L335">        }</span>
+
+        private int recordFailure(long now, long windowNanos) {
+<span class="fc bfc" id="L338" title="All 2 branches covered.">            if (isExpired(now, windowNanos)) {</span>
+<span class="fc" id="L339">                reset(now);</span>
+            }
+<span class="fc bfc" id="L341" title="All 2 branches covered.">            if (failureCount == 0) {</span>
+<span class="fc" id="L342">                windowStartedAt = now;</span>
+            }
+<span class="fc" id="L344">            return ++failureCount;</span>
+        }
+
+        private LockState lockState(
+                int maximumAttempts,
+                long now,
+                long windowNanos) {
+<span class="fc bfc" id="L351" title="All 2 branches covered.">            if (isExpired(now, windowNanos)) {</span>
+<span class="fc" id="L352">                reset(now);</span>
+<span class="fc" id="L353">                return LockState.unlocked();</span>
+            }
+<span class="fc bfc" id="L355" title="All 2 branches covered.">            if (failureCount &lt; maximumAttempts) {</span>
+<span class="fc" id="L356">                return LockState.unlocked();</span>
+            }
+<span class="fc" id="L358">            long elapsed = now - windowStartedAt;</span>
+<span class="fc" id="L359">            long remaining = Math.max(1L, windowNanos - elapsed);</span>
+<span class="fc" id="L360">            long retryAfter = Math.max(1L,</span>
+                    (remaining + NANOS_PER_SECOND - 1L) / NANOS_PER_SECOND);
+<span class="fc" id="L362">            return new LockState(true, retryAfter, failureCount);</span>
+        }
+
+        private boolean isExpired(long now, long windowNanos) {
+<span class="fc bfc" id="L366" title="All 4 branches covered.">            return failureCount == 0 || now - windowStartedAt &gt;= windowNanos;</span>
+        }
+
+        private int failureCount() {
+<span class="fc" id="L370">            return failureCount;</span>
+        }
+
+        private void reset(long now) {
+<span class="fc" id="L374">            failureCount = 0;</span>
+<span class="fc" id="L375">            windowStartedAt = now;</span>
+<span class="fc" id="L376">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

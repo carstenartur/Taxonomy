@@ -1,0 +1,394 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureSnapshotExportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.workbench</a> &gt; <span class="el_source">ArchitectureSnapshotExportService.java</span></div><h1>ArchitectureSnapshotExportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.workbench;
+
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.export.service.CanonicalDiagramExportService;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.Projection;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Authorizes an immutable architecture snapshot and exports its persisted
+ * canonical graph without running analysis or applying current preferences.
+ */
+@Service
+public class ArchitectureSnapshotExportService {
+
+    private static final String FINGERPRINT_VERSION =
+            &quot;taxonomy-canonical-graph-v1&quot;;
+
+    private final ArchitectureWorkbenchService workbenchService;
+    private final CanonicalDiagramExportService diagramExportService;
+
+    public ArchitectureSnapshotExportService(
+            ArchitectureWorkbenchService workbenchService,
+<span class="fc" id="L39">            CanonicalDiagramExportService diagramExportService) {</span>
+<span class="fc" id="L40">        this.workbenchService = workbenchService;</span>
+<span class="fc" id="L41">        this.diagramExportService = diagramExportService;</span>
+<span class="fc" id="L42">    }</span>
+
+    @Transactional(readOnly = true)
+    public Artifact exportArchiMate(
+            Long projectId,
+            String snapshotId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L50">        return export(</span>
+                projectId,
+                snapshotId,
+                username,
+                context,
+                Format.ARCHIMATE_XML);
+    }
+
+    @Transactional(readOnly = true)
+    public Artifact exportVisio(
+            Long projectId,
+            String snapshotId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L64">        return export(</span>
+                projectId,
+                snapshotId,
+                username,
+                context,
+                Format.VISIO_VSDX);
+    }
+
+    private Artifact export(
+            Long projectId,
+            String snapshotId,
+            String username,
+            WorkspaceContext context,
+            Format format) {
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (projectId == null) {</span>
+<span class="nc" id="L79">            throw PortfolioException.validation(&quot;projectId is required&quot;);</span>
+        }
+<span class="fc" id="L81">        String requestedSnapshotId = requireSnapshotId(snapshotId);</span>
+<span class="fc" id="L82">        Projection projection = workbenchService.load(</span>
+                projectId,
+                requestedSnapshotId,
+                username,
+                context);
+<span class="fc" id="L87">        verifyExactCoordinates(projectId, requestedSnapshotId, projection);</span>
+
+<span class="fc" id="L89">        DiagramModel canonicalDiagram = freeze(projection.diagram());</span>
+<span class="fc" id="L90">        byte[] content = serialize(canonicalDiagram, format);</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">        if (content == null || content.length == 0) {</span>
+<span class="fc" id="L92">            throw PortfolioException.conflict(</span>
+                    &quot;The canonical diagram exporter returned no content&quot;);
+        }
+<span class="fc" id="L95">        String graphFingerprint = fingerprint(canonicalDiagram);</span>
+
+<span class="fc" id="L97">        return new Artifact(</span>
+                format,
+<span class="fc" id="L99">                fileName(projection, format),</span>
+<span class="fc" id="L100">                format.mediaType(),</span>
+<span class="fc" id="L101">                format.profile(),</span>
+<span class="fc" id="L102">                projection.projectId(),</span>
+<span class="fc" id="L103">                projection.requirementId(),</span>
+<span class="fc" id="L104">                projection.snapshotId(),</span>
+<span class="fc" id="L105">                projection.snapshotStatus(),</span>
+<span class="fc" id="L106">                projection.workspaceId(),</span>
+<span class="fc" id="L107">                projection.branchName(),</span>
+<span class="fc" id="L108">                projection.commitSha(),</span>
+<span class="fc" id="L109">                projection.provider(),</span>
+<span class="fc" id="L110">                projection.modelName(),</span>
+                graphFingerprint,
+<span class="fc" id="L112">                sha256(content),</span>
+                content);
+    }
+
+    private byte[] serialize(DiagramModel canonicalDiagram, Format format) {
+        try {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            return switch (format) {</span>
+                case ARCHIMATE_XML -&gt;
+<span class="fc" id="L120">                        diagramExportService.exportAsArchiMate(canonicalDiagram);</span>
+                case VISIO_VSDX -&gt;
+<span class="fc" id="L122">                        diagramExportService.exportAsVisio(canonicalDiagram);</span>
+            };
+<span class="fc" id="L124">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L125">            throw new PortfolioException(</span>
+                    PortfolioException.Kind.CONFLICT,
+                    &quot;The selected snapshot violates the canonical export contract&quot;,
+                    exception);
+        }
+    }
+
+    private static void verifyExactCoordinates(
+            Long projectId,
+            String snapshotId,
+            Projection projection) {
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (projection == null</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                || !Objects.equals(projectId, projection.projectId())</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                || !snapshotId.equals(projection.snapshotId())) {</span>
+<span class="fc" id="L139">            throw PortfolioException.conflict(</span>
+                    &quot;The resolved architecture snapshot does not match &quot;
+                            + &quot;the explicitly requested coordinates&quot;);
+        }
+<span class="fc" id="L143">        requireAuthority(projection.workspaceId(), &quot;workspaceId&quot;);</span>
+<span class="fc" id="L144">        requireAuthority(projection.branchName(), &quot;branchName&quot;);</span>
+<span class="fc" id="L145">        requireAuthority(projection.commitSha(), &quot;commitSha&quot;);</span>
+<span class="fc" id="L146">    }</span>
+
+    private static String requireSnapshotId(String snapshotId) {
+<span class="pc bpc" id="L149" title="2 of 4 branches missed.">        if (snapshotId == null || snapshotId.isBlank()) {</span>
+<span class="nc" id="L150">            throw PortfolioException.validation(&quot;snapshotId is required&quot;);</span>
+        }
+<span class="fc bfc" id="L152" title="All 4 branches covered.">        if (snapshotId.indexOf('\r') &gt;= 0 || snapshotId.indexOf('\n') &gt;= 0) {</span>
+<span class="fc" id="L153">            throw PortfolioException.validation(</span>
+                    &quot;snapshotId contains unsafe control characters&quot;);
+        }
+<span class="fc" id="L156">        return snapshotId.strip();</span>
+    }
+
+    private static void requireAuthority(String value, String field) {
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (value == null</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                || value.isBlank()</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                || value.indexOf('\r') &gt;= 0</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                || value.indexOf('\n') &gt;= 0) {</span>
+<span class="fc" id="L164">            throw PortfolioException.conflict(</span>
+                    &quot;The selected snapshot has no safe immutable &quot;
+                            + field + &quot; authority&quot;);
+        }
+<span class="fc" id="L168">    }</span>
+
+    private static DiagramModel freeze(DiagramModel diagram) {
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (diagram == null</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">                || diagram.nodes() == null</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                || diagram.edges() == null</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                || diagram.layout() == null) {</span>
+<span class="nc" id="L175">            throw PortfolioException.conflict(</span>
+                    &quot;The selected snapshot has no complete canonical diagram&quot;);
+        }
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (diagram.nodes().isEmpty()) {</span>
+<span class="nc" id="L179">            throw PortfolioException.conflict(</span>
+                    &quot;The selected snapshot has no exportable architecture elements&quot;);
+        }
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (diagram.nodes().stream().anyMatch(Objects::isNull)</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                || diagram.edges().stream().anyMatch(Objects::isNull)) {</span>
+<span class="nc" id="L184">            throw PortfolioException.conflict(</span>
+                    &quot;The selected snapshot contains an incomplete canonical graph&quot;);
+        }
+<span class="fc" id="L187">        return new DiagramModel(</span>
+<span class="fc" id="L188">                diagram.title(),</span>
+<span class="fc" id="L189">                List.copyOf(diagram.nodes()),</span>
+<span class="fc" id="L190">                List.copyOf(diagram.edges()),</span>
+<span class="fc" id="L191">                diagram.layout());</span>
+    }
+
+    private static String fileName(Projection projection, Format format) {
+<span class="fc" id="L195">        return &quot;architecture-&quot;</span>
+<span class="fc" id="L196">                + safeFileToken(projection.snapshotId(), 48)</span>
+                + &quot;-&quot;
+<span class="fc" id="L198">                + safeFileToken(projection.commitSha(), 12)</span>
+                + &quot;.&quot;
+<span class="fc" id="L200">                + format.extension();</span>
+    }
+
+    private static String safeFileToken(String value, int maximumLength) {
+<span class="fc" id="L204">        String normalized = value.replaceAll(&quot;[^A-Za-z0-9._-]&quot;, &quot;-&quot;)</span>
+<span class="fc" id="L205">                .replaceAll(&quot;-{2,}&quot;, &quot;-&quot;)</span>
+<span class="fc" id="L206">                .replaceAll(&quot;^[.-]+|[.-]+$&quot;, &quot;&quot;);</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        if (normalized.isBlank()) {</span>
+<span class="nc" id="L208">            normalized = &quot;snapshot&quot;;</span>
+        }
+<span class="fc" id="L210">        return normalized.substring(</span>
+                0,
+<span class="fc" id="L212">                Math.min(maximumLength, normalized.length()));</span>
+    }
+
+    /**
+     * Fingerprints the semantic graph subset independently of display title,
+     * layout options and collection order. Container-only nodes, relationships
+     * touching them, visual container-parent references and node layer positions
+     * are presentation data and are therefore excluded. Format bytes retain
+     * their own independent artifact hash and HTTP ETag.
+     */
+    private static String fingerprint(DiagramModel diagram) {
+<span class="fc" id="L223">        MessageDigest digest = sha256Digest();</span>
+<span class="fc" id="L224">        putText(digest, FINGERPRINT_VERSION);</span>
+
+<span class="fc" id="L226">        Set&lt;String&gt; semanticNodeIds = diagram.nodes().stream()</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                .filter(node -&gt; !node.container())</span>
+<span class="fc" id="L228">                .map(DiagramNode::id)</span>
+<span class="fc" id="L229">                .collect(Collectors.toUnmodifiableSet());</span>
+<span class="fc" id="L230">        List&lt;DiagramNode&gt; nodes = diagram.nodes().stream()</span>
+<span class="fc" id="L231">                .filter(node -&gt; semanticNodeIds.contains(node.id()))</span>
+<span class="fc" id="L232">                .sorted(Comparator.comparing(DiagramNode::id))</span>
+<span class="fc" id="L233">                .toList();</span>
+<span class="fc" id="L234">        putInt(digest, nodes.size());</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        for (DiagramNode node : nodes) {</span>
+<span class="fc" id="L236">            putText(digest, node.id());</span>
+<span class="fc" id="L237">            putText(digest, node.label());</span>
+<span class="fc" id="L238">            putText(digest, node.type());</span>
+<span class="fc" id="L239">            putDouble(digest, node.relevance());</span>
+<span class="fc" id="L240">            putBoolean(digest, node.anchor());</span>
+<span class="fc" id="L241">            putInt(digest, node.depth());</span>
+<span class="fc" id="L242">            putBoolean(digest, node.selectedForImpact());</span>
+<span class="fc" id="L243">            String parentId = node.parentId();</span>
+<span class="fc" id="L244">            putText(</span>
+                    digest,
+<span class="pc bpc" id="L246" title="1 of 4 branches missed.">                    parentId != null &amp;&amp; semanticNodeIds.contains(parentId)</span>
+<span class="nc" id="L247">                            ? parentId</span>
+<span class="fc" id="L248">                            : null);</span>
+<span class="fc" id="L249">        }</span>
+
+<span class="fc" id="L251">        List&lt;DiagramEdge&gt; edges = diagram.edges().stream()</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">                .filter(edge -&gt; semanticNodeIds.contains(edge.sourceId())</span>
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">                        &amp;&amp; semanticNodeIds.contains(edge.targetId()))</span>
+<span class="fc" id="L254">                .sorted(Comparator.comparing(DiagramEdge::id))</span>
+<span class="fc" id="L255">                .toList();</span>
+<span class="fc" id="L256">        putInt(digest, edges.size());</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        for (DiagramEdge edge : edges) {</span>
+<span class="fc" id="L258">            putText(digest, edge.id());</span>
+<span class="fc" id="L259">            putText(digest, edge.sourceId());</span>
+<span class="fc" id="L260">            putText(digest, edge.targetId());</span>
+<span class="fc" id="L261">            putText(digest, edge.relationType());</span>
+<span class="fc" id="L262">            putDouble(digest, edge.relevance());</span>
+<span class="fc" id="L263">            putText(digest, edge.relationCategory());</span>
+<span class="fc" id="L264">        }</span>
+<span class="fc" id="L265">        return HexFormat.of().formatHex(digest.digest());</span>
+    }
+
+    private static String sha256(byte[] content) {
+<span class="fc" id="L269">        MessageDigest digest = sha256Digest();</span>
+<span class="fc" id="L270">        return HexFormat.of().formatHex(digest.digest(content));</span>
+    }
+
+    private static MessageDigest sha256Digest() {
+        try {
+<span class="fc" id="L275">            return MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="nc" id="L276">        } catch (NoSuchAlgorithmException exception) {</span>
+<span class="nc" id="L277">            throw new IllegalStateException(</span>
+                    &quot;SHA-256 is unavailable&quot;,
+                    exception);
+        }
+    }
+
+    private static void putText(MessageDigest digest, String value) {
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L285">            putInt(digest, -1);</span>
+<span class="fc" id="L286">            return;</span>
+        }
+<span class="fc" id="L288">        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L289">        putInt(digest, bytes.length);</span>
+<span class="fc" id="L290">        digest.update(bytes);</span>
+<span class="fc" id="L291">    }</span>
+
+    private static void putBoolean(MessageDigest digest, boolean value) {
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        digest.update((byte) (value ? 1 : 0));</span>
+<span class="fc" id="L295">    }</span>
+
+    private static void putInt(MessageDigest digest, int value) {
+<span class="fc" id="L298">        digest.update((byte) (value &gt;&gt;&gt; 24));</span>
+<span class="fc" id="L299">        digest.update((byte) (value &gt;&gt;&gt; 16));</span>
+<span class="fc" id="L300">        digest.update((byte) (value &gt;&gt;&gt; 8));</span>
+<span class="fc" id="L301">        digest.update((byte) value);</span>
+<span class="fc" id="L302">    }</span>
+
+    private static void putDouble(MessageDigest digest, double value) {
+<span class="fc" id="L305">        putLong(digest, Double.doubleToLongBits(value));</span>
+<span class="fc" id="L306">    }</span>
+
+    private static void putLong(MessageDigest digest, long value) {
+<span class="fc" id="L309">        digest.update((byte) (value &gt;&gt;&gt; 56));</span>
+<span class="fc" id="L310">        digest.update((byte) (value &gt;&gt;&gt; 48));</span>
+<span class="fc" id="L311">        digest.update((byte) (value &gt;&gt;&gt; 40));</span>
+<span class="fc" id="L312">        digest.update((byte) (value &gt;&gt;&gt; 32));</span>
+<span class="fc" id="L313">        digest.update((byte) (value &gt;&gt;&gt; 24));</span>
+<span class="fc" id="L314">        digest.update((byte) (value &gt;&gt;&gt; 16));</span>
+<span class="fc" id="L315">        digest.update((byte) (value &gt;&gt;&gt; 8));</span>
+<span class="fc" id="L316">        digest.update((byte) value);</span>
+<span class="fc" id="L317">    }</span>
+
+<span class="fc" id="L319">    public enum Format {</span>
+<span class="fc" id="L320">        ARCHIMATE_XML(</span>
+                &quot;application/xml&quot;,
+                &quot;archimate.xml&quot;,
+                &quot;archimate-exchange-3.1-supported-subset-v1&quot;),
+<span class="fc" id="L324">        VISIO_VSDX(</span>
+                &quot;application/vnd.ms-visio.drawing&quot;,
+                &quot;vsdx&quot;,
+                &quot;visio-2012-opc-supported-subset-v1&quot;);
+
+        private final String mediaType;
+        private final String extension;
+        private final String profile;
+
+<span class="fc" id="L333">        Format(String mediaType, String extension, String profile) {</span>
+<span class="fc" id="L334">            this.mediaType = mediaType;</span>
+<span class="fc" id="L335">            this.extension = extension;</span>
+<span class="fc" id="L336">            this.profile = profile;</span>
+<span class="fc" id="L337">        }</span>
+
+        public String mediaType() {
+<span class="fc" id="L340">            return mediaType;</span>
+        }
+
+        public String extension() {
+<span class="fc" id="L344">            return extension;</span>
+        }
+
+        public String profile() {
+<span class="fc" id="L348">            return profile;</span>
+        }
+    }
+
+    public record Artifact(
+            Format format,
+            String fileName,
+            String mediaType,
+            String exporterProfile,
+            Long projectId,
+            Long requirementId,
+            String snapshotId,
+            AnalysisStatus snapshotStatus,
+            String workspaceId,
+            String branchName,
+            String commitSha,
+            String provider,
+            String modelName,
+            String canonicalGraphSha256,
+            String artifactSha256,
+            byte[] content) {
+
+<span class="fc" id="L370">        public Artifact {</span>
+<span class="fc" id="L371">            Objects.requireNonNull(format, &quot;format&quot;);</span>
+<span class="fc" id="L372">            Objects.requireNonNull(fileName, &quot;fileName&quot;);</span>
+<span class="fc" id="L373">            Objects.requireNonNull(mediaType, &quot;mediaType&quot;);</span>
+<span class="fc" id="L374">            Objects.requireNonNull(exporterProfile, &quot;exporterProfile&quot;);</span>
+<span class="fc" id="L375">            Objects.requireNonNull(snapshotId, &quot;snapshotId&quot;);</span>
+<span class="fc" id="L376">            Objects.requireNonNull(snapshotStatus, &quot;snapshotStatus&quot;);</span>
+<span class="fc" id="L377">            Objects.requireNonNull(workspaceId, &quot;workspaceId&quot;);</span>
+<span class="fc" id="L378">            Objects.requireNonNull(branchName, &quot;branchName&quot;);</span>
+<span class="fc" id="L379">            Objects.requireNonNull(commitSha, &quot;commitSha&quot;);</span>
+<span class="fc" id="L380">            Objects.requireNonNull(</span>
+                    canonicalGraphSha256,
+                    &quot;canonicalGraphSha256&quot;);
+<span class="fc" id="L383">            Objects.requireNonNull(artifactSha256, &quot;artifactSha256&quot;);</span>
+<span class="fc" id="L384">            Objects.requireNonNull(content, &quot;content&quot;);</span>
+<span class="fc" id="L385">            content = content.clone();</span>
+<span class="fc" id="L386">        }</span>
+
+        @Override
+        public byte[] content() {
+<span class="fc" id="L390">            return content.clone();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

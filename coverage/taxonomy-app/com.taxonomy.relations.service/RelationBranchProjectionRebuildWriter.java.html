@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationBranchProjectionRebuildWriter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationBranchProjectionRebuildWriter.java</span></div><h1>RelationBranchProjectionRebuildWriter.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.relations.model.RelationDecisionProjection;
+import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
+import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
+import com.taxonomy.relations.repository.RelationDecisionProjectionRepository;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.RebuildResult;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.RelationSnapshot;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+
+/** Transactional replacement boundary for one fully validated branch projection. */
+@Service
+public class RelationBranchProjectionRebuildWriter {
+
+    private final RelationDecisionProjectionRepository projectionRepository;
+    private final RelationDecisionProjectionCheckpointRepository checkpointRepository;
+
+    public RelationBranchProjectionRebuildWriter(
+            RelationDecisionProjectionRepository projectionRepository,
+<span class="fc" id="L26">            RelationDecisionProjectionCheckpointRepository checkpointRepository) {</span>
+<span class="fc" id="L27">        this.projectionRepository = Objects.requireNonNull(</span>
+                projectionRepository, &quot;projectionRepository&quot;);
+<span class="fc" id="L29">        this.checkpointRepository = Objects.requireNonNull(</span>
+                checkpointRepository, &quot;checkpointRepository&quot;);
+<span class="fc" id="L31">    }</span>
+
+    /**
+     * Replaces the exact repository/workspace/branch rows and checkpoint in one
+     * transaction. Failure leaves the previously complete projection untouched.
+     * Rejected decisions stay in authoritative TaxDSL but are omitted from the
+     * complete active-relation projection.
+     */
+    @Transactional
+    public RebuildResult replace(
+            RepositoryContext context,
+            String authoritativeCommitId,
+            List&lt;RelationSnapshot&gt; relations) {
+<span class="fc" id="L44">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L45">        Objects.requireNonNull(authoritativeCommitId, &quot;authoritativeCommitId&quot;);</span>
+<span class="fc" id="L46">        List&lt;RelationSnapshot&gt; snapshots = List.copyOf(</span>
+<span class="fc" id="L47">                Objects.requireNonNull(relations, &quot;relations&quot;));</span>
+<span class="fc" id="L48">        String workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(</span>
+<span class="fc" id="L49">                context.workspaceId());</span>
+
+<span class="fc" id="L51">        RelationDecisionProjectionCheckpoint checkpoint = checkpointRepository</span>
+<span class="fc" id="L52">                .findExactForUpdate(</span>
+<span class="fc" id="L53">                        context.repositoryId(),</span>
+                        workspaceScopeKey,
+<span class="fc" id="L55">                        context.branch())</span>
+<span class="fc" id="L56">                .orElseGet(RelationDecisionProjectionCheckpoint::new);</span>
+
+<span class="fc" id="L58">        projectionRepository.deleteExactBranch(</span>
+<span class="fc" id="L59">                context.repositoryId(),</span>
+                workspaceScopeKey,
+<span class="fc" id="L61">                context.branch());</span>
+<span class="fc" id="L62">        projectionRepository.flush();</span>
+
+<span class="fc" id="L64">        List&lt;RelationDecisionProjection&gt; replacements = snapshots.stream()</span>
+<span class="fc" id="L65">                .filter(snapshot -&gt; RelationDecisionStatusPolicy</span>
+<span class="fc" id="L66">                        .isRelationPresent(snapshot.status()))</span>
+<span class="fc" id="L67">                .sorted(Comparator</span>
+<span class="fc" id="L68">                        .comparing(RelationSnapshot::sourceCode)</span>
+<span class="pc" id="L69">                        .thenComparing(snapshot -&gt; snapshot.relationType().name())</span>
+<span class="fc" id="L70">                        .thenComparing(RelationSnapshot::targetCode))</span>
+<span class="fc" id="L71">                .map(snapshot -&gt; projection(</span>
+                        context,
+                        authoritativeCommitId,
+                        snapshot))
+<span class="fc" id="L75">                .toList();</span>
+<span class="fc" id="L76">        projectionRepository.saveAll(replacements);</span>
+<span class="fc" id="L77">        projectionRepository.flush();</span>
+
+<span class="fc" id="L79">        checkpoint.setRepositoryId(context.repositoryId());</span>
+<span class="fc" id="L80">        checkpoint.setWorkspaceId(context.workspaceId());</span>
+<span class="fc" id="L81">        checkpoint.setBranch(context.branch());</span>
+<span class="fc" id="L82">        checkpoint.setAuthoritativeCommitId(authoritativeCommitId);</span>
+<span class="fc" id="L83">        checkpoint.setRelationCount(replacements.size());</span>
+<span class="fc" id="L84">        checkpointRepository.saveAndFlush(checkpoint);</span>
+
+<span class="fc" id="L86">        return new RebuildResult(</span>
+<span class="fc" id="L87">                context.repositoryId(),</span>
+<span class="fc" id="L88">                context.workspaceId(),</span>
+<span class="fc" id="L89">                context.branch(),</span>
+                authoritativeCommitId,
+<span class="fc" id="L91">                replacements.size());</span>
+    }
+
+    private static RelationDecisionProjection projection(
+            RepositoryContext context,
+            String authoritativeCommitId,
+            RelationSnapshot snapshot) {
+<span class="fc" id="L98">        RelationDecisionProjection projection = new RelationDecisionProjection();</span>
+<span class="fc" id="L99">        projection.setRepositoryId(context.repositoryId());</span>
+<span class="fc" id="L100">        projection.setWorkspaceId(context.workspaceId());</span>
+<span class="fc" id="L101">        projection.setBranch(context.branch());</span>
+<span class="fc" id="L102">        projection.setSourceCode(snapshot.sourceCode());</span>
+<span class="fc" id="L103">        projection.setRelationType(snapshot.relationType());</span>
+<span class="fc" id="L104">        projection.setTargetCode(snapshot.targetCode());</span>
+<span class="fc" id="L105">        projection.setRelationPresent(true);</span>
+<span class="fc" id="L106">        projection.setStatus(snapshot.status());</span>
+<span class="fc" id="L107">        projection.setConfidence(snapshot.confidence());</span>
+<span class="fc" id="L108">        projection.setProvenance(snapshot.provenance());</span>
+<span class="fc" id="L109">        projection.setAuthoritativeCommitId(authoritativeCommitId);</span>
+<span class="fc" id="L110">        projection.setCausationId(&quot;rebuild:&quot; + authoritativeCommitId);</span>
+<span class="fc" id="L111">        return projection;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

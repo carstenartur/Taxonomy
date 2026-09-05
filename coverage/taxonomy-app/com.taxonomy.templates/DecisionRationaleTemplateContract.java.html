@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleTemplateContract.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DecisionRationaleTemplateContract.java</span></div><h1>DecisionRationaleTemplateContract.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import org.apache.poi.xwpf.usermodel.BodyElementType;
+import org.apache.poi.xwpf.usermodel.IBodyElement;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.springframework.stereotype.Component;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Contract for the editable decision-rationale report template.
+ *
+ * &lt;p&gt;The cover page remains ordinary Word content. Taxonomy replaces stable text tokens,
+ * removes the body marker, and appends the generated executive summary, decision chapters,
+ * diagrams, and appendix. Keeping the marker as the final non-empty body block makes the
+ * operation deterministic while preserving arbitrary branding, images, headers, footers,
+ * styles, and page settings in the supported Word stories.&lt;/p&gt;
+ */
+@Component
+<span class="fc" id="L37">public final class DecisionRationaleTemplateContract implements DocumentTemplateContract {</span>
+
+    public static final String TEMPLATE_ID = &quot;decision-rationale-report&quot;;
+    public static final String DISPLAY_NAME = &quot;Taxonomy decision rationale report&quot;;
+    public static final String DEFAULT_RESOURCE =
+            &quot;document-templates/decision-rationale-report.dotx&quot;;
+
+    public static final String BODY_MARKER = &quot;{{taxonomy.report.body}}&quot;;
+    public static final String TITLE_TOKEN = &quot;{{taxonomy.report.title}}&quot;;
+    public static final String REQUIREMENT_TOKEN = &quot;{{taxonomy.report.requirement}}&quot;;
+
+    private static final String WORD_NS =
+            &quot;http://schemas.openxmlformats.org/wordprocessingml/2006/main&quot;;
+    private static final String TOKEN_PREFIX = &quot;{{taxonomy.&quot;;
+<span class="fc" id="L51">    private static final Pattern TOKEN_PATTERN = Pattern.compile(</span>
+            &quot;\\{\\{taxonomy\\.[A-Za-z0-9.]+}}&quot;);
+<span class="fc" id="L53">    private static final Set&lt;String&gt; SUPPORTED_TOKENS = Set.of(</span>
+            BODY_MARKER,
+            TITLE_TOKEN,
+            REQUIREMENT_TOKEN,
+            &quot;{{taxonomy.report.subtitle}}&quot;,
+            &quot;{{taxonomy.report.status}}&quot;,
+            &quot;{{taxonomy.report.generatedAt}}&quot;,
+            &quot;{{taxonomy.report.generatedBy}}&quot;,
+            &quot;{{taxonomy.report.taxonomyVersion}}&quot;,
+            &quot;{{taxonomy.report.applicationVersion}}&quot;,
+            &quot;{{taxonomy.report.commit}}&quot;,
+            &quot;{{taxonomy.report.repository}}&quot;,
+            &quot;{{taxonomy.report.workspace}}&quot;,
+            &quot;{{taxonomy.report.branch}}&quot;,
+            &quot;{{taxonomy.report.basedOnCommit}}&quot;,
+            &quot;{{taxonomy.report.analysisProvider}}&quot;,
+            &quot;{{taxonomy.template.id}}&quot;,
+            &quot;{{taxonomy.template.commit}}&quot;,
+            &quot;{{taxonomy.template.sha256}}&quot;);
+<span class="fc" id="L72">    private static final Set&lt;String&gt; UNSUPPORTED_TOKEN_CONTAINERS = Set.of(</span>
+            &quot;txbxContent&quot;,
+            &quot;sdt&quot;,
+            &quot;altChunk&quot;,
+            &quot;customXml&quot;);
+
+    @Override
+    public String templateId() {
+<span class="fc" id="L80">        return TEMPLATE_ID;</span>
+    }
+
+    @Override
+    public void validate(Map&lt;String, byte[]&gt; packageParts) {
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (packageParts == null) {</span>
+<span class="nc" id="L86">            throw invalid(&quot;OOXML package is missing&quot;);</span>
+        }
+<span class="fc" id="L88">        byte[] documentXml = packageParts.get(&quot;word/document.xml&quot;);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        if (documentXml == null) {</span>
+<span class="nc" id="L90">            throw invalid(&quot;word/document.xml is missing&quot;);</span>
+        }
+<span class="fc" id="L92">        Document document = parse(&quot;word/document.xml&quot;, documentXml);</span>
+<span class="fc" id="L93">        NodeList bodies = document.getElementsByTagNameNS(WORD_NS, &quot;body&quot;);</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (bodies.getLength() != 1) {</span>
+<span class="nc" id="L95">            throw invalid(&quot;word/document.xml must contain exactly one body&quot;);</span>
+        }
+<span class="fc" id="L97">        validateBody((Element) bodies.item(0));</span>
+<span class="fc" id="L98">        validateTokenPlacement(packageParts);</span>
+<span class="fc" id="L99">    }</span>
+
+    /**
+     * Validate the materialized Word document immediately before report rendering.
+     *
+     * &lt;p&gt;This second check also protects deployments where an expert modified the JGit
+     * repository directly and bypassed the web upload path.&lt;/p&gt;
+     */
+    public void validateDocument(XWPFDocument document) {
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (document == null) {</span>
+<span class="nc" id="L109">            throw invalid(&quot;Word package could not be opened&quot;);</span>
+        }
+<span class="fc" id="L111">        boolean title = false;</span>
+<span class="fc" id="L112">        boolean requirement = false;</span>
+<span class="fc" id="L113">        int markerCount = 0;</span>
+<span class="fc" id="L114">        boolean markerSeen = false;</span>
+
+<span class="fc" id="L116">        List&lt;IBodyElement&gt; elements = document.getBodyElements();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for (IBodyElement element : elements) {</span>
+<span class="fc" id="L118">            String text = bodyElementText(element);</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">            if (!markerSeen) {</span>
+<span class="fc" id="L120">                title |= text.contains(TITLE_TOKEN);</span>
+<span class="fc" id="L121">                requirement |= text.contains(REQUIREMENT_TOKEN);</span>
+            }
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            boolean marker = element.getElementType() == BodyElementType.PARAGRAPH</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                    &amp;&amp; text.strip().equals(BODY_MARKER);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (marker) {</span>
+<span class="fc" id="L126">                markerCount++;</span>
+<span class="fc" id="L127">                markerSeen = true;</span>
+<span class="fc" id="L128">                continue;</span>
+            }
+<span class="pc bpc" id="L130" title="3 of 4 branches missed.">            if (markerSeen &amp;&amp; !isPermittedEmptyTrailingParagraph(element, text)) {</span>
+<span class="nc" id="L131">                throw invalid(&quot;the body marker must be the final non-empty body block&quot;);</span>
+            }
+<span class="fc" id="L133">        }</span>
+<span class="fc" id="L134">        requireTokens(title, requirement, markerCount);</span>
+<span class="fc" id="L135">    }</span>
+
+    private static void validateTokenPlacement(Map&lt;String, byte[]&gt; packageParts) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        for (Map.Entry&lt;String, byte[]&gt; entry : packageParts.entrySet()) {</span>
+<span class="fc" id="L139">            String path = entry.getKey();</span>
+<span class="fc" id="L140">            String lower = path.toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">            if (!(lower.endsWith(&quot;.xml&quot;) || lower.endsWith(&quot;.rels&quot;))) {</span>
+<span class="nc" id="L142">                continue;</span>
+            }
+
+<span class="fc" id="L145">            Document document = parse(path, entry.getValue());</span>
+<span class="fc" id="L146">            rejectMarkersInAttributesOrXmlMetadata(path, document);</span>
+<span class="fc" id="L147">            Element root = document.getDocumentElement();</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">            String completeText = root == null ? &quot;&quot; : root.getTextContent();</span>
+<span class="pc bpc" id="L149" title="1 of 4 branches missed.">            if (completeText == null || !completeText.contains(TOKEN_PREFIX)) {</span>
+<span class="fc" id="L150">                continue;</span>
+            }
+<span class="fc" id="L152">            int expectedTokens = countTokens(path, completeText);</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">            if (!lower.startsWith(&quot;word/&quot;) || !lower.endsWith(&quot;.xml&quot;)) {</span>
+<span class="fc" id="L154">                throw invalid(&quot;Taxonomy tokens are not supported in OOXML part &quot; + path);</span>
+            }
+
+<span class="fc" id="L157">            NodeList paragraphs = document.getElementsByTagNameNS(WORD_NS, &quot;p&quot;);</span>
+<span class="fc" id="L158">            int foundTokens = 0;</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            for (int index = 0; index &lt; paragraphs.getLength(); index++) {</span>
+<span class="fc" id="L160">                Element paragraph = (Element) paragraphs.item(index);</span>
+<span class="fc" id="L161">                String text = elementText(paragraph);</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                if (!text.contains(TOKEN_PREFIX)) {</span>
+<span class="fc" id="L163">                    continue;</span>
+                }
+<span class="fc" id="L165">                countTokens(path, text);</span>
+<span class="fc" id="L166">                Matcher matcher = TOKEN_PATTERN.matcher(text);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                while (matcher.find()) {</span>
+<span class="fc" id="L168">                    foundTokens++;</span>
+<span class="fc" id="L169">                    validateToken(path, paragraph, matcher.group());</span>
+                }
+            }
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">            if (foundTokens != expectedTokens) {</span>
+<span class="nc" id="L173">                throw invalid(&quot;Taxonomy token is outside supported Word paragraph text in &quot;</span>
+                        + path);
+            }
+<span class="fc" id="L176">        }</span>
+<span class="fc" id="L177">    }</span>
+
+    private static int countTokens(String path, String text) {
+<span class="fc" id="L180">        Matcher matcher = TOKEN_PATTERN.matcher(text);</span>
+<span class="fc" id="L181">        int count = 0;</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        while (matcher.find()) {</span>
+<span class="fc" id="L183">            count++;</span>
+        }
+<span class="fc" id="L185">        String residual = TOKEN_PATTERN.matcher(text).replaceAll(&quot;&quot;);</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        if (residual.contains(TOKEN_PREFIX)) {</span>
+<span class="fc" id="L187">            throw invalid(&quot;malformed Taxonomy token in &quot; + path);</span>
+        }
+<span class="fc" id="L189">        return count;</span>
+    }
+
+    private static void rejectMarkersInAttributesOrXmlMetadata(
+            String path,
+            Node node) {
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">        if (node == null) {</span>
+<span class="nc" id="L196">            return;</span>
+        }
+<span class="fc" id="L198">        var attributes = node.getAttributes();</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (attributes != null) {</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            for (int index = 0; index &lt; attributes.getLength(); index++) {</span>
+<span class="fc" id="L201">                String value = attributes.item(index).getNodeValue();</span>
+<span class="pc bpc" id="L202" title="1 of 4 branches missed.">                if (value != null &amp;&amp; value.contains(TOKEN_PREFIX)) {</span>
+<span class="fc" id="L203">                    throw invalid(&quot;Taxonomy token is not permitted in an XML attribute in &quot;</span>
+                            + path);
+                }
+            }
+        }
+<span class="fc" id="L208">        int nodeType = node.getNodeType();</span>
+<span class="pc bpc" id="L209" title="2 of 4 branches missed.">        if (nodeType == Node.COMMENT_NODE</span>
+                || nodeType == Node.PROCESSING_INSTRUCTION_NODE) {
+<span class="nc" id="L211">            String value = node.getNodeValue();</span>
+<span class="nc bnc" id="L212" title="All 4 branches missed.">            if (value != null &amp;&amp; value.contains(TOKEN_PREFIX)) {</span>
+<span class="nc" id="L213">                throw invalid(&quot;Taxonomy token is not permitted in XML metadata in &quot; + path);</span>
+            }
+        }
+<span class="fc" id="L216">        NodeList children = node.getChildNodes();</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        for (int index = 0; index &lt; children.getLength(); index++) {</span>
+<span class="fc" id="L218">            rejectMarkersInAttributesOrXmlMetadata(path, children.item(index));</span>
+        }
+<span class="fc" id="L220">    }</span>
+
+    private static void validateToken(
+            String path,
+            Element paragraph,
+            String token) {
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        if (!isSupportedStory(path)) {</span>
+<span class="fc" id="L227">            throw invalid(&quot;Taxonomy token &quot; + token</span>
+                    + &quot; is not supported in Word story &quot; + path);
+        }
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (!SUPPORTED_TOKENS.contains(token)) {</span>
+<span class="fc" id="L231">            throw invalid(&quot;unknown Taxonomy template token &quot; + token + &quot; in &quot; + path);</span>
+        }
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        if (containsUnsupportedContainer(paragraph)) {</span>
+<span class="fc" id="L234">            throw invalid(&quot;Taxonomy token &quot; + token</span>
+                    + &quot; is inside an unsupported Word container in &quot; + path);
+        }
+<span class="pc bpc" id="L237" title="1 of 4 branches missed.">        if (BODY_MARKER.equals(token) &amp;&amp; !&quot;word/document.xml&quot;.equals(path)) {</span>
+<span class="nc" id="L238">            throw invalid(&quot;the body marker is permitted only in word/document.xml&quot;);</span>
+        }
+<span class="fc" id="L240">    }</span>
+
+    private static boolean isSupportedStory(String path) {
+<span class="fc" id="L243">        String lower = path.toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        return &quot;word/document.xml&quot;.equals(lower)</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                || lower.matches(&quot;word/header[0-9]+\\.xml&quot;)</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                || lower.matches(&quot;word/footer[0-9]+\\.xml&quot;);</span>
+    }
+
+    private static boolean containsUnsupportedContainer(Element paragraph) {
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        for (String localName : UNSUPPORTED_TOKEN_CONTAINERS) {</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">            if (paragraph.getElementsByTagNameNS(WORD_NS, localName).getLength() &gt; 0) {</span>
+<span class="fc" id="L252">                return true;</span>
+            }
+<span class="fc" id="L254">        }</span>
+<span class="fc" id="L255">        Node current = paragraph.getParentNode();</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        while (current instanceof Element element) {</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">            if (UNSUPPORTED_TOKEN_CONTAINERS.contains(element.getLocalName())) {</span>
+<span class="fc" id="L258">                return true;</span>
+            }
+<span class="fc" id="L260">            current = current.getParentNode();</span>
+        }
+<span class="fc" id="L262">        return false;</span>
+    }
+
+    private void validateBody(Element body) {
+<span class="fc" id="L266">        boolean title = false;</span>
+<span class="fc" id="L267">        boolean requirement = false;</span>
+<span class="fc" id="L268">        int markerCount = 0;</span>
+<span class="fc" id="L269">        boolean markerSeen = false;</span>
+
+<span class="fc" id="L271">        NodeList children = body.getChildNodes();</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        for (int index = 0; index &lt; children.getLength(); index++) {</span>
+<span class="fc" id="L273">            Node node = children.item(index);</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">            if (!(node instanceof Element element)) {</span>
+                continue;
+            }
+<span class="fc" id="L277">            String localName = element.getLocalName();</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">            if (&quot;sectPr&quot;.equals(localName)) {</span>
+<span class="fc" id="L279">                continue;</span>
+            }
+<span class="fc" id="L281">            String text = elementText(element);</span>
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">            if (!markerSeen) {</span>
+<span class="fc" id="L283">                title |= text.contains(TITLE_TOKEN);</span>
+<span class="fc" id="L284">                requirement |= text.contains(REQUIREMENT_TOKEN);</span>
+            }
+<span class="fc bfc" id="L286" title="All 4 branches covered.">            boolean marker = &quot;p&quot;.equals(localName) &amp;&amp; text.strip().equals(BODY_MARKER);</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">            if (marker) {</span>
+<span class="fc" id="L288">                markerCount++;</span>
+<span class="fc" id="L289">                markerSeen = true;</span>
+<span class="fc" id="L290">                continue;</span>
+            }
+<span class="pc bpc" id="L292" title="5 of 6 branches missed.">            if (markerSeen &amp;&amp; !(&quot;p&quot;.equals(localName) &amp;&amp; text.isBlank())) {</span>
+<span class="nc" id="L293">                throw invalid(&quot;the body marker must be the final non-empty body block&quot;);</span>
+            }
+        }
+<span class="fc" id="L296">        requireTokens(title, requirement, markerCount);</span>
+<span class="fc" id="L297">    }</span>
+
+    private static void requireTokens(
+            boolean title,
+            boolean requirement,
+            int markerCount) {
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">        if (!title) {</span>
+<span class="nc" id="L304">            throw invalid(&quot;required token &quot; + TITLE_TOKEN + &quot; is missing&quot;);</span>
+        }
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        if (!requirement) {</span>
+<span class="nc" id="L307">            throw invalid(&quot;required token &quot; + REQUIREMENT_TOKEN + &quot; is missing&quot;);</span>
+        }
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (markerCount != 1) {</span>
+<span class="fc" id="L310">            throw invalid(&quot;required marker &quot; + BODY_MARKER</span>
+                    + &quot; must occur exactly once as a body paragraph&quot;);
+        }
+<span class="fc" id="L313">    }</span>
+
+    private static boolean isPermittedEmptyTrailingParagraph(
+            IBodyElement element,
+            String text) {
+<span class="nc bnc" id="L318" title="All 4 branches missed.">        return element.getElementType() == BodyElementType.PARAGRAPH &amp;&amp; text.isBlank();</span>
+    }
+
+    private static String bodyElementText(IBodyElement element) {
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        if (element instanceof XWPFParagraph paragraph) {</span>
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">            return paragraph.getText() == null ? &quot;&quot; : paragraph.getText();</span>
+        }
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">        if (element instanceof XWPFTable table) {</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">            return table.getText() == null ? &quot;&quot; : table.getText();</span>
+        }
+<span class="nc" id="L328">        return &quot;&quot;;</span>
+    }
+
+    private static String elementText(Element element) {
+<span class="fc" id="L332">        StringBuilder text = new StringBuilder();</span>
+<span class="fc" id="L333">        NodeList nodes = element.getElementsByTagNameNS(WORD_NS, &quot;t&quot;);</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        for (int index = 0; index &lt; nodes.getLength(); index++) {</span>
+<span class="fc" id="L335">            text.append(nodes.item(index).getTextContent());</span>
+        }
+<span class="fc" id="L337">        return text.toString();</span>
+    }
+
+    private static Document parse(String path, byte[] content) {
+        try {
+<span class="fc" id="L342">            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();</span>
+<span class="fc" id="L343">            factory.setNamespaceAware(true);</span>
+<span class="fc" id="L344">            factory.setXIncludeAware(false);</span>
+<span class="fc" id="L345">            factory.setExpandEntityReferences(false);</span>
+<span class="fc" id="L346">            factory.setFeature(</span>
+                    &quot;http://apache.org/xml/features/disallow-doctype-decl&quot;, true);
+<span class="fc" id="L348">            factory.setFeature(</span>
+                    &quot;http://xml.org/sax/features/external-general-entities&quot;, false);
+<span class="fc" id="L350">            factory.setFeature(</span>
+                    &quot;http://xml.org/sax/features/external-parameter-entities&quot;, false);
+<span class="fc" id="L352">            factory.setFeature(</span>
+                    &quot;http://apache.org/xml/features/nonvalidating/load-external-dtd&quot;, false);
+<span class="fc" id="L354">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L355">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, &quot;&quot;);</span>
+<span class="fc" id="L356">            return factory.newDocumentBuilder()</span>
+<span class="fc" id="L357">                    .parse(new ByteArrayInputStream(content));</span>
+<span class="nc" id="L358">        } catch (ParserConfigurationException | SAXException | IOException exception) {</span>
+<span class="nc" id="L359">            throw invalid(path + &quot; is invalid or unsafe&quot;, exception);</span>
+        }
+    }
+
+    private static IllegalArgumentException invalid(String detail) {
+<span class="fc" id="L364">        return new IllegalArgumentException(</span>
+                &quot;Decision report template '&quot; + TEMPLATE_ID + &quot;' is invalid: &quot; + detail);
+    }
+
+    private static IllegalArgumentException invalid(String detail, Exception cause) {
+<span class="nc" id="L369">        return new IllegalArgumentException(</span>
+                &quot;Decision report template '&quot; + TEMPLATE_ID + &quot;' is invalid: &quot; + detail,
+                cause);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisWorkingDraftService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.session</a> &gt; <span class="el_source">AnalysisWorkingDraftService.java</span></div><h1>AnalysisWorkingDraftService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.session;
+
+import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceManager;
+import com.taxonomy.workspace.service.WorkspaceScope;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+import java.time.Instant;
+import java.util.Optional;
+
+/**
+ * Persists and restores the ad-hoc analysis working draft in an exact workspace,
+ * repository and branch scope.
+ */
+@Service
+public class AnalysisWorkingDraftService {
+
+    private static final int PAYLOAD_SCHEMA_VERSION = 1;
+    private static final String EMPTY_DRAFT_STATE = &quot;EMPTY&quot;;
+
+    private final AnalysisWorkingDraftRepository repository;
+    private final WorkspaceManager workspaceManager;
+    private final SystemRepositoryService systemRepositoryService;
+    private final ObjectMapper objectMapper;
+    private final int maximumPayloadCharacters;
+
+    @Autowired
+    public AnalysisWorkingDraftService(
+            AnalysisWorkingDraftRepository repository,
+            WorkspaceManager workspaceManager,
+            SystemRepositoryService systemRepositoryService,
+            ObjectMapper objectMapper,
+            @Value(&quot;${taxonomy.analysis-draft.max-characters:2000000}&quot;)
+<span class="fc" id="L50">            int maximumPayloadCharacters) {</span>
+<span class="fc" id="L51">        this.repository = repository;</span>
+<span class="fc" id="L52">        this.workspaceManager = workspaceManager;</span>
+<span class="fc" id="L53">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L54">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L55">        this.maximumPayloadCharacters = Math.max(10_000, maximumPayloadCharacters);</span>
+<span class="fc" id="L56">    }</span>
+
+    @Transactional(readOnly = true)
+    public Optional&lt;AnalysisDraftView&gt; read(String username, String workspaceId) {
+<span class="nc" id="L60">        DraftScope scope = resolveScope(username, workspaceId);</span>
+<span class="nc" id="L61">        return repository.findByScopeKeyAndUsername(scope.scopeKey(), scope.username())</span>
+<span class="nc" id="L62">                .map(draft -&gt; toView(draft, scope.branch()));</span>
+    }
+
+    @Transactional
+    public AnalysisDraftView save(String username,
+                                  String workspaceId,
+                                  SaveAnalysisDraftRequest request) {
+<span class="pc bpc" id="L69" title="3 of 6 branches missed.">        if (request == null || request.payload() == null || request.payload().isNull()</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">                || !request.payload().isObject()) {</span>
+<span class="nc" id="L71">            throw new AnalysisDraftValidationException(</span>
+                    &quot;Analysis draft payload must be a JSON object&quot;);
+        }
+
+<span class="fc" id="L75">        DraftScope scope = resolveScope(username, workspaceId);</span>
+<span class="fc" id="L76">        String payloadJson = serialize(request.payload());</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">        if (payloadJson.length() &gt; maximumPayloadCharacters) {</span>
+<span class="nc" id="L78">            throw new AnalysisDraftValidationException(</span>
+                    &quot;Analysis draft exceeds &quot; + maximumPayloadCharacters + &quot; characters&quot;);
+        }
+
+<span class="fc" id="L82">        AnalysisWorkingDraft draft = repository</span>
+<span class="fc" id="L83">                .findByScopeKeyAndUsername(scope.scopeKey(), scope.username())</span>
+<span class="fc" id="L84">                .orElse(null);</span>
+<span class="fc" id="L85">        Instant now = Instant.now();</span>
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (draft == null) {</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            if (request.expectedVersion() != null) {</span>
+<span class="nc" id="L89">                throw conflict(request.expectedVersion(), null);</span>
+            }
+<span class="fc" id="L91">            draft = new AnalysisWorkingDraft(</span>
+<span class="fc" id="L92">                    scope.scopeKey(), scope.workspaceId(), scope.username(), payloadJson, now);</span>
+        } else {
+<span class="fc" id="L94">            requireExpectedVersion(draft, request.expectedVersion());</span>
+<span class="fc" id="L95">            draft.replacePayload(payloadJson, now);</span>
+        }
+
+        try {
+<span class="fc" id="L99">            return toView(repository.saveAndFlush(draft), scope.branch());</span>
+<span class="nc" id="L100">        } catch (OptimisticLockingFailureException | DataIntegrityViolationException exception) {</span>
+<span class="nc" id="L101">            throw new AnalysisDraftConflictException(</span>
+                    &quot;The analysis draft was changed by another session&quot;, exception);
+        }
+    }
+
+    /**
+     * Replaces the current working draft with a versioned empty tombstone.
+     *
+     * &lt;p&gt;This command deliberately ignores a browser-supplied expected version:
+     * a user must be able to start over from any logged-in tab. The persisted
+     * empty revision is important because deleting the row makes an older tab
+     * look like the first writer again and allows stale requirement text to be
+     * recreated accidentally.&lt;/p&gt;
+     */
+    @Transactional
+    public AnalysisDraftView reset(String username,
+                                   String workspaceId,
+                                   ResetAnalysisDraftRequest request) {
+<span class="fc" id="L119">        DraftScope scope = resolveScope(username, workspaceId);</span>
+<span class="fc" id="L120">        JsonNode payload = emptyPayload(request);</span>
+<span class="fc" id="L121">        String payloadJson = serialize(payload);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (payloadJson.length() &gt; maximumPayloadCharacters) {</span>
+<span class="fc" id="L123">            throw new AnalysisDraftValidationException(</span>
+                    &quot;Analysis draft reset exceeds &quot; + maximumPayloadCharacters + &quot; characters&quot;);
+        }
+
+<span class="fc" id="L127">        AnalysisWorkingDraft draft = repository</span>
+<span class="fc" id="L128">                .findByScopeKeyAndUsername(scope.scopeKey(), scope.username())</span>
+<span class="fc" id="L129">                .orElse(null);</span>
+<span class="fc" id="L130">        Instant now = Instant.now();</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (draft == null) {</span>
+<span class="fc" id="L132">            draft = new AnalysisWorkingDraft(</span>
+<span class="fc" id="L133">                    scope.scopeKey(), scope.workspaceId(), scope.username(), payloadJson, now);</span>
+        } else {
+<span class="fc" id="L135">            draft.replacePayload(payloadJson, now);</span>
+        }
+
+        try {
+<span class="fc" id="L139">            return toView(repository.saveAndFlush(draft), scope.branch());</span>
+<span class="nc" id="L140">        } catch (OptimisticLockingFailureException | DataIntegrityViolationException exception) {</span>
+<span class="nc" id="L141">            throw new AnalysisDraftConflictException(</span>
+                    &quot;The analysis draft changed while it was being reset&quot;, exception);
+        }
+    }
+
+    @Transactional
+    public void delete(String username, String workspaceId, Long expectedVersion) {
+<span class="fc" id="L148">        DraftScope scope = resolveScope(username, workspaceId);</span>
+<span class="fc" id="L149">        AnalysisWorkingDraft draft = repository</span>
+<span class="fc" id="L150">                .findByScopeKeyAndUsername(scope.scopeKey(), scope.username())</span>
+<span class="nc" id="L151">                .orElse(null);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (draft == null) return;</span>
+<span class="nc" id="L153">        requireExpectedVersion(draft, expectedVersion);</span>
+        try {
+<span class="nc" id="L155">            repository.delete(draft);</span>
+<span class="nc" id="L156">            repository.flush();</span>
+<span class="nc" id="L157">        } catch (OptimisticLockingFailureException exception) {</span>
+<span class="nc" id="L158">            throw new AnalysisDraftConflictException(</span>
+                    &quot;The analysis draft was changed by another session&quot;, exception);
+<span class="nc" id="L160">        }</span>
+<span class="nc" id="L161">    }</span>
+
+    private DraftScope resolveScope(String username, String workspaceId) {
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">        if (username == null || username.isBlank()) {</span>
+<span class="nc" id="L165">            throw new AccessDeniedException(&quot;An authenticated user is required&quot;);</span>
+        }
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">        if (workspaceId == null || workspaceId.isBlank()) {</span>
+<span class="nc" id="L168">            throw new AnalysisDraftValidationException(&quot;workspaceId is required&quot;);</span>
+        }
+
+<span class="fc" id="L171">        String requestedWorkspace = workspaceId.strip();</span>
+<span class="fc" id="L172">        UserWorkspace workspace = workspaceManager.getWorkspaceById(requestedWorkspace);</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        if (workspace == null</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                || workspace.getUsername() == null</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">                || !workspace.getUsername().equals(username)</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">                || workspace.isArchived()</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">                || workspace.isShared()) {</span>
+<span class="fc" id="L178">            throw new AccessDeniedException(&quot;Workspace is not available to the current user&quot;);</span>
+        }
+
+<span class="fc" id="L181">        SystemRepository sourceRepository = resolveSourceRepository(workspace);</span>
+<span class="fc" id="L182">        String repositoryId = requireText(</span>
+<span class="fc" id="L183">                sourceRepository.getRepositoryId(), &quot;workspace source repository ID&quot;);</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">        String branch = hasText(workspace.getCurrentBranch())</span>
+<span class="fc" id="L185">                ? workspace.getCurrentBranch().strip()</span>
+<span class="fc" id="L186">                : requireText(sourceRepository.getDefaultBranch(),</span>
+                        &quot;workspace source repository branch&quot;);
+
+<span class="fc" id="L189">        WorkspaceContext context = new WorkspaceContext(</span>
+                username, requestedWorkspace, branch, repositoryId);
+<span class="fc" id="L191">        return new DraftScope(</span>
+<span class="fc" id="L192">                WorkspaceScope.key(username, context),</span>
+<span class="fc" id="L193">                WorkspaceScope.username(username, context),</span>
+                requestedWorkspace,
+                branch);
+    }
+
+    private SystemRepository resolveSourceRepository(UserWorkspace workspace) {
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (!hasText(workspace.getSourceRepositoryId())) {</span>
+<span class="fc" id="L200">            return systemRepositoryService.getPrimaryRepository();</span>
+        }
+<span class="fc" id="L202">        String repositoryId = workspace.getSourceRepositoryId().strip();</span>
+        try {
+<span class="fc" id="L204">            return systemRepositoryService.getRepository(repositoryId);</span>
+<span class="fc" id="L205">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L206">            throw new IllegalStateException(</span>
+                    &quot;Workspace source repository is not available: &quot; + repositoryId,
+                    exception);
+        }
+    }
+
+    private void requireExpectedVersion(AnalysisWorkingDraft draft, Long expectedVersion) {
+<span class="fc bfc" id="L213" title="All 4 branches covered.">        if (expectedVersion == null || expectedVersion.longValue() != draft.getRowVersion()) {</span>
+<span class="fc" id="L214">            throw conflict(expectedVersion, draft.getRowVersion());</span>
+        }
+<span class="fc" id="L216">    }</span>
+
+    private AnalysisDraftConflictException conflict(Long expected, Long actual) {
+<span class="fc" id="L219">        return new AnalysisDraftConflictException(</span>
+                &quot;Analysis draft version conflict: expected &quot;
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                        + (expected != null ? expected : &quot;none&quot;)</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">                        + &quot;, current &quot; + (actual != null ? actual : &quot;none&quot;));</span>
+    }
+
+    private String serialize(JsonNode payload) {
+        try {
+<span class="fc" id="L227">            return objectMapper.writeValueAsString(payload);</span>
+<span class="nc" id="L228">        } catch (JacksonException exception) {</span>
+<span class="nc" id="L229">            throw new AnalysisDraftValidationException(</span>
+                    &quot;Analysis draft payload is not valid JSON&quot;, exception);
+        }
+    }
+
+    private JsonNode emptyPayload(ResetAnalysisDraftRequest request) {
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">        JsonNode analysisOptions = request != null ? request.analysisOptions() : null;</span>
+<span class="pc bpc" id="L236" title="1 of 4 branches missed.">        if (analysisOptions != null &amp;&amp; !analysisOptions.isNull()</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">                &amp;&amp; !analysisOptions.isObject()) {</span>
+<span class="fc" id="L238">            throw new AnalysisDraftValidationException(</span>
+                    &quot;Analysis draft reset options must be a JSON object&quot;);
+        }
+
+<span class="fc" id="L242">        ObjectNode payload = objectMapper.createObjectNode();</span>
+<span class="fc" id="L243">        payload.put(&quot;schemaVersion&quot;, PAYLOAD_SCHEMA_VERSION);</span>
+<span class="fc" id="L244">        payload.put(&quot;draftState&quot;, EMPTY_DRAFT_STATE);</span>
+<span class="fc" id="L245">        payload.put(&quot;businessText&quot;, &quot;&quot;);</span>
+<span class="fc" id="L246">        payload.putNull(&quot;lastAnalyzedText&quot;);</span>
+<span class="fc" id="L247">        payload.putNull(&quot;storedBusinessText&quot;);</span>
+<span class="fc" id="L248">        payload.putNull(&quot;scores&quot;);</span>
+<span class="fc" id="L249">        payload.set(&quot;reasons&quot;, objectMapper.createObjectNode());</span>
+<span class="fc" id="L250">        payload.set(&quot;discrepancies&quot;, objectMapper.createArrayNode());</span>
+<span class="fc" id="L251">        payload.putNull(&quot;architectureView&quot;);</span>
+<span class="fc" id="L252">        payload.set(&quot;provisionalRelations&quot;, objectMapper.createArrayNode());</span>
+<span class="fc" id="L253">        payload.set(&quot;evaluatedNodes&quot;, objectMapper.createArrayNode());</span>
+<span class="fc" id="L254">        payload.put(&quot;currentView&quot;, &quot;list&quot;);</span>
+<span class="pc bpc" id="L255" title="1 of 4 branches missed.">        if (analysisOptions != null &amp;&amp; !analysisOptions.isNull()) {</span>
+<span class="fc" id="L256">            payload.set(&quot;analysisOptions&quot;, analysisOptions.deepCopy());</span>
+        }
+<span class="fc" id="L258">        return payload;</span>
+    }
+
+    private AnalysisDraftView toView(AnalysisWorkingDraft draft, String branch) {
+        try {
+<span class="fc" id="L263">            return new AnalysisDraftView(</span>
+<span class="fc" id="L264">                    draft.getWorkspaceId(),</span>
+                    branch,
+<span class="fc" id="L266">                    objectMapper.readTree(draft.getPayloadJson()),</span>
+<span class="fc" id="L267">                    draft.getRowVersion(),</span>
+<span class="fc" id="L268">                    draft.getUpdatedAt());</span>
+<span class="nc" id="L269">        } catch (JacksonException exception) {</span>
+<span class="nc" id="L270">            throw new IllegalStateException(</span>
+                    &quot;Persisted analysis draft contains invalid JSON&quot;, exception);
+        }
+    }
+
+    private static String requireText(String value, String label) {
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (!hasText(value)) {</span>
+<span class="nc" id="L277">            throw new IllegalStateException(label + &quot; is not configured&quot;);</span>
+        }
+<span class="fc" id="L279">        return value.strip();</span>
+    }
+
+    private static boolean hasText(String value) {
+<span class="pc bpc" id="L283" title="1 of 4 branches missed.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+
+<span class="fc" id="L286">    private record DraftScope(</span>
+            String scopeKey,
+            String username,
+            String workspaceId,
+            String branch) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HypothesisReviewStateStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">HypothesisReviewStateStore.java</span></div><h1>HypothesisReviewStateStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.relations.repository.RelationHypothesisRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Objects;
+
+/**
+ * Isolates hypothesis bookkeeping from the non-transactional Git authority
+ * boundary. Every lookup and transition is scoped to one exact repository and
+ * workspace; a database transaction never encloses the JGit command itself.
+ */
+@Service
+public class HypothesisReviewStateStore {
+
+    private final RelationHypothesisRepository repository;
+    private final EntityManager entityManager;
+
+    public HypothesisReviewStateStore(
+            RelationHypothesisRepository repository,
+<span class="fc" id="L30">            EntityManager entityManager) {</span>
+<span class="fc" id="L31">        this.repository = Objects.requireNonNull(repository, &quot;repository&quot;);</span>
+<span class="fc" id="L32">        this.entityManager = Objects.requireNonNull(entityManager, &quot;entityManager&quot;);</span>
+<span class="fc" id="L33">    }</span>
+
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public HypothesisSnapshot require(
+            Long hypothesisId,
+            RepositoryContext context) {
+<span class="fc" id="L39">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L40">        RelationHypothesis hypothesis = repository</span>
+<span class="fc" id="L41">                .findByIdInRepositoryWorkspace(</span>
+<span class="fc" id="L42">                        tenant.repositoryId(),</span>
+<span class="fc" id="L43">                        Objects.requireNonNull(hypothesisId, &quot;hypothesisId&quot;),</span>
+<span class="fc" id="L44">                        tenant.workspaceId())</span>
+<span class="fc" id="L45">                .orElseThrow(() -&gt; notFound(hypothesisId));</span>
+<span class="fc" id="L46">        return HypothesisSnapshot.from(hypothesis);</span>
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public RelationHypothesis transition(
+            Long hypothesisId,
+            RepositoryContext context,
+            HypothesisStatus expectedStatus,
+            HypothesisStatus targetStatus) {
+<span class="fc" id="L55">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L56">        RelationHypothesis hypothesis = repository</span>
+<span class="fc" id="L57">                .findByIdInRepositoryWorkspace(</span>
+<span class="fc" id="L58">                        tenant.repositoryId(),</span>
+<span class="fc" id="L59">                        Objects.requireNonNull(hypothesisId, &quot;hypothesisId&quot;),</span>
+<span class="fc" id="L60">                        tenant.workspaceId())</span>
+<span class="pc" id="L61">                .orElseThrow(() -&gt; notFound(hypothesisId));</span>
+<span class="fc" id="L62">        entityManager.lock(hypothesis, LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (hypothesis.getStatus() != expectedStatus) {</span>
+<span class="nc" id="L64">            throw new HypothesisReviewConflictException(</span>
+                    hypothesisId,
+                    expectedStatus,
+<span class="nc" id="L67">                    hypothesis.getStatus());</span>
+        }
+<span class="fc" id="L69">        hypothesis.setStatus(Objects.requireNonNull(targetStatus, &quot;targetStatus&quot;));</span>
+<span class="fc" id="L70">        return repository.saveAndFlush(hypothesis);</span>
+    }
+
+    static RepositoryContext requireWritableContext(RepositoryContext context) {
+<span class="fc" id="L74">        RepositoryContext tenant = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (tenant.scope() == RepositoryScope.CENTRAL_READ) {</span>
+<span class="fc" id="L76">            throw new IllegalStateException(</span>
+                    &quot;Hypothesis review requires a workspace, fork, or explicit central write context&quot;);
+        }
+<span class="fc" id="L79">        return tenant;</span>
+    }
+
+    private static IllegalArgumentException notFound(Long hypothesisId) {
+<span class="fc" id="L83">        return new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId);</span>
+    }
+
+    public record HypothesisSnapshot(
+            Long id,
+            String sourceCode,
+            String targetCode,
+            RelationType relationType,
+            Double confidence,
+            HypothesisStatus status) {
+
+<span class="fc" id="L94">        public HypothesisSnapshot {</span>
+<span class="fc" id="L95">            id = Objects.requireNonNull(id, &quot;id&quot;);</span>
+<span class="fc" id="L96">            sourceCode = requireText(sourceCode, &quot;sourceCode&quot;);</span>
+<span class="fc" id="L97">            targetCode = requireText(targetCode, &quot;targetCode&quot;);</span>
+<span class="fc" id="L98">            relationType = Objects.requireNonNull(relationType, &quot;relationType&quot;);</span>
+<span class="fc" id="L99">            status = Objects.requireNonNull(status, &quot;status&quot;);</span>
+<span class="fc" id="L100">        }</span>
+
+        static HypothesisSnapshot from(RelationHypothesis hypothesis) {
+<span class="fc" id="L103">            return new HypothesisSnapshot(</span>
+<span class="fc" id="L104">                    hypothesis.getId(),</span>
+<span class="fc" id="L105">                    hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L106">                    hypothesis.getTargetNodeId(),</span>
+<span class="fc" id="L107">                    hypothesis.getRelationType(),</span>
+<span class="fc" id="L108">                    hypothesis.getConfidence(),</span>
+<span class="fc" id="L109">                    hypothesis.getStatus());</span>
+        }
+    }
+
+    public static final class HypothesisReviewConflictException
+            extends IllegalStateException {
+        private final Long hypothesisId;
+        private final HypothesisStatus expectedStatus;
+        private final HypothesisStatus actualStatus;
+
+        public HypothesisReviewConflictException(
+                Long hypothesisId,
+                HypothesisStatus expectedStatus,
+                HypothesisStatus actualStatus) {
+<span class="fc" id="L123">            super(&quot;Hypothesis &quot; + hypothesisId + &quot; changed from &quot;</span>
+                    + expectedStatus + &quot; to &quot; + actualStatus
+                    + &quot; before review bookkeeping completed&quot;);
+<span class="fc" id="L126">            this.hypothesisId = hypothesisId;</span>
+<span class="fc" id="L127">            this.expectedStatus = expectedStatus;</span>
+<span class="fc" id="L128">            this.actualStatus = actualStatus;</span>
+<span class="fc" id="L129">        }</span>
+
+        public Long getHypothesisId() {
+<span class="fc" id="L132">            return hypothesisId;</span>
+        }
+
+        public HypothesisStatus getExpectedStatus() {
+<span class="fc" id="L136">            return expectedStatus;</span>
+        }
+
+        public HypothesisStatus getActualStatus() {
+<span class="fc" id="L140">            return actualStatus;</span>
+        }
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L145" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L146">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L148">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

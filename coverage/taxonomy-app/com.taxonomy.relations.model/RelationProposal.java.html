@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationProposal.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RelationProposal.java</span></div><h1>RelationProposal.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.Nationalized;
+
+import java.time.Instant;
+
+/** A proposed relation awaiting human review in one repository tenant. */
+@Entity
+@Table(name = &quot;relation_proposal&quot;,
+        uniqueConstraints = @UniqueConstraint(
+                name = &quot;uk_relation_proposal_scope&quot;,
+                columnNames = {
+                        &quot;repository_id&quot;,
+                        &quot;source_node_id&quot;,
+                        &quot;target_node_id&quot;,
+                        &quot;relation_type&quot;,
+                        &quot;workspace_scope_key&quot;
+                }),
+        indexes = {
+                @Index(name = &quot;idx_proposal_repository&quot;, columnList = &quot;repository_id&quot;),
+                @Index(
+                        name = &quot;idx_proposal_repository_workspace&quot;,
+                        columnList = &quot;repository_id, workspace_id&quot;),
+                @Index(name = &quot;idx_proposal_owner&quot;, columnList = &quot;owner_username&quot;)
+        })
+<span class="fc" id="L44">public class RelationProposal {</span>
+
+    public static final String SHARED_SCOPE_KEY = &quot;__shared__&quot;;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /** Mandatory logical repository tenant. */
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255)
+    private String repositoryId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_node_id&quot;, nullable = false)
+    private TaxonomyNode sourceNode;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;target_node_id&quot;, nullable = false)
+    private TaxonomyNode targetNode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;relation_type&quot;, nullable = false)
+    private RelationType relationType;
+
+<span class="fc" id="L68">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false)
+    private ProposalStatus status = ProposalStatus.PENDING;
+
+    @Column(nullable = false)
+    private double confidence;
+
+    @Nationalized
+    @Column(length = 2000)
+    private String rationale;
+
+    @Nationalized
+    private String provenance;
+
+    @Column(name = &quot;created_at&quot;, nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;reviewed_at&quot;)
+    private Instant reviewedAt;
+
+    @Column(name = &quot;workspace_id&quot;)
+    private String workspaceId;
+
+    /**
+     * Non-null uniqueness key for central and personal workspace proposal rows.
+     */
+<span class="fc" id="L94">    @Column(name = &quot;workspace_scope_key&quot;, nullable = false, length = 255)</span>
+    private String workspaceScopeKey = SHARED_SCOPE_KEY;
+
+    @Column(name = &quot;owner_username&quot;)
+    private String ownerUsername;
+
+    @PrePersist
+    void onCreate() {
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (createdAt == null) {</span>
+<span class="fc" id="L103">            createdAt = Instant.now();</span>
+        }
+<span class="fc" id="L105">        synchronizeTenantKeys();</span>
+<span class="fc" id="L106">    }</span>
+
+    @PreUpdate
+    void onUpdate() {
+<span class="fc" id="L110">        synchronizeTenantKeys();</span>
+<span class="fc" id="L111">    }</span>
+
+    private void synchronizeTenantKeys() {
+<span class="fc" id="L114">        repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L115">        workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L116">        workspaceScopeKey = scopeKeyFor(workspaceId);</span>
+<span class="fc" id="L117">        ownerUsername = normalizeOptional(ownerUsername);</span>
+<span class="fc" id="L118">    }</span>
+
+    public static String scopeKeyFor(String workspaceId) {
+<span class="fc" id="L121">        String normalized = normalizeOptional(workspaceId);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        return normalized == null ? SHARED_SCOPE_KEY : normalized;</span>
+    }
+
+<span class="fc" id="L125">    public Long getId() { return id; }</span>
+<span class="fc" id="L126">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L128">    public String getRepositoryId() { return repositoryId; }</span>
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L130">        this.repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L131">    }</span>
+
+<span class="fc" id="L133">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
+<span class="fc" id="L134">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
+
+<span class="fc" id="L136">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
+<span class="fc" id="L137">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
+
+<span class="fc" id="L139">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L140">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+
+<span class="fc" id="L142">    public ProposalStatus getStatus() { return status; }</span>
+<span class="fc" id="L143">    public void setStatus(ProposalStatus status) { this.status = status; }</span>
+
+<span class="fc" id="L145">    public double getConfidence() { return confidence; }</span>
+<span class="fc" id="L146">    public void setConfidence(double confidence) { this.confidence = confidence; }</span>
+
+<span class="fc" id="L148">    public String getRationale() { return rationale; }</span>
+<span class="fc" id="L149">    public void setRationale(String rationale) { this.rationale = rationale; }</span>
+
+<span class="fc" id="L151">    public String getProvenance() { return provenance; }</span>
+<span class="fc" id="L152">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
+
+<span class="fc" id="L154">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L155">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+
+<span class="fc" id="L157">    public Instant getReviewedAt() { return reviewedAt; }</span>
+<span class="fc" id="L158">    public void setReviewedAt(Instant reviewedAt) { this.reviewedAt = reviewedAt; }</span>
+
+<span class="fc" id="L160">    public String getWorkspaceId() { return workspaceId; }</span>
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L162">        this.workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L163">        this.workspaceScopeKey = scopeKeyFor(this.workspaceId);</span>
+<span class="fc" id="L164">    }</span>
+
+<span class="fc" id="L166">    public String getWorkspaceScopeKey() { return workspaceScopeKey; }</span>
+
+<span class="fc" id="L168">    public String getOwnerUsername() { return ownerUsername; }</span>
+    public void setOwnerUsername(String ownerUsername) {
+<span class="fc" id="L170">        this.ownerUsername = normalizeOptional(ownerUsername);</span>
+<span class="fc" id="L171">    }</span>
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L174" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L178" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L179">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L181">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

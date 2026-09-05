@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitAuthoritativeProposalReviewService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">GitAuthoritativeProposalReviewService.java</span></div><h1>GitAuthoritativeProposalReviewService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.MutationResult;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.ProjectionPendingException;
+import com.taxonomy.relations.service.ProposalReviewStateStore.ProposalSnapshot;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Reviews one proposal by committing the relation decision to Git first and
+ * advancing relational proposal bookkeeping only after projection succeeds.
+ */
+@Service
+public class GitAuthoritativeProposalReviewService {
+
+    private static final String PROPOSAL_PROVENANCE = &quot;proposal-review&quot;;
+
+    private final ProposalReviewStateStore stateStore;
+    private final GitAuthoritativeRelationMutationService mutationService;
+
+    public GitAuthoritativeProposalReviewService(
+            ProposalReviewStateStore stateStore,
+<span class="fc" id="L32">            GitAuthoritativeRelationMutationService mutationService) {</span>
+<span class="fc" id="L33">        this.stateStore = Objects.requireNonNull(stateStore, &quot;stateStore&quot;);</span>
+<span class="fc" id="L34">        this.mutationService = Objects.requireNonNull(</span>
+                mutationService, &quot;mutationService&quot;);
+<span class="fc" id="L36">    }</span>
+
+    public ReviewResult accept(
+            Long proposalId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata) throws IOException {
+<span class="fc" id="L43">        return review(</span>
+                proposalId,
+                context,
+                expectedHeadCommit,
+                metadata,
+                ReviewAction.ACCEPT);
+    }
+
+    public ReviewResult reject(
+            Long proposalId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata) throws IOException {
+<span class="fc" id="L56">        return review(</span>
+                proposalId,
+                context,
+                expectedHeadCommit,
+                metadata,
+                ReviewAction.REJECT);
+    }
+
+    public ReviewResult revert(
+            Long proposalId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata) throws IOException {
+<span class="fc" id="L69">        return review(</span>
+                proposalId,
+                context,
+                expectedHeadCommit,
+                metadata,
+                ReviewAction.REVERT);
+    }
+
+    private ReviewResult review(
+            Long proposalId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata,
+            ReviewAction action) throws IOException {
+<span class="fc" id="L83">        RepositoryContext tenant = ProposalReviewStateStore</span>
+<span class="fc" id="L84">                .requireWritableContext(context);</span>
+<span class="fc" id="L85">        Objects.requireNonNull(metadata, &quot;metadata&quot;);</span>
+<span class="fc" id="L86">        ProposalSnapshot proposal = stateStore.require(proposalId, tenant);</span>
+<span class="fc" id="L87">        action.requireCurrentStatus(proposal.id(), proposal.status());</span>
+
+        MutationResult mutation;
+        try {
+<span class="fc" id="L91">            mutation = mutate(</span>
+                    proposal,
+                    tenant,
+                    expectedHeadCommit,
+                    metadata,
+                    action);
+<span class="fc" id="L97">        } catch (ProjectionPendingException error) {</span>
+<span class="fc" id="L98">            throw ProposalReviewPendingException.projection(</span>
+<span class="fc" id="L99">                    proposal.id(), action.targetStatus(), error);</span>
+<span class="fc" id="L100">        }</span>
+
+        try {
+<span class="fc" id="L103">            ProposalStatus status = stateStore.transition(</span>
+<span class="fc" id="L104">                    proposal.id(),</span>
+                    tenant,
+<span class="fc" id="L106">                    proposal.status(),</span>
+<span class="fc" id="L107">                    action.targetStatus());</span>
+<span class="fc" id="L108">            return new ReviewResult(</span>
+<span class="fc" id="L109">                    proposal.id(), action, status, mutation);</span>
+<span class="fc" id="L110">        } catch (RuntimeException bookkeepingFailure) {</span>
+<span class="fc" id="L111">            throw ProposalReviewPendingException.bookkeeping(</span>
+<span class="fc" id="L112">                    proposal.id(),</span>
+<span class="fc" id="L113">                    action.targetStatus(),</span>
+<span class="fc" id="L114">                    mutation.authority(),</span>
+                    bookkeepingFailure);
+        }
+    }
+
+    private MutationResult mutate(
+            ProposalSnapshot proposal,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata,
+            ReviewAction action) throws IOException {
+<span class="fc" id="L125">        RelationIdentity identity = new RelationIdentity(</span>
+<span class="fc" id="L126">                proposal.sourceCode(),</span>
+<span class="fc" id="L127">                proposal.relationType().name(),</span>
+<span class="fc" id="L128">                proposal.targetCode());</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (action == ReviewAction.REVERT) {</span>
+<span class="fc" id="L130">            return mutationService.remove(</span>
+                    context, expectedHeadCommit, identity, metadata);
+        }
+<span class="fc" id="L133">        return mutationService.upsert(</span>
+                context,
+                expectedHeadCommit,
+                new RelationDefinition(
+                        identity,
+<span class="fc" id="L138">                        action.dslStatus(),</span>
+<span class="fc" id="L139">                        proposal.confidence(),</span>
+                        PROPOSAL_PROVENANCE,
+<span class="fc" id="L141">                        Map.of(</span>
+                                &quot;x-proposal-id&quot;,
+<span class="fc" id="L143">                                proposal.id().toString())),</span>
+                metadata);
+    }
+
+<span class="fc" id="L147">    public enum ReviewAction {</span>
+<span class="fc" id="L148">        ACCEPT(ProposalStatus.PENDING, ProposalStatus.ACCEPTED, &quot;accepted&quot;),</span>
+<span class="fc" id="L149">        REJECT(ProposalStatus.PENDING, ProposalStatus.REJECTED, &quot;rejected&quot;),</span>
+<span class="fc" id="L150">        REVERT(null, ProposalStatus.PENDING, null);</span>
+
+        private final ProposalStatus requiredStatus;
+        private final ProposalStatus targetStatus;
+        private final String dslStatus;
+
+        ReviewAction(
+                ProposalStatus requiredStatus,
+                ProposalStatus targetStatus,
+<span class="fc" id="L159">                String dslStatus) {</span>
+<span class="fc" id="L160">            this.requiredStatus = requiredStatus;</span>
+<span class="fc" id="L161">            this.targetStatus = targetStatus;</span>
+<span class="fc" id="L162">            this.dslStatus = dslStatus;</span>
+<span class="fc" id="L163">        }</span>
+
+        void requireCurrentStatus(Long proposalId, ProposalStatus current) {
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            if (this == REVERT) {</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                if (current == ProposalStatus.PENDING) {</span>
+<span class="nc" id="L168">                    throw new IllegalStateException(</span>
+                            &quot;Proposal &quot; + proposalId + &quot; is already PENDING&quot;);
+                }
+<span class="fc" id="L171">                return;</span>
+            }
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            if (current != requiredStatus) {</span>
+<span class="nc" id="L174">                throw new IllegalStateException(</span>
+                        &quot;Proposal &quot; + proposalId + &quot; is already &quot; + current);
+            }
+<span class="fc" id="L177">        }</span>
+
+        ProposalStatus targetStatus() {
+<span class="fc" id="L180">            return targetStatus;</span>
+        }
+
+        String dslStatus() {
+<span class="fc" id="L184">            return dslStatus;</span>
+        }
+    }
+
+    public record ReviewResult(
+            Long proposalId,
+            ReviewAction action,
+            ProposalStatus proposalStatus,
+            MutationResult mutation) {
+<span class="fc" id="L193">        public ReviewResult {</span>
+<span class="fc" id="L194">            proposalId = Objects.requireNonNull(proposalId, &quot;proposalId&quot;);</span>
+<span class="fc" id="L195">            action = Objects.requireNonNull(action, &quot;action&quot;);</span>
+<span class="fc" id="L196">            proposalStatus = Objects.requireNonNull(</span>
+                    proposalStatus, &quot;proposalStatus&quot;);
+<span class="fc" id="L198">            mutation = Objects.requireNonNull(mutation, &quot;mutation&quot;);</span>
+<span class="fc" id="L199">        }</span>
+    }
+
+    public static final class ProposalReviewPendingException
+            extends IllegalStateException {
+        private final Long proposalId;
+        private final ProposalStatus intendedStatus;
+        private final CommandResult authority;
+        private final PendingPhase phase;
+
+        private ProposalReviewPendingException(
+                Long proposalId,
+                ProposalStatus intendedStatus,
+                CommandResult authority,
+                PendingPhase phase,
+                Throwable cause) {
+<span class="fc" id="L215">            super(&quot;Git proposal review succeeded at &quot;</span>
+<span class="fc" id="L216">                    + authority.authoritativeCommitId()</span>
+                    + &quot;, but &quot; + phase.description + &quot; requires recovery&quot;, cause);
+<span class="fc" id="L218">            this.proposalId = Objects.requireNonNull(proposalId, &quot;proposalId&quot;);</span>
+<span class="fc" id="L219">            this.intendedStatus = Objects.requireNonNull(</span>
+                    intendedStatus, &quot;intendedStatus&quot;);
+<span class="fc" id="L221">            this.authority = Objects.requireNonNull(authority, &quot;authority&quot;);</span>
+<span class="fc" id="L222">            this.phase = Objects.requireNonNull(phase, &quot;phase&quot;);</span>
+<span class="fc" id="L223">        }</span>
+
+        static ProposalReviewPendingException projection(
+                Long proposalId,
+                ProposalStatus intendedStatus,
+                ProjectionPendingException error) {
+<span class="fc" id="L229">            return new ProposalReviewPendingException(</span>
+                    proposalId,
+                    intendedStatus,
+<span class="fc" id="L232">                    error.getAuthority(),</span>
+                    PendingPhase.PROJECTION,
+                    error);
+        }
+
+        static ProposalReviewPendingException bookkeeping(
+                Long proposalId,
+                ProposalStatus intendedStatus,
+                CommandResult authority,
+                Throwable cause) {
+<span class="fc" id="L242">            return new ProposalReviewPendingException(</span>
+                    proposalId,
+                    intendedStatus,
+                    authority,
+                    PendingPhase.PROPOSAL_BOOKKEEPING,
+                    cause);
+        }
+
+        public Long getProposalId() {
+<span class="nc" id="L251">            return proposalId;</span>
+        }
+
+        public ProposalStatus getIntendedStatus() {
+<span class="fc" id="L255">            return intendedStatus;</span>
+        }
+
+        public CommandResult getAuthority() {
+<span class="fc" id="L259">            return authority;</span>
+        }
+
+        public PendingPhase getPhase() {
+<span class="fc" id="L263">            return phase;</span>
+        }
+    }
+
+<span class="fc" id="L267">    public enum PendingPhase {</span>
+<span class="fc" id="L268">        PROJECTION(&quot;relation projection&quot;),</span>
+<span class="fc" id="L269">        PROPOSAL_BOOKKEEPING(&quot;proposal bookkeeping&quot;);</span>
+
+        private final String description;
+
+<span class="fc" id="L273">        PendingPhase(String description) {</span>
+<span class="fc" id="L274">            this.description = description;</span>
+<span class="fc" id="L275">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

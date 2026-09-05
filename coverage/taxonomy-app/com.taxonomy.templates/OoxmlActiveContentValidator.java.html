@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OoxmlActiveContentValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">OoxmlActiveContentValidator.java</span></div><h1>OoxmlActiveContentValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import org.springframework.stereotype.Component;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Fail-closed policy for executable, externally resolving and privacy-sensitive OOXML.
+ *
+ * &lt;p&gt;The generic OPC validator deliberately preserves ordinary Word features. This guard
+ * rejects constructs that can execute or load external content, retain unresolved review
+ * state, hide document content or distribute workstation and author metadata.&lt;/p&gt;
+ */
+@Component
+<span class="fc" id="L29">public final class OoxmlActiveContentValidator {</span>
+
+    private static final String WORD_NS =
+            &quot;http://schemas.openxmlformats.org/wordprocessingml/2006/main&quot;;
+    private static final String CORE_PROPERTIES_NS =
+            &quot;http://schemas.openxmlformats.org/package/2006/metadata/core-properties&quot;;
+    private static final String DC_NS = &quot;http://purl.org/dc/elements/1.1/&quot;;
+    private static final String EXTENDED_PROPERTIES_NS =
+            &quot;http://schemas.openxmlformats.org/officeDocument/2006/extended-properties&quot;;
+
+<span class="fc" id="L39">    private static final Set&lt;String&gt; ALLOWED_HYPERLINK_SCHEMES =</span>
+<span class="fc" id="L40">            Set.of(&quot;https&quot;, &quot;mailto&quot;);</span>
+<span class="fc" id="L41">    private static final Set&lt;String&gt; CONTROLLED_IDENTITY_VALUES = Set.of(</span>
+            &quot;taxonomy&quot;,
+            &quot;taxonomy architecture analyzer&quot;,
+            &quot;taxonomy-bootstrap&quot;,
+            &quot;taxonomy report service&quot;);
+<span class="fc" id="L46">    private static final Set&lt;String&gt; CONTROLLED_COMPANY_VALUES = Set.of(</span>
+            &quot;organisation&quot;,
+            &quot;organization&quot;,
+            &quot;taxonomy&quot;,
+            &quot;taxonomy architecture analyzer&quot;);
+<span class="fc" id="L51">    private static final Set&lt;String&gt; PROHIBITED_REVISION_ELEMENTS = Set.of(</span>
+            &quot;commentRangeStart&quot;,
+            &quot;commentRangeEnd&quot;,
+            &quot;commentReference&quot;,
+            &quot;ins&quot;,
+            &quot;del&quot;,
+            &quot;moveFrom&quot;,
+            &quot;moveTo&quot;,
+            &quot;moveFromRangeStart&quot;,
+            &quot;moveFromRangeEnd&quot;,
+            &quot;moveToRangeStart&quot;,
+            &quot;moveToRangeEnd&quot;,
+            &quot;customXml&quot;,
+            &quot;customXmlPr&quot;,
+            &quot;customXmlInsRangeStart&quot;,
+            &quot;customXmlInsRangeEnd&quot;,
+            &quot;customXmlDelRangeStart&quot;,
+            &quot;customXmlDelRangeEnd&quot;,
+            &quot;customXmlMoveFromRangeStart&quot;,
+            &quot;customXmlMoveFromRangeEnd&quot;,
+            &quot;customXmlMoveToRangeStart&quot;,
+            &quot;customXmlMoveToRangeEnd&quot;,
+            &quot;cellIns&quot;,
+            &quot;cellDel&quot;,
+            &quot;cellMerge&quot;,
+            &quot;delText&quot;,
+            &quot;delInstrText&quot;);
+
+<span class="fc" id="L79">    private static final Pattern URI_SCHEME = Pattern.compile(</span>
+            &quot;^([A-Za-z][A-Za-z0-9+.-]*):&quot;);
+<span class="fc" id="L81">    private static final Pattern UNSAFE_FIELD = Pattern.compile(</span>
+            &quot;(?i)(?&lt;![A-Z0-9_])&quot;
+                    + &quot;(DDEAUTO|DDE|INCLUDETEXT|INCLUDEPICTURE|LINK|DATABASE|&quot;
+                    + &quot;HYPERLINK|AUTOTEXTLIST|AUTOTEXT)&quot;
+                    + &quot;(?![A-Z0-9_])&quot;);
+
+    public void validate(Map&lt;String, byte[]&gt; parts) {
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (parts == null) {</span>
+<span class="nc" id="L89">            throw invalid(&quot;OOXML package is missing&quot;);</span>
+        }
+<span class="fc" id="L91">        validateForbiddenParts(parts);</span>
+<span class="fc" id="L92">        validateContentTypes(parts.get(&quot;[Content_Types].xml&quot;));</span>
+<span class="fc" id="L93">        validateCoreProperties(parts.get(&quot;docProps/core.xml&quot;));</span>
+<span class="fc" id="L94">        validateExtendedProperties(parts.get(&quot;docProps/app.xml&quot;));</span>
+
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (Map.Entry&lt;String, byte[]&gt; part : parts.entrySet()) {</span>
+<span class="fc" id="L97">            String lower = part.getKey().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            if (lower.endsWith(&quot;.rels&quot;)) {</span>
+<span class="fc" id="L99">                validateRelationships(part.getKey(), part.getValue());</span>
+            }
+<span class="fc bfc" id="L101" title="All 4 branches covered.">            if (lower.startsWith(&quot;word/&quot;) &amp;&amp; lower.endsWith(&quot;.xml&quot;)) {</span>
+<span class="fc" id="L102">                Document document = parse(part.getKey(), part.getValue());</span>
+<span class="fc" id="L103">                validateWordFields(part.getKey(), document);</span>
+<span class="fc" id="L104">                validatePassiveWordContent(part.getKey(), document);</span>
+            }
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">            if (lower.endsWith(&quot;.htm&quot;) || lower.endsWith(&quot;.html&quot;)</span>
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">                    || lower.endsWith(&quot;.mht&quot;) || lower.endsWith(&quot;.mhtml&quot;)</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                    || lower.endsWith(&quot;.rtf&quot;)) {</span>
+<span class="nc" id="L109">                throw invalid(&quot;alternative-format part is not permitted: &quot; + part.getKey());</span>
+            }
+<span class="fc" id="L111">        }</span>
+<span class="fc" id="L112">    }</span>
+
+    private static void validateForbiddenParts(Map&lt;String, byte[]&gt; parts) {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        for (String path : parts.keySet()) {</span>
+<span class="fc" id="L116">            String lower = path.toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L117" title="1 of 4 branches missed.">            if ((lower.startsWith(&quot;word/comments&quot;) &amp;&amp; lower.endsWith(&quot;.xml&quot;))</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                    || &quot;word/people.xml&quot;.equals(lower)) {</span>
+<span class="fc" id="L119">                throw invalid(&quot;comments and reviewer identity are not permitted: &quot; + path);</span>
+            }
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (lower.startsWith(&quot;customxml/&quot;)</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                    || &quot;docprops/custom.xml&quot;.equals(lower)) {</span>
+<span class="fc" id="L123">                throw invalid(&quot;custom XML metadata is not permitted: &quot; + path);</span>
+            }
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (lower.startsWith(&quot;word/printersettings/&quot;)) {</span>
+<span class="fc" id="L126">                throw invalid(&quot;printer-specific settings are not permitted: &quot; + path);</span>
+            }
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (lower.startsWith(&quot;docprops/thumbnail.&quot;)) {</span>
+<span class="fc" id="L129">                throw invalid(&quot;stale document thumbnails are not permitted: &quot; + path);</span>
+            }
+<span class="fc" id="L131">        }</span>
+<span class="fc" id="L132">    }</span>
+
+    private static void validateContentTypes(byte[] content) {
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        if (content == null) {</span>
+<span class="nc" id="L136">            return;</span>
+        }
+<span class="fc" id="L138">        Document document = parse(&quot;[Content_Types].xml&quot;, content);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        for (String elementName : Set.of(&quot;Default&quot;, &quot;Override&quot;)) {</span>
+<span class="fc" id="L140">            NodeList elements = document.getElementsByTagNameNS(&quot;*&quot;, elementName);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            for (int index = 0; index &lt; elements.getLength(); index++) {</span>
+<span class="fc" id="L142">                String value = ((Element) elements.item(index))</span>
+<span class="fc" id="L143">                        .getAttribute(&quot;ContentType&quot;).toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L144" title="2 of 4 branches missed.">                if (value.contains(&quot;html&quot;) || value.contains(&quot;xhtml&quot;)</span>
+<span class="pc bpc" id="L145" title="2 of 4 branches missed.">                        || value.contains(&quot;mhtml&quot;) || value.contains(&quot;rfc822&quot;)</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">                        || value.contains(&quot;rtf&quot;)) {</span>
+<span class="nc" id="L147">                    throw invalid(&quot;active alternative-format content type is not permitted&quot;);</span>
+                }
+            }
+<span class="fc" id="L150">        }</span>
+<span class="fc" id="L151">    }</span>
+
+    private static void validateRelationships(String path, byte[] content) {
+<span class="fc" id="L154">        Document document = parse(path, content);</span>
+<span class="fc" id="L155">        NodeList relationships = document.getElementsByTagNameNS(&quot;*&quot;, &quot;Relationship&quot;);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (int index = 0; index &lt; relationships.getLength(); index++) {</span>
+<span class="fc" id="L157">            Element relationship = (Element) relationships.item(index);</span>
+<span class="fc" id="L158">            String type = relationship.getAttribute(&quot;Type&quot;);</span>
+<span class="fc" id="L159">            String target = relationship.getAttribute(&quot;Target&quot;);</span>
+<span class="fc" id="L160">            boolean external = &quot;External&quot;.equalsIgnoreCase(</span>
+<span class="fc" id="L161">                    relationship.getAttribute(&quot;TargetMode&quot;));</span>
+<span class="pc bpc" id="L162" title="1 of 4 branches missed.">            if (type.endsWith(&quot;/aFChunk&quot;) || type.endsWith(&quot;/afChunk&quot;)) {</span>
+<span class="fc" id="L163">                throw invalid(&quot;alternative-format relationship is not permitted in &quot; + path);</span>
+            }
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">            if (external &amp;&amp; type.endsWith(&quot;/hyperlink&quot;)) {</span>
+<span class="fc" id="L166">                validateExternalHyperlink(path, target);</span>
+            }
+        }
+<span class="fc" id="L169">    }</span>
+
+    private static void validateExternalHyperlink(String path, String target) {
+<span class="pc bpc" id="L172" title="2 of 4 branches missed.">        if (target == null || target.isBlank()</span>
+<span class="pc bpc" id="L173" title="2 of 4 branches missed.">                || target.indexOf('\r') &gt;= 0 || target.indexOf('\n') &gt;= 0</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                || target.indexOf('\0') &gt;= 0) {</span>
+<span class="nc" id="L175">            throw invalid(&quot;external hyperlink target is invalid in &quot; + path);</span>
+        }
+
+<span class="fc" id="L178">        Matcher schemeMatcher = URI_SCHEME.matcher(target);</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        if (!schemeMatcher.find()) {</span>
+<span class="nc" id="L180">            throw invalid(&quot;external hyperlink target is invalid in &quot; + path);</span>
+        }
+<span class="fc" id="L182">        String declaredScheme = schemeMatcher.group(1).toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (!ALLOWED_HYPERLINK_SCHEMES.contains(declaredScheme)) {</span>
+<span class="fc" id="L184">            throw invalid(&quot;external hyperlink scheme is not permitted in &quot; + path);</span>
+        }
+
+        try {
+<span class="fc" id="L188">            URI uri = URI.create(target);</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            String scheme = uri.getScheme() == null</span>
+<span class="pc" id="L190">                    ? &quot;&quot; : uri.getScheme().toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">            if (!declaredScheme.equals(scheme)) {</span>
+<span class="nc" id="L192">                throw invalid(&quot;external hyperlink target is invalid in &quot; + path);</span>
+            }
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            if (&quot;https&quot;.equals(scheme)</span>
+<span class="pc bpc" id="L195" title="2 of 4 branches missed.">                    &amp;&amp; (uri.getHost() == null || uri.getHost().isBlank()</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">                    || uri.getUserInfo() != null)) {</span>
+<span class="nc" id="L197">                throw invalid(&quot;external HTTPS hyperlink is invalid in &quot; + path);</span>
+            }
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            if (&quot;mailto&quot;.equals(scheme)</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                    &amp;&amp; (uri.getSchemeSpecificPart() == null</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">                    || uri.getSchemeSpecificPart().isBlank())) {</span>
+<span class="nc" id="L202">                throw invalid(&quot;external mailto hyperlink is invalid in &quot; + path);</span>
+            }
+<span class="nc" id="L204">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">            if (exception.getMessage() != null</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">                    &amp;&amp; exception.getMessage().startsWith(&quot;Unsafe OOXML&quot;)) {</span>
+<span class="nc" id="L207">                throw exception;</span>
+            }
+<span class="nc" id="L209">            throw invalid(&quot;external hyperlink target is invalid in &quot; + path, exception);</span>
+<span class="fc" id="L210">        }</span>
+<span class="fc" id="L211">    }</span>
+
+    private static void validateWordFields(String path, Document document) {
+<span class="fc" id="L214">        StringBuilder combined = new StringBuilder();</span>
+<span class="fc" id="L215">        NodeList instructionText = document.getElementsByTagNameNS(WORD_NS, &quot;instrText&quot;);</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        for (int index = 0; index &lt; instructionText.getLength(); index++) {</span>
+<span class="fc" id="L217">            String instruction = instructionText.item(index).getTextContent();</span>
+<span class="fc" id="L218">            validateInstruction(path, instruction);</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">            combined.append(instruction == null ? &quot;&quot; : instruction);</span>
+        }
+<span class="fc" id="L221">        validateInstruction(path, combined.toString());</span>
+
+<span class="fc" id="L223">        NodeList simpleFields = document.getElementsByTagNameNS(WORD_NS, &quot;fldSimple&quot;);</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (int index = 0; index &lt; simpleFields.getLength(); index++) {</span>
+<span class="fc" id="L225">            Element field = (Element) simpleFields.item(index);</span>
+<span class="fc" id="L226">            String instruction = field.getAttributeNS(WORD_NS, &quot;instr&quot;);</span>
+<span class="pc bpc" id="L227" title="2 of 4 branches missed.">            if (instruction == null || instruction.isBlank()) {</span>
+<span class="nc" id="L228">                instruction = field.getAttribute(&quot;w:instr&quot;);</span>
+            }
+<span class="fc" id="L230">            validateInstruction(path, instruction);</span>
+        }
+<span class="fc" id="L232">    }</span>
+
+    private static void validateInstruction(String path, String instruction) {
+<span class="pc bpc" id="L235" title="1 of 4 branches missed.">        if (instruction == null || instruction.isBlank()) {</span>
+<span class="fc" id="L236">            return;</span>
+        }
+<span class="fc" id="L238">        Matcher matcher = UNSAFE_FIELD.matcher(instruction);</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (matcher.find()) {</span>
+<span class="fc" id="L240">            throw invalid(&quot;Word field instruction &quot;</span>
+<span class="fc" id="L241">                    + matcher.group(1).toUpperCase(Locale.ROOT)</span>
+                    + &quot; is not permitted in &quot; + path);
+        }
+<span class="fc" id="L244">    }</span>
+
+    private static void validatePassiveWordContent(String path, Document document) {
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        for (String elementName : PROHIBITED_REVISION_ELEMENTS) {</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (document.getElementsByTagNameNS(WORD_NS, elementName).getLength() &gt; 0) {</span>
+<span class="fc" id="L249">                throw invalid(&quot;unresolved review or revision markup &quot;</span>
+                        + elementName + &quot; is not permitted in &quot; + path);
+            }
+<span class="fc" id="L252">        }</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        if (document.getElementsByTagNameNS(WORD_NS, &quot;trackRevisions&quot;).getLength() &gt; 0) {</span>
+<span class="fc" id="L254">            throw invalid(&quot;tracked-revision mode is not permitted in &quot; + path);</span>
+        }
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (isTextBearingStory(path)</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                &amp;&amp; (document.getElementsByTagNameNS(WORD_NS, &quot;vanish&quot;).getLength() &gt; 0</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">                || document.getElementsByTagNameNS(WORD_NS, &quot;webHidden&quot;).getLength() &gt; 0)) {</span>
+<span class="fc" id="L259">            throw invalid(&quot;hidden Word text is not permitted in &quot; + path);</span>
+        }
+<span class="fc" id="L261">    }</span>
+
+    private static boolean isTextBearingStory(String path) {
+<span class="fc" id="L264">        String lower = path.toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">        return &quot;word/document.xml&quot;.equals(lower)</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">                || lower.matches(&quot;word/header[0-9]+\\.xml&quot;)</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                || lower.matches(&quot;word/footer[0-9]+\\.xml&quot;)</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">                || &quot;word/footnotes.xml&quot;.equals(lower)</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                || &quot;word/endnotes.xml&quot;.equals(lower)</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">                || lower.startsWith(&quot;word/glossary/&quot;);</span>
+    }
+
+    private static void validateCoreProperties(byte[] content) {
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">        if (content == null) {</span>
+<span class="nc" id="L275">            return;</span>
+        }
+<span class="fc" id="L277">        Document document = parse(&quot;docProps/core.xml&quot;, content);</span>
+<span class="fc" id="L278">        validateControlledIdentity(document, DC_NS, &quot;creator&quot;, &quot;creator&quot;);</span>
+<span class="fc" id="L279">        validateControlledIdentity(</span>
+                document, CORE_PROPERTIES_NS, &quot;lastModifiedBy&quot;, &quot;last-modified-by&quot;);
+<span class="fc" id="L281">        rejectNonBlankProperty(</span>
+                document, CORE_PROPERTIES_NS, &quot;lastPrinted&quot;, &quot;last-printed timestamp&quot;);
+<span class="fc" id="L283">    }</span>
+
+    private static void validateExtendedProperties(byte[] content) {
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">        if (content == null) {</span>
+<span class="nc" id="L287">            return;</span>
+        }
+<span class="fc" id="L289">        Document document = parse(&quot;docProps/app.xml&quot;, content);</span>
+<span class="fc" id="L290">        rejectNonBlankProperty(document, EXTENDED_PROPERTIES_NS, &quot;Manager&quot;, &quot;manager&quot;);</span>
+<span class="fc" id="L291">        rejectNonBlankProperty(</span>
+                document, EXTENDED_PROPERTIES_NS, &quot;HyperlinkBase&quot;, &quot;hyperlink base&quot;);
+
+<span class="fc" id="L294">        NodeList companies = document.getElementsByTagNameNS(</span>
+                EXTENDED_PROPERTIES_NS, &quot;Company&quot;);
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        for (int index = 0; index &lt; companies.getLength(); index++) {</span>
+<span class="fc" id="L297">            String value = normalizedText(companies.item(index).getTextContent());</span>
+<span class="pc bpc" id="L298" title="1 of 4 branches missed.">            if (!value.isEmpty() &amp;&amp; !CONTROLLED_COMPANY_VALUES.contains(value)) {</span>
+<span class="fc" id="L299">                throw invalid(&quot;personal or organization-specific company metadata &quot;</span>
+                        + &quot;is not permitted in docProps/app.xml&quot;);
+            }
+        }
+
+<span class="fc" id="L304">        NodeList templates = document.getElementsByTagNameNS(</span>
+                EXTENDED_PROPERTIES_NS, &quot;Template&quot;);
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        for (int index = 0; index &lt; templates.getLength(); index++) {</span>
+<span class="nc" id="L307">            String value = templates.item(index).getTextContent();</span>
+<span class="nc bnc" id="L308" title="All 6 branches missed.">            if (value != null &amp;&amp; (value.contains(&quot;/&quot;) || value.contains(&quot;\\&quot;)</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">                    || value.contains(&quot;:&quot;))) {</span>
+<span class="nc" id="L310">                throw invalid(&quot;workstation template paths are not permitted &quot;</span>
+                        + &quot;in docProps/app.xml&quot;);
+            }
+        }
+<span class="fc" id="L314">    }</span>
+
+    private static void validateControlledIdentity(
+            Document document,
+            String namespace,
+            String localName,
+            String description) {
+<span class="fc" id="L321">        NodeList values = document.getElementsByTagNameNS(namespace, localName);</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        for (int index = 0; index &lt; values.getLength(); index++) {</span>
+<span class="fc" id="L323">            String value = normalizedText(values.item(index).getTextContent());</span>
+<span class="pc bpc" id="L324" title="1 of 4 branches missed.">            if (!value.isEmpty() &amp;&amp; !CONTROLLED_IDENTITY_VALUES.contains(value)) {</span>
+<span class="fc" id="L325">                throw invalid(&quot;personal &quot; + description</span>
+                        + &quot; metadata is not permitted in docProps/core.xml&quot;);
+            }
+        }
+<span class="fc" id="L329">    }</span>
+
+    private static void rejectNonBlankProperty(
+            Document document,
+            String namespace,
+            String localName,
+            String description) {
+<span class="fc" id="L336">        NodeList values = document.getElementsByTagNameNS(namespace, localName);</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">        for (int index = 0; index &lt; values.getLength(); index++) {</span>
+<span class="nc" id="L338">            String value = values.item(index).getTextContent();</span>
+<span class="nc bnc" id="L339" title="All 4 branches missed.">            if (value != null &amp;&amp; !value.isBlank()) {</span>
+<span class="nc" id="L340">                throw invalid(description + &quot; metadata is not permitted&quot;);</span>
+            }
+        }
+<span class="fc" id="L343">    }</span>
+
+    private static String normalizedText(String value) {
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        return value == null ? &quot;&quot; : value.strip().toLowerCase(Locale.ROOT);</span>
+    }
+
+    private static Document parse(String path, byte[] content) {
+        try {
+<span class="fc" id="L351">            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();</span>
+<span class="fc" id="L352">            factory.setNamespaceAware(true);</span>
+<span class="fc" id="L353">            factory.setXIncludeAware(false);</span>
+<span class="fc" id="L354">            factory.setExpandEntityReferences(false);</span>
+<span class="fc" id="L355">            factory.setFeature(&quot;http://apache.org/xml/features/disallow-doctype-decl&quot;, true);</span>
+<span class="fc" id="L356">            factory.setFeature(</span>
+                    &quot;http://xml.org/sax/features/external-general-entities&quot;, false);
+<span class="fc" id="L358">            factory.setFeature(</span>
+                    &quot;http://xml.org/sax/features/external-parameter-entities&quot;, false);
+<span class="fc" id="L360">            factory.setFeature(</span>
+                    &quot;http://apache.org/xml/features/nonvalidating/load-external-dtd&quot;, false);
+<span class="fc" id="L362">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L363">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, &quot;&quot;);</span>
+<span class="fc" id="L364">            return factory.newDocumentBuilder().parse(new ByteArrayInputStream(content));</span>
+<span class="nc" id="L365">        } catch (ParserConfigurationException | SAXException | IOException exception) {</span>
+<span class="nc" id="L366">            throw invalid(&quot;invalid XML in &quot; + path, exception);</span>
+        }
+    }
+
+    private static IllegalArgumentException invalid(String detail) {
+<span class="fc" id="L371">        return new IllegalArgumentException(&quot;Unsafe OOXML template content: &quot; + detail);</span>
+    }
+
+    private static IllegalArgumentException invalid(String detail, Exception cause) {
+<span class="nc" id="L375">        return new IllegalArgumentException(</span>
+                &quot;Unsafe OOXML template content: &quot; + detail, cause);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

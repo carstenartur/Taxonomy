@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateWebDavLockManager.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateWebDavLockManager.java</span></div><h1>DocumentTemplateWebDavLockManager.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * Bounded in-process WebDAV edit locks.
+ *
+ * &lt;p&gt;Locks improve the Word editing experience; Git per-template expected-version checks
+ * remain the durable lost-update protection if a process restarts and its locks expire.&lt;/p&gt;
+ */
+@Component
+public class DocumentTemplateWebDavLockManager {
+
+<span class="fc" id="L23">    static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(15);</span>
+<span class="fc" id="L24">    static final Duration MAX_TIMEOUT = Duration.ofHours(1);</span>
+
+<span class="fc" id="L26">    private final Map&lt;String, TemplateLock&gt; locks = new HashMap&lt;&gt;();</span>
+    private final Clock clock;
+
+    public DocumentTemplateWebDavLockManager() {
+<span class="fc" id="L30">        this(Clock.systemUTC());</span>
+<span class="fc" id="L31">    }</span>
+
+<span class="fc" id="L33">    DocumentTemplateWebDavLockManager(Clock clock) {</span>
+<span class="fc" id="L34">        this.clock = Objects.requireNonNull(clock, &quot;clock&quot;);</span>
+<span class="fc" id="L35">    }</span>
+
+    public synchronized TemplateLock acquire(
+            String resource,
+            String owner,
+            String currentCommit,
+            Duration requestedTimeout,
+            String refreshToken) {
+
+<span class="fc" id="L44">        purgeExpired();</span>
+<span class="fc" id="L45">        TemplateLock existing = locks.get(resource);</span>
+<span class="fc" id="L46">        Duration timeout = boundedTimeout(requestedTimeout);</span>
+<span class="fc" id="L47">        Instant expiresAt = clock.instant().plus(timeout);</span>
+
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (existing != null) {</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">            if (refreshToken != null</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">                    &amp;&amp; existing.token().equals(normalizeToken(refreshToken))</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">                    &amp;&amp; existing.owner().equals(owner)) {</span>
+<span class="nc" id="L53">                TemplateLock refreshed = new TemplateLock(</span>
+<span class="nc" id="L54">                        existing.resource(),</span>
+<span class="nc" id="L55">                        existing.token(),</span>
+<span class="nc" id="L56">                        existing.owner(),</span>
+<span class="nc" id="L57">                        existing.baseCommit(),</span>
+<span class="nc" id="L58">                        existing.currentCommit(),</span>
+                        expiresAt);
+<span class="nc" id="L60">                locks.put(resource, refreshed);</span>
+<span class="nc" id="L61">                return refreshed;</span>
+            }
+<span class="nc" id="L63">            throw new LockConflictException(</span>
+                    &quot;Template is already locked by another edit session&quot;);
+        }
+
+<span class="fc" id="L67">        TemplateLock created = new TemplateLock(</span>
+                resource,
+<span class="fc" id="L69">                &quot;opaquelocktoken:&quot; + UUID.randomUUID(),</span>
+                owner,
+                currentCommit,
+                currentCommit,
+                expiresAt);
+<span class="fc" id="L74">        locks.put(resource, created);</span>
+<span class="fc" id="L75">        return created;</span>
+    }
+
+    public synchronized TemplateLock require(
+            String resource,
+            String token,
+            String owner) {
+<span class="fc" id="L82">        purgeExpired();</span>
+<span class="fc" id="L83">        return requireExisting(resource, token, owner);</span>
+    }
+
+    public synchronized TemplateLock find(String resource) {
+<span class="fc" id="L87">        purgeExpired();</span>
+<span class="fc" id="L88">        return locks.get(resource);</span>
+    }
+
+    /**
+     * Run one versioned write and advance its lock without a post-commit failure window.
+     *
+     * &lt;p&gt;The manager monitor is deliberately held across the bounded template validation
+     * and Git commit. No competing lock operation can expire or replace the lease during
+     * that critical section. After a successful write the existing lease is retained and,
+     * when necessary, extended to the normal refresh interval rather than silently changed
+     * to the maximum one-hour timeout.&lt;/p&gt;
+     */
+    public synchronized &lt;T&gt; T executeWrite(
+            String resource,
+            String token,
+            String owner,
+            String expectedWithoutLock,
+            LockedWrite&lt;T&gt; operation) throws IOException {
+<span class="fc" id="L106">        Objects.requireNonNull(operation, &quot;operation&quot;);</span>
+<span class="fc" id="L107">        purgeExpired();</span>
+
+<span class="fc" id="L109">        TemplateLock active = locks.get(resource);</span>
+<span class="fc" id="L110">        String expected = expectedWithoutLock;</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (active != null) {</span>
+<span class="fc" id="L112">            active = requireExisting(resource, token, owner);</span>
+<span class="fc" id="L113">            expected = active.currentCommit();</span>
+<span class="pc bpc" id="L114" title="3 of 4 branches missed.">        } else if (token != null &amp;&amp; !token.isBlank()) {</span>
+<span class="nc" id="L115">            throw new LockConflictException(</span>
+                    &quot;The supplied WebDAV lock token is no longer active&quot;);
+        }
+
+<span class="fc" id="L119">        LockedWriteResult&lt;T&gt; result = Objects.requireNonNull(</span>
+<span class="fc" id="L120">                operation.execute(expected), &quot;locked write result&quot;);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (active != null) {</span>
+<span class="fc" id="L122">            Instant refreshedUntil = later(</span>
+<span class="fc" id="L123">                    active.expiresAt(), clock.instant().plus(DEFAULT_TIMEOUT));</span>
+<span class="fc" id="L124">            locks.put(resource, new TemplateLock(</span>
+<span class="fc" id="L125">                    active.resource(),</span>
+<span class="fc" id="L126">                    active.token(),</span>
+<span class="fc" id="L127">                    active.owner(),</span>
+<span class="fc" id="L128">                    active.baseCommit(),</span>
+<span class="fc" id="L129">                    Objects.requireNonNull(result.currentCommit(), &quot;currentCommit&quot;),</span>
+                    refreshedUntil));
+        }
+<span class="fc" id="L132">        return result.value();</span>
+    }
+
+    public synchronized TemplateLock advance(
+            String resource,
+            String token,
+            String owner,
+            String commitId) {
+<span class="nc" id="L140">        TemplateLock existing = require(resource, token, owner);</span>
+<span class="nc" id="L141">        TemplateLock advanced = new TemplateLock(</span>
+<span class="nc" id="L142">                existing.resource(),</span>
+<span class="nc" id="L143">                existing.token(),</span>
+<span class="nc" id="L144">                existing.owner(),</span>
+<span class="nc" id="L145">                existing.baseCommit(),</span>
+                commitId,
+<span class="nc" id="L147">                existing.expiresAt());</span>
+<span class="nc" id="L148">        locks.put(resource, advanced);</span>
+<span class="nc" id="L149">        return advanced;</span>
+    }
+
+    public synchronized void release(String resource, String token, String owner) {
+<span class="fc" id="L153">        TemplateLock existing = require(resource, token, owner);</span>
+<span class="fc" id="L154">        locks.remove(existing.resource());</span>
+<span class="fc" id="L155">    }</span>
+
+    private TemplateLock requireExisting(
+            String resource,
+            String token,
+            String owner) {
+<span class="fc" id="L161">        TemplateLock existing = locks.get(resource);</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (existing == null) {</span>
+<span class="nc" id="L163">            throw new LockConflictException(</span>
+                    &quot;No active WebDAV lock exists for this template&quot;);
+        }
+<span class="fc" id="L166">        String normalized = normalizeToken(token);</span>
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">        if (!existing.token().equals(normalized) || !existing.owner().equals(owner)) {</span>
+<span class="nc" id="L168">            throw new LockConflictException(</span>
+                    &quot;WebDAV lock token or owner does not match&quot;);
+        }
+<span class="fc" id="L171">        return existing;</span>
+    }
+
+    private void purgeExpired() {
+<span class="fc" id="L175">        Instant now = clock.instant();</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        locks.values().removeIf(lock -&gt; !lock.expiresAt().isAfter(now));</span>
+<span class="fc" id="L177">    }</span>
+
+    private static Instant later(Instant first, Instant second) {
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        return first.isAfter(second) ? first : second;</span>
+    }
+
+    private static Duration boundedTimeout(Duration requested) {
+<span class="pc bpc" id="L184" title="3 of 6 branches missed.">        if (requested == null || requested.isNegative() || requested.isZero()) {</span>
+<span class="nc" id="L185">            return DEFAULT_TIMEOUT;</span>
+        }
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        return requested.compareTo(MAX_TIMEOUT) &gt; 0 ? MAX_TIMEOUT : requested;</span>
+    }
+
+    static String normalizeToken(String token) {
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (token == null) {</span>
+<span class="nc" id="L192">            return null;</span>
+        }
+<span class="fc" id="L194">        String normalized = token.strip();</span>
+<span class="pc bpc" id="L195" title="1 of 4 branches missed.">        if (normalized.startsWith(&quot;&lt;&quot;) &amp;&amp; normalized.endsWith(&quot;&gt;&quot;)) {</span>
+<span class="fc" id="L196">            normalized = normalized.substring(1, normalized.length() - 1);</span>
+        }
+<span class="fc" id="L198">        return normalized;</span>
+    }
+
+    @FunctionalInterface
+    public interface LockedWrite&lt;T&gt; {
+        LockedWriteResult&lt;T&gt; execute(String expectedCommit) throws IOException;
+    }
+
+<span class="fc" id="L206">    public record LockedWriteResult&lt;T&gt;(T value, String currentCommit) {</span>
+    }
+
+<span class="fc" id="L209">    public record TemplateLock(</span>
+            String resource,
+            String token,
+            String owner,
+            String baseCommit,
+            String currentCommit,
+            Instant expiresAt) {
+    }
+
+    public static final class LockConflictException extends RuntimeException {
+        LockConflictException(String message) {
+<span class="nc" id="L220">            super(message);</span>
+<span class="nc" id="L221">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
