@@ -21,9 +21,11 @@ public class BrowserSessionConfiguration {
     }
 
     static void configure(HttpSecurity http, SessionRegistry registry) throws Exception {
-        // The standard composite keeps session-fixation protection and registers
-        // form/OIDC logins. The standard filter updates last-request timestamps.
-        // -1 preserves unlimited concurrent sessions; no eviction UI is exposed.
-        http.sessionManagement(session -> session.maximumSessions(-1).sessionRegistry(registry));
+        // Register through the form/OIDC authentication filters, not the implicit
+        // SessionManagementFilter, which would also persist Basic/Bearer logins.
+        // The concurrency DSL retains fixation protection, last-request updates
+        // and unlimited browser sessions without opting into implicit authentication.
+        http.sessionManagement(session -> session.requireExplicitAuthenticationStrategy(true)
+                .sessionConcurrency(concurrency -> concurrency.maximumSessions(-1).sessionRegistry(registry)));
     }
 }
