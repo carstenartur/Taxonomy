@@ -105,13 +105,13 @@ public final class DocumentTemplateDetailController {
         requireImmutableRevision(revision);
         requireImmutableRevision(expectedHead);
         try {
-            TemplateFile target = templates.download(templateId, revision);
-            TemplateFile current = templates.downloadCurrent(templateId);
-            model.addAttribute("template", descriptor(current));
-            model.addAttribute("restoreTarget", descriptor(target));
+            TemplateDescriptor target = templates.describe(templateId, revision);
+            TemplateDescriptor current = templates.describeCurrent(templateId);
+            model.addAttribute("template", current);
+            model.addAttribute("restoreTarget", target);
             model.addAttribute("restoreRevision", revision);
             model.addAttribute("restoreExpectedHead", expectedHead);
-            model.addAttribute("restoreConflict", !expectedHead.equals(current.commitId()));
+            model.addAttribute("restoreConflict", !expectedHead.equals(current.headCommit()));
             return "document-template-restore";
         } catch (TemplateNotFoundException exception) {
             throw missingRestoreVersion(exception);

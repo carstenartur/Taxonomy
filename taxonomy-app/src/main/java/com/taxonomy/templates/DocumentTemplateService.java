@@ -1,5 +1,6 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.templates.DocumentTemplateGitRepository.PartChange;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
@@ -13,8 +14,12 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +28,9 @@ import java.util.Objects;
 /** Application boundary shared by the web UI and virtual WebDAV projection. */
 @Service
 public class DocumentTemplateService {
+
+    private static final int DEFAULT_TEXT_PREVIEW_BYTES = 1_048_576;
+    static final int COMPARISON_TEXT_PREVIEW_BYTES = 128 * 1024;
 
     private final DocumentTemplateGitRepository repository;
     private final OoxmlTemplatePackageCodec codec;
@@ -107,6 +115,24 @@ public class DocumentTemplateService {
         return descriptor(saved);
     }
 
+    /** Validated metadata without allocating a downloadable DOTX archive. */
+    public TemplateDescriptor describeCurrent(String templateId) throws IOException {
+        return describeSnapshot(repository.readCurrent(templateId));
+    }
+
+    /** Preserve the selected version; never fall back to the current template. */
+    public TemplateDescriptor describe(String templateId, String revision) throws IOException {
+        return describeSnapshot(repository.read(templateId, revision));
+    }
+
+    private TemplateDescriptor describeSnapshot(TemplateSnapshot snapshot) throws IOException {
+        // Retain canonical OOXML and domain/privacy validation without ZIP creation.
+        // Download/archive-size validation remains on the unchanged download path.
+        codec.validatePackage(snapshot.parts());
+        validateSnapshot(snapshot);
+        return descriptor(snapshot);
+    }
+
     public TemplateFile downloadCurrent(String templateId) throws IOException {
         return toTemplateFile(repository.readCurrent(templateId));
     }
@@ -132,27 +158,77 @@ public class DocumentTemplateService {
             String templateId,
             String revision,
             String path) throws IOException {
-        if (path == null || path.isBlank() || path.startsWith("/")
-                || path.contains("\\") || path.contains("../")) {
-            throw new IllegalArgumentException("Invalid OOXML part path");
-        }
+        OoxmlTemplatePackageCodec.validatePartPath(path);
         TemplateSnapshot snapshot = repository.read(templateId, revision);
         validateSnapshot(snapshot);
         byte[] content = snapshot.parts().get(path);
         if (content == null) {
             throw new TemplateNotFoundException(templateId + "/" + path, revision);
         }
+        return partView(path, content, DEFAULT_TEXT_PREVIEW_BYTES);
+    }
+
+    /** Read each immutable snapshot once and compare only the requested package part. */
+    public TemplatePartComparison comparePart(
+            String templateId, String fromRevision, String toRevision, String path) throws IOException {
+        OoxmlTemplatePackageCodec.validatePartPath(path);
+        fromRevision = canonicalComparisonRevision(fromRevision);
+        toRevision = canonicalComparisonRevision(toRevision);
+        // Resolve both snapshots before interpreting an absent part as added or deleted.
+        TemplateSnapshot before = repository.read(templateId, fromRevision);
+        TemplateSnapshot after = fromRevision.equals(toRevision)
+                ? before : repository.read(templateId, toRevision);
+        validateSnapshot(before);
+        if (after != before) validateSnapshot(after);
+        byte[] beforeContent = before.parts().get(path);
+        byte[] afterContent = after == before ? beforeContent : after.parts().get(path);
+        if (beforeContent == null && afterContent == null) {
+            throw new TemplateNotFoundException(templateId + "/" + path, fromRevision);
+        }
+        PartChange change = beforeContent == null ? PartChange.ADDED
+                : afterContent == null ? PartChange.DELETED
+                : Arrays.equals(beforeContent, afterContent) ? null : PartChange.MODIFIED;
+        TemplatePartView beforePart = beforeContent == null ? null
+                : partView(path, beforeContent, COMPARISON_TEXT_PREVIEW_BYTES);
+        TemplatePartView afterPart = after == before ? beforePart
+                : afterContent == null ? null
+                        : partView(path, afterContent, COMPARISON_TEXT_PREVIEW_BYTES);
+        return new TemplatePartComparison(change, beforePart, afterPart);
+    }
+
+    /** Accept full hexadecimal IDs only and preserve one canonical identity for links and reads. */
+    static String canonicalComparisonRevision(String revision) {
+        if (revision == null || !revision.matches("[0-9a-fA-F]{40}")) {
+            throw new IllegalArgumentException("Two immutable template revisions are required");
+        }
+        return revision.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static TemplatePartView partView(String path, byte[] content, int maximumTextBytes) {
         String lower = path.toLowerCase(java.util.Locale.ROOT);
         boolean text = lower.endsWith(".xml") || lower.endsWith(".rels")
                 || lower.endsWith(".txt") || lower.endsWith(".json");
-        String rendered = text && content.length <= 1_048_576
-                ? new String(content, StandardCharsets.UTF_8)
+        String rendered = text && content.length <= maximumTextBytes
+                ? decodeExactUtf8(content)
                 : null;
         return new TemplatePartView(
                 path,
                 content.length,
-                text ? "application/xml" : "application/octet-stream",
+                lower.endsWith(".txt") ? "text/plain" : lower.endsWith(".json") ? "application/json"
+                        : text ? "application/xml" : "application/octet-stream",
                 rendered);
+    }
+
+    private static String decodeExactUtf8(byte[] content) {
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(content))
+                    .toString();
+        } catch (CharacterCodingException exception) {
+            return null;
+        }
     }
 
     public TemplateDescriptor restore(
@@ -351,6 +427,10 @@ public class DocumentTemplateService {
         @Override public byte[] content() { return content.clone(); }
         public String etag() { return "\"" + commitId + "\""; }
     }
+
+    /** A null change denotes unchanged bytes, as in TemplateDiff's absent change entry. */
+    public record TemplatePartComparison(
+            PartChange change, TemplatePartView before, TemplatePartView after) { }
 
     public record TemplatePartView(
             String path,
