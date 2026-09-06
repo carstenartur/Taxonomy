@@ -15,10 +15,24 @@ class DocumentTemplateDetailPageContractTest {
         assertThat(page)
                 .contains("th:text=\"${part.textContent}\"")
                 .doesNotContain("th:utext=\"${part.textContent}\"")
-                .contains("name=\"expectedHead\"")
-                .contains("th:value=\"${template.headCommit}\"")
+                .contains("/restore(id=${template.templateId},revision=${revision.commitId},expectedHead=${template.headCommit})")
+                .doesNotContain("window.confirm(")
                 .contains("/test.docx")
                 .contains("partRevision=${inspectRevision}");
+    }
+
+    @Test
+    void confirmationPreservesOriginalRevisionsAndRequiresAnExplicitNonStaleWrite() throws Exception {
+        String page = resource("/templates/document-template-restore.html");
+        assertThat(page)
+                .contains("<form th:unless=\"${restoreConflict}\" id=\"restoreConfirmationForm\" method=\"post\"")
+                .contains("<input type=\"hidden\" name=\"revision\" th:value=\"${restoreRevision}\"/>")
+                .contains("<input type=\"hidden\" name=\"expectedHead\" th:value=\"${restoreExpectedHead}\"/>")
+                .doesNotContain("name=\"expectedHead\" th:value=\"${template.headCommit}\"")
+                .contains("name=\"confirmed\" value=\"true\" required")
+                .contains("th:text=\"#{document.template.restore.confirm(${template.displayName},${restoreRevision})}\"")
+                .contains("th:if=\"${restoreConflict}\" id=\"restoreConflict\"")
+                .contains("id=\"restoreReviewCurrent\"");
     }
 
     @Test
