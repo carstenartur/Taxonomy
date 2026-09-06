@@ -18,6 +18,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,6 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Default HSQL diagnostics and browser-session lifecycle against the same application container. */
 @Testcontainers
 class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
+
+    private static final String SESSION_USER = "session-inventory-admin";
+    private static final String SESSION_PASSWORD = "Session-probe-" + UUID.randomUUID();
 
     @Container
     static GenericContainer<?> app = ContainerTestUtils.appContainer();
@@ -50,21 +56,27 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
             assertThat(baseline.get("sessionCount").intValue()).isZero();
             assertThat(baseline.get("scope").textValue()).isEqualTo("LOCAL_INSTANCE");
 
+            // The shared bootstrap credential can equal its visible account name.
+            // Use a distinct disposable account/secret so non-disclosure is testable.
+            createSessionAccount(basic, authorization);
+            assertThat(inventory(basic, authorization).get("sessionCount").intValue()).isZero();
             login(first, firstCookies);
             assertThat(inventory(basic, authorization).get("sessionCount").intValue()).isEqualTo(1);
             login(second, secondCookies);
             var both = inventory(second, null);
             assertThat(both.get("sessionCount").intValue()).isEqualTo(2);
             assertThat(both.get("userCount").intValue()).isEqualTo(1);
+            assertThat(both.get("users").get(0).get("username").textValue()).isEqualTo(SESSION_USER);
             assertThat(inventory(first, null).get("sessionCount").intValue()).isEqualTo(2);
             String json = both.toString();
             assertThat(json.contains(sessionId(firstCookies)) || json.contains(sessionId(secondCookies))).isFalse();
-            assertThat(json).doesNotContain(ContainerTestUtils.TEST_ADMIN_PASSWORD, "password", "tokenValue");
+            assertThat(json).doesNotContain(SESSION_PASSWORD, "password", "tokenValue");
 
             HttpResponse<String> page = exchange(second, "/admin/sessions?lang=de", null, null);
             assertThat(page.statusCode()).isEqualTo(200);
             assertThat(page.headers().firstValue("Cache-Control")).hasValue("no-store");
-            assertThat(page.body()).contains("Angemeldete Sitzungen", "sessionsRefresh");
+            assertThat(page.body()).contains("Angemeldete Sitzungen", "sessionsRefresh", SESSION_USER);
+            assertThat(page.body()).doesNotContain(SESSION_PASSWORD, sessionId(firstCookies), sessionId(secondCookies));
 
             assertThat(exchange(first, "/logout", "_csrf=invalid", null).statusCode()).isEqualTo(403);
             assertThat(inventory(second, null).get("sessionCount").intValue()).isEqualTo(2);
@@ -74,6 +86,19 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
             assertThat(inventory(basic, authorization).get("sessionCount").intValue()).isZero();
             assertThat(exchange(basic, "/api/admin/sessions", null, null).statusCode()).isIn(401, 403);
         }
+    }
+
+    private static void createSessionAccount(HttpClient client, String authorization) throws Exception {
+        String body = JsonMapper.builder().build().writeValueAsString(Map.of(
+                "username", SESSION_USER, "password", SESSION_PASSWORD, "roles", List.of("ADMIN")));
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://" + app.getHost() + ":"
+                        + app.getMappedPort(8080) + "/api/admin/users"))
+                .timeout(Duration.ofSeconds(10)).header("Authorization", authorization)
+                .header("Content-Type", "application/json").header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(201);
+        assertThat(response.headers().allValues("Set-Cookie")).isEmpty();
     }
 
     private static JsonNode inventory(HttpClient client, String authorization) throws Exception {
@@ -87,7 +112,7 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
         HttpResponse<String> page = exchange(client, "/login", null, null);
         assertThat(page.statusCode()).isEqualTo(200);
         String oldSession = sessionId(cookies);
-        String form = "username=admin&password=" + encode(ContainerTestUtils.TEST_ADMIN_PASSWORD)
+        String form = "username=" + encode(SESSION_USER) + "&password=" + encode(SESSION_PASSWORD)
                 + "&_csrf=" + encode(csrf(page.body()));
         assertThat(exchange(client, "/login", form, null).statusCode()).isIn(302, 303);
         assertThat(oldSession.equals(sessionId(cookies))).as("session fixation protection remains enabled").isFalse();
