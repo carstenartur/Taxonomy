@@ -149,6 +149,13 @@
             <version>${jgit-storage-hibernate.version}</version>
         </dependency>
 
+        <!-- Reuse the released fetch-only Smart HTTP adapter over our existing Git storage. -->
+        <dependency>
+            <groupId>io.github.carstenartur</groupId>
+            <artifactId>jgit-storage-hibernate-smart-http</artifactId>
+            <version>${jgit-storage-hibernate.version}</version>
+        </dependency>
+
         <!-- OpenAPI / Swagger UI (auto-generated interactive API docs) -->
         <dependency>
             <groupId>org.springdoc</groupId>
