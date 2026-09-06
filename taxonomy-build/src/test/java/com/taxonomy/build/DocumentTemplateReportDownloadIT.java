@@ -69,17 +69,21 @@ class DocumentTemplateReportDownloadIT {
                 .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false")
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "false")
                 .withEnv("TAXONOMY_INIT_ASYNC", "true")
+                // Ordinary browser journeys must start after the asynchronous catalogue is ready.
+                .withEnv("MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE",
+                        "readinessState,taxonomy")
                 .withEnv("TAXONOMY_THYMELEAF_CACHE", "false")
                 .withEnv("LLM_MOCK", "true")
                 .withExposedPorts(8080)
                 .withStartupTimeout(Duration.ofMinutes(4))
-                .waitingFor(Wait.forHttp("/login")
+                .waitingFor(Wait.forHttp("/actuator/health/readiness")
                         .forPort(8080)
                         .forStatusCode(200))) {
             application.start();
             String baseUrl = "http://" + application.getHost() + ":"
                     + application.getMappedPort(8080);
-            runPlaywright(repository, output, baseUrl);
+            runPlaywright(repository, output, baseUrl, "document-template-local-edit-acceptance");
+            runPlaywright(repository, output, baseUrl, "document-template-report-download");
         }
 
         Path managementScreenshot =
@@ -100,6 +104,13 @@ class DocumentTemplateReportDownloadIT {
         assertFile(downloadedReport, 10_000);
         assertFile(evidence, 500);
         assertEvidence(evidence);
+        assertFile(output.resolve("local-edit/local-edit-evidence.json"), 500);
+        for (String language : java.util.List.of("de", "en")) {
+            for (String stage : java.util.List.of("checkout", "invalid-file-retained",
+                    "upload-progress", "saved", "conflict-after-reload", "saved-diff")) {
+                assertFile(output.resolve("local-edit/" + language + "/" + stage + ".png"), 1_000);
+            }
+        }
 
         if (Boolean.parseBoolean(
                 System.getenv().getOrDefault(
@@ -118,13 +129,14 @@ class DocumentTemplateReportDownloadIT {
     private static void runPlaywright(
             Path repository,
             Path output,
-            String baseUrl) throws Exception {
-        Path script = repository.resolve(
-                ".github/scripts/document-template-report-download.mjs");
+            String baseUrl,
+            String scriptName) throws Exception {
+        Path script = repository.resolve(".github/scripts/" + scriptName + ".mjs");
         assertTrue(Files.isRegularFile(script),
                 "Playwright acceptance script is missing: " + script);
 
-        Path log = output.resolve("playwright.log");
+        Path log = output.resolve(scriptName.equals("document-template-report-download")
+                ? "playwright.log" : "playwright-local-edit.log");
         ProcessBuilder builder = new ProcessBuilder(
                 nodeExecutable(repository),
                 script.toString());
@@ -135,19 +147,20 @@ class DocumentTemplateReportDownloadIT {
         builder.environment().put("TAXONOMY_UI_USERNAME", "admin");
         builder.environment().put("TAXONOMY_UI_PASSWORD", "admin");
         builder.environment().put("TAXONOMY_UI_OUTPUT_DIR", output.toString());
+        builder.environment().put("TAXONOMY_UI_DISPOSABLE_INSTANCE", "true");
 
         Process process = builder.start();
         boolean finished = process.waitFor(10, TimeUnit.MINUTES);
         if (!finished) {
             process.destroyForcibly();
             throw new AssertionError(
-                    "Playwright hospital-report acceptance timed out; see " + log);
+                    "Playwright " + scriptName + " timed out; see " + log);
         }
         String outputText = Files.exists(log)
                 ? Files.readString(log, StandardCharsets.UTF_8)
                 : "";
         assertEquals(0, process.exitValue(),
-                "Playwright hospital-report acceptance failed:\n" + outputText);
+                "Playwright " + scriptName + " failed:\n" + outputText);
     }
 
     private static void assertEvidence(Path evidence) throws IOException {
