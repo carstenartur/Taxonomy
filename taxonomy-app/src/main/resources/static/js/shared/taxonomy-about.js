@@ -178,6 +178,24 @@ window.TaxonomyAbout = (function () {
 
         initTabs();
 
+        // A navigation link only: no session inventory is fetched on page load.
+        var health = el('healthDashboard');
+        if (health && !el('browserSessionsLink')) {
+            var sessions = document.createElement('a');
+            sessions.id = 'browserSessionsLink';
+            sessions.className = 'btn btn-sm btn-outline-secondary mt-3';
+            var target = new URL('admin/sessions', document.baseURI);
+            target.searchParams.set('lang', document.documentElement.lang || 'en');
+            sessions.href = target.toString();
+            sessions.textContent = localized('Signed-in sessions', 'Angemeldete Sitzungen');
+            health.appendChild(sessions);
+            TaxonomyI18n.ready().then(function () {
+                sessions.textContent = t('sessions.title');
+            }).catch(function () {
+                // Keep the usable local-language fallback if translations fail.
+            });
+        }
+
         // Update navbar version and legal-resource links on page load.
         loadAboutInfo();
     });

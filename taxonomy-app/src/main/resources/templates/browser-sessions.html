@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="#{sessions.title}">Signed-in sessions</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#sessionInventory" th:text="#{sessions.skip}">Skip to sessions</a>
+<nav class="navbar navbar-dark bg-dark" th:attr="aria-label=#{sessions.navigation}">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand" th:href="@{/(lang=${#locale.language})}">Taxonomy</a>
+        <a class="btn btn-outline-light" th:href="@{/(lang=${#locale.language})}"
+           th:text="#{sessions.back}">Back to application</a>
+    </div>
+</nav>
+<main id="sessionInventory" class="container py-3">
+    <h1 class="h2" th:text="#{sessions.title}">Signed-in sessions</h1>
+    <p class="alert alert-info" th:text="#{sessions.scope}">This application instance only.</p>
+    <p th:text="#{sessions.meaning}">A session does not prove someone is currently looking at the page.</p>
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+        <a id="sessionsRefresh" class="btn btn-outline-secondary"
+           th:href="@{/admin/sessions(lang=${#locale.language})}"
+           th:text="#{sessions.refresh}">Refresh</a>
+        <span class="text-body-secondary"><span th:text="#{sessions.measured}">Measured at (UTC)</span>:
+            <time th:datetime="${snapshot.timestamp}" th:text="${snapshot.timestamp}"></time>
+        </span>
+    </div>
+    <dl class="row">
+        <dt class="col-sm-6" th:text="#{sessions.users}">Distinct identified users</dt>
+        <dd id="sessionsUserCount" class="col-sm-6" th:text="${snapshot.userCount}"></dd>
+        <dt class="col-sm-6" th:text="#{sessions.count}">Registered non-expired sessions</dt>
+        <dd id="sessionsSessionCount" class="col-sm-6" th:text="${snapshot.sessionCount}"></dd>
+    </dl>
+    <p th:if="${snapshot.unidentifiedSessionCount > 0}" class="alert alert-warning">
+        <span th:text="#{sessions.unidentified}">Sessions with unsupported identity types</span>:
+        <span th:text="${snapshot.unidentifiedSessionCount}"></span>
+    </p>
+    <p th:if="${snapshot.truncated}" class="alert alert-warning" th:text="#{sessions.truncated}"></p>
+    <p th:if="${snapshot.sessionCount == 0}" th:text="#{sessions.empty}">No sessions registered.</p>
+    <ul class="row g-3 list-unstyled">
+        <li class="col-12 col-lg-6" th:each="user : ${snapshot.users}">
+            <article class="card h-100">
+                <div class="card-body">
+                    <h2 class="h5 text-break" th:text="${user.username}"></h2>
+                    <dl class="mb-0">
+                        <dt th:text="#{sessions.authentication}">Sign-in type</dt>
+                        <dd th:text="${user.authenticationType == 'OIDC'} ? #{sessions.oidc} : #{sessions.local}"></dd>
+                        <dt th:text="#{sessions.count}">Registered non-expired sessions</dt>
+                        <dd th:text="${user.sessionCount}"></dd>
+                        <dt th:text="#{sessions.lastRequest}">Last registered request (UTC)</dt>
+                        <dd class="text-break mb-0"><time th:datetime="${user.lastRequest}"
+                            th:text="${user.lastRequest}"></time></dd>
+                    </dl>
+                </div>
+            </article>
+        </li>
+    </ul>
+    <p class="small text-body-secondary mt-3" th:text="#{sessions.privacy}"></p>
+</main>
+</body>
+</html>
