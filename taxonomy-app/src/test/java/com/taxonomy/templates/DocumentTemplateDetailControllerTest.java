@@ -180,7 +180,7 @@ class DocumentTemplateDetailControllerTest {
         var response = controller().testReport(ID);
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getHeaders().getContentType().toString())
-                .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+                .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         assertThat(response.getBody()).containsExactly(1, 2, 3);
     }
 
