@@ -20,6 +20,7 @@ class DocumentTemplateComparisonPreviewLimitTest {
     private static final String ID = "comparison-preview-limit";
     private static final String REVISION = "a".repeat(40);
     private static final String PATH = "word/large-note.txt";
+    private static final int ORDINARY_PREVIEW_BYTES = 1_048_576;
 
     @Mock DocumentTemplateGitRepository repository;
 
@@ -43,8 +44,8 @@ class DocumentTemplateComparisonPreviewLimitTest {
     }
 
     @Test
-    void ordinaryPartReadKeepsItsExistingOneMegabytePreviewBoundary() throws Exception {
-        byte[] content = new byte[TemplateTextDiff.MAX_CHARACTERS + 1];
+    void ordinaryPartReadDecodesTextAtTheExistingOneMegabyteBoundary() throws Exception {
+        byte[] content = new byte[ORDINARY_PREVIEW_BYTES];
         Arrays.fill(content, (byte) 'y');
         var snapshot = snapshot(content);
         when(repository.read(ID, REVISION)).thenReturn(snapshot);
@@ -52,10 +53,28 @@ class DocumentTemplateComparisonPreviewLimitTest {
 
         var part = service.readPart(ID, REVISION, PATH);
 
-        assertEquals(content.length, part.size());
+        assertEquals(ORDINARY_PREVIEW_BYTES, part.size());
         assertEquals("text/plain", part.mediaType());
         assertNotNull(part.textContent());
-        assertEquals(content.length, part.textContent().getBytes(StandardCharsets.UTF_8).length);
+        assertEquals(ORDINARY_PREVIEW_BYTES,
+                part.textContent().getBytes(StandardCharsets.UTF_8).length);
+        verify(repository).read(ID, REVISION);
+        verifyNoMoreInteractions(repository);
+    }
+
+    @Test
+    void ordinaryPartReadStopsDecodingAboveTheExistingOneMegabyteBoundary() throws Exception {
+        byte[] content = new byte[ORDINARY_PREVIEW_BYTES + 1];
+        Arrays.fill(content, (byte) 'z');
+        var snapshot = snapshot(content);
+        when(repository.read(ID, REVISION)).thenReturn(snapshot);
+        var service = new DocumentTemplateService(repository, new OoxmlTemplatePackageCodec(), List.of());
+
+        var part = service.readPart(ID, REVISION, PATH);
+
+        assertEquals(ORDINARY_PREVIEW_BYTES + 1L, part.size());
+        assertEquals("text/plain", part.mediaType());
+        assertNull(part.textContent());
         verify(repository).read(ID, REVISION);
         verifyNoMoreInteractions(repository);
     }
