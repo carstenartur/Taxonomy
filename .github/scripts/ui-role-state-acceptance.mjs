@@ -5,6 +5,7 @@ import { createRoleStateEvidence } from './ui-role-state-evidence.mjs';
 import { captureFailureEvidence } from './ui-evidence-policy.mjs';
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
+import { runSystemInformationAcceptance } from './system-information-acceptance.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const adminUsername = process.env.TAXONOMY_UI_ADMIN_USERNAME || 'admin';
@@ -156,6 +157,17 @@ try {
     page, role, zoom, forcedColors, checks, httpFailures,
     externalRequests, consoleErrors, evidence
   });
+  if (role === 'ADMIN') {
+    taskMeasurements.failedStep = 'system-information browser acceptance';
+    const previousFailures = httpFailures.length;
+    taskMeasurements.systemInformation = await runSystemInformationAcceptance({
+      page, evidence, outputDir
+    });
+    if (httpFailures.length !== previousFailures || consoleErrors.length || externalRequests.length) {
+      throw new Error('System-information flow introduced HTTP, console or external-request failures');
+    }
+    checks.push('DE/EN system information, persistence warnings, keyboard refresh and screenshots');
+  }
   taskMeasurements.schemaVersion = 1;
   taskMeasurements.failedStep = null;
 } catch (error) {
