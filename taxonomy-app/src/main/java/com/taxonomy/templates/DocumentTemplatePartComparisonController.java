@@ -1,6 +1,5 @@
 package com.taxonomy.templates;
 
-import com.taxonomy.templates.DocumentTemplateGitRepository.PartChange;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
 import org.springframework.http.HttpStatus;
@@ -41,13 +40,10 @@ public final class DocumentTemplatePartComparisonController {
                     "A relative package-part path is required", exception);
         }
         try {
-            // Validate both historical snapshots before interpreting a missing side as added/deleted.
-            var diff = templates.diff(templateId, from, to);
-            PartChange change = diff.changes().get(partPath);
-            TemplatePartView before = change == PartChange.ADDED
-                    ? null : templates.readPart(templateId, from, partPath);
-            TemplatePartView after = change == PartChange.DELETED
-                    ? null : templates.readPart(templateId, to, partPath);
+            var comparison = templates.comparePart(templateId, from, to, partPath);
+            var change = comparison.change();
+            TemplatePartView before = comparison.before();
+            TemplatePartView after = comparison.after();
             model.addAttribute("templateId", templateId);
             model.addAttribute("fromRevision", from);
             model.addAttribute("toRevision", to);

@@ -1,5 +1,6 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.templates.DocumentTemplateGitRepository.PartChange;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
@@ -15,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -157,6 +159,38 @@ public class DocumentTemplateService {
         if (content == null) {
             throw new TemplateNotFoundException(templateId + "/" + path, revision);
         }
+        return partView(path, content);
+    }
+
+    /** Read each immutable snapshot once and compare only the requested package part. */
+    public TemplatePartComparison comparePart(
+            String templateId, String fromRevision, String toRevision, String path) throws IOException {
+        OoxmlTemplatePackageCodec.validatePartPath(path);
+        if (fromRevision == null || toRevision == null || !fromRevision.matches("[0-9a-f]{40}")
+                || !toRevision.matches("[0-9a-f]{40}")) {
+            throw new IllegalArgumentException("Two immutable template revisions are required");
+        }
+        // Resolve both snapshots before interpreting an absent part as added or deleted.
+        TemplateSnapshot before = repository.read(templateId, fromRevision);
+        TemplateSnapshot after = fromRevision.equals(toRevision)
+                ? before : repository.read(templateId, toRevision);
+        validateSnapshot(before);
+        if (after != before) validateSnapshot(after);
+        byte[] beforeContent = before.parts().get(path);
+        byte[] afterContent = after == before ? beforeContent : after.parts().get(path);
+        if (beforeContent == null && afterContent == null) {
+            throw new TemplateNotFoundException(templateId + "/" + path, fromRevision);
+        }
+        PartChange change = beforeContent == null ? PartChange.ADDED
+                : afterContent == null ? PartChange.DELETED
+                : Arrays.equals(beforeContent, afterContent) ? null : PartChange.MODIFIED;
+        TemplatePartView beforePart = beforeContent == null ? null : partView(path, beforeContent);
+        TemplatePartView afterPart = after == before ? beforePart
+                : afterContent == null ? null : partView(path, afterContent);
+        return new TemplatePartComparison(change, beforePart, afterPart);
+    }
+
+    private static TemplatePartView partView(String path, byte[] content) {
         String lower = path.toLowerCase(java.util.Locale.ROOT);
         boolean text = lower.endsWith(".xml") || lower.endsWith(".rels")
                 || lower.endsWith(".txt") || lower.endsWith(".json");
@@ -366,6 +400,10 @@ public class DocumentTemplateService {
         @Override public byte[] content() { return content.clone(); }
         public String etag() { return "\"" + commitId + "\""; }
     }
+
+    /** A null change denotes unchanged bytes, as in TemplateDiff's absent change entry. */
+    public record TemplatePartComparison(
+            PartChange change, TemplatePartView before, TemplatePartView after) { }
 
     public record TemplatePartView(
             String path,

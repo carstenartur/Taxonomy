@@ -1,9 +1,9 @@
 package com.taxonomy.templates;
 
 import com.taxonomy.templates.DocumentTemplateGitRepository.PartChange;
-import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
+import com.taxonomy.templates.DocumentTemplateService.TemplatePartComparison;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -12,7 +12,6 @@ import org.springframework.ui.ConcurrentModel;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -27,50 +26,41 @@ class DocumentTemplatePartComparisonControllerTest {
 
     @Test
     void modifiedPartUsesOnlyTheSelectedImmutableSnapshots() throws Exception {
-        stub(PartChange.MODIFIED);
-        when(templates.readPart(ID, A, PATH)).thenReturn(part("<p>before</p>"));
-        when(templates.readPart(ID, B, PATH)).thenReturn(part("<p>after</p>"));
+        stub(PartChange.MODIFIED, part("<p>before</p>"), part("<p>after</p>"));
         var model = compare();
         assertEquals("TEXT", model.getAttribute("comparisonMode"));
         assertEquals("MODIFIED", model.getAttribute("partChange"));
         assertEquals(A, model.getAttribute("fromRevision"));
         assertEquals(B, model.getAttribute("toRevision"));
-        verify(templates).diff(ID, A, B);
-        verify(templates).readPart(ID, A, PATH);
-        verify(templates).readPart(ID, B, PATH);
+        verify(templates).comparePart(ID, A, B, PATH);
         verifyNoMoreInteractions(templates);
     }
 
     @Test
     void addedPartDoesNotReadAMissingOldPart() throws Exception {
-        stub(PartChange.ADDED);
-        when(templates.readPart(ID, B, PATH)).thenReturn(part("<p>new</p>"));
+        stub(PartChange.ADDED, null, part("<p>new</p>"));
         var model = compare();
         assertNull(model.getAttribute("beforePart"));
         assertEquals("ADDED", model.getAttribute("partChange"));
         assertEquals("TEXT", model.getAttribute("comparisonMode"));
-        verify(templates).diff(ID, A, B);
-        verify(templates).readPart(ID, B, PATH);
+        verify(templates).comparePart(ID, A, B, PATH);
         verifyNoMoreInteractions(templates);
     }
 
     @Test
     void deletedPartDoesNotReadAMissingNewPart() throws Exception {
-        stub(PartChange.DELETED);
-        when(templates.readPart(ID, A, PATH)).thenReturn(part("<p>old</p>"));
+        stub(PartChange.DELETED, part("<p>old</p>"), null);
         var model = compare();
         assertNull(model.getAttribute("afterPart"));
         assertEquals("DELETED", model.getAttribute("partChange"));
-        verify(templates).diff(ID, A, B);
-        verify(templates).readPart(ID, A, PATH);
+        verify(templates).comparePart(ID, A, B, PATH);
         verifyNoMoreInteractions(templates);
     }
 
     @Test
     void binaryPartKeepsItsMetadataWithoutAttemptingATextDiff() throws Exception {
-        stub(PartChange.ADDED);
         var binary = new TemplatePartView(PATH, 32, "application/octet-stream", null);
-        when(templates.readPart(ID, B, PATH)).thenReturn(binary);
+        stub(PartChange.ADDED, null, binary);
         var model = compare();
         assertEquals("BINARY", model.getAttribute("comparisonMode"));
         assertSame(binary, model.getAttribute("afterPart"));
@@ -79,8 +69,7 @@ class DocumentTemplatePartComparisonControllerTest {
 
     @Test
     void oversizedPartIsAnExplicitLimitRatherThanAPartialOrEmptyDiff() throws Exception {
-        stub(PartChange.ADDED);
-        when(templates.readPart(ID, B, PATH)).thenReturn(
+        stub(PartChange.ADDED, null,
                 new TemplatePartView(PATH, TemplateTextDiff.MAX_CHARACTERS + 1L, "application/xml", null));
         var model = compare();
         assertEquals("LIMIT", model.getAttribute("comparisonMode"));
@@ -89,21 +78,19 @@ class DocumentTemplatePartComparisonControllerTest {
 
     @Test
     void lossyOrUtf16DecodingIsNotPresentedAsReliableText() throws Exception {
-        stub(PartChange.MODIFIED);
-        when(templates.readPart(ID, A, PATH)).thenReturn(part("<p>valid</p>"));
-        when(templates.readPart(ID, B, PATH)).thenReturn(part("<\0p\0>\uFFFD"));
+        stub(PartChange.MODIFIED, part("<p>valid</p>"), part("<\0p\0>\uFFFD"));
         assertEquals("BINARY", compare().getAttribute("comparisonMode"));
     }
 
     @Test
     void missingRevisionStays404AndIsNotAnAddedPartOrTheCurrentVersion() throws Exception {
         var missing = new TemplateNotFoundException("private-storage-detail", A);
-        when(templates.diff(ID, A, B)).thenThrow(missing);
+        when(templates.comparePart(ID, A, B, PATH)).thenThrow(missing);
         var failure = assertThrows(ResponseStatusException.class, this::compare);
         assertEquals(404, failure.getStatusCode().value());
         assertSame(missing, failure.getCause());
         assertFalse(failure.getReason().contains("private-storage-detail"));
-        verify(templates).diff(ID, A, B);
+        verify(templates).comparePart(ID, A, B, PATH);
         verifyNoMoreInteractions(templates);
     }
 
@@ -129,9 +116,7 @@ class DocumentTemplatePartComparisonControllerTest {
 
     @Test
     void unchangedEmptyPartIsPresentOnBothSides() throws Exception {
-        when(templates.diff(ID, A, B)).thenReturn(new TemplateDiff(ID, A, B, Map.of()));
-        when(templates.readPart(ID, A, PATH)).thenReturn(part(""));
-        when(templates.readPart(ID, B, PATH)).thenReturn(part(""));
+        stub(null, part(""), part(""));
         var model = compare();
         assertEquals("UNCHANGED", model.getAttribute("partChange"));
         assertNotNull(model.getAttribute("beforePart"));
@@ -139,8 +124,9 @@ class DocumentTemplatePartComparisonControllerTest {
         assertEquals("TEXT", model.getAttribute("comparisonMode"));
     }
 
-    private void stub(PartChange change) throws Exception {
-        when(templates.diff(ID, A, B)).thenReturn(new TemplateDiff(ID, A, B, Map.of(PATH, change)));
+    private void stub(PartChange change, TemplatePartView before, TemplatePartView after) throws Exception {
+        when(templates.comparePart(ID, A, B, PATH))
+                .thenReturn(new TemplatePartComparison(change, before, after));
     }
 
     private ConcurrentModel compare() throws Exception {
