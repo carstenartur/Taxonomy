@@ -508,8 +508,8 @@
             // A later family batch must reconcile products that already arrived.
             var changedScores = Object.assign({}, rawScores);
             Object.entries(S.currentScoreDetails).forEach(function ([code, detail]) {
-                if (isProductScore(detail) && Object.hasOwn(S.currentRawScores, code)
-                        && Object.hasOwn(rawScores, detail.parentCode)) {
+                if (isProductScore(detail) && Object.prototype.hasOwnProperty.call(S.currentRawScores, code)
+                        && Object.prototype.hasOwnProperty.call(rawScores, detail.parentCode)) {
                     changedScores[code] = S.currentRawScores[code];
                 }
             });
