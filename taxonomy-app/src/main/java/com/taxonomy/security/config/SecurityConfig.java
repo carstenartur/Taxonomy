@@ -71,7 +71,7 @@ public class SecurityConfig {
             WebDavApplicationCredentialFilter webDavCredentialFilter,
             RateLimitFilter rateLimitFilter) {
         this(authRules, passwordChangeRequiredFilter,
-                webDavCredentialFilter, null, Optional.empty());
+                webDavCredentialFilter, rateLimitFilter, Optional.empty());
     }
 
     @Bean(name = "securityFilterChain")
