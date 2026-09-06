@@ -48,8 +48,12 @@ public final class DatabaseDiagnosticFunctions implements FunctionContributor {
             return "cast(serverproperty('ProductVersion') as varchar(128))";
         }
         if (dialect instanceof OracleDialect) {
-            return "(select version_full from product_component_version "
-                    + "where product like 'Oracle Database%')";
+            // VERSION_FULL identifies the database component; PRODUCT is a display name
+            // and may start with "Oracle AI Database" rather than "Oracle Database".
+            // DISTINCT also tolerates repeated component rows with the same version;
+            // conflicting versions still fail the scalar query instead of picking one.
+            return "(select distinct version_full from product_component_version "
+                    + "where version_full is not null)";
         }
         return null;
     }
