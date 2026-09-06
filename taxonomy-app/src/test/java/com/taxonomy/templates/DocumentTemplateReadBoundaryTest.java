@@ -258,6 +258,37 @@ class DocumentTemplateReadBoundaryTest {
         verifyNoMoreInteractions(repository);
     }
 
+    @Test
+    void mixedCaseRevisionsUseOneCanonicalSnapshotIdentity() throws Exception {
+        when(repository.read(ID, A)).thenReturn(snapshot(A));
+
+        var comparison = service.comparePart(ID, A.toUpperCase(java.util.Locale.ROOT), A,
+                "word/document.xml");
+
+        assertNull(comparison.change());
+        assertSame(comparison.before(), comparison.after());
+        verify(repository).read(ID, A);
+        verifyNoMoreInteractions(repository);
+    }
+
+    @Test
+    void textPartMetadataDistinguishesXmlJsonAndPlainText() throws Exception {
+        parts.put("word/qa-note.txt", "note".getBytes(StandardCharsets.UTF_8));
+        parts.put("word/qa-data.json", "{}".getBytes(StandardCharsets.UTF_8));
+        when(repository.read(ID, A)).thenReturn(snapshot(A));
+        var expected = Map.of("word/qa-note.txt", "text/plain",
+                "word/qa-data.json", "application/json", "word/document.xml", "application/xml",
+                "_rels/.rels", "application/xml");
+        for (var entry : expected.entrySet()) {
+            var part = service.readPart(ID, A, entry.getKey());
+            assertEquals(entry.getValue(), part.mediaType());
+            assertNotNull(part.textContent());
+        }
+        verify(repository, times(expected.size())).read(ID, A);
+        verifyNoMoreInteractions(repository);
+        verify(codec, never()).pack(anyMap());
+    }
+
     private TemplateSnapshot snapshot(String revision) {
         var manifest = new TemplateManifest(1, ID, "Report template", ID + ".dotx",
                 OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, "2026-09-06T00:00:00Z", "qa",

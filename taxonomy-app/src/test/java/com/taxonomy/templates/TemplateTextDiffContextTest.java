@@ -81,6 +81,17 @@ class TemplateTextDiffContextTest {
         assertThrows(UnsupportedOperationException.class, () -> blocks.getFirst().rows().clear());
     }
 
+    @Test
+    void publicResultConstructorRetainsNoMutableCallerList() {
+        var row = new TemplateTextDiff.Row("CONTEXT", 1, 1, "<a/>");
+        var supplied = new java.util.ArrayList<>(List.of(row));
+        var result = new TemplateTextDiff.Result(false, supplied);
+        supplied.clear();
+        assertEquals(List.of(row), result.rows());
+        assertEquals(List.of(row), result.blocks().getFirst().rows());
+        assertThrows(UnsupportedOperationException.class, () -> result.rows().clear());
+    }
+
     private static List<TemplateTextDiff.Block> verify(TemplateTextDiff.Result result) {
         var blocks = result.blocks();
         assertEquals(result.rows(), blocks.stream().flatMap(block -> block.rows().stream()).toList());

@@ -166,10 +166,8 @@ public class DocumentTemplateService {
     public TemplatePartComparison comparePart(
             String templateId, String fromRevision, String toRevision, String path) throws IOException {
         OoxmlTemplatePackageCodec.validatePartPath(path);
-        if (fromRevision == null || toRevision == null || !fromRevision.matches("[0-9a-f]{40}")
-                || !toRevision.matches("[0-9a-f]{40}")) {
-            throw new IllegalArgumentException("Two immutable template revisions are required");
-        }
+        fromRevision = canonicalComparisonRevision(fromRevision);
+        toRevision = canonicalComparisonRevision(toRevision);
         // Resolve both snapshots before interpreting an absent part as added or deleted.
         TemplateSnapshot before = repository.read(templateId, fromRevision);
         TemplateSnapshot after = fromRevision.equals(toRevision)
@@ -190,6 +188,14 @@ public class DocumentTemplateService {
         return new TemplatePartComparison(change, beforePart, afterPart);
     }
 
+    /** Accept full hexadecimal IDs only and preserve one canonical identity for links and reads. */
+    static String canonicalComparisonRevision(String revision) {
+        if (revision == null || !revision.matches("[0-9a-fA-F]{40}")) {
+            throw new IllegalArgumentException("Two immutable template revisions are required");
+        }
+        return revision.toLowerCase(java.util.Locale.ROOT);
+    }
+
     private static TemplatePartView partView(String path, byte[] content) {
         String lower = path.toLowerCase(java.util.Locale.ROOT);
         boolean text = lower.endsWith(".xml") || lower.endsWith(".rels")
@@ -200,7 +206,8 @@ public class DocumentTemplateService {
         return new TemplatePartView(
                 path,
                 content.length,
-                text ? "application/xml" : "application/octet-stream",
+                lower.endsWith(".txt") ? "text/plain" : lower.endsWith(".json") ? "application/json"
+                        : text ? "application/xml" : "application/octet-stream",
                 rendered);
     }
 

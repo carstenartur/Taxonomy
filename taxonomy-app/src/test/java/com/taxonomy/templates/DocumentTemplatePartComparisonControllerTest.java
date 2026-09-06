@@ -124,6 +124,20 @@ class DocumentTemplatePartComparisonControllerTest {
         assertEquals("TEXT", model.getAttribute("comparisonMode"));
     }
 
+    @Test
+    void hexadecimalCaseIsCanonicalizedForBothReadsAndNavigation() throws Exception {
+        stub(PartChange.MODIFIED, part("<p>before</p>"), part("<p>after</p>"));
+        var model = new ConcurrentModel();
+        assertEquals("document-template-part-comparison",
+                new DocumentTemplatePartComparisonController(templates).comparePart(
+                        ID, A.toUpperCase(java.util.Locale.ROOT),
+                        B.toUpperCase(java.util.Locale.ROOT), PATH, model));
+        assertEquals(A, model.getAttribute("fromRevision"));
+        assertEquals(B, model.getAttribute("toRevision"));
+        verify(templates).comparePart(ID, A, B, PATH);
+        verifyNoMoreInteractions(templates);
+    }
+
     private void stub(PartChange change, TemplatePartView before, TemplatePartView after) throws Exception {
         when(templates.comparePart(ID, A, B, PATH))
                 .thenReturn(new TemplatePartComparison(change, before, after));

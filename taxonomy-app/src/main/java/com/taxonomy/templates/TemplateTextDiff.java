@@ -97,6 +97,10 @@ public final class TemplateTextDiff {
     }
 
     public record Result(boolean limited, List<Row> rows) {
+        public Result {
+            rows = List.copyOf(rows);
+        }
+
         /**
          * Keep three segments next to each change. Fold only the excess unchanged
          * context, retaining every row and its original display numbers in order.

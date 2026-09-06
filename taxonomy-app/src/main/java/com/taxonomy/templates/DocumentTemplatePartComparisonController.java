@@ -28,8 +28,10 @@ public final class DocumentTemplatePartComparisonController {
             @RequestParam String to,
             @RequestParam String partPath,
             Model model) throws IOException {
-        if (from == null || to == null || !from.matches("[0-9a-f]{40}")
-                || !to.matches("[0-9a-f]{40}")) {
+        try {
+            from = DocumentTemplateService.canonicalComparisonRevision(from);
+            to = DocumentTemplateService.canonicalComparisonRevision(to);
+        } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Two immutable revisions and a relative package-part path are required");
         }
