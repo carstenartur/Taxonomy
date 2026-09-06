@@ -18,20 +18,37 @@ jobs:
         with:
           ref: diag/1007-authorization-rule-20260907
           fetch-depth: 0
-      - name: Print failing test and authorization context
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Reproduce and locate injected authorization test
         shell: bash
         run: |
-          set -euo pipefail
-          echo '=== matching test source ==='
-          matches=$(grep -R -l --include='*.java' 'accessRulesMatchExpectedRoles' . || true)
-          printf '%s\n' "$matches"
-          test -n "$matches"
-          while IFS= read -r file; do
-            echo "--- $file ---"
-            nl -ba "$file" | sed -n '200,280p'
-            echo '--- diff versus origin/main ---'
-            git fetch origin main
-            git diff --no-ext-diff origin/main -- "$file" || true
-          done <<< "$matches"
-          echo '=== ROLE_ADMIN / access-rule context ==='
-          grep -R -n --include='*.java' -E 'ROLE_ADMIN|accessRules|AccessRule' taxonomy-app/src/main/java taxonomy-app/src/test/java | head -400 || true
+          set -uo pipefail
+          echo '=== source before Maven ==='
+          grep -R -n --include='*.java' -E 'ArchitectureAuthorizationRegressionTest|accessRulesMatchExpectedRoles' . || true
+          echo '=== targeted Maven execution ==='
+          ./mvnw -B -pl taxonomy-app -am \
+            -Dtest=ArchitectureAuthorizationRegressionTest \
+            -Dsurefire.failIfNoSpecifiedTests=false test
+          status=$?
+          echo "TARGET_TEST_EXIT=$status"
+          echo '=== generated/source/class locations after Maven ==='
+          find . -type f \( -iname '*ArchitectureAuthorizationRegressionTest*' -o -path '*/generated-test-sources/*' \) -print | head -300 || true
+          echo '=== matching generated/text content ==='
+          grep -R -n -E 'ArchitectureAuthorizationRegressionTest|accessRulesMatchExpectedRoles' \
+            taxonomy-app/target taxonomy-build/target 2>/dev/null | head -300 || true
+          class_file=$(find . -type f -name 'ArchitectureAuthorizationRegressionTest.class' | head -1 || true)
+          if [ -n "$class_file" ]; then
+            echo "=== class file: $class_file ==="
+            class_dir=$(dirname "$class_file")
+            class_name=$(echo "$class_file" | sed -E 's#^.*/test-classes/##; s#/#.#g; s#\.class$##')
+            javap -classpath "${class_file%/com/*}" -c -l -p "$class_name" || true
+          fi
+          echo '=== ROLE_ADMIN / access-rule source context ==='
+          grep -R -n --include='*.java' -E 'ROLE_ADMIN|accessRules|AccessRule' \
+            taxonomy-app/src/main/java taxonomy-app/src/test/java taxonomy-build/src/main/java taxonomy-build/src/test/java \
+            | head -500 || true
+          exit "$status"
