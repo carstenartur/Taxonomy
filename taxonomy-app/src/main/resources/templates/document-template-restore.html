@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="#{document.template.restore.title}">Confirm template restoration — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#restoreMain" th:text="#{skip.link}">Skip to main content</a>
+<nav class="navbar navbar-dark bg-dark" th:aria-label="#{document.template.restore.navigation}">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand fw-semibold" th:href="@{/}">Taxonomy</a>
+        <a class="btn btn-outline-light"
+           th:href="@{/admin/document-templates/{id}(id=${template.templateId},from=${restoreRevision},to=${restoreExpectedHead})}"
+           th:text="#{document.template.restore.cancel}">Back to comparison</a>
+    </div>
+</nav>
+<main id="restoreMain" class="container py-4">
+    <section class="card shadow-sm" aria-labelledby="restoreHeading">
+        <div class="card-body">
+            <h1 id="restoreHeading" class="h2" th:text="#{document.template.restore.heading}">Confirm restoration</h1>
+            <p class="lead text-break" th:text="${template.displayName}">Template</p>
+            <p th:text="#{document.template.restore.effect}">A new active version will be created. Existing history will not be rewritten.</p>
+            <dl class="row">
+                <dt class="col-md-4" th:text="#{document.template.detail.id}">Template ID</dt>
+                <dd class="col-md-8 text-break"><code th:text="${template.templateId}">template</code></dd>
+                <dt class="col-md-4" th:text="#{document.template.restore.target}">Selected historical version</dt>
+                <dd class="col-md-8 text-break"><code id="restoreTargetRevision" th:text="${restoreRevision}">revision</code>
+                    <div class="small" th:text="${restoreTarget.displayName + ' · ' + restoreTarget.updatedBy + ' · ' + restoreTarget.updatedAt}">Historical metadata</div>
+                </dd>
+                <dt class="col-md-4" th:text="#{document.template.restore.expected}">Version this confirmation is based on</dt>
+                <dd class="col-md-8 text-break"><code id="restoreExpectedRevision" th:text="${restoreExpectedHead}">revision</code></dd>
+                <dt class="col-md-4" th:text="#{document.template.detail.current}">Current Git version</dt>
+                <dd class="col-md-8 text-break"><code id="restoreCurrentRevision" th:text="${template.headCommit}">revision</code></dd>
+            </dl>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <a id="restoreTargetDownload" class="btn btn-outline-primary"
+                   th:href="@{/api/admin/document-templates/{id}/download(id=${template.templateId},revision=${restoreRevision})}"
+                   th:text="#{document.template.restore.download}">Download selected version</a>
+                <a id="restoreCompare" class="btn btn-outline-secondary"
+                   th:href="@{/admin/document-templates/{id}(id=${template.templateId},from=${restoreExpectedHead},to=${restoreRevision})}"
+                   th:text="#{document.template.restore.compare}">Compare the proposed restoration</a>
+            </div>
+            <div th:if="${restoreConflict}" id="restoreConflict" class="alert alert-warning" role="alert">
+                <h2 class="h5" th:text="#{document.template.restore.conflict.title}">The template has changed</h2>
+                <p th:text="#{document.template.restore.conflict}">This confirmation is stale. The selected version and original precondition have been retained; no restoration was applied.</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-outline-secondary" id="restoreCompareConcurrent"
+                       th:href="@{/admin/document-templates/{id}(id=${template.templateId},from=${restoreExpectedHead},to=${template.headCommit})}"
+                       th:text="#{document.template.restore.concurrent}">Compare concurrent changes</a>
+                    <a class="btn btn-outline-primary" id="restoreReviewCurrent"
+                       th:href="@{/admin/document-templates/{id}/restore(id=${template.templateId},revision=${restoreRevision},expectedHead=${template.headCommit})}"
+                       th:text="#{document.template.restore.review}">Review a new confirmation against the current version</a>
+                </div>
+            </div>
+            <form th:unless="${restoreConflict}" id="restoreConfirmationForm" method="post"
+                  th:action="@{/admin/document-templates/{id}/restore(id=${template.templateId})}">
+                <input type="hidden" name="revision" th:value="${restoreRevision}"/>
+                <input type="hidden" name="expectedHead" th:value="${restoreExpectedHead}"/>
+                <div class="form-check mb-3">
+                    <input id="restoreConfirmed" class="form-check-input" type="checkbox"
+                           name="confirmed" value="true" required aria-describedby="restoreExplanation"/>
+                    <label for="restoreConfirmed" class="form-check-label text-break"
+                           th:text="#{document.template.restore.confirm(${template.displayName},${restoreRevision})}">Confirm the named template and selected version</label>
+                </div>
+                <p id="restoreExplanation" class="small" th:text="#{document.template.restore.precondition}">Only the displayed starting version can be replaced. A later change requires a new explicit confirmation.</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <button id="restoreSubmit" type="submit" class="btn btn-danger"
+                            th:text="#{document.template.detail.restore}">Restore as new version</button>
+                    <a class="btn btn-outline-secondary"
+                       th:href="@{/admin/document-templates/{id}(id=${template.templateId},from=${restoreRevision},to=${restoreExpectedHead})}"
+                       th:text="#{document.template.restore.cancel}">Back to comparison</a>
+                </div>
+            </form>
+        </div>
+    </section>
+</main>
+</body>
+</html>

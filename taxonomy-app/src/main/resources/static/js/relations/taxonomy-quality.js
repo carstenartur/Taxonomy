@@ -7,6 +7,7 @@
 (function () {
     'use strict';
     var t = TaxonomyI18n.t;
+    var loadVersion = 0;
 
     /* ------------------------------------------------------------------ */
     /*  Bootstrap on DOMContentLoaded                                      */
@@ -30,15 +31,19 @@
     function loadQualityDashboard() {
         var content = document.getElementById('qualityDashboardContent');
         if (!content) return;
+        var version = ++loadVersion;
         content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('quality.loading') + '</div>';
 
-        Promise.all([
-            fetch('/api/relations/metrics').then(function (r) { return r.ok ? r.json() : null; }),
-            fetch('/api/relations/metrics/by-type').then(function (r) { return r.ok ? r.json() : null; }),
-            fetch('/api/relations/metrics/top-rejected?limit=5').then(function (r) { return r.ok ? r.json() : null; })
-        ]).then(function (results) {
+        // The existing loader also serves the relation command adapters. Wait for
+        // that one client instead of issuing a second set of ad-hoc requests.
+        var ready = window.TaxonomyRelationsApiReady || window.TaxonomyRelationsApi;
+        return Promise.resolve(ready).then(function (api) {
+            return api.readQualityDashboard();
+        }).then(function (results) {
+            if (version !== loadVersion) return;
             renderDashboard(results[0], results[1], results[2]);
         }).catch(function () {
+            if (version !== loadVersion) return;
             content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('quality.load.failed') + '</div>';
         });
     }

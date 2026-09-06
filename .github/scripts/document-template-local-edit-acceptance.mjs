@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { verifyRestore } from './document-template-restore-acceptance.mjs';
 
 const exec = promisify(execFile);
 const mediaType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.template';
@@ -157,6 +158,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     const endpoint = suffix => baseUrl.replace(/\/+$/, '') + suffix;
     const id = 'qa-local-' + randomUUID().replaceAll('-', '');
     const api = endpoint('/api/admin/document-templates/' + id);
+    const restoreApi = endpoint('/admin/document-templates/' + id + '/restore');
     const uploads = [];
     const browserErrors = [];
     const expectedConsoleErrors = [];
@@ -165,9 +167,11 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
       target.on('console', message => {
         if (message.type() !== 'error') return;
         const record = { text: message.text(), url: message.location().url };
-        // Only the two deliberately rejected uploads may generate HTTP console errors.
-        if (record.url?.split('?')[0] === api
-            && /Failed to load resource:.*status of (400|412)\b/.test(record.text)) {
+        // Only the deliberately rejected uploads and stale restoration may produce these errors.
+        if ((record.url?.split('?')[0] === api
+            && /Failed to load resource:.*status of (400|412)\b/.test(record.text))
+            || (record.url?.split('?')[0] === restoreApi
+            && /Failed to load resource:.*status of 412\b/.test(record.text))) {
           expectedConsoleErrors.push(record);
         } else browserErrors.push(JSON.stringify(record));
       });
@@ -340,8 +344,11 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
     // A protocol-only credential is never used; these are ordinary browser sessions.
     const expectedBodies = [invalidBytes, await readFile(winnerFile), await readFile(staleFile)];
     assertUploadRequests(uploads, initial, expectedBodies);
+    const restoration = await verifyRestore({ context, page: first, expect, baseUrl,
+      templateId: id, language, outputDir: directory, originalRevision: initial,
+      expectedRevision: head, originalFile: original, concurrentFile: staleFile, csrf });
     assert.deepEqual(browserErrors, []);
-    return { ...configuration, templateId: id, initial, head, uploads, routeStatuses,
+    return { ...configuration, templateId: id, initial, head, uploads, routeStatuses, restoration,
       saveReceiptSource: 'HTTP_201_ETAG_AND_RENDERED_JSON_RESULT',
       selectedFileSha256: expectedBodies.map(sha256),
       sampleHelpScopedToDecisionTemplate: true,
