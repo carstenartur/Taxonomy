@@ -7,6 +7,11 @@ window.TaxonomyAbout = (function () {
 
     var noticesLoaded = false;
     var aboutInfo = null;
+    // Resolve from this served application asset, not the current page path.
+    // This preserves context paths and avoids /admin/admin/sessions on nested pages.
+    var sourceScript = document.currentScript;
+    var sessionsUrl = sourceScript && sourceScript.src
+        ? new URL('../../admin/sessions', sourceScript.src) : null;
 
     function el(id) { return document.getElementById(id); }
 
@@ -177,6 +182,24 @@ window.TaxonomyAbout = (function () {
         }
 
         initTabs();
+
+        // A navigation link only: no session inventory is fetched on page load.
+        var health = el('healthDashboard');
+        if (health && sessionsUrl && !el('browserSessionsLink')) {
+            var sessions = document.createElement('a');
+            sessions.id = 'browserSessionsLink';
+            sessions.className = 'btn btn-sm btn-outline-secondary mt-3';
+            var target = new URL(sessionsUrl.href);
+            target.searchParams.set('lang', document.documentElement.lang || 'en');
+            sessions.href = target.toString();
+            sessions.textContent = localized('Signed-in sessions', 'Angemeldete Sitzungen');
+            health.appendChild(sessions);
+            TaxonomyI18n.ready().then(function () {
+                sessions.textContent = t('sessions.title');
+            }).catch(function () {
+                // Keep the usable local-language fallback if translations fail.
+            });
+        }
 
         // Update navbar version and legal-resource links on page load.
         loadAboutInfo();
