@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
@@ -205,7 +208,7 @@ public class DocumentTemplateService {
         boolean text = lower.endsWith(".xml") || lower.endsWith(".rels")
                 || lower.endsWith(".txt") || lower.endsWith(".json");
         String rendered = text && content.length <= maximumTextBytes
-                ? new String(content, StandardCharsets.UTF_8)
+                ? decodeExactUtf8(content)
                 : null;
         return new TemplatePartView(
                 path,
@@ -213,6 +216,18 @@ public class DocumentTemplateService {
                 lower.endsWith(".txt") ? "text/plain" : lower.endsWith(".json") ? "application/json"
                         : text ? "application/xml" : "application/octet-stream",
                 rendered);
+    }
+
+    private static String decodeExactUtf8(byte[] content) {
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(content))
+                    .toString();
+        } catch (CharacterCodingException exception) {
+            return null;
+        }
     }
 
     public TemplateDescriptor restore(

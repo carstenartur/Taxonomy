@@ -75,9 +75,9 @@ public final class DocumentTemplatePartComparisonController {
     }
 
     private static boolean notText(TemplatePartView part) {
-        // The existing part reader decodes UTF-8. Never present a lossy/UTF-16 preview as exact text.
+        // Exact UTF-8 decoding is decided by the service. NUL remains an explicit binary/UTF-16 signal.
         return part != null && (part.textContent() == null
-                || part.textContent().indexOf('\0') >= 0 || part.textContent().indexOf('\uFFFD') >= 0);
+                || part.textContent().indexOf('\0') >= 0);
     }
 
     private static String text(TemplatePartView part) {
