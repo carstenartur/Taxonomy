@@ -107,6 +107,24 @@ public class DocumentTemplateService {
         return descriptor(saved);
     }
 
+    /** Validated metadata without allocating a downloadable DOTX archive. */
+    public TemplateDescriptor describeCurrent(String templateId) throws IOException {
+        return describeSnapshot(repository.readCurrent(templateId));
+    }
+
+    /** Preserve the selected version; never fall back to the current template. */
+    public TemplateDescriptor describe(String templateId, String revision) throws IOException {
+        return describeSnapshot(repository.read(templateId, revision));
+    }
+
+    private TemplateDescriptor describeSnapshot(TemplateSnapshot snapshot) throws IOException {
+        // Retain canonical OOXML and domain/privacy validation without ZIP creation.
+        // Download/archive-size validation remains on the unchanged download path.
+        codec.validatePackage(snapshot.parts());
+        validateSnapshot(snapshot);
+        return descriptor(snapshot);
+    }
+
     public TemplateFile downloadCurrent(String templateId) throws IOException {
         return toTemplateFile(repository.readCurrent(templateId));
     }
@@ -132,10 +150,7 @@ public class DocumentTemplateService {
             String templateId,
             String revision,
             String path) throws IOException {
-        if (path == null || path.isBlank() || path.startsWith("/")
-                || path.contains("\\") || path.contains("../")) {
-            throw new IllegalArgumentException("Invalid OOXML part path");
-        }
+        OoxmlTemplatePackageCodec.validatePartPath(path);
         TemplateSnapshot snapshot = repository.read(templateId, revision);
         validateSnapshot(snapshot);
         byte[] content = snapshot.parts().get(path);

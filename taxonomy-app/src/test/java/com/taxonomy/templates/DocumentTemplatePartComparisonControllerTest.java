@@ -117,7 +117,10 @@ class DocumentTemplatePartComparisonControllerTest {
                 assertEquals(400, failure.getStatusCode().value());
             }
         }
-        for (String invalid : new String[]{null, "", "../word/document.xml", "/word/document.xml", "word\\document.xml"}) {
+        for (String invalid : new String[]{null, "", " ", "../word/document.xml", "/word/document.xml",
+                "word\\document.xml", "word/..", "word/.", "./word/document.xml",
+                "word//document.xml", "word/ /document.xml", "word/document.xml/",
+                "word/a:b.xml", "word/\0document.xml"}) {
             assertEquals(400, assertThrows(ResponseStatusException.class,
                     () -> controller.comparePart(ID, A, B, invalid, new ConcurrentModel())).getStatusCode().value());
         }

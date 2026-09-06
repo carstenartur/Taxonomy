@@ -30,10 +30,15 @@ public final class DocumentTemplatePartComparisonController {
             @RequestParam String partPath,
             Model model) throws IOException {
         if (from == null || to == null || !from.matches("[0-9a-f]{40}")
-                || !to.matches("[0-9a-f]{40}") || partPath == null || partPath.isBlank()
-                || partPath.startsWith("/") || partPath.contains("\\") || partPath.contains("../")) {
+                || !to.matches("[0-9a-f]{40}")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Two immutable revisions and a relative package-part path are required");
+        }
+        try {
+            OoxmlTemplatePackageCodec.validatePartPath(partPath);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A relative package-part path is required", exception);
         }
         try {
             // Validate both historical snapshots before interpreting a missing side as added/deleted.

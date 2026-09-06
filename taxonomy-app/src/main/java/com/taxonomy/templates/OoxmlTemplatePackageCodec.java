@@ -143,8 +143,7 @@ public final class OoxmlTemplatePackageCodec {
         for (Map.Entry<String, byte[]> entry : packageParts.entrySet()) {
             String path = validatePartPath(entry.getKey());
             if (!caseInsensitivePaths.add(path.toLowerCase(Locale.ROOT))) {
-                throw invalid("DOTX contains duplicate or case-colliding package part: "
-                        + path);
+                throw invalid("DOTX contains duplicate or case-colliding package part: " + path);
             }
             byte[] content = entry.getValue();
             if (content == null) {
@@ -183,7 +182,8 @@ public final class OoxmlTemplatePackageCodec {
         return result;
     }
 
-    private static String validatePartPath(String rawPath) {
+    /** Shared package-relative path contract for imports and read-side entry points. */
+    static String validatePartPath(String rawPath) {
         if (rawPath == null || rawPath.isBlank()) {
             throw invalid("OOXML package part has an empty path");
         }
