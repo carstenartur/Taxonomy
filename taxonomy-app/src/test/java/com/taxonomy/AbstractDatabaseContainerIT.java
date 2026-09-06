@@ -167,4 +167,28 @@ abstract class AbstractDatabaseContainerIT {
         assertThat(response.headers().firstValue("Content-Type").orElse(""))
                 .contains("text/html");
     }
+
+    @Test
+    @Order(18)
+    void systemInformationUsesNativeDatabaseQueriesWithoutExposingConnectionDetails() throws Exception {
+        HttpResponse<String> response = httpGet("/api/admin/system-information");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        JsonNode snapshot = MAPPER.readTree(response.body());
+        JsonNode database = snapshot.get("database");
+        assertThat(database.get("versionSource").textValue()).isEqualTo("DATABASE_QUERY");
+        assertThat(database.get("version").textValue()).isNotBlank();
+        assertThat(database.get("product").textValue()).isNotBlank();
+        assertThat(snapshot.get("runtime").get("availableProcessors").intValue()).isPositive();
+        if (database.get("product").textValue().contains("HSQL")) {
+            assertThat(database.get("storageSource").textValue()).isEqualTo("DATABASE_QUERY");
+            assertThat(database.get("storage").textValue()).isEqualTo("IN_MEMORY");
+            assertThat(database.get("lifetime").textValue()).isEqualTo("APPLICATION_PROCESS");
+            assertThat(database.get("warnings").toString()).contains("IN_MEMORY_APPLICATION_PROCESS");
+        } else {
+            assertThat(database.get("storage").textValue()).isEqualTo("SERVER_MANAGED");
+            assertThat(database.get("warnings").toString()).contains("STORAGE_DURABILITY_UNVERIFIED");
+        }
+        assertThat(response.body()).doesNotContain("jdbc:", ContainerTestUtils.TEST_ADMIN_PASSWORD);
+    }
 }
