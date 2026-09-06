@@ -6,6 +6,8 @@ Administrators can open **Administration → Health Dashboard → Signed-in sess
 or `/admin/sessions`. The corresponding read-only endpoint is
 `GET /api/admin/sessions`. Both responses use `Cache-Control: no-store`; existing
 `/admin/**` and `/api/admin/**` role rules and controller method authorization apply.
+The navigation URL is resolved from the served application script, not from the
+currently viewed page, preserving application context paths on nested pages.
 
 The inventory uses Spring Security's `SessionRegistryImpl`,
 `HttpSessionEventPublisher` and the standard concurrent-session infrastructure with
@@ -31,12 +33,16 @@ user rows and indicates truncation; counts are for the entire local inventory.
 - An application restart resets this in-memory inventory. Persisted/restored sessions
   are not claimed to be a complete historical inventory. Shared session storage would
   require a separately reviewed integration.
-- Stateless Basic/Bearer calls and database-pool connections are not counted as new
-  browser logins. No session is created by the inventory service or controller.
+- Stateless Basic/Bearer calls and database-pool connections must not be counted as new
+  browser logins. No session is created by the inventory service or controller. The
+  authentication-chain behavior requires the actual protocol regression tests.
 - There is no force-logout/eviction endpoint, change to user permissions or new login limit.
 - The snapshot is a concurrent observation, not an atomic cluster census.
-- Session IDs, tokens, passwords, emails, roles and client addresses are not serialized;
-  identity information must not become metrics labels or span attributes.
+- Session IDs, tokens, passwords, separate email claims, roles and client addresses
+  are not serialized. A username/preferred_username can itself be an email address:
+  identifying the signed-in account to administrators is intentional, not anonymous
+  presence. This is explicitly stated in both locales. No identity data may become
+  metrics labels or span attributes.
 
 ### Verification
 
@@ -73,8 +79,10 @@ das Schließen des Browsers beendet nicht sofort die Sitzung. Abmeldung und vom
 Container gemeldeter Ablauf entfernen Einträge. Ein vollständiges Cluster- oder
 Keycloak-Anmeldeverzeichnis wird nicht behauptet.
 
-Passwörter, Tokens, rohe Sitzungskennungen und Netzwerkadressen bleiben verborgen.
+Passwörter, Tokens, rohe Sitzungskennungen, separate E-Mail-Attribute und Netzwerkadressen
+bleiben verborgen. Ein Anmeldename kann selbst eine E-Mail-Adresse sein; die Zuordnung
+zu einem Benutzer ist in dieser administratorgeschützten Ansicht beabsichtigt.
 Identitäten werden nicht als Telemetrie-Labels ausgegeben. Die Seite führt keine
-Abmeldung anderer Benutzer aus und verändert keine Anmelde- oder Berechtigungsregeln.
+Abmeldung anderer Benutzer aus und verändert keine Berechtigungsregeln.
 Die neue Registry-Anbindung erfordert trotzdem die vollständige Sicherheits- und
 Integrationsprüfung, einschließlich OIDC, bevor eine Freigabe behauptet werden darf.
