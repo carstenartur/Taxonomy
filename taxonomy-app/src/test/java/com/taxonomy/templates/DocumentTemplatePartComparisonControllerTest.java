@@ -138,6 +138,24 @@ class DocumentTemplatePartComparisonControllerTest {
         verifyNoMoreInteractions(templates);
     }
 
+
+    @Test
+    void unsafePathReasonAndCauseAreNonReflectiveBeforeAnyServiceRead() {
+        var controller = new DocumentTemplatePartComparisonController(templates);
+        for (String path : new String[]{"../private-marker.xml", "word/private-marker:part.xml",
+                "word/forged\r\nentry.xml", "word/forged\tentry.xml",
+                "word/forged\u0085entry.xml", "word/forged\u2028entry.xml", "word/forged\u2029entry.xml"}) {
+            var failure = assertThrows(ResponseStatusException.class,
+                    () -> controller.comparePart(ID, A, B, path, new ConcurrentModel()));
+            assertEquals(400, failure.getStatusCode().value());
+            assertEquals("A relative package-part path is required", failure.getReason());
+            assertInstanceOf(IllegalArgumentException.class, failure.getCause());
+            assertEquals("Unsafe OOXML package path", failure.getCause().getMessage());
+            assertNull(failure.getCause().getCause());
+        }
+        verifyNoInteractions(templates);
+    }
+
     private void stub(PartChange change, TemplatePartView before, TemplatePartView after) throws Exception {
         when(templates.comparePart(ID, A, B, PATH))
                 .thenReturn(new TemplatePartComparison(change, before, after));
