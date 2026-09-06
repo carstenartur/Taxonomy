@@ -1,12 +1,16 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
 import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
 import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
 import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -15,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.io.IOException;
@@ -66,21 +71,71 @@ public final class DocumentTemplateDetailController {
         return "document-template-detail";
     }
 
+    /** A read-only, bookmarkable confirmation; reloading never replaces its precondition. */
+    @GetMapping("/admin/document-templates/{templateId}/restore")
+    public String confirmRestore(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            @RequestParam String expectedHead,
+            Model model) throws IOException {
+        requireImmutableRevision(revision);
+        requireImmutableRevision(expectedHead);
+        try {
+            TemplateFile target = templates.download(templateId, revision);
+            TemplateFile current = templates.downloadCurrent(templateId);
+            model.addAttribute("template", descriptor(current));
+            model.addAttribute("restoreTarget", descriptor(target));
+            model.addAttribute("restoreRevision", revision);
+            model.addAttribute("restoreExpectedHead", expectedHead);
+            model.addAttribute("restoreConflict", !expectedHead.equals(current.commitId()));
+            return "document-template-restore";
+        } catch (TemplateNotFoundException exception) {
+            throw missingRestoreVersion(exception);
+        }
+    }
+
     @PostMapping("/admin/document-templates/{templateId}/restore")
     public String restore(
             @PathVariable String templateId,
             @RequestParam String revision,
             @RequestParam String expectedHead,
+            @RequestParam(defaultValue = "false") boolean confirmed,
             Principal principal,
+            Model model,
+            HttpServletResponse response,
             RedirectAttributes redirect) throws IOException {
-        TemplateDescriptor restored = templates.restore(
-                templateId,
-                revision,
-                expectedHead,
-                principal.getName());
-        redirect.addFlashAttribute("successMessage",
-                "Restored as new Git version " + restored.headCommit().substring(0, 12));
-        return "redirect:/admin/document-templates/" + templateId;
+        requireImmutableRevision(revision);
+        requireImmutableRevision(expectedHead);
+        if (!confirmed) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Explicit confirmation is required to restore a template");
+        }
+        try {
+            TemplateDescriptor restored = templates.restore(
+                    templateId, revision, expectedHead, principal.getName());
+            redirect.addFlashAttribute("restoredRevision", restored.headCommit());
+            return "redirect:/admin/document-templates/" + templateId;
+        } catch (TemplateConflictException exception) {
+            // Do not substitute the new head or retry the mutation. Preserve both original choices.
+            String view = confirmRestore(templateId, revision, expectedHead, model);
+            model.addAttribute("restoreConflict", true);
+            response.setStatus(HttpStatus.PRECONDITION_FAILED.value());
+            return view;
+        } catch (TemplateNotFoundException exception) {
+            throw missingRestoreVersion(exception);
+        }
+    }
+
+    private static void requireImmutableRevision(String revision) {
+        if (revision == null || !revision.matches("[0-9a-f]{40}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A full immutable template revision is required");
+        }
+    }
+
+    private static ResponseStatusException missingRestoreVersion(TemplateNotFoundException cause) {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "The requested template version does not exist", cause);
     }
 
     @GetMapping("/admin/document-templates/{templateId}/test.docx")

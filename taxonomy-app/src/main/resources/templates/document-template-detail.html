@@ -22,6 +22,8 @@
 <main id="templateDetail" class="container-fluid py-3 px-lg-4">
     <div th:if="${successMessage}" class="alert alert-success" role="status"
          th:text="${successMessage}"></div>
+    <div th:if="${restoredRevision}" id="restoreSuccess" class="alert alert-success text-break" role="status"
+         th:text="#{document.template.restore.success(${restoredRevision})}"></div>
 
     <section class="card shadow-sm mb-3" aria-labelledby="detailHeading">
         <div class="card-body">
@@ -150,14 +152,9 @@
                         <a class="btn btn-sm btn-outline-secondary"
                            th:href="@{/api/admin/document-templates/{id}/download(id=${template.templateId},revision=${revision.commitId})}"
                            th:text="#{document.template.detail.download.version}">Download</a>
-                        <form th:if="${revision.commitId != template.headCommit}" method="post"
-                              th:action="@{/admin/document-templates/{id}/restore(id=${template.templateId})}"
-                              onsubmit="return window.confirm('Restore this historical version as a new Git commit?');">
-                            <input type="hidden" name="revision" th:value="${revision.commitId}"/>
-                            <input type="hidden" name="expectedHead" th:value="${template.headCommit}"/>
-                            <button type="submit" class="btn btn-sm btn-outline-danger"
-                                    th:text="#{document.template.detail.restore}">Restore</button>
-                        </form>
+                        <a th:if="${revision.commitId != template.headCommit}" class="btn btn-sm btn-outline-danger"
+                           th:href="@{/admin/document-templates/{id}/restore(id=${template.templateId},revision=${revision.commitId},expectedHead=${template.headCommit})}"
+                           th:text="#{document.template.detail.restore}">Restore as new version</a>
                     </div></td>
                 </tr>
                 </tbody>
