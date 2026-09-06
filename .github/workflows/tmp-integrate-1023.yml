@@ -18,76 +18,14 @@ jobs:
         with:
           ref: feat/admin-system-persistence-20260906
           fetch-depth: 0
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-      - name: Integrate main and normalize index storage diagnostics
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git merge --no-edit origin/main
-          python3 - <<'PY'
-          from pathlib import Path
-
-          source = Path('taxonomy-app/src/main/java/com/taxonomy/shared/service/SystemInformationService.java')
-          text = source.read_text()
-          old = '''        String indexStorage = environment.getProperty(
-                  "spring.jpa.properties.hibernate.search.backend.directory.type", "unknown");'''
-          new = '''        String indexStorage = normalizeIndexStorage(environment.getProperty(
-                  "spring.jpa.properties.hibernate.search.backend.directory.type", "unknown"));'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one indexStorage assignment, found {text.count(old)}')
-          text = text.replace(old, new)
-          marker = '''    static String connectionStorage(String url) {'''
-          helper = '''    private static String normalizeIndexStorage(String value) {
-              String normalized = value == null ? "" : value.strip().toLowerCase(Locale.ROOT);
-              return switch (normalized) {
-                  case "local-heap", "local-filesystem" -> normalized;
-                  default -> "unknown";
-              };
-          }
-
-'''
-          if text.count(marker) != 1:
-              raise SystemExit(f'expected one connectionStorage marker, found {text.count(marker)}')
-          text = text.replace(marker, helper + marker)
-          source.write_text(text)
-
-          test_file = Path('taxonomy-app/src/test/java/com/taxonomy/shared/service/SystemInformationServiceTest.java')
-          test = test_file.read_text()
-          test_marker = '''    @Test
-              void allSupportedDatabaseFamiliesHaveNativeVersionExpressions() {'''
-          regression = '''    @Test
-              void unexpectedIndexStorageIsNormalizedBeforeItReachesTheUi() {
-                  try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
-                      var env = environment().withProperty(
-                              "spring.jpa.properties.hibernate.search.backend.directory.type", "remote-backend");
-                      var snapshot = new SystemInformationService(factory, env).snapshot();
-                      assertThat(snapshot.indexStorage()).isEqualTo("unknown");
-                      assertThat(snapshot.disks()).allSatisfy(disk ->
-                              assertThat(disk.purposes()).doesNotContain("SEARCH_INDEX"));
-                  }
-              }
-
-'''
-          if test.count(test_marker) != 1:
-              raise SystemExit(f'expected one test insertion marker, found {test.count(test_marker)}')
-          test = test.replace(test_marker, regression + test_marker)
-          test_file.write_text(test)
-          PY
-      - name: Run focused service regression
-        run: ./mvnw -B -pl taxonomy-app -am -Dtest=SystemInformationServiceTest -Dsurefire.failIfNoSpecifiedTests=false test
-      - name: Commit final candidate and remove temporary workflow
+      - name: Integrate current main
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "Carsten Hammer"
           git config user.email "carsten.hammer@t-online.de"
+          git fetch origin main
+          git merge --no-edit origin/main
           git rm .github/workflows/tmp-integrate-1023.yml
-          git add taxonomy-app/src/main/java/com/taxonomy/shared/service/SystemInformationService.java \
-                  taxonomy-app/src/test/java/com/taxonomy/shared/service/SystemInformationServiceTest.java
-          git commit -m "Normalize system index storage diagnostics"
+          git commit -m "Remove temporary integration workflow"
           git push origin HEAD:feat/admin-system-persistence-20260906
