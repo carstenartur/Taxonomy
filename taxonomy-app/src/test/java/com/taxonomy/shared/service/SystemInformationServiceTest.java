@@ -160,6 +160,51 @@ class SystemInformationServiceTest {
                 .contains("version_full", "product_component_version");
     }
 
+    @Test
+    void oracleVersionExpressionDoesNotDependOnMarketingNameOrRowOrder() {
+        // Execute the exact Oracle scalar expression on a controlled SQL fixture.
+        // The existing Oracle container test remains the real-engine acceptance test.
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            try (var session = factory.openSession()) {
+                session.doWork(connection -> {
+                    try (var statement = connection.createStatement()) {
+                        statement.execute("CREATE TABLE product_component_version "
+                                + "(product VARCHAR(129), version_full VARCHAR(258))");
+                        statement.execute("INSERT INTO product_component_version VALUES "
+                                + "('PL/SQL', NULL), ('Oracle AI Database 26ai Free', '23.26.0.0.0'), "
+                                + "('NLSRTL', NULL)");
+                    }
+                });
+                var internal = factory.unwrap(SessionFactoryImplementor.class);
+                var text = internal.getTypeConfiguration().getBasicTypeRegistry()
+                        .resolve(StandardBasicTypes.STRING);
+                internal.getQueryEngine().getSqmFunctionRegistry()
+                        .patternDescriptorBuilder("qa_oracle_version",
+                                DatabaseDiagnosticFunctions.versionExpression(new OracleDialect()))
+                        .setExactArgumentCount(0).setInvariantType(text).register();
+                assertThat(session.createQuery("select qa_oracle_version()", String.class)
+                        .getSingleResult()).isEqualTo("23.26.0.0.0");
+                session.doWork(connection -> {
+                    try (var statement = connection.createStatement()) {
+                        statement.execute("UPDATE product_component_version SET product = "
+                                + "'Oracle Database 23ai Free' WHERE version_full IS NOT NULL");
+                        statement.execute("INSERT INTO product_component_version VALUES "
+                                + "('Same database component', '23.26.0.0.0')");
+                    }
+                });
+                assertThat(session.createQuery("select qa_oracle_version()", String.class)
+                        .getSingleResult()).isEqualTo("23.26.0.0.0");
+                session.doWork(connection -> {
+                    try (var statement = connection.createStatement()) {
+                        statement.execute("UPDATE product_component_version SET version_full = NULL");
+                    }
+                });
+                assertThat(session.createQuery("select qa_oracle_version()", String.class)
+                        .getSingleResult()).isNull();
+            }
+        }
+    }
+
     private static MockEnvironment environment() {
         return new MockEnvironment().withProperty("spring.jpa.properties.hibernate.search.backend.directory.type", "local-heap");
     }
