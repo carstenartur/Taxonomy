@@ -37,7 +37,7 @@ actual dialect. No replacement dialect, pseudo-entity or new dependency is neede
 | HSQLDB | `database_version()` |
 | PostgreSQL | `current_setting('server_version')` |
 | SQL Server | `cast(serverproperty('ProductVersion') as varchar(128))` |
-| Oracle | Database row's `version_full` in `product_component_version` |
+| Oracle | Distinct non-null `version_full` in `product_component_version`; no product-name filter |
 
 For HSQLDB, `INFORMATION_SCHEMA.SYSTEM_SESSIONINFO` identifies the actual database
 URI internally, so remote HSQL databases can also be distinguished as memory, file
@@ -52,11 +52,14 @@ request uses a separate read-only Hibernate session with manual flush. There is 
 continuous polling, new background worker or persistent diagnostic cache.
 
 CPU count means processors available to this JVM, not physical sockets. Disk capacity
-and usable bytes refer only to the local filesystems used for temporary files and an
-active filesystem-backed search index. Shared filesystems are deduplicated. Missing
-paths are not created and are shown as unavailable, never as zero free space. These
-figures do not describe a remote database server's disks. An in-memory Lucene index
-is distinguished from an in-memory database: an index is a rebuildable projection.
+and usable bytes are measurements for the configured temporary and active
+filesystem-backed index directories. Only the **same resolved directory** is combined.
+Different rows may share a filesystem; **do not add them together**. Neither
+`FileStore.equals()` nor its name/type provides a portable volume identity, so no
+unique-volume count or aggregate capacity is claimed. Resolved paths stay internal.
+Missing paths are not created and are shown as unavailable, never as zero free space.
+These figures do not describe a remote database server's disks. An in-memory Lucene
+index is distinguished from an in-memory database: an index is a rebuildable projection.
 
 ### Existing telemetry and sessions
 
@@ -77,7 +80,9 @@ must not become telemetry labels. No authentication/session policy is changed he
 
 `SystemInformationServiceTest` covers native HSQL version/storage, file reopening,
 metadata fallback, schema-action precedence, remote-connection ambiguity, diagnostic
-failure isolation and filesystem deduplication. The existing diagnostics container
+failure isolation and shared-directory measurements. `SystemInformationDiskScopeTest`
+covers same-directory aliases and separate, non-additive directory measurements
+without starting a database or Spring context. The existing diagnostics container
 base exercises native version queries on HSQLDB, PostgreSQL, SQL Server and Oracle
 without adding application/container starts. Existing administrator security tests
 also cover administrator, non-administrator and unauthenticated access.
@@ -102,6 +107,11 @@ vor einer In-Memory-Datenbank, vor destruktiver Schema-Neuanlage und vor unbest�
 Speicherbeständigkeit. Ein abgelegter Suchindex ist nicht mit der maßgeblichen
 Datenbank gleichzusetzen. Bei HSQLDB wird die Speicherart aus der tatsächlich
 angesprochenen Datenbank ermittelt, auch bei einem entfernten HSQL-Server.
+
+Die Plattenwerte gelten je verwendetem Verzeichnis. Nur identische aufgelöste
+Verzeichnisse werden zusammengefasst. Verschiedene Zeilen können denselben freien
+Platz beschreiben und dürfen nicht addiert werden. Eine Anzahl unabhängiger
+Datenträger oder eine gesamte freie Kapazität wird bewusst nicht behauptet.
 
 Die Datenbankabfragen verwenden Hibernate-Erweiterungspunkte und feste, rein lesende
 Ausdrücke. JDBC-Metadaten dienen nur als ausdrücklich gekennzeichneter Rückfall.

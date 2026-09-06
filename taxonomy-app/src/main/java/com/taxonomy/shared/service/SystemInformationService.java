@@ -172,34 +172,42 @@ public class SystemInformationService {
         return List.of("CREATE", "CREATE_DROP", "DROP", "TRUNCATE").contains(action);
     }
 
-    private List<DiskInfo> disks(String indexStorage) {
-        Map<FileStore, DiskInfo> stores = new LinkedHashMap<>();
+    List<DiskInfo> disks(String indexStorage) {
+        Map<Path, DiskInfo> locations = new LinkedHashMap<>();
         List<DiskInfo> unavailable = new ArrayList<>();
-        addDisk("TEMPORARY_FILES", System.getProperty("java.io.tmpdir"), stores, unavailable);
+        addDisk("TEMPORARY_FILES", System.getProperty("java.io.tmpdir"), locations, unavailable);
         if ("local-filesystem".equals(indexStorage)) {
             addDisk("SEARCH_INDEX", environment.getProperty(
-                    "spring.jpa.properties.hibernate.search.backend.directory.root"), stores, unavailable);
+                    "spring.jpa.properties.hibernate.search.backend.directory.root"), locations, unavailable);
         }
-        List<DiskInfo> result = new ArrayList<>(stores.values());
+        List<DiskInfo> result = new ArrayList<>(locations.values());
         result.addAll(unavailable);
         return List.copyOf(result);
     }
 
-    private static void addDisk(String purpose, String path, Map<FileStore, DiskInfo> stores,
+    private static void addDisk(String purpose, String path, Map<Path, DiskInfo> locations,
                                 List<DiskInfo> unavailable) {
         try {
             if (path == null || path.isBlank()) {
                 unavailable.add(new DiskInfo(List.of(purpose), null, null, "UNAVAILABLE"));
                 return;
             }
-            FileStore store = Files.getFileStore(Path.of(path));
-            DiskInfo previous = stores.get(store);
+            // FileStore equality/name/type do not portably identify a volume.
+            // Merge only the same resolved directory. Other rows may share space:
+            // the UI states this explicitly and never computes an aggregate total.
+            Path location = Path.of(path).toRealPath();
+            DiskInfo previous = locations.get(location);
             List<String> purposes = new ArrayList<>();
             if (previous != null) {
                 purposes.addAll(previous.purposes());
+                purposes.add(purpose);
+                locations.put(location, new DiskInfo(List.copyOf(purposes),
+                        previous.totalBytes(), previous.usableBytes(), previous.status()));
+                return;
             }
+            FileStore store = Files.getFileStore(location);
             purposes.add(purpose);
-            stores.put(store, new DiskInfo(List.copyOf(purposes), store.getTotalSpace(),
+            locations.put(location, new DiskInfo(List.copyOf(purposes), store.getTotalSpace(),
                     store.getUsableSpace(), "AVAILABLE"));
         } catch (java.io.IOException | RuntimeException exception) {
             unavailable.add(new DiskInfo(List.of(purpose), null, null, "UNAVAILABLE"));
