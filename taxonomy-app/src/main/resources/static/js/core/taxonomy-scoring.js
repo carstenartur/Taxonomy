@@ -38,6 +38,96 @@
     // ── Utility ───────────────────────────────────────────────────────────────
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
+    function isProductScore(detail) {
+        return detail && detail.kind === 'PRODUCT_SUITABILITY';
+    }
+
+    function clampScore(value) {
+        var numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 0;
+        return Math.max(0, Math.min(100, Math.round(numeric)));
+    }
+
+    function productParentScore(detail) {
+        var parentScore = detail && detail.parentCode
+            ? (S.currentRawScores || {})[detail.parentCode] : null;
+        // Null, blank text and booleans are not measured zeroes.
+        if (Number.isFinite(parentScore)) return parentScore;
+        return detail && Number.isFinite(detail.parentScore) ? detail.parentScore : null;
+    }
+
+    function productRelevancePending(detail) {
+        return isProductScore(detail) && productParentScore(detail) === null
+            && !Number.isFinite(detail.effectiveRelevance);
+    }
+
+    function effectiveProductScore(rawScore, detail) {
+        var parentScore = productParentScore(detail);
+        if (parentScore === null) return 0;
+        return clampScore(clampScore(parentScore) * clampScore(rawScore) / 100);
+    }
+
+    function effectiveIncrementalScores(rawScores, details) {
+        var effective = {};
+        Object.entries(rawScores || {}).forEach(function ([code, raw]) {
+            var detail = details && details[code] ? details[code] : null;
+            effective[code] = isProductScore(detail)
+                ? effectiveProductScore(raw, detail)
+                : clampScore(raw);
+        });
+        return effective;
+    }
+
+    function isGermanLocale() {
+        var locale = window.TaxonomyI18n && typeof window.TaxonomyI18n.getLocale === 'function'
+            ? window.TaxonomyI18n.getLocale()
+            : document.documentElement.lang;
+        return String(locale || '').toLowerCase().startsWith('de');
+    }
+
+    function scoreLabel(code, effective, raw, detail) {
+        if (isProductScore(detail)) {
+            if (productRelevancePending(detail)) {
+                return isGermanLocale()
+                    ? 'Eignung ' + clampScore(raw) + '% · effektive Relevanz ausstehend'
+                    : 'Suitability ' + clampScore(raw) + '% · effective relevance pending';
+            }
+            return isGermanLocale()
+                ? 'Eignung ' + clampScore(raw) + '% · effektiv ' + clampScore(effective) + '/100'
+                : 'Suitability ' + clampScore(raw) + '% · effective ' + clampScore(effective) + '/100';
+        }
+        return clampScore(effective) + '%';
+    }
+
+    function scoreAriaLabel(code, effective, raw, detail) {
+        if (isProductScore(detail)) {
+            if (productRelevancePending(detail)) {
+                return isGermanLocale()
+                    ? 'Produkteignung: ' + clampScore(raw) + ' Prozent, effektive Relevanz ausstehend'
+                    : 'Product suitability: ' + clampScore(raw) + ' percent, effective relevance pending';
+            }
+            return isGermanLocale()
+                ? 'Produkteignung: ' + clampScore(raw)
+                    + ' Prozent, effektive Relevanz: ' + clampScore(effective) + ' von 100'
+                : 'Product suitability: ' + clampScore(raw)
+                    + ' percent, effective relevance: ' + clampScore(effective) + ' of 100';
+        }
+        return isGermanLocale()
+            ? 'Bewertung: ' + clampScore(effective) + ' Prozent'
+            : 'Score: ' + clampScore(effective) + ' percent';
+    }
+
+    function applyScoreEnvelope(envelope) {
+        envelope = envelope || {};
+        S.currentRawScores = envelope.rawScores || envelope.scores || {};
+        S.currentEffectiveScores = envelope.effectiveScores || envelope.scores || {};
+        S.currentScoreDetails = envelope.scoreDetails || {};
+        S.currentProductSuitabilityScores = envelope.productSuitabilityScores || {};
+        S.scoreSemanticsVersion = envelope.scoreSemanticsVersion || 0;
+        S.currentScoreSemanticsWarnings = envelope.scoreSemanticsWarnings || [];
+        S.currentScores = S.currentEffectiveScores;
+    }
+
     // ── UI helpers ────────────────────────────────────────────────────────────
     function setAnalyzing(on) {
         const btn = document.getElementById('analyzeBtn');
@@ -78,7 +168,12 @@
 
         const timeStr = info.timestamp.toLocaleTimeString();
         const matchedList = info.matchedEntries.length > 0
-            ? info.matchedEntries.map(([k, v]) => escapeHtml(k) + ': ' + v + '%').join(', ')
+            ? info.matchedEntries.map(([k, v]) => {
+                var detail = S.currentScoreDetails ? S.currentScoreDetails[k] : null;
+                var raw = S.currentRawScores && S.currentRawScores[k] !== undefined
+                    ? S.currentRawScores[k] : v;
+                return escapeHtml(k) + ': ' + escapeHtml(scoreLabel(k, v, raw, detail));
+            }).join(', ')
             : '(none)';
         const warnHtml = info.warnings.length > 0
             ? '<div class="text-warning mt-1"><strong>Warnings:</strong><ul class="mb-0 ps-3">' +
@@ -141,9 +236,16 @@
         let reasonsHtml = '';
         if (reasonEntries.length > 0) {
             const reasonLines = reasonEntries.map(([code, reason]) => {
-                const pct = scores && scores[code] !== undefined ? scores[code] : '?';
+                const raw = scores && scores[code] !== undefined ? scores[code] : 0;
+                const scoreDetail = detail && detail.scoreDetails
+                    ? detail.scoreDetails[code] : (S.currentScoreDetails || {})[code];
+                const effective = S.currentScores && S.currentScores[code] !== undefined
+                    ? S.currentScores[code]
+                    : (isProductScore(scoreDetail)
+                        ? effectiveProductScore(raw, scoreDetail) : raw);
                 return '<div class="llm-log-reason-entry"><code>' + escapeHtml(code) + '</code> '
-                    + '(' + pct + '%): ' + escapeHtml(reason) + '</div>';
+                    + '(' + escapeHtml(scoreLabel(code, effective, raw, scoreDetail)) + '): '
+                    + escapeHtml(reason) + '</div>';
             }).join('');
             reasonsHtml = '<div class="mt-1"><strong>&#128172; REASONS:</strong>'
                 + '<div class="llm-log-reasons">' + reasonLines + '</div></div>';
@@ -202,7 +304,7 @@
             .then(result => {
                 setAnalyzing(false);
                 S.taxonomyData = result.tree;
-                S.currentScores = result.scores;
+                applyScoreEnvelope(result);
                 S.currentReasons = result.reasons || {};
                 S.currentDiscrepancies = result.discrepancies || [];
                 S.currentProductCoverageGaps = result.productCoverageGaps || [];
@@ -332,6 +434,10 @@
         S.lastAnalyzedText = text;
         S.evaluatedNodes = new Set();
         S.currentScores = {};
+        S.currentRawScores = {};
+        S.currentEffectiveScores = {};
+        S.currentScoreDetails = {};
+        S.currentProductSuitabilityScores = {};
         S.currentReasons = {};
         var interactiveProvider = document.getElementById('providerSelect');
         S.lastAnalysisProvider = interactiveProvider ? interactiveProvider.value : null;
@@ -365,6 +471,12 @@
             llmCommLogEl.innerHTML = '';
         }
         S.currentScores = {};
+        S.currentRawScores = {};
+        S.currentEffectiveScores = {};
+        S.currentScoreDetails = {};
+        S.currentProductSuitabilityScores = {};
+        S.scoreSemanticsVersion = 0;
+        S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
         S.lastAnalysisStatus = 'IN_PROGRESS';
         S.storedBusinessText = text;
@@ -389,11 +501,30 @@
 
         eventSource.addEventListener('scores', function (e) {
             const data = JSON.parse(e.data);
-            Object.assign(S.currentScores, data.scores);
+            var rawScores = data.rawScores || data.scores || {};
+            var details = data.scoreDetails || {};
+            Object.assign(S.currentRawScores, rawScores);
+            Object.assign(S.currentScoreDetails, details);
+            // A later family batch must reconcile products that already arrived.
+            var changedScores = Object.assign({}, rawScores);
+            Object.entries(S.currentScoreDetails).forEach(function ([code, detail]) {
+                if (isProductScore(detail) && Object.prototype.hasOwnProperty.call(S.currentRawScores, code)
+                        && Object.prototype.hasOwnProperty.call(rawScores, detail.parentCode)) {
+                    changedScores[code] = S.currentRawScores[code];
+                }
+            });
+            var effectiveScores = effectiveIncrementalScores(changedScores, S.currentScoreDetails);
+            Object.assign(S.currentEffectiveScores, effectiveScores);
+            Object.assign(S.currentScores, effectiveScores);
             if (data.reasons) { Object.assign(S.currentReasons, data.reasons); }
             if (data.provider) { S.lastAnalysisProvider = data.provider; }
-            Object.entries(data.scores).forEach(function ([code, pct]) {
-                applyScoreToNode(code, pct, data.reasons ? data.reasons[code] : null);
+            if (data.scoreSemanticsVersion) {
+                S.scoreSemanticsVersion = data.scoreSemanticsVersion;
+            }
+            Object.entries(changedScores).forEach(function ([code, raw]) {
+                var detail = S.currentScoreDetails[code];
+                if (isProductScore(detail)) S.currentProductSuitabilityScores[code] = clampScore(raw);
+                applyScoreToNode(code, effectiveScores[code], S.currentReasons[code], detail, raw);
             });
             if (data.prompt !== undefined || data.rawResponse !== undefined) {
                 appendLlmLogEntry(
@@ -405,6 +536,7 @@
                         provider: data.provider || '',
                         durationMs: data.durationMs || 0,
                         reasons: data.reasons || {},
+                        scoreDetails: details,
                         error: data.error || null
                     }
                 );
@@ -423,7 +555,16 @@
             const data = JSON.parse(e.data);
             eventSource.close();
             setAnalyzing(false);
-            S.currentScores = data.totalScores;
+            applyScoreEnvelope({
+                scores: data.totalScores,
+                rawScores: data.rawScores,
+                effectiveScores: data.effectiveScores || data.totalScores,
+                scoreDetails: data.scoreDetails,
+                productSuitabilityScores: data.productSuitabilityScores,
+                scoreSemanticsVersion: data.scoreSemanticsVersion,
+                scoreSemanticsWarnings: data.scoreSemanticsWarnings
+            });
+            syncVisibleScoreNodes();
             S.currentDiscrepancies = data.discrepancies || [];
             S.currentProductCoverageGaps = data.productCoverageGaps || [];
             S.lastAnalysisStatus = data.status || 'SUCCESS';
@@ -451,6 +592,16 @@
                     eventSource.close();
                     setAnalyzing(false);
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
+                    applyScoreEnvelope({
+                        scores: data.partialScores,
+                        rawScores: data.rawScores,
+                        effectiveScores: data.effectiveScores || data.partialScores,
+                        scoreDetails: data.scoreDetails,
+                        productSuitabilityScores: data.productSuitabilityScores,
+                        scoreSemanticsVersion: data.scoreSemanticsVersion,
+                        scoreSemanticsWarnings: data.scoreSemanticsWarnings
+                    });
+                    syncVisibleScoreNodes();
                     S.currentDiscrepancies = data.discrepancies || [];
                     S.currentProductCoverageGaps = data.productCoverageGaps || [];
                     B().showStatus('warning', '⚠️ ' + data.errorMessage);
@@ -470,8 +621,18 @@
 
     // ── Incremental DOM update helpers ────────────────────────────────────────
 
+    function syncVisibleScoreNodes() {
+        // Reconcile terminal evidence without rebuilding the tree or losing focus/scroll.
+        document.querySelectorAll('.tax-node[data-code]').forEach(function (node) {
+            var code = node.getAttribute('data-code');
+            applyScoreToNode(code, (S.currentScores || {})[code] || 0,
+                (S.currentReasons || {})[code], (S.currentScoreDetails || {})[code],
+                (S.currentRawScores || {})[code]);
+        });
+    }
+
     /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
-    function applyScoreToNode(code, pct, reason) {
+    function applyScoreToNode(code, pct, reason, detail, rawScore) {
         B().ensureNodeRendered(code, S.currentScores);
         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
         if (!el) return;
@@ -481,13 +642,22 @@
         // Remove evaluating animation
         el.classList.remove('tax-evaluating');
 
+        var raw = rawScore === undefined
+            ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
+        var scoreDetail = detail || (S.currentScoreDetails || {})[code];
+        // Highlight comparable relevance only; pending suitability is not global relevance.
         if (pct > 0) {
             const alpha = Math.min(pct / 100, 1).toFixed(2);
             header.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
             // Contrast-safe text color (WCAG 1.4.3)
             if (pct >= 75) { header.style.color = '#fff'; }
             else { header.style.color = '#1a1a1a'; }
+        } else {
+            header.style.backgroundColor = '';
+            header.style.color = '';
+        }
 
+        if (pct > 0 || isProductScore(scoreDetail)) {
             let badge = header.querySelector('.tax-pct');
             if (!badge) {
                 badge = document.createElement('span');
@@ -495,7 +665,10 @@
                 badge.setAttribute('aria-hidden', 'true');
                 header.appendChild(badge);
             }
-            badge.textContent = pct + '%';
+            badge.textContent = scoreLabel(code, pct, raw, scoreDetail);
+            badge.title = isProductScore(scoreDetail)
+                ? t('scoring.score.tooltip.product')
+                : t('scoring.score.tooltip.relevance');
 
             // Add/update reason icon
             if (reason) {
@@ -509,20 +682,19 @@
                 reasonIcon.title = reason;
             }
         } else {
-            // Explicitly scored zero – clear any previous highlight
-            header.style.backgroundColor = '';
-            header.style.color = '';
+            // A later explicit zero must remove an earlier positive badge as well.
+            var previousBadge = header.querySelector('.tax-pct');
+            if (previousBadge) previousBadge.remove();
         }
 
         // Update ARIA label with score info (WCAG 4.1.2)
         var nameEl = header.querySelector('.tax-name');
         var ariaLabel = code + ' ' + (nameEl ? nameEl.textContent : '');
-        if (pct > 0) {
-            ariaLabel += ', Score: ' + pct + ' percent';
-            if (reason) { ariaLabel += ', Reason: ' + reason; }
-        } else {
-            ariaLabel += ', Score: 0 percent';
-        }
+        var rawForAria = rawScore === undefined
+            ? ((S.currentRawScores || {})[code] ?? pct) : rawScore;
+        var detailForAria = detail || (S.currentScoreDetails || {})[code];
+        ariaLabel += ', ' + scoreAriaLabel(code, pct, rawForAria, detailForAria);
+        if (reason) { ariaLabel += ', Reason: ' + reason; }
         el.setAttribute('aria-label', ariaLabel);
     }
 

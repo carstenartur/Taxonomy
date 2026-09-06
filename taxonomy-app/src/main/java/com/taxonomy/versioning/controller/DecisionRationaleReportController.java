@@ -3,9 +3,13 @@ package com.taxonomy.versioning.controller;
 import com.taxonomy.architecture.decision.DecisionRationaleReport;
 import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
+import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
 import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.ViewContext;
@@ -19,6 +23,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
@@ -31,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -63,20 +69,42 @@ public class DecisionRationaleReportController {
     private final ReportRendererRegistry reportRendererRegistry;
     private final RepositoryStateService repositoryStateService;
     private final WorkspaceResolver workspaceResolver;
+    private final DecisionRationaleScoreSemanticsAdapter scoreSemanticsAdapter;
+    private final TaxonomyService taxonomyService;
 
+    /** Backward-compatible constructor for focused unit tests. */
     public DecisionRationaleReportController(
             DecisionRationaleReportService reportService,
             ReportRendererRegistry reportRendererRegistry,
             RepositoryStateService repositoryStateService,
             WorkspaceResolver workspaceResolver) {
+        this(reportService, reportRendererRegistry, repositoryStateService, workspaceResolver,
+                new DecisionRationaleScoreSemanticsAdapter(), null);
+    }
+
+    @Autowired
+    public DecisionRationaleReportController(
+            DecisionRationaleReportService reportService,
+            ReportRendererRegistry reportRendererRegistry,
+            RepositoryStateService repositoryStateService,
+            WorkspaceResolver workspaceResolver,
+            DecisionRationaleScoreSemanticsAdapter scoreSemanticsAdapter,
+            TaxonomyService taxonomyService) {
         this.reportService = reportService;
         this.reportRendererRegistry = reportRendererRegistry;
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
+        this.scoreSemanticsAdapter = scoreSemanticsAdapter;
+        this.taxonomyService = taxonomyService;
     }
 
     public record DecisionReportRequest(
             Map<String, Integer> scores,
+            Map<String, Integer> rawScores,
+            Map<String, Integer> effectiveScores,
+            Map<String, AnalysisScoreDetail> scoreDetails,
+            Map<String, Integer> productSuitabilityScores,
+            Integer scoreSemanticsVersion,
             Map<String, String> reasons,
             String businessText,
             String provider,
@@ -84,6 +112,20 @@ public class DecisionRationaleReportController {
             List<TaxonomyDiscrepancy> discrepancies,
             List<ProductCoverageGap> productCoverageGaps,
             String language) {
+
+        /** Legacy request constructor retained for Java callers and validation tests. */
+        public DecisionReportRequest(
+                Map<String, Integer> scores,
+                Map<String, String> reasons,
+                String businessText,
+                String provider,
+                String analysisStatus,
+                List<TaxonomyDiscrepancy> discrepancies,
+                List<ProductCoverageGap> productCoverageGaps,
+                String language) {
+            this(scores, null, null, null, null, null, reasons, businessText, provider,
+                    analysisStatus, discrepancies, productCoverageGaps, language);
+        }
     }
 
     @Operation(
@@ -101,7 +143,7 @@ public class DecisionRationaleReportController {
                     + "one parent/children decision chapter per positive hierarchy decision, diagrams, "
                     + "and account/version provenance in the footer.")
     @ApiResponse(responseCode = "200", description = "DOCX report returned")
-    @ApiResponse(responseCode = "400", description = "Requirement or scores are missing")
+    @ApiResponse(responseCode = "400", description = "Requirement or score evidence is missing, invalid or incomplete")
     @PostMapping("/docx")
     public ResponseEntity<byte[]> exportDocx(@RequestBody DecisionReportRequest request) {
         return render(request, "docx");
@@ -111,7 +153,7 @@ public class DecisionRationaleReportController {
             summary = "Export hierarchical decision rationale as HTML",
             description = "Creates a self-contained, print-ready HTML report with inline SVG diagrams.")
     @ApiResponse(responseCode = "200", description = "HTML report returned")
-    @ApiResponse(responseCode = "400", description = "Requirement or scores are missing")
+    @ApiResponse(responseCode = "400", description = "Requirement or score evidence is missing, invalid or incomplete")
     @PostMapping("/html")
     public ResponseEntity<byte[]> exportHtml(@RequestBody DecisionReportRequest request) {
         return render(request, "html");
@@ -121,7 +163,7 @@ public class DecisionRationaleReportController {
             summary = "Export hierarchical decision rationale as JSON",
             description = "Returns the format-neutral report model including all chapters and provenance.")
     @ApiResponse(responseCode = "200", description = "Structured report returned")
-    @ApiResponse(responseCode = "400", description = "Requirement or scores are missing")
+    @ApiResponse(responseCode = "400", description = "Requirement or score evidence is missing, invalid or incomplete")
     @PostMapping("/json")
     public ResponseEntity<byte[]> exportJson(@RequestBody DecisionReportRequest request) {
         return render(request, "json");
@@ -160,15 +202,39 @@ public class DecisionRationaleReportController {
         ViewContext viewContext = repositoryStateService.getViewContext(
                 context.username(), branch, context);
         Locale locale = resolveLocale(request.language());
+        AnalysisScoreSemantics.Derived scoreSemantics = resolveScoreSemantics(request);
+        Map<String, AnalysisScoreDetail> scoreDetails = scoreSemantics.scoreDetails();
+        Map<String, Integer> effectiveScores = scoreSemantics.effectiveScores();
+        Map<String, String> reasons = scoreSemanticsAdapter.enrichReasons(
+                request.reasons(), scoreDetails, locale);
         DecisionAnalysisInput input = new DecisionAnalysisInput(
                 request.businessText(),
-                request.scores(),
-                request.reasons(),
+                effectiveScores,
+                reasons,
                 request.provider(),
                 request.analysisStatus(),
                 request.discrepancies(),
-                request.productCoverageGaps());
-        return reportService.generate(input, context, viewContext, locale);
+                request.productCoverageGaps(),
+                List.of(),
+                null,
+                scoreDetails);
+        DecisionRationaleReport report = reportService.generate(
+                input, context, viewContext, locale);
+        return scoreSemanticsAdapter.adapt(report, scoreDetails, locale);
+    }
+
+    private AnalysisScoreSemantics.Derived resolveScoreSemantics(
+            DecisionReportRequest request) {
+        // Validation requires an explicit raw map to cover every selected code.
+        // Never fill missing raw evidence with possibly weighted values from scores.
+        Map<String, Integer> suppliedRaw = request.rawScores() != null
+                ? request.rawScores() : request.scores();
+        Map<String, Integer> authoritativeRaw = new LinkedHashMap<>();
+        request.scores().keySet().forEach(code -> authoritativeRaw.put(
+                code, suppliedRaw.get(code)));
+        return AnalysisScoreSemantics.derive(
+                authoritativeRaw,
+                taxonomyService == null ? List.of() : taxonomyService.getFingerprintTree());
     }
 
     private Locale resolveLocale(String language) {
@@ -186,24 +252,61 @@ public class DecisionRationaleReportController {
                 || request.scores() == null
                 || request.scores().isEmpty()
                 || request.scores().size() > MAX_SCORE_ENTRIES
+                || !validScoreMap(request.scores())
+                || !validOptionalScoreMap(request.rawScores())
+                || (request.rawScores() != null
+                        && !request.rawScores().keySet().containsAll(request.scores().keySet()))
+                || !validOptionalScoreMap(request.effectiveScores())
+                || !validOptionalScoreMap(request.productSuitabilityScores())
+                || !validScoreDetails(request.scoreDetails())
                 || !boundedMetadata(request.provider())
                 || !boundedMetadata(request.analysisStatus())
                 || !boundedMetadata(request.language())
+                || (request.scoreSemanticsVersion() != null
+                        && request.scoreSemanticsVersion() < 0)
                 || (request.discrepancies() != null
                         && request.discrepancies().size() > MAX_DISCREPANCIES)
                 || (request.productCoverageGaps() != null
                         && request.productCoverageGaps().size() > MAX_PRODUCT_COVERAGE_GAPS)) {
             return false;
         }
-        boolean validScores = request.scores().entrySet().stream().allMatch(entry ->
-                boundedText(entry.getKey(), MAX_NODE_CODE_LENGTH, false)
+        return validReasons(request.reasons())
+                && validDiscrepancies(request.discrepancies())
+                && validProductCoverageGaps(request.productCoverageGaps());
+    }
+
+    private boolean validOptionalScoreMap(Map<String, Integer> scores) {
+        return scores == null || (scores.size() <= MAX_SCORE_ENTRIES && validScoreMap(scores));
+    }
+
+    private boolean validScoreMap(Map<String, Integer> scores) {
+        return scores != null && scores.entrySet().stream().allMatch(entry ->
+                boundedNodeCode(entry.getKey())
                         && entry.getValue() != null
                         && entry.getValue() >= 0
                         && entry.getValue() <= 100);
-        return validScores
-                && validReasons(request.reasons())
-                && validDiscrepancies(request.discrepancies())
-                && validProductCoverageGaps(request.productCoverageGaps());
+    }
+
+    private boolean validScoreDetails(Map<String, AnalysisScoreDetail> details) {
+        if (details == null) {
+            return true;
+        }
+        if (details.size() > MAX_SCORE_ENTRIES) {
+            return false;
+        }
+        return details.entrySet().stream().allMatch(entry -> {
+            AnalysisScoreDetail detail = entry.getValue();
+            return boundedNodeCode(entry.getKey())
+                    && detail != null
+                    && entry.getKey().equals(detail.nodeCode())
+                    && detail.kind() != null
+                    && detail.rawScore() >= 0 && detail.rawScore() <= 100
+                    && detail.effectiveRelevance() >= 0
+                    && detail.effectiveRelevance() <= 100
+                    && (detail.parentCode() == null || boundedNodeCode(detail.parentCode()))
+                    && (detail.parentScore() == null
+                            || (detail.parentScore() >= 0 && detail.parentScore() <= 100));
+        });
     }
 
     private boolean validProductCoverageGaps(

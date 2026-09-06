@@ -319,6 +319,11 @@ async function currentReportRequest(target) {
     const state = window.TaxonomyState;
     return {
       scores: state?.currentScores || {},
+      rawScores: state?.currentRawScores || state?.currentScores || {},
+      effectiveScores: state?.currentEffectiveScores || state?.currentScores || {},
+      scoreDetails: state?.currentScoreDetails || {},
+      productSuitabilityScores: state?.currentProductSuitabilityScores || {},
+      scoreSemanticsVersion: state?.scoreSemanticsVersion || 0,
       reasons: state?.currentReasons || {},
       businessText: document.getElementById('businessText')?.value.trim() || '',
       provider: state?.lastAnalysisProvider || 'MOCK',
@@ -396,7 +401,8 @@ async function verifyDecisionModel(target, request) {
   }
   if (requestedGaps.length > 0 && report.status !== 'FINAL_WITH_WARNINGS') {
     throw new Error(
-      `Completed product coverage gaps require FINAL_WITH_WARNINGS, got ${report.status}`);
+      `Completed product coverage gaps require FINAL_WITH_WARNINGS, got ${report.status}; `
+        + `warnings=${JSON.stringify(report.warnings || [])}`);
   }
   if (report.status === 'DRAFT_INCOMPLETE' || report.status === 'NO_RESULT') {
     throw new Error(`Unexpected decision report status: ${report.status}`);

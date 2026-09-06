@@ -8,6 +8,12 @@
 
     var state = {
         taxonomyData: [],
+        currentRawScores: {}, // provider evidence; PRODUCT values are independent suitability
+        currentEffectiveScores: {}, // comparable relevance for generic downstream consumers
+        currentScoreDetails: {}, // code → typed score-semantics envelope
+        currentProductSuitabilityScores: {}, // concrete product code → independent suitability
+        scoreSemanticsVersion: 0,
+        currentScoreSemanticsWarnings: [],
         currentReasons: {},   // code → reason string
         currentDiscrepancies: [], // TaxonomyDiscrepancy list from analysis
         currentProductCoverageGaps: [], // relevant product families without a suitable product

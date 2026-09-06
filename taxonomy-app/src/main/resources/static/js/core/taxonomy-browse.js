@@ -933,6 +933,11 @@
                 || 'unknown';
             var request = {
                 scores: S.currentScores,
+                rawScores: S.currentRawScores || {},
+                effectiveScores: S.currentEffectiveScores || S.currentScores || {},
+                scoreDetails: S.currentScoreDetails || {},
+                productSuitabilityScores: S.currentProductSuitabilityScores || {},
+                scoreSemanticsVersion: S.scoreSemanticsVersion || 0,
                 reasons: S.currentReasons || {},
                 businessText: decisionText,
                 provider: decisionProvider,

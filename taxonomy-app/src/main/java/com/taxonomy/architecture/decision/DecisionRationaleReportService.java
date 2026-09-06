@@ -11,7 +11,9 @@ import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.TaxonomyDataFingerprint;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.ViewContext;
@@ -79,7 +81,8 @@ public class DecisionRationaleReportService {
   List<TaxonomyDiscrepancy> discrepancies,
   List<ProductCoverageGap> productCoverageGaps,
   List<TaxonomyNodeDto> taxonomyTree,
-  AnalysisSnapshotProvenance snapshotProvenance) {
+  AnalysisSnapshotProvenance snapshotProvenance,
+  Map<String, AnalysisScoreDetail> scoreDetails) {
 
         public DecisionAnalysisInput {
   scores = scores == null ? Map.of() : Map.copyOf(scores);
@@ -88,6 +91,22 @@ public class DecisionRationaleReportService {
   productCoverageGaps = productCoverageGaps == null
           ? List.of() : List.copyOf(productCoverageGaps);
   taxonomyTree = taxonomyTree == null ? List.of() : List.copyOf(taxonomyTree);
+  scoreDetails = scoreDetails == null ? Map.of() : Map.copyOf(scoreDetails);
+        }
+
+        /** Backward-compatible full input without typed score evidence. */
+        public DecisionAnalysisInput(
+      String businessText,
+      Map<String, Integer> scores,
+      Map<String, String> reasons,
+      String provider,
+      String analysisStatus,
+      List<TaxonomyDiscrepancy> discrepancies,
+      List<ProductCoverageGap> productCoverageGaps,
+      List<TaxonomyNodeDto> taxonomyTree,
+      AnalysisSnapshotProvenance snapshotProvenance) {
+  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
+          productCoverageGaps, taxonomyTree, snapshotProvenance, Map.of());
         }
 
         /** Backward-compatible ad-hoc analysis input using the currently loaded hierarchy. */
@@ -99,7 +118,7 @@ public class DecisionRationaleReportService {
       String analysisStatus,
       List<TaxonomyDiscrepancy> discrepancies) {
   this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
-          List.of(), List.of(), null);
+          List.of(), List.of(), null, Map.of());
         }
 
         /** Ad-hoc analysis input including explicit concrete-product coverage evidence. */
@@ -112,7 +131,7 @@ public class DecisionRationaleReportService {
       List<TaxonomyDiscrepancy> discrepancies,
       List<ProductCoverageGap> productCoverageGaps) {
   this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
-          productCoverageGaps, List.of(), null);
+          productCoverageGaps, List.of(), null, Map.of());
         }
 
         /** Backward-compatible immutable-snapshot input without product-gap evidence. */
@@ -126,7 +145,7 @@ public class DecisionRationaleReportService {
       List<TaxonomyNodeDto> taxonomyTree,
       AnalysisSnapshotProvenance snapshotProvenance) {
   this(businessText, scores, reasons, provider, analysisStatus, discrepancies,
-          List.of(), taxonomyTree, snapshotProvenance);
+          List.of(), taxonomyTree, snapshotProvenance, Map.of());
         }
     }
 
@@ -188,14 +207,17 @@ public class DecisionRationaleReportService {
                 catalogueMetadataService.getMetadata();
         DecisionReportBuildMetadataService.BuildMetadata buildMetadata =
                 buildMetadataService.current();
-        String actualDataFingerprint = fingerprint(nodesByCode.values());
+        List<TaxonomyNodeDto> fingerprintTree = input.taxonomyTree().isEmpty()
+                ? taxonomyService.toFingerprintTree(nodesByCode.values()) : input.taxonomyTree();
+        String actualDataFingerprint = TaxonomyDataFingerprint.sha256(fingerprintTree);
         String analysisSnapshotFingerprint = fingerprintAnalysis(
                 input, scores, reasons, productCoverageGaps);
         if (input.snapshotProvenance() != null
                 && input.snapshotProvenance().taxonomyFingerprintSha256() != null
                 && !input.snapshotProvenance().taxonomyFingerprintSha256().isBlank()
-                && !input.snapshotProvenance().taxonomyFingerprintSha256()
-                        .equalsIgnoreCase(actualDataFingerprint)) {
+                && !TaxonomyDataFingerprint.matchesRecorded(
+                        input.snapshotProvenance().taxonomyFingerprintSha256(),
+                        fingerprintTree)) {
             warnings.add(german
                     ? "Der im Analysesnapshot gespeicherte Taxonomie-Fingerabdruck stimmt nicht mit der eingefrorenen Hierarchie im Analyse-Payload überein. Der Bericht bleibt nachvollziehbar, muss aber fachlich und technisch geprüft werden."
                     : "The taxonomy fingerprint stored in the analysis snapshot does not match the frozen hierarchy in the analysis payload. The report remains traceable but requires technical and substantive review.");
@@ -874,14 +896,22 @@ public class DecisionRationaleReportService {
             if (parentScore == null || parentScore <= 0) {
                 continue;
             }
-            List<TaxonomyNode> children = entry.getValue();
-            boolean allEvaluated = children.stream()
+            List<TaxonomyNode> budgetChildren = entry.getValue().stream()
+                    .filter(child -> {
+                        AnalysisScoreDetail detail = input.scoreDetails().get(child.getCode());
+                        return detail == null || !detail.isProductSuitability();
+                    })
+                    .toList();
+            if (budgetChildren.isEmpty()) {
+                continue;
+            }
+            boolean allEvaluated = budgetChildren.stream()
                     .map(TaxonomyNode::getCode)
                     .allMatch(scores::containsKey);
             if (!allEvaluated) {
                 continue;
             }
-            int childTotal = children.stream()
+            int childTotal = budgetChildren.stream()
                     .map(TaxonomyNode::getCode)
                     .mapToInt(code -> scores.getOrDefault(code, 0))
                     .sum();
@@ -1130,30 +1160,6 @@ public class DecisionRationaleReportService {
             return node.getDescriptionDe().strip();
         }
         return normalized(node.getDescriptionEn(), "");
-    }
-
-    private String fingerprint(Collection<TaxonomyNode> nodes) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            nodes.stream()
-                    .filter(node -> node.getCode() != null)
-                    .sorted(Comparator.comparing(TaxonomyNode::getCode))
-                    .map(this::canonicalNodeLine)
-                    .forEach(line -> digest.update(line.getBytes(StandardCharsets.UTF_8)));
-            return HexFormat.of().formatHex(digest.digest());
-        } catch (Exception exception) {
-            return "unavailable";
-        }
-    }
-
-    /** Matches {@code PortfolioFingerprintService.taxonomyFingerprint()}. */
-    private String canonicalNodeLine(TaxonomyNode node) {
-        return String.join("\u001f",
-                value(node.getCode()),
-                value(node.getNameEn()),
-                value(node.getDescriptionEn()),
-                value(node.getTaxonomyRoot()),
-                Integer.toString(node.getLevel())) + "\n";
     }
 
     private String fingerprintAnalysis(

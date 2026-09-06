@@ -625,6 +625,66 @@ public class TaxonomyService {
         return dtos;
     }
 
+    /**
+     * Reads fingerprint evidence in one bulk node query without traversing lazy associations.
+     * There is deliberately no time-based cache: every invocation observes its transaction's
+     * catalogue state. The returned tree contains only the existing fingerprint fields.
+     */
+    @Transactional(readOnly = true)
+    public List<TaxonomyNodeDto> getFingerprintTree() {
+        return toFingerprintTree(repository.findAll());
+    }
+
+    /**
+     * Reuses an already loaded node set, for example the hierarchy used to build a report.
+     * Parent codes reconstruct the hierarchy without loading parent/child or relation entities.
+     * Duplicate, orphaned and cyclic evidence is rejected instead of silently losing nodes.
+     */
+    public List<TaxonomyNodeDto> toFingerprintTree(Collection<TaxonomyNode> nodes) {
+        Objects.requireNonNull(nodes, "nodes");
+        Map<String, TaxonomyNodeDto> byCode = new TreeMap<>();
+        for (TaxonomyNode node : nodes) {
+            if (node == null || node.getCode() == null || node.getCode().isBlank()) {
+                throw new IllegalArgumentException("Fingerprint evidence requires a node code");
+            }
+            TaxonomyNodeDto dto = new TaxonomyNodeDto();
+            dto.setCode(node.getCode().strip());
+            dto.setNameEn(node.getNameEn());
+            dto.setDescriptionEn(node.getDescriptionEn());
+            dto.setTaxonomyRoot(node.getTaxonomyRoot());
+            dto.setLevel(node.getLevel());
+            dto.setParentCode(node.getParentCode());
+            dto.setAnalysisRole(catalogueOverlayService.getNodeMetadata(node.getCode()).analysisRole());
+            if (byCode.putIfAbsent(dto.getCode(), dto) != null) {
+                throw new IllegalArgumentException("Duplicate fingerprint node code " + dto.getCode());
+            }
+        }
+        List<TaxonomyNodeDto> roots = new ArrayList<>();
+        for (TaxonomyNodeDto dto : byCode.values()) {
+            String parentCode = dto.getParentCode();
+            if (parentCode == null || parentCode.isBlank()) {
+                roots.add(dto);
+            } else {
+                TaxonomyNodeDto parent = byCode.get(parentCode.strip());
+                if (parent == null) {
+                    throw new IllegalArgumentException("Missing fingerprint parent for " + dto.getCode());
+                }
+                parent.getChildren().add(dto);
+            }
+        }
+        // Every node has at most one parent. A component not reachable from a root is cyclic.
+        int reached = 0;
+        Deque<TaxonomyNodeDto> pending = new ArrayDeque<>(roots);
+        while (!pending.isEmpty()) {
+            reached++;
+            pending.addAll(pending.removeFirst().getChildren());
+        }
+        if (reached != byCode.size()) {
+            throw new IllegalArgumentException("Fingerprint hierarchy contains a cycle");
+        }
+        return List.copyOf(roots);
+    }
+
     public TaxonomyNodeDto toDto(TaxonomyNode node) {
         TaxonomyNodeDto dto = new TaxonomyNodeDto();
         dto.setId(node.getId());
