@@ -197,6 +197,32 @@ export async function verifyRestore({ context, page, expect, baseUrl, templateId
       await expect(page.locator('#partAfterRevision')).toHaveText(pair.to);
       await expect(page.locator('#partDiffTable tr[data-kind="' + pair.kind + '"]')
         .filter({ hasText: 'accepted-local-edit-' + language })).toHaveCount(1);
+      // Inspect the actual rendered fixture before accepting the comparison UX.
+      const changed = page.locator('#partDiffTable tr[data-kind="' + pair.kind + '"]')
+        .filter({ hasText: 'accepted-local-edit-' + language });
+      await expect(changed).toBeVisible();
+      const disclosures = page.locator('#partDiffTable details.diff-context');
+      assert.ok(await disclosures.count() > 0, 'The representative fixture must fold its long unchanged context');
+      await expect(page.locator('#partDiffTable details[open]')).toHaveCount(0);
+      const allRows = await page.locator('#partDiffTable tr[data-kind]').count();
+      const visibleRows = await page.locator('#partDiffTable tr[data-kind]:visible').count();
+      assert.ok(visibleRows < allRows / 2, 'Unchanged XML must not dominate the initial view');
+      const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+      assert.ok(pageHeight < 5000, 'The small fixture must not become a 27,000px comparison page');
+      const disclosure = disclosures.first();
+      const summary = disclosure.locator('summary');
+      const contextRow = disclosure.locator('tr[data-kind="CONTEXT"]').first();
+      await expect(contextRow).not.toBeVisible();
+      await summary.focus();
+      await expect(summary).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(contextRow).toBeVisible();
+      await expect(summary).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(contextRow).not.toBeVisible();
+      await expect(changed).toBeVisible();
+      assert.equal(await page.locator('#partDiffTable tr[data-kind]').count(), allRows,
+        'Folding is presentation only; no source row is discarded');
       assert.ok((await page.locator('#partDiffTable code').allTextContents()).some(text => text.includes('<w:')));
       await expect(page.locator('#partDiffTable script')).toHaveCount(0);
       for (const [selector, revision, bytes] of [
@@ -222,6 +248,7 @@ export async function verifyRestore({ context, page, expect, baseUrl, templateId
       const screenshot = 'part-comparison-' + pair.kind.toLowerCase() + '.png';
       await page.screenshot({ path: path.join(directory, screenshot), fullPage: true });
       results.push({ from: pair.from, to: pair.to, markerKind: pair.kind, screenshot,
+        pageHeight, allRows, visibleRows, contextToggleWithKeyboard: true,
         immutableDownloadsVerified: true, keyboardNavigation: true, horizontalOverflow: false });
       const back = sameOrigin(await page.locator('#partComparisonBack').getAttribute('href'), '');
       await page.locator('#partComparisonBack').focus();

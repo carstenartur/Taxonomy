@@ -59,6 +59,7 @@ public final class DocumentTemplatePartComparisonController {
                 var result = TemplateTextDiff.compare(text(before), text(after));
                 model.addAttribute("comparisonMode", result.limited() ? "LIMIT" : "TEXT");
                 model.addAttribute("comparisonRows", result.rows());
+                model.addAttribute("comparisonBlocks", result.blocks());
             }
             return "document-template-part-comparison";
         } catch (TemplateNotFoundException exception) {

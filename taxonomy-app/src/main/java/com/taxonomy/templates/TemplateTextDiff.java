@@ -89,5 +89,41 @@ public final class TemplateTextDiff {
     }
 
     public record Row(String kind, Integer beforeNumber, Integer afterNumber, String text) { }
-    public record Result(boolean limited, List<Row> rows) { }
+    /** A reversible presentation grouping; only unchanged rows may be folded. */
+    public record Block(boolean folded, List<Row> rows) {
+        public Block {
+            rows = List.copyOf(rows);
+        }
+    }
+
+    public record Result(boolean limited, List<Row> rows) {
+        /**
+         * Keep three segments next to each change. Fold only the excess unchanged
+         * context, retaining every row and its original display numbers in order.
+         * No second diff, source normalization or storage access is involved.
+         */
+        public List<Block> blocks() {
+            List<Block> blocks = new ArrayList<>();
+            int start = 0;
+            while (start < rows.size()) {
+                boolean context = "CONTEXT".equals(rows.get(start).kind());
+                int end = start + 1;
+                while (end < rows.size()
+                        && "CONTEXT".equals(rows.get(end).kind()) == context) {
+                    end++;
+                }
+                int prefix = context && start > 0 ? 3 : 0;
+                int suffix = context && end < rows.size() ? 3 : 0;
+                if (context && end - start > prefix + suffix + 1) {
+                    if (prefix > 0) blocks.add(new Block(false, rows.subList(start, start + prefix)));
+                    blocks.add(new Block(true, rows.subList(start + prefix, end - suffix)));
+                    if (suffix > 0) blocks.add(new Block(false, rows.subList(end - suffix, end)));
+                } else {
+                    blocks.add(new Block(false, rows.subList(start, end)));
+                }
+                start = end;
+            }
+            return List.copyOf(blocks);
+        }
+    }
 }

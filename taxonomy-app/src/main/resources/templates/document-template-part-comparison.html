@@ -7,6 +7,7 @@
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-template-diff.css}"/>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#partComparison" th:text="#{skip.link}">Skip to main content</a>
@@ -53,19 +54,35 @@
     <section th:if="${comparisonMode == 'TEXT'}" class="card shadow-sm" aria-labelledby="partDiffHeading">
         <h2 id="partDiffHeading" class="h5 card-header" th:text="#{document.template.diff.text}">Text differences</h2>
         <div class="card-body p-0">
-            <table id="partDiffTable" class="table table-sm mb-0" style="table-layout:fixed" aria-describedby="partComparisonHelp">
+            <table id="partDiffTable" class="table table-sm mb-0 template-diff" aria-describedby="partComparisonHelp">
                 <caption class="px-2" th:text="#{document.template.diff.legend}">Added, removed and unchanged text are explicitly labelled.</caption>
-                <colgroup><col style="width:3em"/><col style="width:3em"/><col style="width:6em"/><col/></colgroup>
-                <thead><tr><th scope="col" th:text="#{document.template.diff.before}">Old</th>
+                <colgroup th:fragment="columns"><col class="diff-number"/><col class="diff-number"/><col class="diff-label"/><col/></colgroup>
+                <thead th:fragment="head"><tr><th scope="col" th:text="#{document.template.diff.before}">Old</th>
                     <th scope="col" th:text="#{document.template.diff.after}">New</th>
                     <th scope="col" th:text="#{document.template.detail.change}">Change</th>
                     <th scope="col" th:text="#{document.template.diff.content}">Content</th></tr></thead>
-                <tbody>
-                <tr th:each="row : ${comparisonRows}" th:attr="data-kind=${row.kind}"
-                    th:classappend="${row.kind == 'ADDED' ? 'table-success' : (row.kind == 'DELETED' ? 'table-danger' : '')}">
-                    <td th:text="${row.beforeNumber}">1</td><td th:text="${row.afterNumber}">1</td>
-                    <td class="text-break" th:text="${#messages.msg('document.template.diff.' + row.kind)}">Unchanged</td>
-                    <td><code class="text-body" style="white-space:pre-wrap;overflow-wrap:anywhere" th:text="${row.text}">XML text</code></td>
+                <tbody th:each="block : ${comparisonBlocks}">
+                <th:block th:unless="${block.folded}" th:with="rows=${block.rows}">
+                    <tr th:each="row : ${rows}" th:fragment="rows(rows)" th:attr="data-kind=${row.kind}"
+                        class="diff-row" th:classappend="${row.kind == 'ADDED' ? 'table-success' : (row.kind == 'DELETED' ? 'table-danger' : '')}">
+                        <td><span class="diff-number-label" th:text="#{document.template.diff.before}">Old</span><span th:text="${row.beforeNumber == null ? '—' : row.beforeNumber}">1</span></td>
+                        <td><span class="diff-number-label" th:text="#{document.template.diff.after}">New</span><span th:text="${row.afterNumber == null ? '—' : row.afterNumber}">1</span></td>
+                        <td class="diff-change" th:text="${#messages.msg('document.template.diff.' + row.kind)}">Unchanged</td>
+                        <td class="diff-content"><code class="text-body" th:text="${row.text}">XML text</code></td>
+                    </tr>
+                </th:block>
+                <tr th:if="${block.folded}" class="diff-fold">
+                    <td colspan="4" class="p-0">
+                        <details class="diff-context">
+                            <summary th:text="#{document.template.diff.context(${block.rows.size()})}">Unchanged segments — expand or collapse</summary>
+                            <table class="table table-sm mb-0 template-diff" aria-describedby="partComparisonHelp">
+                                <caption class="visually-hidden" th:text="#{document.template.diff.legend}">Unchanged context</caption>
+                                <colgroup th:replace="~{:: columns}"></colgroup>
+                                <thead th:replace="~{:: head}"></thead>
+                                <tbody><th:block th:replace="~{:: rows(${block.rows})}"></th:block></tbody>
+                            </table>
+                        </details>
+                    </td>
                 </tr>
                 </tbody>
             </table>

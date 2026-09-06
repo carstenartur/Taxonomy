@@ -1,0 +1,24 @@
+/* Shared by the visible diff and its native, keyboard-operable context disclosures. */
+.template-diff { table-layout: fixed; width: 100%; }
+.template-diff .diff-number { width: 3.5rem; }
+.template-diff .diff-label { width: 9rem; }
+.template-diff .diff-change { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+.template-diff .diff-content { min-width: 0; }
+.template-diff .diff-content code { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; }
+.diff-number-label { display: none; }
+.diff-context > summary { padding: .75rem; cursor: pointer; overflow-wrap: anywhere; font-weight: 600; }
+.diff-context > summary:focus-visible { outline: 3px solid currentColor; outline-offset: -3px; }
+@media (max-width: 767.98px) {
+    .template-diff, .template-diff > tbody { display: block; }
+    .template-diff > colgroup { display: none; }
+    .template-diff > caption { display: block; width: 100%; }
+    .template-diff > thead {
+        position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
+        clip-path: inset(50%); white-space: nowrap;
+    }
+    .template-diff .diff-row { display: grid; grid-template-columns: auto auto 1fr; }
+    .template-diff .diff-row > td { min-width: 0; }
+    .template-diff .diff-content { grid-column: 1 / -1; }
+    .template-diff .diff-fold, .template-diff .diff-fold > td { display: block; }
+    .diff-number-label { display: inline; margin-inline-end: .35rem; font-weight: 600; }
+}
