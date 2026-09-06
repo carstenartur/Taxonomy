@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="#{document.template.diff.title}">Compare package part — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+</head>
+<body class="bg-body-tertiary">
+<a class="skip-link" href="#partComparison" th:text="#{skip.link}">Skip to main content</a>
+<nav class="navbar navbar-dark bg-dark" th:aria-label="#{document.template.diff.navigation}">
+    <div class="container-fluid gap-2">
+        <a class="navbar-brand fw-semibold" th:href="@{/}">Taxonomy</a>
+        <a id="partComparisonBack" class="btn btn-outline-light"
+           th:href="@{/admin/document-templates/{id}(id=${templateId},from=${fromRevision},to=${toRevision})}"
+           th:text="#{document.template.restore.cancel}">Back to comparison</a>
+    </div>
+</nav>
+<main id="partComparison" class="container-fluid py-3 px-lg-4" tabindex="-1">
+    <section class="card shadow-sm mb-3" aria-labelledby="partComparisonHeading">
+        <div class="card-body">
+            <h1 id="partComparisonHeading" class="h2" th:text="#{document.template.diff.heading}">Package-part comparison</h1>
+            <p class="text-break"><code class="text-body" th:text="${templateId}">template</code>
+                / <code class="text-body" th:text="${partPath}">word/document.xml</code></p>
+            <p id="partChange" class="fw-semibold" th:text="${#messages.msg('document.template.diff.' + partChange)}">Changed</p>
+            <dl class="row mb-0">
+                <dt class="col-md-3" th:text="#{document.template.detail.from}">From version</dt>
+                <dd class="col-md-9 text-break"><code id="partBeforeRevision" class="text-body" th:text="${fromRevision}">revision</code>
+                    <span th:if="${beforePart == null}" th:text="#{document.template.diff.absent}">Not present</span>
+                    <span th:if="${beforePart != null}" th:text="${beforePart.size + ' B · ' + beforePart.mediaType}">metadata</span></dd>
+                <dt class="col-md-3" th:text="#{document.template.detail.to}">To version</dt>
+                <dd class="col-md-9 text-break"><code id="partAfterRevision" class="text-body" th:text="${toRevision}">revision</code>
+                    <span th:if="${afterPart == null}" th:text="#{document.template.diff.absent}">Not present</span>
+                    <span th:if="${afterPart != null}" th:text="${afterPart.size + ' B · ' + afterPart.mediaType}">metadata</span></dd>
+            </dl>
+            <div class="d-flex flex-wrap gap-2">
+                <a id="partBeforeDownload" class="btn btn-outline-primary"
+                   th:href="@{/api/admin/document-templates/{id}/download(id=${templateId},revision=${fromRevision})}"
+                   th:text="#{document.template.diff.download.before}">Download original version</a>
+                <a id="partAfterDownload" class="btn btn-outline-primary"
+                   th:href="@{/api/admin/document-templates/{id}/download(id=${templateId},revision=${toRevision})}"
+                   th:text="#{document.template.diff.download.after}">Download target version</a>
+            </div>
+        </div>
+    </section>
+    <p id="partComparisonHelp" th:text="#{document.template.diff.help}">The display is split into numbered segments. Original downloads remain authoritative.</p>
+    <p th:if="${comparisonMode == 'BINARY'}" id="partComparisonBinary" class="alert alert-info"
+       th:text="#{document.template.diff.binary}">No reliable text preview is available; compare the metadata or download both versions.</p>
+    <p th:if="${comparisonMode == 'LIMIT'}" id="partComparisonLimit" class="alert alert-info"
+       th:text="#{document.template.diff.limit}">This part exceeds the bounded preview. Download both versions to compare their complete contents.</p>
+    <section th:if="${comparisonMode == 'TEXT'}" class="card shadow-sm" aria-labelledby="partDiffHeading">
+        <h2 id="partDiffHeading" class="h5 card-header" th:text="#{document.template.diff.text}">Text differences</h2>
+        <div class="card-body p-0">
+            <table id="partDiffTable" class="table table-sm mb-0" style="table-layout:fixed" aria-describedby="partComparisonHelp">
+                <caption class="px-2" th:text="#{document.template.diff.legend}">Added, removed and unchanged text are explicitly labelled.</caption>
+                <colgroup><col style="width:3em"/><col style="width:3em"/><col style="width:6em"/><col/></colgroup>
+                <thead><tr><th scope="col" th:text="#{document.template.diff.before}">Old</th>
+                    <th scope="col" th:text="#{document.template.diff.after}">New</th>
+                    <th scope="col" th:text="#{document.template.detail.change}">Change</th>
+                    <th scope="col" th:text="#{document.template.diff.content}">Content</th></tr></thead>
+                <tbody>
+                <tr th:each="row : ${comparisonRows}" th:attr="data-kind=${row.kind}"
+                    th:classappend="${row.kind == 'ADDED' ? 'table-success' : (row.kind == 'DELETED' ? 'table-danger' : '')}">
+                    <td th:text="${row.beforeNumber}">1</td><td th:text="${row.afterNumber}">1</td>
+                    <td class="text-break" th:text="${#messages.msg('document.template.diff.' + row.kind)}">Unchanged</td>
+                    <td><code class="text-body" style="white-space:pre-wrap;overflow-wrap:anywhere" th:text="${row.text}">XML text</code></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

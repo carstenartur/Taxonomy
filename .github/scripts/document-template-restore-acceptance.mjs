@@ -70,6 +70,11 @@ export async function verifyRestore({ context, page, expect, baseUrl, templateId
     const proposed = sameOrigin(await page.locator('#restoreCompare').getAttribute('href'), '');
     assert.equal(proposed.searchParams.get('from'), expectedRevision);
     assert.equal(proposed.searchParams.get('to'), originalRevision);
+    evidence.partComparisons = await compareContents(proposed, before.bytes, original);
+    assert.deepEqual(await current(), before);
+    assert.equal((await history()).length, 2);
+    await page.goto(oldUrl.href);
+    await assertConfirmation(expectedRevision, false);
     await capture('confirmation');
 
     // Checkbox and submission are operated with Space/Tab/Enter, without synthetic submit events.
@@ -157,6 +162,74 @@ export async function verifyRestore({ context, page, expect, baseUrl, templateId
   } finally {
     page.off('request', observe);
     await writeFile(path.join(directory, 'restore-evidence.json'), JSON.stringify(evidence, null, 2) + '\n');
+  }
+
+  async function compareContents(proposed, editedBytes, originalBytes) {
+    await page.locator('#restoreCompare').focus();
+    await Promise.all([page.waitForURL(proposed.href), page.keyboard.press('Enter')]);
+    const results = [];
+    // Start with the reversed comparison so each submitted selection changes the URL.
+    for (const pair of [
+      { from: originalRevision, to: expectedRevision, kind: 'ADDED', oldBytes: originalBytes, newBytes: editedBytes },
+      { from: expectedRevision, to: originalRevision, kind: 'DELETED', oldBytes: editedBytes, newBytes: originalBytes }
+    ]) {
+      await page.locator('#fromRevision').selectOption(pair.from);
+      await page.locator('#toRevision').selectOption(pair.to);
+      const submit = page.locator('section[aria-labelledby="compareHeading"] button[type="submit"]');
+      await submit.focus();
+      await Promise.all([
+        page.waitForURL(url => url.searchParams.get('from') === pair.from && url.searchParams.get('to') === pair.to),
+        page.keyboard.press('Enter')
+      ]);
+      const link = page.locator('section[aria-labelledby="diffHeading"] tr')
+        .filter({ hasText: 'word/document.xml' }).locator('.part-comparison-link');
+      await expect(link).toHaveCount(1);
+      const target = sameOrigin(await link.getAttribute('href'), '/compare-part');
+      assert.equal(target.searchParams.get('from'), pair.from);
+      assert.equal(target.searchParams.get('to'), pair.to);
+      assert.equal(target.searchParams.get('partPath'), 'word/document.xml');
+      await link.focus();
+      await expect(link).toBeFocused();
+      await Promise.all([page.waitForURL(target.href), page.keyboard.press('Enter')]);
+      await expect(page.locator('#partComparisonHeading')).toHaveText(language === 'de'
+        ? 'Vergleich des Paketbestandteils' : 'Package-part comparison');
+      await expect(page.locator('#partBeforeRevision')).toHaveText(pair.from);
+      await expect(page.locator('#partAfterRevision')).toHaveText(pair.to);
+      await expect(page.locator('#partDiffTable tr[data-kind="' + pair.kind + '"]')
+        .filter({ hasText: 'accepted-local-edit-' + language })).toHaveCount(1);
+      assert.ok((await page.locator('#partDiffTable code').allTextContents()).some(text => text.includes('<w:')));
+      await expect(page.locator('#partDiffTable script')).toHaveCount(0);
+      for (const [selector, revision, bytes] of [
+        ['#partBeforeDownload', pair.from, pair.oldBytes], ['#partAfterDownload', pair.to, pair.newBytes]
+      ]) {
+        const url = new URL(await page.locator(selector).getAttribute('href'), page.url());
+        assert.equal(url.origin, base.origin);
+        assert.equal(url.pathname, new URL(api + '/download').pathname);
+        assert.equal(url.searchParams.get('revision'), revision);
+        const response = await context.request.get(url.href);
+        assert.equal(response.status(), 200);
+        assert.deepEqual(await response.body(), bytes);
+        const control = page.locator(selector);
+        await control.scrollIntoViewIfNeeded();
+        assert.ok(await control.evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          return hit === element || element.contains(hit);
+        }));
+      }
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2));
+      await page.evaluate(() => scrollTo(0, 0));
+      const screenshot = 'part-comparison-' + pair.kind.toLowerCase() + '.png';
+      await page.screenshot({ path: path.join(directory, screenshot), fullPage: true });
+      results.push({ from: pair.from, to: pair.to, markerKind: pair.kind, screenshot,
+        immutableDownloadsVerified: true, keyboardNavigation: true, horizontalOverflow: false });
+      const back = sameOrigin(await page.locator('#partComparisonBack').getAttribute('href'), '');
+      await page.locator('#partComparisonBack').focus();
+      await Promise.all([page.waitForURL(back.href), page.keyboard.press('Enter')]);
+      await expect(page.locator('#fromRevision')).toHaveValue(pair.from);
+      await expect(page.locator('#toRevision')).toHaveValue(pair.to);
+    }
+    return results;
   }
 
   function sameOrigin(href, suffix) {
