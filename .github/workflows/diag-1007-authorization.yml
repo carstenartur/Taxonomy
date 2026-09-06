@@ -1,0 +1,37 @@
+name: Diagnose 1007 authorization
+
+on:
+  push:
+    branches:
+      - diag/1007-authorization-rule-20260907
+    paths:
+      - .github/workflows/diag-1007-authorization.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: diag/1007-authorization-rule-20260907
+          fetch-depth: 0
+      - name: Print failing test and authorization context
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== matching test source ==='
+          matches=$(grep -R -l --include='*.java' 'accessRulesMatchExpectedRoles' . || true)
+          printf '%s\n' "$matches"
+          test -n "$matches"
+          while IFS= read -r file; do
+            echo "--- $file ---"
+            nl -ba "$file" | sed -n '200,280p'
+            echo '--- diff versus origin/main ---'
+            git fetch origin main
+            git diff --no-ext-diff origin/main -- "$file" || true
+          done <<< "$matches"
+          echo '=== ROLE_ADMIN / access-rule context ==='
+          grep -R -n --include='*.java' -E 'ROLE_ADMIN|accessRules|AccessRule' taxonomy-app/src/main/java taxonomy-app/src/test/java | head -400 || true
