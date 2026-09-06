@@ -50,7 +50,9 @@ window.TaxonomyDocumentTemplatesApi = (function (global) {
 
         const response = await global.fetch(url, request);
         if (!response.ok) {
-            throw new Error(responseMessage(await responsePayload(response), fallback));
+            const error = new Error(responseMessage(await responsePayload(response), fallback));
+            error.status = response.status;
+            throw error;
         }
         return response.status === 204 ? null : response.json();
     }

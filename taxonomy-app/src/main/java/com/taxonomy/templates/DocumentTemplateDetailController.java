@@ -39,6 +39,30 @@ public final class DocumentTemplateDetailController {
         this.preview = preview;
     }
 
+    /** The URL, download and upload all retain the same immutable starting revision. */
+    @GetMapping("/admin/document-templates/{templateId}/local-edit")
+    public String localEdit(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            Model model) throws IOException {
+        if (revision == null || !revision.matches("[0-9a-f]{40}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A full immutable template revision is required");
+        }
+        TemplateFile original;
+        try {
+            original = templates.download(templateId, revision);
+        } catch (TemplateNotFoundException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "The requested template starting revision does not exist", exception);
+        }
+        model.addAttribute("template", descriptor(original));
+        model.addAttribute("maxArchiveBytes", OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES);
+        model.addAttribute("decisionReportTemplate",
+                DecisionRationaleTemplateContract.TEMPLATE_ID.equals(templateId));
+        return "document-template-local-edit";
+    }
+
     @GetMapping("/admin/document-templates/{templateId}")
     public String detail(
             @PathVariable String templateId,
