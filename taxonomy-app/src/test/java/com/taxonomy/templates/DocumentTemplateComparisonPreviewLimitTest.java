@@ -27,7 +27,7 @@ class DocumentTemplateComparisonPreviewLimitTest {
 
     @Test
     void comparisonDoesNotDecodeTextThatWillBeRenderedAsLimit() throws Exception {
-        byte[] content = new byte[TemplateTextDiff.MAX_CHARACTERS + 1];
+        byte[] content = new byte[DocumentTemplateService.COMPARISON_TEXT_PREVIEW_BYTES + 1];
         Arrays.fill(content, (byte) 'x');
         var snapshot = snapshot(content);
         when(repository.read(ID, REVISION)).thenReturn(snapshot);

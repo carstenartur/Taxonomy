@@ -71,7 +71,7 @@ public final class DocumentTemplatePartComparisonController {
     }
 
     private static boolean tooLarge(TemplatePartView part) {
-        return part != null && part.size() > TemplateTextDiff.MAX_CHARACTERS;
+        return part != null && part.size() > DocumentTemplateService.COMPARISON_TEXT_PREVIEW_BYTES;
     }
 
     private static boolean notText(TemplatePartView part) {

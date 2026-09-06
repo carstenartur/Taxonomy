@@ -30,6 +30,7 @@ import java.util.Objects;
 public class DocumentTemplateService {
 
     private static final int DEFAULT_TEXT_PREVIEW_BYTES = 1_048_576;
+    static final int COMPARISON_TEXT_PREVIEW_BYTES = 128 * 1024;
 
     private final DocumentTemplateGitRepository repository;
     private final OoxmlTemplatePackageCodec codec;
@@ -188,10 +189,10 @@ public class DocumentTemplateService {
                 : afterContent == null ? PartChange.DELETED
                 : Arrays.equals(beforeContent, afterContent) ? null : PartChange.MODIFIED;
         TemplatePartView beforePart = beforeContent == null ? null
-                : partView(path, beforeContent, TemplateTextDiff.MAX_CHARACTERS);
+                : partView(path, beforeContent, COMPARISON_TEXT_PREVIEW_BYTES);
         TemplatePartView afterPart = after == before ? beforePart
                 : afterContent == null ? null
-                        : partView(path, afterContent, TemplateTextDiff.MAX_CHARACTERS);
+                        : partView(path, afterContent, COMPARISON_TEXT_PREVIEW_BYTES);
         return new TemplatePartComparison(change, beforePart, afterPart);
     }
 
