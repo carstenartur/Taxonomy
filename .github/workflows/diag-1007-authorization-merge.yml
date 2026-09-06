@@ -1,0 +1,37 @@
+name: Diagnose 1007 authorization merge ref
+
+on:
+  push:
+    branches:
+      - diag/1007-authorization-merge-20260907
+    paths:
+      - .github/workflows/diag-1007-authorization-merge.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: diag/1007-authorization-merge-20260907
+          fetch-depth: 0
+      - name: Print exact failing test and related access rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== matching test source ==='
+          matches=$(grep -R -l --include='*.java' 'accessRulesMatchExpectedRoles' . || true)
+          printf '%s\n' "$matches"
+          test -n "$matches"
+          while IFS= read -r file; do
+            echo "--- $file ---"
+            nl -ba "$file" | sed -n '210,265p'
+            echo '--- history ---'
+            git log --oneline --decorate -12 -- "$file" || true
+          done <<< "$matches"
+          echo '=== matching access rules ==='
+          grep -R -n --include='*.java' -E 'ROLE_ADMIN|accessRulesMatchExpectedRoles|AccessRule|accessRules' \
+            taxonomy-app/src/main/java taxonomy-app/src/test/java | head -500 || true
