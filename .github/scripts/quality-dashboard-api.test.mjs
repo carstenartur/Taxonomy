@@ -151,3 +151,18 @@ test('quality UI contains neither direct requests nor feature-level API URLs', (
   assert.doesNotMatch(uiSource, /\bfetch\s*\(/);
   assert.doesNotMatch(uiSource, /['"`]\/api\//);
 });
+
+
+test('the resolved ready client is used even if the global instance differs', async () => {
+  const e = environment();
+  const readyClient = { readQualityDashboard: () =>
+    Promise.resolve([{ ...metrics, totalProposals: 77 }, [], []]) };
+  e.context.TaxonomyRelationsApiReady = Promise.resolve(readyClient);
+  e.context.TaxonomyRelationsApi = { readQualityDashboard() {
+    throw new Error('must not reread the global after readiness');
+  } };
+  await e.context.TaxonomyQuality.loadQualityDashboard();
+  assert.match(e.content.innerHTML, /quality.total: 77/);
+  assert.doesNotMatch(e.content.innerHTML, /quality.load.failed/);
+  assert.equal(e.calls.length, 0);
+});

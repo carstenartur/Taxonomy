@@ -36,8 +36,9 @@
 
         // The existing loader also serves the relation command adapters. Wait for
         // that one client instead of issuing a second set of ad-hoc requests.
-        return Promise.resolve(window.TaxonomyRelationsApiReady).then(function () {
-            return window.TaxonomyRelationsApi.readQualityDashboard();
+        var ready = window.TaxonomyRelationsApiReady || window.TaxonomyRelationsApi;
+        return Promise.resolve(ready).then(function (api) {
+            return api.readQualityDashboard();
         }).then(function (results) {
             if (version !== loadVersion) return;
             renderDashboard(results[0], results[1], results[2]);
