@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.session.SessionRegistry;
@@ -19,6 +20,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,6 +31,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -37,16 +41,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(BrowserSessionProtocolTest.Probe.class)
 @Import({BrowserSessionProtocolTest.Probe.class, BrowserSessionProtocolTest.Security.class})
 class BrowserSessionProtocolTest {
-    @Autowired MockMvc mvc;
+    @Autowired WebApplicationContext context;
     @Autowired SessionRegistry registry;
+    private MockMvc mvc;
 
     @BeforeEach
-    void clearRegistrations() {
+    void clearRegistrationsAndApplyTheActualSecurityFilterChain() {
         for (Object principal : registry.getAllPrincipals()) {
             for (var session : registry.getAllSessions(principal, true)) {
                 registry.removeSessionInformation(session.getSessionId());
             }
         }
+        // Fail setup if the real proxy is absent; never let /login fall through
+        // to a static resource handler or a probe run without authentication.
+        mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
     @Test
@@ -89,6 +97,7 @@ class BrowserSessionProtocolTest {
     }
 
     @Configuration(proxyBeanMethods = false)
+    @EnableWebSecurity
     static class Security {
         @Bean SessionRegistry registry() { return new SessionRegistryImpl(); }
         @Bean UserDetailsService users() {
