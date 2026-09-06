@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyRelation.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.model</a> &gt; <span class="el_source">TaxonomyRelation.java</span></div><h1>TaxonomyRelation.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.model;
+
+import com.taxonomy.model.RelationType;
+import com.taxonomy.search.RelationEmbeddingBinder;
+import com.taxonomy.shared.model.FloatArrayConverter;
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.Nationalized;
+import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.GenericField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.Indexed;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.IndexedEmbedded;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.KeywordField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.TypeBinding;
+
+@Entity
+@EntityListeners(PrimaryRepositorySeedRelationListener.class)
+@Table(name = &quot;taxonomy_relation&quot;,
+        uniqueConstraints = @UniqueConstraint(
+                name = &quot;uk_taxonomy_relation_scope&quot;,
+                columnNames = {
+                        &quot;repository_id&quot;,
+                        &quot;source_node_id&quot;,
+                        &quot;target_node_id&quot;,
+                        &quot;relation_type&quot;,
+                        &quot;workspace_scope_key&quot;
+                }),
+        indexes = {
+                @Index(name = &quot;idx_rel_repository&quot;, columnList = &quot;repository_id&quot;),
+                @Index(
+                        name = &quot;idx_rel_repository_workspace&quot;,
+                        columnList = &quot;repository_id, workspace_id&quot;),
+                @Index(name = &quot;idx_rel_owner&quot;, columnList = &quot;owner_username&quot;)
+        })
+@Indexed
+@TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
+<span class="fc" id="L54">public class TaxonomyRelation {</span>
+
+    public static final String SHARED_SCOPE_KEY = &quot;__shared__&quot;;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /** Mandatory logical tenant key. */
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 255)
+    @KeywordField
+    private String repositoryId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_node_id&quot;, nullable = false)
+    @IndexedEmbedded(includePaths = {&quot;code&quot;, &quot;nameEn&quot;})
+    private TaxonomyNode sourceNode;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;target_node_id&quot;, nullable = false)
+    @IndexedEmbedded(includePaths = {&quot;code&quot;, &quot;nameEn&quot;})
+    private TaxonomyNode targetNode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;relation_type&quot;, nullable = false)
+    @KeywordField
+    private RelationType relationType;
+
+    @Column(name = &quot;workspace_id&quot;)
+    @KeywordField
+    private String workspaceId;
+
+    /** Non-null uniqueness key for both central and personal workspace rows. */
+<span class="fc" id="L87">    @Column(name = &quot;workspace_scope_key&quot;, nullable = false, length = 255)</span>
+    @KeywordField
+    private String workspaceScopeKey = SHARED_SCOPE_KEY;
+
+    @Column(name = &quot;owner_username&quot;)
+    @KeywordField
+    private String ownerUsername;
+
+    @Nationalized
+    @Column(length = 2000)
+    @FullTextField(analyzer = &quot;english&quot;)
+    private String description;
+
+    @Nationalized
+    private String provenance;
+
+    private Integer weight;
+
+<span class="fc" id="L105">    private boolean bidirectional = false;</span>
+
+    @Lob
+    @Convert(converter = FloatArrayConverter.class)
+    @Column(name = &quot;semantic_embedding&quot;)
+    private float[] semanticEmbedding;
+
+    @GenericField
+    @Column(name = &quot;has_embedding&quot;)
+    private boolean hasEmbedding;
+
+    @PrePersist
+    @PreUpdate
+    void synchronizeTenantKeys() {
+<span class="fc" id="L119">        repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L120">        workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L121">        workspaceScopeKey = scopeKeyFor(workspaceId);</span>
+<span class="fc" id="L122">    }</span>
+
+    public static String scopeKeyFor(String workspaceId) {
+<span class="fc" id="L125">        String normalized = normalizeOptional(workspaceId);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        return normalized == null ? SHARED_SCOPE_KEY : normalized;</span>
+    }
+
+<span class="fc" id="L129">    public Long getId() { return id; }</span>
+<span class="fc" id="L130">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L132">    public String getRepositoryId() { return repositoryId; }</span>
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L134">        this.repositoryId = requireText(repositoryId, &quot;repositoryId&quot;);</span>
+<span class="fc" id="L135">    }</span>
+
+<span class="fc" id="L137">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
+<span class="fc" id="L138">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
+
+<span class="fc" id="L140">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
+<span class="fc" id="L141">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
+
+<span class="fc" id="L143">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L144">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+
+<span class="fc" id="L146">    public String getDescription() { return description; }</span>
+<span class="fc" id="L147">    public void setDescription(String description) { this.description = description; }</span>
+
+<span class="fc" id="L149">    public String getProvenance() { return provenance; }</span>
+<span class="fc" id="L150">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
+
+<span class="fc" id="L152">    public Integer getWeight() { return weight; }</span>
+<span class="nc" id="L153">    public void setWeight(Integer weight) { this.weight = weight; }</span>
+
+<span class="fc" id="L155">    public boolean isBidirectional() { return bidirectional; }</span>
+<span class="nc" id="L156">    public void setBidirectional(boolean bidirectional) { this.bidirectional = bidirectional; }</span>
+
+<span class="nc" id="L158">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
+    public void setSemanticEmbedding(float[] semanticEmbedding) {
+<span class="nc" id="L160">        this.semanticEmbedding = semanticEmbedding;</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        this.hasEmbedding = semanticEmbedding != null;</span>
+<span class="nc" id="L162">    }</span>
+
+<span class="nc" id="L164">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
+<span class="nc" id="L165">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
+
+<span class="fc" id="L167">    public String getWorkspaceId() { return workspaceId; }</span>
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L169">        this.workspaceId = normalizeOptional(workspaceId);</span>
+<span class="fc" id="L170">        this.workspaceScopeKey = scopeKeyFor(this.workspaceId);</span>
+<span class="fc" id="L171">    }</span>
+
+<span class="fc" id="L173">    public String getWorkspaceScopeKey() { return workspaceScopeKey; }</span>
+
+<span class="fc" id="L175">    public String getOwnerUsername() { return ownerUsername; }</span>
+    public void setOwnerUsername(String ownerUsername) {
+<span class="fc" id="L177">        this.ownerUsername = normalizeOptional(ownerUsername);</span>
+<span class="fc" id="L178">    }</span>
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L185" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L186">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L188">        return value.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

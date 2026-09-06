@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AiAutomationPolicy.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">AiAutomationPolicy.java</span></div><h1>AiAutomationPolicy.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
+import com.taxonomy.analysis.service.AiTargetCatalogService;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmProviderConfig;
+import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
+import com.taxonomy.portfolio.dto.CopilotDtos.CopilotRunRequest;
+import com.taxonomy.portfolio.model.AiCostPolicy;
+import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Central, fail-closed policy for user-triggered Copilot and unattended Autopilot work.
+ *
+ * &lt;p&gt;A custom target is never assumed to be free. Autopilot requires an explicit
+ * provider, an explicit enable flag and the operator declaration {@code UNMETERED}.
+ * Manual Copilot remains available for any configured addressable target because
+ * every run is explicitly requested.&lt;/p&gt;
+ */
+@Component
+public class AiAutomationPolicy {
+
+    private static final int MIN_PASSES = 1;
+    private static final int MAX_PASSES = 3;
+
+<span class="fc" id="L33">    public static final List&lt;String&gt; AUTOMATIC_STEPS = List.of(</span>
+            &quot;immutable requirement-version analysis&quot;,
+            &quot;taxonomy scoring with reasons&quot;,
+            &quot;relation-aware architecture view&quot;,
+            &quot;gap and pattern analysis&quot;,
+            &quot;architecture recommendation&quot;,
+            &quot;immutable analysis snapshot&quot;,
+            &quot;deterministic solution reuse proposals&quot;,
+            &quot;source-bound product candidates&quot;);
+
+<span class="fc" id="L43">    public static final List&lt;String&gt; HUMAN_REVIEW_REQUIRED = List.of(</span>
+            &quot;confirm or reject taxonomy and relation mappings&quot;,
+            &quot;approve organizational responsibility&quot;,
+            &quot;select a solution or product&quot;,
+            &quot;authorize procurement or implementation&quot;,
+            &quot;merge the draft architecture into an approved branch&quot;);
+
+    private final LlmProviderConfig providerConfig;
+    private final AiTargetCatalogService targetCatalog;
+    private final AiCostPolicy costPolicy;
+    private final AnalysisAutomationProfile copilotProfile;
+    private final AnalysisAutomationProfile autopilotProfile;
+    private final int copilotPasses;
+    private final int autopilotPasses;
+    private final int maximumArchitectureNodes;
+    private final boolean autopilotEnabled;
+    private final boolean runAfterRequirementSave;
+    private final String autopilotProvider;
+    private final boolean autopilotSolutions;
+    private final boolean autopilotProducts;
+    private final Duration maximumRuntime;
+
+    @Autowired
+    public AiAutomationPolicy(
+            LlmProviderConfig providerConfig,
+            AiTargetCatalogService targetCatalog,
+            @Value(&quot;${taxonomy.ai.cost-policy:METERED}&quot;) String costPolicy,
+            @Value(&quot;${taxonomy.ai.copilot.profile:FULL}&quot;) String copilotProfile,
+            @Value(&quot;${taxonomy.ai.autopilot.profile:EXHAUSTIVE}&quot;) String autopilotProfile,
+            @Value(&quot;${taxonomy.ai.copilot.verification-passes:1}&quot;) int copilotPasses,
+            @Value(&quot;${taxonomy.ai.autopilot.verification-passes:2}&quot;) int autopilotPasses,
+            @Value(&quot;${taxonomy.ai.max-architecture-nodes:50}&quot;) int aiMaximumArchitectureNodes,
+            @Value(&quot;${taxonomy.limits.max-architecture-nodes:50}&quot;)
+            int analysisMaximumArchitectureNodes,
+            @Value(&quot;${taxonomy.ai.autopilot.enabled:false}&quot;) boolean autopilotEnabled,
+            @Value(&quot;${taxonomy.ai.autopilot.on-requirement-save:true}&quot;) boolean runAfterRequirementSave,
+            @Value(&quot;${taxonomy.ai.autopilot.provider:}&quot;) String autopilotProvider,
+            @Value(&quot;${taxonomy.ai.autopilot.propose-solutions:true}&quot;) boolean autopilotSolutions,
+            @Value(&quot;${taxonomy.ai.autopilot.propose-products:true}&quot;) boolean autopilotProducts,
+<span class="fc" id="L82">            @Value(&quot;${taxonomy.ai.maximum-runtime-seconds:1800}&quot;) long maximumRuntimeSeconds) {</span>
+<span class="fc" id="L83">        this.providerConfig = providerConfig;</span>
+<span class="fc" id="L84">        this.targetCatalog = targetCatalog;</span>
+<span class="fc" id="L85">        this.costPolicy = enumValue(AiCostPolicy.class, costPolicy, &quot;taxonomy.ai.cost-policy&quot;);</span>
+<span class="fc" id="L86">        this.copilotProfile = enumValue(</span>
+                AnalysisAutomationProfile.class, copilotProfile, &quot;taxonomy.ai.copilot.profile&quot;);
+<span class="fc" id="L88">        this.autopilotProfile = enumValue(</span>
+                AnalysisAutomationProfile.class, autopilotProfile, &quot;taxonomy.ai.autopilot.profile&quot;);
+<span class="fc" id="L90">        this.copilotPasses = boundedPasses(copilotPasses, &quot;taxonomy.ai.copilot.verification-passes&quot;);</span>
+<span class="fc" id="L91">        this.autopilotPasses = boundedPasses(</span>
+                autopilotPasses, &quot;taxonomy.ai.autopilot.verification-passes&quot;);
+<span class="fc" id="L93">        this.maximumArchitectureNodes = Math.min(</span>
+<span class="fc" id="L94">                positive(aiMaximumArchitectureNodes, &quot;taxonomy.ai.max-architecture-nodes&quot;),</span>
+<span class="fc" id="L95">                positive(analysisMaximumArchitectureNodes,</span>
+                        &quot;taxonomy.limits.max-architecture-nodes&quot;));
+<span class="fc" id="L97">        this.autopilotEnabled = autopilotEnabled;</span>
+<span class="fc" id="L98">        this.runAfterRequirementSave = runAfterRequirementSave;</span>
+<span class="fc" id="L99">        this.autopilotProvider = normalizeOptional(autopilotProvider);</span>
+<span class="fc" id="L100">        this.autopilotSolutions = autopilotSolutions;</span>
+<span class="fc" id="L101">        this.autopilotProducts = autopilotProducts;</span>
+<span class="fc" id="L102">        this.maximumRuntime = Duration.ofSeconds(Math.max(60L, maximumRuntimeSeconds));</span>
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Source-compatible constructor for tests and callers that use one shared
+     * architecture-node ceiling for AI automation and the analysis pipeline.
+     */
+    public AiAutomationPolicy(
+            LlmProviderConfig providerConfig,
+            AiTargetCatalogService targetCatalog,
+            String costPolicy,
+            String copilotProfile,
+            String autopilotProfile,
+            int copilotPasses,
+            int autopilotPasses,
+            int maximumArchitectureNodes,
+            boolean autopilotEnabled,
+            boolean runAfterRequirementSave,
+            String autopilotProvider,
+            boolean autopilotSolutions,
+            boolean autopilotProducts,
+            long maximumRuntimeSeconds) {
+<span class="nc" id="L124">        this(providerConfig,</span>
+                targetCatalog,
+                costPolicy,
+                copilotProfile,
+                autopilotProfile,
+                copilotPasses,
+                autopilotPasses,
+                maximumArchitectureNodes,
+                maximumArchitectureNodes,
+                autopilotEnabled,
+                runAfterRequirementSave,
+                autopilotProvider,
+                autopilotSolutions,
+                autopilotProducts,
+                maximumRuntimeSeconds);
+<span class="nc" id="L139">    }</span>
+
+    public RunSettings manual(CopilotRunRequest request) {
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        CopilotRunRequest effective = request != null</span>
+<span class="pc" id="L143">                ? request : new CopilotRunRequest(</span>
+                        null, null, null, null, null, null, null, null);
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        AnalysisAutomationProfile profile = effective.profile() != null</span>
+<span class="pc" id="L146">                ? effective.profile() : copilotProfile;</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        int passes = effective.verificationPasses() != null</span>
+<span class="fc" id="L148">                ? boundedPasses(effective.verificationPasses(), &quot;verificationPasses&quot;)</span>
+<span class="fc" id="L149">                : defaultPasses(profile, copilotPasses);</span>
+        AiTargetDescriptor target;
+        try {
+<span class="fc" id="L152">            target = targetCatalog.resolve(effective.targetId(), effective.provider());</span>
+<span class="nc" id="L153">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L154">            throw PortfolioException.validation(exception.getMessage());</span>
+<span class="fc" id="L155">        }</span>
+<span class="fc" id="L156">        requireTargetReady(target);</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        int nodes = effective.maxArchitectureNodes() != null</span>
+<span class="fc" id="L158">                ? positive(effective.maxArchitectureNodes(), &quot;maxArchitectureNodes&quot;)</span>
+<span class="fc" id="L159">                : maximumArchitectureNodes;</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (nodes &gt; maximumArchitectureNodes) {</span>
+<span class="fc" id="L161">            throw PortfolioException.validation(</span>
+                    &quot;maxArchitectureNodes must not exceed the configured limit of &quot;
+                            + maximumArchitectureNodes);
+        }
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        boolean proposeSolutions = effective.proposeSolutions() != null</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">                ? effective.proposeSolutions() : profile != AnalysisAutomationProfile.STANDARD;</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        boolean proposeProducts = effective.proposeProducts() != null</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                ? effective.proposeProducts() : profile != AnalysisAutomationProfile.STANDARD;</span>
+<span class="fc" id="L169">        return new RunSettings(</span>
+                false,
+                profile,
+<span class="fc" id="L172">                target.provider(),</span>
+                target,
+                nodes,
+                passes,
+                proposeSolutions,
+                proposeProducts,
+<span class="fc" id="L178">                effective.forceRun());</span>
+    }
+
+    public RunSettings autopilot() {
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        if (!autopilotReady()) {</span>
+<span class="fc" id="L183">            throw PortfolioException.validation(autopilotReason());</span>
+        }
+<span class="fc" id="L185">        AnalysisAutomationProfile profile = autopilotProfile;</span>
+<span class="fc" id="L186">        AiTargetDescriptor target = targetCatalog.resolve(</span>
+<span class="fc" id="L187">                null, explicitAutopilotProvider());</span>
+<span class="fc" id="L188">        return new RunSettings(</span>
+                true,
+                profile,
+<span class="fc" id="L191">                target.provider(),</span>
+                target,
+                maximumArchitectureNodes,
+<span class="pc bpc" id="L194" title="4 of 8 branches missed.">                defaultPasses(profile, autopilotPasses),</span>
+                autopilotSolutions &amp;&amp; profile != AnalysisAutomationProfile.STANDARD,
+                autopilotProducts &amp;&amp; profile != AnalysisAutomationProfile.STANDARD,
+                false);
+    }
+
+    public AiAutomationStatus status() {
+<span class="fc" id="L201">        String active = resolveProvider(null);</span>
+<span class="fc" id="L202">        boolean manualReady = isProviderReady(active);</span>
+<span class="fc" id="L203">        String autoProvider = explicitAutopilotProviderOrNull();</span>
+<span class="fc" id="L204">        boolean autoReady = autopilotReady();</span>
+        String reason;
+<span class="pc bpc" id="L206" title="1 of 4 branches missed.">        if (autoReady &amp;&amp; runAfterRequirementSave) {</span>
+<span class="nc" id="L207">            reason = &quot;Autopilot is explicitly enabled for an UNMETERED configured provider.&quot;;</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        } else if (autoReady) {</span>
+<span class="fc" id="L209">            reason = &quot;Autopilot is ready, but automatic execution after requirement saves is disabled.&quot;;</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        } else if (!autopilotEnabled) {</span>
+<span class="fc" id="L211">            reason = &quot;Autopilot is disabled. Set TAXONOMY_AI_AUTOPILOT_ENABLED=true to opt in.&quot;;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        } else if (costPolicy != AiCostPolicy.UNMETERED) {</span>
+<span class="fc" id="L213">            reason = &quot;Autopilot requires TAXONOMY_AI_COST_POLICY=UNMETERED.&quot;;</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">        } else if (autoProvider == null) {</span>
+<span class="fc" id="L215">            reason = &quot;Autopilot requires an explicit TAXONOMY_AI_AUTOPILOT_PROVIDER.&quot;;</span>
+        } else {
+<span class="nc" id="L217">            reason = providerError(autoProvider);</span>
+        }
+<span class="fc" id="L219">        return new AiAutomationStatus(</span>
+                costPolicy,
+                manualReady,
+                autopilotEnabled,
+                autoReady,
+                runAfterRequirementSave,
+                active,
+                autoProvider,
+                copilotProfile,
+                autopilotProfile,
+<span class="fc" id="L229">                defaultPasses(copilotProfile, copilotPasses),</span>
+<span class="fc" id="L230">                defaultPasses(autopilotProfile, autopilotPasses),</span>
+                maximumArchitectureNodes,
+                reason,
+                AUTOMATIC_STEPS,
+                HUMAN_REVIEW_REQUIRED);
+    }
+
+    public boolean autopilotReady() {
+<span class="fc" id="L238">        String provider = explicitAutopilotProviderOrNull();</span>
+<span class="fc bfc" id="L239" title="All 6 branches covered.">        return autopilotEnabled</span>
+                &amp;&amp; costPolicy == AiCostPolicy.UNMETERED
+                &amp;&amp; provider != null
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">                &amp;&amp; isProviderReady(provider);</span>
+    }
+
+    public boolean automaticAfterRequirementSaveReady() {
+<span class="fc bfc" id="L246" title="All 4 branches covered.">        return runAfterRequirementSave &amp;&amp; autopilotReady();</span>
+    }
+
+    public String autopilotReason() {
+<span class="fc" id="L250">        return status().reason();</span>
+    }
+
+    public AiCostPolicy costPolicy() {
+<span class="nc" id="L254">        return costPolicy;</span>
+    }
+
+    public Duration maximumRuntime() {
+<span class="nc" id="L258">        return maximumRuntime;</span>
+    }
+
+    public AiTargetDescriptor targetForProvider(String provider) {
+<span class="fc" id="L262">        return targetCatalog.describeProvider(provider);</span>
+    }
+
+    private String resolveProvider(String requested) {
+<span class="fc" id="L266">        String normalized = normalizeOptional(requested);</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        if (normalized != null) {</span>
+<span class="nc" id="L268">            return normalized.toUpperCase(Locale.ROOT);</span>
+        }
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        if (providerConfig.isMockMode()) {</span>
+<span class="fc" id="L271">            return &quot;MOCK&quot;;</span>
+        }
+<span class="fc" id="L273">        return providerConfig.getActiveProvider().name();</span>
+    }
+
+    private String explicitAutopilotProvider() {
+<span class="fc" id="L277">        String provider = explicitAutopilotProviderOrNull();</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">        if (provider == null) {</span>
+<span class="nc" id="L279">            throw PortfolioException.validation(</span>
+                    &quot;Autopilot requires an explicit TAXONOMY_AI_AUTOPILOT_PROVIDER.&quot;);
+        }
+<span class="fc" id="L282">        return provider;</span>
+    }
+
+    private String explicitAutopilotProviderOrNull() {
+<span class="fc bfc" id="L286" title="All 2 branches covered.">        return autopilotProvider != null</span>
+<span class="fc" id="L287">                ? autopilotProvider.toUpperCase(Locale.ROOT) : null;</span>
+    }
+
+    private boolean isProviderReady(String provider) {
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">        if (provider == null) {</span>
+<span class="nc" id="L292">            return false;</span>
+        }
+<span class="fc bfc" id="L294" title="All 2 branches covered.">        if (&quot;MOCK&quot;.equals(provider)) {</span>
+<span class="fc" id="L295">            return providerConfig.isMockMode();</span>
+        }
+        try {
+<span class="fc" id="L298">            return providerConfig.isProviderConfigured(LlmProvider.valueOf(provider));</span>
+<span class="nc" id="L299">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L300">            return false;</span>
+        }
+    }
+
+    private void requireTargetReady(AiTargetDescriptor target) {
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">        if (!target.available()) {</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">            throw PortfolioException.validation(target.unavailableReason() != null</span>
+<span class="nc" id="L307">                    ? target.unavailableReason()</span>
+<span class="nc" id="L308">                    : &quot;The selected AI target is unavailable: &quot; + target.targetId());</span>
+        }
+<span class="fc" id="L310">    }</span>
+
+    private String providerError(String provider) {
+<span class="nc bnc" id="L313" title="All 2 branches missed.">        if (provider == null) {</span>
+<span class="nc" id="L314">            return &quot;No AI provider was selected.&quot;;</span>
+        }
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        if (&quot;MOCK&quot;.equals(provider)) {</span>
+<span class="nc" id="L317">            return &quot;MOCK is available only when llm.mock=true.&quot;;</span>
+        }
+        try {
+<span class="nc" id="L320">            String error = providerConfig.getProviderConfigurationError(</span>
+<span class="nc" id="L321">                    LlmProvider.valueOf(provider));</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">            return error != null ? error : &quot;The selected provider is not ready: &quot; + provider;</span>
+<span class="nc" id="L323">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L324">            return &quot;Unknown AI provider: &quot; + provider;</span>
+        }
+    }
+
+    private static int defaultPasses(AnalysisAutomationProfile profile, int configured) {
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">        if (profile == AnalysisAutomationProfile.STANDARD) return 1;</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">        if (profile == AnalysisAutomationProfile.FULL) return Math.max(1, configured);</span>
+<span class="fc" id="L331">        return Math.max(2, configured);</span>
+    }
+
+    private static int boundedPasses(int value, String field) {
+<span class="pc bpc" id="L335" title="2 of 4 branches missed.">        if (value &lt; MIN_PASSES || value &gt; MAX_PASSES) {</span>
+<span class="nc" id="L336">            throw new IllegalArgumentException(field + &quot; must be between 1 and 3&quot;);</span>
+        }
+<span class="fc" id="L338">        return value;</span>
+    }
+
+    private static int positive(int value, String field) {
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">        if (value &lt; 1) {</span>
+<span class="nc" id="L343">            throw PortfolioException.validation(field + &quot; must be at least 1&quot;);</span>
+        }
+<span class="fc" id="L345">        return value;</span>
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="fc bfc" id="L349" title="All 4 branches covered.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static &lt;E extends Enum&lt;E&gt;&gt; E enumValue(
+            Class&lt;E&gt; type, String value, String field) {
+        try {
+<span class="fc" id="L355">            return Enum.valueOf(type, value.strip().toUpperCase(Locale.ROOT));</span>
+<span class="nc" id="L356">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L357">            throw new IllegalArgumentException(field + &quot; has unsupported value: &quot; + value, exception);</span>
+        }
+    }
+
+<span class="fc" id="L361">    public record RunSettings(</span>
+            boolean autopilot,
+            AnalysisAutomationProfile profile,
+            String provider,
+            AiTargetDescriptor target,
+            int maxArchitectureNodes,
+            int verificationPasses,
+            boolean proposeSolutions,
+            boolean proposeProducts,
+            boolean force) {
+
+        /** Source-compatible constructor for tests and callers that predate target descriptors. */
+        public RunSettings(
+                boolean autopilot,
+                AnalysisAutomationProfile profile,
+                String provider,
+                int maxArchitectureNodes,
+                int verificationPasses,
+                boolean proposeSolutions,
+                boolean proposeProducts,
+                boolean force) {
+<span class="fc" id="L382">            this(autopilot, profile, provider, null, maxArchitectureNodes,</span>
+                    verificationPasses, proposeSolutions, proposeProducts, force);
+<span class="fc" id="L384">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

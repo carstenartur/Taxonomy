@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>NodeOrigin.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">NodeOrigin.java</span></div><h1>NodeOrigin.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+/**
+ * Classifies how a node was included in the architecture view.
+ *
+ * &lt;p&gt;Each value describes a distinct provenance so the UI can present
+ * structured explainability instead of free-text reasoning strings.
+ *
+ * &lt;p&gt;Use {@link #messageKey()} to obtain the i18n property key for
+ * the display label (e.g. {@code node.origin.direct.scored}).
+ */
+<span class="fc" id="L12">public enum NodeOrigin {</span>
+
+    /** Node received an LLM score at or above the anchor threshold. */
+<span class="fc" id="L15">    DIRECT_SCORED(&quot;node.origin.direct.scored&quot;),</span>
+
+    /** Intermediate node on the hierarchical scoring path (root → leaf). */
+<span class="fc" id="L18">    TRACE_INTERMEDIATE(&quot;node.origin.trace.intermediate&quot;),</span>
+
+    /** Reached via BFS relation traversal (hop-decay propagation). */
+<span class="fc" id="L21">    PROPAGATED(&quot;node.origin.propagated&quot;),</span>
+
+    /** Introduced through a seed relation (see {@link com.taxonomy.model.SeedType}). */
+<span class="fc" id="L24">    SEED_CONTEXT(&quot;node.origin.seed.context&quot;),</span>
+
+    /** Added as a concrete leaf during post-propagation enrichment. */
+<span class="fc" id="L27">    ENRICHED_LEAF(&quot;node.origin.enriched.leaf&quot;),</span>
+
+    /**
+     * Origin was promoted from a weaker provenance (e.g. {@code PROPAGATED} or
+     * {@code TRACE_INTERMEDIATE}) because the node was selected for the impact
+     * presentation.  Nodes whose original origin is already strong
+     * ({@code DIRECT_SCORED}, {@code SEED_CONTEXT}, {@code ENRICHED_LEAF})
+     * keep their original origin when selected for impact — only the
+     * {@code selectedForImpact} flag is set on those nodes.
+     */
+<span class="fc" id="L37">    IMPACT_PROMOTED(&quot;node.origin.impact.promoted&quot;);</span>
+
+    private final String messageKey;
+
+<span class="fc" id="L41">    NodeOrigin(String messageKey) {</span>
+<span class="fc" id="L42">        this.messageKey = messageKey;</span>
+<span class="fc" id="L43">    }</span>
+
+    /** Returns the i18n message key for the display label of this origin. */
+    public String messageKey() {
+<span class="fc" id="L47">        return messageKey;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

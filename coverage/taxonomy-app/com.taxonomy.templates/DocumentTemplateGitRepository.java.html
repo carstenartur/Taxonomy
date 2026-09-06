@@ -1,0 +1,685 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateGitRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateGitRepository.java</span></div><h1>DocumentTemplateGitRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
+import jakarta.annotation.PreDestroy;
+import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.dircache.DirCacheBuilder;
+import org.eclipse.jgit.dircache.DirCacheEntry;
+import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevTree;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
+
+/**
+ * Versions canonical, unzipped OOXML template packages in one logical JGit repository.
+ *
+ * &lt;p&gt;This facade is intentionally separate from {@code DslGitRepository}, which owns
+ * the single-file {@code architecture.taxdsl} convention. The branch head is the atomic
+ * repository update boundary, while each template exposes the most recent commit that
+ * actually changed its own subtree as its representation version and HTTP ETag.&lt;/p&gt;
+ */
+@Component
+public class DocumentTemplateGitRepository implements AutoCloseable {
+
+    static final String REPOSITORY_NAME = &quot;taxonomy-document-templates&quot;;
+    static final String BRANCH = &quot;main&quot;;
+    static final String ROOT = &quot;templates/&quot;;
+    static final String MANIFEST_NAME = &quot;template.json&quot;;
+    static final String PACKAGE_DIRECTORY = &quot;package/&quot;;
+
+<span class="fc" id="L57">    private static final Pattern COMMIT_ID = Pattern.compile(&quot;[0-9a-fA-F]{40}&quot;);</span>
+<span class="fc" id="L58">    private static final Pattern SHA256 = Pattern.compile(&quot;[0-9a-f]{64}&quot;);</span>
+<span class="fc" id="L59">    private static final ObjectMapper JSON = new ObjectMapper();</span>
+    private static final int MAX_WRITE_ATTEMPTS = 5;
+
+    private final HibernateGitStorage storageHandle;
+    private final Repository repository;
+    private final boolean closeRepository;
+<span class="fc" id="L65">    private final ReentrantLock writeLock = new ReentrantLock();</span>
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DocumentTemplateGitRepository(HibernateRepositoryFactory storageFactory) {
+<span class="fc" id="L69">        this(Objects.requireNonNull(storageFactory, &quot;storageFactory&quot;)</span>
+<span class="fc" id="L70">                .open(new RepositoryName(REPOSITORY_NAME)));</span>
+<span class="fc" id="L71">    }</span>
+
+<span class="fc" id="L73">    private DocumentTemplateGitRepository(HibernateGitStorage storageHandle) {</span>
+<span class="fc" id="L74">        this.storageHandle = storageHandle;</span>
+<span class="fc" id="L75">        this.repository = storageHandle.repository();</span>
+<span class="fc" id="L76">        this.closeRepository = false;</span>
+<span class="fc" id="L77">    }</span>
+
+<span class="fc" id="L79">    DocumentTemplateGitRepository(Repository repository) {</span>
+<span class="fc" id="L80">        this.storageHandle = null;</span>
+<span class="fc" id="L81">        this.repository = Objects.requireNonNull(repository, &quot;repository&quot;);</span>
+<span class="fc" id="L82">        this.closeRepository = false;</span>
+<span class="fc" id="L83">    }</span>
+
+    /**
+     * Commit a complete replacement package while preserving all other templates.
+     *
+     * &lt;p&gt;A {@code null} expected template version means create-only. A non-null version
+     * must match the most recent commit that changed this template. The repository-wide
+     * branch head is intentionally not exposed as the template ETag: unrelated template
+     * changes can therefore be rebased transparently without causing false conflicts.&lt;/p&gt;
+     */
+    public TemplateSnapshot commit(
+            TemplateManifest manifest,
+            Map&lt;String, byte[]&gt; packageParts,
+            String expectedTemplateVersion,
+            String author,
+            String message) throws IOException {
+
+<span class="fc" id="L100">        Objects.requireNonNull(manifest, &quot;manifest&quot;);</span>
+<span class="fc" id="L101">        Objects.requireNonNull(packageParts, &quot;packageParts&quot;);</span>
+<span class="fc" id="L102">        validateStoredManifest(manifest.templateId(), manifest, packageParts);</span>
+<span class="fc" id="L103">        String prefix = templatePrefix(manifest.templateId());</span>
+<span class="fc" id="L104">        String normalizedExpected = normalizeExpectedVersion(expectedTemplateVersion);</span>
+
+<span class="fc" id="L106">        writeLock.lock();</span>
+        try {
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            for (int attempt = 1; attempt &lt;= MAX_WRITE_ATTEMPTS; attempt++) {</span>
+<span class="fc" id="L109">                Ref currentRef = repository.getRefDatabase()</span>
+<span class="fc" id="L110">                        .exactRef(Constants.R_HEADS + BRANCH);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                ObjectId repositoryHead = currentRef == null</span>
+<span class="fc" id="L112">                        ? null : currentRef.getObjectId();</span>
+<span class="fc" id="L113">                String actualTemplateVersion = currentTemplateVersion(</span>
+<span class="fc" id="L114">                        manifest.templateId(), repositoryHead);</span>
+<span class="fc" id="L115">                requireTemplatePrecondition(</span>
+                        normalizedExpected, actualTemplateVersion);
+
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                TreeMap&lt;String, ObjectId&gt; treeObjects = repositoryHead == null</span>
+<span class="fc" id="L119">                        ? new TreeMap&lt;&gt;()</span>
+<span class="fc" id="L120">                        : readTreeObjectIds(repositoryHead);</span>
+<span class="fc" id="L121">                treeObjects.keySet().removeIf(path -&gt; path.startsWith(prefix));</span>
+
+                ObjectId commitId;
+<span class="fc" id="L124">                PersonIdent identity = identity(author);</span>
+<span class="fc" id="L125">                try (ObjectInserter inserter = repository.newObjectInserter()) {</span>
+<span class="fc" id="L126">                    byte[] manifestBytes = JSON.writeValueAsBytes(manifest);</span>
+<span class="fc" id="L127">                    treeObjects.put(prefix + MANIFEST_NAME,</span>
+<span class="fc" id="L128">                            inserter.insert(Constants.OBJ_BLOB, manifestBytes));</span>
+
+<span class="fc" id="L130">                    TreeMap&lt;String, byte[]&gt; sortedParts = new TreeMap&lt;&gt;(packageParts);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                    for (Map.Entry&lt;String, byte[]&gt; part : sortedParts.entrySet()) {</span>
+<span class="fc" id="L132">                        treeObjects.put(prefix + PACKAGE_DIRECTORY + part.getKey(),</span>
+<span class="fc" id="L133">                                inserter.insert(Constants.OBJ_BLOB, part.getValue()));</span>
+<span class="fc" id="L134">                    }</span>
+
+<span class="fc" id="L136">                    DirCache cache = DirCache.newInCore();</span>
+<span class="fc" id="L137">                    DirCacheBuilder builder = cache.builder();</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                    for (Map.Entry&lt;String, ObjectId&gt; entry : treeObjects.entrySet()) {</span>
+<span class="fc" id="L139">                        DirCacheEntry cacheEntry = new DirCacheEntry(entry.getKey());</span>
+<span class="fc" id="L140">                        cacheEntry.setFileMode(FileMode.REGULAR_FILE);</span>
+<span class="fc" id="L141">                        cacheEntry.setObjectId(entry.getValue());</span>
+<span class="fc" id="L142">                        builder.add(cacheEntry);</span>
+<span class="fc" id="L143">                    }</span>
+<span class="fc" id="L144">                    builder.finish();</span>
+<span class="fc" id="L145">                    ObjectId treeId = cache.writeTree(inserter);</span>
+
+<span class="fc" id="L147">                    CommitBuilder commit = new CommitBuilder();</span>
+<span class="fc" id="L148">                    commit.setTreeId(treeId);</span>
+<span class="fc" id="L149">                    commit.setAuthor(identity);</span>
+<span class="fc" id="L150">                    commit.setCommitter(identity);</span>
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">                    commit.setMessage(message == null || message.isBlank()</span>
+<span class="nc" id="L152">                            ? &quot;Update document template &quot; + manifest.templateId()</span>
+<span class="fc" id="L153">                            : message.strip());</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                    if (repositoryHead != null) {</span>
+<span class="fc" id="L155">                        commit.setParentId(repositoryHead);</span>
+                    }
+
+<span class="fc" id="L158">                    commitId = inserter.insert(commit);</span>
+<span class="fc" id="L159">                    inserter.flush();</span>
+                }
+
+<span class="fc" id="L162">                RefUpdate update = repository.updateRef(Constants.R_HEADS + BRANCH);</span>
+<span class="fc" id="L163">                update.setNewObjectId(commitId);</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                update.setExpectedOldObjectId(repositoryHead == null</span>
+<span class="fc" id="L165">                        ? ObjectId.zeroId() : repositoryHead);</span>
+<span class="fc" id="L166">                update.setForceUpdate(false);</span>
+<span class="fc" id="L167">                update.setRefLogIdent(identity);</span>
+<span class="fc" id="L168">                update.setRefLogMessage(&quot;template: &quot; + manifest.templateId(), false);</span>
+<span class="fc" id="L169">                RefUpdate.Result result = update.update();</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                if (successful(result)) {</span>
+<span class="fc" id="L171">                    return read(manifest.templateId(), commitId.name());</span>
+                }
+<span class="nc bnc" id="L173" title="All 2 branches missed.">                if (!concurrent(result)) {</span>
+<span class="nc" id="L174">                    throw new IOException(&quot;Template repository ref update failed: &quot; + result);</span>
+                }
+                // Another process advanced the shared branch. Re-read it and retry only
+                // if this template still satisfies the same per-template precondition.
+            }
+
+<span class="nc" id="L180">            String actual = currentTemplateVersion(</span>
+<span class="nc" id="L181">                    manifest.templateId(), headObjectId());</span>
+<span class="nc" id="L182">            throw new TemplateConflictException(normalizedExpected, actual);</span>
+        } finally {
+<span class="fc" id="L184">            writeLock.unlock();</span>
+        }
+    }
+
+    public List&lt;TemplateDescriptor&gt; list() throws IOException {
+<span class="fc" id="L189">        ObjectId head = headObjectId();</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        if (head == null) {</span>
+<span class="nc" id="L191">            return List.of();</span>
+        }
+<span class="fc" id="L193">        Map&lt;String, byte[]&gt; manifests = readManifestFiles(head);</span>
+<span class="fc" id="L194">        List&lt;TemplateDescriptor&gt; templates = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        for (Map.Entry&lt;String, byte[]&gt; file : manifests.entrySet()) {</span>
+<span class="fc" id="L196">            String pathTemplateId = templateIdFromManifestPath(file.getKey());</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">            if (pathTemplateId == null) {</span>
+<span class="nc" id="L198">                continue;</span>
+            }
+<span class="fc" id="L200">            TemplateManifest manifest = JSON.readValue(</span>
+<span class="fc" id="L201">                    file.getValue(), TemplateManifest.class);</span>
+<span class="fc" id="L202">            validateStoredManifest(pathTemplateId, manifest, null);</span>
+<span class="fc" id="L203">            String version = currentTemplateVersion(pathTemplateId, head);</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">            if (version == null) {</span>
+<span class="nc" id="L205">                continue;</span>
+            }
+<span class="fc" id="L207">            templates.add(new TemplateDescriptor(</span>
+<span class="fc" id="L208">                    manifest.templateId(),</span>
+<span class="fc" id="L209">                    manifest.displayName(),</span>
+<span class="fc" id="L210">                    manifest.fileName(),</span>
+                    version,
+<span class="fc" id="L212">                    manifest.updatedAt(),</span>
+<span class="fc" id="L213">                    manifest.updatedBy(),</span>
+<span class="fc" id="L214">                    manifest.uncompressedSize(),</span>
+<span class="fc" id="L215">                    manifest.partCount(),</span>
+<span class="fc" id="L216">                    manifest.packageSha256()));</span>
+<span class="fc" id="L217">        }</span>
+<span class="fc" id="L218">        return templates.stream()</span>
+<span class="fc" id="L219">                .sorted(Comparator.comparing(TemplateDescriptor::displayName,</span>
+                        String.CASE_INSENSITIVE_ORDER))
+<span class="fc" id="L221">                .toList();</span>
+    }
+
+    public TemplateSnapshot readCurrent(String templateId) throws IOException {
+<span class="fc" id="L225">        validateTemplateId(templateId);</span>
+<span class="fc" id="L226">        ObjectId head = headObjectId();</span>
+<span class="fc" id="L227">        String version = currentTemplateVersion(templateId, head);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        if (version == null) {</span>
+<span class="fc" id="L229">            throw new TemplateNotFoundException(templateId, null);</span>
+        }
+<span class="fc" id="L231">        return read(templateId, version);</span>
+    }
+
+    public TemplateSnapshot read(String templateId, String revision) throws IOException {
+<span class="fc" id="L235">        validateTemplateId(templateId);</span>
+<span class="fc" id="L236">        ObjectId objectId = resolveRevision(revision);</span>
+<span class="fc" id="L237">        String prefix = templatePrefix(templateId);</span>
+<span class="fc" id="L238">        Map&lt;String, byte[]&gt; files = readFiles(objectId, prefix);</span>
+<span class="fc" id="L239">        byte[] manifestBytes = files.get(prefix + MANIFEST_NAME);</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">        if (manifestBytes == null) {</span>
+<span class="nc" id="L241">            throw new TemplateNotFoundException(templateId, revision);</span>
+        }
+<span class="fc" id="L243">        TemplateManifest manifest = JSON.readValue(</span>
+                manifestBytes, TemplateManifest.class);
+<span class="fc" id="L245">        TreeMap&lt;String, byte[]&gt; parts = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L246">        String packagePrefix = prefix + PACKAGE_DIRECTORY;</span>
+<span class="fc" id="L247">        files.forEach((path, content) -&gt; {</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (path.startsWith(packagePrefix)) {</span>
+<span class="fc" id="L249">                parts.put(path.substring(packagePrefix.length()), content);</span>
+            }
+<span class="fc" id="L251">        });</span>
+<span class="fc" id="L252">        validateStoredManifest(templateId, manifest, parts);</span>
+<span class="fc" id="L253">        return new TemplateSnapshot(manifest, objectId.name(), parts);</span>
+    }
+
+    public List&lt;TemplateRevision&gt; history(String templateId) throws IOException {
+<span class="fc" id="L257">        validateTemplateId(templateId);</span>
+<span class="fc" id="L258">        ObjectId head = headObjectId();</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">        if (head == null) {</span>
+<span class="nc" id="L260">            return List.of();</span>
+        }
+<span class="fc" id="L262">        String path = templateDirectoryPath(templateId);</span>
+<span class="fc" id="L263">        List&lt;TemplateRevision&gt; history = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L264">        try (RevWalk walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L265">            walk.markStart(walk.parseCommit(head));</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">            for (RevCommit commit : walk) {</span>
+<span class="fc" id="L267">                ObjectId current = pathObjectId(commit.getTree(), path);</span>
+<span class="fc" id="L268">                ObjectId parent = null;</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">                if (commit.getParentCount() &gt; 0) {</span>
+<span class="fc" id="L270">                    RevCommit parsedParent = walk.parseCommit(commit.getParent(0));</span>
+<span class="fc" id="L271">                    parent = pathObjectId(parsedParent.getTree(), path);</span>
+                }
+<span class="fc bfc" id="L273" title="All 4 branches covered.">                if (current == null || Objects.equals(current, parent)) {</span>
+<span class="fc" id="L274">                    continue;</span>
+                }
+<span class="fc" id="L276">                history.add(new TemplateRevision(</span>
+<span class="fc" id="L277">                        commit.name(),</span>
+<span class="fc" id="L278">                        commit.getAuthorIdent().getName(),</span>
+<span class="fc" id="L279">                        Instant.ofEpochSecond(commit.getCommitTime()).toString(),</span>
+<span class="fc" id="L280">                        commit.getFullMessage()));</span>
+<span class="fc" id="L281">            }</span>
+        }
+<span class="fc" id="L283">        return List.copyOf(history);</span>
+    }
+
+    public TemplateDiff diff(String templateId, String fromRevision, String toRevision)
+            throws IOException {
+<span class="nc" id="L288">        TemplateSnapshot before = read(templateId, fromRevision);</span>
+<span class="nc" id="L289">        TemplateSnapshot after = read(templateId, toRevision);</span>
+<span class="nc" id="L290">        TreeMap&lt;String, byte[]&gt; beforeParts = new TreeMap&lt;&gt;(before.parts());</span>
+<span class="nc" id="L291">        TreeMap&lt;String, byte[]&gt; afterParts = new TreeMap&lt;&gt;(after.parts());</span>
+<span class="nc" id="L292">        TreeMap&lt;String, PartChange&gt; changes = new TreeMap&lt;&gt;();</span>
+
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        for (String path : beforeParts.keySet()) {</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">            if (!afterParts.containsKey(path)) {</span>
+<span class="nc" id="L296">                changes.put(path, PartChange.DELETED);</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            } else if (!Arrays.equals(beforeParts.get(path), afterParts.get(path))) {</span>
+<span class="nc" id="L298">                changes.put(path, PartChange.MODIFIED);</span>
+            }
+<span class="nc" id="L300">        }</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        for (String path : afterParts.keySet()) {</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">            if (!beforeParts.containsKey(path)) {</span>
+<span class="nc" id="L303">                changes.put(path, PartChange.ADDED);</span>
+            }
+<span class="nc" id="L305">        }</span>
+<span class="nc" id="L306">        return new TemplateDiff(templateId, before.commitId(), after.commitId(), changes);</span>
+    }
+
+    /** Repository-wide branch head used only for diagnostics and atomic ref updates. */
+    public String headCommit() throws IOException {
+<span class="nc" id="L311">        ObjectId head = headObjectId();</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        return head == null ? null : head.name();</span>
+    }
+
+    private String currentTemplateVersion(String templateId, ObjectId head)
+            throws IOException {
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        if (head == null) {</span>
+<span class="fc" id="L318">            return null;</span>
+        }
+<span class="fc" id="L320">        String path = templateDirectoryPath(templateId);</span>
+<span class="fc" id="L321">        try (RevWalk walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L322">            RevCommit commit = walk.parseCommit(head);</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">            if (pathObjectId(commit.getTree(), path) == null) {</span>
+<span class="fc" id="L324">                return null;</span>
+            }
+            while (true) {
+<span class="fc" id="L327">                ObjectId current = pathObjectId(commit.getTree(), path);</span>
+<span class="fc" id="L328">                RevCommit parentCommit = null;</span>
+<span class="fc" id="L329">                ObjectId parent = null;</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">                if (commit.getParentCount() &gt; 0) {</span>
+<span class="fc" id="L331">                    parentCommit = walk.parseCommit(commit.getParent(0));</span>
+<span class="fc" id="L332">                    parent = pathObjectId(parentCommit.getTree(), path);</span>
+                }
+<span class="fc bfc" id="L334" title="All 2 branches covered.">                if (!Objects.equals(current, parent)) {</span>
+<span class="fc" id="L335">                    return commit.name();</span>
+                }
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">                if (parentCommit == null) {</span>
+<span class="nc" id="L338">                    return null;</span>
+                }
+<span class="fc" id="L340">                commit = parentCommit;</span>
+<span class="fc" id="L341">            }</span>
+<span class="fc" id="L342">        }</span>
+    }
+
+    private static void requireTemplatePrecondition(
+            String expected,
+            String actual) throws TemplateConflictException {
+<span class="fc bfc" id="L348" title="All 2 branches covered.">        if (expected == null) {</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            if (actual != null) {</span>
+<span class="fc" id="L350">                throw new TemplateConflictException(null, actual);</span>
+            }
+<span class="fc" id="L352">            return;</span>
+        }
+<span class="fc bfc" id="L354" title="All 2 branches covered.">        if (!expected.equals(actual)) {</span>
+<span class="fc" id="L355">            throw new TemplateConflictException(expected, actual);</span>
+        }
+<span class="fc" id="L357">    }</span>
+
+    private static String normalizeExpectedVersion(String expected) {
+<span class="pc bpc" id="L360" title="1 of 4 branches missed.">        if (expected == null || expected.isBlank()) {</span>
+<span class="fc" id="L361">            return null;</span>
+        }
+<span class="fc" id="L363">        String normalized = expected.strip();</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">        if (!COMMIT_ID.matcher(normalized).matches()) {</span>
+<span class="nc" id="L365">            throw new IllegalArgumentException(</span>
+                    &quot;Expected template version must be a full Git commit ID&quot;);
+        }
+<span class="fc" id="L368">        return normalized.toLowerCase(java.util.Locale.ROOT);</span>
+    }
+
+    private ObjectId resolveRevision(String revision) throws IOException {
+<span class="pc bpc" id="L372" title="2 of 4 branches missed.">        if (revision == null || revision.isBlank()) {</span>
+<span class="nc" id="L373">            ObjectId head = headObjectId();</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">            if (head == null) {</span>
+<span class="nc" id="L375">                throw new TemplateNotFoundException(&quot;&quot;, revision);</span>
+            }
+<span class="nc" id="L377">            return head;</span>
+        }
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">        if (!COMMIT_ID.matcher(revision).matches()) {</span>
+<span class="nc" id="L380">            throw new IllegalArgumentException(&quot;Template revision must be a full Git commit ID&quot;);</span>
+        }
+<span class="fc" id="L382">        ObjectId candidate = ObjectId.fromString(revision);</span>
+<span class="fc" id="L383">        try (RevWalk walk = new RevWalk(repository)) {</span>
+<span class="fc" id="L384">            walk.parseCommit(candidate);</span>
+<span class="fc" id="L385">            return candidate;</span>
+<span class="nc" id="L386">        } catch (org.eclipse.jgit.errors.MissingObjectException exception) {</span>
+<span class="nc" id="L387">            throw new TemplateNotFoundException(&quot;&quot;, revision);</span>
+        }
+    }
+
+    private ObjectId headObjectId() throws IOException {
+<span class="fc" id="L392">        Ref ref = repository.getRefDatabase().exactRef(Constants.R_HEADS + BRANCH);</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">        return ref == null ? null : ref.getObjectId();</span>
+    }
+
+    private TreeMap&lt;String, ObjectId&gt; readTreeObjectIds(ObjectId commitId) throws IOException {
+<span class="fc" id="L397">        TreeMap&lt;String, ObjectId&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L398">        try (RevWalk walk = new RevWalk(repository);</span>
+<span class="fc" id="L399">             TreeWalk tree = new TreeWalk(repository)) {</span>
+<span class="fc" id="L400">            tree.addTree(walk.parseCommit(commitId).getTree());</span>
+<span class="fc" id="L401">            tree.setRecursive(true);</span>
+<span class="fc bfc" id="L402" title="All 2 branches covered.">            while (tree.next()) {</span>
+<span class="fc" id="L403">                result.put(tree.getPathString(), tree.getObjectId(0).copy());</span>
+            }
+        }
+<span class="fc" id="L406">        return result;</span>
+    }
+
+    private Map&lt;String, byte[]&gt; readManifestFiles(ObjectId commitId) throws IOException {
+<span class="fc" id="L410">        LinkedHashMap&lt;String, byte[]&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L411">        try (RevWalk walk = new RevWalk(repository);</span>
+<span class="fc" id="L412">             TreeWalk tree = new TreeWalk(repository)) {</span>
+<span class="fc" id="L413">            tree.addTree(walk.parseCommit(commitId).getTree());</span>
+<span class="fc" id="L414">            tree.setRecursive(true);</span>
+<span class="fc bfc" id="L415" title="All 2 branches covered.">            while (tree.next()) {</span>
+<span class="fc" id="L416">                String path = tree.getPathString();</span>
+<span class="fc bfc" id="L417" title="All 2 branches covered.">                if (templateIdFromManifestPath(path) == null) {</span>
+<span class="fc" id="L418">                    continue;</span>
+                }
+<span class="fc" id="L420">                ObjectLoader loader = repository.open(</span>
+<span class="fc" id="L421">                        tree.getObjectId(0), Constants.OBJ_BLOB);</span>
+<span class="fc" id="L422">                result.put(path, loader.getBytes(1_048_576));</span>
+<span class="fc" id="L423">            }</span>
+        }
+<span class="fc" id="L425">        return result;</span>
+    }
+
+    private Map&lt;String, byte[]&gt; readFiles(ObjectId commitId, String prefix) throws IOException {
+<span class="fc" id="L429">        LinkedHashMap&lt;String, byte[]&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L430">        try (RevWalk walk = new RevWalk(repository);</span>
+<span class="fc" id="L431">             TreeWalk tree = new TreeWalk(repository)) {</span>
+<span class="fc" id="L432">            tree.addTree(walk.parseCommit(commitId).getTree());</span>
+<span class="fc" id="L433">            tree.setRecursive(true);</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">            while (tree.next()) {</span>
+<span class="fc" id="L435">                String path = tree.getPathString();</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">                if (!path.startsWith(prefix)) {</span>
+<span class="fc" id="L437">                    continue;</span>
+                }
+<span class="fc" id="L439">                ObjectLoader loader = repository.open(</span>
+<span class="fc" id="L440">                        tree.getObjectId(0), Constants.OBJ_BLOB);</span>
+<span class="fc" id="L441">                result.put(path, loader.getBytes(MAX_STORED_PART_BYTES));</span>
+<span class="fc" id="L442">            }</span>
+        }
+<span class="fc" id="L444">        return result;</span>
+    }
+
+    private ObjectId pathObjectId(RevTree tree, String path) throws IOException {
+<span class="fc" id="L448">        try (TreeWalk walk = TreeWalk.forPath(repository, path, tree)) {</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">            return walk == null ? null : walk.getObjectId(0).copy();</span>
+        }
+    }
+
+    private static final int MAX_STORED_PART_BYTES =
+            OoxmlTemplatePackageCodec.MAX_PART_BYTES + 1_048_576;
+
+    private static String templatePrefix(String templateId) {
+<span class="fc" id="L457">        return templateDirectoryPath(templateId) + &quot;/&quot;;</span>
+    }
+
+    private static String templateDirectoryPath(String templateId) {
+<span class="fc" id="L461">        validateTemplateId(templateId);</span>
+<span class="fc" id="L462">        return ROOT + templateId;</span>
+    }
+
+    private static String templateIdFromManifestPath(String path) {
+<span class="pc bpc" id="L466" title="2 of 4 branches missed.">        if (path == null || !path.startsWith(ROOT)) {</span>
+<span class="nc" id="L467">            return null;</span>
+        }
+<span class="fc" id="L469">        String relative = path.substring(ROOT.length());</span>
+<span class="fc" id="L470">        int slash = relative.indexOf('/');</span>
+<span class="pc bpc" id="L471" title="1 of 4 branches missed.">        if (slash &lt;= 0 || slash != relative.lastIndexOf('/')</span>
+<span class="pc bpc" id="L472" title="1 of 2 branches missed.">                || !MANIFEST_NAME.equals(relative.substring(slash + 1))) {</span>
+<span class="fc" id="L473">            return null;</span>
+        }
+<span class="fc" id="L475">        String templateId = relative.substring(0, slash);</span>
+        try {
+<span class="fc" id="L477">            validateTemplateId(templateId);</span>
+<span class="fc" id="L478">            return templateId;</span>
+<span class="nc" id="L479">        } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L480">            return null;</span>
+        }
+    }
+
+    private static void validateStoredManifest(
+            String expectedTemplateId,
+            TemplateManifest manifest,
+            Map&lt;String, byte[]&gt; parts) throws IOException {
+<span class="pc bpc" id="L488" title="1 of 2 branches missed.">        if (manifest.schemaVersion() != 1) {</span>
+<span class="nc" id="L489">            throw new IOException(&quot;Unsupported stored template manifest schema version: &quot;</span>
+<span class="nc" id="L490">                    + manifest.schemaVersion());</span>
+        }
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">        if (!expectedTemplateId.equals(manifest.templateId())) {</span>
+<span class="nc" id="L493">            throw new IOException(&quot;Stored template manifest ID does not match its path&quot;);</span>
+        }
+        String normalizedDisplayName;
+        try {
+<span class="fc" id="L497">            normalizedDisplayName = DocumentTemplateService.normalizeDisplayName(</span>
+<span class="fc" id="L498">                    manifest.displayName(), expectedTemplateId);</span>
+<span class="nc" id="L499">        } catch (IllegalArgumentException invalid) {</span>
+<span class="nc" id="L500">            throw new IOException(&quot;Stored template display name is invalid&quot;, invalid);</span>
+<span class="fc" id="L501">        }</span>
+<span class="pc bpc" id="L502" title="1 of 2 branches missed.">        if (!Objects.equals(normalizedDisplayName, manifest.displayName())) {</span>
+<span class="nc" id="L503">            throw new IOException(&quot;Stored template display name is not canonical&quot;);</span>
+        }
+<span class="fc bfc" id="L505" title="All 2 branches covered.">        if (!Objects.equals(expectedTemplateId + &quot;.dotx&quot;, manifest.fileName())) {</span>
+<span class="fc" id="L506">            throw new IOException(&quot;Stored template filename does not match its ID&quot;);</span>
+        }
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">        if (!Objects.equals(</span>
+<span class="fc" id="L509">                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, manifest.mediaType())) {</span>
+<span class="nc" id="L510">            throw new IOException(&quot;Stored template media type is invalid&quot;);</span>
+        }
+        try {
+<span class="fc" id="L513">            Instant.parse(manifest.updatedAt());</span>
+<span class="nc" id="L514">        } catch (RuntimeException invalid) {</span>
+<span class="nc" id="L515">            throw new IOException(&quot;Stored template update timestamp is invalid&quot;, invalid);</span>
+<span class="fc" id="L516">        }</span>
+<span class="pc bpc" id="L517" title="2 of 4 branches missed.">        if (manifest.uncompressedSize() &lt; 0 || manifest.partCount() &lt; 0) {</span>
+<span class="nc" id="L518">            throw new IOException(&quot;Stored template package statistics are invalid&quot;);</span>
+        }
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">        if (manifest.packageSha256() == null</span>
+<span class="pc bpc" id="L521" title="1 of 2 branches missed.">                || !SHA256.matcher(manifest.packageSha256()).matches()) {</span>
+<span class="nc" id="L522">            throw new IOException(&quot;Stored template package checksum is invalid&quot;);</span>
+        }
+<span class="fc bfc" id="L524" title="All 2 branches covered.">        if (parts == null) {</span>
+<span class="fc" id="L525">            return;</span>
+        }
+<span class="fc" id="L527">        long actualSize = 0;</span>
+<span class="fc bfc" id="L528" title="All 2 branches covered.">        for (Map.Entry&lt;String, byte[]&gt; part : parts.entrySet()) {</span>
+<span class="pc bpc" id="L529" title="2 of 4 branches missed.">            if (part.getKey() == null || part.getValue() == null) {</span>
+<span class="nc" id="L530">                throw new IOException(&quot;Stored OOXML package contains a null part&quot;);</span>
+            }
+<span class="fc" id="L532">            actualSize += part.getValue().length;</span>
+<span class="fc" id="L533">        }</span>
+<span class="pc bpc" id="L534" title="1 of 2 branches missed.">        if (manifest.partCount() != parts.size()) {</span>
+<span class="nc" id="L535">            throw new IOException(&quot;Stored OOXML part count does not match its manifest&quot;);</span>
+        }
+<span class="fc bfc" id="L537" title="All 2 branches covered.">        if (manifest.uncompressedSize() != actualSize) {</span>
+<span class="fc" id="L538">            throw new IOException(&quot;Stored OOXML size does not match its manifest&quot;);</span>
+        }
+<span class="fc" id="L540">        String actualHash = OoxmlTemplatePackageCodec.packageSha256(parts);</span>
+<span class="pc bpc" id="L541" title="1 of 2 branches missed.">        if (!actualHash.equals(manifest.packageSha256())) {</span>
+<span class="nc" id="L542">            throw new IOException(&quot;Stored OOXML package checksum does not match its manifest&quot;);</span>
+        }
+<span class="fc" id="L544">    }</span>
+
+    static void validateTemplateId(String templateId) {
+<span class="pc bpc" id="L547" title="1 of 2 branches missed.">        if (templateId == null</span>
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">                || !templateId.matches(&quot;[a-z0-9][a-z0-9._-]{0,79}&quot;)) {</span>
+<span class="nc" id="L549">            throw new IllegalArgumentException(</span>
+                    &quot;Template ID must match [a-z0-9][a-z0-9._-]{0,79}&quot;);
+        }
+<span class="fc" id="L552">    }</span>
+
+    private static PersonIdent identity(String author) {
+<span class="pc bpc" id="L555" title="2 of 4 branches missed.">        String name = author == null || author.isBlank() ? &quot;taxonomy&quot; : author.strip();</span>
+<span class="fc" id="L556">        name = name.replaceAll(&quot;[\\r\\n&lt;&gt;]&quot;, &quot;_&quot;);</span>
+<span class="fc" id="L557">        String local = name.toLowerCase(java.util.Locale.ROOT)</span>
+<span class="fc" id="L558">                .replaceAll(&quot;[^a-z0-9._-]&quot;, &quot;_&quot;);</span>
+<span class="pc bpc" id="L559" title="1 of 2 branches missed.">        if (local.isBlank()) {</span>
+<span class="nc" id="L560">            local = &quot;taxonomy&quot;;</span>
+        }
+<span class="fc" id="L562">        return new PersonIdent(name, local + &quot;@taxonomy.local&quot;);</span>
+    }
+
+    private static boolean successful(RefUpdate.Result result) {
+<span class="pc bpc" id="L566" title="3 of 6 branches missed.">        return result == RefUpdate.Result.NEW</span>
+                || result == RefUpdate.Result.FAST_FORWARD
+                || result == RefUpdate.Result.NO_CHANGE;
+    }
+
+    private static boolean concurrent(RefUpdate.Result result) {
+<span class="nc bnc" id="L572" title="All 4 branches missed.">        return result == RefUpdate.Result.REJECTED</span>
+                || result == RefUpdate.Result.LOCK_FAILURE;
+    }
+
+    @PreDestroy
+    @Override
+    public void close() {
+<span class="pc bpc" id="L579" title="1 of 2 branches missed.">        if (storageHandle != null) {</span>
+<span class="fc" id="L580">            storageHandle.close();</span>
+<span class="nc bnc" id="L581" title="All 2 branches missed.">        } else if (closeRepository) {</span>
+<span class="nc" id="L582">            repository.close();</span>
+        }
+<span class="fc" id="L584">    }</span>
+
+<span class="fc" id="L586">    public record TemplateManifest(</span>
+            int schemaVersion,
+            String templateId,
+            String displayName,
+            String fileName,
+            String mediaType,
+            String updatedAt,
+            String updatedBy,
+            long uncompressedSize,
+            int partCount,
+            String packageSha256) {
+    }
+
+    /**
+     * Current per-template representation metadata. Despite the historic field name,
+     * {@code headCommit} is the last commit that changed this template, not the shared
+     * repository branch head.
+     */
+<span class="fc" id="L604">    public record TemplateDescriptor(</span>
+            String templateId,
+            String displayName,
+            String fileName,
+            String headCommit,
+            String updatedAt,
+            String updatedBy,
+            long uncompressedSize,
+            int partCount,
+            String packageSha256) {
+    }
+
+    public record TemplateSnapshot(
+            TemplateManifest manifest,
+            String commitId,
+            Map&lt;String, byte[]&gt; parts) {
+
+<span class="fc" id="L621">        public TemplateSnapshot {</span>
+<span class="fc" id="L622">            TreeMap&lt;String, byte[]&gt; copy = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L623">            parts.forEach((path, value) -&gt;</span>
+<span class="fc" id="L624">                    copy.put(path, Arrays.copyOf(value, value.length)));</span>
+<span class="fc" id="L625">            parts = Map.copyOf(copy);</span>
+<span class="fc" id="L626">        }</span>
+    }
+
+<span class="fc" id="L629">    public record TemplateRevision(</span>
+            String commitId,
+            String author,
+            String committedAt,
+            String message) {
+    }
+
+<span class="nc" id="L636">    public record TemplateDiff(</span>
+            String templateId,
+            String fromRevision,
+            String toRevision,
+            Map&lt;String, PartChange&gt; changes) {
+    }
+
+<span class="fc" id="L643">    public enum PartChange {</span>
+<span class="fc" id="L644">        ADDED,</span>
+<span class="fc" id="L645">        MODIFIED,</span>
+<span class="fc" id="L646">        DELETED</span>
+    }
+
+    public static final class TemplateConflictException extends IOException {
+        private final String expectedHead;
+        private final String actualHead;
+
+        TemplateConflictException(String expectedHead, String actualHead) {
+<span class="fc bfc" id="L654" title="All 2 branches covered.">            super(expectedHead == null</span>
+                    ? &quot;Document template already exists&quot;
+<span class="pc bpc" id="L656" title="1 of 2 branches missed.">                            + (actualHead == null ? &quot;&quot; : &quot;; current version is &quot; + actualHead)</span>
+                    : &quot;Document template changed concurrently&quot;
+<span class="fc bfc" id="L658" title="All 2 branches covered.">                            + (actualHead == null ? &quot;; it no longer exists&quot;</span>
+<span class="fc" id="L659">                                    : &quot;; current version is &quot; + actualHead));</span>
+<span class="fc" id="L660">            this.expectedHead = expectedHead;</span>
+<span class="fc" id="L661">            this.actualHead = actualHead;</span>
+<span class="fc" id="L662">        }</span>
+
+        public String expectedHead() {
+<span class="nc" id="L665">            return expectedHead;</span>
+        }
+
+        public String actualHead() {
+<span class="nc" id="L669">            return actualHead;</span>
+        }
+    }
+
+    public static final class TemplateNotFoundException extends IOException {
+        TemplateNotFoundException(String templateId, String revision) {
+<span class="fc" id="L675">            super(&quot;Document template not found&quot;</span>
+<span class="pc bpc" id="L676" title="2 of 4 branches missed.">                    + (templateId == null || templateId.isBlank()</span>
+<span class="nc" id="L677">                    ? &quot;&quot;</span>
+<span class="fc" id="L678">                    : &quot;: &quot; + templateId)</span>
+<span class="pc bpc" id="L679" title="1 of 4 branches missed.">                    + (revision == null || revision.isBlank()</span>
+<span class="fc" id="L680">                    ? &quot;&quot;</span>
+<span class="fc" id="L681">                    : &quot; at &quot; + revision));</span>
+<span class="fc" id="L682">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

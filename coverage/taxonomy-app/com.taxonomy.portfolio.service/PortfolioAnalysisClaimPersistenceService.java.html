@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioAnalysisClaimPersistenceService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioAnalysisClaimPersistenceService.java</span></div><h1>PortfolioAnalysisClaimPersistenceService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.ArchitectureRecommendation;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
+import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Objects;
+
+/**
+ * Commits a worker result only while the exact claim generation is still active.
+ *
+ * &lt;p&gt;The short claim transaction returns both the immutable requirement version
+ * and the retry attempt. A recovery increments the attempt before another worker
+ * can claim the row. Late workers therefore cannot attach an old analysis to a
+ * newer requirement version, overwrite a retry, or mark it failed.&lt;/p&gt;
+ *
+ * &lt;p&gt;Finalization takes a pessimistic row lock before validating the generation.
+ * Provisional relation hypotheses are persisted only after that lock is held and
+ * through the exact selected repository/workspace context; their Git projection
+ * is registered for {@code afterCommit}. The immutable snapshot and its
+ * hypothesis links therefore commit first, while a rollback leaves neither a
+ * snapshot nor a canonical hypothesis Git commit. The exact-tenant recovery
+ * update must wait on the same item row.&lt;/p&gt;
+ *
+ * &lt;p&gt;The item is the claim authority. The job status is only an aggregate and
+ * may temporarily return to {@code PENDING} when another item is recovered. A
+ * valid RUNNING item must remain completable in that state, while terminal or
+ * cancelled jobs reject further worker writes.&lt;/p&gt;
+ */
+@Service
+public class PortfolioAnalysisClaimPersistenceService {
+
+    private final RequirementAnalysisJobItemRepository itemRepository;
+    private final PortfolioAnalysisPersistenceService persistenceService;
+    private final HypothesisService hypothesisService;
+
+    public PortfolioAnalysisClaimPersistenceService(
+            RequirementAnalysisJobItemRepository itemRepository,
+            PortfolioAnalysisPersistenceService persistenceService,
+<span class="fc" id="L50">            HypothesisService hypothesisService) {</span>
+<span class="fc" id="L51">        this.itemRepository = itemRepository;</span>
+<span class="fc" id="L52">        this.persistenceService = persistenceService;</span>
+<span class="fc" id="L53">        this.hypothesisService = hypothesisService;</span>
+<span class="fc" id="L54">    }</span>
+
+    @Transactional
+    public SnapshotSummary persistSnapshot(
+            PortfolioAnalysisWorkQueue.WorkItem workItem,
+            String snapshotId,
+            String analysisSessionId,
+            AnalysisResult analysis,
+            GapAnalysisView gaps,
+            PatternDetectionView patterns,
+            ArchitectureRecommendation recommendation,
+            String provider,
+            String modelName,
+            String promptFingerprint,
+            String taxonomyFingerprint,
+            String username,
+            WorkspaceContext context,
+            long durationMs) {
+<span class="fc" id="L72">        requireActiveClaim(workItem);</span>
+<span class="fc" id="L73">        persistDeferredHypotheses(</span>
+                analysis, analysisSessionId, username, context);
+<span class="fc" id="L75">        return persistenceService.persistSnapshot(</span>
+<span class="fc" id="L76">                workItem.itemId(),</span>
+<span class="fc" id="L77">                workItem.jobId(),</span>
+<span class="fc" id="L78">                workItem.projectId(),</span>
+<span class="fc" id="L79">                workItem.scopeKey(),</span>
+                snapshotId,
+                analysisSessionId,
+                analysis,
+                gaps,
+                patterns,
+                recommendation,
+                provider,
+                modelName,
+                promptFingerprint,
+                taxonomyFingerprint,
+                username,
+                context,
+                durationMs);
+    }
+
+    @Transactional
+    public void failItem(PortfolioAnalysisWorkQueue.WorkItem workItem,
+                         Throwable failure) {
+<span class="fc" id="L98">        requireActiveClaim(workItem);</span>
+<span class="fc" id="L99">        persistenceService.failItem(</span>
+<span class="fc" id="L100">                workItem.itemId(),</span>
+<span class="fc" id="L101">                workItem.jobId(),</span>
+<span class="fc" id="L102">                workItem.projectId(),</span>
+<span class="fc" id="L103">                workItem.scopeKey(),</span>
+                failure);
+<span class="fc" id="L105">    }</span>
+
+    private void persistDeferredHypotheses(AnalysisResult analysis,
+                                           String analysisSessionId,
+                                           String username,
+                                           WorkspaceContext context) {
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (analysis == null</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                || analysis.getProvisionalRelations() == null</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                || analysis.getProvisionalRelations().isEmpty()) {</span>
+<span class="fc" id="L114">            return;</span>
+        }
+<span class="pc bpc" id="L116" title="1 of 4 branches missed.">        if (analysisSessionId == null || analysisSessionId.isBlank()) {</span>
+<span class="fc" id="L117">            throw PortfolioException.validation(</span>
+                    &quot;Analysis session ID is required for deferred hypotheses&quot;);
+        }
+<span class="fc" id="L120">        hypothesisService.persistFromAnalysisAfterCommit(</span>
+<span class="fc" id="L121">                analysis.getProvisionalRelations(),</span>
+<span class="fc" id="L122">                analysisSessionId.strip(),</span>
+<span class="fc" id="L123">                exactRepositoryContext(username, context));</span>
+<span class="fc" id="L124">    }</span>
+
+    private static RepositoryContext exactRepositoryContext(
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L129">        String repositoryId = PortfolioScope.repositoryId(context);</span>
+<span class="fc" id="L130">        String branch = PortfolioScope.branch(context);</span>
+<span class="fc" id="L131">        String effectiveUsername = PortfolioScope.username(username, context);</span>
+<span class="fc" id="L132">        String workspaceId = PortfolioScope.workspaceId(context);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        return workspaceId == null</span>
+<span class="fc" id="L134">                ? RepositoryContext.centralWrite(</span>
+                        repositoryId, branch, effectiveUsername)
+<span class="fc" id="L136">                : RepositoryContext.workspace(</span>
+                        repositoryId, workspaceId, branch, effectiveUsername);
+    }
+
+    private RequirementAnalysisJobItem requireActiveClaim(
+            PortfolioAnalysisWorkQueue.WorkItem workItem) {
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (workItem == null</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                || workItem.itemId() == null</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">                || workItem.jobId() == null</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">                || workItem.projectId() == null</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">                || workItem.scopeKey() == null</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">                || workItem.scopeKey().isBlank()</span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">                || workItem.requirementId() == null</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">                || workItem.requirementVersionId() == null</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">                || workItem.attempt() &lt; 1) {</span>
+<span class="fc" id="L151">            throw PortfolioException.validation(</span>
+                    &quot;Complete analysis claim identity is required&quot;);
+        }
+
+<span class="fc" id="L155">        RequirementAnalysisJobItem item = itemRepository</span>
+<span class="fc" id="L156">                .findClaimForUpdate(</span>
+<span class="fc" id="L157">                        workItem.itemId(),</span>
+<span class="fc" id="L158">                        workItem.jobId(),</span>
+<span class="fc" id="L159">                        workItem.projectId(),</span>
+<span class="fc" id="L160">                        workItem.scopeKey().strip())</span>
+<span class="fc" id="L161">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+<span class="fc" id="L162">                        &quot;Analysis job item not found: &quot; + workItem.itemId()));</span>
+
+<span class="fc" id="L164">        AnalysisStatus jobStatus = item.getJob().getStatus();</span>
+<span class="fc bfc" id="L165" title="All 4 branches covered.">        boolean jobAcceptsWorkerResult = jobStatus == AnalysisStatus.RUNNING</span>
+                || jobStatus == AnalysisStatus.PENDING;
+<span class="pc bpc" id="L167" title="1 of 4 branches missed.">        boolean active = item.getStatus() == AnalysisStatus.RUNNING</span>
+                &amp;&amp; jobAcceptsWorkerResult
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                &amp;&amp; item.getAttempt() == workItem.attempt()</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(item.getRequirementId(), workItem.requirementId())</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L172">                        item.getRequirementVersionId(),</span>
+<span class="fc" id="L173">                        workItem.requirementVersionId());</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (!active) {</span>
+<span class="fc" id="L175">            throw PortfolioException.conflict(</span>
+                    &quot;Analysis work item claim is no longer active: &quot;
+<span class="fc" id="L177">                            + workItem.itemId());</span>
+        }
+<span class="fc" id="L179">        return item;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

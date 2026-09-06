@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitNativeSyncIntegrationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">GitNativeSyncIntegrationService.java</span></div><h1>GitNativeSyncIntegrationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.dsl.merge.TaxDslMergeResult;
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.versioning.service.SemanticGitMergeService;
+import com.taxonomy.workspace.model.SyncState;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.SyncStateRepository;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.Instant;
+
+/**
+ * Portfolio-aware replacement for the legacy copy-based synchronization path.
+ *
+ * &lt;p&gt;Before pull or push, durable project decisions are projected into the
+ * branch DSL through a workspace-owned port. Isolated repositories use a
+ * tracked three-way semantic base instead of replacing the complete
+ * architecture file. Every synchronization path carries the exact logical
+ * repository, workspace/central scope and branch into both Git and portfolio
+ * materialisation.&lt;/p&gt;
+ */
+@Service
+@Primary
+public class GitNativeSyncIntegrationService extends SyncIntegrationService {
+
+    private static final String WORKSPACE_BRANCH = &quot;main&quot;;
+    private static final String SEEDED_BRANCH = &quot;draft&quot;;
+    private static final String TRACKING_BRANCH = &quot;sync-base&quot;;
+
+    private final SyncStateRepository syncStateRepository;
+    private final UserWorkspaceRepository workspaceRepository;
+    private final SystemRepositoryService systemRepositoryService;
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final SemanticGitMergeService semanticMergeService;
+    private final WorkspacePortfolioGitPort portfolioGitPort;
+    private final WorkspaceContextResolver contextResolver;
+
+    public GitNativeSyncIntegrationService(SyncStateRepository syncStateRepository,
+                                           UserWorkspaceRepository workspaceRepository,
+                                           SystemRepositoryService systemRepositoryService,
+                                           DslGitRepositoryFactory repositoryFactory,
+                                           SemanticGitMergeService semanticMergeService,
+                                           WorkspacePortfolioGitPort portfolioGitPort,
+                                           WorkspaceContextResolver contextResolver) {
+<span class="fc" id="L51">        super(syncStateRepository, workspaceRepository, systemRepositoryService, repositoryFactory);</span>
+<span class="fc" id="L52">        this.syncStateRepository = syncStateRepository;</span>
+<span class="fc" id="L53">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L54">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L55">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L56">        this.semanticMergeService = semanticMergeService;</span>
+<span class="fc" id="L57">        this.portfolioGitPort = portfolioGitPort;</span>
+<span class="fc" id="L58">        this.contextResolver = contextResolver;</span>
+<span class="fc" id="L59">    }</span>
+
+    @Override
+    public String syncFromShared(String username, String userBranch) throws IOException {
+<span class="fc" id="L63">        WorkspaceContext context = resolveWorkspaceContext(username, userBranch);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (context.workspaceId() == null) {</span>
+<span class="fc" id="L65">            return mergeWithinRepository(</span>
+<span class="fc" id="L66">                    username, context, context.currentBranch(), true);</span>
+        }
+<span class="fc" id="L68">        return pullAcrossRepositories(username, context, context.currentBranch());</span>
+    }
+
+    @Override
+    public String publishToShared(String username, String userBranch) throws IOException {
+<span class="fc" id="L73">        WorkspaceContext context = resolveWorkspaceContext(username, userBranch);</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        if (context.workspaceId() == null) {</span>
+<span class="nc" id="L75">            return mergeWithinRepository(</span>
+<span class="nc" id="L76">                    username, context, context.currentBranch(), false);</span>
+        }
+<span class="fc" id="L78">        return publishAcrossRepositories(username, context, context.currentBranch());</span>
+    }
+
+    @Override
+    public String syncFromSharedToWorkspace(String username, String workspaceId)
+            throws IOException {
+<span class="fc" id="L84">        WorkspaceContext context = resolveExplicitWorkspaceContext(</span>
+                username, workspaceId, WORKSPACE_BRANCH);
+<span class="fc" id="L86">        return pullAcrossRepositories(username, context, WORKSPACE_BRANCH);</span>
+    }
+
+    @Override
+    public String publishFromWorkspaceToShared(String username, String workspaceId)
+            throws IOException {
+<span class="nc" id="L92">        WorkspaceContext context = resolveExplicitWorkspaceContext(</span>
+                username, workspaceId, WORKSPACE_BRANCH);
+<span class="nc" id="L94">        return publishAcrossRepositories(username, context, WORKSPACE_BRANCH);</span>
+    }
+
+    @Override
+    public String resolveDiverged(String username,
+                                  String userBranch,
+                                  DivergedStrategy strategy) throws IOException {
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (strategy == DivergedStrategy.MERGE) {</span>
+<span class="fc" id="L102">            String commit = syncFromShared(username, userBranch);</span>
+<span class="fc" id="L103">            return &quot;Semantically merged source into your branch: &quot; + abbreviate(commit);</span>
+        }
+<span class="nc" id="L105">        return super.resolveDiverged(username, userBranch, strategy);</span>
+    }
+
+    private String pullAcrossRepositories(String username,
+                                          WorkspaceContext context,
+                                          String userBranch) throws IOException {
+<span class="fc" id="L111">        UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());</span>
+<span class="fc" id="L112">        SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);</span>
+<span class="fc" id="L113">        requireMatchingRepository(context, sourceMetadata);</span>
+<span class="fc" id="L114">        String sourceBranch = sourceBranch(workspaceMetadata, sourceMetadata);</span>
+<span class="fc" id="L115">        DslGitRepository sourceRepository =</span>
+<span class="fc" id="L116">                repositoryFactory.getCentralRepository(sourceMetadata.getRepositoryId());</span>
+<span class="fc" id="L117">        DslGitRepository workspaceGit =</span>
+<span class="fc" id="L118">                repositoryFactory.openWorkspaceRepository(context.workspaceId());</span>
+<span class="fc" id="L119">        WorkspaceMergeState state = initialiseWorkspaceMergeBase(</span>
+                workspaceGit, sourceRepository, sourceBranch, username, userBranch);
+
+<span class="fc" id="L122">        portfolioGitPort.commitPortfolio(userBranch,</span>
+                &quot;Project requirements before pull&quot;, username, context);
+
+<span class="fc" id="L125">        String ours = requiredDsl(workspaceGit, userBranch,</span>
+                &quot;Workspace branch has no content: &quot; + userBranch);
+<span class="fc" id="L127">        String theirs = requiredDsl(sourceRepository, sourceBranch,</span>
+                &quot;Source branch has no content: &quot; + sourceBranch);
+
+<span class="fc" id="L130">        TaxDslMergeResult merge = semanticMergeService.mergeContent(</span>
+<span class="fc" id="L131">                state.baseDsl(), ours, theirs);</span>
+<span class="fc" id="L132">        requireSuccess(&quot;Pull from source&quot;, merge);</span>
+<span class="fc" id="L133">        String localCommit = commitIfChanged(</span>
+                workspaceGit,
+                userBranch,
+<span class="fc" id="L136">                merge.mergedText(),</span>
+                ours,
+                username,
+<span class="fc" id="L139">                &quot;Semantic pull from &quot; + sourceMetadata.getSlug());</span>
+<span class="fc" id="L140">        trackBase(workspaceGit, merge.mergedText(), username);</span>
+<span class="fc" id="L141">        portfolioGitPort.materializePortfolio(merge.mergedText(), username, context);</span>
+
+<span class="fc" id="L143">        String sourceHead = sourceRepository.getHeadCommit(sourceBranch);</span>
+<span class="fc" id="L144">        workspaceMetadata.setLastFetchedCommit(sourceHead);</span>
+<span class="fc" id="L145">        workspaceMetadata.setLastIntegratedCommit(sourceHead);</span>
+<span class="fc" id="L146">        workspaceMetadata.setCurrentCommit(localCommit);</span>
+<span class="fc" id="L147">        workspaceMetadata.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L148">        workspaceRepository.save(workspaceMetadata);</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">        updateAfterSync(username, sourceHead != null ? sourceHead : localCommit);</span>
+<span class="fc" id="L150">        return localCommit;</span>
+    }
+
+    private String publishAcrossRepositories(String username,
+                                             WorkspaceContext context,
+                                             String userBranch) throws IOException {
+<span class="fc" id="L156">        UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());</span>
+<span class="fc" id="L157">        SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);</span>
+<span class="fc" id="L158">        requireMatchingRepository(context, sourceMetadata);</span>
+<span class="fc" id="L159">        String sourceBranch = sourceBranch(workspaceMetadata, sourceMetadata);</span>
+<span class="fc" id="L160">        DslGitRepository sourceRepository =</span>
+<span class="fc" id="L161">                repositoryFactory.getCentralRepository(sourceMetadata.getRepositoryId());</span>
+<span class="fc" id="L162">        DslGitRepository workspaceGit =</span>
+<span class="fc" id="L163">                repositoryFactory.openWorkspaceRepository(context.workspaceId());</span>
+<span class="fc" id="L164">        WorkspaceMergeState state = initialiseWorkspaceMergeBase(</span>
+                workspaceGit, sourceRepository, sourceBranch, username, userBranch);
+
+<span class="fc" id="L167">        portfolioGitPort.commitPortfolio(userBranch,</span>
+                &quot;Project requirements before push&quot;, username, context);
+
+<span class="fc" id="L170">        String sourceDsl = valueOrEmpty(sourceRepository.getDslAtHead(sourceBranch));</span>
+<span class="fc" id="L171">        String workspaceDsl = requiredDsl(workspaceGit, userBranch,</span>
+                &quot;Workspace branch has no content: &quot; + userBranch);
+
+<span class="fc" id="L174">        TaxDslMergeResult merge = semanticMergeService.mergeContent(</span>
+<span class="fc" id="L175">                state.baseDsl(), sourceDsl, workspaceDsl);</span>
+<span class="fc" id="L176">        requireSuccess(&quot;Publish to source&quot;, merge);</span>
+
+<span class="fc" id="L178">        String sourceCommit = commitIfChanged(</span>
+                sourceRepository,
+                sourceBranch,
+<span class="fc" id="L181">                merge.mergedText(),</span>
+                sourceDsl,
+                username,
+<span class="fc" id="L184">                &quot;Semantic publish from workspace &quot; + context.workspaceId());</span>
+<span class="fc" id="L185">        String workspaceCommit = commitIfChanged(</span>
+                workspaceGit,
+                userBranch,
+<span class="fc" id="L188">                merge.mergedText(),</span>
+                workspaceDsl,
+                username,
+                &quot;Integrate source changes after publish&quot;);
+<span class="fc" id="L192">        trackBase(workspaceGit, merge.mergedText(), username);</span>
+
+<span class="fc" id="L194">        WorkspaceContext centralContext = new WorkspaceContext(</span>
+                &quot;shared&quot;,
+                null,
+                sourceBranch,
+<span class="fc" id="L198">                requireRepositoryId(sourceMetadata));</span>
+<span class="fc" id="L199">        portfolioGitPort.materializePortfolio(</span>
+<span class="fc" id="L200">                merge.mergedText(), &quot;shared&quot;, centralContext);</span>
+<span class="fc" id="L201">        portfolioGitPort.materializePortfolio(</span>
+<span class="fc" id="L202">                merge.mergedText(), username, context);</span>
+
+<span class="fc" id="L204">        workspaceMetadata.setLastFetchedCommit(sourceCommit);</span>
+<span class="fc" id="L205">        workspaceMetadata.setLastIntegratedCommit(sourceCommit);</span>
+<span class="fc" id="L206">        workspaceMetadata.setCurrentCommit(workspaceCommit);</span>
+<span class="fc" id="L207">        workspaceMetadata.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L208">        workspaceRepository.save(workspaceMetadata);</span>
+<span class="fc" id="L209">        sourceMetadata.setLastPushAt(Instant.now());</span>
+<span class="fc" id="L210">        systemRepositoryService.save(sourceMetadata);</span>
+<span class="fc" id="L211">        updateAfterPublish(username, sourceCommit);</span>
+<span class="fc" id="L212">        return sourceCommit;</span>
+    }
+
+    private String mergeWithinRepository(String username,
+                                         WorkspaceContext context,
+                                         String userBranch,
+                                         boolean pull) throws IOException {
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        if (context.workspaceId() != null) {</span>
+<span class="nc" id="L220">            throw new IllegalArgumentException(</span>
+                    &quot;Central synchronization must not carry a workspaceId&quot;);
+        }
+<span class="fc" id="L223">        DslGitRepository repository =</span>
+<span class="fc" id="L224">                repositoryFactory.getCentralRepository(context.repositoryId());</span>
+<span class="fc" id="L225">        portfolioGitPort.commitPortfolio(userBranch,</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">                pull ? &quot;Project requirements before sync from shared&quot;</span>
+<span class="pc" id="L227">                        : &quot;Project requirements before publish&quot;,</span>
+                username,
+                context);
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        String from = pull ? sharedBranch() : userBranch;</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        String into = pull ? userBranch : sharedBranch();</span>
+<span class="fc" id="L232">        SemanticGitMergeService.MergeOutcome outcome = semanticMergeService.mergeBranches(</span>
+                repository, from, into, username);
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        requireSuccess(pull ? &quot;Sync&quot; : &quot;Publish&quot;, outcome);</span>
+<span class="fc" id="L235">        portfolioGitPort.materializePortfolioHead(into, username, context);</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        if (pull) {</span>
+<span class="fc" id="L237">            updateAfterSync(username, repository.getHeadCommit(sharedBranch()));</span>
+        } else {
+<span class="nc" id="L239">            updateAfterPublish(username, outcome.commitId());</span>
+        }
+<span class="fc" id="L241">        return outcome.commitId();</span>
+    }
+
+    /** Establish the common ancestor before any local portfolio projection is committed. */
+    private WorkspaceMergeState initialiseWorkspaceMergeBase(
+            DslGitRepository workspaceGit,
+            DslGitRepository sourceRepository,
+            String sourceBranch,
+            String username,
+            String userBranch) throws IOException {
+<span class="fc" id="L251">        String existingBase = valueOrEmpty(</span>
+<span class="fc" id="L252">                workspaceGit.getDslAtHead(TRACKING_BRANCH));</span>
+<span class="fc" id="L253">        String existingUserBranch = valueOrEmpty(</span>
+<span class="fc" id="L254">                workspaceGit.getDslAtHead(userBranch));</span>
+<span class="pc bpc" id="L255" title="1 of 4 branches missed.">        if (!existingBase.isBlank() &amp;&amp; !existingUserBranch.isBlank()) {</span>
+<span class="fc" id="L256">            return new WorkspaceMergeState(existingBase);</span>
+        }
+
+<span class="fc" id="L259">        String source = valueOrEmpty(sourceRepository.getDslAtHead(sourceBranch));</span>
+<span class="fc" id="L260">        String seeded = valueOrEmpty(workspaceGit.getDslAtHead(SEEDED_BRANCH));</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">        String commonBase = !seeded.isBlank() ? seeded : source;</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        if (commonBase.isBlank()) {</span>
+<span class="nc" id="L263">            throw new IOException(&quot;Neither source nor workspace seed contains architecture DSL&quot;);</span>
+        }
+
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">        if (existingUserBranch.isBlank()) {</span>
+<span class="fc" id="L267">            workspaceGit.commitDsl(</span>
+                    userBranch,
+                    commonBase,
+                    username,
+                    &quot;Initialize workspace branch from source architecture&quot;);
+        }
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">        if (existingBase.isBlank()) {</span>
+<span class="fc" id="L274">            workspaceGit.commitDsl(</span>
+                    TRACKING_BRANCH,
+                    commonBase,
+                    username,
+                    &quot;Initialize semantic synchronization base&quot;);
+        }
+<span class="fc" id="L280">        return new WorkspaceMergeState(commonBase);</span>
+    }
+
+    /** Resolve the exact persistent repository and active branch for one user. */
+    private WorkspaceContext resolveWorkspaceContext(String username, String requestedBranch) {
+<span class="fc" id="L285">        RepositoryContext persistent =</span>
+<span class="fc" id="L286">                contextResolver.resolveRepositoryContextForUser(username);</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        if (persistent.workspaceId() == null) {</span>
+<span class="fc" id="L288">            return new WorkspaceContext(</span>
+<span class="fc" id="L289">                    persistent.username(),</span>
+                    null,
+<span class="fc" id="L291">                    persistent.branch(),</span>
+<span class="fc" id="L292">                    persistent.repositoryId());</span>
+        }
+<span class="fc" id="L294">        String branch = requestedBranch;</span>
+<span class="pc bpc" id="L295" title="2 of 4 branches missed.">        if (branch == null || branch.isBlank()</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">                || (SEEDED_BRANCH.equals(branch)</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">                &amp;&amp; !SEEDED_BRANCH.equals(persistent.branch()))) {</span>
+<span class="fc" id="L298">            branch = persistent.branch();</span>
+        }
+<span class="pc bpc" id="L300" title="2 of 4 branches missed.">        if (branch == null || branch.isBlank()) {</span>
+<span class="nc" id="L301">            branch = WORKSPACE_BRANCH;</span>
+        }
+<span class="fc" id="L303">        return new WorkspaceContext(</span>
+<span class="fc" id="L304">                persistent.username(),</span>
+<span class="fc" id="L305">                persistent.workspaceId(),</span>
+                branch,
+<span class="fc" id="L307">                persistent.repositoryId());</span>
+    }
+
+    /** Resolve an explicitly addressed workspace without inventing repository provenance. */
+    private WorkspaceContext resolveExplicitWorkspaceContext(
+            String username, String workspaceId, String branch) {
+<span class="fc" id="L313">        UserWorkspace workspace = requireWorkspace(workspaceId);</span>
+<span class="fc" id="L314">        SystemRepository source = requireSourceRepository(workspace);</span>
+<span class="fc" id="L315">        return new WorkspaceContext(</span>
+                username,
+<span class="fc" id="L317">                workspace.getWorkspaceId(),</span>
+                branch,
+<span class="fc" id="L319">                requireRepositoryId(source));</span>
+    }
+
+    private UserWorkspace requireWorkspace(String workspaceId) {
+<span class="pc bpc" id="L323" title="2 of 4 branches missed.">        if (workspaceId == null || workspaceId.isBlank()) {</span>
+<span class="nc" id="L324">            throw new IllegalArgumentException(&quot;workspaceId must not be blank&quot;);</span>
+        }
+<span class="fc" id="L326">        return workspaceRepository.findByWorkspaceId(workspaceId.strip())</span>
+<span class="pc" id="L327">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;Workspace metadata not found: &quot; + workspaceId));
+    }
+
+    private SystemRepository requireSourceRepository(UserWorkspace workspace) {
+<span class="fc" id="L332">        String repositoryId = workspace.getSourceRepositoryId();</span>
+<span class="pc bpc" id="L333" title="1 of 4 branches missed.">        if (repositoryId == null || repositoryId.isBlank()) {</span>
+<span class="fc" id="L334">            throw new IllegalStateException(</span>
+<span class="fc" id="L335">                    &quot;Workspace has no sourceRepositoryId: &quot; + workspace.getWorkspaceId());</span>
+        }
+<span class="fc" id="L337">        return systemRepositoryService.getRepository(repositoryId.strip());</span>
+    }
+
+    private static void requireMatchingRepository(
+            WorkspaceContext context, SystemRepository sourceRepository) {
+<span class="fc" id="L342">        String sourceRepositoryId = requireRepositoryId(sourceRepository);</span>
+<span class="fc" id="L343">        String requestRepositoryId = context.repositoryId();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (!sourceRepositoryId.equals(requestRepositoryId)) {</span>
+<span class="fc" id="L345">            throw new IllegalStateException(</span>
+                    &quot;Workspace repository context does not match persisted source provenance: &quot;
+                            + &quot;request repositoryId=&quot; + requestRepositoryId
+                            + &quot;, persisted sourceRepositoryId=&quot; + sourceRepositoryId);
+        }
+<span class="fc" id="L350">    }</span>
+
+    private static String requireRepositoryId(SystemRepository repository) {
+<span class="pc bpc" id="L353" title="2 of 4 branches missed.">        if (repository == null || repository.getRepositoryId() == null</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">                || repository.getRepositoryId().isBlank()) {</span>
+<span class="nc" id="L355">            throw new IllegalStateException(&quot;Source repository has no repositoryId&quot;);</span>
+        }
+<span class="fc" id="L357">        return repository.getRepositoryId().strip();</span>
+    }
+
+    private static String sourceBranch(
+            UserWorkspace workspace, SystemRepository sourceRepository) {
+<span class="fc bfc" id="L362" title="All 2 branches covered.">        if (workspace.getSyncTargetBranch() != null</span>
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">                &amp;&amp; !workspace.getSyncTargetBranch().isBlank()) {</span>
+<span class="fc" id="L364">            return workspace.getSyncTargetBranch();</span>
+        }
+<span class="pc bpc" id="L366" title="3 of 4 branches missed.">        if (workspace.getSourceBranch() != null &amp;&amp; !workspace.getSourceBranch().isBlank()) {</span>
+<span class="nc" id="L367">            return workspace.getSourceBranch();</span>
+        }
+<span class="fc" id="L369">        return sourceRepository.getDefaultBranch();</span>
+    }
+
+    private String sharedBranch() {
+<span class="fc" id="L373">        return systemRepositoryService.getSharedBranch();</span>
+    }
+
+    private String commitIfChanged(DslGitRepository repository,
+                                   String branch,
+                                   String merged,
+                                   String previous,
+                                   String username,
+                                   String message) throws IOException {
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        if (valueOrEmpty(previous).strip().equals(valueOrEmpty(merged).strip())) {</span>
+<span class="fc" id="L383">            String head = repository.getHeadCommit(branch);</span>
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">            if (head != null) {</span>
+<span class="fc" id="L385">                return head;</span>
+            }
+        }
+<span class="fc" id="L388">        return repository.commitDsl(branch, merged, username, message);</span>
+    }
+
+    private void trackBase(DslGitRepository workspaceRepository,
+                           String mergedDsl,
+                           String username) throws IOException {
+<span class="fc" id="L394">        String current = valueOrEmpty(workspaceRepository.getDslAtHead(TRACKING_BRANCH));</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">        if (!current.strip().equals(valueOrEmpty(mergedDsl).strip())) {</span>
+<span class="fc" id="L396">            workspaceRepository.commitDsl(</span>
+                    TRACKING_BRANCH,
+                    mergedDsl,
+                    username,
+                    &quot;Update semantic synchronization base&quot;);
+        }
+<span class="fc" id="L402">    }</span>
+
+    private void updateAfterSync(String username, String commit) {
+<span class="fc" id="L405">        SyncState state = getSyncState(username);</span>
+<span class="fc" id="L406">        state.setLastSyncedCommitId(commit);</span>
+<span class="fc" id="L407">        state.setLastSyncTimestamp(Instant.now());</span>
+<span class="fc" id="L408">        state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L409">        state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L410">        syncStateRepository.save(state);</span>
+<span class="fc" id="L411">    }</span>
+
+    private void updateAfterPublish(String username, String commit) {
+<span class="fc" id="L414">        SyncState state = getSyncState(username);</span>
+<span class="fc" id="L415">        state.setLastPublishedCommitId(commit);</span>
+<span class="fc" id="L416">        state.setLastSyncedCommitId(commit);</span>
+<span class="fc" id="L417">        state.setLastPublishTimestamp(Instant.now());</span>
+<span class="fc" id="L418">        state.setLastSyncTimestamp(Instant.now());</span>
+<span class="fc" id="L419">        state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L420">        state.setUnpublishedCommitCount(0);</span>
+<span class="fc" id="L421">        state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L422">        syncStateRepository.save(state);</span>
+<span class="fc" id="L423">    }</span>
+
+    private static String requiredDsl(DslGitRepository repository,
+                                      String branch,
+                                      String error) throws IOException {
+<span class="fc" id="L428">        String dsl = valueOrEmpty(repository.getDslAtHead(branch));</span>
+<span class="pc bpc" id="L429" title="1 of 2 branches missed.">        if (dsl.isBlank()) {</span>
+<span class="nc" id="L430">            throw new IOException(error);</span>
+        }
+<span class="fc" id="L432">        return dsl;</span>
+    }
+
+    private static void requireSuccess(String operation,
+                                       SemanticGitMergeService.MergeOutcome outcome)
+            throws IOException {
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">        if (!outcome.success()) {</span>
+<span class="nc" id="L439">            throw new IOException(operation + &quot; has semantic conflicts: &quot;</span>
+<span class="nc" id="L440">                    + String.join(&quot;, &quot;, outcome.conflicts()));</span>
+        }
+<span class="fc" id="L442">    }</span>
+
+    private static void requireSuccess(String operation,
+                                       TaxDslMergeResult result) throws IOException {
+<span class="pc bpc" id="L446" title="1 of 2 branches missed.">        if (!result.isSuccessful()) {</span>
+<span class="nc" id="L447">            throw new IOException(operation + &quot; has semantic conflicts: &quot;</span>
+<span class="nc" id="L448">                    + String.join(&quot;, &quot;, result.conflictIdentifiers()));</span>
+        }
+<span class="fc" id="L450">    }</span>
+
+    private static String valueOrEmpty(String value) {
+<span class="fc bfc" id="L453" title="All 2 branches covered.">        return value == null ? &quot;&quot; : value;</span>
+    }
+
+    private static String abbreviate(String commit) {
+<span class="pc bpc" id="L457" title="2 of 4 branches missed.">        return commit == null || commit.length() &lt;= 8 ? commit : commit.substring(0, 8);</span>
+    }
+
+<span class="fc" id="L460">    private record WorkspaceMergeState(String baseDsl) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

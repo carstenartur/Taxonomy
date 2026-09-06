@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionReportLabels.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.decision</a> &gt; <span class="el_source">DecisionReportLabels.java</span></div><h1>DecisionReportLabels.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.decision;
+
+import java.util.Locale;
+
+/** Small bilingual label set shared by report renderers. */
+final class DecisionReportLabels {
+
+    private final boolean german;
+
+<span class="fc" id="L10">    DecisionReportLabels(String languageTag) {</span>
+<span class="pc bpc" id="L11" title="1 of 2 branches missed.">        String tag = languageTag == null ? &quot;en&quot; : languageTag;</span>
+<span class="fc" id="L12">        this.german = &quot;de&quot;.equalsIgnoreCase(Locale.forLanguageTag(tag).getLanguage());</span>
+<span class="fc" id="L13">    }</span>
+
+<span class="fc" id="L15">    boolean german() { return german; }</span>
+
+<span class="fc bfc" id="L17" title="All 2 branches covered.">    String subtitle() { return german ? &quot;Nachvollziehbare KI-gestützte Zuordnung einer Anforderung zur Taxonomiehierarchie&quot; : &quot;Traceable AI-assisted mapping of a requirement to the taxonomy hierarchy&quot;; }</span>
+<span class="nc bnc" id="L18" title="All 2 branches missed.">    String documentStatus() { return german ? &quot;Dokumentstatus&quot; : &quot;Document status&quot;; }</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">    String finalStatus() { return german ? &quot;Abschließend&quot; : &quot;Final&quot;; }</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">    String finalWarnings() { return german ? &quot;Abschließend mit Hinweisen&quot; : &quot;Final with warnings&quot;; }</span>
+<span class="nc bnc" id="L21" title="All 2 branches missed.">    String draft() { return german ? &quot;Entwurf – Analyse unvollständig&quot; : &quot;Draft – analysis incomplete&quot;; }</span>
+<span class="nc bnc" id="L22" title="All 2 branches missed.">    String noResult() { return german ? &quot;Kein Blattknoten ermittelt&quot; : &quot;No leaf identified&quot;; }</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">    String requirement() { return german ? &quot;Zugrunde liegende Anforderung&quot; : &quot;Underlying requirement&quot;; }</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">    String taxonomyBasis() { return german ? &quot;Grundlage der Taxonomiedaten&quot; : &quot;Taxonomy data basis&quot;; }</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">    String catalogue() { return german ? &quot;Katalog&quot; : &quot;Catalogue&quot;; }</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">    String dataVersion() { return german ? &quot;Deklarierte Datenversion&quot; : &quot;Declared data version&quot;; }</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">    String sourceFile() { return german ? &quot;Quelldatei&quot; : &quot;Source file&quot;; }</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">    String sourceDigest() { return german ? &quot;SHA-256 der Quelldatei&quot; : &quot;Source file SHA-256&quot;; }</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">    String dataDigest() { return german ? &quot;SHA-256 des geladenen Datenbestands&quot; : &quot;Loaded data SHA-256&quot;; }</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">    String analysisDigest() { return german ? &quot;SHA-256 des Analysesnapshots&quot; : &quot;Analysis snapshot SHA-256&quot;; }</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">    String nodes() { return german ? &quot;Knoten / Wurzelbereiche&quot; : &quot;Nodes / root areas&quot;; }</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">    String provenance() { return german ? &quot;Erzeugung und Versionsnachweis&quot; : &quot;Generation and version evidence&quot;; }</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">    String generatedAt() { return german ? &quot;Erzeugt am&quot; : &quot;Generated at&quot;; }</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">    String generatedBy() { return german ? &quot;Erzeugt durch Account&quot; : &quot;Generated by account&quot;; }</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">    String applicationVersion() { return german ? &quot;Taxonomy-Anwendungsversion&quot; : &quot;Taxonomy application version&quot;; }</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">    String buildCommit() { return german ? &quot;Anwendungs-Build-Commit&quot; : &quot;Application build commit&quot;; }</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">    String repository() { return german ? &quot;Repository&quot; : &quot;Repository&quot;; }</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">    String workspace() { return german ? &quot;Workspace&quot; : &quot;Workspace&quot;; }</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">    String branch() { return german ? &quot;Branch&quot; : &quot;Branch&quot;; }</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">    String basedOnCommit() { return german ? &quot;Datenstand / Commit&quot; : &quot;Data state / commit&quot;; }</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">    String analysisProvider() { return german ? &quot;KI-Anbieter&quot; : &quot;AI provider&quot;; }</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">    String analysisStatus() { return german ? &quot;Analysestatus&quot; : &quot;Analysis status&quot;; }</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">    String analysisModel() { return german ? &quot;KI-Modell&quot; : &quot;AI model&quot;; }</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">    String analysisSnapshot() { return german ? &quot;Unveränderlicher Analysesnapshot&quot; : &quot;Immutable analysis snapshot&quot;; }</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">    String requirementVersion() { return german ? &quot;Anforderungsversion&quot; : &quot;Requirement version&quot;; }</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">    String analysisCreatedAt() { return german ? &quot;Analyse erstellt am&quot; : &quot;Analysis created at&quot;; }</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">    String analysisCreatedBy() { return german ? &quot;Analyse erstellt durch&quot; : &quot;Analysis created by&quot;; }</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">    String recordedTaxonomyDigest() { return german ? &quot;Im Snapshot gespeicherter Taxonomie-Fingerabdruck&quot; : &quot;Taxonomy fingerprint recorded in snapshot&quot;; }</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">    String promptDigest() { return german ? &quot;Prompt-Fingerabdruck&quot; : &quot;Prompt fingerprint&quot;; }</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">    String hierarchyEvidence() { return german ? &quot;Hierarchiequelle&quot; : &quot;Hierarchy evidence&quot;; }</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">    String frozenHierarchy() { return german ? &quot;Im Analysesnapshot eingefrorene Taxonomiehierarchie&quot; : &quot;Taxonomy hierarchy frozen in the analysis snapshot&quot;; }</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">    String liveHierarchy() { return german ? &quot;Aktuell geladene Taxonomiehierarchie&quot; : &quot;Currently loaded taxonomy hierarchy&quot;; }</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">    String completeness() { return german ? &quot;Vollständigkeit&quot; : &quot;Completeness&quot;; }</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">    String executiveSummary() { return german ? &quot;Kurzfassung&quot; : &quot;Executive summary&quot;; }</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">    String leadingLeaf() { return german ? &quot;Höchster Blattknoten&quot; : &quot;Highest-rated leaf&quot;; }</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">    String highestPath() { return german ? &quot;Führender Entscheidungspfad&quot; : &quot;Leading decision path&quot;; }</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">    String step() { return german ? &quot;Schritt&quot; : &quot;Step&quot;; }</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">    String node() { return german ? &quot;Knoten&quot; : &quot;Node&quot;; }</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">    String score() { return german ? &quot;Absoluter Wert&quot; : &quot;Absolute score&quot;; }</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">    String localShare() { return german ? &quot;Anteil am Vater&quot; : &quot;Share of parent&quot;; }</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">    String rationale() { return german ? &quot;Kurzbegründung&quot; : &quot;Short rationale&quot;; }</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">    String reasonSource() { return german ? &quot;Herkunft&quot; : &quot;Source&quot;; }</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">    String methodology() { return german ? &quot;Methodischer Hinweis&quot; : &quot;Methodology note&quot;; }</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">    String decisionChapters() { return german ? &quot;Einzelentscheidungen entlang der Hierarchie&quot; : &quot;Individual hierarchy decisions&quot;; }</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">    String chapter() { return german ? &quot;Entscheidung&quot; : &quot;Decision&quot;; }</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">    String parentNode() { return german ? &quot;Vaterknoten&quot; : &quot;Parent node&quot;; }</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">    String parentScore() { return german ? &quot;Wert des Vaterknotens&quot; : &quot;Parent score&quot;; }</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">    String decisionResult() { return german ? &quot;Entscheidungsergebnis&quot; : &quot;Decision result&quot;; }</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">    String comparison() { return german ? &quot;Vergleichende Begründung&quot; : &quot;Comparative rationale&quot;; }</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">    String alternatives() { return german ? &quot;Direkte Kindknoten und Alternativen&quot; : &quot;Direct children and alternatives&quot;; }</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">    String rank() { return german ? &quot;Rang&quot; : &quot;Rank&quot;; }</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">    String disposition() { return german ? &quot;Folge&quot; : &quot;Disposition&quot;; }</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">    String leadingSibling() { return german ? &quot;Führend&quot; : &quot;Leading&quot;; }</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">    String continued() { return german ? &quot;Pfad fortgeführt&quot; : &quot;Path continued&quot;; }</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">    String leafCandidate() { return german ? &quot;Blattkandidat&quot; : &quot;Leaf candidate&quot;; }</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">    String rejected() { return german ? &quot;0 % – nicht fortgeführt&quot; : &quot;0% – not continued&quot;; }</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">    String notEvaluated() { return german ? &quot;Nicht bewertet&quot; : &quot;Not evaluated&quot;; }</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">    String aiReason() { return german ? &quot;Ursprüngliche KI-Begründung&quot; : &quot;Original AI reason&quot;; }</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">    String deterministicReason() { return german ? &quot;Deterministische Herleitung&quot; : &quot;Deterministic derivation&quot;; }</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">    String missingReason() { return german ? &quot;Keine Begründung vorhanden&quot; : &quot;No reason available&quot;; }</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">    String warnings() { return german ? &quot;Hinweise und Prüfvorbehalte&quot; : &quot;Warnings and review reservations&quot;; }</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">    String leadingLeaves() { return german ? &quot;Rangliste positiv bewerteter Blattknoten&quot; : &quot;Ranking of positively scored leaf nodes&quot;; }</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">    String taxonomyRoot() { return german ? &quot;Taxonomiebereich&quot; : &quot;Taxonomy root&quot;; }</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">    String hierarchyPath() { return german ? &quot;Hierarchiepfad&quot; : &quot;Hierarchy path&quot;; }</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">    String appendix() { return german ? &quot;Nachweis und Methodik&quot; : &quot;Evidence and methodology&quot;; }</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">    String page() { return german ? &quot;Seite&quot; : &quot;Page&quot;; }</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">    String of() { return german ? &quot;von&quot; : &quot;of&quot;; }</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">    String continuedLabel() { return german ? &quot;FORTGEFÜHRT&quot; : &quot;CONTINUED&quot;; }</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">    String leafLabel() { return german ? &quot;BLATT&quot; : &quot;LEAF&quot;; }</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">    String rejectedLabel() { return german ? &quot;0 %&quot; : &quot;0%&quot;; }</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">    String notEvaluatedLabel() { return german ? &quot;NICHT BEWERTET&quot; : &quot;NOT EVALUATED&quot;; }</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">    String leadingLabel() { return german ? &quot;FÜHREND&quot; : &quot;LEADING&quot;; }</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">    String generatedNotice() { return german ? &quot;Erzeugt durch Taxonomy Architecture Analyzer&quot; : &quot;Generated by Taxonomy Architecture Analyzer&quot;; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

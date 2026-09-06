@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitAuthoritativeHypothesisReviewService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">GitAuthoritativeHypothesisReviewService.java</span></div><h1>GitAuthoritativeHypothesisReviewService.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.MutationResult;
+import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.ProjectionPendingException;
+import com.taxonomy.versioning.service.HypothesisReviewStateStore.HypothesisSnapshot;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Commits accept/reject/revert decisions to the exact selected Git branch before
+ * changing relational hypothesis bookkeeping. The surrounding operation is
+ * intentionally non-transactional so a successful authority commit survives a
+ * later projection or bookkeeping failure.
+ */
+@Service
+public class GitAuthoritativeHypothesisReviewService {
+
+    private static final String HYPOTHESIS_PROVENANCE = &quot;hypothesis-review&quot;;
+
+    private final HypothesisReviewStateStore stateStore;
+    private final GitAuthoritativeRelationMutationService mutationService;
+
+    public GitAuthoritativeHypothesisReviewService(
+            HypothesisReviewStateStore stateStore,
+<span class="fc" id="L36">            GitAuthoritativeRelationMutationService mutationService) {</span>
+<span class="fc" id="L37">        this.stateStore = Objects.requireNonNull(stateStore, &quot;stateStore&quot;);</span>
+<span class="fc" id="L38">        this.mutationService = Objects.requireNonNull(</span>
+                mutationService, &quot;mutationService&quot;);
+<span class="fc" id="L40">    }</span>
+
+    public ReviewResult accept(
+            Long hypothesisId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata) throws IOException {
+<span class="fc" id="L47">        return review(</span>
+                hypothesisId,
+                context,
+                expectedHeadCommit,
+                metadata,
+                ReviewAction.ACCEPT);
+    }
+
+    public ReviewResult reject(
+            Long hypothesisId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata) throws IOException {
+<span class="fc" id="L60">        return review(</span>
+                hypothesisId,
+                context,
+                expectedHeadCommit,
+                metadata,
+                ReviewAction.REJECT);
+    }
+
+    public ReviewResult revert(
+            Long hypothesisId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata) throws IOException {
+<span class="fc" id="L73">        return review(</span>
+                hypothesisId,
+                context,
+                expectedHeadCommit,
+                metadata,
+                ReviewAction.REVERT);
+    }
+
+    /**
+     * Fails closed on the exact tenant and lifecycle state before a caller reads
+     * branch metadata. This prevents cross-workspace identifiers or terminal
+     * states from being masked as a missing Git branch.
+     */
+    public void requireReviewable(
+            Long hypothesisId,
+            RepositoryContext context,
+            ReviewAction action) {
+<span class="fc" id="L90">        requireReviewableSnapshot(hypothesisId, context, action);</span>
+<span class="fc" id="L91">    }</span>
+
+    private ReviewResult review(
+            Long hypothesisId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata,
+            ReviewAction action) throws IOException {
+<span class="fc" id="L99">        RepositoryContext tenant = HypothesisReviewStateStore</span>
+<span class="fc" id="L100">                .requireWritableContext(context);</span>
+<span class="fc" id="L101">        Objects.requireNonNull(metadata, &quot;metadata&quot;);</span>
+<span class="fc" id="L102">        HypothesisSnapshot hypothesis = requireReviewableSnapshot(</span>
+                hypothesisId, tenant, action);
+
+        MutationResult mutation;
+        try {
+<span class="fc" id="L107">            mutation = mutate(</span>
+                    hypothesis,
+                    tenant,
+                    expectedHeadCommit,
+                    metadata,
+                    action);
+<span class="fc" id="L113">        } catch (ProjectionPendingException error) {</span>
+<span class="fc" id="L114">            throw HypothesisReviewPendingException.projection(</span>
+<span class="fc" id="L115">                    hypothesis.id(),</span>
+<span class="fc" id="L116">                    action.targetStatus(),</span>
+                    error);
+<span class="fc" id="L118">        }</span>
+
+        try {
+<span class="fc" id="L121">            RelationHypothesis transitioned = stateStore.transition(</span>
+<span class="fc" id="L122">                    hypothesis.id(),</span>
+                    tenant,
+<span class="fc" id="L124">                    hypothesis.status(),</span>
+<span class="fc" id="L125">                    action.targetStatus());</span>
+<span class="fc" id="L126">            return new ReviewResult(</span>
+<span class="fc" id="L127">                    hypothesis.id(),</span>
+                    action,
+                    transitioned,
+                    mutation);
+<span class="fc" id="L131">        } catch (RuntimeException bookkeepingFailure) {</span>
+<span class="fc" id="L132">            throw HypothesisReviewPendingException.bookkeeping(</span>
+<span class="fc" id="L133">                    hypothesis.id(),</span>
+<span class="fc" id="L134">                    action.targetStatus(),</span>
+<span class="fc" id="L135">                    mutation.authority(),</span>
+                    bookkeepingFailure);
+        }
+    }
+
+    private HypothesisSnapshot requireReviewableSnapshot(
+            Long hypothesisId,
+            RepositoryContext context,
+            ReviewAction action) {
+<span class="fc" id="L144">        RepositoryContext tenant = HypothesisReviewStateStore</span>
+<span class="fc" id="L145">                .requireWritableContext(context);</span>
+<span class="fc" id="L146">        ReviewAction reviewAction = Objects.requireNonNull(action, &quot;action&quot;);</span>
+<span class="fc" id="L147">        HypothesisSnapshot hypothesis = stateStore.require(hypothesisId, tenant);</span>
+<span class="fc" id="L148">        reviewAction.requireCurrentStatus(</span>
+<span class="fc" id="L149">                hypothesis.id(), hypothesis.status());</span>
+<span class="fc" id="L150">        return hypothesis;</span>
+    }
+
+    private MutationResult mutate(
+            HypothesisSnapshot hypothesis,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata,
+            ReviewAction action) throws IOException {
+<span class="fc" id="L159">        RelationIdentity identity = new RelationIdentity(</span>
+<span class="fc" id="L160">                hypothesis.sourceCode(),</span>
+<span class="fc" id="L161">                hypothesis.relationType().name(),</span>
+<span class="fc" id="L162">                hypothesis.targetCode());</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (action == ReviewAction.REVERT) {</span>
+<span class="fc" id="L164">            return mutationService.remove(</span>
+                    context,
+                    expectedHeadCommit,
+                    identity,
+                    metadata);
+        }
+<span class="fc" id="L170">        return mutationService.upsert(</span>
+                context,
+                expectedHeadCommit,
+                new RelationDefinition(
+                        identity,
+<span class="fc" id="L175">                        action.dslStatus(),</span>
+<span class="fc" id="L176">                        hypothesis.confidence(),</span>
+                        HYPOTHESIS_PROVENANCE,
+<span class="fc" id="L178">                        Map.of(&quot;x-hypothesis-id&quot;, hypothesis.id().toString())),</span>
+                metadata);
+    }
+
+<span class="fc" id="L182">    public enum ReviewAction {</span>
+<span class="fc" id="L183">        ACCEPT(HypothesisStatus.ACCEPTED, &quot;accepted&quot;),</span>
+<span class="fc" id="L184">        REJECT(HypothesisStatus.REJECTED, &quot;rejected&quot;),</span>
+<span class="fc" id="L185">        REVERT(HypothesisStatus.PROVISIONAL, null);</span>
+
+        private final HypothesisStatus targetStatus;
+        private final String dslStatus;
+
+<span class="fc" id="L190">        ReviewAction(HypothesisStatus targetStatus, String dslStatus) {</span>
+<span class="fc" id="L191">            this.targetStatus = targetStatus;</span>
+<span class="fc" id="L192">            this.dslStatus = dslStatus;</span>
+<span class="fc" id="L193">        }</span>
+
+        void requireCurrentStatus(Long hypothesisId, HypothesisStatus current) {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">            if (this == REVERT) {</span>
+<span class="pc bpc" id="L197" title="3 of 4 branches missed.">                if (current != HypothesisStatus.ACCEPTED</span>
+                        &amp;&amp; current != HypothesisStatus.REJECTED) {
+<span class="nc" id="L199">                    throw new IllegalStateException(</span>
+                            &quot;Hypothesis &quot; + hypothesisId
+                                    + &quot; cannot be reverted from &quot; + current);
+                }
+<span class="fc" id="L203">                return;</span>
+            }
+<span class="fc bfc" id="L205" title="All 4 branches covered.">            if (current != HypothesisStatus.PROVISIONAL</span>
+                    &amp;&amp; current != HypothesisStatus.PROPOSED) {
+<span class="fc" id="L207">                throw new IllegalStateException(</span>
+                        &quot;Hypothesis &quot; + hypothesisId
+                                + &quot; cannot be &quot; + dslStatus
+                                + &quot; from &quot; + current);
+            }
+<span class="fc" id="L212">        }</span>
+
+        HypothesisStatus targetStatus() {
+<span class="fc" id="L215">            return targetStatus;</span>
+        }
+
+        String dslStatus() {
+<span class="fc" id="L219">            return dslStatus;</span>
+        }
+    }
+
+    public record ReviewResult(
+            Long hypothesisId,
+            ReviewAction action,
+            RelationHypothesis hypothesis,
+            MutationResult mutation) {
+<span class="fc" id="L228">        public ReviewResult {</span>
+<span class="fc" id="L229">            hypothesisId = Objects.requireNonNull(hypothesisId, &quot;hypothesisId&quot;);</span>
+<span class="fc" id="L230">            action = Objects.requireNonNull(action, &quot;action&quot;);</span>
+<span class="fc" id="L231">            hypothesis = Objects.requireNonNull(hypothesis, &quot;hypothesis&quot;);</span>
+<span class="fc" id="L232">            mutation = Objects.requireNonNull(mutation, &quot;mutation&quot;);</span>
+<span class="fc" id="L233">        }</span>
+    }
+
+    public static final class HypothesisReviewPendingException
+            extends IllegalStateException {
+        private final Long hypothesisId;
+        private final HypothesisStatus intendedStatus;
+        private final CommandResult authority;
+        private final PendingPhase phase;
+
+        private HypothesisReviewPendingException(
+                Long hypothesisId,
+                HypothesisStatus intendedStatus,
+                CommandResult authority,
+                PendingPhase phase,
+                Throwable cause) {
+<span class="fc" id="L249">            super(&quot;Git hypothesis review succeeded at &quot;</span>
+<span class="fc" id="L250">                    + authority.authoritativeCommitId()</span>
+                    + &quot;, but &quot; + phase.description + &quot; requires recovery&quot;, cause);
+<span class="fc" id="L252">            this.hypothesisId = Objects.requireNonNull(</span>
+                    hypothesisId, &quot;hypothesisId&quot;);
+<span class="fc" id="L254">            this.intendedStatus = Objects.requireNonNull(</span>
+                    intendedStatus, &quot;intendedStatus&quot;);
+<span class="fc" id="L256">            this.authority = Objects.requireNonNull(authority, &quot;authority&quot;);</span>
+<span class="fc" id="L257">            this.phase = Objects.requireNonNull(phase, &quot;phase&quot;);</span>
+<span class="fc" id="L258">        }</span>
+
+        static HypothesisReviewPendingException projection(
+                Long hypothesisId,
+                HypothesisStatus intendedStatus,
+                ProjectionPendingException error) {
+<span class="fc" id="L264">            return new HypothesisReviewPendingException(</span>
+                    hypothesisId,
+                    intendedStatus,
+<span class="fc" id="L267">                    error.getAuthority(),</span>
+                    PendingPhase.PROJECTION,
+                    error);
+        }
+
+        static HypothesisReviewPendingException bookkeeping(
+                Long hypothesisId,
+                HypothesisStatus intendedStatus,
+                CommandResult authority,
+                Throwable cause) {
+<span class="fc" id="L277">            return new HypothesisReviewPendingException(</span>
+                    hypothesisId,
+                    intendedStatus,
+                    authority,
+                    PendingPhase.HYPOTHESIS_BOOKKEEPING,
+                    cause);
+        }
+
+        public Long getHypothesisId() {
+<span class="nc" id="L286">            return hypothesisId;</span>
+        }
+
+        public HypothesisStatus getIntendedStatus() {
+<span class="fc" id="L290">            return intendedStatus;</span>
+        }
+
+        public CommandResult getAuthority() {
+<span class="fc" id="L294">            return authority;</span>
+        }
+
+        public PendingPhase getPhase() {
+<span class="fc" id="L298">            return phase;</span>
+        }
+    }
+
+<span class="fc" id="L302">    public enum PendingPhase {</span>
+<span class="fc" id="L303">        PROJECTION(&quot;relation projection&quot;),</span>
+<span class="fc" id="L304">        HYPOTHESIS_BOOKKEEPING(&quot;hypothesis bookkeeping&quot;);</span>
+
+        private final String description;
+
+<span class="fc" id="L308">        PendingPhase(String description) {</span>
+<span class="fc" id="L309">            this.description = description;</span>
+<span class="fc" id="L310">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

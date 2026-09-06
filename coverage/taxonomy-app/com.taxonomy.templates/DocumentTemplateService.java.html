@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateService.java</span></div><h1>DocumentTemplateService.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateManifest;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateRevision;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateSnapshot;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/** Application boundary shared by the web UI and virtual WebDAV projection. */
+@Service
+public class DocumentTemplateService {
+
+    private final DocumentTemplateGitRepository repository;
+    private final OoxmlTemplatePackageCodec codec;
+    private final OoxmlActiveContentValidator activeContent;
+    private final DocumentTemplateMaterializationCache materializations;
+    private final Map&lt;String, DocumentTemplateContract&gt; contracts;
+
+    @Autowired
+    public DocumentTemplateService(
+            DocumentTemplateGitRepository repository,
+            OoxmlTemplatePackageCodec codec,
+            List&lt;DocumentTemplateContract&gt; contracts,
+            OoxmlActiveContentValidator activeContent,
+<span class="fc" id="L39">            DocumentTemplateMaterializationCache materializations) {</span>
+<span class="fc" id="L40">        this.repository = Objects.requireNonNull(repository, &quot;repository&quot;);</span>
+<span class="fc" id="L41">        this.codec = Objects.requireNonNull(codec, &quot;codec&quot;);</span>
+<span class="fc" id="L42">        this.activeContent = Objects.requireNonNull(activeContent, &quot;activeContent&quot;);</span>
+<span class="fc" id="L43">        this.materializations = Objects.requireNonNull(materializations, &quot;materializations&quot;);</span>
+<span class="fc" id="L44">        this.contracts = indexContracts(contracts);</span>
+<span class="fc" id="L45">    }</span>
+
+    /** Focused-test constructor retaining the existing generic-template contract. */
+    public DocumentTemplateService(
+            DocumentTemplateGitRepository repository,
+            OoxmlTemplatePackageCodec codec,
+            List&lt;DocumentTemplateContract&gt; contracts) {
+<span class="fc" id="L52">        this(repository, codec, contracts, new OoxmlActiveContentValidator(),</span>
+                new DocumentTemplateMaterializationCache());
+<span class="fc" id="L54">    }</span>
+
+    public DocumentTemplateService(
+            DocumentTemplateGitRepository repository,
+            OoxmlTemplatePackageCodec codec) {
+<span class="fc" id="L59">        this(repository, codec, List.of());</span>
+<span class="fc" id="L60">    }</span>
+
+    public List&lt;TemplateDescriptor&gt; list() throws IOException {
+<span class="fc" id="L63">        return repository.list();</span>
+    }
+
+    public boolean exists(String templateId) throws IOException {
+<span class="fc" id="L67">        DocumentTemplateGitRepository.validateTemplateId(templateId);</span>
+        try {
+<span class="fc" id="L69">            repository.readCurrent(templateId);</span>
+<span class="fc" id="L70">            return true;</span>
+<span class="fc" id="L71">        } catch (TemplateNotFoundException exception) {</span>
+<span class="fc" id="L72">            return false;</span>
+        }
+    }
+
+    /** Import one complete DOTX and atomically commit its canonical package tree. */
+    public TemplateDescriptor upload(
+            String templateId,
+            String displayName,
+            InputStream dotx,
+            String expectedVersion,
+            String actor,
+            String message) throws IOException {
+<span class="fc" id="L84">        DocumentTemplateGitRepository.validateTemplateId(templateId);</span>
+<span class="fc" id="L85">        String normalizedDisplayName = normalizeDisplayName(displayName, templateId);</span>
+<span class="fc" id="L86">        OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(dotx);</span>
+<span class="fc" id="L87">        validatePackage(templateId, packageData.parts());</span>
+<span class="fc" id="L88">        String effectiveExpectedVersion = resolveExpectedVersion(templateId, expectedVersion);</span>
+<span class="pc bpc" id="L89" title="2 of 4 branches missed.">        String user = actor == null || actor.isBlank() ? &quot;taxonomy&quot; : actor;</span>
+<span class="fc" id="L90">        TemplateManifest manifest = new TemplateManifest(</span>
+                1,
+                templateId,
+                normalizedDisplayName,
+                templateId + &quot;.dotx&quot;,
+                OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+<span class="fc" id="L96">                Instant.now().toString(),</span>
+                user,
+<span class="fc" id="L98">                packageData.uncompressedSize(),</span>
+<span class="fc" id="L99">                packageData.parts().size(),</span>
+<span class="fc" id="L100">                packageData.sha256());</span>
+<span class="fc" id="L101">        TemplateSnapshot saved = repository.commit(</span>
+                manifest,
+<span class="fc" id="L103">                packageData.parts(),</span>
+                effectiveExpectedVersion,
+                user,
+                message);
+<span class="fc" id="L107">        return descriptor(saved);</span>
+    }
+
+    public TemplateFile downloadCurrent(String templateId) throws IOException {
+<span class="fc" id="L111">        return toTemplateFile(repository.readCurrent(templateId));</span>
+    }
+
+    public TemplateFile downloadCurrentValidated(String templateId) throws IOException {
+<span class="fc" id="L115">        return toTemplateFile(repository.readCurrent(templateId));</span>
+    }
+
+    public TemplateFile download(String templateId, String revision) throws IOException {
+<span class="fc" id="L119">        return toTemplateFile(repository.read(templateId, revision));</span>
+    }
+
+    public List&lt;TemplateRevision&gt; history(String templateId) throws IOException {
+<span class="fc" id="L123">        return repository.history(templateId);</span>
+    }
+
+    public TemplateDiff diff(String templateId, String fromRevision, String toRevision)
+            throws IOException {
+<span class="nc" id="L128">        return repository.diff(templateId, fromRevision, toRevision);</span>
+    }
+
+    public TemplatePartView readPart(
+            String templateId,
+            String revision,
+            String path) throws IOException {
+<span class="nc bnc" id="L135" title="All 6 branches missed.">        if (path == null || path.isBlank() || path.startsWith(&quot;/&quot;)</span>
+<span class="nc bnc" id="L136" title="All 4 branches missed.">                || path.contains(&quot;\\&quot;) || path.contains(&quot;../&quot;)) {</span>
+<span class="nc" id="L137">            throw new IllegalArgumentException(&quot;Invalid OOXML part path&quot;);</span>
+        }
+<span class="nc" id="L139">        TemplateSnapshot snapshot = repository.read(templateId, revision);</span>
+<span class="nc" id="L140">        validateSnapshot(snapshot);</span>
+<span class="nc" id="L141">        byte[] content = snapshot.parts().get(path);</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (content == null) {</span>
+<span class="nc" id="L143">            throw new TemplateNotFoundException(templateId + &quot;/&quot; + path, revision);</span>
+        }
+<span class="nc" id="L145">        String lower = path.toLowerCase(java.util.Locale.ROOT);</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">        boolean text = lower.endsWith(&quot;.xml&quot;) || lower.endsWith(&quot;.rels&quot;)</span>
+<span class="nc bnc" id="L147" title="All 4 branches missed.">                || lower.endsWith(&quot;.txt&quot;) || lower.endsWith(&quot;.json&quot;);</span>
+<span class="nc bnc" id="L148" title="All 4 branches missed.">        String rendered = text &amp;&amp; content.length &lt;= 1_048_576</span>
+<span class="nc" id="L149">                ? new String(content, StandardCharsets.UTF_8)</span>
+<span class="nc" id="L150">                : null;</span>
+<span class="nc" id="L151">        return new TemplatePartView(</span>
+                path,
+                content.length,
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                text ? &quot;application/xml&quot; : &quot;application/octet-stream&quot;,</span>
+                rendered);
+    }
+
+    public TemplateDescriptor restore(
+            String templateId,
+            String revision,
+            String expectedVersion,
+            String actor) throws IOException {
+<span class="fc" id="L163">        TemplateSnapshot historical = repository.read(templateId, revision);</span>
+<span class="fc" id="L164">        validateSnapshot(historical);</span>
+<span class="fc" id="L165">        OoxmlTemplatePackageCodec.PackageData packageData = codec.unpack(</span>
+<span class="fc" id="L166">                new ByteArrayInputStream(codec.pack(historical.parts())));</span>
+<span class="fc" id="L167">        validatePackage(templateId, packageData.parts());</span>
+<span class="fc" id="L168">        String effectiveExpected = resolveExpectedVersion(templateId, expectedVersion);</span>
+<span class="pc bpc" id="L169" title="2 of 4 branches missed.">        String user = actor == null || actor.isBlank() ? &quot;taxonomy&quot; : actor;</span>
+<span class="fc" id="L170">        TemplateManifest restored = new TemplateManifest(</span>
+<span class="fc" id="L171">                historical.manifest().schemaVersion(),</span>
+                templateId,
+<span class="fc" id="L173">                historical.manifest().displayName(),</span>
+<span class="fc" id="L174">                historical.manifest().fileName(),</span>
+<span class="fc" id="L175">                historical.manifest().mediaType(),</span>
+<span class="fc" id="L176">                Instant.now().toString(),</span>
+                user,
+<span class="fc" id="L178">                packageData.uncompressedSize(),</span>
+<span class="fc" id="L179">                packageData.parts().size(),</span>
+<span class="fc" id="L180">                packageData.sha256());</span>
+<span class="fc" id="L181">        TemplateSnapshot saved = repository.commit(</span>
+                restored,
+<span class="fc" id="L183">                packageData.parts(),</span>
+                effectiveExpected,
+                user,
+                &quot;Restore document template &quot; + templateId + &quot; from &quot; + revision);
+<span class="fc" id="L187">        return descriptor(saved);</span>
+    }
+
+    /** Repository-wide head retained only for diagnostics. */
+    public String headCommit() throws IOException {
+<span class="nc" id="L192">        return repository.headCommit();</span>
+    }
+
+    /** Resolve a strong HTTP If-Match list against the current per-template version. */
+    String resolveExpectedVersion(String templateId, String value) throws IOException {
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L198">            return null;</span>
+        }
+        TemplateSnapshot current;
+        try {
+<span class="fc" id="L202">            current = repository.readCurrent(templateId);</span>
+<span class="fc" id="L203">        } catch (TemplateNotFoundException missing) {</span>
+<span class="fc" id="L204">            throw new TemplateConflictException(value.strip(), null);</span>
+<span class="fc" id="L205">        }</span>
+<span class="fc" id="L206">        String currentCommit = current.commitId();</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        for (String candidate : value.split(&quot;,&quot;)) {</span>
+<span class="fc" id="L208">            String tag = candidate.strip();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (&quot;*&quot;.equals(tag)) {</span>
+<span class="fc" id="L210">                return currentCommit;</span>
+            }
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            if (tag.regionMatches(true, 0, &quot;W/&quot;, 0, 2)) {</span>
+<span class="fc" id="L213">                continue;</span>
+            }
+<span class="fc bfc" id="L215" title="All 2 branches covered.">            if (currentCommit.equalsIgnoreCase(stripQuotedEtag(tag))) {</span>
+<span class="fc" id="L216">                return currentCommit;</span>
+            }
+        }
+<span class="fc" id="L219">        throw new TemplateConflictException(value.strip(), currentCommit);</span>
+    }
+
+    private TemplateFile toTemplateFile(TemplateSnapshot snapshot) throws IOException {
+<span class="fc" id="L223">        validateSnapshot(snapshot);</span>
+<span class="fc" id="L224">        byte[] dotx = materializations.packed(</span>
+<span class="fc" id="L225">                snapshot.manifest().templateId(),</span>
+<span class="fc" id="L226">                snapshot.commitId(),</span>
+<span class="fc" id="L227">                () -&gt; codec.pack(snapshot.parts()));</span>
+<span class="fc" id="L228">        return new TemplateFile(</span>
+<span class="fc" id="L229">                snapshot.manifest(),</span>
+<span class="fc" id="L230">                snapshot.commitId(),</span>
+                dotx,
+<span class="fc" id="L232">                parseInstant(snapshot.manifest().updatedAt()));</span>
+    }
+
+    private void validateSnapshot(TemplateSnapshot snapshot) throws IOException {
+<span class="fc" id="L236">        materializations.validateOnce(</span>
+<span class="fc" id="L237">                snapshot.manifest().templateId(),</span>
+<span class="fc" id="L238">                snapshot.commitId(),</span>
+<span class="fc" id="L239">                () -&gt; validatePackage(snapshot.manifest().templateId(), snapshot.parts()));</span>
+<span class="fc" id="L240">    }</span>
+
+    private void validatePackage(String templateId, Map&lt;String, byte[]&gt; packageParts) {
+<span class="fc" id="L243">        validateReservedPackagePaths(packageParts);</span>
+<span class="fc" id="L244">        activeContent.validate(packageParts);</span>
+<span class="fc" id="L245">        DocumentTemplateContract contract = contracts.get(templateId);</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        if (contract != null) {</span>
+<span class="fc" id="L247">            contract.validate(packageParts);</span>
+        }
+<span class="fc" id="L249">    }</span>
+
+    private static void validateReservedPackagePaths(Map&lt;String, byte[]&gt; packageParts) {
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        for (String path : packageParts.keySet()) {</span>
+<span class="fc" id="L253">            String normalized = path.toLowerCase(java.util.Locale.ROOT);</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">            if (normalized.equals(DocumentTemplateGitRepository.MANIFEST_NAME)</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">                    || normalized.endsWith(&quot;/&quot; + DocumentTemplateGitRepository.MANIFEST_NAME)) {</span>
+<span class="fc" id="L256">                throw new IllegalArgumentException(</span>
+                        &quot;OOXML package part uses reserved Taxonomy metadata name: &quot; + path);
+            }
+<span class="fc" id="L259">        }</span>
+<span class="fc" id="L260">    }</span>
+
+    private static Map&lt;String, DocumentTemplateContract&gt; indexContracts(
+            List&lt;DocumentTemplateContract&gt; contracts) {
+<span class="fc" id="L264">        LinkedHashMap&lt;String, DocumentTemplateContract&gt; indexed = new LinkedHashMap&lt;&gt;();</span>
+        for (DocumentTemplateContract contract :
+<span class="pc bpc" id="L266" title="1 of 4 branches missed.">                contracts == null ? List.&lt;DocumentTemplateContract&gt;of() : contracts) {</span>
+<span class="fc" id="L267">            Objects.requireNonNull(contract, &quot;document template contract&quot;);</span>
+<span class="fc" id="L268">            DocumentTemplateGitRepository.validateTemplateId(contract.templateId());</span>
+<span class="fc" id="L269">            DocumentTemplateContract previous = indexed.putIfAbsent(</span>
+<span class="fc" id="L270">                    contract.templateId(), contract);</span>
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">            if (previous != null) {</span>
+<span class="nc" id="L272">                throw new IllegalStateException(</span>
+<span class="nc" id="L273">                        &quot;Duplicate document template contract for &quot; + contract.templateId());</span>
+            }
+<span class="fc" id="L275">        }</span>
+<span class="fc" id="L276">        return Map.copyOf(indexed);</span>
+    }
+
+    private static TemplateDescriptor descriptor(TemplateSnapshot snapshot) {
+<span class="fc" id="L280">        TemplateManifest manifest = snapshot.manifest();</span>
+<span class="fc" id="L281">        return new TemplateDescriptor(</span>
+<span class="fc" id="L282">                manifest.templateId(), manifest.displayName(), manifest.fileName(),</span>
+<span class="fc" id="L283">                snapshot.commitId(), manifest.updatedAt(), manifest.updatedBy(),</span>
+<span class="fc" id="L284">                manifest.uncompressedSize(), manifest.partCount(), manifest.packageSha256());</span>
+    }
+
+    static String stripEtag(String value) {
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L289">            return null;</span>
+        }
+<span class="fc" id="L291">        String stripped = value.strip();</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">        if (stripped.startsWith(&quot;W/&quot;)) {</span>
+<span class="nc" id="L293">            stripped = stripped.substring(2).strip();</span>
+        }
+<span class="fc" id="L295">        return stripQuotedEtag(stripped);</span>
+    }
+
+    private static String stripQuotedEtag(String value) {
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">        String stripped = value == null ? null : value.strip();</span>
+<span class="pc bpc" id="L300" title="1 of 4 branches missed.">        if (stripped != null &amp;&amp; stripped.length() &gt;= 2</span>
+<span class="pc bpc" id="L301" title="1 of 4 branches missed.">                &amp;&amp; stripped.startsWith(&quot;\&quot;&quot;) &amp;&amp; stripped.endsWith(&quot;\&quot;&quot;)) {</span>
+<span class="fc" id="L302">            return stripped.substring(1, stripped.length() - 1);</span>
+        }
+<span class="fc" id="L304">        return stripped;</span>
+    }
+
+    static String normalizeDisplayName(String displayName, String templateId) {
+<span class="pc bpc" id="L308" title="2 of 4 branches missed.">        String normalized = displayName == null || displayName.isBlank()</span>
+<span class="pc" id="L309">                ? templateId : displayName.strip();</span>
+<span class="fc" id="L310">        normalized = normalized.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');</span>
+<span class="fc bfc" id="L311" title="All 2 branches covered.">        for (int offset = 0; offset &lt; normalized.length();) {</span>
+<span class="fc" id="L312">            int codePoint = normalized.codePointAt(offset);</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">            if (!isValidXml10CodePoint(codePoint)) {</span>
+<span class="fc" id="L314">                throw new IllegalArgumentException(</span>
+                        &quot;Template display name contains a character not permitted in XML 1.0&quot;);
+            }
+<span class="fc" id="L317">            offset += Character.charCount(codePoint);</span>
+<span class="fc" id="L318">        }</span>
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">        if (normalized.length() &gt; 160) {</span>
+<span class="nc" id="L320">            throw new IllegalArgumentException(</span>
+                    &quot;Template display name must not exceed 160 characters&quot;);
+        }
+<span class="fc" id="L323">        return normalized;</span>
+    }
+
+    static boolean isValidXml10CodePoint(int codePoint) {
+<span class="pc bpc" id="L327" title="10 of 18 branches missed.">        return codePoint == 0x9 || codePoint == 0xA || codePoint == 0xD</span>
+                || (codePoint &gt;= 0x20 &amp;&amp; codePoint &lt;= 0xD7FF)
+                || (codePoint &gt;= 0xE000 &amp;&amp; codePoint &lt;= 0xFFFD)
+                || (codePoint &gt;= 0x10000 &amp;&amp; codePoint &lt;= 0x10FFFF);
+    }
+
+    private static Instant parseInstant(String value) {
+        try {
+<span class="fc" id="L335">            return Instant.parse(value);</span>
+<span class="nc" id="L336">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L337">            return Instant.EPOCH;</span>
+        }
+    }
+
+    public record TemplateFile(
+            TemplateManifest manifest,
+            String commitId,
+            byte[] content,
+            Instant lastModified) {
+<span class="fc" id="L346">        public TemplateFile {</span>
+<span class="fc" id="L347">            Objects.requireNonNull(manifest, &quot;manifest&quot;);</span>
+<span class="fc" id="L348">            Objects.requireNonNull(commitId, &quot;commitId&quot;);</span>
+<span class="fc" id="L349">            content = content.clone();</span>
+<span class="fc" id="L350">        }</span>
+<span class="fc" id="L351">        @Override public byte[] content() { return content.clone(); }</span>
+<span class="fc" id="L352">        public String etag() { return &quot;\&quot;&quot; + commitId + &quot;\&quot;&quot;; }</span>
+    }
+
+<span class="nc" id="L355">    public record TemplatePartView(</span>
+            String path,
+            long size,
+            String mediaType,
+            String textContent) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,553 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SolutionPortfolioService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">SolutionPortfolioService.java</span></div><h1>SolutionPortfolioService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.portfolio.dto.PortfolioDtos.AddProjectSolutionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateSolutionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.LinkRequirementSolutionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectSolutionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementSolutionLinkView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SolutionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.TaxonomyCoverageView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectSolutionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateSolutionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpsertTaxonomyCoverageRequest;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.LifecycleStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.OperatingModel;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectSolutionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementSolutionRole;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.SolutionType;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.ProjectSolution;
+import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.model.RequirementElementMapping;
+import com.taxonomy.portfolio.model.RequirementSolutionLink;
+import com.taxonomy.portfolio.model.SolutionDefinition;
+import com.taxonomy.portfolio.model.SolutionTaxonomyCoverage;
+import com.taxonomy.portfolio.repository.ProjectSolutionRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
+import com.taxonomy.portfolio.repository.RequirementElementMappingRepository;
+import com.taxonomy.portfolio.repository.RequirementSolutionLinkRepository;
+import com.taxonomy.portfolio.repository.SolutionDefinitionRepository;
+import com.taxonomy.portfolio.repository.SolutionProductCandidateRepository;
+import com.taxonomy.portfolio.repository.SolutionTaxonomyCoverageRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
+
+/** Reusable solution catalogue plus project-specific solution decisions and coverage. */
+@Service
+public class SolutionPortfolioService {
+
+<span class="fc" id="L51">    private static final Pattern BUSINESS_KEY =</span>
+<span class="fc" id="L52">            Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9._-]{0,63}&quot;);</span>
+
+    private final SolutionDefinitionRepository solutionRepository;
+    private final SolutionTaxonomyCoverageRepository coverageRepository;
+    private final ProjectSolutionRepository projectSolutionRepository;
+    private final RequirementSolutionLinkRepository requirementLinkRepository;
+    private final RequirementElementMappingRepository elementMappingRepository;
+    private final RequirementAnalysisSnapshotRepository snapshotRepository;
+    private final SolutionProductCandidateRepository productCandidateRepository;
+    private final TaxonomyNodeRepository taxonomyNodeRepository;
+    private final ProjectPortfolioService projectService;
+    private final ProductCatalogService productService;
+    private final PortfolioJsonCodec jsonCodec;
+
+    public SolutionPortfolioService(SolutionDefinitionRepository solutionRepository,
+                                    SolutionTaxonomyCoverageRepository coverageRepository,
+                                    ProjectSolutionRepository projectSolutionRepository,
+                                    RequirementSolutionLinkRepository requirementLinkRepository,
+                                    RequirementElementMappingRepository elementMappingRepository,
+                                    RequirementAnalysisSnapshotRepository snapshotRepository,
+                                    SolutionProductCandidateRepository productCandidateRepository,
+                                    TaxonomyNodeRepository taxonomyNodeRepository,
+                                    ProjectPortfolioService projectService,
+                                    ProductCatalogService productService,
+<span class="fc" id="L76">                                    PortfolioJsonCodec jsonCodec) {</span>
+<span class="fc" id="L77">        this.solutionRepository = solutionRepository;</span>
+<span class="fc" id="L78">        this.coverageRepository = coverageRepository;</span>
+<span class="fc" id="L79">        this.projectSolutionRepository = projectSolutionRepository;</span>
+<span class="fc" id="L80">        this.requirementLinkRepository = requirementLinkRepository;</span>
+<span class="fc" id="L81">        this.elementMappingRepository = elementMappingRepository;</span>
+<span class="fc" id="L82">        this.snapshotRepository = snapshotRepository;</span>
+<span class="fc" id="L83">        this.productCandidateRepository = productCandidateRepository;</span>
+<span class="fc" id="L84">        this.taxonomyNodeRepository = taxonomyNodeRepository;</span>
+<span class="fc" id="L85">        this.projectService = projectService;</span>
+<span class="fc" id="L86">        this.productService = productService;</span>
+<span class="fc" id="L87">        this.jsonCodec = jsonCodec;</span>
+<span class="fc" id="L88">    }</span>
+
+    @Transactional
+    public SolutionView createSolution(CreateSolutionRequest request,
+                                       String username,
+                                       WorkspaceContext context) {
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;solution request is required&quot;);</span>
+<span class="fc" id="L95">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L96">        String solutionKey = normalizeKey(request.solutionKey(), &quot;solutionKey&quot;);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (solutionRepository.findByScopeKeyAndSolutionKeyIgnoreCase(scopeKey, solutionKey).isPresent()) {</span>
+<span class="nc" id="L98">            throw PortfolioException.conflict(&quot;Solution key already exists in this workspace: &quot; + solutionKey);</span>
+        }
+<span class="fc" id="L100">        int maturity = normalizeMaturity(request.maturityLevel());</span>
+<span class="fc" id="L101">        var costAmount = PortfolioValueValidator.money(request.costAmount(), &quot;costAmount&quot;);</span>
+<span class="fc" id="L102">        String costCurrency = normalizeCurrency(request.costCurrency());</span>
+<span class="fc" id="L103">        PortfolioValueValidator.requireMoneyPair(</span>
+                costAmount, costCurrency, &quot;costAmount&quot;, &quot;costCurrency&quot;);
+<span class="fc" id="L105">        Integer leadTimeDays = PortfolioValueValidator.nonNegativeDays(</span>
+<span class="fc" id="L106">                request.leadTimeDays(), &quot;leadTimeDays&quot;);</span>
+<span class="fc" id="L107">        Map&lt;String, String&gt; extensionAttributes = PortfolioValueValidator.extensionAttributes(</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                request.extensionAttributes() != null ? request.extensionAttributes() : Map.of());</span>
+<span class="fc" id="L109">        String extensionAttributesJson = ProjectPortfolioService.limited(</span>
+<span class="fc" id="L110">                jsonCodec.write(extensionAttributes), 4000, &quot;extensionAttributes&quot;);</span>
+
+<span class="fc" id="L112">        Instant now = Instant.now();</span>
+<span class="fc" id="L113">        SolutionDefinition solution = new SolutionDefinition(</span>
+                scopeKey,
+<span class="fc" id="L115">                PortfolioScope.workspaceId(context),</span>
+                solutionKey,
+<span class="fc" id="L117">                ProjectPortfolioService.requireText(request.title(), &quot;title&quot;, 240),</span>
+<span class="fc" id="L118">                ProjectPortfolioService.limited(request.description(), 4000, &quot;description&quot;),</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                request.solutionType() != null ? request.solutionType() : SolutionType.OTHER,</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">                request.operatingModel() != null ? request.operatingModel() : OperatingModel.UNSPECIFIED,</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                request.lifecycleStatus() != null ? request.lifecycleStatus() : LifecycleStatus.PLANNED,</span>
+                maturity,
+<span class="fc" id="L123">                PortfolioScope.username(username, context),</span>
+<span class="fc" id="L124">                ProjectPortfolioService.limited(</span>
+<span class="fc" id="L125">                        request.responsibleOrganization(), 240, &quot;responsibleOrganization&quot;),</span>
+                now);
+<span class="fc" id="L127">        solution.update(</span>
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                costAmount,
+                costCurrency,
+<span class="fc" id="L138">                ProjectPortfolioService.limited(request.riskNotes(), 2000, &quot;riskNotes&quot;),</span>
+                leadTimeDays,
+                extensionAttributesJson,
+                now);
+<span class="fc" id="L142">        return toSolutionView(solutionRepository.save(solution));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;SolutionView&gt; listSolutions(String username, WorkspaceContext context) {
+<span class="fc" id="L147">        return solutionRepository.findByScopeKeyOrderByTitleAsc(PortfolioScope.key(username, context))</span>
+<span class="fc" id="L148">                .stream().map(this::toSolutionView).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public SolutionView getSolution(Long solutionId, String username, WorkspaceContext context) {
+<span class="nc" id="L153">        return toSolutionView(requireSolution(solutionId, username, context));</span>
+    }
+
+    @Transactional
+    public SolutionView updateSolution(Long solutionId,
+                                       UpdateSolutionRequest request,
+                                       String username,
+                                       WorkspaceContext context) {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;solution update is required&quot;);</span>
+<span class="nc" id="L162">        SolutionDefinition solution = requireSolution(solutionId, username, context);</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        var requestedAmount = request.costAmount() != null</span>
+<span class="nc" id="L164">                ? PortfolioValueValidator.money(request.costAmount(), &quot;costAmount&quot;) : null;</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        String requestedCurrency = request.costCurrency() != null</span>
+<span class="nc" id="L166">                ? normalizeCurrency(request.costCurrency()) : null;</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">        var effectiveAmount = request.costAmount() != null</span>
+<span class="nc" id="L168">                ? requestedAmount : solution.getCostAmount();</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        String effectiveCurrency = request.costCurrency() != null</span>
+<span class="nc" id="L170">                ? requestedCurrency : solution.getCostCurrency();</span>
+<span class="nc" id="L171">        PortfolioValueValidator.requireMoneyPair(</span>
+                effectiveAmount, effectiveCurrency, &quot;costAmount&quot;, &quot;costCurrency&quot;);
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        Integer leadTimeDays = request.leadTimeDays() != null</span>
+<span class="nc" id="L174">                ? PortfolioValueValidator.nonNegativeDays(request.leadTimeDays(), &quot;leadTimeDays&quot;) : null;</span>
+<span class="nc" id="L175">        String extensionAttributesJson = null;</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">        if (request.extensionAttributes() != null) {</span>
+<span class="nc" id="L177">            extensionAttributesJson = ProjectPortfolioService.limited(</span>
+<span class="nc" id="L178">                    jsonCodec.write(PortfolioValueValidator.extensionAttributes(request.extensionAttributes())),</span>
+                    4000,
+                    &quot;extensionAttributes&quot;);
+        }
+
+<span class="nc" id="L183">        solution.update(</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">                request.title() != null</span>
+<span class="nc" id="L185">                        ? ProjectPortfolioService.requireText(request.title(), &quot;title&quot;, 240) : null,</span>
+<span class="nc" id="L186">                ProjectPortfolioService.limited(request.description(), 4000, &quot;description&quot;),</span>
+<span class="nc" id="L187">                request.solutionType(),</span>
+<span class="nc" id="L188">                request.operatingModel(),</span>
+<span class="nc" id="L189">                request.lifecycleStatus(),</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                request.maturityLevel() != null ? normalizeMaturity(request.maturityLevel()) : null,</span>
+<span class="nc bnc" id="L191" title="All 4 branches missed.">                request.ownerUsername() != null &amp;&amp; !request.ownerUsername().isBlank()</span>
+<span class="nc" id="L192">                        ? ProjectPortfolioService.requireText(request.ownerUsername(), &quot;ownerUsername&quot;, 160) : null,</span>
+<span class="nc" id="L193">                ProjectPortfolioService.limited(</span>
+<span class="nc" id="L194">                        request.responsibleOrganization(), 240, &quot;responsibleOrganization&quot;),</span>
+                requestedAmount,
+                requestedCurrency,
+<span class="nc" id="L197">                ProjectPortfolioService.limited(request.riskNotes(), 2000, &quot;riskNotes&quot;),</span>
+                leadTimeDays,
+                extensionAttributesJson,
+<span class="nc" id="L200">                Instant.now());</span>
+<span class="nc" id="L201">        return toSolutionView(solution);</span>
+    }
+
+    @Transactional
+    public SolutionView upsertTaxonomyCoverage(Long solutionId,
+                                               UpsertTaxonomyCoverageRequest request,
+                                               String username,
+                                               WorkspaceContext context) {
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;taxonomy coverage is required&quot;);</span>
+<span class="fc" id="L210">        SolutionDefinition solution = requireSolution(solutionId, username, context);</span>
+<span class="fc" id="L211">        String nodeCode = requireNodeCode(request.nodeCode());</span>
+<span class="fc" id="L212">        int coverage = normalizePercentage(request.coveragePercent(), &quot;coveragePercent&quot;);</span>
+<span class="fc" id="L213">        Instant now = Instant.now();</span>
+<span class="fc" id="L214">        SolutionTaxonomyCoverage mapping = coverageRepository</span>
+<span class="fc" id="L215">                .findBySolutionIdAndNodeCode(solutionId, nodeCode)</span>
+<span class="fc" id="L216">                .orElseGet(() -&gt; new SolutionTaxonomyCoverage(</span>
+                        solution,
+                        nodeCode,
+                        coverage,
+<span class="fc" id="L220">                        ProjectPortfolioService.limited(request.evidence(), 2000, &quot;evidence&quot;),</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                        request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,</span>
+<span class="fc" id="L222">                        PortfolioScope.username(username, context),</span>
+                        now));
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if (mapping.getId() != null) {</span>
+<span class="nc" id="L225">            mapping.update(</span>
+                    coverage,
+<span class="nc" id="L227">                    ProjectPortfolioService.limited(request.evidence(), 2000, &quot;evidence&quot;),</span>
+<span class="nc" id="L228">                    request.reviewStatus(),</span>
+<span class="nc" id="L229">                    PortfolioScope.username(username, context),</span>
+                    now);
+        }
+<span class="fc" id="L232">        coverageRepository.save(mapping);</span>
+<span class="fc" id="L233">        return toSolutionView(solution);</span>
+    }
+
+    @Transactional
+    public ProjectSolutionView addProjectSolution(Long projectId,
+                                                  AddProjectSolutionRequest request,
+                                                  String username,
+                                                  WorkspaceContext context) {
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;project solution request is required&quot;);</span>
+<span class="fc" id="L242">        ArchitectureProject project = projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L243">        SolutionDefinition solution = requireSolution(request.solutionId(), username, context);</span>
+<span class="fc" id="L244">        Instant now = Instant.now();</span>
+<span class="fc" id="L245">        ProjectSolution projectSolution = projectSolutionRepository</span>
+<span class="fc" id="L246">                .findByProjectIdAndSolutionId(projectId, solution.getId())</span>
+<span class="fc" id="L247">                .orElseGet(() -&gt; new ProjectSolution(</span>
+                        project,
+                        solution,
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">                        request.status() != null ? request.status() : ProjectSolutionStatus.PROPOSED,</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">                        request.actionStatus() != null ? request.actionStatus() : ActionStatus.UNDECIDED,</span>
+<span class="fc" id="L252">                        normalizePriority(request.priority()),</span>
+<span class="fc" id="L253">                        ProjectPortfolioService.limited(request.rationale(), 2000, &quot;rationale&quot;),</span>
+<span class="fc" id="L254">                        PortfolioScope.username(username, context),</span>
+                        now));
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (projectSolution.getId() != null) {</span>
+<span class="nc" id="L257">            projectSolution.update(</span>
+<span class="nc" id="L258">                    request.status(),</span>
+<span class="nc" id="L259">                    request.actionStatus(),</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">                    request.priority() != null ? normalizePriority(request.priority()) : null,</span>
+<span class="nc" id="L261">                    ProjectPortfolioService.limited(request.rationale(), 2000, &quot;rationale&quot;),</span>
+                    now);
+        }
+<span class="fc" id="L264">        projectSolutionRepository.save(projectSolution);</span>
+<span class="fc" id="L265">        return toProjectSolutionView(projectSolution);</span>
+    }
+
+    @Transactional
+    public ProjectSolutionView updateProjectSolution(Long projectId,
+                                                     Long projectSolutionId,
+                                                     UpdateProjectSolutionRequest request,
+                                                     String username,
+                                                     WorkspaceContext context) {
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;project solution update is required&quot;);</span>
+<span class="fc" id="L275">        projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L276">        ProjectSolution projectSolution = requireProjectSolution(projectId, projectSolutionId);</span>
+<span class="fc" id="L277">        projectSolution.update(</span>
+<span class="fc" id="L278">                request.status(),</span>
+<span class="fc" id="L279">                request.actionStatus(),</span>
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">                request.priority() != null ? normalizePriority(request.priority()) : null,</span>
+<span class="fc" id="L281">                ProjectPortfolioService.limited(request.rationale(), 2000, &quot;rationale&quot;),</span>
+<span class="fc" id="L282">                Instant.now());</span>
+<span class="fc" id="L283">        return toProjectSolutionView(projectSolution);</span>
+    }
+
+    @Transactional
+    public ProjectSolutionView linkRequirement(Long projectId,
+                                               Long projectSolutionId,
+                                               LinkRequirementSolutionRequest request,
+                                               String username,
+                                               WorkspaceContext context) {
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;requirement solution link is required&quot;);</span>
+<span class="fc" id="L293">        ProjectSolution projectSolution = requireProjectSolutionScoped(</span>
+                projectId, projectSolutionId, username, context);
+<span class="fc" id="L295">        ProjectRequirement requirement = projectService.requireRequirement(</span>
+<span class="fc" id="L296">                projectId, request.requirementId(), username, context);</span>
+<span class="fc" id="L297">        String snapshotId = request.snapshotId();</span>
+<span class="pc bpc" id="L298" title="2 of 4 branches missed.">        if (snapshotId == null || snapshotId.isBlank()) {</span>
+<span class="nc" id="L299">            snapshotId = requirement.getCurrentAnalysisSnapshotId();</span>
+        }
+<span class="fc" id="L301">        final String effectiveSnapshotId = snapshotId;</span>
+<span class="fc" id="L302">        validateSnapshot(effectiveSnapshotId, projectId, requirement.getId());</span>
+<span class="fc" id="L303">        int coverage = normalizePercentage(request.coveragePercent(), &quot;coveragePercent&quot;);</span>
+<span class="fc" id="L304">        Instant now = Instant.now();</span>
+<span class="fc" id="L305">        RequirementSolutionLink link = requirementLinkRepository</span>
+<span class="fc" id="L306">                .findByProjectSolutionIdAndRequirementId(projectSolutionId, requirement.getId())</span>
+<span class="pc" id="L307">                .orElseGet(() -&gt; new RequirementSolutionLink(</span>
+                        projectSolution,
+                        requirement,
+                        effectiveSnapshotId,
+                        coverage,
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                        request.role() != null ? request.role() : RequirementSolutionRole.USES,</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">                        request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,</span>
+<span class="nc" id="L314">                        ProjectPortfolioService.limited(request.evidence(), 2000, &quot;evidence&quot;),</span>
+<span class="nc" id="L315">                        PortfolioScope.username(username, context),</span>
+                        now));
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">        if (link.getId() != null) {</span>
+<span class="fc" id="L318">            link.update(</span>
+                    effectiveSnapshotId,
+                    coverage,
+<span class="fc" id="L321">                    request.role(),</span>
+<span class="fc" id="L322">                    request.reviewStatus(),</span>
+<span class="fc" id="L323">                    ProjectPortfolioService.limited(request.evidence(), 2000, &quot;evidence&quot;),</span>
+<span class="fc" id="L324">                    PortfolioScope.username(username, context),</span>
+                    now);
+        }
+<span class="fc" id="L327">        requirementLinkRepository.save(link);</span>
+<span class="fc" id="L328">        return toProjectSolutionView(projectSolution);</span>
+    }
+
+    /**
+     * Deterministically proposes reuse candidates from confirmed solution-to-taxonomy coverage.
+     * Every generated link remains PROPOSED; no action or selection decision is automated.
+     */
+    @Transactional
+    public List&lt;ProjectSolutionView&gt; proposeFromCurrentMappings(Long projectId,
+                                                                String username,
+                                                                WorkspaceContext context) {
+<span class="fc" id="L339">        ArchitectureProject project = projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L340">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L341">        List&lt;RequirementElementMapping&gt; mappings = elementMappingRepository</span>
+<span class="fc" id="L342">                .findCurrentMappingsForProject(projectId);</span>
+<span class="fc" id="L343">        Map&lt;Long, ProjectSolution&gt; touched = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L344">        Instant now = Instant.now();</span>
+
+<span class="fc bfc" id="L346" title="All 2 branches covered.">        for (RequirementElementMapping element : mappings) {</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">            for (SolutionTaxonomyCoverage coverage : coverageRepository.findByNodeCode(element.getNodeCode())) {</span>
+<span class="fc" id="L348">                SolutionDefinition solution = coverage.getSolution();</span>
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">                if (!scopeKey.equals(solution.getScopeKey())</span>
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">                        || coverage.getReviewStatus() != ReviewStatus.CONFIRMED) {</span>
+<span class="nc" id="L351">                    continue;</span>
+                }
+<span class="fc" id="L353">                ProjectSolution projectSolution = projectSolutionRepository</span>
+<span class="fc" id="L354">                        .findByProjectIdAndSolutionId(projectId, solution.getId())</span>
+<span class="fc" id="L355">                        .orElseGet(() -&gt; projectSolutionRepository.save(new ProjectSolution(</span>
+                                project,
+                                solution,
+                                ProjectSolutionStatus.PROPOSED,
+                                ActionStatus.UNDECIDED,
+<span class="fc" id="L360">                                Math.max(1, element.getDirectScore()),</span>
+                                &quot;Proposed from confirmed taxonomy coverage; human decision required&quot;,
+<span class="fc" id="L362">                                PortfolioScope.username(username, context),</span>
+                                now)));
+<span class="fc" id="L364">                touched.put(projectSolution.getId(), projectSolution);</span>
+
+<span class="fc" id="L366">                ProjectRequirement requirement = element.getSnapshot().getRequirement();</span>
+<span class="fc" id="L367">                int effectiveCoverage = (int) Math.round(</span>
+<span class="fc" id="L368">                        coverage.getCoveragePercent() * Math.max(0.0, Math.min(1.0, element.getRelevance())));</span>
+<span class="fc" id="L369">                RequirementSolutionLink link = requirementLinkRepository</span>
+<span class="fc" id="L370">                        .findByProjectSolutionIdAndRequirementId(</span>
+<span class="fc" id="L371">                                projectSolution.getId(), requirement.getId())</span>
+<span class="fc" id="L372">                        .orElseGet(() -&gt; new RequirementSolutionLink(</span>
+                                projectSolution,
+                                requirement,
+<span class="fc" id="L375">                                element.getSnapshot().getId(),</span>
+                                effectiveCoverage,
+                                RequirementSolutionRole.USES,
+                                ReviewStatus.PROPOSED,
+<span class="fc" id="L379">                                &quot;Solution covers &quot; + element.getNodeCode()</span>
+<span class="fc" id="L380">                                        + &quot; at &quot; + coverage.getCoveragePercent()</span>
+                                        + &quot;% and the requirement relevance is &quot;
+<span class="fc" id="L382">                                        + Math.round(element.getRelevance() * 100) + &quot;%&quot;,</span>
+<span class="fc" id="L383">                                PortfolioScope.username(username, context),</span>
+                                now));
+<span class="pc bpc" id="L385" title="1 of 2 branches missed.">                if (link.getId() == null) {</span>
+<span class="fc" id="L386">                    requirementLinkRepository.save(link);</span>
+                }
+<span class="fc" id="L388">            }</span>
+<span class="fc" id="L389">        }</span>
+<span class="fc" id="L390">        return touched.values().stream().map(this::toProjectSolutionView).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;ProjectSolutionView&gt; listProjectSolutions(Long projectId,
+                                                          String username,
+                                                          WorkspaceContext context) {
+<span class="fc" id="L397">        projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L398">        return projectSolutionRepository.findByProjectIdOrderByPriorityDescSolutionTitleAsc(projectId)</span>
+<span class="fc" id="L399">                .stream().map(this::toProjectSolutionView).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public SolutionDefinition requireSolution(Long solutionId,
+                                               String username,
+                                               WorkspaceContext context) {
+<span class="pc bpc" id="L406" title="1 of 2 branches missed.">        if (solutionId == null) throw PortfolioException.validation(&quot;solutionId is required&quot;);</span>
+<span class="fc" id="L407">        return solutionRepository.findByIdAndScopeKey(solutionId, PortfolioScope.key(username, context))</span>
+<span class="pc" id="L408">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Solution not found: &quot; + solutionId));</span>
+    }
+
+    public SolutionView toSolutionView(SolutionDefinition solution) {
+<span class="fc" id="L412">        List&lt;TaxonomyCoverageView&gt; coverage = coverageRepository</span>
+<span class="fc" id="L413">                .findBySolutionIdOrderByNodeCodeAsc(solution.getId()).stream()</span>
+<span class="fc" id="L414">                .map(mapping -&gt; new TaxonomyCoverageView(</span>
+<span class="fc" id="L415">                        mapping.getId(),</span>
+<span class="fc" id="L416">                        mapping.getNodeCode(),</span>
+<span class="fc" id="L417">                        mapping.getCoveragePercent(),</span>
+<span class="fc" id="L418">                        mapping.getEvidence(),</span>
+<span class="fc" id="L419">                        mapping.getReviewStatus(),</span>
+<span class="fc" id="L420">                        mapping.getUpdatedBy(),</span>
+<span class="fc" id="L421">                        mapping.getUpdatedAt()))</span>
+<span class="fc" id="L422">                .toList();</span>
+<span class="fc" id="L423">        return new SolutionView(</span>
+<span class="fc" id="L424">                solution.getId(),</span>
+<span class="fc" id="L425">                solution.getSolutionKey(),</span>
+<span class="fc" id="L426">                solution.getTitle(),</span>
+<span class="fc" id="L427">                solution.getDescription(),</span>
+<span class="fc" id="L428">                solution.getSolutionType(),</span>
+<span class="fc" id="L429">                solution.getOperatingModel(),</span>
+<span class="fc" id="L430">                solution.getLifecycleStatus(),</span>
+<span class="fc" id="L431">                solution.getMaturityLevel(),</span>
+<span class="fc" id="L432">                solution.getOwnerUsername(),</span>
+<span class="fc" id="L433">                solution.getResponsibleOrganization(),</span>
+<span class="fc" id="L434">                solution.getCostAmount(),</span>
+<span class="fc" id="L435">                solution.getCostCurrency(),</span>
+<span class="fc" id="L436">                solution.getRiskNotes(),</span>
+<span class="fc" id="L437">                solution.getLeadTimeDays(),</span>
+<span class="fc" id="L438">                jsonCodec.readStringMap(solution.getExtensionAttributesJson()),</span>
+<span class="fc" id="L439">                solution.getCreatedAt(),</span>
+<span class="fc" id="L440">                solution.getUpdatedAt(),</span>
+                coverage);
+    }
+
+    public ProjectSolutionView toProjectSolutionView(ProjectSolution projectSolution) {
+<span class="fc" id="L445">        List&lt;RequirementSolutionLinkView&gt; requirements = requirementLinkRepository</span>
+<span class="fc" id="L446">                .findByProjectSolutionIdOrderByRequirementRequirementKeyAsc(projectSolution.getId()).stream()</span>
+<span class="fc" id="L447">                .map(link -&gt; new RequirementSolutionLinkView(</span>
+<span class="fc" id="L448">                        link.getId(),</span>
+<span class="fc" id="L449">                        link.getRequirement().getId(),</span>
+<span class="fc" id="L450">                        link.getRequirement().getRequirementKey(),</span>
+<span class="fc" id="L451">                        link.getSnapshotId(),</span>
+<span class="fc" id="L452">                        link.getCoveragePercent(),</span>
+<span class="fc" id="L453">                        link.getRole(),</span>
+<span class="fc" id="L454">                        link.getReviewStatus(),</span>
+<span class="fc" id="L455">                        link.getEvidence(),</span>
+<span class="fc" id="L456">                        link.getUpdatedBy(),</span>
+<span class="fc" id="L457">                        link.getUpdatedAt()))</span>
+<span class="fc" id="L458">                .toList();</span>
+<span class="fc" id="L459">        return new ProjectSolutionView(</span>
+<span class="fc" id="L460">                projectSolution.getId(),</span>
+<span class="fc" id="L461">                projectSolution.getProject().getId(),</span>
+<span class="fc" id="L462">                toSolutionView(projectSolution.getSolution()),</span>
+<span class="fc" id="L463">                projectSolution.getStatus(),</span>
+<span class="fc" id="L464">                projectSolution.getActionStatus(),</span>
+<span class="fc" id="L465">                projectSolution.getPriority(),</span>
+<span class="fc" id="L466">                projectSolution.getRationale(),</span>
+<span class="fc" id="L467">                projectSolution.getCreatedBy(),</span>
+<span class="fc" id="L468">                projectSolution.getCreatedAt(),</span>
+<span class="fc" id="L469">                projectSolution.getUpdatedAt(),</span>
+                requirements,
+                productCandidateRepository
+<span class="fc" id="L472">                        .findByProjectSolutionIdOrderByCoveragePercentDesc(projectSolution.getId()).stream()</span>
+<span class="fc" id="L473">                        .map(productService::toCandidateView)</span>
+<span class="fc" id="L474">                        .toList());</span>
+    }
+
+    private ProjectSolution requireProjectSolutionScoped(Long projectId,
+                                                         Long projectSolutionId,
+                                                         String username,
+                                                         WorkspaceContext context) {
+<span class="fc" id="L481">        projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L482">        return requireProjectSolution(projectId, projectSolutionId);</span>
+    }
+
+    private ProjectSolution requireProjectSolution(Long projectId, Long projectSolutionId) {
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">        if (projectSolutionId == null) {</span>
+<span class="nc" id="L487">            throw PortfolioException.validation(&quot;projectSolutionId is required&quot;);</span>
+        }
+<span class="fc" id="L489">        return projectSolutionRepository.findByIdAndProjectId(projectSolutionId, projectId)</span>
+<span class="pc" id="L490">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Project solution not found: &quot; + projectSolutionId));
+    }
+
+    private void validateSnapshot(String snapshotId, Long projectId, Long requirementId) {
+<span class="pc bpc" id="L495" title="2 of 4 branches missed.">        if (snapshotId == null || snapshotId.isBlank()) {</span>
+<span class="nc" id="L496">            throw PortfolioException.validation(</span>
+                    &quot;A requirement solution link requires an analysis snapshot&quot;);
+        }
+<span class="fc" id="L499">        RequirementAnalysisSnapshot snapshot = snapshotRepository</span>
+<span class="fc" id="L500">                .findByIdAndProjectId(snapshotId, projectId)</span>
+<span class="pc" id="L501">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Analysis snapshot not found: &quot; + snapshotId));</span>
+<span class="pc bpc" id="L502" title="1 of 2 branches missed.">        if (!snapshot.getRequirement().getId().equals(requirementId)) {</span>
+<span class="nc" id="L503">            throw PortfolioException.validation(</span>
+                    &quot;Snapshot &quot; + snapshotId + &quot; does not belong to requirement &quot; + requirementId);
+        }
+<span class="fc" id="L506">    }</span>
+
+    private String requireNodeCode(String nodeCode) {
+<span class="fc" id="L509">        String normalized = ProjectPortfolioService.requireText(nodeCode, &quot;nodeCode&quot;, 80)</span>
+<span class="fc" id="L510">                .toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L511" title="1 of 2 branches missed.">        if (taxonomyNodeRepository.findByCode(normalized).isEmpty()) {</span>
+<span class="nc" id="L512">            throw PortfolioException.validation(&quot;Unknown taxonomy node: &quot; + normalized);</span>
+        }
+<span class="fc" id="L514">        return normalized;</span>
+    }
+
+    private static String normalizeKey(String value, String field) {
+<span class="fc" id="L518">        String normalized = ProjectPortfolioService.requireText(value, field, 64)</span>
+<span class="fc" id="L519">                .toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">        if (!BUSINESS_KEY.matcher(normalized).matches()) {</span>
+<span class="nc" id="L521">            throw PortfolioException.validation(field + &quot; contains unsupported characters&quot;);</span>
+        }
+<span class="fc" id="L523">        return normalized;</span>
+    }
+
+    private static int normalizeMaturity(Integer value) {
+<span class="pc bpc" id="L527" title="1 of 2 branches missed.">        int normalized = value != null ? value : 0;</span>
+<span class="pc bpc" id="L528" title="2 of 4 branches missed.">        if (normalized &lt; 0 || normalized &gt; 5) {</span>
+<span class="nc" id="L529">            throw PortfolioException.validation(&quot;maturityLevel must be between 0 and 5&quot;);</span>
+        }
+<span class="fc" id="L531">        return normalized;</span>
+    }
+
+    private static int normalizePriority(Integer value) {
+<span class="pc bpc" id="L535" title="1 of 2 branches missed.">        int normalized = value != null ? value : 50;</span>
+<span class="pc bpc" id="L536" title="2 of 4 branches missed.">        if (normalized &lt; 0 || normalized &gt; 100) {</span>
+<span class="nc" id="L537">            throw PortfolioException.validation(&quot;priority must be between 0 and 100&quot;);</span>
+        }
+<span class="fc" id="L539">        return normalized;</span>
+    }
+
+    private static int normalizePercentage(int value, String field) {
+<span class="pc bpc" id="L543" title="2 of 4 branches missed.">        if (value &lt; 0 || value &gt; 100) {</span>
+<span class="nc" id="L544">            throw PortfolioException.validation(field + &quot; must be between 0 and 100&quot;);</span>
+        }
+<span class="fc" id="L546">        return value;</span>
+    }
+
+    private static String normalizeCurrency(String value) {
+<span class="fc" id="L550">        return PortfolioValueValidator.currency(value, &quot;costCurrency&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

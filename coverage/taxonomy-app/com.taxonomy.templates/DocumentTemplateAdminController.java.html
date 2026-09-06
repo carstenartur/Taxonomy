@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateAdminController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateAdminController.java</span></div><h1>DocumentTemplateAdminController.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDescriptor;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateDiff;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateRevision;
+import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.DocumentTemplateService.TemplatePartView;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.security.Principal;
+import java.util.List;
+
+/**
+ * Administrative upload/download, history and package-inspection API.
+ */
+@RestController
+@RequestMapping(&quot;/api/admin/document-templates&quot;)
+public class DocumentTemplateAdminController {
+
+    private final DocumentTemplateService templates;
+
+<span class="fc" id="L36">    public DocumentTemplateAdminController(DocumentTemplateService templates) {</span>
+<span class="fc" id="L37">        this.templates = templates;</span>
+<span class="fc" id="L38">    }</span>
+
+    @GetMapping
+    public List&lt;TemplateDescriptor&gt; list() throws IOException {
+<span class="nc" id="L42">        return templates.list();</span>
+    }
+
+    /**
+     * Accepts the DOTX as the raw request body. This keeps the same bounded package
+     * import path as WebDAV and avoids a second multipart buffering limit.
+     */
+    @PutMapping(
+            value = &quot;/{templateId}&quot;,
+            consumes = {
+                    OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,
+                    MediaType.APPLICATION_OCTET_STREAM_VALUE
+            })
+    public ResponseEntity&lt;TemplateDescriptor&gt; upload(
+            @PathVariable String templateId,
+            @RequestParam String displayName,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String expectedHead,
+            HttpServletRequest request,
+            Principal principal) throws IOException {
+<span class="fc" id="L61">        long contentLength = request.getContentLengthLong();</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (contentLength == 0) {</span>
+<span class="nc" id="L63">            throw new IllegalArgumentException(&quot;Choose a non-empty DOTX file&quot;);</span>
+        }
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (contentLength &gt; OoxmlTemplatePackageCodec.MAX_ARCHIVE_BYTES) {</span>
+<span class="nc" id="L66">            throw new IllegalArgumentException(&quot;DOTX archive exceeds the permitted size&quot;);</span>
+        }
+<span class="fc" id="L68">        TemplateDescriptor saved = templates.upload(</span>
+                templateId,
+                displayName,
+<span class="fc" id="L71">                request.getInputStream(),</span>
+                expectedHead,
+<span class="fc" id="L73">                principal.getName(),</span>
+                &quot;Upload document template &quot; + templateId);
+<span class="fc" id="L75">        return ResponseEntity.status(201)</span>
+<span class="fc" id="L76">                .eTag(etag(saved.headCommit()))</span>
+<span class="fc" id="L77">                .body(saved);</span>
+    }
+
+    @GetMapping(&quot;/{templateId}/download&quot;)
+    public ResponseEntity&lt;byte[]&gt; download(
+            @PathVariable String templateId,
+            @RequestParam(required = false) String revision) throws IOException {
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">        TemplateFile file = revision == null || revision.isBlank()</span>
+<span class="fc" id="L85">                ? templates.downloadCurrent(templateId)</span>
+<span class="fc" id="L86">                : templates.download(templateId, revision);</span>
+<span class="fc" id="L87">        return ResponseEntity.ok()</span>
+<span class="fc" id="L88">                .contentType(MediaType.parseMediaType(file.manifest().mediaType()))</span>
+<span class="fc" id="L89">                .contentLength(file.content().length)</span>
+<span class="fc" id="L90">                .eTag(file.etag())</span>
+<span class="fc" id="L91">                .lastModified(file.lastModified().toEpochMilli())</span>
+<span class="fc" id="L92">                .cacheControl(CacheControl.noCache().cachePrivate())</span>
+<span class="fc" id="L93">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+<span class="fc" id="L94">                        ContentDisposition.attachment()</span>
+<span class="fc" id="L95">                                .filename(file.manifest().fileName(),</span>
+                                        java.nio.charset.StandardCharsets.UTF_8)
+<span class="fc" id="L97">                                .build()</span>
+<span class="fc" id="L98">                                .toString())</span>
+<span class="fc" id="L99">                .body(file.content());</span>
+    }
+
+    @GetMapping(&quot;/{templateId}/history&quot;)
+    public List&lt;TemplateRevision&gt; history(@PathVariable String templateId)
+            throws IOException {
+<span class="fc" id="L105">        return templates.history(templateId);</span>
+    }
+
+    @GetMapping(&quot;/{templateId}/diff&quot;)
+    public TemplateDiff diff(
+            @PathVariable String templateId,
+            @RequestParam String from,
+            @RequestParam String to) throws IOException {
+<span class="nc" id="L113">        return templates.diff(templateId, from, to);</span>
+    }
+
+    @GetMapping(&quot;/{templateId}/part&quot;)
+    public TemplatePartView part(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            @RequestParam String path) throws IOException {
+<span class="nc" id="L121">        return templates.readPart(templateId, revision, path);</span>
+    }
+
+    @PostMapping(&quot;/{templateId}/restore&quot;)
+    public ResponseEntity&lt;TemplateDescriptor&gt; restore(
+            @PathVariable String templateId,
+            @RequestParam String revision,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String expectedHead,
+            Principal principal) throws IOException {
+<span class="fc" id="L130">        TemplateDescriptor restored = templates.restore(</span>
+                templateId,
+                revision,
+                expectedHead,
+<span class="fc" id="L134">                principal.getName());</span>
+<span class="fc" id="L135">        return ResponseEntity.ok()</span>
+<span class="fc" id="L136">                .eTag(etag(restored.headCommit()))</span>
+<span class="fc" id="L137">                .body(restored);</span>
+    }
+
+    private static String etag(String commitId) {
+<span class="fc" id="L141">        return &quot;\&quot;&quot; + commitId + &quot;\&quot;&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioPageContentsConverter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio.converter</a> &gt; <span class="el_source">VisioPageContentsConverter.java</span></div><h1>VisioPageContentsConverter.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio.converter;
+
+import com.taxonomy.visio.VisioConnect;
+import com.taxonomy.visio.VisioPage;
+import com.taxonomy.visio.VisioShape;
+import com.thoughtworks.xstream.converters.Converter;
+import com.thoughtworks.xstream.converters.MarshallingContext;
+import com.thoughtworks.xstream.converters.UnmarshallingContext;
+import com.thoughtworks.xstream.io.HierarchicalStreamReader;
+import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
+
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Marshals one masterless page using the Visio 2012 {@code PageContents}
+ * structure. Regular nodes carry explicit rectangle geometry; relationship
+ * connectors carry explicit one-dimensional line geometry and are glued through
+ * the page's {@code Connects} collection.
+ */
+<span class="fc" id="L22">public class VisioPageContentsConverter implements Converter {</span>
+
+    private static final String VISIO_NS =
+            &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private static final String REL_NS =
+            &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+    private static final String ANCHOR_FILL = &quot;#4CAF50&quot;;
+    private static final String DEFAULT_FILL = &quot;#2196F3&quot;;
+    private static final String LINE_COLOR = &quot;#44546A&quot;;
+
+    @Override
+    public boolean canConvert(Class type) {
+<span class="fc" id="L34">        return VisioPage.class.equals(type);</span>
+    }
+
+    @Override
+    public void marshal(
+            Object source,
+            HierarchicalStreamWriter writer,
+            MarshallingContext context) {
+<span class="fc" id="L42">        VisioPage page = (VisioPage) source;</span>
+<span class="fc" id="L43">        Map&lt;String, VisioShape&gt; shapesById = indexShapes(page);</span>
+
+<span class="fc" id="L45">        writer.addAttribute(&quot;xmlns&quot;, VISIO_NS);</span>
+<span class="fc" id="L46">        writer.addAttribute(&quot;xmlns:r&quot;, REL_NS);</span>
+
+<span class="pc bpc" id="L48" title="1 of 4 branches missed.">        if (!page.getShapes().isEmpty() || !page.getConnects().isEmpty()) {</span>
+<span class="fc" id="L49">            writer.startNode(&quot;Shapes&quot;);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            for (VisioShape shape : page.getShapes()) {</span>
+<span class="fc" id="L51">                writeRegularShape(writer, shape);</span>
+<span class="fc" id="L52">            }</span>
+
+<span class="fc" id="L54">            long connectorId = maximumShapeId(page);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            for (VisioConnect connect : page.getConnects()) {</span>
+<span class="fc" id="L56">                connectorId++;</span>
+<span class="fc" id="L57">                writeConnectorShape(</span>
+                        writer,
+                        connectorId,
+                        connect,
+<span class="fc" id="L61">                        requireShape(shapesById, connect.getFromShape(), &quot;source&quot;),</span>
+<span class="fc" id="L62">                        requireShape(shapesById, connect.getToShape(), &quot;target&quot;));</span>
+<span class="fc" id="L63">            }</span>
+<span class="fc" id="L64">            writer.endNode();</span>
+        }
+
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (!page.getConnects().isEmpty()) {</span>
+<span class="fc" id="L68">            writer.startNode(&quot;Connects&quot;);</span>
+<span class="fc" id="L69">            long connectorId = maximumShapeId(page);</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            for (VisioConnect connect : page.getConnects()) {</span>
+<span class="fc" id="L71">                connectorId++;</span>
+                // Dynamic glue from a routable 1-D endpoint to a 2-D shape pin is
+                // represented by one BeginX/EndX Connect row per endpoint. Visio
+                // couples the corresponding Y coordinate; explicit BeginY/EndY
+                // rows are reserved for other glue targets such as guides.
+<span class="fc" id="L76">                writeGlue(writer, connectorId, &quot;BeginX&quot;, connect.getFromShape());</span>
+<span class="fc" id="L77">                writeGlue(writer, connectorId, &quot;EndX&quot;, connect.getToShape());</span>
+<span class="fc" id="L78">            }</span>
+<span class="fc" id="L79">            writer.endNode();</span>
+        }
+<span class="fc" id="L81">    }</span>
+
+    @Override
+    public Object unmarshal(
+            HierarchicalStreamReader reader,
+            UnmarshallingContext context) {
+<span class="fc" id="L87">        throw new UnsupportedOperationException(</span>
+                &quot;VisioPageContentsConverter does not support unmarshaling&quot;);
+    }
+
+    private static void writeRegularShape(
+            HierarchicalStreamWriter writer,
+            VisioShape shape) {
+<span class="fc" id="L94">        writer.startNode(&quot;Shape&quot;);</span>
+<span class="fc" id="L95">        writer.addAttribute(&quot;ID&quot;, shape.getId());</span>
+<span class="fc" id="L96">        writer.addAttribute(&quot;NameU&quot;, &quot;TaxonomyShape.&quot; + shape.getId());</span>
+<span class="fc" id="L97">        writer.addAttribute(&quot;IsCustomNameU&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L98">        writer.addAttribute(&quot;Name&quot;, shape.getText());</span>
+<span class="fc" id="L99">        writer.addAttribute(&quot;IsCustomName&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L100">        writer.addAttribute(&quot;Type&quot;, &quot;Shape&quot;);</span>
+
+<span class="fc" id="L102">        writeCell(writer, &quot;PinX&quot;, decimal(shape.getX()));</span>
+<span class="fc" id="L103">        writeCell(writer, &quot;PinY&quot;, decimal(shape.getY()));</span>
+<span class="fc" id="L104">        writeCell(writer, &quot;Width&quot;, decimal(shape.getWidth()));</span>
+<span class="fc" id="L105">        writeCell(writer, &quot;Height&quot;, decimal(shape.getHeight()));</span>
+<span class="fc" id="L106">        writeCell(writer, &quot;LocPinX&quot;, decimal(shape.getWidth() / 2.0), &quot;Width*0.5&quot;);</span>
+<span class="fc" id="L107">        writeCell(writer, &quot;LocPinY&quot;, decimal(shape.getHeight() / 2.0), &quot;Height*0.5&quot;);</span>
+<span class="fc" id="L108">        writeCell(writer, &quot;Angle&quot;, &quot;0&quot;);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        writeCell(writer, &quot;FillForegnd&quot;, shape.isAnchor() ? ANCHOR_FILL : DEFAULT_FILL);</span>
+<span class="fc" id="L110">        writeCell(writer, &quot;FillPattern&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L111">        writeCell(writer, &quot;LineColor&quot;, LINE_COLOR);</span>
+<span class="fc" id="L112">        writeCell(writer, &quot;LinePattern&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L113">        writeCell(writer, &quot;LineWeight&quot;, &quot;0.01388888888888889&quot;);</span>
+<span class="fc" id="L114">        writeCell(writer, &quot;VerticalAlign&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L115">        writeRectangleGeometry(writer, shape.getWidth(), shape.getHeight());</span>
+
+<span class="fc" id="L117">        writer.startNode(&quot;Text&quot;);</span>
+<span class="fc" id="L118">        writer.setValue(shape.getText());</span>
+<span class="fc" id="L119">        writer.endNode();</span>
+<span class="fc" id="L120">        writer.endNode();</span>
+<span class="fc" id="L121">    }</span>
+
+    private static void writeConnectorShape(
+            HierarchicalStreamWriter writer,
+            long connectorId,
+            VisioConnect connect,
+            VisioShape source,
+            VisioShape target) {
+<span class="fc" id="L129">        double beginX = source.getX();</span>
+<span class="fc" id="L130">        double beginY = source.getY();</span>
+<span class="fc" id="L131">        double endX = target.getX();</span>
+<span class="fc" id="L132">        double endY = target.getY();</span>
+<span class="fc" id="L133">        double width = Math.hypot(endX - beginX, endY - beginY);</span>
+<span class="fc" id="L134">        double angle = Math.atan2(endY - beginY, endX - beginX);</span>
+
+<span class="fc" id="L136">        writer.startNode(&quot;Shape&quot;);</span>
+<span class="fc" id="L137">        writer.addAttribute(&quot;ID&quot;, String.valueOf(connectorId));</span>
+<span class="fc" id="L138">        writer.addAttribute(&quot;NameU&quot;, &quot;TaxonomyConnector.&quot; + connectorId);</span>
+<span class="fc" id="L139">        writer.addAttribute(&quot;IsCustomNameU&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L140">        writer.addAttribute(&quot;Type&quot;, &quot;Shape&quot;);</span>
+
+<span class="fc" id="L142">        writeCell(writer, &quot;OneD&quot;, &quot;1&quot;);</span>
+        // A masterless custom connector is not automatically recognised as the
+        // built-in Dynamic Connector. Mark it explicitly routable and allow
+        // walking/dynamic glue before connecting BeginX/EndX to 2-D shape pins.
+<span class="fc" id="L146">        writeCell(writer, &quot;ObjType&quot;, &quot;2&quot;);</span>
+<span class="fc" id="L147">        writeCell(writer, &quot;GlueType&quot;, &quot;2&quot;);</span>
+
+        // Persist meaningful calculated values as well as formulas. Consumers
+        // that do not immediately recalculate the ShapeSheet still render the
+        // connector between the selected source and target positions.
+<span class="fc" id="L152">        writeCell(writer, &quot;BeginX&quot;, decimal(beginX));</span>
+<span class="fc" id="L153">        writeCell(writer, &quot;BeginY&quot;, decimal(beginY));</span>
+<span class="fc" id="L154">        writeCell(writer, &quot;EndX&quot;, decimal(endX));</span>
+<span class="fc" id="L155">        writeCell(writer, &quot;EndY&quot;, decimal(endY));</span>
+
+        // Use Visio's normal rotating 1-D transform. The local geometry is a
+        // horizontal line of Width; the endpoint-derived Pin/Width/Angle cells
+        // position and rotate it when glue moves either endpoint.
+<span class="fc" id="L160">        writeCell(writer, &quot;PinX&quot;, decimal((beginX + endX) / 2.0),</span>
+                &quot;(BeginX+EndX)*0.5&quot;);
+<span class="fc" id="L162">        writeCell(writer, &quot;PinY&quot;, decimal((beginY + endY) / 2.0),</span>
+                &quot;(BeginY+EndY)*0.5&quot;);
+<span class="fc" id="L164">        writeCell(writer, &quot;Width&quot;, decimal(width),</span>
+                &quot;SQRT((EndX-BeginX)^2+(EndY-BeginY)^2)&quot;);
+<span class="fc" id="L166">        writeCell(writer, &quot;Height&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L167">        writeCell(writer, &quot;LocPinX&quot;, decimal(width / 2.0), &quot;Width*0.5&quot;);</span>
+<span class="fc" id="L168">        writeCell(writer, &quot;LocPinY&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L169">        writeCell(writer, &quot;Angle&quot;, decimal(angle),</span>
+                &quot;ATAN2(EndY-BeginY,EndX-BeginX)&quot;);
+<span class="fc" id="L171">        writeCell(writer, &quot;LineColor&quot;, LINE_COLOR);</span>
+<span class="fc" id="L172">        writeCell(writer, &quot;LinePattern&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L173">        writeCell(writer, &quot;LineWeight&quot;, &quot;0.01388888888888889&quot;);</span>
+<span class="fc" id="L174">        writeCell(writer, &quot;EndArrow&quot;, &quot;13&quot;);</span>
+<span class="fc" id="L175">        writeCell(writer, &quot;EndArrowSize&quot;, &quot;2&quot;);</span>
+<span class="fc" id="L176">        writeLineGeometry(writer, width);</span>
+
+<span class="fc" id="L178">        writer.startNode(&quot;Text&quot;);</span>
+<span class="fc" id="L179">        writer.setValue(connect.getRelationType());</span>
+<span class="fc" id="L180">        writer.endNode();</span>
+<span class="fc" id="L181">        writer.endNode();</span>
+<span class="fc" id="L182">    }</span>
+
+    private static void writeGlue(
+            HierarchicalStreamWriter writer,
+            long connectorId,
+            String fromCell,
+            String endpointShapeId) {
+<span class="fc" id="L189">        writer.startNode(&quot;Connect&quot;);</span>
+<span class="fc" id="L190">        writer.addAttribute(&quot;FromSheet&quot;, String.valueOf(connectorId));</span>
+<span class="fc" id="L191">        writer.addAttribute(&quot;FromCell&quot;, fromCell);</span>
+<span class="fc" id="L192">        writer.addAttribute(&quot;ToSheet&quot;, endpointShapeId);</span>
+<span class="fc" id="L193">        writer.addAttribute(&quot;ToCell&quot;, &quot;PinX&quot;);</span>
+<span class="fc" id="L194">        writer.endNode();</span>
+<span class="fc" id="L195">    }</span>
+
+    private static void writeRectangleGeometry(
+            HierarchicalStreamWriter writer,
+            double width,
+            double height) {
+<span class="fc" id="L201">        writer.startNode(&quot;Section&quot;);</span>
+<span class="fc" id="L202">        writer.addAttribute(&quot;N&quot;, &quot;Geometry&quot;);</span>
+<span class="fc" id="L203">        writer.addAttribute(&quot;IX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L204">        writeGeometryRow(writer, &quot;MoveTo&quot;, 1, 0, 0, null, null);</span>
+<span class="fc" id="L205">        writeGeometryRow(writer, &quot;LineTo&quot;, 2, width, 0, &quot;Width&quot;, null);</span>
+<span class="fc" id="L206">        writeGeometryRow(writer, &quot;LineTo&quot;, 3, width, height, &quot;Width&quot;, &quot;Height&quot;);</span>
+<span class="fc" id="L207">        writeGeometryRow(writer, &quot;LineTo&quot;, 4, 0, height, null, &quot;Height&quot;);</span>
+<span class="fc" id="L208">        writeGeometryRow(writer, &quot;LineTo&quot;, 5, 0, 0, null, null);</span>
+<span class="fc" id="L209">        writer.endNode();</span>
+<span class="fc" id="L210">    }</span>
+
+    private static void writeLineGeometry(
+            HierarchicalStreamWriter writer,
+            double width) {
+<span class="fc" id="L215">        writer.startNode(&quot;Section&quot;);</span>
+<span class="fc" id="L216">        writer.addAttribute(&quot;N&quot;, &quot;Geometry&quot;);</span>
+<span class="fc" id="L217">        writer.addAttribute(&quot;IX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L218">        writeGeometryRow(writer, &quot;MoveTo&quot;, 1, 0, 0, null, null);</span>
+<span class="fc" id="L219">        writeGeometryRow(writer, &quot;LineTo&quot;, 2, width, 0, &quot;Width&quot;, null);</span>
+<span class="fc" id="L220">        writer.endNode();</span>
+<span class="fc" id="L221">    }</span>
+
+    private static void writeGeometryRow(
+            HierarchicalStreamWriter writer,
+            String type,
+            int index,
+            double x,
+            double y,
+            String xFormula,
+            String yFormula) {
+<span class="fc" id="L231">        writer.startNode(&quot;Row&quot;);</span>
+<span class="fc" id="L232">        writer.addAttribute(&quot;T&quot;, type);</span>
+<span class="fc" id="L233">        writer.addAttribute(&quot;IX&quot;, String.valueOf(index));</span>
+<span class="fc" id="L234">        writeCell(writer, &quot;X&quot;, decimal(x), xFormula);</span>
+<span class="fc" id="L235">        writeCell(writer, &quot;Y&quot;, decimal(y), yFormula);</span>
+<span class="fc" id="L236">        writer.endNode();</span>
+<span class="fc" id="L237">    }</span>
+
+    private static void writeCell(
+            HierarchicalStreamWriter writer,
+            String name,
+            String value) {
+<span class="fc" id="L243">        writeCell(writer, name, value, null);</span>
+<span class="fc" id="L244">    }</span>
+
+    private static void writeCell(
+            HierarchicalStreamWriter writer,
+            String name,
+            String value,
+            String formula) {
+<span class="fc" id="L251">        writer.startNode(&quot;Cell&quot;);</span>
+<span class="fc" id="L252">        writer.addAttribute(&quot;N&quot;, name);</span>
+<span class="fc" id="L253">        writer.addAttribute(&quot;V&quot;, value);</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        if (formula != null) {</span>
+<span class="fc" id="L255">            writer.addAttribute(&quot;F&quot;, formula);</span>
+        }
+<span class="fc" id="L257">        writer.endNode();</span>
+<span class="fc" id="L258">    }</span>
+
+    private static Map&lt;String, VisioShape&gt; indexShapes(VisioPage page) {
+<span class="fc" id="L261">        Map&lt;String, VisioShape&gt; shapes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        for (VisioShape shape : page.getShapes()) {</span>
+<span class="fc" id="L263">            shapes.put(shape.getId(), shape);</span>
+<span class="fc" id="L264">        }</span>
+<span class="fc" id="L265">        return shapes;</span>
+    }
+
+    private static VisioShape requireShape(
+            Map&lt;String, VisioShape&gt; shapes,
+            String shapeId,
+            String role) {
+<span class="fc" id="L272">        VisioShape shape = shapes.get(shapeId);</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">        if (shape == null) {</span>
+<span class="nc" id="L274">            throw new IllegalArgumentException(</span>
+                    &quot;Connector references missing &quot; + role + &quot; shape &quot; + shapeId);
+        }
+<span class="fc" id="L277">        return shape;</span>
+    }
+
+    private static long maximumShapeId(VisioPage page) {
+<span class="fc" id="L281">        return page.getShapes().stream()</span>
+<span class="fc" id="L282">                .mapToLong(shape -&gt; Long.parseLong(shape.getId()))</span>
+<span class="fc" id="L283">                .max()</span>
+<span class="fc" id="L284">                .orElse(0);</span>
+    }
+
+    private static String decimal(double value) {
+<span class="fc" id="L288">        return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationDecisionProjectionWriter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationDecisionProjectionWriter.java</span></div><h1>RelationDecisionProjectionWriter.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.relations.model.RelationDecisionProjection;
+import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
+import com.taxonomy.relations.repository.RelationDecisionProjectionRepository;
+import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionConflictException;
+import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionOutcome;
+import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionRequest;
+import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionResult;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Objects;
+
+/** Transactional writer for one already Git-verified incremental projection state. */
+@Service
+public class RelationDecisionProjectionWriter {
+
+    private final RelationDecisionProjectionRepository projectionRepository;
+    private final RelationDecisionProjectionCheckpointRepository checkpointRepository;
+
+    @Autowired
+    public RelationDecisionProjectionWriter(
+            RelationDecisionProjectionRepository projectionRepository,
+<span class="fc" id="L26">            RelationDecisionProjectionCheckpointRepository checkpointRepository) {</span>
+<span class="fc" id="L27">        this.projectionRepository = Objects.requireNonNull(</span>
+                projectionRepository, &quot;projectionRepository&quot;);
+<span class="fc" id="L29">        this.checkpointRepository = Objects.requireNonNull(</span>
+                checkpointRepository, &quot;checkpointRepository&quot;);
+<span class="fc" id="L31">    }</span>
+
+    /** Compatibility constructor for focused pre-checkpoint unit tests in this package. */
+    RelationDecisionProjectionWriter(
+<span class="fc" id="L35">            RelationDecisionProjectionRepository projectionRepository) {</span>
+<span class="fc" id="L36">        this.projectionRepository = Objects.requireNonNull(</span>
+                projectionRepository, &quot;projectionRepository&quot;);
+<span class="fc" id="L38">        this.checkpointRepository = null;</span>
+<span class="fc" id="L39">    }</span>
+
+    @Transactional
+    public ProjectionResult write(ProjectionRequest request) {
+<span class="fc" id="L43">        Objects.requireNonNull(request, &quot;request&quot;);</span>
+<span class="fc" id="L44">        ProjectionRequest effectiveRequest = effectiveState(request);</span>
+<span class="fc" id="L45">        String workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(</span>
+<span class="fc" id="L46">                effectiveRequest.workspaceId());</span>
+
+        // An incremental command proves only one relation identity. Even when it
+        // is a semantic no-op, it must not leave a previous full-branch checkpoint
+        // available as an assurance that every row was rebuilt at this commit.
+        // Runtime failures roll this deletion back with the relation write.
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (checkpointRepository != null) {</span>
+<span class="fc" id="L53">            checkpointRepository.deleteExact(</span>
+<span class="fc" id="L54">                    effectiveRequest.repositoryId(),</span>
+                    workspaceScopeKey,
+<span class="fc" id="L56">                    effectiveRequest.branch());</span>
+        }
+
+<span class="fc" id="L59">        RelationDecisionProjection existing = projectionRepository</span>
+<span class="fc" id="L60">                .findExactForUpdate(</span>
+<span class="fc" id="L61">                        effectiveRequest.repositoryId(),</span>
+                        workspaceScopeKey,
+<span class="fc" id="L63">                        effectiveRequest.branch(),</span>
+<span class="fc" id="L64">                        effectiveRequest.sourceCode(),</span>
+<span class="fc" id="L65">                        effectiveRequest.relationType(),</span>
+<span class="fc" id="L66">                        effectiveRequest.targetCode())</span>
+<span class="fc" id="L67">                .orElse(null);</span>
+
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (existing == null) {</span>
+<span class="fc" id="L70">            RelationDecisionProjection created = new RelationDecisionProjection();</span>
+<span class="fc" id="L71">            applyIdentity(created, effectiveRequest);</span>
+<span class="fc" id="L72">            applyState(created, effectiveRequest);</span>
+<span class="fc" id="L73">            applyAuthority(created, effectiveRequest);</span>
+<span class="fc" id="L74">            projectionRepository.save(created);</span>
+<span class="fc" id="L75">            return result(ProjectionOutcome.CREATED, effectiveRequest);</span>
+        }
+
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (effectiveRequest.authoritativeCommitId().equals(</span>
+<span class="fc" id="L79">                existing.getAuthoritativeCommitId())) {</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (!sameState(existing, effectiveRequest)) {</span>
+<span class="fc" id="L81">                throw new ProjectionConflictException(</span>
+                        &quot;Authoritative commit &quot;
+<span class="fc" id="L83">                                + effectiveRequest.authoritativeCommitId()</span>
+                                + &quot; is already projected with different relation state&quot;);
+            }
+            // Multiple commands may legitimately prove the same semantic no-op
+            // at one unchanged Git head. Their causation IDs identify command
+            // attempts, not different authoritative relation states. A complete
+            // rebuild also records its own rebuild:&lt;commit&gt; causation ID, so
+            // requiring equality here would reject every later unchanged command.
+<span class="fc" id="L91">            return result(ProjectionOutcome.REPLAYED, effectiveRequest);</span>
+        }
+
+<span class="fc" id="L94">        applyState(existing, effectiveRequest);</span>
+<span class="fc" id="L95">        applyAuthority(existing, effectiveRequest);</span>
+<span class="fc" id="L96">        projectionRepository.save(existing);</span>
+<span class="fc" id="L97">        return result(ProjectionOutcome.UPDATED, effectiveRequest);</span>
+    }
+
+    private static ProjectionRequest effectiveState(ProjectionRequest request) {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        boolean relationPresent = request.relationPresent()</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                &amp;&amp; RelationDecisionStatusPolicy.isRelationPresent(request.status());</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (relationPresent == request.relationPresent()) {</span>
+<span class="fc" id="L104">            return request;</span>
+        }
+<span class="fc" id="L106">        return new ProjectionRequest(</span>
+<span class="fc" id="L107">                request.repositoryId(),</span>
+<span class="fc" id="L108">                request.workspaceId(),</span>
+<span class="fc" id="L109">                request.branch(),</span>
+<span class="fc" id="L110">                request.sourceCode(),</span>
+<span class="fc" id="L111">                request.relationType(),</span>
+<span class="fc" id="L112">                request.targetCode(),</span>
+                false,
+<span class="fc" id="L114">                request.status(),</span>
+<span class="fc" id="L115">                request.confidence(),</span>
+<span class="fc" id="L116">                request.provenance(),</span>
+<span class="fc" id="L117">                request.authoritativeCommitId(),</span>
+<span class="fc" id="L118">                request.causationId());</span>
+    }
+
+    private static void applyIdentity(
+            RelationDecisionProjection projection,
+            ProjectionRequest request) {
+<span class="fc" id="L124">        projection.setRepositoryId(request.repositoryId());</span>
+<span class="fc" id="L125">        projection.setWorkspaceId(request.workspaceId());</span>
+<span class="fc" id="L126">        projection.setBranch(request.branch());</span>
+<span class="fc" id="L127">        projection.setSourceCode(request.sourceCode());</span>
+<span class="fc" id="L128">        projection.setRelationType(request.relationType());</span>
+<span class="fc" id="L129">        projection.setTargetCode(request.targetCode());</span>
+<span class="fc" id="L130">    }</span>
+
+    private static void applyState(
+            RelationDecisionProjection projection,
+            ProjectionRequest request) {
+<span class="fc" id="L135">        projection.setRelationPresent(request.relationPresent());</span>
+<span class="fc" id="L136">        projection.setStatus(request.status());</span>
+<span class="fc" id="L137">        projection.setConfidence(request.confidence());</span>
+<span class="fc" id="L138">        projection.setProvenance(request.provenance());</span>
+<span class="fc" id="L139">    }</span>
+
+    private static void applyAuthority(
+            RelationDecisionProjection projection,
+            ProjectionRequest request) {
+<span class="fc" id="L144">        projection.setAuthoritativeCommitId(</span>
+<span class="fc" id="L145">                request.authoritativeCommitId());</span>
+<span class="fc" id="L146">        projection.setCausationId(request.causationId());</span>
+<span class="fc" id="L147">    }</span>
+
+    private static boolean sameState(
+            RelationDecisionProjection projection,
+            ProjectionRequest request) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        return projection.isRelationPresent() == request.relationPresent()</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(projection.getStatus(), request.status())</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L155">                        projection.getConfidence(), request.confidence())</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(</span>
+<span class="fc" id="L157">                        projection.getProvenance(), request.provenance());</span>
+    }
+
+    private static ProjectionResult result(
+            ProjectionOutcome outcome,
+            ProjectionRequest request) {
+<span class="fc" id="L163">        return new ProjectionResult(</span>
+                outcome,
+<span class="fc" id="L165">                request.authoritativeCommitId(),</span>
+<span class="fc" id="L166">                request.relationPresent());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

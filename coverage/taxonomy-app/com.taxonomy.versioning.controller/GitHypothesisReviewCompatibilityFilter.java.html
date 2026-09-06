@@ -1,0 +1,397 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitHypothesisReviewCompatibilityFilter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.controller</a> &gt; <span class="el_source">GitHypothesisReviewCompatibilityFilter.java</span></div><h1>GitHypothesisReviewCompatibilityFilter.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.controller;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.controller.GitHttpPrecondition;
+import com.taxonomy.relations.controller.GitHttpPrecondition.InvalidPreconditionException;
+import com.taxonomy.relations.controller.RelationApiController;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
+import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.HypothesisReviewPendingException;
+import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
+import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
+import com.taxonomy.versioning.service.GitAuthoritativeHypothesisService;
+import com.taxonomy.versioning.service.HypothesisReviewStateStore.HypothesisReviewConflictException;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Preserves the established {@code /api/dsl/hypotheses/...} browser contract
+ * while moving it in front of the legacy MVC methods to the Git-authoritative
+ * command path. The filter belongs to the versioning boundary because it adapts
+ * an existing DSL/versioning route; relation commands remain a dependency of
+ * versioning rather than creating a reverse package cycle.
+ */
+@Component
+@Order(Ordered.LOWEST_PRECEDENCE - 100)
+public class GitHypothesisReviewCompatibilityFilter extends OncePerRequestFilter {
+
+    static final int MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+
+<span class="fc" id="L57">    private static final Pattern REVIEW_PATH = Pattern.compile(</span>
+            &quot;^/api/dsl/hypotheses/(\\d+)/(accept|reject|revert)$&quot;);
+<span class="fc" id="L59">    private static final Pattern EXTERNAL_IDEMPOTENCY_KEY = Pattern.compile(</span>
+            &quot;[\\x21-\\x7e]{1,&quot; + MAX_IDEMPOTENCY_KEY_LENGTH + &quot;}&quot;);
+<span class="fc" id="L61">    private static final Pattern HYPOTHESIS_NOT_FOUND_MESSAGE = Pattern.compile(</span>
+            &quot;^Hypothesis not found: \\d+$&quot;);
+<span class="fc" id="L63">    private static final Pattern HYPOTHESIS_NOT_REVIEWABLE_MESSAGE = Pattern.compile(</span>
+            &quot;^Hypothesis \\d+ cannot be &quot;
+                    + &quot;(?:(?:accepted|rejected) from|reverted from) [A-Z_]+$&quot;);
+    private static final String IDEMPOTENCY_KEY = &quot;Idempotency-Key&quot;;
+    private static final String REVIEW_REJECTED = &quot;REVIEW_REJECTED&quot;;
+
+    private final GitAuthoritativeHypothesisService hypothesisService;
+    private final RelationBranchProjectionReadinessService readinessService;
+    private final WorkspaceResolver workspaceResolver;
+    private final SystemRepositoryService repositoryService;
+    private final RepositoryMembershipService membershipService;
+    private final ObjectMapper objectMapper;
+
+    public GitHypothesisReviewCompatibilityFilter(
+            GitAuthoritativeHypothesisService hypothesisService,
+            RelationBranchProjectionReadinessService readinessService,
+            WorkspaceResolver workspaceResolver,
+            SystemRepositoryService repositoryService,
+<span class="fc" id="L81">            RepositoryMembershipService membershipService) {</span>
+<span class="fc" id="L82">        this.hypothesisService = Objects.requireNonNull(</span>
+                hypothesisService, &quot;hypothesisService&quot;);
+<span class="fc" id="L84">        this.readinessService = Objects.requireNonNull(</span>
+                readinessService, &quot;readinessService&quot;);
+<span class="fc" id="L86">        this.workspaceResolver = Objects.requireNonNull(</span>
+                workspaceResolver, &quot;workspaceResolver&quot;);
+<span class="fc" id="L88">        this.repositoryService = Objects.requireNonNull(</span>
+                repositoryService, &quot;repositoryService&quot;);
+<span class="fc" id="L90">        this.membershipService = Objects.requireNonNull(</span>
+                membershipService, &quot;membershipService&quot;);
+<span class="fc" id="L92">        this.objectMapper = new ObjectMapper();</span>
+<span class="fc" id="L93">    }</span>
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        return !&quot;POST&quot;.equalsIgnoreCase(request.getMethod())</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                || !REVIEW_PATH.matcher(applicationPath(request)).matches();</span>
+    }
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
+<span class="fc" id="L106">        Matcher matcher = REVIEW_PATH.matcher(applicationPath(request));</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (!matcher.matches()) {</span>
+<span class="nc" id="L108">            filterChain.doFilter(request, response);</span>
+<span class="nc" id="L109">            return;</span>
+        }
+
+<span class="fc" id="L112">        String suppliedIdempotencyKey = request.getHeader(IDEMPOTENCY_KEY);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (!isValidSuppliedIdempotencyKey(suppliedIdempotencyKey)) {</span>
+<span class="fc" id="L114">            write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(</span>
+                    &quot;INVALID_IDEMPOTENCY_KEY&quot;,
+                    &quot;Idempotency-Key must contain between 1 and &quot;
+                            + MAX_IDEMPOTENCY_KEY_LENGTH
+                            + &quot; visible ASCII characters without whitespace.&quot;));
+<span class="fc" id="L119">            return;</span>
+        }
+<span class="fc" id="L121">        suppliedIdempotencyKey = normalizedSuppliedIdempotencyKey(</span>
+                suppliedIdempotencyKey);
+
+        long hypothesisId;
+        try {
+<span class="fc" id="L126">            hypothesisId = Long.parseLong(matcher.group(1));</span>
+<span class="fc" id="L127">        } catch (NumberFormatException error) {</span>
+<span class="fc" id="L128">            write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(</span>
+                    &quot;INVALID_HYPOTHESIS_ID&quot;,
+                    &quot;The hypothesis identifier is outside the supported range.&quot;));
+<span class="fc" id="L131">            return;</span>
+<span class="fc" id="L132">        }</span>
+<span class="fc" id="L133">        ReviewAction action = ReviewAction.valueOf(</span>
+<span class="fc" id="L134">                matcher.group(2).toUpperCase(Locale.ROOT));</span>
+        try {
+<span class="fc" id="L136">            RepositoryContext selected = workspaceResolver</span>
+<span class="fc" id="L137">                    .resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L138">            RepositoryContext context = writableContext(selected);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (context == null) {</span>
+<span class="fc" id="L140">                write(response, HttpServletResponse.SC_FORBIDDEN, Map.of(</span>
+                        &quot;status&quot;, &quot;FORBIDDEN&quot;));
+<span class="fc" id="L142">                return;</span>
+            }
+
+            // Fail closed on tenant visibility and terminal lifecycle state
+            // before exposing whether the selected branch has a Git head.
+<span class="fc" id="L147">            hypothesisService.requireReviewable(</span>
+<span class="fc" id="L148">                    hypothesisId, context, action);</span>
+
+<span class="fc" id="L150">            Readiness readiness = readinessService.inspect(context);</span>
+<span class="fc" id="L151">            String expectedHead = expectedHead(</span>
+<span class="fc" id="L152">                    request.getHeader(HttpHeaders.IF_MATCH),</span>
+<span class="fc" id="L153">                    readiness.currentHeadCommit());</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">            if (expectedHead == null) {</span>
+<span class="nc" id="L155">                response.setHeader(</span>
+                        RelationApiController.PROJECTION_STATE_HEADER,
+                        RelationBranchProjectionReadinessService
+<span class="nc" id="L158">                                .ReadinessState.BRANCH_MISSING.name());</span>
+<span class="nc" id="L159">                write(response, HttpServletResponse.SC_NOT_FOUND, Map.of(</span>
+                        &quot;status&quot;, &quot;BRANCH_MISSING&quot;));
+<span class="nc" id="L161">                return;</span>
+            }
+
+<span class="fc" id="L164">            String causationId = idempotencyKey(</span>
+                    suppliedIdempotencyKey,
+                    hypothesisId,
+                    action,
+                    expectedHead);
+<span class="fc" id="L169">            ReviewResult result = hypothesisService.review(</span>
+<span class="fc" id="L170">                    hypothesisId,</span>
+                    context,
+                    expectedHead,
+                    new CommandMetadata(
+                            causationId,
+                            &quot;Git-first hypothesis review through the productive DSL API&quot;),
+                    action);
+<span class="fc" id="L177">            CommandResult authority = result.mutation().authority();</span>
+<span class="fc" id="L178">            response.setHeader(</span>
+                    HttpHeaders.ETAG,
+<span class="fc" id="L180">                    GitHttpPrecondition.etag(</span>
+<span class="fc" id="L181">                            authority.authoritativeCommitId()));</span>
+<span class="fc" id="L182">            write(response, HttpServletResponse.SC_OK, successPayload(result));</span>
+<span class="fc" id="L183">        } catch (BranchHeadConflictException error) {</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">            if (error.getActualHeadCommit() != null) {</span>
+<span class="fc" id="L185">                response.setHeader(</span>
+                        HttpHeaders.ETAG,
+<span class="fc" id="L187">                        GitHttpPrecondition.etag(error.getActualHeadCommit()));</span>
+            }
+<span class="fc" id="L189">            write(response, HttpServletResponse.SC_PRECONDITION_FAILED,</span>
+<span class="fc" id="L190">                    conflictPayload(hypothesisId, action, error));</span>
+<span class="fc" id="L191">        } catch (HypothesisReviewPendingException error) {</span>
+<span class="fc" id="L192">            response.setHeader(</span>
+                    HttpHeaders.ETAG,
+<span class="fc" id="L194">                    GitHttpPrecondition.etag(</span>
+<span class="fc" id="L195">                            error.getAuthority().authoritativeCommitId()));</span>
+<span class="fc" id="L196">            write(response, HttpServletResponse.SC_ACCEPTED,</span>
+<span class="fc" id="L197">                    pendingPayload(error));</span>
+<span class="fc" id="L198">        } catch (HypothesisReviewConflictException error) {</span>
+<span class="fc" id="L199">            write(response, HttpServletResponse.SC_CONFLICT, Map.of(</span>
+<span class="fc" id="L200">                    &quot;hypothesisId&quot;, error.getHypothesisId(),</span>
+<span class="fc" id="L201">                    &quot;expectedStatus&quot;, error.getExpectedStatus().name(),</span>
+<span class="fc" id="L202">                    &quot;actualStatus&quot;, error.getActualStatus().name(),</span>
+                    &quot;projectionStatus&quot;, &quot;BOOKKEEPING_CONFLICT&quot;));
+<span class="fc" id="L204">        } catch (InvalidPreconditionException error) {</span>
+<span class="fc" id="L205">            write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(</span>
+                    &quot;INVALID_PRECONDITION&quot;,
+                    &quot;If-Match must contain one strong quoted full Git commit ID.&quot;));
+<span class="fc" id="L208">        } catch (IllegalArgumentException error) {</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">            if (isKnownHypothesisNotFound(error)) {</span>
+<span class="fc" id="L210">                write(response, HttpServletResponse.SC_NOT_FOUND, errorPayload(</span>
+                        &quot;HYPOTHESIS_NOT_FOUND&quot;,
+                        &quot;Hypothesis is not available for review.&quot;));
+            } else {
+<span class="nc" id="L214">                write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(</span>
+                        &quot;INVALID_REVIEW_REQUEST&quot;,
+                        &quot;The hypothesis review request is invalid.&quot;));
+            }
+<span class="fc" id="L218">        } catch (IllegalStateException error) {</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">            if (isKnownLifecycleRejection(error)) {</span>
+<span class="fc" id="L220">                write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(</span>
+                        &quot;HYPOTHESIS_NOT_REVIEWABLE&quot;,
+                        &quot;Hypothesis is not in a state that permits this review action.&quot;));
+            } else {
+<span class="fc" id="L224">                write(response, HttpServletResponse.SC_BAD_REQUEST, errorPayload(</span>
+                        &quot;REVIEW_OPERATION_REJECTED&quot;,
+                        &quot;The review operation cannot be completed in the current state.&quot;));
+            }
+<span class="fc" id="L228">        } catch (IOException error) {</span>
+<span class="fc" id="L229">            write(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE,</span>
+<span class="fc" id="L230">                    Map.of(&quot;status&quot;, &quot;GIT_UNAVAILABLE&quot;));</span>
+<span class="fc" id="L231">        }</span>
+<span class="fc" id="L232">    }</span>
+
+    private RepositoryContext writableContext(RepositoryContext context) {
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        if (context.scope() == RepositoryScope.WORKSPACE</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">                || context.scope() == RepositoryScope.FORK) {</span>
+<span class="fc" id="L237">            return context;</span>
+        }
+<span class="fc" id="L239">        SystemRepository repository = repositoryService.getRepository(</span>
+<span class="fc" id="L240">                context.repositoryId());</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        if (!isApplicationAdmin()</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">                &amp;&amp; !membershipService.canMaintain(</span>
+<span class="fc" id="L243">                        repository, context.username())) {</span>
+<span class="fc" id="L244">            return null;</span>
+        }
+<span class="nc" id="L246">        return new RepositoryContext(</span>
+<span class="nc" id="L247">                context.repositoryId(),</span>
+                null,
+<span class="nc" id="L249">                context.branch(),</span>
+<span class="nc" id="L250">                context.username(),</span>
+                RepositoryScope.CENTRAL_WRITE);
+    }
+
+    private static String expectedHead(String ifMatch, String currentHead) {
+<span class="pc bpc" id="L255" title="1 of 4 branches missed.">        if (ifMatch == null || ifMatch.isBlank()) {</span>
+<span class="fc" id="L256">            return currentHead;</span>
+        }
+<span class="fc" id="L258">        return GitHttpPrecondition.expectedHead(ifMatch, null);</span>
+    }
+
+    /**
+     * Externally supplied idempotency keys are opaque, case-sensitive values of
+     * between 1 and 128 visible ASCII characters. Whitespace, control, format and
+     * non-ASCII characters are rejected before repository or Git work starts.
+     */
+    private static boolean isValidSuppliedIdempotencyKey(String supplied) {
+<span class="fc bfc" id="L267" title="All 2 branches covered.">        return supplied == null</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">                || supplied.length() &lt;= MAX_IDEMPOTENCY_KEY_LENGTH</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">                        &amp;&amp; EXTERNAL_IDEMPOTENCY_KEY.matcher(supplied).matches();</span>
+    }
+
+    private static String normalizedSuppliedIdempotencyKey(String supplied) {
+<span class="fc" id="L273">        return supplied;</span>
+    }
+
+    private static String idempotencyKey(
+            String supplied,
+            long hypothesisId,
+            ReviewAction action,
+            String expectedHead) {
+<span class="fc bfc" id="L281" title="All 2 branches covered.">        if (supplied != null) {</span>
+<span class="fc" id="L282">            return supplied;</span>
+        }
+<span class="fc" id="L284">        String generated = &quot;legacy-hypothesis-&quot;</span>
+<span class="fc" id="L285">                + action.name().toLowerCase(Locale.ROOT)</span>
+                + &quot;-&quot; + hypothesisId + &quot;-&quot; + expectedHead;
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">        if (generated.length() &gt; MAX_IDEMPOTENCY_KEY_LENGTH</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                || !EXTERNAL_IDEMPOTENCY_KEY.matcher(generated).matches()) {</span>
+<span class="nc" id="L289">            throw new IllegalStateException(</span>
+                    &quot;Generated legacy idempotency key violates the command boundary&quot;);
+        }
+<span class="fc" id="L292">        return generated;</span>
+    }
+
+    private static boolean isKnownHypothesisNotFound(
+            IllegalArgumentException error) {
+<span class="fc" id="L297">        String message = error.getMessage();</span>
+<span class="pc bpc" id="L298" title="1 of 2 branches missed.">        return message != null</span>
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">                &amp;&amp; HYPOTHESIS_NOT_FOUND_MESSAGE.matcher(message).matches();</span>
+    }
+
+    private static boolean isKnownLifecycleRejection(
+            IllegalStateException error) {
+<span class="fc" id="L304">        String message = error.getMessage();</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">        return message != null</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">                &amp;&amp; HYPOTHESIS_NOT_REVIEWABLE_MESSAGE.matcher(message).matches();</span>
+    }
+
+    private static Map&lt;String, Object&gt; successPayload(ReviewResult result) {
+<span class="fc" id="L310">        CommandResult authority = result.mutation().authority();</span>
+<span class="fc" id="L311">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L312">        payload.put(&quot;id&quot;, result.hypothesisId());</span>
+<span class="fc" id="L313">        payload.put(&quot;action&quot;, result.action().name());</span>
+<span class="fc" id="L314">        payload.put(&quot;status&quot;, result.hypothesis().getStatus().name());</span>
+<span class="fc" id="L315">        payload.put(&quot;sourceNodeId&quot;, result.hypothesis().getSourceNodeId());</span>
+<span class="fc" id="L316">        payload.put(&quot;targetNodeId&quot;, result.hypothesis().getTargetNodeId());</span>
+<span class="fc" id="L317">        payload.put(&quot;relationType&quot;, result.hypothesis().getRelationType().name());</span>
+<span class="fc" id="L318">        payload.put(&quot;authoritativeCommitId&quot;,</span>
+<span class="fc" id="L319">                authority.authoritativeCommitId());</span>
+<span class="fc" id="L320">        payload.put(&quot;previousHeadCommit&quot;, authority.previousHeadCommit());</span>
+<span class="fc" id="L321">        payload.put(&quot;changeKind&quot;, authority.changeKind().name());</span>
+<span class="fc" id="L322">        payload.put(&quot;commitCreated&quot;, authority.commitCreated());</span>
+<span class="fc" id="L323">        payload.put(&quot;projectionStatus&quot;, &quot;PROJECTED&quot;);</span>
+<span class="fc" id="L324">        payload.put(&quot;projectionOutcome&quot;,</span>
+<span class="fc" id="L325">                result.mutation().projection().outcome().name());</span>
+<span class="fc" id="L326">        payload.put(&quot;relationPresent&quot;,</span>
+<span class="fc" id="L327">                result.mutation().projection().relationPresent());</span>
+<span class="fc" id="L328">        return payload;</span>
+    }
+
+    private static Map&lt;String, Object&gt; pendingPayload(
+            HypothesisReviewPendingException error) {
+<span class="fc" id="L333">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L334">        payload.put(&quot;id&quot;, error.getHypothesisId());</span>
+<span class="fc" id="L335">        payload.put(&quot;status&quot;, error.getIntendedStatus().name());</span>
+<span class="fc" id="L336">        payload.put(&quot;authoritativeCommitId&quot;,</span>
+<span class="fc" id="L337">                error.getAuthority().authoritativeCommitId());</span>
+<span class="fc" id="L338">        payload.put(&quot;changeKind&quot;, error.getAuthority().changeKind().name());</span>
+<span class="fc" id="L339">        payload.put(&quot;commitCreated&quot;, error.getAuthority().commitCreated());</span>
+<span class="fc" id="L340">        payload.put(&quot;projectionStatus&quot;, &quot;PENDING_RECOVERY&quot;);</span>
+<span class="fc" id="L341">        payload.put(&quot;pendingPhase&quot;, error.getPhase().name());</span>
+<span class="fc" id="L342">        return payload;</span>
+    }
+
+    private static Map&lt;String, Object&gt; conflictPayload(
+            long hypothesisId,
+            ReviewAction action,
+            BranchHeadConflictException error) {
+<span class="fc" id="L349">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L350">        payload.put(&quot;id&quot;, hypothesisId);</span>
+<span class="fc" id="L351">        payload.put(&quot;action&quot;, action.name());</span>
+<span class="fc" id="L352">        payload.put(&quot;projectionStatus&quot;, &quot;PRECONDITION_FAILED&quot;);</span>
+<span class="fc" id="L353">        payload.put(&quot;expectedHeadCommit&quot;, error.getExpectedHeadCommit());</span>
+<span class="fc" id="L354">        payload.put(&quot;actualHeadCommit&quot;, error.getActualHeadCommit());</span>
+<span class="fc" id="L355">        return payload;</span>
+    }
+
+    private static Map&lt;String, Object&gt; errorPayload(
+            String code,
+            String detail) {
+<span class="fc" id="L361">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L362">        payload.put(&quot;status&quot;, REVIEW_REJECTED);</span>
+<span class="fc" id="L363">        payload.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L364">        payload.put(&quot;detail&quot;, detail);</span>
+<span class="fc" id="L365">        payload.put(&quot;error&quot;, detail);</span>
+<span class="fc" id="L366">        return payload;</span>
+    }
+
+    private void write(
+            HttpServletResponse response,
+            int status,
+            Map&lt;String, ?&gt; payload) throws IOException {
+<span class="fc" id="L373">        response.setStatus(status);</span>
+<span class="fc" id="L374">        response.setHeader(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="fc" id="L375">        response.setContentType(MediaType.APPLICATION_JSON_VALUE);</span>
+<span class="fc" id="L376">        response.setCharacterEncoding(&quot;UTF-8&quot;);</span>
+<span class="fc" id="L377">        objectMapper.writeValue(response.getOutputStream(), payload);</span>
+<span class="fc" id="L378">    }</span>
+
+    private static String applicationPath(HttpServletRequest request) {
+<span class="fc" id="L381">        String uri = request.getRequestURI();</span>
+<span class="fc" id="L382">        String contextPath = request.getContextPath();</span>
+<span class="pc bpc" id="L383" title="1 of 4 branches missed.">        return contextPath == null || contextPath.isEmpty()</span>
+<span class="fc" id="L384">                ? uri</span>
+<span class="fc" id="L385">                : uri.substring(contextPath.length());</span>
+    }
+
+    private static boolean isApplicationAdmin() {
+<span class="fc" id="L389">        Authentication authentication = SecurityContextHolder.getContext()</span>
+<span class="fc" id="L390">                .getAuthentication();</span>
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">        return authentication != null</span>
+<span class="nc" id="L392">                &amp;&amp; authentication.getAuthorities().stream()</span>
+<span class="pc bnc" id="L393" title="All 2 branches missed.">                        .anyMatch(authority -&gt; &quot;ROLE_ADMIN&quot;.equals(</span>
+<span class="nc" id="L394">                                authority.getAuthority()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

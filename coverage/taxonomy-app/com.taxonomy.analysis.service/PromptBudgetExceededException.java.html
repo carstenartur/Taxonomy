@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PromptBudgetExceededException.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">PromptBudgetExceededException.java</span></div><h1>PromptBudgetExceededException.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor;
+
+/** Raised before provider dispatch when the selected AI target cannot accept the input. */
+public class PromptBudgetExceededException extends IllegalArgumentException {
+
+    public static final String CODE = &quot;PROMPT_BUDGET_EXCEEDED&quot;;
+
+    private final String targetId;
+    private final int inputCharacters;
+    private final int inputBytes;
+    private final int estimatedInputTokens;
+    private final int maxInputCharacters;
+    private final int maxInputBytes;
+    private final int estimatedMaxInputTokens;
+
+    public PromptBudgetExceededException(
+            AiTargetDescriptor target,
+            int inputCharacters,
+            int inputBytes,
+            int estimatedInputTokens) {
+<span class="nc" id="L23">        super(message(target, inputCharacters, inputBytes, estimatedInputTokens));</span>
+<span class="nc" id="L24">        this.targetId = target.targetId();</span>
+<span class="nc" id="L25">        this.inputCharacters = inputCharacters;</span>
+<span class="nc" id="L26">        this.inputBytes = inputBytes;</span>
+<span class="nc" id="L27">        this.estimatedInputTokens = estimatedInputTokens;</span>
+<span class="nc" id="L28">        this.maxInputCharacters = target.promptBudget().maxInputCharacters();</span>
+<span class="nc" id="L29">        this.maxInputBytes = target.promptBudget().maxInputBytes();</span>
+<span class="nc" id="L30">        this.estimatedMaxInputTokens = target.promptBudget().estimatedMaxInputTokens();</span>
+<span class="nc" id="L31">    }</span>
+
+    public String getCode() {
+<span class="nc" id="L34">        return CODE;</span>
+    }
+
+    public String getTargetId() {
+<span class="nc" id="L38">        return targetId;</span>
+    }
+
+    public int getInputCharacters() {
+<span class="nc" id="L42">        return inputCharacters;</span>
+    }
+
+    public int getInputBytes() {
+<span class="nc" id="L46">        return inputBytes;</span>
+    }
+
+    public int getEstimatedInputTokens() {
+<span class="nc" id="L50">        return estimatedInputTokens;</span>
+    }
+
+    public int getMaxInputCharacters() {
+<span class="nc" id="L54">        return maxInputCharacters;</span>
+    }
+
+    public int getMaxInputBytes() {
+<span class="nc" id="L58">        return maxInputBytes;</span>
+    }
+
+    public int getEstimatedMaxInputTokens() {
+<span class="nc" id="L62">        return estimatedMaxInputTokens;</span>
+    }
+
+    private static String message(
+            AiTargetDescriptor target,
+            int characters,
+            int bytes,
+            int tokens) {
+<span class="nc" id="L70">        return CODE + &quot;: AI target &quot; + target.targetId()</span>
+                + &quot; cannot accept the requirement within its configured prompt budget &quot;
+<span class="nc" id="L72">                + &quot;(characters &quot; + characters + &quot;/&quot; + target.promptBudget().maxInputCharacters()</span>
+<span class="nc" id="L73">                + &quot;, UTF-8 bytes &quot; + bytes + &quot;/&quot; + target.promptBudget().maxInputBytes()</span>
+                + &quot;, estimated input tokens &quot; + tokens + &quot;/&quot;
+<span class="nc" id="L75">                + target.promptBudget().estimatedMaxInputTokens() + &quot;). &quot;</span>
+                + &quot;Reduce or split the requirement, select a target with a larger budget, &quot;
+                + &quot;or resume from preserved partial evidence.&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

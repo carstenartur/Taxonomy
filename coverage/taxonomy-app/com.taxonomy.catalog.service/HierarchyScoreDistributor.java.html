@@ -1,0 +1,484 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>HierarchyScoreDistributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">HierarchyScoreDistributor.java</span></div><h1>HierarchyScoreDistributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
+
+/**
+ * Walks the taxonomy hierarchy from root to leaf and distributes scores
+ * so that every node on the path carries a score.
+ *
+ * &lt;p&gt;The distributor uses two pluggable components:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link NodeScorer} — provides raw relevance scores for a batch of
+ *       sibling nodes. Implementations can source scores from cloud LLMs,
+ *       local embedding models, pre-recorded analysis files, or deterministic
+ *       algorithms.&lt;/li&gt;
+ *   &lt;li&gt;{@link DistributionStrategy} — decides how those raw scores relate
+ *       to the parent's score. {@link BudgetDistribution} normalises children
+ *       to sum to the parent (standard hierarchical narrowing);
+ *       {@link IndependentScoring} keeps each node's raw 0–100 score, which
+ *       can discover taxonomy flaws where children match better than parents
+ *       or vice versa.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;h3&gt;Convenience methods&lt;/h3&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link #distribute(Map, Map)} — backward-compatible overload that
+ *       uses {@link DeterministicNodeScorer} + {@link BudgetDistribution}.&lt;/li&gt;
+ *   &lt;li&gt;{@link #distribute(Map, Map, String, NodeScorer, DistributionStrategy)}
+ *       — full-featured overload with one scorer and strategy.&lt;/li&gt;
+ *   &lt;li&gt;The mixed-strategy overload separates ordinary hierarchical nodes
+ *       from independently scored terminal leaves without multiplying the
+ *       parent budget.&lt;/li&gt;
+ *   &lt;li&gt;{@link #fillIntermediateScores(Map)} — fills in missing intermediate
+ *       nodes by linear interpolation.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+public class HierarchyScoreDistributor {
+
+    private final TaxonomyService taxonomyService;
+
+<span class="fc" id="L52">    public HierarchyScoreDistributor(TaxonomyService taxonomyService) {</span>
+<span class="fc" id="L53">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L54">    }</span>
+
+    // ── Result record ──────────────────────────────────────────────────────
+
+    /**
+     * Result of a full score distribution.
+     *
+     * @param scores  node-code → integer score for every taxonomy node
+     * @param reasons node-code → human-readable reason text
+     */
+<span class="fc" id="L64">    public record DistributionResult(</span>
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons) {}
+
+    // ── Full distribution (pluggable) ──────────────────────────────────────
+
+    /**
+     * Distributes root-level scores across the entire taxonomy hierarchy
+     * using a pluggable scorer and strategy.
+     *
+     * &lt;p&gt;For each root, the hierarchy is walked depth-first. At every level
+     * the {@code scorer} is asked for raw scores, which the {@code strategy}
+     * then adjusts (for example, normalise to the parent budget or keep
+     * independent values).
+     *
+     * @param rootScores       two-letter root code → integer score (0–100)
+     * @param rootReasons      two-letter root code → reason text
+     * @param requirementText  the business requirement being analysed
+     *                         (passed through to the scorer)
+     * @param scorer           provides raw scores for each batch of siblings
+     * @param strategy         adjusts raw scores according to its constraints
+     * @return scores and reasons for &lt;em&gt;all&lt;/em&gt; nodes in the taxonomy
+     */
+    public DistributionResult distribute(Map&lt;String, Integer&gt; rootScores,
+                                         Map&lt;String, String&gt; rootReasons,
+                                         String requirementText,
+                                         NodeScorer scorer,
+                                         DistributionStrategy strategy) {
+
+<span class="fc" id="L93">        List&lt;TaxonomyNode&gt; roots = taxonomyService.getRootNodes()</span>
+<span class="fc" id="L94">                .stream()</span>
+<span class="fc" id="L95">                .sorted(Comparator.comparing(TaxonomyNode::getCode))</span>
+<span class="fc" id="L96">                .toList();</span>
+
+        // Pre-load the full parent→children map once to avoid N+1 queries
+<span class="fc" id="L99">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap = taxonomyService.getChildrenMap();</span>
+
+<span class="fc" id="L101">        Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L102">        Map&lt;String, String&gt; reasons = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
+<span class="fc" id="L105">            int rootScore = rootScores.getOrDefault(root.getCode(), 0);</span>
+<span class="fc" id="L106">            scores.put(root.getCode(), rootScore);</span>
+<span class="fc" id="L107">            reasons.put(root.getCode(), rootReasons.getOrDefault(root.getCode(), &quot;&quot;));</span>
+<span class="fc" id="L108">            walkRecursively(root.getCode(), rootScore, requirementText,</span>
+                    scorer, strategy, childrenMap, scores, reasons, rootReasons);
+<span class="fc" id="L110">        }</span>
+
+<span class="fc" id="L112">        return new DistributionResult(scores, reasons);</span>
+    }
+
+    /**
+     * Distributes scores with separate contracts for hierarchical nodes and
+     * independently scored terminal leaves.
+     *
+     * &lt;p&gt;Hierarchical siblings consume exactly one parent budget through the
+     * supplied hierarchical strategy. Leaves selected by
+     * {@code independentLeafPredicate} are removed from that budget and scored
+     * separately. A zero-scored parent still short-circuits its complete
+     * subtree, matching the runtime traversal contract. Selected independent
+     * nodes must be leaves; a non-leaf selection fails closed.
+     *
+     * @param rootScores               two-letter root code → score
+     * @param rootReasons              two-letter root code → reason
+     * @param requirementText          requirement passed to both scorers
+     * @param hierarchicalScorer       scorer for ordinary taxonomy children
+     * @param hierarchicalStrategy     strategy for ordinary taxonomy children
+     * @param independentLeafPredicate identifies terminal independent leaves
+     * @param independentLeafScorer    scorer for independent leaves
+     * @param independentLeafStrategy  strategy for independent leaves
+     * @return scores and reasons for all nodes in the taxonomy
+     */
+    public DistributionResult distribute(
+            Map&lt;String, Integer&gt; rootScores,
+            Map&lt;String, String&gt; rootReasons,
+            String requirementText,
+            NodeScorer hierarchicalScorer,
+            DistributionStrategy hierarchicalStrategy,
+            Predicate&lt;TaxonomyNode&gt; independentLeafPredicate,
+            NodeScorer independentLeafScorer,
+            DistributionStrategy independentLeafStrategy) {
+
+<span class="fc" id="L146">        Objects.requireNonNull(rootScores, &quot;rootScores&quot;);</span>
+<span class="fc" id="L147">        Objects.requireNonNull(rootReasons, &quot;rootReasons&quot;);</span>
+<span class="fc" id="L148">        Objects.requireNonNull(requirementText, &quot;requirementText&quot;);</span>
+<span class="fc" id="L149">        Objects.requireNonNull(hierarchicalScorer, &quot;hierarchicalScorer&quot;);</span>
+<span class="fc" id="L150">        Objects.requireNonNull(hierarchicalStrategy, &quot;hierarchicalStrategy&quot;);</span>
+<span class="fc" id="L151">        Objects.requireNonNull(independentLeafPredicate, &quot;independentLeafPredicate&quot;);</span>
+<span class="fc" id="L152">        Objects.requireNonNull(independentLeafScorer, &quot;independentLeafScorer&quot;);</span>
+<span class="fc" id="L153">        Objects.requireNonNull(independentLeafStrategy, &quot;independentLeafStrategy&quot;);</span>
+
+<span class="fc" id="L155">        List&lt;TaxonomyNode&gt; roots = taxonomyService.getRootNodes()</span>
+<span class="fc" id="L156">                .stream()</span>
+<span class="fc" id="L157">                .sorted(Comparator.comparing(TaxonomyNode::getCode))</span>
+<span class="fc" id="L158">                .toList();</span>
+<span class="fc" id="L159">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap = taxonomyService.getChildrenMap();</span>
+<span class="fc" id="L160">        Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L161">        Map&lt;String, String&gt; reasons = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
+<span class="fc" id="L164">            int rootScore = rootScores.getOrDefault(root.getCode(), 0);</span>
+<span class="fc" id="L165">            scores.put(root.getCode(), rootScore);</span>
+<span class="fc" id="L166">            reasons.put(root.getCode(), rootReasons.getOrDefault(root.getCode(), &quot;&quot;));</span>
+<span class="fc" id="L167">            walkRecursivelyMixed(</span>
+<span class="fc" id="L168">                    root.getCode(),</span>
+                    rootScore,
+                    requirementText,
+                    hierarchicalScorer,
+                    hierarchicalStrategy,
+                    independentLeafPredicate,
+                    independentLeafScorer,
+                    independentLeafStrategy,
+                    childrenMap,
+                    scores,
+                    reasons,
+                    rootReasons);
+<span class="fc" id="L180">        }</span>
+
+<span class="fc" id="L182">        return new DistributionResult(scores, reasons);</span>
+    }
+
+    // ── Backward-compatible overload ───────────────────────────────────────
+
+    /**
+     * Distributes root-level scores using the default
+     * {@link DeterministicNodeScorer} and {@link BudgetDistribution} strategy.
+     *
+     * &lt;p&gt;This is equivalent to calling
+     * {@code distribute(rootScores, rootReasons, &quot;&quot;, DeterministicNodeScorer.INSTANCE, BudgetDistribution.INSTANCE)}.
+     *
+     * @param rootScores  two-letter root code → integer score (0–100)
+     * @param rootReasons two-letter root code → reason text
+     * @return scores and reasons for &lt;em&gt;all&lt;/em&gt; nodes in the taxonomy
+     */
+    public DistributionResult distribute(Map&lt;String, Integer&gt; rootScores,
+                                         Map&lt;String, String&gt; rootReasons) {
+<span class="fc" id="L200">        return distribute(rootScores, rootReasons, &quot;&quot;,</span>
+                DeterministicNodeScorer.INSTANCE, BudgetDistribution.INSTANCE);
+    }
+
+    // ── Recursive hierarchy walk ───────────────────────────────────────────
+
+    private void walkRecursively(String parentCode,
+                                 int parentScore,
+                                 String requirementText,
+                                 NodeScorer scorer,
+                                 DistributionStrategy strategy,
+                                 Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+                                 Map&lt;String, Integer&gt; scores,
+                                 Map&lt;String, String&gt; reasons,
+                                 Map&lt;String, String&gt; rootReasons) {
+
+<span class="fc" id="L216">        List&lt;TaxonomyNode&gt; children = childrenMap.getOrDefault(parentCode, List.of());</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (children.isEmpty()) {</span>
+<span class="fc" id="L218">            return;</span>
+        }
+
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (parentScore == 0) {</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            for (TaxonomyNode child : children) {</span>
+<span class="fc" id="L223">                scores.put(child.getCode(), 0);</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">                String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : &quot;&quot;;</span>
+<span class="fc" id="L225">                reasons.put(child.getCode(), rootReasons.getOrDefault(root, &quot;&quot;));</span>
+<span class="fc" id="L226">                walkRecursively(child.getCode(), 0, requirementText,</span>
+                        scorer, strategy, childrenMap, scores, reasons, rootReasons);
+<span class="fc" id="L228">            }</span>
+<span class="fc" id="L229">            return;</span>
+        }
+
+<span class="fc" id="L232">        Map&lt;String, Integer&gt; rawScores = scorer.score(requirementText, children, parentScore);</span>
+<span class="fc" id="L233">        Map&lt;String, Integer&gt; adjustedScores = strategy.adjust(rawScores, parentScore);</span>
+
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        for (TaxonomyNode child : children) {</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">            if (!adjustedScores.containsKey(child.getCode())) {</span>
+<span class="nc" id="L237">                throw new IllegalStateException(</span>
+<span class="nc" id="L238">                        &quot;DistributionStrategy '&quot; + strategy.name()</span>
+                                + &quot;' did not return a score for child code '&quot;
+<span class="nc" id="L240">                                + child.getCode() + &quot;' of parent '&quot; + parentCode + &quot;'&quot;);</span>
+            }
+<span class="fc" id="L242">        }</span>
+
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        for (TaxonomyNode child : children) {</span>
+<span class="fc" id="L245">            int childScore = adjustedScores.getOrDefault(child.getCode(), 0);</span>
+<span class="fc" id="L246">            scores.put(child.getCode(), childScore);</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">            String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : &quot;&quot;;</span>
+<span class="fc" id="L248">            reasons.put(child.getCode(), rootReasons.getOrDefault(root, &quot;&quot;));</span>
+<span class="fc" id="L249">            walkRecursively(child.getCode(), childScore, requirementText,</span>
+                    scorer, strategy, childrenMap, scores, reasons, rootReasons);
+<span class="fc" id="L251">        }</span>
+<span class="fc" id="L252">    }</span>
+
+    private void walkRecursivelyMixed(
+            String parentCode,
+            int parentScore,
+            String requirementText,
+            NodeScorer hierarchicalScorer,
+            DistributionStrategy hierarchicalStrategy,
+            Predicate&lt;TaxonomyNode&gt; independentLeafPredicate,
+            NodeScorer independentLeafScorer,
+            DistributionStrategy independentLeafStrategy,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons,
+            Map&lt;String, String&gt; rootReasons) {
+
+<span class="fc" id="L268">        List&lt;TaxonomyNode&gt; children = childrenMap.getOrDefault(parentCode, List.of())</span>
+<span class="fc" id="L269">                .stream()</span>
+<span class="fc" id="L270">                .sorted(Comparator.comparing(TaxonomyNode::getCode))</span>
+<span class="fc" id="L271">                .toList();</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">        if (children.isEmpty()) {</span>
+<span class="fc" id="L273">            return;</span>
+        }
+
+<span class="fc" id="L276">        List&lt;TaxonomyNode&gt; hierarchicalChildren = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L277">        List&lt;TaxonomyNode&gt; independentLeaves = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L278">        Set&lt;String&gt; independentLeafCodes = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        for (TaxonomyNode child : children) {</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">            if (independentLeafPredicate.test(child)) {</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">                if (!childrenMap.getOrDefault(child.getCode(), List.of()).isEmpty()) {</span>
+<span class="nc" id="L282">                    throw new IllegalStateException(</span>
+<span class="nc" id="L283">                            &quot;Independently scored node '&quot; + child.getCode()</span>
+                                    + &quot;' below '&quot; + parentCode + &quot;' is not a leaf&quot;);
+                }
+<span class="fc" id="L286">                independentLeaves.add(child);</span>
+<span class="fc" id="L287">                independentLeafCodes.add(child.getCode());</span>
+            } else {
+<span class="fc" id="L289">                hierarchicalChildren.add(child);</span>
+            }
+<span class="fc" id="L291">        }</span>
+
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        if (parentScore == 0) {</span>
+<span class="fc bfc" id="L294" title="All 2 branches covered.">            for (TaxonomyNode child : children) {</span>
+<span class="fc" id="L295">                scores.put(child.getCode(), 0);</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">                String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : &quot;&quot;;</span>
+<span class="fc" id="L297">                reasons.put(child.getCode(), rootReasons.getOrDefault(root, &quot;&quot;));</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">                if (!independentLeafCodes.contains(child.getCode())) {</span>
+<span class="fc" id="L299">                    walkRecursivelyMixed(</span>
+<span class="fc" id="L300">                            child.getCode(),</span>
+                            0,
+                            requirementText,
+                            hierarchicalScorer,
+                            hierarchicalStrategy,
+                            independentLeafPredicate,
+                            independentLeafScorer,
+                            independentLeafStrategy,
+                            childrenMap,
+                            scores,
+                            reasons,
+                            rootReasons);
+                }
+<span class="fc" id="L313">            }</span>
+<span class="fc" id="L314">            return;</span>
+        }
+
+<span class="fc" id="L317">        Map&lt;String, Integer&gt; adjustedScores = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">        if (!hierarchicalChildren.isEmpty()) {</span>
+<span class="fc" id="L319">            adjustedScores.putAll(scoreAndAdjust(</span>
+                    parentCode,
+                    &quot;hierarchical&quot;,
+                    requirementText,
+                    hierarchicalChildren,
+                    parentScore,
+                    hierarchicalScorer,
+                    hierarchicalStrategy));
+        }
+<span class="fc bfc" id="L328" title="All 2 branches covered.">        if (!independentLeaves.isEmpty()) {</span>
+<span class="fc" id="L329">            adjustedScores.putAll(scoreAndAdjust(</span>
+                    parentCode,
+                    &quot;independent leaf&quot;,
+                    requirementText,
+                    independentLeaves,
+                    parentScore,
+                    independentLeafScorer,
+                    independentLeafStrategy));
+        }
+
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        for (TaxonomyNode child : children) {</span>
+<span class="fc" id="L340">            int childScore = adjustedScores.get(child.getCode());</span>
+<span class="fc" id="L341">            scores.put(child.getCode(), childScore);</span>
+<span class="pc bpc" id="L342" title="1 of 2 branches missed.">            String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : &quot;&quot;;</span>
+<span class="fc" id="L343">            reasons.put(child.getCode(), rootReasons.getOrDefault(root, &quot;&quot;));</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">            if (!independentLeafCodes.contains(child.getCode())) {</span>
+<span class="fc" id="L345">                walkRecursivelyMixed(</span>
+<span class="fc" id="L346">                        child.getCode(),</span>
+                        childScore,
+                        requirementText,
+                        hierarchicalScorer,
+                        hierarchicalStrategy,
+                        independentLeafPredicate,
+                        independentLeafScorer,
+                        independentLeafStrategy,
+                        childrenMap,
+                        scores,
+                        reasons,
+                        rootReasons);
+            }
+<span class="fc" id="L359">        }</span>
+<span class="fc" id="L360">    }</span>
+
+    private Map&lt;String, Integer&gt; scoreAndAdjust(
+            String parentCode,
+            String groupName,
+            String requirementText,
+            List&lt;TaxonomyNode&gt; nodes,
+            int parentScore,
+            NodeScorer scorer,
+            DistributionStrategy strategy) {
+
+<span class="fc" id="L371">        Map&lt;String, Integer&gt; rawScores = Objects.requireNonNull(</span>
+<span class="fc" id="L372">                scorer.score(requirementText, nodes, parentScore),</span>
+                &quot;NodeScorer returned null for &quot; + groupName + &quot; children of &quot; + parentCode);
+<span class="fc" id="L374">        validateExactKeys(parentCode, groupName, &quot;NodeScorer&quot;, nodes, rawScores);</span>
+
+<span class="fc" id="L376">        Map&lt;String, Integer&gt; adjustedScores = Objects.requireNonNull(</span>
+<span class="fc" id="L377">                strategy.adjust(rawScores, parentScore),</span>
+                &quot;DistributionStrategy returned null for &quot; + groupName
+                        + &quot; children of &quot; + parentCode);
+<span class="fc" id="L380">        validateExactKeys(</span>
+                parentCode,
+                groupName,
+<span class="fc" id="L383">                &quot;DistributionStrategy '&quot; + strategy.name() + &quot;'&quot;,</span>
+                nodes,
+                adjustedScores);
+<span class="fc" id="L386">        return adjustedScores;</span>
+    }
+
+    private void validateExactKeys(
+            String parentCode,
+            String groupName,
+            String source,
+            List&lt;TaxonomyNode&gt; nodes,
+            Map&lt;String, Integer&gt; scoreMap) {
+
+<span class="fc" id="L396">        Set&lt;String&gt; expected = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L397" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
+<span class="fc" id="L398">            expected.add(node.getCode());</span>
+<span class="fc" id="L399">        }</span>
+<span class="fc" id="L400">        Set&lt;String&gt; actual = new LinkedHashSet&lt;&gt;(scoreMap.keySet());</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">        if (!actual.equals(expected)) {</span>
+<span class="nc" id="L402">            Set&lt;String&gt; missing = new LinkedHashSet&lt;&gt;(expected);</span>
+<span class="nc" id="L403">            missing.removeAll(actual);</span>
+<span class="nc" id="L404">            Set&lt;String&gt; unexpected = new LinkedHashSet&lt;&gt;(actual);</span>
+<span class="nc" id="L405">            unexpected.removeAll(expected);</span>
+<span class="nc" id="L406">            throw new IllegalStateException(</span>
+                    source + &quot; returned mismatched &quot; + groupName + &quot; keys below '&quot;
+                            + parentCode + &quot;'; missing=&quot; + missing
+                            + &quot;, unexpected=&quot; + unexpected);
+        }
+<span class="fc bfc" id="L411" title="All 2 branches covered.">        for (String code : expected) {</span>
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">            if (scoreMap.get(code) == null) {</span>
+<span class="nc" id="L413">                throw new IllegalStateException(</span>
+                        source + &quot; returned a null score for &quot; + groupName
+                                + &quot; node '&quot; + code + &quot;' below '&quot; + parentCode + &quot;'&quot;);
+            }
+<span class="fc" id="L417">        }</span>
+<span class="fc" id="L418">    }</span>
+
+    // ── Path fill-in ───────────────────────────────────────────────────────
+
+    /**
+     * Fills in missing intermediate node scores so that every scored leaf
+     * has a complete path of scores from its root.
+     *
+     * &lt;p&gt;For each scored non-root node, the method walks from root to that
+     * node using the taxonomy parent chain. If any intermediate node is
+     * missing from the map, its score is interpolated linearly between
+     * the nearest scored ancestor and the nearest scored descendant on
+     * the path.
+     *
+     * @param scores mutable map of node-code → score (modified in place)
+     */
+    public void fillIntermediateScores(Map&lt;String, Integer&gt; scores) {
+<span class="fc" id="L435">        List&lt;String&gt; nonRootCodes = scores.keySet().stream()</span>
+<span class="fc" id="L436">                .filter(code -&gt; code.contains(&quot;-&quot;))</span>
+<span class="fc" id="L437">                .toList();</span>
+
+<span class="fc bfc" id="L439" title="All 2 branches covered.">        for (String code : nonRootCodes) {</span>
+<span class="fc" id="L440">            List&lt;TaxonomyNode&gt; path = taxonomyService.getPathToRoot(code);</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">            if (path.size() &lt;= 2) {</span>
+<span class="fc" id="L442">                continue;</span>
+            }
+
+<span class="fc bfc" id="L445" title="All 2 branches covered.">            for (int i = 1; i &lt; path.size() - 1; i++) {</span>
+<span class="fc" id="L446">                String nodeCode = path.get(i).getCode();</span>
+<span class="fc bfc" id="L447" title="All 2 branches covered.">                if (scores.containsKey(nodeCode)) {</span>
+<span class="fc" id="L448">                    continue;</span>
+                }
+
+<span class="fc" id="L451">                int ancestorScore = 0;</span>
+<span class="fc" id="L452">                int ancestorIdx = 0;</span>
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">                for (int a = i - 1; a &gt;= 0; a--) {</span>
+<span class="fc" id="L454">                    Integer score = scores.get(path.get(a).getCode());</span>
+<span class="pc bpc" id="L455" title="1 of 2 branches missed.">                    if (score != null) {</span>
+<span class="fc" id="L456">                        ancestorScore = score;</span>
+<span class="fc" id="L457">                        ancestorIdx = a;</span>
+<span class="fc" id="L458">                        break;</span>
+                    }
+                }
+
+<span class="fc" id="L462">                int descendantScore = 0;</span>
+<span class="fc" id="L463">                int descendantIdx = path.size() - 1;</span>
+<span class="pc bpc" id="L464" title="1 of 2 branches missed.">                for (int d = i + 1; d &lt; path.size(); d++) {</span>
+<span class="fc" id="L465">                    Integer score = scores.get(path.get(d).getCode());</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">                    if (score != null) {</span>
+<span class="fc" id="L467">                        descendantScore = score;</span>
+<span class="fc" id="L468">                        descendantIdx = d;</span>
+<span class="fc" id="L469">                        break;</span>
+                    }
+                }
+
+<span class="fc" id="L473">                int span = descendantIdx - ancestorIdx;</span>
+<span class="fc" id="L474">                int step = i - ancestorIdx;</span>
+<span class="pc bpc" id="L475" title="1 of 2 branches missed.">                int interpolated = span &gt; 0</span>
+<span class="fc" id="L476">                        ? ancestorScore + (descendantScore - ancestorScore) * step / span</span>
+<span class="pc" id="L477">                        : ancestorScore;</span>
+
+<span class="fc" id="L479">                scores.put(nodeCode, interpolated);</span>
+            }
+<span class="fc" id="L481">        }</span>
+<span class="fc" id="L482">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CopilotResultPersistenceService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">CopilotResultPersistenceService.java</span></div><h1>CopilotResultPersistenceService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.Objects;
+
+/** Makes the selected pass current only after exact tenant and requirement validation. */
+@Service
+public class CopilotResultPersistenceService {
+
+    private final ProjectRequirementRepository requirementRepository;
+    private final RequirementAnalysisSnapshotRepository snapshotRepository;
+
+    public CopilotResultPersistenceService(
+            ProjectRequirementRepository requirementRepository,
+<span class="fc" id="L23">            RequirementAnalysisSnapshotRepository snapshotRepository) {</span>
+<span class="fc" id="L24">        this.requirementRepository = requirementRepository;</span>
+<span class="fc" id="L25">        this.snapshotRepository = snapshotRepository;</span>
+<span class="fc" id="L26">    }</span>
+
+    @Transactional
+    public String selectCurrentSnapshot(
+            Long projectId,
+            Long requirementId,
+            String snapshotId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L35">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L36">        ProjectRequirement requirement = requirementRepository</span>
+<span class="fc" id="L37">                .findByIdAndProjectIdAndScopeKey(requirementId, projectId, scopeKey)</span>
+<span class="fc" id="L38">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Requirement &quot; + requirementId + &quot; was not found in project &quot; + projectId));
+<span class="fc" id="L40">        RequirementAnalysisSnapshot snapshot = snapshotRepository</span>
+<span class="fc" id="L41">                .findByIdAndProjectIdAndScopeKey(snapshotId, projectId, scopeKey)</span>
+<span class="pc" id="L42">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis snapshot not found: &quot; + snapshotId));
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if (!Objects.equals(snapshot.getRequirementId(), requirementId)) {</span>
+<span class="fc" id="L45">            throw PortfolioException.validation(</span>
+                    &quot;Selected snapshot does not belong to requirement &quot; + requirementId);
+        }
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (!Objects.equals(snapshot.getRequirementVersionId(), requirement.getCurrentVersionId())) {</span>
+<span class="fc" id="L49">            throw PortfolioException.conflict(</span>
+                    &quot;Selected snapshot is stale for the current requirement version&quot;);
+        }
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (Objects.equals(requirement.getCurrentAnalysisSnapshotId(), snapshotId)) {</span>
+<span class="fc" id="L53">            return snapshotId;</span>
+        }
+<span class="fc" id="L55">        requirement.pointToAnalysis(snapshotId, Instant.now());</span>
+<span class="fc" id="L56">        requirementRepository.save(requirement);</span>
+<span class="fc" id="L57">        return snapshotId;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

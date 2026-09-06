@@ -1,0 +1,442 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OoxmlTemplatePackageCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">OoxmlTemplatePackageCodec.java</span></div><h1>OoxmlTemplatePackageCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import org.springframework.stereotype.Component;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
+/**
+ * Converts between a real DOTX file and its canonical, unzipped OOXML package tree.
+ *
+ * &lt;p&gt;The package tree is the source of truth stored in Git. ZIP metadata is deliberately
+ * normalized so the same Git tree always produces the same downloadable DOTX bytes.&lt;/p&gt;
+ */
+@Component
+<span class="fc" id="L40">public final class OoxmlTemplatePackageCodec {</span>
+
+    public static final String DOTX_MEDIA_TYPE =
+            &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.template&quot;;
+    public static final String DOTX_MAIN_CONTENT_TYPE =
+            &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml&quot;;
+
+    static final int MAX_ARCHIVE_BYTES = 25 * 1024 * 1024;
+    static final int MAX_PART_BYTES = 25 * 1024 * 1024;
+    static final long MAX_UNCOMPRESSED_BYTES = 100L * 1024 * 1024;
+    static final int MAX_PARTS = 2_048;
+
+<span class="fc" id="L52">    private static final Set&lt;String&gt; REQUIRED_PARTS = Set.of(</span>
+            &quot;[Content_Types].xml&quot;,
+            &quot;_rels/.rels&quot;,
+            &quot;word/document.xml&quot;);
+    private static final String OFFICE_DOCUMENT_RELATIONSHIP_SUFFIX =
+            &quot;/officeDocument&quot;;
+
+    /**
+     * Import and validate one complete DOTX file.
+     */
+    public PackageData unpack(InputStream input) throws IOException {
+<span class="fc" id="L63">        byte[] archive = readBounded(input, MAX_ARCHIVE_BYTES, &quot;DOTX archive&quot;);</span>
+<span class="fc" id="L64">        TreeMap&lt;String, byte[]&gt; parts = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L65">        Set&lt;String&gt; caseInsensitivePaths = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L66">        long totalBytes = 0;</span>
+
+<span class="fc" id="L68">        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive))) {</span>
+            ZipEntry entry;
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            while ((entry = zip.getNextEntry()) != null) {</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                if (entry.isDirectory()) {</span>
+<span class="nc" id="L72">                    zip.closeEntry();</span>
+<span class="nc" id="L73">                    continue;</span>
+                }
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                if (parts.size() &gt;= MAX_PARTS) {</span>
+<span class="nc" id="L76">                    throw invalid(&quot;DOTX contains more than &quot; + MAX_PARTS + &quot; package parts&quot;);</span>
+                }
+
+<span class="fc" id="L79">                String path = validatePartPath(entry.getName());</span>
+<span class="fc" id="L80">                String foldedPath = path.toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                if (!caseInsensitivePaths.add(foldedPath)) {</span>
+<span class="fc" id="L82">                    throw invalid(&quot;DOTX contains duplicate or case-colliding package part: &quot;</span>
+                            + path);
+                }
+<span class="fc" id="L85">                byte[] content = readBounded(zip, MAX_PART_BYTES, &quot;OOXML part &quot; + path);</span>
+<span class="fc" id="L86">                totalBytes += content.length;</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                if (totalBytes &gt; MAX_UNCOMPRESSED_BYTES) {</span>
+<span class="nc" id="L88">                    throw invalid(&quot;DOTX expands beyond the permitted package size&quot;);</span>
+                }
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                if (parts.putIfAbsent(path, content) != null) {</span>
+<span class="nc" id="L91">                    throw invalid(&quot;DOTX contains a duplicate package part: &quot; + path);</span>
+                }
+<span class="fc" id="L93">                zip.closeEntry();</span>
+<span class="fc" id="L94">            }</span>
+<span class="fc" id="L95">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L96">            throw exception;</span>
+<span class="nc" id="L97">        } catch (IOException exception) {</span>
+<span class="nc" id="L98">            throw invalid(&quot;DOTX is not a readable ZIP/OOXML package&quot;, exception);</span>
+<span class="fc" id="L99">        }</span>
+
+<span class="fc" id="L101">        validatePackage(parts);</span>
+<span class="fc" id="L102">        return new PackageData(parts, totalBytes, packageSha256(parts));</span>
+    }
+
+    /**
+     * Build a deterministic, valid DOTX ZIP projection from a canonical package tree.
+     */
+    public byte[] pack(Map&lt;String, byte[]&gt; packageParts) throws IOException {
+<span class="fc" id="L109">        TreeMap&lt;String, byte[]&gt; parts = defensiveSortedCopy(packageParts);</span>
+<span class="fc" id="L110">        validatePackage(parts);</span>
+
+<span class="fc" id="L112">        ByteArrayOutputStream output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L113">        try (ZipOutputStream zip = new ZipOutputStream(output)) {</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">            for (Map.Entry&lt;String, byte[]&gt; part : parts.entrySet()) {</span>
+<span class="fc" id="L115">                ZipEntry entry = new ZipEntry(part.getKey());</span>
+<span class="fc" id="L116">                entry.setTimeLocal(LocalDateTime.of(1980, 1, 1, 0, 0));</span>
+<span class="fc" id="L117">                entry.setComment(null);</span>
+<span class="fc" id="L118">                entry.setExtra(null);</span>
+<span class="fc" id="L119">                zip.putNextEntry(entry);</span>
+<span class="fc" id="L120">                zip.write(part.getValue());</span>
+<span class="fc" id="L121">                zip.closeEntry();</span>
+<span class="fc" id="L122">            }</span>
+        }
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (output.size() &gt; MAX_ARCHIVE_BYTES) {</span>
+<span class="nc" id="L125">            throw invalid(&quot;Generated DOTX exceeds the permitted archive size&quot;);</span>
+        }
+<span class="fc" id="L127">        return output.toByteArray();</span>
+    }
+
+    /**
+     * Validate a package tree without changing any original OOXML bytes.
+     */
+    public void validatePackage(Map&lt;String, byte[]&gt; packageParts) {
+<span class="pc bpc" id="L134" title="1 of 4 branches missed.">        if (packageParts == null || packageParts.isEmpty()) {</span>
+<span class="fc" id="L135">            throw invalid(&quot;DOTX package is empty&quot;);</span>
+        }
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (packageParts.size() &gt; MAX_PARTS) {</span>
+<span class="nc" id="L138">            throw invalid(&quot;DOTX contains more than &quot; + MAX_PARTS + &quot; package parts&quot;);</span>
+        }
+
+<span class="fc" id="L141">        long total = 0;</span>
+<span class="fc" id="L142">        Set&lt;String&gt; caseInsensitivePaths = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        for (Map.Entry&lt;String, byte[]&gt; entry : packageParts.entrySet()) {</span>
+<span class="fc" id="L144">            String path = validatePartPath(entry.getKey());</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">            if (!caseInsensitivePaths.add(path.toLowerCase(Locale.ROOT))) {</span>
+<span class="nc" id="L146">                throw invalid(&quot;DOTX contains duplicate or case-colliding package part: &quot;</span>
+                        + path);
+            }
+<span class="fc" id="L149">            byte[] content = entry.getValue();</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">            if (content == null) {</span>
+<span class="nc" id="L151">                throw invalid(&quot;OOXML part has no content: &quot; + path);</span>
+            }
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">            if (content.length &gt; MAX_PART_BYTES) {</span>
+<span class="nc" id="L154">                throw invalid(&quot;OOXML part is too large: &quot; + path);</span>
+            }
+<span class="fc" id="L156">            total += content.length;</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">            if (total &gt; MAX_UNCOMPRESSED_BYTES) {</span>
+<span class="nc" id="L158">                throw invalid(&quot;DOTX expands beyond the permitted package size&quot;);</span>
+            }
+<span class="fc" id="L160">            rejectUnsafePart(path);</span>
+<span class="fc" id="L161">        }</span>
+
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        for (String required : REQUIRED_PARTS) {</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            if (!packageParts.containsKey(required)) {</span>
+<span class="nc" id="L165">                throw invalid(&quot;DOTX is missing required OOXML part: &quot; + required);</span>
+            }
+<span class="fc" id="L167">        }</span>
+
+<span class="fc" id="L169">        validateContentTypes(packageParts.get(&quot;[Content_Types].xml&quot;));</span>
+<span class="fc" id="L170">        packageParts.entrySet().stream()</span>
+<span class="fc" id="L171">                .filter(entry -&gt; isXmlPart(entry.getKey()))</span>
+<span class="fc" id="L172">                .forEach(entry -&gt; parseXml(entry.getKey(), entry.getValue()));</span>
+<span class="fc" id="L173">        validateRelationships(packageParts);</span>
+<span class="fc" id="L174">    }</span>
+
+    private static TreeMap&lt;String, byte[]&gt; defensiveSortedCopy(Map&lt;String, byte[]&gt; input) {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (input == null) {</span>
+<span class="nc" id="L178">            throw invalid(&quot;DOTX package must not be null&quot;);</span>
+        }
+<span class="fc" id="L180">        TreeMap&lt;String, byte[]&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L181">        input.forEach((path, bytes) -&gt; result.put(path,</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">                bytes == null ? null : Arrays.copyOf(bytes, bytes.length)));</span>
+<span class="fc" id="L183">        return result;</span>
+    }
+
+    private static String validatePartPath(String rawPath) {
+<span class="pc bpc" id="L187" title="2 of 4 branches missed.">        if (rawPath == null || rawPath.isBlank()) {</span>
+<span class="nc" id="L188">            throw invalid(&quot;OOXML package part has an empty path&quot;);</span>
+        }
+<span class="pc bpc" id="L190" title="2 of 4 branches missed.">        if (rawPath.startsWith(&quot;/&quot;) || rawPath.endsWith(&quot;/&quot;)</span>
+<span class="pc bpc" id="L191" title="2 of 4 branches missed.">                || rawPath.contains(&quot;\\&quot;) || rawPath.contains(&quot;\0&quot;)) {</span>
+<span class="nc" id="L192">            throw invalid(&quot;Unsafe OOXML package path: &quot; + rawPath);</span>
+        }
+<span class="fc" id="L194">        String[] segments = rawPath.split(&quot;/&quot;, -1);</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        for (String segment : segments) {</span>
+<span class="pc bpc" id="L196" title="3 of 6 branches missed.">            if (segment.isBlank() || &quot;.&quot;.equals(segment) || &quot;..&quot;.equals(segment)</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">                    || segment.indexOf(':') &gt;= 0) {</span>
+<span class="nc" id="L198">                throw invalid(&quot;Unsafe OOXML package path: &quot; + rawPath);</span>
+            }
+        }
+<span class="fc" id="L201">        return rawPath;</span>
+    }
+
+    private static void rejectUnsafePart(String path) {
+<span class="fc" id="L205">        String lower = path.toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">        if (lower.endsWith(&quot;vbaproject.bin&quot;)</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">                || lower.startsWith(&quot;word/activex/&quot;)</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">                || lower.startsWith(&quot;word/embeddings/&quot;)</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">                || lower.startsWith(&quot;customui/&quot;)</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                || lower.startsWith(&quot;_xmlsignatures/&quot;)) {</span>
+<span class="nc" id="L211">            throw invalid(&quot;Unsupported active, embedded or signed OOXML part: &quot; + path);</span>
+        }
+<span class="fc" id="L213">    }</span>
+
+    private static void validateContentTypes(byte[] xml) {
+<span class="fc" id="L216">        Document document = parseXml(&quot;[Content_Types].xml&quot;, xml);</span>
+<span class="fc" id="L217">        NodeList overrides = document.getElementsByTagNameNS(&quot;*&quot;, &quot;Override&quot;);</span>
+<span class="fc" id="L218">        boolean templateMainPart = false;</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (int index = 0; index &lt; overrides.getLength(); index++) {</span>
+<span class="fc" id="L220">            Element element = (Element) overrides.item(index);</span>
+<span class="fc" id="L221">            String contentType = element.getAttribute(&quot;ContentType&quot;);</span>
+<span class="fc" id="L222">            rejectActiveContentType(contentType);</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            if (&quot;/word/document.xml&quot;.equals(element.getAttribute(&quot;PartName&quot;))</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">                    &amp;&amp; DOTX_MAIN_CONTENT_TYPE.equals(contentType)) {</span>
+<span class="fc" id="L225">                templateMainPart = true;</span>
+            }
+        }
+<span class="fc" id="L228">        NodeList defaults = document.getElementsByTagNameNS(&quot;*&quot;, &quot;Default&quot;);</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        for (int index = 0; index &lt; defaults.getLength(); index++) {</span>
+<span class="fc" id="L230">            rejectActiveContentType(((Element) defaults.item(index))</span>
+<span class="fc" id="L231">                    .getAttribute(&quot;ContentType&quot;));</span>
+        }
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">        if (!templateMainPart) {</span>
+<span class="nc" id="L234">            throw invalid(&quot;Package is not a macro-free Word DOTX template&quot;);</span>
+        }
+<span class="fc" id="L236">    }</span>
+
+    private static void rejectActiveContentType(String contentType) {
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">        String lower = contentType == null ? &quot;&quot; : contentType.toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">        if (lower.contains(&quot;macroenabled&quot;)</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">                || lower.contains(&quot;vbaproject&quot;)</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">                || lower.contains(&quot;activex&quot;)</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">                || lower.contains(&quot;oleobject&quot;)) {</span>
+<span class="nc" id="L244">            throw invalid(&quot;Unsupported active OOXML content type: &quot; + contentType);</span>
+        }
+<span class="fc" id="L246">    }</span>
+
+    private static void validateRelationships(Map&lt;String, byte[]&gt; packageParts) {
+<span class="fc" id="L249">        int officeDocumentRelationships = 0;</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        for (Map.Entry&lt;String, byte[]&gt; entry : packageParts.entrySet()) {</span>
+<span class="fc" id="L251">            String relationshipPath = entry.getKey();</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">            if (!relationshipPath.endsWith(&quot;.rels&quot;)) {</span>
+<span class="fc" id="L253">                continue;</span>
+            }
+<span class="fc" id="L255">            String sourcePart = relationshipSourcePart(relationshipPath);</span>
+<span class="pc bpc" id="L256" title="1 of 4 branches missed.">            if (!sourcePart.isEmpty() &amp;&amp; !packageParts.containsKey(sourcePart)) {</span>
+<span class="nc" id="L257">                throw invalid(&quot;Relationship part has no source OOXML part: &quot;</span>
+                        + relationshipPath);
+            }
+
+<span class="fc" id="L261">            Document document = parseXml(relationshipPath, entry.getValue());</span>
+<span class="fc" id="L262">            NodeList relationships = document.getElementsByTagNameNS(&quot;*&quot;, &quot;Relationship&quot;);</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">            for (int index = 0; index &lt; relationships.getLength(); index++) {</span>
+<span class="fc" id="L264">                Element relationship = (Element) relationships.item(index);</span>
+<span class="fc" id="L265">                String target = relationship.getAttribute(&quot;Target&quot;);</span>
+<span class="fc" id="L266">                String type = relationship.getAttribute(&quot;Type&quot;);</span>
+<span class="fc" id="L267">                boolean external = &quot;External&quot;.equalsIgnoreCase(</span>
+<span class="fc" id="L268">                        relationship.getAttribute(&quot;TargetMode&quot;));</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                if (external) {</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">                    if (type.endsWith(&quot;/hyperlink&quot;)) {</span>
+<span class="nc" id="L271">                        continue;</span>
+                    }
+<span class="nc" id="L273">                    throw invalid(&quot;External OOXML relationship is not permitted in &quot;</span>
+                            + relationshipPath);
+                }
+
+<span class="fc" id="L277">                String resolvedTarget = resolveRelationshipTarget(</span>
+                        relationshipPath, sourcePart, target);
+<span class="fc bfc" id="L279" title="All 2 branches covered.">                if (!packageParts.containsKey(resolvedTarget)) {</span>
+<span class="fc" id="L280">                    throw invalid(&quot;OOXML relationship in &quot; + relationshipPath</span>
+                            + &quot; targets missing package part &quot; + resolvedTarget);
+                }
+<span class="fc bfc" id="L283" title="All 2 branches covered.">                if (&quot;_rels/.rels&quot;.equals(relationshipPath)</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                        &amp;&amp; type.endsWith(OFFICE_DOCUMENT_RELATIONSHIP_SUFFIX)) {</span>
+<span class="fc" id="L285">                    officeDocumentRelationships++;</span>
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">                    if (!&quot;word/document.xml&quot;.equals(resolvedTarget)) {</span>
+<span class="nc" id="L287">                        throw invalid(&quot;Root officeDocument relationship must target &quot;</span>
+                                + &quot;word/document.xml&quot;);
+                    }
+                }
+            }
+<span class="fc" id="L292">        }</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        if (officeDocumentRelationships != 1) {</span>
+<span class="fc" id="L294">            throw invalid(&quot;Package must contain exactly one internal root officeDocument relationship&quot;);</span>
+        }
+<span class="fc" id="L296">    }</span>
+
+    private static String relationshipSourcePart(String relationshipPath) {
+<span class="fc bfc" id="L299" title="All 2 branches covered.">        if (&quot;_rels/.rels&quot;.equals(relationshipPath)) {</span>
+<span class="fc" id="L300">            return &quot;&quot;;</span>
+        }
+<span class="fc" id="L302">        int marker = relationshipPath.lastIndexOf(&quot;_rels/&quot;);</span>
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">        if (marker &lt; 0) {</span>
+<span class="nc" id="L304">            throw invalid(&quot;Invalid OOXML relationship part path: &quot; + relationshipPath);</span>
+        }
+<span class="fc" id="L306">        String prefix = relationshipPath.substring(0, marker);</span>
+<span class="fc" id="L307">        String relationshipFile = relationshipPath.substring(marker + &quot;_rels/&quot;.length());</span>
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">        if (!relationshipFile.endsWith(&quot;.rels&quot;)</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">                || relationshipFile.length() &lt;= &quot;.rels&quot;.length()) {</span>
+<span class="nc" id="L310">            throw invalid(&quot;Invalid OOXML relationship part path: &quot; + relationshipPath);</span>
+        }
+<span class="fc" id="L312">        return prefix + relationshipFile.substring(</span>
+<span class="fc" id="L313">                0, relationshipFile.length() - &quot;.rels&quot;.length());</span>
+    }
+
+    private static String resolveRelationshipTarget(
+            String relationshipPath,
+            String sourcePart,
+            String target) {
+<span class="pc bpc" id="L320" title="3 of 6 branches missed.">        if (target == null || target.isBlank() || target.contains(&quot;\\&quot;)</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">                || target.contains(&quot;\0&quot;)) {</span>
+<span class="nc" id="L322">            throw invalid(&quot;Invalid OOXML relationship target in &quot; + relationshipPath);</span>
+        }
+        try {
+<span class="fc" id="L325">            URI uri = URI.create(target);</span>
+<span class="pc bpc" id="L326" title="2 of 4 branches missed.">            if (uri.isAbsolute() || uri.getAuthority() != null) {</span>
+<span class="nc" id="L327">                throw invalid(&quot;Internal OOXML relationship target must be package-relative in &quot;</span>
+                        + relationshipPath);
+            }
+<span class="fc" id="L330">            String targetPath = uri.getPath();</span>
+<span class="pc bpc" id="L331" title="2 of 4 branches missed.">            if (targetPath == null || targetPath.isBlank()) {</span>
+<span class="nc" id="L332">                throw invalid(&quot;Invalid OOXML relationship target in &quot; + relationshipPath);</span>
+            }
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">            while (targetPath.startsWith(&quot;/&quot;)) {</span>
+<span class="nc" id="L335">                targetPath = targetPath.substring(1);</span>
+            }
+<span class="fc" id="L337">            String baseDirectory = &quot;&quot;;</span>
+<span class="fc" id="L338">            int slash = sourcePart.lastIndexOf('/');</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">            if (slash &gt;= 0) {</span>
+<span class="fc" id="L340">                baseDirectory = sourcePart.substring(0, slash + 1);</span>
+            }
+<span class="fc" id="L342">            Path resolved = Path.of(baseDirectory)</span>
+<span class="fc" id="L343">                    .resolve(targetPath)</span>
+<span class="fc" id="L344">                    .normalize();</span>
+<span class="pc bpc" id="L345" title="2 of 4 branches missed.">            if (resolved.isAbsolute() || resolved.startsWith(&quot;..&quot;)) {</span>
+<span class="nc" id="L346">                throw invalid(&quot;OOXML relationship escapes the package root in &quot;</span>
+                        + relationshipPath);
+            }
+<span class="fc" id="L349">            String normalized = resolved.toString().replace('\\', '/');</span>
+<span class="fc" id="L350">            return validatePartPath(normalized);</span>
+<span class="nc" id="L351">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">            if (exception.getMessage() != null</span>
+<span class="nc bnc" id="L353" title="All 2 branches missed.">                    &amp;&amp; exception.getMessage().startsWith(&quot;OOXML&quot;)) {</span>
+<span class="nc" id="L354">                throw exception;</span>
+            }
+<span class="nc" id="L356">            throw invalid(&quot;Invalid OOXML relationship target in &quot;</span>
+                    + relationshipPath, exception);
+        }
+    }
+
+    private static boolean isXmlPart(String path) {
+<span class="fc" id="L362">        String lower = path.toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L363" title="1 of 4 branches missed.">        return lower.endsWith(&quot;.xml&quot;) || lower.endsWith(&quot;.rels&quot;);</span>
+    }
+
+    private static Document parseXml(String path, byte[] content) {
+        try {
+<span class="fc" id="L368">            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();</span>
+<span class="fc" id="L369">            factory.setNamespaceAware(true);</span>
+<span class="fc" id="L370">            factory.setXIncludeAware(false);</span>
+<span class="fc" id="L371">            factory.setExpandEntityReferences(false);</span>
+<span class="fc" id="L372">            factory.setFeature(&quot;http://apache.org/xml/features/disallow-doctype-decl&quot;, true);</span>
+<span class="fc" id="L373">            factory.setFeature(&quot;http://xml.org/sax/features/external-general-entities&quot;, false);</span>
+<span class="fc" id="L374">            factory.setFeature(&quot;http://xml.org/sax/features/external-parameter-entities&quot;, false);</span>
+<span class="fc" id="L375">            factory.setFeature(&quot;http://apache.org/xml/features/nonvalidating/load-external-dtd&quot;, false);</span>
+<span class="fc" id="L376">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L377">            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, &quot;&quot;);</span>
+<span class="fc" id="L378">            return factory.newDocumentBuilder().parse(new ByteArrayInputStream(content));</span>
+<span class="fc" id="L379">        } catch (ParserConfigurationException | SAXException | IOException exception) {</span>
+<span class="fc" id="L380">            throw invalid(&quot;Invalid or unsafe XML in OOXML part &quot; + path, exception);</span>
+        }
+    }
+
+    private static byte[] readBounded(InputStream input, int maximum, String description)
+            throws IOException {
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">        if (input == null) {</span>
+<span class="nc" id="L387">            throw invalid(description + &quot; is missing&quot;);</span>
+        }
+<span class="fc" id="L389">        ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(maximum, 16_384));</span>
+<span class="fc" id="L390">        byte[] buffer = new byte[8_192];</span>
+<span class="fc" id="L391">        int total = 0;</span>
+        int read;
+<span class="fc bfc" id="L393" title="All 2 branches covered.">        while ((read = input.read(buffer)) &gt;= 0) {</span>
+<span class="fc" id="L394">            total += read;</span>
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">            if (total &gt; maximum) {</span>
+<span class="nc" id="L396">                throw invalid(description + &quot; exceeds &quot; + maximum + &quot; bytes&quot;);</span>
+            }
+<span class="fc" id="L398">            output.write(buffer, 0, read);</span>
+        }
+<span class="fc" id="L400">        return output.toByteArray();</span>
+    }
+
+    static String packageSha256(Map&lt;String, byte[]&gt; parts) {
+        try {
+<span class="fc" id="L405">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L406">            new TreeMap&lt;&gt;(parts).forEach((path, content) -&gt; {</span>
+<span class="fc" id="L407">                digest.update(path.getBytes(java.nio.charset.StandardCharsets.UTF_8));</span>
+<span class="fc" id="L408">                digest.update((byte) 0);</span>
+<span class="fc" id="L409">                digest.update(content);</span>
+<span class="fc" id="L410">                digest.update((byte) 0);</span>
+<span class="fc" id="L411">            });</span>
+<span class="fc" id="L412">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L413">        } catch (NoSuchAlgorithmException exception) {</span>
+<span class="nc" id="L414">            throw new IllegalStateException(&quot;SHA-256 is unavailable&quot;, exception);</span>
+        }
+    }
+
+    private static IllegalArgumentException invalid(String message) {
+<span class="fc" id="L419">        return new IllegalArgumentException(message);</span>
+    }
+
+    private static IllegalArgumentException invalid(String message, Exception cause) {
+<span class="fc" id="L423">        return new IllegalArgumentException(message, cause);</span>
+    }
+
+    /**
+     * One validated, unzipped OOXML package.
+     */
+    public record PackageData(
+            Map&lt;String, byte[]&gt; parts,
+            long uncompressedSize,
+            String sha256) {
+
+<span class="fc" id="L434">        public PackageData {</span>
+<span class="fc" id="L435">            LinkedHashMap&lt;String, byte[]&gt; copy = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L436">            new TreeMap&lt;&gt;(parts).forEach((path, value) -&gt;</span>
+<span class="fc" id="L437">                    copy.put(path, Arrays.copyOf(value, value.length)));</span>
+<span class="fc" id="L438">            parts = Map.copyOf(copy);</span>
+<span class="fc" id="L439">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

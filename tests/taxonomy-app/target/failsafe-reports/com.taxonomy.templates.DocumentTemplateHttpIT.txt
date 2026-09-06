@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.templates.DocumentTemplateHttpIT
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 101.2 s -- in com.taxonomy.templates.DocumentTemplateHttpIT

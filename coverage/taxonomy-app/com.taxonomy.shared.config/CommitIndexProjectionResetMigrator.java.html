@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CommitIndexProjectionResetMigrator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">CommitIndexProjectionResetMigrator.java</span></div><h1>CommitIndexProjectionResetMigrator.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+
+/**
+ * Removes a rebuildable commit-history projection before its first complete
+ * repository-tenant migration.
+ *
+ * &lt;p&gt;Historic commit-index rows do not contain trustworthy repository/workspace
+ * provenance. A partial migration must not retain some rows while deleting
+ * others, because persistent Hibernate Search documents for the deleted rows
+ * could survive. The complete target contract is detected from JDBC metadata;
+ * only while that contract is absent is the entire relational projection
+ * deleted. Once complete, subsequent starts are idempotent and preserve rows.&lt;/p&gt;
+ */
+final class CommitIndexProjectionResetMigrator {
+
+<span class="fc" id="L35">    private static final Logger log = LoggerFactory.getLogger(</span>
+            CommitIndexProjectionResetMigrator.class);
+    private static final String TABLE = &quot;architecture_commit_index&quot;;
+<span class="fc" id="L38">    private static final Set&lt;String&gt; TARGET_UNIQUE_COLUMNS = Set.of(</span>
+            &quot;repository_id&quot;, &quot;workspace_scope_key&quot;, &quot;branch&quot;, &quot;commit_id&quot;);
+
+    private final DataSource dataSource;
+
+<span class="fc" id="L43">    CommitIndexProjectionResetMigrator(DataSource dataSource) {</span>
+<span class="fc" id="L44">        this.dataSource = Objects.requireNonNull(dataSource, &quot;dataSource&quot;);</span>
+<span class="fc" id="L45">    }</span>
+
+    void resetIfTargetContractIsIncomplete() {
+<span class="fc" id="L48">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L49">            boolean previousAutoCommit = connection.getAutoCommit();</span>
+<span class="fc" id="L50">            connection.setAutoCommit(false);</span>
+            try {
+<span class="fc" id="L52">                TableRef table = findTable(connection, TABLE);</span>
+<span class="fc bfc" id="L53" title="All 4 branches covered.">                if (table == null || targetContractComplete(connection, table)) {</span>
+<span class="fc" id="L54">                    connection.commit();</span>
+<span class="fc" id="L55">                    return;</span>
+                }
+<span class="fc" id="L57">                long rows = countRows(connection, table);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                if (rows &gt; 0) {</span>
+<span class="fc" id="L59">                    execute(connection, &quot;DELETE FROM &quot; + qualified(connection, table));</span>
+<span class="fc" id="L60">                    log.warn(</span>
+                            &quot;Removed {} architecture commit-index projection row(s) before first complete tenant migration; authoritative JGit history remains intact&quot;,
+<span class="fc" id="L62">                            rows);</span>
+                }
+<span class="fc" id="L64">                connection.commit();</span>
+<span class="nc" id="L65">            } catch (SQLException | RuntimeException error) {</span>
+<span class="nc" id="L66">                rollbackQuietly(connection, error);</span>
+<span class="nc" id="L67">                throw new IllegalStateException(</span>
+                        &quot;Unable to reset incomplete commit-index projection safely&quot;,
+                        error);
+            } finally {
+<span class="fc" id="L71">                connection.setAutoCommit(previousAutoCommit);</span>
+            }
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        } catch (SQLException error) {</span>
+<span class="nc" id="L74">            throw new IllegalStateException(</span>
+                    &quot;Unable to open database for commit-index projection reset&quot;,
+                    error);
+<span class="fc" id="L77">        }</span>
+<span class="fc" id="L78">    }</span>
+
+    private boolean targetContractComplete(
+            Connection connection,
+            TableRef table) throws SQLException {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        for (String column : List.of(</span>
+                &quot;repository_id&quot;, &quot;workspace_scope_key&quot;, &quot;branch&quot;, &quot;commit_id&quot;)) {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (!columnExists(connection, table, column)</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                    || columnNullable(connection, table, column)) {</span>
+<span class="fc" id="L87">                return false;</span>
+            }
+<span class="fc" id="L89">        }</span>
+
+<span class="fc" id="L91">        TableRef repositoryTable = findTable(connection, &quot;system_repository&quot;);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (repositoryTable == null</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                || !hasImportedKey(</span>
+                        connection,
+                        table,
+                        &quot;repository_id&quot;,
+                        repositoryTable,
+                        &quot;repository_id&quot;)) {
+<span class="fc" id="L99">            return false;</span>
+        }
+
+<span class="fc" id="L102">        return uniqueIndexes(connection, table).stream()</span>
+<span class="fc" id="L103">                .anyMatch(index -&gt; new LinkedHashSet&lt;&gt;(index.columns())</span>
+<span class="fc" id="L104">                        .equals(TARGET_UNIQUE_COLUMNS));</span>
+    }
+
+    private boolean hasImportedKey(
+            Connection connection,
+            TableRef sourceTable,
+            String sourceColumn,
+            TableRef targetTable,
+            String targetColumn) throws SQLException {
+<span class="fc" id="L113">        try (ResultSet keys = connection.getMetaData().getImportedKeys(</span>
+<span class="fc" id="L114">                sourceTable.catalog(), sourceTable.schema(), sourceTable.name())) {</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            while (keys.next()) {</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                if (sourceColumn.equalsIgnoreCase(keys.getString(&quot;FKCOLUMN_NAME&quot;))</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">                        &amp;&amp; targetTable.name().equalsIgnoreCase(</span>
+<span class="fc" id="L118">                                keys.getString(&quot;PKTABLE_NAME&quot;))</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                        &amp;&amp; targetColumn.equalsIgnoreCase(</span>
+<span class="fc" id="L120">                                keys.getString(&quot;PKCOLUMN_NAME&quot;))) {</span>
+<span class="fc" id="L121">                    return true;</span>
+                }
+            }
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L125">        return false;</span>
+    }
+
+    private List&lt;IndexDefinition&gt; uniqueIndexes(
+            Connection connection,
+            TableRef table) throws SQLException {
+<span class="fc" id="L131">        Map&lt;String, Map&lt;Short, String&gt;&gt; byName = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L132">        try (ResultSet indexes = connection.getMetaData().getIndexInfo(</span>
+<span class="fc" id="L133">                table.catalog(), table.schema(), table.name(), true, false)) {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            while (indexes.next()) {</span>
+<span class="fc" id="L135">                String name = indexes.getString(&quot;INDEX_NAME&quot;);</span>
+<span class="fc" id="L136">                String column = indexes.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="fc" id="L137">                short type = indexes.getShort(&quot;TYPE&quot;);</span>
+<span class="pc bpc" id="L138" title="3 of 6 branches missed.">                if (name == null || column == null</span>
+                        || type == DatabaseMetaData.tableIndexStatistic) {
+<span class="nc" id="L140">                    continue;</span>
+                }
+<span class="fc" id="L142">                short ordinal = indexes.getShort(&quot;ORDINAL_POSITION&quot;);</span>
+<span class="fc" id="L143">                byName.computeIfAbsent(name, ignored -&gt; new TreeMap&lt;&gt;())</span>
+<span class="fc" id="L144">                        .put(ordinal, column.toLowerCase(Locale.ROOT));</span>
+<span class="fc" id="L145">            }</span>
+        }
+<span class="fc" id="L147">        List&lt;IndexDefinition&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L148">        byName.forEach((name, columns) -&gt; result.add(</span>
+<span class="fc" id="L149">                new IndexDefinition(name, List.copyOf(columns.values()))));</span>
+<span class="fc" id="L150">        return result;</span>
+    }
+
+    private boolean columnExists(
+            Connection connection,
+            TableRef table,
+            String logicalColumn) throws SQLException {
+<span class="fc" id="L157">        try (ResultSet columns = connection.getMetaData().getColumns(</span>
+<span class="fc" id="L158">                table.catalog(), table.schema(), table.name(), &quot;%&quot;)) {</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">            while (columns.next()) {</span>
+<span class="fc" id="L160">                String name = columns.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="pc bpc" id="L161" title="1 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalColumn)) {</span>
+<span class="fc" id="L162">                    return true;</span>
+                }
+<span class="fc" id="L164">            }</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L166">        return false;</span>
+    }
+
+    private boolean columnNullable(
+            Connection connection,
+            TableRef table,
+            String logicalColumn) throws SQLException {
+<span class="fc" id="L173">        try (ResultSet columns = connection.getMetaData().getColumns(</span>
+<span class="fc" id="L174">                table.catalog(), table.schema(), table.name(), &quot;%&quot;)) {</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">            while (columns.next()) {</span>
+<span class="fc" id="L176">                String name = columns.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="pc bpc" id="L177" title="1 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalColumn)) {</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                    return columns.getInt(&quot;NULLABLE&quot;)</span>
+                            != DatabaseMetaData.columnNoNulls;
+                }
+<span class="fc" id="L181">            }</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        }</span>
+<span class="nc" id="L183">        return true;</span>
+    }
+
+    private TableRef findTable(
+            Connection connection,
+            String logicalName) throws SQLException {
+<span class="fc" id="L189">        String preferredSchema = safeSchema(connection);</span>
+<span class="fc" id="L190">        List&lt;TableRef&gt; matches = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L191">        try (ResultSet tables = connection.getMetaData().getTables(</span>
+<span class="fc" id="L192">                connection.getCatalog(), null, &quot;%&quot;, new String[] {&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            while (tables.next()) {</span>
+<span class="fc" id="L194">                String name = tables.getString(&quot;TABLE_NAME&quot;);</span>
+<span class="pc bpc" id="L195" title="1 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalName)) {</span>
+<span class="fc" id="L196">                    matches.add(new TableRef(</span>
+<span class="fc" id="L197">                            tables.getString(&quot;TABLE_CAT&quot;),</span>
+<span class="fc" id="L198">                            tables.getString(&quot;TABLE_SCHEM&quot;),</span>
+                            name));
+                }
+<span class="fc" id="L201">            }</span>
+        }
+<span class="fc" id="L203">        return matches.stream()</span>
+<span class="pc" id="L204">                .sorted((left, right) -&gt; Integer.compare(</span>
+                        preferredSchema != null
+<span class="nc bnc" id="L206" title="All 4 branches missed.">                                &amp;&amp; preferredSchema.equalsIgnoreCase(left.schema()) ? 0 : 1,</span>
+                        preferredSchema != null
+<span class="nc bnc" id="L208" title="All 4 branches missed.">                                &amp;&amp; preferredSchema.equalsIgnoreCase(right.schema()) ? 0 : 1))</span>
+<span class="fc" id="L209">                .findFirst()</span>
+<span class="fc" id="L210">                .orElse(null);</span>
+    }
+
+    private long countRows(Connection connection, TableRef table) throws SQLException {
+<span class="fc" id="L214">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L215">             ResultSet result = statement.executeQuery(</span>
+<span class="fc" id="L216">                     &quot;SELECT COUNT(*) FROM &quot; + qualified(connection, table))) {</span>
+<span class="fc" id="L217">            result.next();</span>
+<span class="fc" id="L218">            return result.getLong(1);</span>
+        }
+    }
+
+    private void execute(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L223">        try (Statement statement = connection.createStatement()) {</span>
+<span class="fc" id="L224">            statement.execute(sql);</span>
+        }
+<span class="fc" id="L226">    }</span>
+
+    private String qualified(Connection connection, TableRef table) throws SQLException {
+<span class="fc" id="L229">        String tableName = quoted(connection, table.name());</span>
+<span class="pc bpc" id="L230" title="2 of 4 branches missed.">        return table.schema() == null || table.schema().isBlank()</span>
+<span class="nc" id="L231">                ? tableName</span>
+<span class="fc" id="L232">                : quoted(connection, table.schema()) + &quot;.&quot; + tableName;</span>
+    }
+
+    private String quoted(Connection connection, String identifier) throws SQLException {
+<span class="fc" id="L236">        String quote = connection.getMetaData().getIdentifierQuoteString();</span>
+<span class="pc bpc" id="L237" title="2 of 4 branches missed.">        if (quote == null || quote.isBlank()) {</span>
+<span class="nc" id="L238">            return identifier;</span>
+        }
+<span class="fc" id="L240">        return quote + identifier.replace(quote, quote + quote) + quote;</span>
+    }
+
+    private String safeSchema(Connection connection) {
+        try {
+<span class="fc" id="L245">            return connection.getSchema();</span>
+<span class="nc" id="L246">        } catch (SQLException | AbstractMethodError ignored) {</span>
+<span class="nc" id="L247">            return null;</span>
+        }
+    }
+
+    private void rollbackQuietly(Connection connection, Throwable original) {
+        try {
+<span class="nc" id="L253">            connection.rollback();</span>
+<span class="nc" id="L254">        } catch (SQLException rollbackFailure) {</span>
+<span class="nc" id="L255">            original.addSuppressed(rollbackFailure);</span>
+<span class="nc" id="L256">        }</span>
+<span class="nc" id="L257">    }</span>
+
+<span class="fc" id="L259">    private record TableRef(String catalog, String schema, String name) {</span>
+    }
+
+<span class="fc" id="L262">    private record IndexDefinition(String name, List&lt;String&gt; columns) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
