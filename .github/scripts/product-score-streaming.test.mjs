@@ -11,6 +11,12 @@ const product = 'IP-1286';
 const family = 'IP-2072';
 const hint = { nodeCode: product, kind: 'PRODUCT_SUITABILITY', parentCode: family, rawScore: 80 };
 
+test('streaming reconciliation does not require Object.hasOwn browser support', () => {
+  assert.doesNotMatch(source, /\bObject\.hasOwn\s*\(/);
+  assert.match(source, /Object\.prototype\.hasOwnProperty\.call\(S\.currentRawScores, code\)/);
+  assert.match(source, /Object\.prototype\.hasOwnProperty\.call\(rawScores, detail\.parentCode\)/);
+});
+
 function element(className = '') {
   const attributes = new Map();
   const el = { className, style: {}, children: [], textContent: '',
