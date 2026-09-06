@@ -26,6 +26,8 @@ import java.util.Objects;
 @Service
 public class DocumentTemplateService {
 
+    private static final int DEFAULT_TEXT_PREVIEW_BYTES = 1_048_576;
+
     private final DocumentTemplateGitRepository repository;
     private final OoxmlTemplatePackageCodec codec;
     private final OoxmlActiveContentValidator activeContent;
@@ -159,7 +161,7 @@ public class DocumentTemplateService {
         if (content == null) {
             throw new TemplateNotFoundException(templateId + "/" + path, revision);
         }
-        return partView(path, content);
+        return partView(path, content, DEFAULT_TEXT_PREVIEW_BYTES);
     }
 
     /** Read each immutable snapshot once and compare only the requested package part. */
@@ -182,9 +184,11 @@ public class DocumentTemplateService {
         PartChange change = beforeContent == null ? PartChange.ADDED
                 : afterContent == null ? PartChange.DELETED
                 : Arrays.equals(beforeContent, afterContent) ? null : PartChange.MODIFIED;
-        TemplatePartView beforePart = beforeContent == null ? null : partView(path, beforeContent);
+        TemplatePartView beforePart = beforeContent == null ? null
+                : partView(path, beforeContent, TemplateTextDiff.MAX_CHARACTERS);
         TemplatePartView afterPart = after == before ? beforePart
-                : afterContent == null ? null : partView(path, afterContent);
+                : afterContent == null ? null
+                        : partView(path, afterContent, TemplateTextDiff.MAX_CHARACTERS);
         return new TemplatePartComparison(change, beforePart, afterPart);
     }
 
@@ -196,11 +200,11 @@ public class DocumentTemplateService {
         return revision.toLowerCase(java.util.Locale.ROOT);
     }
 
-    private static TemplatePartView partView(String path, byte[] content) {
+    private static TemplatePartView partView(String path, byte[] content, int maximumTextBytes) {
         String lower = path.toLowerCase(java.util.Locale.ROOT);
         boolean text = lower.endsWith(".xml") || lower.endsWith(".rels")
                 || lower.endsWith(".txt") || lower.endsWith(".json");
-        String rendered = text && content.length <= 1_048_576
+        String rendered = text && content.length <= maximumTextBytes
                 ? new String(content, StandardCharsets.UTF_8)
                 : null;
         return new TemplatePartView(
