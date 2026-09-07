@@ -310,8 +310,30 @@ test('refresh leaves old-base policy and ongoing CI untouched without writes', a
     } };
     assert.match(await refreshPullRequest(client, 933), /update the PR from main/u);
     assert.deepEqual(await eventPullRequests(client, 'issue_comment', { issue: { number: 933 } }), []);
-    assert.deepEqual(await eventPullRequests(client, 'issue_comment', { issue: { number: 933, pull_request: {} } }), [933]);
+    assert.deepEqual(await eventPullRequests(client, 'issue_comment', {
+        action: 'created', comment: { body: confirmation().body }, issue: { number: 933, pull_request: {} }
+    }), [933]);
     assert.deepEqual(await eventPullRequests(client, 'workflow_run', { workflow_run: { ...CI_RUN, event: 'push' } }), []);
+});
+
+test('comment events select only confirmations and retain edit-away and deletion revocation', async () => {
+    const client = { request: async () => { throw new Error('Event selection must not call GitHub'); } };
+    const issue = { number: 933, pull_request: {} };
+    const command = confirmation().body;
+    for (const event of [
+        { action: 'created', comment: { body: command } },
+        { action: 'deleted', comment: { body: command } },
+        { action: 'edited', comment: { body: command }, changes: { body: { from: 'old text' } } },
+        { action: 'edited', comment: { body: 'Withdrawn' }, changes: { body: { from: command } } }
+    ]) {
+        assert.deepEqual(await eventPullRequests(client, 'issue_comment', { issue, ...event }), [933]);
+        assert.deepEqual(await eventPullRequests(client, 'issue_comment', { issue: { number: 933 }, ...event }), []);
+    }
+    for (const action of ['created', 'edited', 'deleted', 'unknown']) {
+        assert.deepEqual(await eventPullRequests(client, 'issue_comment', {
+            issue, action, comment: { body: 'ordinary comment' }, changes: { body: { from: 'earlier ordinary text' } }
+        }), []);
+    }
 });
 
 test('refresh workflow executes default-branch code with narrowly scoped write permission', async () => {
@@ -320,6 +342,8 @@ test('refresh workflow executes default-branch code with narrowly scoped write p
     assert.match(workflow, /pull-requests: read\n      actions: write/u);
     assert.doesNotMatch(workflow, /pull_request_target:|pull_request_review:|actions\/download-artifact|actions\/cache|contents: write/u);
     assert.match(workflow, /types: \[created, edited, deleted\]/u);
+    assert.match(workflow, /github.event.changes.body.from/u);
+    assert.doesNotMatch(workflow, /github.event.action != 'created'/u);
     assert.match(workflow, /workflows: \['CI \/ CD'\]/u);
     const ci = await readFile(new URL('../workflows/ci-cd.yml', import.meta.url), 'utf8');
     const reviewers = text => text.match(/REVIEW_GATE_REVIEWERS: '([^']+)'/u)?.[1];

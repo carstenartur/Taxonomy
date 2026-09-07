@@ -3,7 +3,7 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { GitHubClient, evaluateLiveReview, parseReviewerLogins } from './exact-head-review-gate.mjs';
+import { GitHubClient, evaluateLiveReview, parseReviewerLogins, parseReviewConfirmation } from './exact-head-review-gate.mjs';
 
 const GATE_STEP = 'Require complete review of the exact pull-request head';
 const TECHNICAL_STEPS = [
@@ -97,7 +97,10 @@ export async function refreshPullRequest(client, number, reviewerLogins) {
 
 export async function eventPullRequests(client, eventName, event) {
     if (eventName === 'issue_comment') {
-        return event.issue?.pull_request && Number.isSafeInteger(event.issue.number)
+        const confirmationEvent = ['created', 'edited', 'deleted'].includes(event.action)
+            && (parseReviewConfirmation(event.comment?.body)
+                || (event.action === 'edited' && parseReviewConfirmation(event.changes?.body?.from)));
+        return confirmationEvent && event.issue?.pull_request && Number.isSafeInteger(event.issue.number)
             ? [event.issue.number] : [];
     }
     if (eventName === 'workflow_run') {
