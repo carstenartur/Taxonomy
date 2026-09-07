@@ -35,8 +35,8 @@ public class SystemInformationService {
     public Snapshot snapshot() {
         Runtime runtime = Runtime.getRuntime();
         var jvm = ManagementFactory.getRuntimeMXBean();
-        String indexStorage = environment.getProperty(
-                "spring.jpa.properties.hibernate.search.backend.directory.type", "unknown");
+        String indexStorage = normalizeIndexStorage(environment.getProperty(
+                "spring.jpa.properties.hibernate.search.backend.directory.type", "unknown"));
         return new Snapshot(Instant.now(), INSTANCE_ID, environment.getProperty("app.display-version", "unknown"),
                 new RuntimeInfo(runtime.availableProcessors(), runtime.totalMemory() - runtime.freeMemory(),
                         runtime.maxMemory(), jvm.getUptime(), Instant.ofEpochMilli(jvm.getStartTime()),
@@ -136,6 +136,14 @@ public class SystemInformationService {
         } catch (RuntimeException exception) {
             return null; // Visible source flags identify the metadata/unknown fallback.
         }
+    }
+
+    static String normalizeIndexStorage(String value) {
+        String normalized = value == null ? "" : value.strip().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "local-heap", "local-filesystem" -> normalized;
+            default -> "unknown";
+        };
     }
 
     static String connectionStorage(String url) {
