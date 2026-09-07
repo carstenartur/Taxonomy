@@ -42,7 +42,6 @@ final class FrontendApiBoundaryPolicy {
             "core/taxonomy-browse.js",
             "core/taxonomy-scoring.js",
             "relations/taxonomy-coverage.js",
-            "relations/taxonomy-quality.js",
             "relations/taxonomy-relations.js",
             "shared/taxonomy-about.js",
             "shared/taxonomy-action-guards.js",

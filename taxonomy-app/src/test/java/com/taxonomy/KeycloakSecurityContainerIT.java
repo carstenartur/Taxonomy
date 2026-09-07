@@ -212,6 +212,12 @@ class KeycloakSecurityContainerIT {
                 "/api/documents/upload", userToken).statusCode()).isEqualTo(403);
         assertThat(emptyMultipartPost(
                 "/api/documents/upload", architectToken).statusCode()).isEqualTo(400);
+
+        assertThat(appRequest("GET", "/api/admin/sessions", userToken,
+                null, null, Map.of()).statusCode()).isEqualTo(403);
+        assertThat(appRequest("GET", "/api/admin/sessions", architectToken,
+                null, null, Map.of()).statusCode()).isEqualTo(403);
+        assertThat(sessionInventory().get("sessionCount").intValue()).isZero();
     }
 
     @Test
@@ -249,6 +255,25 @@ class KeycloakSecurityContainerIT {
                 .containsExactlyInAnyOrder("USER", "ARCHITECT");
 
         String sessionCookie = browserCookieHeader();
+        JsonNode inventory = sessionInventory();
+        assertThat(inventory.get("userCount").intValue()).isEqualTo(1);
+        assertThat(inventory.get("sessionCount").intValue()).isEqualTo(1);
+        assertThat(inventory.get("unidentifiedSessionCount").intValue()).isZero();
+        JsonNode registered = inventory.get("users").get(0);
+        assertThat(registered.get("username").asText()).isEqualTo("architect");
+        assertThat(registered.get("authenticationType").asText()).isEqualTo("OIDC");
+        assertThat(registered.get("sessionCount").intValue()).isEqualTo(1);
+        var cookie = driver.manage().getCookieNamed("JSESSIONID");
+        assertThat(cookie).isNotNull();
+        assertThat(inventory.toString().contains(cookie.getValue()))
+                .as("OIDC inventory does not export the browser session ID").isFalse();
+        assertThat(inventory.toString().contains(adminToken)
+                || inventory.toString().contains(architectToken))
+                .as("OIDC inventory does not export access tokens").isFalse();
+        assertThat(inventory.toString()).doesNotContain("architect@taxonomy.test");
+        assertThat(appRequest("GET", "/api/admin/sessions", null, null, null,
+                Map.of("Cookie", sessionCookie)).statusCode()).isEqualTo(403);
+        assertThat(sessionInventory().get("sessionCount").intValue()).isEqualTo(1);
         String csrfToken = browserMeta("_csrf", "");
         String csrfHeader = browserMeta("_csrf_header", "X-CSRF-TOKEN");
         assertThat(csrfToken).isNotBlank();
@@ -286,6 +311,7 @@ class KeycloakSecurityContainerIT {
                 "GET", "/api/account/me", null, null, null,
                 Map.of("Cookie", sessionCookie));
         assertThat(staleSession.statusCode()).isNotEqualTo(200);
+        assertThat(sessionInventory().get("sessionCount").intValue()).isZero();
     }
 
     @Test
@@ -372,6 +398,17 @@ class KeycloakSecurityContainerIT {
             container.withNetworkAliases(ContainerTestUtils.APP_NETWORK_ALIAS);
         }
         return container;
+    }
+
+    private JsonNode sessionInventory() throws Exception {
+        HttpResponse<String> response = appRequest(
+                "GET", "/api/admin/sessions", adminToken, null, null, Map.of());
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.headers().firstValue("Cache-Control")).hasValue("no-store");
+        assertThat(response.headers().allValues("Set-Cookie")).isEmpty();
+        JsonNode snapshot = MAPPER.readTree(response.body());
+        assertThat(snapshot.get("scope").asText()).isEqualTo("LOCAL_INSTANCE");
+        return snapshot;
     }
 
     private void assertAccount(

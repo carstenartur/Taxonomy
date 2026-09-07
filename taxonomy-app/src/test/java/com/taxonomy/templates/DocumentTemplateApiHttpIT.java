@@ -13,7 +13,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -25,6 +28,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -137,6 +141,148 @@ class DocumentTemplateApiHttpIT {
         assertNotEquals(etag(winner), etag(restored));
         assertPartsEqual(original, send("GET", path + "/download", EMPTY).body());
         assertEquals(3, historySize(path));
+    }
+
+    @Test
+    void browserRestoreRequiresConfirmationAndCsrfAndRetainsAStaleSelection() throws Exception {
+        byte[] original = original();
+        var cookies = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
+        try (var browser = HttpClient.newBuilder().cookieHandler(cookies)
+                .connectTimeout(Duration.ofSeconds(10)).build()) {
+            var login = browserSend(browser, "GET", "/login", "");
+            assertEquals(200, login.statusCode());
+            var signedIn = browserSend(browser, "POST", "/login",
+                    "username=admin&password=" + formEncode(PASSWORD) + "&_csrf=" + formEncode(csrfToken(login.body())));
+            assertEquals(302, signedIn.statusCode());
+            assertFalse(signedIn.headers().firstValue("Location").orElse("").contains("error"));
+
+            for (String language : List.of("de", "en")) {
+                String id = "restore-ui-" + UUID.randomUUID();
+                String api = API + id;
+                String page = "/admin/document-templates/" + id;
+                var created = send("PUT", api, original);
+                assertEquals(201, created.statusCode());
+                String target = etag(created).replace("\"", "");
+                byte[] secondContent = modified(original, "second-version");
+                var second = send("PUT", api, secondContent, "If-Match", etag(created));
+                assertEquals(201, second.statusCode());
+                String expected = etag(second).replace("\"", "");
+                String confirmation = page + "/restore?revision=" + target
+                        + "&expectedHead=" + expected + "&lang=" + language;
+                var confirmedPage = browserSend(browser, "GET", confirmation, "");
+                assertEquals(200, confirmedPage.statusCode());
+                String html = confirmedPage.body();
+                assertTrue(html.contains(language.equals("de") ? "Wiederherstellung bestätigen" : "Confirm restoration"));
+                assertTrue(html.contains("API-QA"));
+                assertTrue(html.contains("id=\"restoreConfirmed\""));
+                assertTrue(html.contains("id=\"restoreConfirmationForm\""));
+                assertFalse(html.contains("??document.template.restore."));
+                assertDisplayedRevision(html, "restoreTargetRevision", target);
+                assertDisplayedRevision(html, "restoreExpectedRevision", expected);
+                assertEquals(2, historySize(api));
+                assertEquals(etag(second), etag(send("GET", api + "/download", EMPTY)));
+
+                String post = page + "/restore?lang=" + language;
+                String fields = "revision=" + target + "&expectedHead=" + expected;
+                assertEquals(403, browserSend(browser, "POST", post, fields + "&confirmed=true").statusCode());
+                assertEquals(400, browserSend(browser, "POST", post,
+                        fields + "&_csrf=" + formEncode(csrfToken(html))).statusCode());
+                assertEquals(2, historySize(api));
+
+                byte[] winnerContent = modified(original, "concurrent-winner");
+                var winner = send("PUT", api, winnerContent, "If-Match", etag(second));
+                assertEquals(201, winner.statusCode());
+                String winnerHead = etag(winner).replace("\"", "");
+                var stale = browserSend(browser, "POST", post,
+                        fields + "&confirmed=true&_csrf=" + formEncode(csrfToken(html)));
+                assertEquals(412, stale.statusCode());
+                assertStaleConfirmation(stale.body(), target, expected, winnerHead);
+                assertEquals(3, historySize(api));
+                var preserved = send("GET", api + "/download", EMPTY);
+                assertEquals(etag(winner), etag(preserved));
+                assertPartsEqual(winnerContent, preserved.body());
+
+                var reloaded = browserSend(browser, "GET", confirmation, "");
+                assertEquals(200, reloaded.statusCode());
+                assertStaleConfirmation(reloaded.body(), target, expected, winnerHead);
+                var targetDownload = send("GET", api + "/download?revision=" + target, EMPTY);
+                assertEquals(200, targetDownload.statusCode());
+                assertPartsEqual(original, targetDownload.body());
+                assertEquals(3, historySize(api));
+
+                // Only an explicit new confirmation uses the new head; never retry a stale write automatically.
+                var fresh = browserSend(browser, "GET", page + "/restore?revision=" + target
+                        + "&expectedHead=" + winnerHead + "&lang=" + language, "");
+                assertEquals(200, fresh.statusCode());
+                assertTrue(fresh.body().contains("id=\"restoreConfirmationForm\""));
+                assertDisplayedRevision(fresh.body(), "restoreExpectedRevision", winnerHead);
+                String acceptedForm = "revision=" + target + "&expectedHead=" + winnerHead
+                        + "&confirmed=true&_csrf=" + formEncode(csrfToken(fresh.body()));
+                var restored = browserSend(browser, "POST", post, acceptedForm);
+                assertEquals(302, restored.statusCode());
+                String location = restored.headers().firstValue("Location").orElseThrow();
+                URI redirect = uri(post).resolve(location);
+                assertEquals("127.0.0.1", redirect.getHost());
+                assertEquals(port, redirect.getPort());
+                assertEquals("/taxonomy" + page, redirect.getPath());
+                var saved = send("GET", api + "/download", EMPTY);
+                assertEquals(200, saved.statusCode());
+                assertNotEquals(etag(winner), etag(saved));
+                assertPartsEqual(original, saved.body());
+                assertEquals(4, historySize(api));
+                assertPartsEqual(winnerContent,
+                        send("GET", api + "/download?revision=" + winnerHead, EMPTY).body());
+                var success = browserSend(browser, "GET", page + "?lang=" + language, "");
+                assertEquals(200, success.statusCode());
+                assertTrue(success.body().contains("id=\"restoreSuccess\""));
+                assertTrue(success.body().contains(etag(saved).replace("\"", "")));
+                assertFalse(success.body().contains("??document.template.restore."));
+
+                assertEquals(412, browserSend(browser, "POST", post, acceptedForm).statusCode());
+                assertEquals(4, historySize(api));
+                assertEquals(etag(saved), etag(send("GET", api + "/download", EMPTY)));
+            }
+        }
+    }
+
+    private HttpResponse<String> browserSend(HttpClient browser, String method, String path, String body)
+            throws Exception {
+        var request = HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(20))
+                .header("Accept", "text/html");
+        if (method.equals("POST")) {
+            request.header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(body));
+        } else {
+            request.GET();
+        }
+        return browser.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
+    private static String csrfToken(String html) {
+        var input = Pattern.compile("<input\\b(?=[^>]*\\bname=\"_csrf\")(?=[^>]*\\bvalue=\"([^\"]+)\")[^>]*>")
+                .matcher(html);
+        assertTrue(input.find(), "Server-rendered form must include its CSRF token");
+        return input.group(1);
+    }
+
+    private static String formEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private static void assertDisplayedRevision(String html, String id, String revision) {
+        assertTrue(Pattern.compile("<code\\b[^>]*\\bid=\"" + Pattern.quote(id)
+                + "\"[^>]*>" + Pattern.quote(revision) + "</code>").matcher(html).find(), id);
+    }
+
+    private static void assertStaleConfirmation(String html, String target, String expected, String current) {
+        assertDisplayedRevision(html, "restoreTargetRevision", target);
+        assertDisplayedRevision(html, "restoreExpectedRevision", expected);
+        assertDisplayedRevision(html, "restoreCurrentRevision", current);
+        assertTrue(html.contains("id=\"restoreConflict\""));
+        assertTrue(html.contains("id=\"restoreReviewCurrent\""));
+        assertFalse(html.contains("id=\"restoreConfirmationForm\""));
+        assertFalse(html.contains("id=\"restoreSubmit\""));
+        assertFalse(html.contains("TemplateConflictException"));
     }
 
     private byte[] original() throws Exception {

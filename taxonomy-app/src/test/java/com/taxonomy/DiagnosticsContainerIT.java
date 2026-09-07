@@ -31,6 +31,7 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
 
     private static final String SESSION_USER = "session-inventory-admin";
     private static final String SESSION_PASSWORD = "Session-probe-" + UUID.randomUUID();
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Container
     static GenericContainer<?> app = ContainerTestUtils.appContainer();
@@ -89,7 +90,7 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
     }
 
     private static void createSessionAccount(HttpClient client, String authorization) throws Exception {
-        String body = JsonMapper.builder().build().writeValueAsString(Map.of(
+        String body = JSON.writeValueAsString(Map.of(
                 "username", SESSION_USER, "password", SESSION_PASSWORD, "roles", List.of("ADMIN")));
         HttpRequest request = HttpRequest.newBuilder(URI.create("http://" + app.getHost() + ":"
                         + app.getMappedPort(8080) + "/api/admin/users"))
@@ -105,12 +106,15 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
         HttpResponse<String> response = exchange(client, "/api/admin/sessions", null, authorization);
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.headers().firstValue("Cache-Control")).hasValue("no-store");
-        return JsonMapper.builder().build().readTree(response.body());
+        return JSON.readTree(response.body());
     }
 
     private static void login(HttpClient client, CookieManager cookies) throws Exception {
         HttpResponse<String> page = exchange(client, "/login", null, null);
         assertThat(page.statusCode()).isEqualTo(200);
+        assertThat(cookies.getCookieStore().getCookies())
+                .as("GET /login creates the pre-authentication session for its CSRF token")
+                .anyMatch(cookie -> cookie.getName().equals("JSESSIONID"));
         String oldSession = sessionId(cookies);
         String form = "username=" + encode(SESSION_USER) + "&password=" + encode(SESSION_PASSWORD)
                 + "&_csrf=" + encode(csrf(page.body()));

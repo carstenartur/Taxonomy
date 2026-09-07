@@ -9,6 +9,15 @@
 window.TaxonomyRelationsApi = (function () {
     'use strict';
 
+    /** All three reads must succeed; a failed response is not an empty metric. */
+    function readQualityDashboard() {
+        return Promise.all([
+            TaxonomyApiClient.getJson('/api/relations/metrics'),
+            TaxonomyApiClient.getJson('/api/relations/metrics/by-type'),
+            TaxonomyApiClient.getJson('/api/relations/metrics/top-rejected?limit=5')
+        ]);
+    }
+
     function readSnapshot(relationType) {
         var url = relationType
             ? '/api/relations?type=' + encodeURIComponent(relationType)
@@ -39,6 +48,7 @@ window.TaxonomyRelationsApi = (function () {
     }
 
     return {
+        readQualityDashboard: readQualityDashboard,
         readSnapshot: readSnapshot,
         upsertRelation: upsertRelation,
         deleteRelation: deleteRelation

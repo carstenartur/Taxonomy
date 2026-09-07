@@ -59,7 +59,10 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
     try {
       const home = new URL(base);
       home.searchParams.set('lang', locale);
-      await page.goto(home.href, { waitUntil: 'domcontentloaded' });
+      // Finish the preceding document's requests before navigation. WebKit reports
+      // interrupted startup/draft fetches as console access-control failures.
+      await page.waitForLoadState('networkidle');
+      await page.goto(home.href, { waitUntil: 'networkidle' });
       await navigateToPage(page, 'admin');
       const health = page.locator('#healthDashboard');
       if (!(await health.evaluate(element => element.open))) {
@@ -71,6 +74,9 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       expected.searchParams.set('lang', locale);
       assert.equal(await link.getAttribute('href'), expected.href);
       assert.equal(pageInventoryRequests, 0, 'Navigation must not eagerly fetch user identities');
+      // Opening the health disclosure starts a fetch even though the link is
+      // already visible. Let that request finish before leaving the application.
+      await page.waitForLoadState('networkidle');
       await link.focus();
       const [opened] = await Promise.all([
         page.waitForResponse(response => response.url() === expected.href
