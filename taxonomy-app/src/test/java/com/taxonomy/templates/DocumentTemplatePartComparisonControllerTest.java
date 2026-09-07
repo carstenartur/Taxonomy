@@ -102,6 +102,10 @@ class DocumentTemplatePartComparisonControllerTest {
                 var failure = assertThrows(ResponseStatusException.class,
                         () -> controller.comparePart(ID, pair[0], pair[1], PATH, new ConcurrentModel()));
                 assertEquals(400, failure.getStatusCode().value());
+                assertEquals("Two immutable template revisions are required", failure.getReason());
+                assertInstanceOf(IllegalArgumentException.class, failure.getCause());
+                assertEquals(failure.getReason(), failure.getCause().getMessage());
+                assertNull(failure.getCause().getCause());
             }
         }
         for (String invalid : new String[]{null, "", " ", "../word/document.xml", "/word/document.xml",

@@ -33,7 +33,7 @@ public final class DocumentTemplatePartComparisonController {
             to = DocumentTemplateService.canonicalComparisonRevision(to);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Two immutable revisions and a relative package-part path are required");
+                    "Two immutable template revisions are required", exception);
         }
         try {
             OoxmlTemplatePackageCodec.validatePartPath(partPath);
