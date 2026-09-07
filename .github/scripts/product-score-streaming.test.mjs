@@ -6,6 +6,12 @@ import vm from 'node:vm';
 const source = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',
   import.meta.url), 'utf8');
+const viewsSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js',
+  import.meta.url), 'utf8');
+const catalogue = JSON.parse(await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/data/nato-taxonomy.json',
+  import.meta.url), 'utf8'));
 // These identities are taken from the real catalogue; no provider is called.
 const product = 'IP-1286';
 const family = 'IP-2072';
@@ -63,7 +69,7 @@ function harness(locale = 'en') {
       updateExportGroupVisibility() {}
     }
   };
-  vm.runInNewContext(source, {
+  const context = vm.createContext({
     window, document, console,
     TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml: value => String(value) },
     CSS: { escape: value => value },
@@ -72,9 +78,11 @@ function harness(locale = 'en') {
       close() {}
     }
   });
+  vm.runInContext(source, context);
+  vm.runInContext(viewsSource, context);
   window.TaxonomyScoring.runStreamingAnalysis();
   return {
-    state, nodes, api: window.TaxonomyScoring,
+    state, nodes, api: window.TaxonomyScoring, views: window.TaxonomyViews,
     send(type, data) { handlers.get(type)({ data: JSON.stringify(data) }); },
     score(scores, details = {}) { this.send('scores', { scores, rawScores: scores, scoreDetails: details }); },
     badge(code = product) { return nodes.get(code).header.querySelector('.tax-pct'); },
@@ -83,6 +91,24 @@ function harness(locale = 'en') {
 }
 
 for (const language of ['en', 'de']) {
+  test(`${language}: tree exports retain pending and zero-relevance product evidence`, () => {
+    const h = harness(language);
+    const productNode = catalogue.nodePatches.find(node => node.code === product);
+    assert.equal(productNode.analysisRole, 'PRODUCT');
+    h.score({ [product]: 80 }, { [product]: hint });
+    const exported = () => h.views.buildMermaidTreeExport([productNode], h.state.currentScores);
+    assert.match(exported(), language === 'en' ? /80%.*pending/ : /80%.*ausstehend/);
+    h.score({ [family]: 0 });
+    assert.match(exported(), /80%.*0\/100/);
+    h.score({ [product]: 0 });
+    assert.match(exported(), /0%.*0\/100/);
+    for (const scores of [null, {}, Object.create({ [product]: 0 })]) {
+      assert.doesNotMatch(h.views.buildMermaidTreeExport([productNode], scores), /Suitability|Eignung/);
+    }
+    const ordinaryNode = catalogue.nodePatches.find(node => node.analysisRole === 'PRODUCT_FAMILY');
+    assert.doesNotMatch(h.views.buildMermaidTreeExport([ordinaryNode], { [ordinaryNode.code]: 0 }), /0%/);
+  });
+
   test(`${language}: rebuilt views receive the same typed labels as incremental updates`, () => {
     const h = harness(language);
     h.score({ [family]: 40, [product]: 80 }, { [product]: hint });

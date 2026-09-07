@@ -144,18 +144,59 @@ async function verifyProductScoreBrowser(target) {
     const require = (condition, message) => {
       if (!condition) throw new Error(`Product score browser regression: ${message}`);
     };
+    const visualEvidence = [];
+    function verifyVisuals(stage) {
+      const views = window.TaxonomyViews;
+      const label = scoring.describeScore(product.code, state.currentScores[product.code]).label;
+      // Render an actual catalogue subtree so the product is visible before depth-based collapse.
+      const tree = [family];
+      require(views.buildMermaidTreeExport(tree, state.currentScores).includes(label),
+        `${stage}: Mermaid product label`);
+      const svg = views.buildExportSVG(tree, state.currentScores);
+      require([...svg.querySelectorAll('text')].some(node => node.textContent === label),
+        `${stage}: SVG product label`);
+      const container = document.createElement('div');
+      container.style.width = '1500px';
+      document.body.appendChild(container);
+      const drawn = [];
+      const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+      try {
+        views.renderDecisionMap(container, tree, state.currentScores);
+        require([...container.querySelectorAll('.dm-label')].some(node =>
+          node.textContent.includes(product.code) && node.textContent.includes(label)),
+        `${stage}: decision map retains product evidence`);
+        if (state.currentScores[product.code] === 0 && state.currentScores[family.code] === 0) {
+          require([...container.querySelectorAll('.dm-rank')].every(node => !node.textContent),
+            `${stage}: zero relevance must not receive a positive rank`);
+        }
+        CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
+          if (this.canvas.parentNode === container) drawn.push(String(text));
+          return originalFillText.call(this, text, ...args);
+        };
+        views.renderTreeCanvas(container, tree, state.currentScores);
+        require(drawn.includes(label), `${stage}: canvas product badge`);
+        visualEvidence.push({ stage, label, effective: state.currentScores[product.code] });
+      } finally {
+        CanvasRenderingContext2D.prototype.fillText = originalFillText;
+        container._taxObserver?.disconnect();
+        container.remove();
+      }
+    }
     try {
       scoring.applyLocalRawScores({ [product.code]: 80 }, true);
       require(state.currentScores[product.code] === 0, 'missing family must fail closed');
       require(state.currentScoreSemanticsWarnings.length === 1, 'missing family warning');
+      verifyVisuals('missing family');
       scoring.applyLocalRawScores({ [family.code]: 0 });
       require(state.currentScoreDetails[product.code].parentScore === 0, 'explicit family zero');
       require(state.currentScoreSemanticsWarnings.length === 0, 'resolved family warning');
+      verifyVisuals('explicit family zero');
       scoring.applyLocalRawScores({ [family.code]: 40 });
       require(state.currentScores[product.code] === 32, 'delayed family correction');
       scoring.applyLocalRawScores({ [product.code]: 80 });
       require(state.currentRawScores[product.code] === 80, 'raw suitability retention');
       require(state.currentScores[product.code] === 32, 'no repeated weighting');
+      verifyVisuals('positive effective relevance');
       const rendered = [];
       for (const view of ['list', 'tabs', 'list']) {
         state.currentView = view;
@@ -171,9 +212,12 @@ async function verifyProductScoreBrowser(target) {
         state.taxonomyData, state.currentScores)), 'typed exported tree');
       const evidence = { productCode: product.code, familyCode: family.code,
         raw: state.currentRawScores[product.code], effective: state.currentScores[product.code],
-        detail: state.currentScoreDetails[product.code], rendered };
+        detail: state.currentScoreDetails[product.code], rendered, visualEvidence };
+      scoring.applyLocalRawScores({ [product.code]: 0 });
+      verifyVisuals('zero suitability');
       scoring.applyLocalRawScores({ [family.code]: 40 }, true);
-      require(!Object.hasOwn(state.currentProductSuitabilityScores, product.code), 'reset stale suitability');
+      require(!Object.prototype.hasOwnProperty.call(state.currentProductSuitabilityScores, product.code),
+        'reset stale suitability');
       return evidence;
     } finally {
       Object.assign(state, original);

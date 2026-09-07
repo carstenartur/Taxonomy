@@ -132,6 +132,7 @@
         var detail = (S.currentScoreDetails || {})[code];
         var raw = (S.currentRawScores || {})[code] ?? effective;
         return {
+            visible: Number.isFinite(effective) && (effective > 0 || isProductScore(detail)),
             label: scoreLabel(code, effective, raw, detail),
             ariaLabel: scoreAriaLabel(code, effective, raw, detail),
             tooltip: t(isProductScore(detail)

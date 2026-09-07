@@ -11,6 +11,13 @@
             ? scoring.describeScore(code, value).label : value + '%';
     }
 
+    function hasScoreLabel(code, scores) {
+        if (!scores || !Object.prototype.hasOwnProperty.call(scores, code)) { return false; }
+        var scoring = window.TaxonomyScoring;
+        return scoring && scoring.describeScore
+            ? scoring.describeScore(code, scores[code]).visible : scores[code] > 0;
+    }
+
     // Sizing constants
     var MAX_SUNBURST_SIZE = 600; // max px for sunburst diameter
     var TREE_INITIAL_DEPTH = 3;  // collapse nodes at depth >= this on initial render
@@ -476,7 +483,7 @@
     // ── Decision Map ──────────────────────────────────────────────────────────
     /**
      * Render a Decision Map into `container`.
-     * Shows only the "hot" paths (nodes with score > 0 and their ancestors),
+     * Shows paths with positive relevance or product suitability evidence, plus their ancestors,
      * with top-3 nodes highlighted with rank badges.
      * Includes a stats summary and a sortable/filterable results table.
      * @param {HTMLElement} container - The DOM element to render into (cleared first).
@@ -518,7 +525,7 @@
         // ── Compute hot set (ancestors of scored nodes) ──────────────────────
         var hotSet = new Set();
         function computeHot(node) {
-            var selfHot = (scores[node.code] > 0);
+            var selfHot = hasScoreLabel(node.code, scores);
             var childHot = false;
             if (node.children) {
                 node.children.forEach(function (child) {
@@ -548,7 +555,8 @@
         var statsDiv = document.createElement('div');
         statsDiv.className = 'decision-stats';
         if (scoredCount === 0) {
-            statsDiv.innerHTML = '<span class="decision-stats-item">' + t('views.no.scored.nodes') + '</span>';
+            statsDiv.innerHTML = '<span class="decision-stats-item">' +
+                t(hotSet.size > 0 ? 'views.product.evidence.only' : 'views.no.scored.nodes') + '</span>';
         } else {
             var best = allScored[0];
             var bestName = nameMap[best[0]] || '';
@@ -734,7 +742,7 @@
                     var name = nameMap[d.data.code];
                     var label = name ? (d.data.code + ' \u2013 ' + name) : d.data.code;
                     var pct = scores[d.data.code];
-                    if (pct > 0) { label += ' ' + scoreText(d.data.code, pct); }
+                    if (hasScoreLabel(d.data.code, scores)) { label += ' ' + scoreText(d.data.code, pct); }
                     return label;
                 })
                 .attr('x', function (d) { return (d.children || d._children) ? -10 : 10; })
@@ -1080,7 +1088,7 @@
                 }
 
                 // Score badge
-                if (scores && scores[d.data.code] > 0) {
+                if (hasScoreLabel(d.data.code, scores)) {
                     var pct = scores[d.data.code];
                     var badgeText = scoreText(d.data.code, pct);
                     var badgeX = (d.children || d._children) ? nx - 10 - ctx.measureText(label).width - 4 : nx + 10 + ctx.measureText(label).width + 4;
@@ -1297,7 +1305,7 @@
             nodeG.appendChild(text);
 
             // Score badge
-            if (scores && scores[d.data.code] > 0) {
+            if (hasScoreLabel(d.data.code, scores)) {
                 var badge = document.createElementNS(svgNS, 'text');
                 badge.setAttribute('dy', '0.31em');
                 badge.setAttribute('x', (d.children || d._children) ? '-10' : '10');
@@ -1378,7 +1386,7 @@
 
         function mermaidLabel(node) {
             var label = node.name ? node.code + ' ' + node.name : node.code;
-            if (scores && scores[node.code] > 0) {
+            if (hasScoreLabel(node.code, scores)) {
                 label += ' [' + scoreText(node.code, scores[node.code]) + ']';
             }
             return label.replace(/"/g, '&quot;');
