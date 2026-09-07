@@ -49,6 +49,7 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
   const base = new URL(`${baseUrl.replace(/\/$/, '')}/`);
   const apiUrl = new URL('api/admin/sessions', base);
   const sessionUrl = new URL('admin/sessions', base);
+  const validationUrl = new URL('api/dsl/validate', base);
   const cases = [];
   for (const locale of ['en', 'de']) {
     let pageInventoryRequests = 0;
@@ -61,12 +62,34 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       home.searchParams.set('lang', locale);
       // Finish the preceding document's requests before navigation. WebKit reports
       // interrupted startup/draft fetches as console access-control failures.
+      await page.evaluate(async () => {
+        if (window.TaxonomyAnalysisSession) await window.TaxonomyAnalysisSession.saveNow();
+      });
       await page.waitForLoadState('networkidle');
-      await page.goto(home.href, { waitUntil: 'networkidle' });
+      // Initial CodeMirror linting has two debounce stages. A previously fired
+      // networkidle event does not prove that this delayed request has finished.
+      const [validation] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === validationUrl.pathname
+          && response.request().method() === 'POST'),
+        page.goto(home.href, { waitUntil: 'load' })
+      ]);
+      assert.equal(validation.status(), 200);
+      assert.equal(await validation.finished(), null);
+      await page.waitForFunction(() => {
+        const state = window.TaxonomyAnalysisSession?.state?.();
+        return window.__taxonomyAnalysisSessionLoading === false
+          && state?.workspaceId && state.restoring === false;
+      });
       await navigateToPage(page, 'admin');
       const health = page.locator('#healthDashboard');
       if (!(await health.evaluate(element => element.open))) {
-        await health.locator(':scope > summary').click();
+        const [loadedHealth] = await Promise.all([
+          page.waitForResponse(response => new URL(response.url()).pathname
+            === new URL('api/admin/health-summary', base).pathname),
+          health.locator(':scope > summary').click()
+        ]);
+        assert.equal(loadedHealth.status(), 200);
+        assert.equal(await loadedHealth.finished(), null);
       }
       const link = page.locator('#browserSessionsLink');
       await link.waitFor({ state: 'visible' });
@@ -74,8 +97,7 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       expected.searchParams.set('lang', locale);
       assert.equal(await link.getAttribute('href'), expected.href);
       assert.equal(pageInventoryRequests, 0, 'Navigation must not eagerly fetch user identities');
-      // Opening the health disclosure starts a fetch even though the link is
-      // already visible. Let that request finish before leaving the application.
+      await page.evaluate(() => window.TaxonomyAnalysisSession.saveNow());
       await page.waitForLoadState('networkidle');
       await link.focus();
       const [opened] = await Promise.all([
