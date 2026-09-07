@@ -346,7 +346,7 @@ jobs:
         run: bash .github/scripts/finalize-quality-evidence.sh
       - name: Upload verified reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with: { name: quality-reports, path: 'target/quality-reports/**', if-no-files-found: error, include-hidden-files: true, retention-days: 90 }
+        with: { name: quality-reports, path: 'target/quality-reports/**', if-no-files-found: error, include-hidden-files: true, retention-days: 90, overwrite: true }
       - name: Upload consolidated UI verification evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with: { name: ui-verification, path: 'target/ui-verification/**', if-no-files-found: error, retention-days: 90 }
+        with: { name: ui-verification, path: 'target/ui-verification/**', if-no-files-found: error, retention-days: 90, overwrite: true }
