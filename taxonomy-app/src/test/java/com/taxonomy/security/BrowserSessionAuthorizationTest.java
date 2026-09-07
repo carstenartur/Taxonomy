@@ -25,7 +25,9 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 /** Controller method-security contract, without starting the full application or database. */
 @WebMvcTest(BrowserSessionController.class)
@@ -49,6 +51,16 @@ class BrowserSessionAuthorizationTest {
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.scope").value("LOCAL_INSTANCE"))
                 .andExpect(jsonPath("$.users").isArray());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void administratorHtmlPageUsesTheSameNoStoreSnapshot() throws Exception {
+        mvc.perform(get("/admin/sessions"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(model().attributeExists("snapshot"))
+                .andExpect(view().name("browser-sessions"));
     }
 
     @Test
