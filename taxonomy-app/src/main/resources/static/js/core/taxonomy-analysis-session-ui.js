@@ -131,6 +131,12 @@
 
         runtime.invalidating = true;
         S.currentScores = null;
+        S.currentRawScores = {};
+        S.currentEffectiveScores = {};
+        S.currentScoreDetails = {};
+        S.currentProductSuitabilityScores = {};
+        S.scoreSemanticsVersion = 0;
+        S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];
