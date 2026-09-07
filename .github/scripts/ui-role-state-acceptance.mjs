@@ -161,10 +161,14 @@ try {
   if (role === 'ADMIN') {
     taskMeasurements.failedStep = 'browser-session inventory acceptance';
     const previousHttpFailures = httpFailures.length;
+    const previousConsoleErrors = consoleErrors.length;
+    const previousExternalRequests = externalRequests.length;
     browserSessions = await runBrowserSessionsAcceptance({
       page, evidence, outputDir, baseUrl, adminUsername, adminPassword
     });
-    if (httpFailures.length !== previousHttpFailures || consoleErrors.length || externalRequests.length) {
+    if (httpFailures.length !== previousHttpFailures
+        || consoleErrors.length !== previousConsoleErrors
+        || externalRequests.length !== previousExternalRequests) {
       throw new Error('Unexpected HTTP, console or external-request error during session-page acceptance');
     }
     checks.push('administrator browser-session page in EN and DE');
