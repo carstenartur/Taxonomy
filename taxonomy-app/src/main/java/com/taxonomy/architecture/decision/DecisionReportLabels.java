@@ -52,12 +52,12 @@ final class DecisionReportLabels {
     String liveHierarchy() { return german ? "Aktuell geladene Taxonomiehierarchie" : "Currently loaded taxonomy hierarchy"; }
     String completeness() { return german ? "Vollständigkeit" : "Completeness"; }
     String executiveSummary() { return german ? "Kurzfassung" : "Executive summary"; }
-    String leadingLeaf() { return german ? "Höchster Blattknoten" : "Highest-rated leaf"; }
+    String leadingLeaf() { return german ? "Führender Blattknoten nach effektiver Relevanz" : "Leading leaf by effective relevance"; }
     String highestPath() { return german ? "Führender Entscheidungspfad" : "Leading decision path"; }
     String step() { return german ? "Schritt" : "Step"; }
     String node() { return german ? "Knoten" : "Node"; }
-    String score() { return german ? "Absoluter Wert" : "Absolute score"; }
-    String localShare() { return german ? "Anteil am Vater" : "Share of parent"; }
+    String score() { return german ? "Effektive Relevanz" : "Effective relevance"; }
+    String localShare() { return german ? "Lokaler Anteil / Produkteignung" : "Local share / product suitability"; }
     String rationale() { return german ? "Kurzbegründung" : "Short rationale"; }
     String reasonSource() { return german ? "Herkunft" : "Source"; }
     String methodology() { return german ? "Methodischer Hinweis" : "Methodology note"; }
@@ -79,7 +79,7 @@ final class DecisionReportLabels {
     String deterministicReason() { return german ? "Deterministische Herleitung" : "Deterministic derivation"; }
     String missingReason() { return german ? "Keine Begründung vorhanden" : "No reason available"; }
     String warnings() { return german ? "Hinweise und Prüfvorbehalte" : "Warnings and review reservations"; }
-    String leadingLeaves() { return german ? "Rangliste positiv bewerteter Blattknoten" : "Ranking of positively scored leaf nodes"; }
+    String leadingLeaves() { return german ? "Rangliste nach effektiver Relevanz" : "Ranking by effective relevance"; }
     String taxonomyRoot() { return german ? "Taxonomiebereich" : "Taxonomy root"; }
     String hierarchyPath() { return german ? "Hierarchiepfad" : "Hierarchy path"; }
     String appendix() { return german ? "Nachweis und Methodik" : "Evidence and methodology"; }

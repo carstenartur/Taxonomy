@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.dto;
 
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScoreKind;
 import com.taxonomy.dto.ArchitectureRecommendation;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.PatternDetectionView;
@@ -25,8 +26,11 @@ import com.taxonomy.portfolio.model.PortfolioTypes.SolutionType;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /** Framework-neutral REST contracts for the project requirement portfolio. */
 public final class PortfolioDtos {
@@ -313,9 +317,37 @@ public final class PortfolioDtos {
             boolean taxonomyFingerprintChanged,
             boolean promptFingerprintChanged,
             boolean providerChanged) {
+
+        public SnapshotDiff {
+            Map<String, ScoreChange> canonicalScoreChanges = new TreeMap<>();
+            if (scoreChanges != null) {
+                canonicalScoreChanges.putAll(scoreChanges);
+            }
+            scoreChanges = Collections.unmodifiableMap(
+                    new LinkedHashMap<>(canonicalScoreChanges));
+        }
     }
 
-    public record ScoreChange(Integer oldScore, Integer newScore) {
+    /**
+     * One node's effective-score change plus the complete meaning of that value.
+     * The two original components remain first for source and JSON compatibility.
+     */
+    public record ScoreChange(
+            Integer oldScore,
+            Integer newScore,
+            Integer oldRawScore,
+            Integer newRawScore,
+            AnalysisScoreKind oldKind,
+            AnalysisScoreKind newKind,
+            String oldParentCode,
+            String newParentCode,
+            Integer oldParentScore,
+            Integer newParentScore) {
+
+        public ScoreChange(Integer oldScore, Integer newScore) {
+            this(oldScore, newScore, oldScore, newScore,
+                    null, null, null, null, null, null);
+        }
     }
 
     // ── Solutions ───────────────────────────────────────────────────────────

@@ -2,9 +2,11 @@ package com.taxonomy.portfolio.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReport;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
+import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.AnalysisSnapshotProvenance;
 import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
@@ -12,12 +14,14 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -34,14 +38,27 @@ public class DecisionRationaleSnapshotReportService {
     private final RequirementAnalysisSnapshotRepository snapshotRepository;
     private final PortfolioJsonCodec jsonCodec;
     private final DecisionRationaleReportService reportService;
+    private final DecisionRationaleScoreSemanticsAdapter scoreSemanticsAdapter;
 
+    /** Backward-compatible constructor for focused unit tests. */
     public DecisionRationaleSnapshotReportService(
             RequirementAnalysisSnapshotRepository snapshotRepository,
             PortfolioJsonCodec jsonCodec,
             DecisionRationaleReportService reportService) {
+        this(snapshotRepository, jsonCodec, reportService,
+                new DecisionRationaleScoreSemanticsAdapter());
+    }
+
+    @Autowired
+    public DecisionRationaleSnapshotReportService(
+            RequirementAnalysisSnapshotRepository snapshotRepository,
+            PortfolioJsonCodec jsonCodec,
+            DecisionRationaleReportService reportService,
+            DecisionRationaleScoreSemanticsAdapter scoreSemanticsAdapter) {
         this.snapshotRepository = snapshotRepository;
         this.jsonCodec = jsonCodec;
         this.reportService = reportService;
+        this.scoreSemanticsAdapter = scoreSemanticsAdapter;
     }
 
     @Transactional(readOnly = true)
@@ -75,6 +92,8 @@ public class DecisionRationaleSnapshotReportService {
                     "The analysis snapshot predates frozen taxonomy-hierarchy evidence and cannot be rendered reproducibly");
         }
 
+        Locale effectiveLocale = locale == null ? Locale.ENGLISH : locale;
+        Map<String, AnalysisScoreDetail> scoreDetails = analysis.getScoreDetails();
         ViewContext historicalViewContext = historicalViewContext(snapshot, analysis);
         AnalysisSnapshotProvenance provenance = new AnalysisSnapshotProvenance(
                 snapshot.getId(),
@@ -90,14 +109,18 @@ public class DecisionRationaleSnapshotReportService {
         DecisionAnalysisInput input = new DecisionAnalysisInput(
                 snapshot.getRequirementVersion().getText(),
                 analysis.getScores(),
-                analysis.getReasons(),
+                scoreSemanticsAdapter.enrichReasons(
+                        analysis.getReasons(), scoreDetails, effectiveLocale),
                 firstNonBlank(snapshot.getProvider(), analysis.getProvider()),
                 snapshot.getStatus().name(),
                 analysis.getDiscrepancies(),
                 analysis.getProductCoverageGaps(),
                 analysis.getTree(),
-                provenance);
-        return reportService.generate(input, workspaceContext, historicalViewContext, locale);
+                provenance,
+                scoreDetails);
+        DecisionRationaleReport report = reportService.generate(
+                input, workspaceContext, historicalViewContext, effectiveLocale);
+        return scoreSemanticsAdapter.adapt(report, scoreDetails, effectiveLocale);
     }
 
     private ViewContext historicalViewContext(
