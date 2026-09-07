@@ -106,11 +106,17 @@
                         <td><code th:text="${change.key}">word/document.xml</code></td>
                         <td><span class="badge"
                                   th:classappend="${change.value.name() == 'ADDED' ? ' text-bg-success' : (change.value.name() == 'DELETED' ? ' text-bg-danger' : ' text-bg-warning')}"
-                                  th:text="${change.value}">MODIFIED</span></td>
-                        <td><a class="btn btn-sm btn-outline-secondary"
+                                  th:text="${#messages.msg('document.template.diff.' + change.value.name())}">MODIFIED</span></td>
+                        <td><div class="d-flex flex-wrap gap-2">
+                            <a class="btn btn-sm btn-outline-primary part-comparison-link"
+                               th:href="@{/admin/document-templates/{id}/compare-part(id=${template.templateId},from=${fromRevision},to=${toRevision},partPath=${change.key})}"
+                               th:aria-label="${#messages.msg('document.template.diff.open') + ': ' + change.key}"
+                               th:text="#{document.template.diff.open}">Compare contents</a>
+                            <a class="btn btn-sm btn-outline-secondary"
                                th:with="inspectRevision=${change.value.name() == 'DELETED' ? fromRevision : toRevision}"
                                th:href="@{/admin/document-templates/{id}(id=${template.templateId},from=${fromRevision},to=${toRevision},partRevision=${inspectRevision},partPath=${change.key})}"
-                               th:text="#{document.template.detail.inspect.button}">Inspect</a></td>
+                               th:text="#{document.template.detail.inspect.button}">Inspect</a>
+                        </div></td>
                     </tr>
                     </tbody>
                 </table>

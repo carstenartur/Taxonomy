@@ -75,8 +75,8 @@ class DocumentTemplateDetailControllerTest {
 
     @Test
     void confirmationNamesTheSelectedTemplateAndDoesNotWrite() throws Exception {
-        when(templates.download(ID, OLD)).thenReturn(file(OLD));
-        when(templates.downloadCurrent(ID)).thenReturn(file(CURRENT));
+        when(templates.describe(ID, OLD)).thenReturn(metadata(OLD));
+        when(templates.describeCurrent(ID)).thenReturn(metadata(CURRENT));
         var model = new ConcurrentModel();
 
         assertThat(controller().confirmRestore(ID, OLD, CURRENT, model))
@@ -86,16 +86,16 @@ class DocumentTemplateDetailControllerTest {
         assertThat(model.getAttribute("restoreConflict")).isEqualTo(false);
         assertThat(((TemplateDescriptor) model.getAttribute("restoreTarget")).displayName())
                 .isEqualTo("Decision report");
-        verify(templates).download(ID, OLD);
-        verify(templates).downloadCurrent(ID);
+        verify(templates).describe(ID, OLD);
+        verify(templates).describeCurrent(ID);
         verifyNoMoreInteractions(templates);
         verifyNoInteractions(preview);
     }
 
     @Test
     void reloadingAStaleConfirmationDoesNotReplaceItsOriginalPrecondition() throws Exception {
-        when(templates.download(ID, OLD)).thenReturn(file(OLD));
-        when(templates.downloadCurrent(ID)).thenReturn(file(NEWER));
+        when(templates.describe(ID, OLD)).thenReturn(metadata(OLD));
+        when(templates.describeCurrent(ID)).thenReturn(metadata(NEWER));
         var model = new ConcurrentModel();
 
         controller().confirmRestore(ID, OLD, CURRENT, model);
@@ -104,8 +104,8 @@ class DocumentTemplateDetailControllerTest {
         assertThat(model.getAttribute("restoreExpectedHead")).isEqualTo(CURRENT);
         assertThat(model.getAttribute("restoreConflict")).isEqualTo(true);
         assertThat(((TemplateDescriptor) model.getAttribute("template")).headCommit()).isEqualTo(NEWER);
-        verify(templates).download(ID, OLD);
-        verify(templates).downloadCurrent(ID);
+        verify(templates).describe(ID, OLD);
+        verify(templates).describeCurrent(ID);
         verifyNoMoreInteractions(templates);
     }
 
@@ -113,8 +113,8 @@ class DocumentTemplateDetailControllerTest {
     void concurrentRestoreReturns412WithOriginalSelectionAndNeverRetries() throws Exception {
         when(templates.restore(ID, OLD, CURRENT, "admin"))
                 .thenThrow(new TemplateConflictException(CURRENT, NEWER));
-        when(templates.download(ID, OLD)).thenReturn(file(OLD));
-        when(templates.downloadCurrent(ID)).thenReturn(file(NEWER));
+        when(templates.describe(ID, OLD)).thenReturn(metadata(OLD));
+        when(templates.describeCurrent(ID)).thenReturn(metadata(NEWER));
         var model = new ConcurrentModel();
         var response = new MockHttpServletResponse();
         var flash = new RedirectAttributesModelMap();
@@ -129,8 +129,8 @@ class DocumentTemplateDetailControllerTest {
         assertThat(model.getAttribute("restoreConflict")).isEqualTo(true);
         assertThat(flash.getFlashAttributes()).isEmpty();
         verify(templates).restore(ID, OLD, CURRENT, "admin");
-        verify(templates).download(ID, OLD);
-        verify(templates).downloadCurrent(ID);
+        verify(templates).describe(ID, OLD);
+        verify(templates).describeCurrent(ID);
         verifyNoMoreInteractions(templates);
         verifyNoInteractions(preview);
     }
@@ -163,14 +163,14 @@ class DocumentTemplateDetailControllerTest {
     @Test
     void missingHistoricalVersionIs404AndDoesNotFallBackToCurrent() throws Exception {
         var missing = new TemplateNotFoundException("internal-storage-marker", OLD);
-        when(templates.download(ID, OLD)).thenThrow(missing);
+        when(templates.describe(ID, OLD)).thenThrow(missing);
         assertThatThrownBy(() -> controller().confirmRestore(ID, OLD, CURRENT, new ConcurrentModel()))
                 .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
                     assertThat(error.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
                     assertThat(error.getCause()).isSameAs(missing);
                     assertThat(error.getReason()).doesNotContain("internal-storage-marker");
                 });
-        verify(templates).download(ID, OLD);
+        verify(templates).describe(ID, OLD);
         verifyNoMoreInteractions(templates);
     }
 
@@ -186,6 +186,11 @@ class DocumentTemplateDetailControllerTest {
 
     private DocumentTemplateDetailController controller() {
         return new DocumentTemplateDetailController(templates, preview);
+    }
+
+    private static TemplateDescriptor metadata(String revision) {
+        return new TemplateDescriptor(ID, "Decision report", ID + ".dotx", revision,
+                "2026-08-23T00:00:00Z", "admin", 10, 3, "f".repeat(64));
     }
 
     private static TemplateFile file(String revision) {
