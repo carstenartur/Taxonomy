@@ -71,6 +71,24 @@ class BrowserSessionInventoryTest {
     }
 
     @Test
+    void displayNameBoundIncludesTheEllipsis() {
+        String exact = "x".repeat(BrowserSessionInventory.MAX_DISPLAY_NAME_LENGTH);
+        String oversized = "y".repeat(BrowserSessionInventory.MAX_DISPLAY_NAME_LENGTH + 1);
+        registry.registerNewSession("exact", User.withUsername(exact).password("unused").roles("USER").build());
+        registry.registerNewSession("oversized", User.withUsername(oversized).password("unused").roles("USER").build());
+
+        var names = inventory.snapshot().users().stream()
+                .map(BrowserSessionInventory.UserSessions::username).toList();
+        assertThat(names).contains(exact);
+        assertThat(names).allSatisfy(name -> assertThat(name.length())
+                .isLessThanOrEqualTo(BrowserSessionInventory.MAX_DISPLAY_NAME_LENGTH));
+        assertThat(names).anySatisfy(name -> {
+            assertThat(name).endsWith("…");
+            assertThat(name).hasSize(BrowserSessionInventory.MAX_DISPLAY_NAME_LENGTH);
+        });
+    }
+
+    @Test
     void unknownPrincipalDoesNotFallBackToItsPotentiallySensitiveString() {
         registry.registerNewSession("opaque", new Object() {
             @Override public String toString() { return "never-export-this-secret"; }
