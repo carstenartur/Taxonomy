@@ -1,0 +1,50 @@
+name: Refresh PR review gate
+
+on:
+  issue_comment:
+    types: [created, edited, deleted]
+  workflow_run:
+    workflows: ['CI / CD']
+    types: [completed]
+  # Avoid approval-gated, jobless pull_request_review runs from external bots.
+  # Reconcile later reviews, dismissals and thread changes from trusted code.
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-refresh-review-gate
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh final review verification
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request &&
+       (startsWith(github.event.comment.body, '/confirm-review ') ||
+        (github.event.action == 'edited' && startsWith(github.event.changes.body.from, '/confirm-review '))))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Only repository-owned code, never a PR checkout, cache or artifact.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with: { java-version: '21', distribution: temurin }
+      - name: Install repository-pinned Node runtime
+        run: ./mvnw -B -ntp -f .github/ui-verification-pom.xml generate-resources -Pcontracts
+      - name: Reevaluate live review evidence and refresh the final job
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REVIEW_GATE_REVIEWERS: 'copilot-pull-request-reviewer[bot],Copilot'
+        run: .cache/ui-frontend/node/node .github/scripts/refresh-review-gate.mjs

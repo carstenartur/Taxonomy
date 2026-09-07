@@ -4,6 +4,7 @@ import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
+import { humanReviewDecision, loadHumanEvidence } from './exact-head-review-gate.mjs';
 
 const API_VERSION = '2022-11-28';
 const DEFAULT_REVIEWERS = [
@@ -137,7 +138,9 @@ export function auditMergedPullRequest({
     pullRequest,
     reviews,
     threads,
-    reviewerLogins
+    reviewerLogins,
+    comments = [],
+    humanPermissions = new Map()
 }) {
     const number = Number(pullRequest?.number);
     const mergedAt = String(pullRequest?.merged_at ?? pullRequest?.mergedAt ?? '');
@@ -167,12 +170,22 @@ export function auditMergedPullRequest({
             `No trusted review of exact head ${headSha} completed before merge.`));
     } else {
         const evidence = reviewEvidence(latestBeforeMerge, changedFiles, headSha);
+        const decision = humanReviewDecision({
+            pullRequest, review: latestBeforeMerge, reviews, comments, humanPermissions, reviewerLogins,
+            asOf: Date.parse(mergedAt)
+        });
+        const humanConfirmed = evidence.classification === 'needs-closer-look'
+            && Boolean(decision.confirmation) && !decision.objection;
+        if (decision.objection) {
+            findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
+                'A repository writer requested changes on the merged head.'));
+        }
         const laterCleanReview = exactHeadReviews
             .filter(review => reviewSubmittedAt(review) > evidence.submittedAt)
             .map(review => reviewEvidence(review, changedFiles, headSha))
             .find(isCleanApprovalEvidence);
         if (!laterCleanReview) {
-            if (evidence.classification !== 'approval-recommended') {
+            if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
                 findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
                     `The latest unreconciled exact-head pre-merge review outcome was ${evidence.classification}.`,
                     evidence));
@@ -320,8 +333,10 @@ class GitHubClient {
         });
         const payload = response.status === 204 ? null : await response.json();
         if (!response.ok) {
-            throw new Error(
+            const error = new Error(
                 `GitHub API ${path} failed: ${payload?.message || response.status}.`);
+            error.status = response.status;
+            throw error;
         }
         return payload;
     }
@@ -498,6 +513,9 @@ Closing or merging the original PR does not dispose of these findings. Each item
 }
 
 async function commentOnce(client, result) {
+    // The evidence snapshot from auditOne may now be old, and window/per-PR
+    // audits can overlap. Re-read markers immediately before a possible write;
+    // only actionable high findings incur this second, bounded read.
     const comments = await client.issueComments(result.number);
     const missing = missingHighFindings(result, comments);
     if (!missing.length) {
@@ -508,19 +526,24 @@ async function commentOnce(client, result) {
 }
 
 async function auditOne(client, number, reviewerLogins) {
-    const [pullRequest, reviews, threads] = await Promise.all([
+    const [pullRequest, reviews, threads, comments] = await Promise.all([
         client.pullRequest(number),
         client.reviews(number),
-        client.reviewThreads(number)
+        client.reviewThreads(number),
+        client.issueComments(number)
     ]);
     if (!isAuditableMergedPullRequest(pullRequest)) {
         return null;
     }
+    const humanEvidence = await loadHumanEvidence(client, {
+        reviews, comments, headSha: pullRequest.head.sha, reviewerLogins
+    });
     return auditMergedPullRequest({
         pullRequest,
         reviews,
         threads,
-        reviewerLogins
+        reviewerLogins,
+        ...humanEvidence
     });
 }
 
