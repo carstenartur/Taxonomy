@@ -143,8 +143,7 @@ public final class OoxmlTemplatePackageCodec {
         for (Map.Entry<String, byte[]> entry : packageParts.entrySet()) {
             String path = validatePartPath(entry.getKey());
             if (!caseInsensitivePaths.add(path.toLowerCase(Locale.ROOT))) {
-                throw invalid("DOTX contains duplicate or case-colliding package part: "
-                        + path);
+                throw invalid("DOTX contains duplicate or case-colliding package part: " + path);
             }
             byte[] content = entry.getValue();
             if (content == null) {
@@ -183,19 +182,25 @@ public final class OoxmlTemplatePackageCodec {
         return result;
     }
 
-    private static String validatePartPath(String rawPath) {
+    /**
+     * Shared package-relative path contract for imports and read-side entry points.
+     * Rejections must not echo untrusted input into response bodies or exception logs.
+     */
+    static String validatePartPath(String rawPath) {
         if (rawPath == null || rawPath.isBlank()) {
             throw invalid("OOXML package part has an empty path");
         }
         if (rawPath.startsWith("/") || rawPath.endsWith("/")
-                || rawPath.contains("\\") || rawPath.contains("\0")) {
-            throw invalid("Unsafe OOXML package path: " + rawPath);
+                || rawPath.contains("\\")
+                || rawPath.chars().anyMatch(character -> Character.isISOControl(character)
+                        || character == '\u2028' || character == '\u2029')) {
+            throw invalid("Unsafe OOXML package path");
         }
         String[] segments = rawPath.split("/", -1);
         for (String segment : segments) {
             if (segment.isBlank() || ".".equals(segment) || "..".equals(segment)
                     || segment.indexOf(':') >= 0) {
-                throw invalid("Unsafe OOXML package path: " + rawPath);
+                throw invalid("Unsafe OOXML package path");
             }
         }
         return rawPath;
