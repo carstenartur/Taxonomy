@@ -653,8 +653,9 @@ public class TaxonomyService {
             dto.setDescriptionEn(node.getDescriptionEn());
             dto.setTaxonomyRoot(node.getTaxonomyRoot());
             dto.setLevel(node.getLevel());
-            dto.setParentCode(node.getParentCode());
-            dto.setAnalysisRole(catalogueOverlayService.getNodeMetadata(node.getCode()).analysisRole());
+            String parentCode = node.getParentCode();
+            dto.setParentCode(parentCode == null ? null : parentCode.strip());
+            dto.setAnalysisRole(catalogueOverlayService.getNodeMetadata(dto.getCode()).analysisRole());
             if (byCode.putIfAbsent(dto.getCode(), dto) != null) {
                 throw new IllegalArgumentException("Duplicate fingerprint node code " + dto.getCode());
             }
@@ -665,7 +666,7 @@ public class TaxonomyService {
             if (parentCode == null || parentCode.isBlank()) {
                 roots.add(dto);
             } else {
-                TaxonomyNodeDto parent = byCode.get(parentCode.strip());
+                TaxonomyNodeDto parent = byCode.get(parentCode);
                 if (parent == null) {
                     throw new IllegalArgumentException("Missing fingerprint parent for " + dto.getCode());
                 }

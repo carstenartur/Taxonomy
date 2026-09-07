@@ -30,6 +30,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
@@ -65,6 +66,32 @@ class TaxonomyFingerprintProjectionTests {
             assertThat(node.getIncomingRelations()).isEmpty();
             assertThat(node.getOutgoingRelations()).isEmpty();
         });
+    }
+
+    @Test
+    void paddedRealCodesPreserveRolesParentsAndBothFingerprintFormats() {
+        List<TaxonomyNode> nodes = repository.findAll();
+        List<TaxonomyNodeDto> expected = taxonomyService.toFingerprintTree(nodes);
+        List<TaxonomyNode> padded = nodes.stream().map(TaxonomyFingerprintProjectionTests::copy).toList();
+        for (TaxonomyNode node : padded) {
+            node.setCode(" \u2003" + node.getCode() + "\u2003 ");
+            if (node.getParentCode() != null) {
+                node.setParentCode(" \u2003" + node.getParentCode() + "\u2003 ");
+            }
+        }
+
+        List<TaxonomyNodeDto> actual = taxonomyService.toFingerprintTree(padded);
+
+        assertThat(flatten(actual)).extracting(TaxonomyNodeDto::getCode,
+                        TaxonomyNodeDto::getParentCode, TaxonomyNodeDto::getAnalysisRole)
+                .containsExactlyElementsOf(flatten(expected).stream()
+                        .map(node -> tuple(node.getCode(),
+                                node.getParentCode(), node.getAnalysisRole())).toList());
+        assertThat(flatten(actual)).anyMatch(node -> "PRODUCT".equals(node.getAnalysisRole()));
+        assertThat(TaxonomyDataFingerprint.sha256(actual))
+                .isEqualTo(TaxonomyDataFingerprint.sha256(expected));
+        assertThat(TaxonomyDataFingerprint.legacySha256(actual))
+                .isEqualTo(TaxonomyDataFingerprint.legacySha256(expected));
     }
 
     @Test
