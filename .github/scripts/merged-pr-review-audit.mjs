@@ -513,6 +513,9 @@ Closing or merging the original PR does not dispose of these findings. Each item
 }
 
 async function commentOnce(client, result) {
+    // The evidence snapshot from auditOne may now be old, and window/per-PR
+    // audits can overlap. Re-read markers immediately before a possible write;
+    // only actionable high findings incur this second, bounded read.
     const comments = await client.issueComments(result.number);
     const missing = missingHighFindings(result, comments);
     if (!missing.length) {
