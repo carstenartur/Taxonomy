@@ -150,6 +150,29 @@ class SystemInformationServiceTest {
     }
 
     @Test
+    void unsupportedIndexStorageIsNormalizedBeforeItReachesTheUi() {
+        try (SessionFactory factory = factory("jdbc:hsqldb:mem:" + UUID.randomUUID())) {
+            var unsupported = environment().withProperty(
+                    "spring.jpa.properties.hibernate.search.backend.directory.type", "remote-backend")
+                    .withProperty("spring.jpa.properties.hibernate.search.backend.directory.root",
+                            System.getProperty("java.io.tmpdir"));
+            var unsupportedSnapshot = new SystemInformationService(factory, unsupported).snapshot();
+            assertThat(unsupportedSnapshot.indexStorage()).isEqualTo("unknown");
+            assertThat(unsupportedSnapshot.disks()).allSatisfy(disk ->
+                    assertThat(disk.purposes()).doesNotContain("SEARCH_INDEX"));
+
+            var supported = environment().withProperty(
+                    "spring.jpa.properties.hibernate.search.backend.directory.type", " LOCAL-FILESYSTEM ")
+                    .withProperty("spring.jpa.properties.hibernate.search.backend.directory.root",
+                            System.getProperty("java.io.tmpdir"));
+            var supportedSnapshot = new SystemInformationService(factory, supported).snapshot();
+            assertThat(supportedSnapshot.indexStorage()).isEqualTo("local-filesystem");
+            assertThat(supportedSnapshot.disks()).anySatisfy(disk ->
+                    assertThat(disk.purposes()).contains("SEARCH_INDEX"));
+        }
+    }
+
+    @Test
     void allSupportedDatabaseFamiliesHaveNativeVersionExpressions() {
         assertThat(DatabaseDiagnosticFunctions.versionExpression(new HSQLDialect())).isEqualTo("database_version()");
         assertThat(DatabaseDiagnosticFunctions.versionExpression(new PostgreSQLDialect()))
