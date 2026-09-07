@@ -57,6 +57,36 @@ const CLOSER = `### 🔵 Needs a closer look
 - **Files reviewed:** 2/2 changed files
 - **Comments generated:** 1`;
 
+test('audit accepts a valid human confirmation only when it predates the merge', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const comments = [{
+        id: 201, user, last_edited_at: null, body: `/confirm-review ${HEAD} 101`,
+        created_at: '2026-09-01T10:30:00Z', updated_at: '2026-09-01T10:30:00Z'
+    }];
+    const input = {
+        pullRequest: pullRequest({ user }),
+        reviews: [review(CLOSER.replace('Comments generated:** 1', 'Comments generated:** 0'), { id: 101 })],
+        threads: [], reviewerLogins: REVIEWERS, comments,
+        humanPermissions: new Map([['maintainer', 'admin']])
+    };
+    assert.deepEqual(auditMergedPullRequest(input).findings, []);
+    for (const comment of [
+        { ...comments[0], created_at: '2026-09-01T11:30:00Z', updated_at: '2026-09-01T11:30:00Z' },
+        { ...comments[0], body: `/confirm-review ${HEAD} 100` },
+        { ...comments[0], updated_at: '2026-09-01T10:31:00Z' }
+    ]) {
+        assert.ok(auditMergedPullRequest({ ...input, comments: [comment] }).findings
+            .some(item => item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'));
+    }
+    const withFindings = auditMergedPullRequest({ ...input, reviews: [review(CLOSER, { id: 101 })] });
+    assert.ok(withFindings.findings.some(item => item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'));
+    assert.ok(auditMergedPullRequest({ ...input, humanPermissions: new Map() }).findings
+        .some(item => item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'));
+    assert.ok(auditMergedPullRequest({
+        ...input, reviewerLogins: parseReviewerLogins('copilot-pull-request-reviewer[bot],maintainer')
+    }).findings.some(item => item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'));
+});
+
 test('parses and classifies the review evidence contract', () => {
     assert.deepEqual(parseReviewCoverage(APPROVAL), { reviewed: 2, total: 2 });
     assert.equal(parseReviewCommentCount(APPROVAL), 0);

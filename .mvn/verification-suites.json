@@ -60,6 +60,7 @@
     "protected-release-main-advance.yml": "protected next-development snapshot verification and pull-request handoff to main",
     "prepare-development-version.yml": "validated non-release development-version transition through a protected pull request",
     "cleanup-workflow-runs.yml": "Actions retention",
-    "merged-pr-review-audit.yml": "repository-owned retrospective exact-head review evidence audit"
+    "merged-pr-review-audit.yml": "repository-owned retrospective exact-head review evidence audit",
+    "refresh-review-gate.yml": "trusted review-evidence reconciliation and final Maven verification job refresh; executable tests remain Maven-owned"
   }
 }
