@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { provisionRoleAccount } from './ui-role-fixtures.mjs';
+import { navigateToPage, provisionRoleAccount } from './ui-role-fixtures.mjs';
 
 const ACCOUNT = Object.freeze({
   username: 'qa-user',
@@ -105,4 +105,51 @@ test('rejects invalid retry bounds before issuing a request', async () => {
   );
 
   assert.equal(api.calls.length, 0);
+});
+
+test('waits for a role-authorized responsive destination before navigating', async () => {
+  let optionValues = ['analyze', 'architecture'];
+  let selectedPage = null;
+  let destinationVisible = false;
+  const responsive = {
+    async isVisible() { return true; },
+    locator(selector) {
+      if (selector === 'option') {
+        return {
+          async evaluateAll(mapper) {
+            return mapper(optionValues.map(value => ({ value })));
+          }
+        };
+      }
+      assert.equal(selector, 'option[value="admin"]');
+      return {
+        async waitFor(options) {
+          assert.deepEqual(options, { state: 'attached', timeout: 20_000 });
+          await Promise.resolve();
+          optionValues = [...optionValues, 'admin'];
+        }
+      };
+    },
+    async selectOption(pageId) {
+      assert.ok(optionValues.includes(pageId));
+      selectedPage = pageId;
+    }
+  };
+  const page = {
+    locator(selector) {
+      if (selector === '#mobileMainNavigationSelect') return responsive;
+      assert.equal(selector, '#tab-admin');
+      return {
+        async waitFor(options) {
+          assert.deepEqual(options, { state: 'visible', timeout: 20_000 });
+          destinationVisible = true;
+        }
+      };
+    }
+  };
+
+  await navigateToPage(page, 'admin');
+
+  assert.equal(selectedPage, 'admin');
+  assert.equal(destinationVisible, true);
 });
