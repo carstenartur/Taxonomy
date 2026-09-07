@@ -171,7 +171,7 @@ export function auditMergedPullRequest({
     } else {
         const evidence = reviewEvidence(latestBeforeMerge, changedFiles, headSha);
         const decision = humanReviewDecision({
-            pullRequest, review: latestBeforeMerge, reviews, comments, humanPermissions,
+            pullRequest, review: latestBeforeMerge, reviews, comments, humanPermissions, reviewerLogins,
             asOf: Date.parse(mergedAt)
         });
         const humanConfirmed = evidence.classification === 'needs-closer-look'
@@ -533,7 +533,7 @@ async function auditOne(client, number, reviewerLogins) {
         return null;
     }
     const humanEvidence = await loadHumanEvidence(client, {
-        reviews, comments, headSha: pullRequest.head.sha
+        reviews, comments, headSha: pullRequest.head.sha, reviewerLogins
     });
     return auditMergedPullRequest({
         pullRequest,

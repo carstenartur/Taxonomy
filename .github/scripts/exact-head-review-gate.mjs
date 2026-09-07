@@ -85,25 +85,27 @@ export function parseReviewConfirmation(body) {
     return match ? { headSha: match[1].toLowerCase(), reviewId: match[2] } : null;
 }
 
-function isHuman(user) {
+function isHuman(user, reviewerLogins) {
+    const automated = reviewerLogins instanceof Set
+        ? reviewerLogins : parseReviewerLogins(reviewerLogins);
     return user?.type === 'User' && /^[a-z0-9-]+$/iu.test(user.login ?? '')
-        && !parseReviewerLogins().has(normalizeLogin(user.login));
+        && !automated.has(normalizeLogin(user.login));
 }
 
-function canConfirm(user, permissions) {
-    return isHuman(user)
+function canConfirm(user, permissions, reviewerLogins) {
+    return isHuman(user, reviewerLogins)
         && ['admin', 'maintain', 'write'].includes(
             permissions.get(normalizeLogin(user.login)));
 }
 
 // Permission is read from GitHub's collaborator API, never author_association.
-export async function loadHumanPermissions(client, { reviews, comments, headSha }) {
+export async function loadHumanPermissions(client, { reviews, comments, headSha, reviewerLogins }) {
     const candidates = [
         ...reviews.filter(review => reviewCommit(review) === headSha
             && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)),
         ...comments.filter(comment =>
             parseReviewConfirmation(comment.body)?.headSha === headSha)
-    ].filter(item => isHuman(item.user) && !item.performed_via_github_app);
+    ].filter(item => isHuman(item.user, reviewerLogins) && !item.performed_via_github_app);
     const logins = [...new Set(candidates.map(item => normalizeLogin(item.user.login)))];
     if (logins.length > 50) {
         throw new Error('Too many human-review principals to verify safely.');
@@ -126,7 +128,7 @@ export async function loadHumanEvidence(client, input) {
     const humanPermissions = await loadHumanPermissions(client, input);
     const candidates = input.comments.filter(item =>
         parseReviewConfirmation(item.body)?.headSha === input.headSha
-        && canConfirm(item.user, humanPermissions) && !item.performed_via_github_app);
+        && canConfirm(item.user, humanPermissions, input.reviewerLogins) && !item.performed_via_github_app);
     const editTimes = new Map();
     // REST timestamps only have second precision. lastEditedAt distinguishes
     // even an edit made during the same second as creation from an original comment.
@@ -157,7 +159,7 @@ export async function loadHumanEvidence(client, input) {
 
 export function humanReviewDecision({
     pullRequest, review, reviews = [], comments = [], humanPermissions = new Map(),
-    asOf = Infinity
+    reviewerLogins, asOf = Infinity
 }) {
     const headSha = pullRequest?.head?.sha;
     const reviewedAt = Date.parse(reviewSubmittedAt(review));
@@ -165,7 +167,7 @@ export function humanReviewDecision({
     const latestOpinions = new Map();
     for (const candidate of reviews
         .filter(item => reviewCommit(item) === headSha
-            && canConfirm(item.user, humanPermissions) && !item.performed_via_github_app
+            && canConfirm(item.user, humanPermissions, reviewerLogins) && !item.performed_via_github_app
             && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(item.state)
             && Date.parse(reviewSubmittedAt(item)) <= asOf)
         .toSorted((a, b) => Date.parse(reviewSubmittedAt(a)) - Date.parse(reviewSubmittedAt(b))
@@ -192,7 +194,7 @@ export function humanReviewDecision({
         const createdAt = Date.parse(item.created_at);
         return command?.headSha === headSha && command.reviewId === reviewId
             && Number.isSafeInteger(item.id) && item.id > 0
-            && canConfirm(item.user, humanPermissions) && !item.performed_via_github_app
+            && canConfirm(item.user, humanPermissions, reviewerLogins) && !item.performed_via_github_app
             && createdAt > reviewedAt && createdAt <= asOf
             && item.created_at === item.updated_at && item.last_edited_at === null;
     }).toSorted((a, b) => b.id - a.id)[0];
@@ -301,7 +303,7 @@ export function evaluateExactHeadReview({
     }
 
     const decision = humanReviewDecision({
-        pullRequest, review, reviews, comments, humanPermissions
+        pullRequest, review, reviews, comments, humanPermissions, reviewerLogins: trusted
     });
     if (decision.objection) {
         return result('blocked', 'HUMAN_CHANGES_REQUESTED',
@@ -460,7 +462,7 @@ export async function evaluateLiveReview(client, number, expectedHeadSha, review
         client.reviews(number), client.threads(number), client.issueComments(number)
     ]);
     const humanEvidence = await loadHumanEvidence(client, {
-        reviews, comments, headSha: expectedHeadSha
+        reviews, comments, headSha: expectedHeadSha, reviewerLogins
     });
     return evaluateExactHeadReview({
         pullRequest, reviews, threads, ...humanEvidence,

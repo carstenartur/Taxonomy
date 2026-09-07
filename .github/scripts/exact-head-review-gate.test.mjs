@@ -152,6 +152,16 @@ test('only current repository write, maintain or admin access can confirm', () =
     }
 });
 
+test('a configured automated reviewer cannot also act as a human confirmer', async () => {
+    const reviewerLogins = parseReviewerLogins('copilot-pull-request-reviewer[bot],maintainer');
+    assert.equal(humanGate({ reviewerLogins }).code, 'CLOSER_REVIEW_REQUIRED');
+    const humanApproval = review('Approved.', { id: 202, user: HUMAN, state: 'APPROVED', submitted_at: '2026-09-01T10:02:00Z' });
+    const permissions = await loadHumanPermissions({
+        repository: 'owner/repo', request: async () => { throw new Error('Automated principals must not receive a human-permission lookup'); }
+    }, { reviews: [humanApproval], comments: [confirmation()], headSha: HEAD, reviewerLogins });
+    assert.equal(permissions.size, 0);
+});
+
 test('deleting the only confirmation revokes it; a new Copilot review needs new confirmation', () => {
     assert.equal(humanGate({ comments: [] }).status, 'blocked');
     assert.equal(humanGate({ reviews: [review(CLEAN_CLOSER, {

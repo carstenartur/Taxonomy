@@ -82,6 +82,9 @@ test('audit accepts a valid human confirmation only when it predates the merge',
     assert.ok(withFindings.findings.some(item => item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'));
     assert.ok(auditMergedPullRequest({ ...input, humanPermissions: new Map() }).findings
         .some(item => item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'));
+    assert.ok(auditMergedPullRequest({
+        ...input, reviewerLogins: parseReviewerLogins('copilot-pull-request-reviewer[bot],maintainer')
+    }).findings.some(item => item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'));
 });
 
 test('parses and classifies the review evidence contract', () => {
