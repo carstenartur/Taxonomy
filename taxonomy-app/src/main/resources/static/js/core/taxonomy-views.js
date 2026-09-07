@@ -5,6 +5,12 @@
 
     var t = TaxonomyI18n.t;
 
+    function scoreText(code, value) {
+        var scoring = window.TaxonomyScoring;
+        return scoring && scoring.describeScore
+            ? scoring.describeScore(code, value).label : value + '%';
+    }
+
     // Sizing constants
     var MAX_SUNBURST_SIZE = 600; // max px for sunburst diameter
     var TREE_INITIAL_DEPTH = 3;  // collapse nodes at depth >= this on initial render
@@ -41,8 +47,8 @@
         var showDescChk = document.getElementById('showDescriptions');
         var showDesc = !showDescChk || showDescChk.checked;
         if (showDesc && nodeData.description) { html += '<br><small>' + esc(nodeData.description).replace(/\n/g, '<br>') + '</small>'; }
-        if (pct !== undefined && pct > 0) {
-            html += '<br><span class="tax-tooltip-pct">' + t('views.tooltip.match', pct) + '</span>';
+        if (pct !== undefined) {
+            html += '<br><span class="tax-tooltip-pct">' + esc(scoreText(nodeData.code, pct)) + '</span>';
         }
         tip.innerHTML = html;
         tip.style.display = 'block';
@@ -728,7 +734,7 @@
                     var name = nameMap[d.data.code];
                     var label = name ? (d.data.code + ' \u2013 ' + name) : d.data.code;
                     var pct = scores[d.data.code];
-                    if (pct > 0) { label += ' ' + pct + '%'; }
+                    if (pct > 0) { label += ' ' + scoreText(d.data.code, pct); }
                     return label;
                 })
                 .attr('x', function (d) { return (d.children || d._children) ? -10 : 10; })
@@ -872,7 +878,7 @@
                     '<td>' + rankEmoji + '</td>' +
                     '<td><strong>' + esc(code) + '</strong></td>' +
                     '<td>' + esc(nodeName) + '</td>' +
-                    '<td><span class="decision-score-badge" style="background:rgba(0,128,0,' + alpha + ');color:' + textColor + '">' + pct + '%</span></td>' +
+                    '<td><span class="decision-score-badge" style="background:rgba(0,128,0,' + alpha + ');color:' + textColor + '">' + esc(scoreText(code, pct)) + '</span></td>' +
                     '<td class="small text-muted">' + esc(path) + '</td>' +
                     '<td class="text-center">' + level + '</td>';
                 tbody.appendChild(tr);
@@ -1076,7 +1082,7 @@
                 // Score badge
                 if (scores && scores[d.data.code] > 0) {
                     var pct = scores[d.data.code];
-                    var badgeText = pct + '%';
+                    var badgeText = scoreText(d.data.code, pct);
                     var badgeX = (d.children || d._children) ? nx - 10 - ctx.measureText(label).width - 4 : nx + 10 + ctx.measureText(label).width + 4;
                     ctx.fillStyle = 'rgba(0,128,0,0.75)';
                     var bw = ctx.measureText(badgeText).width + 6;
@@ -1300,7 +1306,7 @@
                 badge.setAttribute('fill', 'green');
                 badge.setAttribute('font-size', '10px');
                 badge.setAttribute('font-weight', 'bold');
-                badge.textContent = scores[d.data.code] + '%';
+                badge.textContent = scoreText(d.data.code, scores[d.data.code]);
                 nodeG.appendChild(badge);
             }
 
@@ -1373,7 +1379,7 @@
         function mermaidLabel(node) {
             var label = node.name ? node.code + ' ' + node.name : node.code;
             if (scores && scores[node.code] > 0) {
-                label += ' [' + scores[node.code] + '%]';
+                label += ' [' + scoreText(node.code, scores[node.code]) + ']';
             }
             return label.replace(/"/g, '&quot;');
         }

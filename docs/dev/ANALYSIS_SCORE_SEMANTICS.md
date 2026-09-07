@@ -87,6 +87,14 @@ publish `effectiveRelevance` or `parentScore`, and `scoreSemanticsWarnings` expo
 batch-local context. The browser combines these hints with accumulated raw family evidence. Only
 complete and terminal-error events publish the authoritative full raw/effective envelope.
 
+Interactive one-level provider responses and manual score inputs are explicitly interpreted as
+raw evidence at the browser's shared `applyLocalRawScores` boundary. That boundary resolves the
+loaded catalogue's role and direct parent once, rebuilds the complete typed envelope from retained
+raw values, and fails closed for products without an evaluated family. A later family value
+reconciles previously entered products. Rendered list/tab rows, graphical labels and tree exports
+reuse the same score presentation after navigation or draft restoration. Report requests still
+carry both maps and are independently interpreted at the server boundary described above.
+
 ## Downstream rules
 
 - product coverage gaps continue to use completed raw suitability evidence and the configured

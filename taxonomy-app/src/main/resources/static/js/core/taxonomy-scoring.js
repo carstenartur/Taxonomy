@@ -128,6 +128,73 @@
         S.currentScores = S.currentEffectiveScores;
     }
 
+    function describeScore(code, effective) {
+        var detail = (S.currentScoreDetails || {})[code];
+        var raw = (S.currentRawScores || {})[code] ?? effective;
+        return {
+            label: scoreLabel(code, effective, raw, detail),
+            ariaLabel: scoreAriaLabel(code, effective, raw, detail),
+            tooltip: t(isProductScore(detail)
+                ? 'scoring.score.tooltip.product' : 'scoring.score.tooltip.relevance')
+        };
+    }
+
+    // Explicit compatibility boundary for interactive provider batches and expert-entered raw
+    // scores. All browser consumers receive comparable relevance, including report requests and
+    // saved drafts. Resolve the role/parent once from the loaded catalogue, never from percentages.
+    function applyLocalRawScores(scores, replace) {
+        var raw = replace ? {} : Object.assign({}, S.currentRawScores || {});
+        Object.entries(scores || {}).forEach(function ([code, value]) {
+            raw[code] = clampScore(value);
+        });
+        var contexts = new Map();
+        var visited = new Set();
+        function index(nodes, parentCode) {
+            (nodes || []).forEach(function (node) {
+                var code = String(node.code || '').trim();
+                if (!code || visited.has(node) || contexts.has(code)) {
+                    throw new Error('Cannot interpret scores from an ambiguous taxonomy.');
+                }
+                visited.add(node);
+                contexts.set(code, {
+                    parentCode: String(node.parentCode || '').trim() || parentCode || null,
+                    role: String(node.analysisRole || 'CATEGORY').trim().toUpperCase()
+                });
+                index(node.children, code);
+            });
+        }
+        index(S.taxonomyData, null);
+        var effective = {}, details = {}, suitability = {}, warnings = [];
+        Object.entries(raw).forEach(function ([code, value]) {
+            var context = contexts.get(code);
+            if (!context) throw new Error('Cannot resolve taxonomy score ' + code + '.');
+            var parentScore = context.parentCode && Number.isFinite(raw[context.parentCode])
+                ? raw[context.parentCode] : null;
+            var product = context.role === 'PRODUCT';
+            var relevance = product
+                ? (parentScore === null ? 0 : clampScore(parentScore * value / 100)) : value;
+            if (product) {
+                suitability[code] = value;
+                if (parentScore === null && warnings.length < 100) {
+                    warnings.push('Concrete product ' + code
+                        + ' has no evaluated direct family score; its effective relevance is 0.');
+                }
+            }
+            effective[code] = relevance;
+            details[code] = {
+                nodeCode: code,
+                kind: product ? 'PRODUCT_SUITABILITY'
+                    : (context.parentCode ? 'HIERARCHICAL_RELEVANCE' : 'ROOT_RELEVANCE'),
+                rawScore: value, effectiveRelevance: relevance,
+                parentCode: context.parentCode, parentScore: parentScore
+            };
+        });
+        applyScoreEnvelope({ rawScores: raw, effectiveScores: effective, scoreDetails: details,
+            productSuitabilityScores: suitability, scoreSemanticsVersion: 1,
+            scoreSemanticsWarnings: warnings });
+        return effective;
+    }
+
     // ── UI helpers ────────────────────────────────────────────────────────────
     function setAnalyzing(on) {
         const btn = document.getElementById('analyzeBtn');
@@ -438,6 +505,8 @@
         S.currentEffectiveScores = {};
         S.currentScoreDetails = {};
         S.currentProductSuitabilityScores = {};
+        S.scoreSemanticsVersion = 0;
+        S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
         var interactiveProvider = document.getElementById('providerSelect');
         S.lastAnalysisProvider = interactiveProvider ? interactiveProvider.value : null;
@@ -1619,6 +1688,9 @@
         runInteractiveAnalysis: runInteractiveAnalysis,
         runStreamingAnalysis: runStreamingAnalysis,
         applyScoreToNode: applyScoreToNode,
+        describeScore: describeScore,
+        applyLocalRawScores: applyLocalRawScores,
+        syncVisibleScoreNodes: syncVisibleScoreNodes,
         markNodeAsEvaluating: markNodeAsEvaluating,
         expandMatched: expandMatched,
         highlightScoringPaths: highlightScoringPaths,

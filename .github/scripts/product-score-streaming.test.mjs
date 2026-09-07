@@ -83,6 +83,18 @@ function harness(locale = 'en') {
 }
 
 for (const language of ['en', 'de']) {
+  test(`${language}: rebuilt views receive the same typed labels as incremental updates`, () => {
+    const h = harness(language);
+    h.score({ [family]: 40, [product]: 80 }, { [product]: hint });
+    const description = h.api.describeScore(product, h.state.currentScores[product]);
+    assert.equal(description.label, h.badge().textContent);
+    assert.match(description.label, /80%.*32\/100/);
+    assert.match(description.label, language === 'en' ? /Suitability/ : /Eignung/);
+    assert.ok(h.aria().endsWith(description.ariaLabel));
+    assert.equal(description.tooltip, 'scoring.score.tooltip.product');
+    assert.equal(h.api.describeScore(family, 40).label, '40%');
+  });
+
   test(`${language}: early product evidence remains visible without claiming effective zero`, () => {
     const h = harness(language); h.score({ [product]: 80 }, { [product]: hint });
     assert.match(h.badge().textContent, /80%/);

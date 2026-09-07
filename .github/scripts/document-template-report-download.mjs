@@ -72,6 +72,7 @@ try {
     ? await renderAndInspectReport(files.docx, files.report, files.text, reportModel)
     : null;
   const reportBytes = await readFile(files.docx);
+  const productScoreBrowser = await verifyProductScoreBrowser(page);
 
   const evidence = {
     schemaVersion: 2,
@@ -81,6 +82,7 @@ try {
     requirement: hospitalRequirement,
     template,
     analysis,
+    productScoreBrowser,
     reportModel: {
       status: reportModel.status,
       chapterCount: reportModel.chapters.length,
@@ -115,6 +117,69 @@ try {
 } finally {
   await context.close();
   await browser.close();
+}
+
+async function verifyProductScoreBrowser(target) {
+  // Use the application's actual loaded catalogue and renderer. This checks raw local batches
+  // without calling a provider, replacing HTTP responses, or constructing a test taxonomy.
+  return target.evaluate(() => {
+    const state = window.TaxonomyState;
+    const scoring = window.TaxonomyScoring;
+    const nodes = new Map();
+    function visit(tree) {
+      for (const node of tree || []) {
+        nodes.set(node.code, node);
+        visit(node.children);
+      }
+    }
+    visit(state.taxonomyData);
+    const product = [...nodes.values()].find(node => node.analysisRole === 'PRODUCT'
+      && nodes.has(node.parentCode));
+    if (!product) throw new Error('The real catalogue contains no parented product.');
+    const family = nodes.get(product.parentCode);
+    const keys = ['currentScores', 'currentRawScores', 'currentEffectiveScores',
+      'currentScoreDetails', 'currentProductSuitabilityScores', 'scoreSemanticsVersion',
+      'currentScoreSemanticsWarnings', 'currentView'];
+    const original = Object.fromEntries(keys.map(key => [key, state[key]]));
+    const require = (condition, message) => {
+      if (!condition) throw new Error(`Product score browser regression: ${message}`);
+    };
+    try {
+      scoring.applyLocalRawScores({ [product.code]: 80 }, true);
+      require(state.currentScores[product.code] === 0, 'missing family must fail closed');
+      require(state.currentScoreSemanticsWarnings.length === 1, 'missing family warning');
+      scoring.applyLocalRawScores({ [family.code]: 0 });
+      require(state.currentScoreDetails[product.code].parentScore === 0, 'explicit family zero');
+      require(state.currentScoreSemanticsWarnings.length === 0, 'resolved family warning');
+      scoring.applyLocalRawScores({ [family.code]: 40 });
+      require(state.currentScores[product.code] === 32, 'delayed family correction');
+      scoring.applyLocalRawScores({ [product.code]: 80 });
+      require(state.currentRawScores[product.code] === 80, 'raw suitability retention');
+      require(state.currentScores[product.code] === 32, 'no repeated weighting');
+      const rendered = [];
+      for (const view of ['list', 'tabs', 'list']) {
+        state.currentView = view;
+        window.TaxonomyBrowse.renderView(state.taxonomyData, state.currentScores);
+        const node = document.querySelector('.tax-node[data-code="' + CSS.escape(product.code) + '"]');
+        const badge = node?.querySelector(':scope > .tax-node-header .tax-pct');
+        require(/80%.*32\/100/.test(badge?.textContent || ''), `${view}: suitability/effective badge`);
+        require(/Suitability|Eignung/.test(badge.textContent), `${view}: typed label`);
+        require(/80.*32/.test(node.getAttribute('aria-label') || ''), `${view}: accessible values`);
+        rendered.push({ view, badge: badge.textContent, ariaLabel: node.getAttribute('aria-label') });
+      }
+      require(/80%.*32\/100/.test(window.TaxonomyViews.buildMermaidTreeExport(
+        state.taxonomyData, state.currentScores)), 'typed exported tree');
+      const evidence = { productCode: product.code, familyCode: family.code,
+        raw: state.currentRawScores[product.code], effective: state.currentScores[product.code],
+        detail: state.currentScoreDetails[product.code], rendered };
+      scoring.applyLocalRawScores({ [family.code]: 40 }, true);
+      require(!Object.hasOwn(state.currentProductSuitabilityScores, product.code), 'reset stale suitability');
+      return evidence;
+    } finally {
+      Object.assign(state, original);
+      window.TaxonomyBrowse.renderView(state.taxonomyData, state.currentScores);
+    }
+  });
 }
 
 async function login(target) {
