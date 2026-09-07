@@ -20,8 +20,14 @@ class DocumentTemplateGitHttpConfigTest {
         request.setUserPrincipal(() -> "git-reader");
         assertEquals(403, assertThrows(ServiceMayNotContinueException.class,
                 () -> DocumentTemplateGitHttpConfig.requireAdministrator(request)).getStatusCode());
-        request.addUserRole("ADMIN");
-        assertEquals("git-reader", DocumentTemplateGitHttpConfig.requireAdministrator(request));
+        for (String role : new String[]{"ADMIN", "ROLE_ADMIN"}) {
+            var administrator = new MockHttpServletRequest();
+            administrator.addUserRole(role);
+            assertThrows(ServiceNotAuthorizedException.class,
+                    () -> DocumentTemplateGitHttpConfig.requireAdministrator(administrator));
+            administrator.setUserPrincipal(() -> "git-reader");
+            assertEquals("git-reader", DocumentTemplateGitHttpConfig.requireAdministrator(administrator));
+        }
     }
 
     @Test

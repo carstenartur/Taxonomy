@@ -44,7 +44,7 @@ public class DocumentTemplateGitHttpConfig {
         if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
             throw new ServiceNotAuthorizedException();
         }
-        if (!request.isUserInRole("ADMIN")) {
+        if (!request.isUserInRole("ADMIN") && !request.isUserInRole("ROLE_ADMIN")) {
             throw new ServiceMayNotContinueException("Administrator access required", 403);
         }
         return principal.getName();
