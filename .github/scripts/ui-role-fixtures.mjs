@@ -158,8 +158,22 @@ export async function csrfJson(page, endpoint, {
 export async function navigateToPage(page, pageId) {
   const responsive = page.locator('#mobileMainNavigationSelect');
   if (await responsive.isVisible().catch(() => false)) {
-    const values = await responsive.locator('option').evaluateAll(options =>
-      options.map(option => option.value));
+    const options = responsive.locator('option');
+    // A locale reload reaches DOMContentLoaded before the asynchronous role
+    // context has repopulated administrator-only responsive destinations.
+    try {
+      await responsive.locator(`option[value="${pageId}"]`)
+        .waitFor({ state: 'attached', timeout: 20_000 });
+    } catch (cause) {
+      const values = await options.evaluateAll(elements =>
+        elements.map(option => option.value));
+      throw new Error(
+        `Responsive navigation does not expose ${pageId}: ${values.join(', ')}`,
+        { cause }
+      );
+    }
+    const values = await options.evaluateAll(elements =>
+      elements.map(option => option.value));
     if (!values.includes(pageId)) {
       throw new Error(`Responsive navigation does not expose ${pageId}: ${values.join(', ')}`);
     }
