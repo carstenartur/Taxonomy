@@ -70,7 +70,7 @@ class DocumentTemplatePartComparisonControllerTest {
     @Test
     void oversizedPartIsAnExplicitLimitRatherThanAPartialOrEmptyDiff() throws Exception {
         stub(PartChange.ADDED, null,
-                new TemplatePartView(PATH, TemplateTextDiff.MAX_CHARACTERS + 1L, "application/xml", null));
+                new TemplatePartView(PATH, DocumentTemplateService.COMPARISON_TEXT_PREVIEW_BYTES + 1L, "application/xml", null));
         var model = compare();
         assertEquals("LIMIT", model.getAttribute("comparisonMode"));
         assertNull(model.getAttribute("comparisonRows"));
