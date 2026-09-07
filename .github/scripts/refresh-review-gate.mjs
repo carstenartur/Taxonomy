@@ -3,7 +3,7 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { GitHubClient, evaluateLiveReview } from './exact-head-review-gate.mjs';
+import { GitHubClient, evaluateLiveReview, parseReviewerLogins } from './exact-head-review-gate.mjs';
 
 const GATE_STEP = 'Require complete review of the exact pull-request head';
 const TECHNICAL_STEPS = [
@@ -43,7 +43,7 @@ export function verificationJobToRefresh(run, jobs, gate) {
     return null;
 }
 
-export async function refreshPullRequest(client, number) {
+export async function refreshPullRequest(client, number, reviewerLogins) {
     const prefix = `/repos/${client.repository}`;
     const pr = await client.request(`${prefix}/pulls/${number}`);
     if (pr.state !== 'open' || pr.draft) return `#${number}: closed or draft; no refresh.`;
@@ -68,7 +68,7 @@ export async function refreshPullRequest(client, number) {
         return `#${number}: update the PR from main and run CI with the confirmation policy first.`;
     }
 
-    const gate = await evaluateLiveReview(client, number, pr.head.sha);
+    const gate = await evaluateLiveReview(client, number, pr.head.sha, reviewerLogins);
     const response = await client.request(`${prefix}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`);
     if (!Array.isArray(response.jobs) || response.total_count > 100) {
         throw new Error('Unable to enumerate the latest CI attempt completely.');
@@ -121,11 +121,12 @@ export async function eventPullRequests(client, eventName, event) {
 async function run() {
     const client = new GitHubClient(process.env.GITHUB_TOKEN, process.env.GITHUB_REPOSITORY);
     const event = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, 'utf8'));
+    const reviewerLogins = parseReviewerLogins(process.env.REVIEW_GATE_REVIEWERS);
     const numbers = await eventPullRequests(client, process.env.GITHUB_EVENT_NAME, event);
     const messages = [];
     for (const number of numbers) {
         try {
-            messages.push(await refreshPullRequest(client, number));
+            messages.push(await refreshPullRequest(client, number, reviewerLogins));
         } catch (error) {
             messages.push(`#${number}: refresh failed: ${error.message}`);
             process.exitCode = 1;

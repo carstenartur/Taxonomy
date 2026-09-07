@@ -81,8 +81,8 @@ function unresolvedCurrentThreads(threads) {
 
 export function parseReviewConfirmation(body) {
     const match = String(body ?? '').trim().match(
-        /^\/confirm-review ([a-f0-9]{40}) ([1-9][0-9]*)$/u);
-    return match ? { headSha: match[1], reviewId: match[2] } : null;
+        /^\/confirm-review ([a-fA-F0-9]{40}) ([1-9][0-9]*)$/u);
+    return match ? { headSha: match[1].toLowerCase(), reviewId: match[2] } : null;
 }
 
 function isHuman(user) {

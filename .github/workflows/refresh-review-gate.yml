@@ -45,4 +45,5 @@ jobs:
       - name: Reevaluate live review evidence and refresh the final job
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          REVIEW_GATE_REVIEWERS: 'copilot-pull-request-reviewer[bot],Copilot'
         run: .cache/ui-frontend/node/node .github/scripts/refresh-review-gate.mjs

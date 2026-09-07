@@ -103,6 +103,12 @@ test('maintainer author can explicitly confirm an exact-head closer-look review'
     assert.equal(gate.humanConfirmation.reviewId, '101');
 });
 
+test('uppercase SHA input is normalized before matching the exact current head', () => {
+    const body = `/confirm-review ${HEAD.toUpperCase()} 101`;
+    assert.deepEqual(parseReviewConfirmation(body), { headSha: HEAD, reviewId: '101' });
+    assert.equal(humanGate({ comments: [confirmation({ body })] }).status, 'passed');
+});
+
 test('missing confirmation explains the exact command for the current review', () => {
     const gate = humanGate({ comments: [] });
     assert.equal(gate.code, 'CLOSER_REVIEW_REQUIRED');
@@ -305,6 +311,10 @@ test('refresh workflow executes default-branch code with narrowly scoped write p
     assert.doesNotMatch(workflow, /pull_request_target:|pull_request_review:|actions\/download-artifact|actions\/cache|contents: write/u);
     assert.match(workflow, /types: \[created, edited, deleted\]/u);
     assert.match(workflow, /workflows: \['CI \/ CD'\]/u);
+    const ci = await readFile(new URL('../workflows/ci-cd.yml', import.meta.url), 'utf8');
+    const reviewers = text => text.match(/REVIEW_GATE_REVIEWERS: '([^']+)'/u)?.[1];
+    assert.ok(reviewers(ci));
+    assert.equal(reviewers(workflow), reviewers(ci));
 });
 
 function mockGitHub(t, { editedAt = null, advanceHead = false, newRun = false, graphqlError = false } = {}) {
@@ -363,6 +373,13 @@ test('live REST and GraphQL evidence causes exactly one final-job rerun', async 
     const { client, writes } = mockGitHub(t);
     assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
     assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
+});
+
+test('live refresh honors the configured trusted reviewer set', async t => {
+    const { client, writes } = mockGitHub(t);
+    const result = await refreshPullRequest(client, 933, parseReviewerLogins('different-reviewer[bot]'));
+    assert.match(result, /EXACT_HEAD_REVIEW_MISSING/u);
+    assert.deepEqual(writes, []);
 });
 
 for (const [name, options] of [
