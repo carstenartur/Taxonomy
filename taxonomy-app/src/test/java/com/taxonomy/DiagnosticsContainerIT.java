@@ -85,7 +85,7 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
             assertThat(inventory(second, null).get("sessionCount").intValue()).isEqualTo(1);
             logout(second);
             assertThat(inventory(basic, authorization).get("sessionCount").intValue()).isZero();
-            assertThat(exchange(basic, "/api/admin/sessions", null, null).statusCode()).isIn(401, 403);
+            assertThat(exchange(basic, "/api/admin/sessions", null, null).statusCode()).isEqualTo(401);
         }
     }
 
@@ -105,6 +105,7 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
     private static JsonNode inventory(HttpClient client, String authorization) throws Exception {
         HttpResponse<String> response = exchange(client, "/api/admin/sessions", null, authorization);
         assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.headers().allValues("Set-Cookie")).isEmpty();
         assertThat(response.headers().firstValue("Cache-Control")).hasValue("no-store");
         return JSON.readTree(response.body());
     }
