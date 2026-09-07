@@ -178,6 +178,13 @@ window.TaxonomyAbout = (function () {
 
         initTabs();
 
+        // Load administrator snapshot UI only on the page containing its existing health panel.
+        if (el('healthDashboard') && !window.TaxonomySystemInformation) {
+            var systemScript = document.createElement('script');
+            systemScript.src = TaxonomyI18n.resolveUrl('/js/shared/taxonomy-system-information.js');
+            document.head.appendChild(systemScript);
+        }
+
         // Update navbar version and legal-resource links on page load.
         loadAboutInfo();
     });

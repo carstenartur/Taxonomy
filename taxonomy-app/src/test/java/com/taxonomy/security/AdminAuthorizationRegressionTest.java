@@ -110,4 +110,27 @@ class AdminAuthorizationRegressionTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true));
     }
+
+    @Test
+    @WithMockUser(username = "reader", roles = "USER")
+    void systemInformationIsNotReadableByNonAdministrators() throws Exception {
+        mockMvc.perform(get("/api/admin/system-information"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "administrator", roles = "ADMIN")
+    void systemInformationIsAvailableToAdministratorsWithoutClientCaching() throws Exception {
+        mockMvc.perform(get("/api/admin/system-information"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.database.versionSource").value("DATABASE_QUERY"))
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Cache-Control"))
+                        .contains("no-store"));
+    }
+
+    @Test
+    void systemInformationIsNotPublic() throws Exception {
+        mockMvc.perform(get("/api/admin/system-information").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
 }

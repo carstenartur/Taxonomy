@@ -138,7 +138,7 @@ async function measureAdminTask(page) {
   const startedAt = Date.now();
   await navigateToPage(page, 'admin');
   const healthPanel = page.locator('#healthDashboard');
-  const summary = healthPanel.locator('summary');
+  const summary = healthPanel.locator(':scope > summary');
   await summary.waitFor({ state: 'visible', timeout: 20_000 });
   const primary = await summary.evaluate(element => {
     const rect = element.getBoundingClientRect();
