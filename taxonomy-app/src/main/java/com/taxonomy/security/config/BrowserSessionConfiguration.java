@@ -22,7 +22,7 @@ public class BrowserSessionConfiguration {
 
     static void configure(HttpSecurity http, SessionRegistry registry) throws Exception {
         // Register through the form/OIDC authentication filters, not the implicit
-        // SessionManagementFilter, which would also persist Basic/Bearer logins.
+        // SessionManagementFilter, which would also persist HTTP Basic and bearer-token logins.
         // The concurrency DSL retains fixation protection, last-request updates
         // and unlimited browser sessions without opting into implicit authentication.
         http.sessionManagement(session -> session.requireExplicitAuthenticationStrategy(true)

@@ -5,6 +5,8 @@ import { createRoleStateEvidence } from './ui-role-state-evidence.mjs';
 import { captureFailureEvidence } from './ui-evidence-policy.mjs';
 import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
+import { runSystemInformationAcceptance } from './system-information-acceptance.mjs';
+
 import { runBrowserSessionsAcceptance } from './browser-sessions-acceptance.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
@@ -159,6 +161,16 @@ try {
     externalRequests, consoleErrors, evidence
   });
   if (role === 'ADMIN') {
+    taskMeasurements.failedStep = 'system-information browser acceptance';
+    const previousFailures = httpFailures.length;
+    taskMeasurements.systemInformation = await runSystemInformationAcceptance({
+      page, evidence, outputDir
+    });
+    if (httpFailures.length !== previousFailures || consoleErrors.length || externalRequests.length) {
+      throw new Error('System-information flow introduced HTTP, console or external-request failures');
+    }
+    checks.push('DE/EN system information, persistence warnings, keyboard refresh and screenshots');
+
     taskMeasurements.failedStep = 'browser-session inventory acceptance';
     const previousHttpFailures = httpFailures.length;
     const previousConsoleErrors = consoleErrors.length;
