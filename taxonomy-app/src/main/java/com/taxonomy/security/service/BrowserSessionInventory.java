@@ -16,6 +16,7 @@ import java.util.Map;
 @Service
 public class BrowserSessionInventory {
     static final int MAX_ROWS = 200;
+    static final int MAX_DISPLAY_NAME_LENGTH = 256;
     private final SessionRegistry registry;
 
     public BrowserSessionInventory(SessionRegistry registry) {
@@ -78,7 +79,9 @@ public class BrowserSessionInventory {
         } else {
             name = ((UserDetails) principal).getUsername();
         }
-        return name.length() <= 256 ? name : name.substring(0, 256) + "…";
+        return name.length() <= MAX_DISPLAY_NAME_LENGTH
+                ? name
+                : name.substring(0, MAX_DISPLAY_NAME_LENGTH - 1) + "…";
     }
 
     private record Identity(String kind, String issuer, String subject) { }
