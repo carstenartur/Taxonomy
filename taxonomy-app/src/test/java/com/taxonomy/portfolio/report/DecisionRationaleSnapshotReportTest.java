@@ -92,7 +92,15 @@ class DecisionRationaleSnapshotReportTest {
         DecisionRationaleReport actual = service.generate(
                 41L, "  snapshot-1  ", "auditor", CONTEXT, Locale.GERMAN);
 
-        assertThat(actual).isSameAs(expected);
+        assertThat(actual).isNotSameAs(expected);
+        assertThat(actual.title()).isEqualTo(expected.title());
+        assertThat(actual.requirement()).isEqualTo(expected.requirement());
+        assertThat(actual.status()).isEqualTo(expected.status());
+        assertThat(actual.scoreDetails()).containsKey("CP");
+        assertThat(actual.metadata().analysisSnapshotFingerprintSha256())
+                .hasSize(64)
+                .isNotEqualTo(
+                        expected.metadata().analysisSnapshotFingerprintSha256());
         ArgumentCaptor<DecisionAnalysisInput> inputCaptor =
                 ArgumentCaptor.forClass(DecisionAnalysisInput.class);
         ArgumentCaptor<ViewContext> viewCaptor = ArgumentCaptor.forClass(ViewContext.class);
@@ -104,6 +112,7 @@ class DecisionRationaleSnapshotReportTest {
         assertThat(input.provider()).isEqualTo("MOCK");
         assertThat(input.analysisStatus()).isEqualTo("SUCCESS");
         assertThat(input.scores()).containsEntry("CP", 100);
+        assertThat(input.scoreDetails()).containsKey("CP");
         assertThat(input.productCoverageGaps())
                 .extracting(ProductCoverageGap::productFamilyCode)
                 .containsExactly("CP");

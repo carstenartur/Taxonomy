@@ -933,6 +933,11 @@
                 || 'unknown';
             var request = {
                 scores: S.currentScores,
+                rawScores: S.currentRawScores || {},
+                effectiveScores: S.currentEffectiveScores || S.currentScores || {},
+                scoreDetails: S.currentScoreDetails || {},
+                productSuitabilityScores: S.currentProductSuitabilityScores || {},
+                scoreSemanticsVersion: S.scoreSemanticsVersion || 0,
                 reasons: S.currentReasons || {},
                 businessText: decisionText,
                 provider: decisionProvider,
@@ -1254,6 +1259,8 @@
         const hasChildren = node.children && node.children.length > 0;
         const pct = scores ? (scores[node.code] !== undefined ? scores[node.code] : null) : null;
         const reason = S.currentReasons ? (S.currentReasons[node.code] || null) : null;
+        const presentation = pct !== null && SC().describeScore
+            ? SC().describeScore(node.code, pct) : null;
 
         const wrapper = document.createElement('div');
         wrapper.className = 'tax-node tax-level-' + node.level;
@@ -1265,10 +1272,10 @@
         wrapper.setAttribute('tabindex', '-1');
         var ariaLabel = node.code + ' ' + (node.name || '');
         if (pct !== null && pct > 0) {
-            ariaLabel += ', ' + t('browse.node.score', pct);
+            ariaLabel += ', ' + (presentation ? presentation.ariaLabel : t('browse.node.score', pct));
             if (reason) { ariaLabel += ', ' + t('browse.node.reason', reason); }
         } else if (pct !== null) {
-            ariaLabel += ', ' + t('browse.node.score', 0);
+            ariaLabel += ', ' + (presentation ? presentation.ariaLabel : t('browse.node.score', 0));
         }
         wrapper.setAttribute('aria-label', ariaLabel);
         if (hasChildren) {
@@ -1319,7 +1326,8 @@
         if (pct !== null) {
             const badge = document.createElement('span');
             badge.className = 'tax-pct';
-            badge.textContent = pct + '%';
+            badge.textContent = presentation ? presentation.label : pct + '%';
+            if (presentation) badge.title = presentation.tooltip;
             badge.setAttribute('aria-hidden', 'true');
             header.appendChild(badge);
         }
@@ -1470,7 +1478,10 @@
                 wrapper.classList.remove('tax-evaluating');
                 wrapper.classList.remove('tax-has-unevaluated');
 
-                const scores = result.scores || {};
+                const rawScores = result.scores || {};
+                SC().applyLocalRawScores(rawScores);
+                const scores = Object.fromEntries(Object.keys(rawScores)
+                    .map(code => [code, S.currentScores[code]]));
                 const reasons = result.reasons || {};
                 if (result.provider) { S.lastAnalysisProvider = result.provider; }
                 S.lastAnalysisStatus = result.error ? 'PARTIAL' : 'IN_PROGRESS';
@@ -1485,7 +1496,7 @@
                 Object.assign(S.currentReasons, reasons);
 
                 // Append entry to LLM communication log
-                SC().appendLlmLogEntry(parentCode, scores, result);
+                SC().appendLlmLogEntry(parentCode, rawScores, result);
 
                 // Apply scores to children
                 Object.entries(scores).forEach(([code, pct]) => {
@@ -1508,7 +1519,7 @@
                             badge.className = 'tax-pct';
                             childHeader.appendChild(badge);
                         }
-                        badge.textContent = pct + '%';
+                        badge.textContent = SC().describeScore(code, pct).label;
 
                         // Add/update reason icon
                         const reason = reasons[code];
@@ -1559,9 +1570,9 @@
                                 if (score !== null) {
                                     var val = parseInt(score, 10);
                                     if (!isNaN(val) && val >= 0 && val <= 100) {
-                                        S.currentScores[code] = val;
+                                        SC().applyLocalRawScores({ [code]: val });
                                         S.currentReasons[code] = t('browse.manual.reason');
-                                        SC().applyScoreToNode(code, val, 'Manually assigned');
+                                        SC().syncVisibleScoreNodes();
                                         updateExportGroupVisibility();
                                     }
                                 }
@@ -1579,9 +1590,8 @@
                     wrapper.setAttribute('aria-expanded', 'true');
                 }
 
-                // Update currentScores
-                if (!S.currentScores) { S.currentScores = {}; }
-                Object.assign(S.currentScores, scores);
+                // Reconcile family corrections in previously evaluated product rows as well.
+                SC().syncVisibleScoreNodes();
                 updateExportGroupVisibility();
 
                 // Log to console
@@ -2201,7 +2211,7 @@
 
         S.storedBusinessText = text;
         S.lastAnalyzedText = text;
-        S.currentScores = {};
+        SC().applyLocalRawScores({}, true);
         S.currentReasons = {};
 
         renderView(S.taxonomyData, null);
@@ -2265,11 +2275,11 @@
             return;
         }
 
-        S.currentScores = scores;
+        SC().applyLocalRawScores(scores, true);
         S.currentReasons = reasons;
-        window._taxonomyCurrentScores = scores;
+        window._taxonomyCurrentScores = S.currentScores;
 
-        renderView(S.taxonomyData, scores);
+        renderView(S.taxonomyData, S.currentScores);
 
         var exportGroup = document.getElementById('exportGroup');
         if (exportGroup) exportGroup.style.display = '';

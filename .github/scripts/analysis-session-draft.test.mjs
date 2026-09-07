@@ -170,6 +170,7 @@ function createHarness({ inputText = '', payload, request }) {
     cleared,
     alerts,
     clickListeners,
+    window,
     decisionFocusCount: () => decisionFocusCount
   };
 }
@@ -365,4 +366,65 @@ test('explicit reset remains repeatable and uses the server reset command', asyn
   assert.equal(requests[1].body.analysisOptions.provider, 'OPENAI');
   assert.equal(harness.runtime.version, 2);
   assert.equal(harness.runtime.resetting, false);
+});
+
+test('authoritative EMPTY restore discards every stale analysis envelope', () => {
+  const payload = { current: { businessText: '' } };
+  const harness = createHarness({
+    inputText: 'stale local requirement',
+    payload,
+    request: async () => null
+  });
+  harness.state.taxonomyData = [{}];
+  harness.state.currentScores = { OLD: 99 };
+  harness.state.currentArchView = { includedElements: ['OLD'] };
+  harness.window._taxonomyCurrentScores = { OLD: 99 };
+  harness.window._currentProvisionalRelations = [{ source: 'OLD' }];
+  harness.window.TaxonomyBrowse = {};
+  harness.window.TaxonomyScoring = {};
+
+  harness.context.applyDraft({
+    version: 9,
+    payload: {
+      draftState: 'EMPTY',
+      businessText: '',
+      scores: { STALE: 90 },
+      rawScores: { STALE: 90 },
+      effectiveScores: { STALE: 90 },
+      scoreDetails: { STALE: { kind: 'PRODUCT_SUITABILITY' } },
+      productSuitabilityScores: { STALE: 90 },
+      scoreSemanticsVersion: 1,
+      scoreSemanticsWarnings: ['stale'],
+      reasons: { STALE: 'stale' },
+      discrepancies: [{ parentCode: 'STALE' }],
+      productCoverageGaps: [{ productFamilyCode: 'STALE' }],
+      architectureView: { includedElements: ['STALE'] },
+      storedBusinessText: 'stale',
+      lastAnalyzedText: 'stale',
+      evaluatedNodes: ['STALE'],
+      provisionalRelations: [{ source: 'STALE' }]
+    }
+  });
+
+  assert.equal(harness.runtime.version, 9);
+  assert.equal(harness.runtime.restoring, false);
+  assert.equal(harness.runtime.draftDecisionPending, false);
+  assert.equal(harness.input.value, '');
+  assert.equal(harness.state.currentScores, null);
+  assert.equal(Object.keys(harness.state.currentRawScores).length, 0);
+  assert.equal(Object.keys(harness.state.currentEffectiveScores).length, 0);
+  assert.equal(Object.keys(harness.state.currentScoreDetails).length, 0);
+  assert.equal(Object.keys(harness.state.currentProductSuitabilityScores).length, 0);
+  assert.equal(harness.state.scoreSemanticsVersion, 0);
+  assert.equal(harness.state.currentScoreSemanticsWarnings.length, 0);
+  assert.equal(Object.keys(harness.state.currentReasons).length, 0);
+  assert.equal(harness.state.currentDiscrepancies.length, 0);
+  assert.equal(harness.state.currentProductCoverageGaps.length, 0);
+  assert.equal(harness.state.currentArchView, null);
+  assert.equal(harness.state.storedBusinessText, null);
+  assert.equal(harness.state.lastAnalyzedText, null);
+  assert.equal(harness.state.evaluatedNodes.size, 0);
+  assert.equal(harness.state.currentView, 'list');
+  assert.equal(harness.window._taxonomyCurrentScores, null);
+  assert.equal(harness.window._currentProvisionalRelations.length, 0);
 });
