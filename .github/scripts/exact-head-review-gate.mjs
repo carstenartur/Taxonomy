@@ -11,6 +11,7 @@ const DEFAULT_REVIEWERS = [
     'Copilot'
 ];
 const API_VERSION = '2022-11-28';
+export const HUMAN_CONFIRMATION_POLICY_VERSION = 1;
 
 export function normalizeLogin(login) {
     return String(login ?? '')
@@ -78,12 +79,137 @@ function unresolvedCurrentThreads(threads) {
     });
 }
 
+export function parseReviewConfirmation(body) {
+    const match = String(body ?? '').trim().match(
+        /^\/confirm-review ([a-f0-9]{40}) ([1-9][0-9]*)$/u);
+    return match ? { headSha: match[1], reviewId: match[2] } : null;
+}
+
+function isHuman(user) {
+    return user?.type === 'User' && /^[a-z0-9-]+$/iu.test(user.login ?? '')
+        && !parseReviewerLogins().has(normalizeLogin(user.login));
+}
+
+function canConfirm(user, permissions) {
+    return isHuman(user)
+        && ['admin', 'maintain', 'write'].includes(
+            permissions.get(normalizeLogin(user.login)));
+}
+
+// Permission is read from GitHub's collaborator API, never author_association.
+export async function loadHumanPermissions(client, { reviews, comments, headSha }) {
+    const candidates = [
+        ...reviews.filter(review => reviewCommit(review) === headSha
+            && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)),
+        ...comments.filter(comment =>
+            parseReviewConfirmation(comment.body)?.headSha === headSha)
+    ].filter(item => isHuman(item.user) && !item.performed_via_github_app);
+    const logins = [...new Set(candidates.map(item => normalizeLogin(item.user.login)))];
+    if (logins.length > 50) {
+        throw new Error('Too many human-review principals to verify safely.');
+    }
+    const permissions = new Map();
+    for (const login of logins) {
+        try {
+            const response = await client.request(
+                `/repos/${client.repository}/collaborators/${encodeURIComponent(login)}/permission`);
+            permissions.set(login, response.permission);
+        } catch (error) {
+            if (error.status !== 404) throw error;
+            permissions.set(login, 'none');
+        }
+    }
+    return permissions;
+}
+
+export async function loadHumanEvidence(client, input) {
+    const humanPermissions = await loadHumanPermissions(client, input);
+    const candidates = input.comments.filter(item =>
+        parseReviewConfirmation(item.body)?.headSha === input.headSha
+        && canConfirm(item.user, humanPermissions) && !item.performed_via_github_app);
+    const editTimes = new Map();
+    // REST timestamps only have second precision. lastEditedAt distinguishes
+    // even an edit made during the same second as creation from an original comment.
+    for (let offset = 0; offset < candidates.length; offset += 100) {
+        const batch = candidates.slice(offset, offset + 100);
+        if (batch.some(item => !item.node_id)) throw new Error('Confirmation node ID is unavailable.');
+        const response = await fetch(client.graphqlUrl, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${client.token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                query: 'query ConfirmationEdits($ids: [ID!]!) { nodes(ids: $ids) { ... on IssueComment { id lastEditedAt } } }',
+                variables: { ids: batch.map(item => item.node_id) }
+            })
+        });
+        const payload = await response.json();
+        if (!response.ok || payload.errors?.length || !Array.isArray(payload.data?.nodes)) {
+            throw new Error('Unable to verify confirmation edit history.');
+        }
+        for (const node of payload.data.nodes) {
+            if (node && Object.hasOwn(node, 'lastEditedAt')) editTimes.set(node.id, node.lastEditedAt);
+        }
+    }
+    return {
+        humanPermissions,
+        comments: input.comments.map(item => ({ ...item, last_edited_at: editTimes.get(item.node_id) }))
+    };
+}
+
+export function humanReviewDecision({
+    pullRequest, review, reviews = [], comments = [], humanPermissions = new Map(),
+    asOf = Infinity
+}) {
+    const headSha = pullRequest?.head?.sha;
+    const reviewedAt = Date.parse(reviewSubmittedAt(review));
+    const reviewId = String(review?.id ?? '');
+    const latestOpinions = new Map();
+    for (const candidate of reviews
+        .filter(item => reviewCommit(item) === headSha
+            && canConfirm(item.user, humanPermissions) && !item.performed_via_github_app
+            && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(item.state)
+            && Date.parse(reviewSubmittedAt(item)) <= asOf)
+        .toSorted((a, b) => Date.parse(reviewSubmittedAt(a)) - Date.parse(reviewSubmittedAt(b))
+            || Number(a.id) - Number(b.id))) {
+        latestOpinions.set(normalizeLogin(candidate.user.login), candidate);
+    }
+    const objection = [...latestOpinions.values()]
+        .find(item => item.state === 'CHANGES_REQUESTED');
+    if (objection) return { objection };
+    if (!Number.isFinite(reviewedAt) || !/^[1-9][0-9]*$/u.test(reviewId)) return {};
+
+    const nativeApproval = [...latestOpinions.values()].find(item =>
+        item.state === 'APPROVED' && Date.parse(reviewSubmittedAt(item)) > reviewedAt
+        && normalizeLogin(item.user.login) !== normalizeLogin(pullRequest?.user?.login));
+    if (nativeApproval) {
+        return { confirmation: {
+            source: 'pull_request_review', id: nativeApproval.id,
+            login: nativeApproval.user.login, url: nativeApproval.html_url,
+            submittedAt: reviewSubmittedAt(nativeApproval), headSha, reviewId
+        } };
+    }
+    const comment = comments.filter(item => {
+        const command = parseReviewConfirmation(item.body);
+        const createdAt = Date.parse(item.created_at);
+        return command?.headSha === headSha && command.reviewId === reviewId
+            && Number.isSafeInteger(item.id) && item.id > 0
+            && canConfirm(item.user, humanPermissions) && !item.performed_via_github_app
+            && createdAt > reviewedAt && createdAt <= asOf
+            && item.created_at === item.updated_at && item.last_edited_at === null;
+    }).toSorted((a, b) => b.id - a.id)[0];
+    return comment ? { confirmation: {
+        source: 'issue_comment', id: comment.id, login: comment.user.login,
+        url: comment.html_url, submittedAt: comment.created_at, headSha, reviewId
+    } } : {};
+}
+
 export function evaluateExactHeadReview({
     pullRequest,
     reviews,
     threads,
     expectedHeadSha,
-    reviewerLogins
+    reviewerLogins,
+    comments = [],
+    humanPermissions = new Map()
 }) {
     const currentHead = String(pullRequest?.head?.sha ?? '');
     if (currentHead !== expectedHeadSha) {
@@ -119,11 +245,7 @@ export function evaluateExactHeadReview({
         return result('blocked', 'CHANGES_RECOMMENDED',
             'The latest exact-head review recommends changes.', { review });
     }
-    if (classification === 'needs-closer-look') {
-        return result('blocked', 'CLOSER_REVIEW_REQUIRED',
-            'The latest exact-head review requires a closer review.', { review });
-    }
-    if (classification !== 'approval-recommended') {
+    if (!['approval-recommended', 'needs-closer-look'].includes(classification)) {
         return result('blocked', 'REVIEW_OUTCOME_UNCLASSIFIED',
             'The latest exact-head review has no explicit approval outcome.', { review });
     }
@@ -178,13 +300,32 @@ export function evaluateExactHeadReview({
             });
     }
 
+    const decision = humanReviewDecision({
+        pullRequest, review, reviews, comments, humanPermissions
+    });
+    if (decision.objection) {
+        return result('blocked', 'HUMAN_CHANGES_REQUESTED',
+            'A repository writer has requested changes on the current head.', { review });
+    }
+    if (classification === 'needs-closer-look' && !decision.confirmation) {
+        return result('blocked', 'CLOSER_REVIEW_REQUIRED',
+            'The complete, comment-free Copilot review requires human confirmation. '
+            + 'After reviewing this head and the linked review, a repository writer '
+            + `(including the PR author) can post this exact PR conversation comment: /confirm-review ${expectedHeadSha} ${review.id}`, {
+                review, coverage, changedFiles, reviewCommentCount, unresolvedThreads: []
+            });
+    }
     return result('passed', 'EXACT_HEAD_REVIEW_COMPLETE',
-        `Exact head ${expectedHeadSha} has a complete approval-recommended review.`, {
+        decision.confirmation && classification === 'needs-closer-look'
+            ? `Exact head ${expectedHeadSha} has a complete Copilot review confirmed by ${decision.confirmation.login}.`
+            : `Exact head ${expectedHeadSha} has a complete approval-recommended review.`, {
             review,
             coverage,
             changedFiles,
             reviewCommentCount,
-            unresolvedThreads: []
+            unresolvedThreads: [],
+            humanConfirmation: classification === 'needs-closer-look'
+                ? decision.confirmation : null
         });
 }
 
@@ -192,7 +333,7 @@ function result(status, code, message, details = {}) {
     return { status, code, message, ...details };
 }
 
-class GitHubClient {
+export class GitHubClient {
     constructor(token, repository) {
         if (!token) {
             throw new Error('GITHUB_TOKEN or GH_TOKEN is required.');
@@ -211,19 +352,37 @@ class GitHubClient {
             || 'https://api.github.com/graphql');
     }
 
-    async request(path) {
+    async request(path, options = {}) {
         const response = await fetch(`${this.apiUrl}${path}`, {
+            method: options.method ?? 'GET',
             headers: {
                 Accept: 'application/vnd.github+json',
                 Authorization: `Bearer ${this.token}`,
-                'X-GitHub-Api-Version': API_VERSION
-            }
+                'X-GitHub-Api-Version': API_VERSION,
+                'Content-Type': 'application/json'
+            },
+            body: options.body === undefined ? undefined : JSON.stringify(options.body)
         });
-        const payload = await response.json();
+        const text = await response.text();
+        const payload = text ? JSON.parse(text) : null;
         if (!response.ok) {
-            throw new Error(`GitHub API ${path} failed: ${payload.message || response.status}.`);
+            const error = new Error(`GitHub API ${path} failed: ${payload?.message || response.status}.`);
+            error.status = response.status;
+            throw error;
         }
         return payload;
+    }
+
+    async issueComments(number) {
+        const comments = [];
+        for (let page = 1; page <= 10; page++) {
+            const batch = await this.request(
+                `/repos/${this.repository}/issues/${number}/comments?per_page=100&page=${page}`);
+            if (!Array.isArray(batch)) throw new Error('Comment API returned a non-array response.');
+            comments.push(...batch);
+            if (batch.length < 100) return comments;
+        }
+        throw new Error('Comment pagination exceeded 1,000 entries.');
     }
 
     async reviews(number) {
@@ -295,6 +454,20 @@ class GitHubClient {
     }
 }
 
+export async function evaluateLiveReview(client, number, expectedHeadSha, reviewerLogins) {
+    const [pullRequest, reviews, threads, comments] = await Promise.all([
+        client.request(`/repos/${client.repository}/pulls/${number}`),
+        client.reviews(number), client.threads(number), client.issueComments(number)
+    ]);
+    const humanEvidence = await loadHumanEvidence(client, {
+        reviews, comments, headSha: expectedHeadSha
+    });
+    return evaluateExactHeadReview({
+        pullRequest, reviews, threads, ...humanEvidence,
+        expectedHeadSha, reviewerLogins
+    });
+}
+
 function boundedInteger(value, fallback, minimum, maximum) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
     return Number.isInteger(parsed)
@@ -317,6 +490,8 @@ function evidence(resultValue, number, headSha) {
         reviewer: reviewLogin(resultValue.review),
         reviewCommit: reviewCommit(resultValue.review),
         reviewSubmittedAt: reviewSubmittedAt(resultValue.review),
+        reviewId: resultValue.review?.id ?? null,
+        humanConfirmation: resultValue.humanConfirmation ?? null,
         filesReviewed: resultValue.coverage?.reviewed ?? null,
         changedFilesReportedByReview: resultValue.coverage?.total ?? null,
         changedFilesInPullRequest: resultValue.changedFiles ?? null,
@@ -375,18 +550,7 @@ async function run() {
     const deadline = Date.now() + waitSeconds * 1000;
 
     while (true) {
-        const [pullRequest, reviews, threads] = await Promise.all([
-            client.request(`/repos/${client.repository}/pulls/${number}`),
-            client.reviews(number),
-            client.threads(number)
-        ]);
-        const gate = evaluateExactHeadReview({
-            pullRequest,
-            reviews,
-            threads,
-            expectedHeadSha,
-            reviewerLogins
-        });
+        const gate = await evaluateLiveReview(client, number, expectedHeadSha, reviewerLogins);
         if (gate.status === 'passed') {
             await writeEvidence(evidence(gate, number, expectedHeadSha));
             await writeSummary(gate, number, expectedHeadSha);
