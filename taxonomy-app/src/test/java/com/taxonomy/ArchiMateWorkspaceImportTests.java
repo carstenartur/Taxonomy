@@ -169,6 +169,7 @@ class ArchiMateWorkspaceImportTests {
                 <model xmlns="http://www.opengroup.org/xsd/archimate/3.0/"
                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                        identifier="id-model-1">
+                  <name xml:lang="en">Workspace import fixture</name>
                   <elements>
                     <element identifier="id-e1" xsi:type="Capability">
                       <name xml:lang="en">Capabilities</name>

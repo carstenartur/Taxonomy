@@ -2,7 +2,7 @@ package com.taxonomy.export.service;
 
 import com.taxonomy.archimate.ArchiMateModel;
 import com.taxonomy.export.ArchiMateDiagramService;
-import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.export.spi.ExportContext;
 import com.taxonomy.export.spi.ExportFormatDescriptor;
 import com.taxonomy.export.spi.ExportFormatExtension;

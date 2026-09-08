@@ -39,9 +39,10 @@
             <button id="downloadArchitectureArchiMate"
                     class="btn btn-sm btn-outline-info"
                     type="button"
-                    aria-describedby="experimentalExportBadge"
-                    title="Schema-validated ArchiMate 3.1 subset; mapping and loss manifest pending">
-                Download ArchiMate 3.1 subset
+                    aria-describedby="experimentalExportBadge architectureExchangeProfile"
+                    disabled
+                    title="ArchiMate 3.1 XML, mapping profile and loss manifest; independent-tool acceptance pending">
+                Download ArchiMate + manifest
             </button>
             <button id="downloadArchitectureVisio"
                     class="btn btn-sm btn-outline-info"
@@ -69,6 +70,10 @@
                     <span class="badge text-bg-secondary">Read-only snapshot</span>
                 </div>
                 <p id="architectureProvenance" class="text-muted small mb-0 mt-1"></p>
+                <p id="architectureExchangeProfile" class="text-muted small mb-0 mt-1">
+                    Experimental ArchiMate profile: <code th:text="${archimateMappingProfile}">taxonomy-archimate-3.1-v2</code>.
+                    Includes XML, mappings and a report of transformed or omitted data.
+                </p>
             </div>
             <div id="architectureKpis" class="architecture-kpis" aria-label="Architecture summary">
                 <span class="architecture-kpi"><span aria-hidden="true">🎯</span><span id="directKpi">0 direct</span></span>

@@ -284,7 +284,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/rec
 
 Klicken Sie in der **Architekturansicht** auf die gewünschte Export-Schaltfläche:
 
-- **📦 ArchiMate** — Exportiert als ArchiMate 3.x XML (kompatibel mit Archi, BiZZdesign, MEGA)
+- **📦 ArchiMate** — Exportiert die experimentelle ArchiMate-3.1-Teilmenge mit deklariertem Mapping-Profil; die Fremdwerkzeug-Abnahme steht aus
 - **📊 Visio** — Exportiert als `.vsdx`-Datei
 - **📝 Mermaid** — Exportiert als Mermaid-Flussdiagramm-Code
 
@@ -302,7 +302,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/dia
   -o architecture.xml
 ```
 
-Die resultierende XML-Datei kann in **Archi**, **BiZZdesign**, **MEGA** oder jedes ArchiMate 3.x-kompatible Werkzeug importiert werden.
+Die XML-Datei wird gegen den festgeschriebenen ArchiMate-3.1-XSD-Satz validiert. Eine Abnahme in benannten Architekturwerkzeugen ist noch nicht zertifiziert; beachten Sie [Mapping-Profil und Verlustbericht](../dev/ARCHIMATE_EXCHANGE_PROFILE.md).
 
 ### Visio
 
@@ -395,7 +395,7 @@ Akzeptieren Sie die sinnvollen Vorschläge; lehnen Sie die übrigen ab.
 
 ### Schritt 5 — Exportieren
 
-Klicken Sie auf **ArchiMate**, um die Architektur als XML herunterzuladen. Importieren Sie die Datei in Archi oder BiZZdesign zur weiteren Verfeinerung.
+Klicken Sie auf **ArchiMate**, um die Architektur als XML herunterzuladen. Die Abnahme in externen Architekturwerkzeugen steht noch aus; prüfen Sie Profil und Verlustbericht vor einer Übergabe.
 
 ![Export-Schaltflächen](../images/23-export-buttons.png)
 

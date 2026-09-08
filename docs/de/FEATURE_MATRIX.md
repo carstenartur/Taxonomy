@@ -71,14 +71,14 @@ transformieren.
 |---|---|---|---|
 | Browseransicht, SVG und Vektor-PDF | Unterstützte menschenlesbare Ansichten des ausgewählten persistierten Snapshots | Eine neutrale serverseitige Diagrammszene und Snapshot-gebundenes Rendering | Allgemeiner Modellaustausch oder Bearbeitbarkeit in einem externen Architekturwerkzeug |
 | Mermaid- und JSON-Architekturprojektionen | Verfügbare zweckgebundene Text-/Datenprojektionen | Vorhandene begrenzte Serialisierer | Die Migration in die gemeinsame Snapshot-gebundene Artefakthülle, exakte Autoritäts-Header und ein vollständiges formatübergreifendes Verlustmanifest bleiben in #966 offen; ohne Endpunktnachweis darf keine Snapshot-Gleichheit angenommen werden |
-| **ArchiMate 3.1** | **Experimentelle begrenzte ArchiMate-3.1-Teilmenge** | Repräsentative Ausgabe wird offline gegen den festgeschriebenen ArchiMate-3.1-XSD-Satz validiert; der Workbench-Download ist an den ausgewählten Snapshot gebunden | **Interoperabilität mit unabhängigen Werkzeugen ist nicht zertifiziert**; ein versioniertes Mapping- und Verlustprofil, stabile externe Identitäten/Eigenschaften und ein semantischer Roundtrip stehen aus |
+| **ArchiMate 3.1** | **Experimentelle begrenzte ArchiMate-3.1-Teilmenge** | Jede erzeugte Datei wird offline gegen den festgeschriebenen ArchiMate-3.1-XSD-Satz validiert; das Workbench-Paket enthält den ausgewählten Snapshot, das Mapping-Profil und ein Verlustmanifest | **Interoperabilität mit unabhängigen Werkzeugen ist nicht zertifiziert**; das deklarierte Taxonomy-Profil erhält stabile Identitäten, typisierte Eigenschaften und Ansichten im semantischen Roundtrip; Abnahmen in Archi und einem unabhängigen Werkzeug stehen aus |
 | **Visio 2012 VSDX** | **Experimentelle begrenzte Visio-2012-Teilmenge** | Deterministische OPC-/VSDX-Paketstruktur, Beziehungs- und Content-Type-Prüfungen, masterlose Konnektorgeometrie, XMLBeans-Validierung und technisches Laden und Rendern mit Apache POI; der Workbench-Download ist an den ausgewählten Snapshot gebunden | **Microsoft-Visio-Desktop-Zertifizierung ausstehend**: Öffnen, Bearbeiten, Speichern und erneutes Öffnen in einer dokumentierten Microsoft-Visio-Desktopversion sind nicht zertifiziert; das versionierte Übergabe-/Verlustmanifest und stabile typisierte Shape-Daten sind enthalten |
 
 ### Produktweit erforderliche Formulierungen
 
 Diese Beschreibungen sind einheitlich zu verwenden:
 
-- **Experimentelle begrenzte ArchiMate-3.1-Teilmenge – Mapping- und Verlustmanifest ausstehend.**
+- **Experimentelle begrenzte ArchiMate-3.1-Teilmenge – Mapping-Profil und Verlustmanifest enthalten; Fremdwerkzeug-Abnahme ausstehend.**
 - **Experimentelle begrenzte Visio-2012-Teilmenge – Microsoft-Visio-Desktop-Zertifizierung ausstehend.**
 - **Snapshot-gebundener Export – der Download ruft das LLM nicht auf.**
 

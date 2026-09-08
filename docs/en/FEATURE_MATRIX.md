@@ -20,7 +20,7 @@ A feature is only complete when all required columns show ✅.
 | Relation proposals (accept/reject) | ✅ | ✅ | ✅ §9 | ✅ #12, 13, 36 | ✅ | ✅ | ✅ Complete |
 | Snapshot-bound browser/SVG/vector PDF views | ✅ | ✅ | ✅ export boundary | ✅ #20, 23 | ✅ | ✅ | ✅ Supported human-readable views of the selected persisted snapshot |
 | Mermaid/JSON architecture projections | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Migration to the common snapshot-bound artifact envelope, authority headers, and loss manifest remains open in #966 |
-| ArchiMate 3.1 export subset | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; mapping/loss profile and independent-tool interoperability remain open in #967 |
+| ArchiMate 3.1 export subset | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; versioned mapping/loss profile implemented; independent-tool acceptance remains open in #967 |
 | Visio 2012 VSDX export subset | ✅ | ✅ | ✅ export boundary | ✅ #23, 33 | ✅ | ✅ | ⚠️ Experimental bounded subset; typed identities, authorized metadata and versioned loss manifests are implemented; Microsoft Visio desktop certification remains open in #965 |
 | Full-text search | ✅ | ✅ | ✅ §11a | ✅ #29 | ✅ | ✅ | ✅ Complete |
 | Semantic/Hybrid search | ✅ | ✅ | ✅ §11b, §11c | ✅ #30, 31 | ✅ | ✅ | ✅ Complete |
@@ -68,14 +68,14 @@ result. Export formats may still omit or transform semantics.
 |---|---|---|---|
 | Browser view, SVG, and vector PDF | Supported human-readable views of the selected persisted snapshot | One neutral server-side diagram scene and snapshot-bound rendering | General model interchange or editability in an external architecture tool |
 | Mermaid and JSON architecture projections | Available special-purpose text/data projections | Existing bounded serializers | Migration to the common snapshot-bound artifact envelope, exact authority headers, and a complete cross-format loss manifest remain pending in #966; do not infer snapshot equivalence without endpoint evidence |
-| **ArchiMate 3.1** | **Experimental bounded ArchiMate 3.1 subset** | Representative output is validated offline against the pinned ArchiMate 3.1 XSD set; the workbench download is bound to the selected snapshot | **Independent-tool interoperability is not certified**; a versioned mapping and loss profile, stable external identity/property preservation, and a semantic round trip remain pending |
+| **ArchiMate 3.1** | **Experimental bounded ArchiMate 3.1 subset** | Every generated file is validated offline against the pinned ArchiMate 3.1 XSD set; the workbench package contains the selected snapshot, mapping profile and loss manifest | **Independent-tool interoperability is not certified**; the declared Taxonomy profile has stable identities, typed properties and semantic round-trip tests; Archi and an independent consumer still require recorded acceptance |
 | **Visio 2012 VSDX** | **Experimental bounded Visio 2012 subset** | Deterministic OPC/VSDX package structure, relationship and content-type checks, masterless connector geometry, XMLBeans validation, and Apache POI technical-reader loading/rendering; the workbench download is bound to the selected snapshot | **Microsoft Visio desktop certification pending**: open, edit, save, and reopen behavior in a documented Microsoft Visio desktop version has not been certified; the versioned handoff/loss manifest and stable typed Shape Data are included |
 
 ### Required product wording
 
 Use these descriptions consistently:
 
-- **Experimental bounded ArchiMate 3.1 subset — mapping and loss manifest pending.**
+- **Experimental bounded ArchiMate 3.1 subset — mapping profile and loss manifest included; independent-tool acceptance pending.**
 - **Experimental bounded Visio 2012 subset — Microsoft Visio desktop certification pending.**
 - **Snapshot-bound export — downloading does not invoke the LLM.**
 

@@ -93,7 +93,7 @@ graph TB
 | `ArchitectureRecommendationService` | Produces architecture recommendations by combining direct matches, gap analysis, and semantic search results to suggest additional nodes and relations relevant to a given requirement. |
 | `ArchitectureGapService` | Identifies missing relations and incomplete architecture patterns in the taxonomy graph relative to a given requirement. |
 | `ArchitecturePatternService` | Detects standard architecture patterns (Full Stack, App Chain, Role Chain) in scored taxonomy results. |
-| `ArchiMateDiagramService` | Generates the experimental bounded ArchiMate 3.1 XML subset. Representative output is validated against the pinned XSD set; independent-tool interoperability, a versioned mapping, and a loss profile remain pending. |
+| `ArchiMateDiagramService` | Generates the experimental bounded ArchiMate 3.1 XML subset. Every generated file is validated offline against the pinned XSD set. Stable IDs, typed properties, a versioned mapping/loss profile and the supported semantic reader are implemented; independent-tool acceptance remains pending. |
 | `VisioDiagramService` | Generates the experimental bounded Visio 2012 VSDX subset; typed identities and versioned handoff/loss manifests are included; Microsoft Visio desktop certification remains pending. |
 | `MermaidExportService` | Exports architecture views as Mermaid flowchart code blocks. |
 | `DiagramProjectionService` | Projects architecture views into neutral diagram models that can be rendered by multiple exporters. |
@@ -506,7 +506,7 @@ Imported elements carry an `x-source-framework` extension attribute for traceabi
 
 | Format | Description |
 |---|---|
-| **ArchiMate 3.1 XML** | Experimental bounded ArchiMate 3.1 subset. Representative output is validated against the pinned XSD set; independent-tool interoperability, stable external identity/property preservation, a versioned mapping/loss profile, and semantic round-trip behavior remain uncertified and tracked in #967. |
+| **ArchiMate 3.1 XML** | Experimental bounded ArchiMate 3.1 subset. Every file is validated offline against the pinned XSD set. The versioned profile retains stable identities, typed properties and view membership in the clean Taxonomy reader. A machine-readable loss manifest accompanies snapshot downloads. Independent consumer acceptance remains open in #967; see [the exact profile and limits](../dev/ARCHIMATE_EXCHANGE_PROFILE.md). |
 | **Visio 2012 `.vsdx`** | Experimental bounded Visio 2012 VSDX subset. Package-level checks exist, but Microsoft Visio desktop open/edit/save/reopen certification remains pending in #965; typed identities and a versioned handoff/loss manifest are included. |
 | **Mermaid flowchart** | Text-based Mermaid diagram (Markdown code block), renderable in GitHub, GitLab, Notion, Confluence, and most modern documentation platforms. |
 

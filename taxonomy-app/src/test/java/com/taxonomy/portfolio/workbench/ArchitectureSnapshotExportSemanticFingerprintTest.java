@@ -54,7 +54,7 @@ class ArchitectureSnapshotExportSemanticFingerprintTest {
                 "alice",
                 CONTEXT))
                 .thenReturn(projection("snapshot-grouped", grouped));
-        when(diagramExportService.exportAsArchiMate(plain))
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(plain), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("plain-archimate".getBytes(StandardCharsets.UTF_8));
         when(diagramExportService.exportAsVisio(org.mockito.ArgumentMatchers.eq(grouped), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("grouped-visio".getBytes(StandardCharsets.UTF_8));
@@ -75,7 +75,7 @@ class ArchitectureSnapshotExportSemanticFingerprintTest {
                 .isEqualTo(groupedArtifact.canonicalGraphSha256());
         assertThat(plainArtifact.artifactSha256())
                 .isNotEqualTo(groupedArtifact.artifactSha256());
-        verify(diagramExportService).exportAsArchiMate(plain);
+        verify(diagramExportService).exportAsArchiMate(org.mockito.ArgumentMatchers.eq(plain), org.mockito.ArgumentMatchers.any());
         verify(diagramExportService).exportAsVisio(org.mockito.ArgumentMatchers.eq(grouped), org.mockito.ArgumentMatchers.any());
     }
 

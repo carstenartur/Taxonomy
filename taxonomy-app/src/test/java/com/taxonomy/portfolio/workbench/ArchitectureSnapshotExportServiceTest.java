@@ -60,7 +60,7 @@ class ArchitectureSnapshotExportServiceTest {
                 "alice",
                 CONTEXT))
                 .thenReturn(projection);
-        when(diagramExportService.exportAsArchiMate(projection.diagram()))
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(archiMate);
         when(diagramExportService.exportAsVisio(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(visio);
@@ -98,7 +98,7 @@ class ArchitectureSnapshotExportServiceTest {
                 .isEqualTo("architecture-snapshot-1-abcdef123456.vsdx");
         assertThat(archiMateArtifact.exporterProfile())
                 .isEqualTo(
-                        "archimate-exchange-3.1-supported-subset-v1");
+                        "taxonomy-archimate-3.1-v2");
         assertThat(visioArtifact.exporterProfile())
                 .isEqualTo("visio-2012-opc-supported-subset-v2");
 
@@ -108,7 +108,7 @@ class ArchitectureSnapshotExportServiceTest {
                 "alice",
                 CONTEXT);
         verify(diagramExportService)
-                .exportAsArchiMate(projection.diagram());
+                .exportAsArchiMate(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any());
         verify(diagramExportService)
                 .exportAsVisio(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any());
     }
@@ -149,7 +149,7 @@ class ArchitectureSnapshotExportServiceTest {
                 "alice",
                 CONTEXT))
                 .thenReturn(reordered);
-        when(diagramExportService.exportAsArchiMate(firstDiagram))
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(firstDiagram), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("first-artifact".getBytes(StandardCharsets.UTF_8));
         when(diagramExportService.exportAsVisio(org.mockito.ArgumentMatchers.eq(reorderedDiagram), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("second-artifact".getBytes(StandardCharsets.UTF_8));
@@ -207,9 +207,9 @@ class ArchitectureSnapshotExportServiceTest {
                 "alice",
                 CONTEXT))
                 .thenReturn(renamed);
-        when(diagramExportService.exportAsArchiMate(firstDiagram))
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(firstDiagram), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("same-bytes".getBytes(StandardCharsets.UTF_8));
-        when(diagramExportService.exportAsArchiMate(renamedDiagram))
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(renamedDiagram), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("same-bytes".getBytes(StandardCharsets.UTF_8));
 
         Artifact firstArtifact = service.exportArchiMate(
@@ -299,7 +299,7 @@ class ArchitectureSnapshotExportServiceTest {
                 "alice",
                 CONTEXT))
                 .thenReturn(projection);
-        when(diagramExportService.exportAsArchiMate(projection.diagram()))
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new byte[0]);
 
         PortfolioException exception = assertThrows(
@@ -329,7 +329,7 @@ class ArchitectureSnapshotExportServiceTest {
                 "alice",
                 CONTEXT))
                 .thenReturn(projection);
-        when(diagramExportService.exportAsArchiMate(projection.diagram()))
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new IllegalArgumentException(
                         "serializer-internal detail must not be reflected"));
 
@@ -364,7 +364,7 @@ class ArchitectureSnapshotExportServiceTest {
                 "alice",
                 CONTEXT))
                 .thenReturn(projection);
-        when(diagramExportService.exportAsArchiMate(projection.diagram()))
+        when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(serialized);
 
         Artifact artifact = service.exportArchiMate(

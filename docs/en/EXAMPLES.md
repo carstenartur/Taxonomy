@@ -285,7 +285,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/rec
 
 Click the desired export button in the **Architecture View**:
 
-- **📦 ArchiMate** — Exports as ArchiMate 3.x XML (compatible with Archi, BiZZdesign, MEGA)
+- **📦 ArchiMate** — Exports the experimental ArchiMate 3.1 subset with a declared mapping profile; independent-tool acceptance is pending
 - **📊 Visio** — Exports as `.vsdx` file
 - **📝 Mermaid** — Exports as Mermaid flowchart code
 
@@ -303,7 +303,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/dia
   -o architecture.xml
 ```
 
-The resulting XML file can be imported into **Archi**, **BiZZdesign**, **MEGA**, or any ArchiMate 3.x-compatible tool.
+The resulting XML is validated against the pinned ArchiMate 3.1 XSD set. Acceptance in named architecture tools is not yet certified; inspect the [mapping profile and loss report](../dev/ARCHIMATE_EXCHANGE_PROFILE.md).
 
 ### Visio
 

@@ -9,4 +9,9 @@ public record ArchiMateView(
         String id,
         String name,
         List<ArchiMateViewNode> nodes,
-        List<ArchiMateViewConnection> connections) {}
+        List<ArchiMateViewConnection> connections) {
+    public ArchiMateView {
+        nodes = List.copyOf(nodes);
+        connections = List.copyOf(connections);
+    }
+}

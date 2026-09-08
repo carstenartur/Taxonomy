@@ -246,7 +246,6 @@ class ArchitectureIntelligenceTests {
                       <name xml:lang="en">Test Capability</name>
                     </element>
                   </elements>
-                  <relationships/>
                 </model>
                 """;
 
@@ -273,7 +272,7 @@ class ArchitectureIntelligenceTests {
     }
 
     @Test
-    void archiMateImportHandlesUnknownTypes() {
+    void archiMateImportRejectsUnknownSchemaTypes() {
         String xml = """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <model xmlns="http://www.opengroup.org/xsd/archimate/3.0/"
@@ -285,15 +284,12 @@ class ArchitectureIntelligenceTests {
                       <name xml:lang="en">Unknown</name>
                     </element>
                   </elements>
-                  <relationships/>
                 </model>
                 """;
 
-        ArchiMateImportResult result = archiMateXmlImporter.importXml(
-                new java.io.ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
-
-        assertThat(result.getElementsImported()).isEqualTo(1);
-        assertThat(result.getNotes().stream()
-                .anyMatch(n -> n.contains("Unknown ArchiMate type"))).isTrue();
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.taxonomy.catalog.service.ArchiMateImportException.class,
+                () -> archiMateXmlImporter.importXml(
+                        new java.io.ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))));
     }
 }
