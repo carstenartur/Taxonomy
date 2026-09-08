@@ -44,7 +44,7 @@ class VisioHandoffContractTest {
                 "taxonomy.generatedAt", VisioProperty.text("2026-09-08T00:00:00Z"),
                 "taxonomy.timestampPolicy", VisioProperty.text("SOURCE_SNAPSHOT_CREATED_AT"));
         return new VisioDiagramService().convert(representative(), new VisioExportMetadata(authority,
-                Map.of("CP-01", Map.of("taxonomy.reviewStatus", VisioProperty.text("ACCEPTED"),
+                Map.of("CP-01", Map.of("taxonomy.reviewStatus", VisioProperty.text("CONFIRMED"),
                         "taxonomy.decisionRationale", VisioProperty.text("=RUNADDON(\"literal only\") & reviewed"))),
                 Map.of(), List.of()));
     }
@@ -70,7 +70,7 @@ class VisioHandoffContractTest {
             assertEquals(edge.relationCategory(), data.get("taxonomy.relationCategory"));
             assertEquals(edge.relevance(), Double.parseDouble(data.get("taxonomy.relevance")));
         }
-        assertEquals("ACCEPTED", values.get("CP-01").get("taxonomy.reviewStatus"));
+        assertEquals("CONFIRMED", values.get("CP-01").get("taxonomy.reviewStatus"));
         assertEquals("=RUNADDON(\"literal only\") & reviewed", values.get("CP-01").get("taxonomy.decisionRationale"));
         assertEquals(Set.of("CP-01", "BP-02", "relation/α"), shapeData(parts.get("visio/pages/page2.xml")).keySet());
     }
@@ -133,6 +133,22 @@ class VisioHandoffContractTest {
             assertEquals(1, reader.getPages().size());
             assertTrue(reader.getPages().iterator().next().getContent().getTopLevelShapes().isEmpty());
         }
+    }
+
+    @Test void lossOrderingDoesNotChangeTheImmutableHandoff() throws Exception {
+        var document = fixtureDocument();
+        document.getLosses().add(new VisioLoss("element", "CP-01", "optional", "OMITTED", "Not retained"));
+        byte[] first = new VisioPackageBuilder().buildBundle(document);
+        Collections.reverse(document.getLosses());
+        assertArrayEquals(first, new VisioPackageBuilder().buildBundle(document));
+    }
+
+    @Test void typedNumbersRejectUnboundedExpansionAndNonfiniteValues() {
+        for (String invalid : List.of("1e2147483647", "1e-2147483647", "1e9999", "NaN", "9".repeat(351))) {
+            assertThrows(IllegalArgumentException.class, () -> new VisioProperty(VisioProperty.Kind.NUMBER, invalid));
+        }
+        assertEquals("0.5", new VisioProperty(VisioProperty.Kind.NUMBER, "0.5000").value());
+        assertEquals(Double.MIN_VALUE, Double.parseDouble(VisioProperty.number(Double.MIN_VALUE).value()));
     }
 
     @Test void longUnicodeLabelsAndManyParallelConnectorsRemainDistinct() throws Exception {

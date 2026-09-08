@@ -166,15 +166,28 @@ class ArchitectureWorkbenchControllerTest {
                         Format.VISIO_VSDX,
                         "application/vnd.ms-visio.drawing",
                         "architecture-snapshot-1-abcdef123456.vsdx",
-                        "visio-2012-opc-supported-subset-v1",
+                        "visio-2012-opc-supported-subset-v2",
                         "vsdx-hash",
                         "PK-test".getBytes(
                                 StandardCharsets.ISO_8859_1)));
+        when(snapshotExportService.exportVisioBundle(42L, "snapshot-1", "alice", context))
+                .thenReturn(artifact(Format.VISIO_BUNDLE, "application/zip",
+                        "architecture-snapshot-1-abcdef123456.visio.zip",
+                        "visio-2012-opc-supported-subset-v2", "bundle-hash",
+                        "PK-bundle".getBytes(StandardCharsets.ISO_8859_1)));
 
         var archiMate =
                 controller.archiMate(42L, "snapshot-1");
         var visio =
                 controller.visio(42L, "snapshot-1");
+        var bundle = controller.visioBundle(42L, "snapshot-1");
+        assertThat(bundle.getHeaders().getContentType().toString()).isEqualTo("application/zip");
+        assertThat(bundle.getHeaders().getCacheControl()).isEqualTo("no-store");
+        assertThat(bundle.getHeaders().getFirst("X-Taxonomy-Artifact-Sha256")).isEqualTo("bundle-hash");
+        assertThat(bundle.getHeaders().getFirst("X-Taxonomy-Canonical-Graph-Sha256")).isEqualTo("graph-hash");
+        assertThat(bundle.getHeaders().getFirst("X-Taxonomy-Snapshot-Id")).isEqualTo("snapshot-1");
+        assertThat(bundle.getHeaders().getFirst("Content-Disposition")).contains(".visio.zip");
+        verify(snapshotExportService).exportVisioBundle(42L, "snapshot-1", "alice", context);
 
         assertThat(archiMate.getHeaders()
                 .getContentType().toString())

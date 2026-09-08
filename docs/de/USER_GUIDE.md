@@ -628,7 +628,13 @@ Klicken Sie auf **📥 CSV**, um eine kommagetrennte Datei herunterzuladen, die 
 
 ### Experimentelle Visio-2012-VSDX-Teilmenge
 
-Klicken Sie auf **📥 Visio 2012 subset**, um die experimentelle begrenzte Visio-2012-VSDX-Teilmenge der Architekturansicht herunterzuladen. Das Paket enthält Ankerknoten, verwandte Elemente und beschriftete Beziehungen. Paketprüfungen zertifizieren nicht das Öffnen, Bearbeiten, Speichern und erneute Öffnen in Microsoft Visio Desktop; das vollständige Übergabe- und Verlustmanifest bleibt in [#965](https://github.com/carstenartur/Taxonomy/issues/965) offen.
+Klicken Sie auf **📥 Visio 2012 subset**, um die experimentelle begrenzte Visio-2012-VSDX-Teilmenge der Architekturansicht herunterzuladen. Das Paket enthält Ankerknoten, verwandte Elemente und beschriftete Beziehungen. Paketprüfungen zertifizieren nicht das Öffnen, Bearbeiten, Speichern und erneute Öffnen in Microsoft Visio Desktop; die Microsoft-Visio-Desktop-Abnahme bleibt in [#965](https://github.com/carstenartur/Taxonomy/issues/965) offen.
+
+Für ein exakt gespeichertes Ergebnis öffnen Sie die **Architecture Workbench**, wählen den Snapshot und prüfen die angezeigte Snapshot-/Commit-Identität sowie das Profil `visio-2012-opc-supported-subset-v2`. **Download Visio + manifest** liefert ein ZIP mit `diagram.vsdx`, `mapping-profile.json` und `manifest.json`. Die VSDX-Datei enthält dieselben Übergabe- und Profildaten zusätzlich eingebettet. Stabile Taxonomy-Identitäten, Originaltypen, Bewertungen, Auswahlmerkmale und freigegebene menschliche Review-Daten bleiben als typisierte Shape-Daten erhalten. Das Manifest beschreibt Abbildungen und Auslassungen und bindet VSDX und Profil mit SHA-256.
+
+Die erste Seite enthält den vollständigen ausgewählten Graphen; eine zweite Seite zeigt eine nichtleere echte Teilmenge der Anker-/Impact-Auswahl. Container-Rechtecke sind ausdrücklich als nichtsemantisch markiert; das erzeugte Layout kann von der Browseransicht abweichen. Alle Grenzen gelten gemeinsam: 10.000 Eingabeelemente, 30.000 Beziehungen, 32 Seiten, 20.000 dargestellte Knotenvorkommen, 60.000 Konnektoren und 32 MiB unkomprimierte Paketdaten; einzelne Texte sind auf 32.767 Zeichen begrenzt. Nicht unterstützte Selbstbeziehungen oder fehlende Endpunkte führen zum Exportfehler ohne Teildownload. Der reproduzierbare Erzeugungszeitstempel wird auf die gespeicherte Snapshot-Erstellungszeit normiert und entsprechend gekennzeichnet.
+
+VSDX ist eine experimentelle visuelle Übergabe. ArchiMate Exchange zusammen mit kanonischen JSON-Nachweisen dient dem gesonderten semantischen Austausch; dessen unabhängige Werkzeugabnahme bleibt in #967 offen. Änderungen an der VSDX-Datei aktualisieren Taxonomy nicht. Siehe [VSDX-Profil und Abnahmeverfahren](../dev/VISIO_HANDOFF_PROFILE.md) sowie [Versionshinweise 1.4.0](RELEASE_NOTES_1.4.0.md).
 
 > **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
 

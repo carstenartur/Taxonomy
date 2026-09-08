@@ -4,17 +4,16 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioLoss;
-import com.taxonomy.visio.VisioProperty;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
 /** Executable metadata/loss contract shared by the OPC package and downloadable handoff bundle. */
 public final class VisioHandoffProfile {
@@ -48,6 +47,8 @@ public final class VisioHandoffProfile {
             }
             pages.add(Map.of("pageId", page.getId(), "name", page.getName(), "shapes", shapes, "relationships", relationships));
         }
+        losses.sort(Comparator.comparing(VisioLoss::scope).thenComparing(VisioLoss::id)
+                .thenComparing(VisioLoss::field).thenComparing(VisioLoss::kind).thenComparing(VisioLoss::rationale));
         return json(Map.of("schemaVersion", 1, "exportProfile", ID,
                 "profileSha256", sha256(PROFILE.getBytes(StandardCharsets.UTF_8)),
                 "authority", document.getProperties(), "pages", pages, "losses", losses,

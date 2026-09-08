@@ -42,7 +42,6 @@ public class VisioDocumentConverter implements Converter {
         writer.endNode();
         writer.startNode("FaceNames");
         writer.startNode("FaceName");
-        writer.addAttribute("ID", "0");
         writer.addAttribute("NameU", "Arial");
         writer.endNode();
         writer.endNode();
@@ -62,7 +61,7 @@ public class VisioDocumentConverter implements Converter {
         writer.addAttribute("N", "Character");
         writer.startNode("Row");
         writer.addAttribute("IX", "0");
-        cell(writer, "Font", "0");
+        cell(writer, "Font", "Arial");
         cell(writer, "Size", "0.1388888888888889");
         cell(writer, "Color", "#172B4D");
         writer.endNode();

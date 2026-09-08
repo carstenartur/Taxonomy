@@ -632,7 +632,13 @@ Click **📥 CSV** to download a comma-separated file containing all node codes,
 
 ### Experimental Visio 2012 VSDX Subset
 
-Click **📥 Visio 2012 subset** to download the experimental bounded Visio 2012 VSDX subset representing the Architecture View. The package includes anchor nodes, related elements, and labelled relationships. Package-level checks do not certify Microsoft Visio desktop open/edit/save/reopen behavior; the complete handoff and loss manifest remains pending in [#965](https://github.com/carstenartur/Taxonomy/issues/965).
+Click **📥 Visio 2012 subset** to download the experimental bounded Visio 2012 VSDX subset representing the Architecture View. The package includes anchor nodes, related elements, and labelled relationships. Package-level checks do not certify Microsoft Visio desktop open/edit/save/reopen behavior; Microsoft Visio desktop acceptance remains open in [#965](https://github.com/carstenartur/Taxonomy/issues/965).
+
+For an exact persisted result, open the **Architecture Workbench**, select its snapshot and review the snapshot/commit and `visio-2012-opc-supported-subset-v2` profile shown before download. **Download Visio + manifest** returns a ZIP with `diagram.vsdx`, `mapping-profile.json` and `manifest.json`. The VSDX also embeds the same handoff/profile data. Stable Taxonomy identities, original types, scores, selection flags and authorized human review data are preserved as typed Shape Data; the manifest records every declared mapping and omission and binds the VSDX/profile bytes with SHA-256.
+
+The primary page contains the complete selected graph; a second page shows a nonempty proper anchor/impact subset. Container rectangles are explicitly non-semantic, and the generated layout can differ from the browser. Limits apply together: 10,000 input elements, 30,000 relationships, 32 pages, 20,000 rendered node occurrences, 60,000 connectors and 32 MiB of uncompressed package data; individual text values are limited to 32,767 characters. Unsupported self-loops or dangling endpoints fail without a partial download. The reproducible generation timestamp is normalized to the persisted snapshot creation time and explicitly labeled with that policy.
+
+VSDX is an experimental visual handoff. ArchiMate Exchange with canonical JSON evidence serves the separate semantic interchange use case; its own independent-tool acceptance remains tracked in #967. Editing a VSDX does not update Taxonomy. See the [VSDX profile and acceptance procedure](../dev/VISIO_HANDOFF_PROFILE.md) and [1.4.0 release notes](RELEASE_NOTES_1.4.0.md).
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 

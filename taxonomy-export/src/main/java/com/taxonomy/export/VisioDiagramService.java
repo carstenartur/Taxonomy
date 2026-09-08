@@ -20,7 +20,7 @@ import java.util.Map;
 
 /**
  * Converts a neutral {@link DiagramModel} into a {@link VisioDocument} by laying
- * out shapes on a single page using layer-based positioning.
+ * out shapes by layer, with an optional second anchor/impact selection page.
  */
 public class VisioDiagramService {
 
@@ -34,7 +34,7 @@ public class VisioDiagramService {
     private static final double MARGIN_Y = 1.5;
 
     /**
-     * Converts a {@link DiagramModel} to a {@link VisioDocument} with one page.
+     * Converts a {@link DiagramModel} without snapshot authority metadata.
      */
     public VisioDocument convert(DiagramModel model) {
         return convert(model, VisioExportMetadata.unbound());
