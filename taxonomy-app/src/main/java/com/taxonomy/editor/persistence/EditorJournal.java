@@ -41,7 +41,7 @@ public class EditorJournal {
     public record Snapshot(State state, List<Entry> operations) {}
     public record Checkpoint(String commandId, String actor, String occurredAt, String rationale,
                              String fingerprint, long fromRevision, long revision, String expectedCommit,
-                             String dsl, String commitId, boolean completed, boolean commitCreated, String failureCode) {}
+                             String dsl, String commitId, boolean completed, boolean commitCreated, String failureCode, String origin) {}
 
     public Snapshot read(RepositoryContext context) {
         String scope = scope(context);
@@ -49,6 +49,12 @@ public class EditorJournal {
             EditorWorkspace workspace = em.find(EditorWorkspace.class, scope);
             return workspace == null ? null : new Snapshot(state(workspace), entries(scope, workspace.revision));
         });
+    }
+
+    public List<Checkpoint> checkpoints(RepositoryContext context) {
+        return transaction.execute(status -> em.createQuery(
+                "select c from EditorCheckpoint c where c.scopeId = :scope and c.completed = true order by c.revision desc", EditorCheckpoint.class)
+                .setParameter("scope", scope(context)).getResultList().stream().map(EditorJournal::checkpoint).toList());
     }
 
     public <T> T locked(RepositoryContext context, State initial, Function<Session, T> action) {
@@ -132,6 +138,7 @@ public class EditorJournal {
             checkpoint.scopeId = workspace.scopeId;
             checkpoint.commandId = metadata.commandId();
             checkpoint.actor = actor;
+            checkpoint.origin = "EDITOR_CHECKPOINT";
             checkpoint.occurredAt = Instant.now().toString();
             checkpoint.rationale = metadata.rationale();
             checkpoint.fingerprint = fingerprint;
@@ -164,7 +171,30 @@ public class EditorJournal {
             if (commandId.equals(workspace.pendingCheckpoint)) workspace.pendingCheckpoint = null;
         }
         /** A version-boundary import is journaled by the caller before adopting the new Git authority. */
-        public void adoptVersion(String commit) {
+        public void adoptVersion(String commit, String actor, String rationale) {
+            String commandId = java.util.UUID.nameUUIDFromBytes(("version:" + workspace.scopeId + ":" + commit
+                    + ":" + workspace.revision).getBytes(StandardCharsets.UTF_8)).toString();
+            String id = key(workspace.scopeId, commandId);
+            if (em.find(EditorCheckpoint.class, id) == null) {
+                EditorCheckpoint checkpoint = new EditorCheckpoint();
+                checkpoint.id = id;
+                checkpoint.scopeId = workspace.scopeId;
+                checkpoint.commandId = commandId;
+                checkpoint.origin = "VERSION_ACTION";
+                checkpoint.actor = actor;
+                checkpoint.occurredAt = Instant.now().toString();
+                checkpoint.rationale = rationale;
+                checkpoint.fromRevision = workspace.checkpointRevision;
+                checkpoint.revision = workspace.revision;
+                checkpoint.expectedCommit = workspace.checkpointCommit;
+                checkpoint.dsl = workspace.dsl;
+                checkpoint.commitId = commit;
+                checkpoint.fingerprint = hash("version:" + commandId);
+                checkpoint.completed = true;
+                // The separate version action owns Git creation; this record only links its resulting version.
+                checkpoint.commitCreated = false;
+                em.persist(checkpoint);
+            }
             workspace.checkpointCommit = commit;
             workspace.checkpointRevision = workspace.revision;
         }
@@ -184,7 +214,7 @@ public class EditorJournal {
     }
     private static Checkpoint checkpoint(EditorCheckpoint c) {
         return new Checkpoint(c.commandId, c.actor, c.occurredAt, c.rationale, c.fingerprint, c.fromRevision,
-                c.revision, c.expectedCommit, unframe(c.dsl), c.commitId, c.completed, c.commitCreated, c.failureCode);
+                c.revision, c.expectedCommit, unframe(c.dsl), c.commitId, c.completed, c.commitCreated, c.failureCode, c.origin);
     }
     // A nonempty version envelope also preserves empty source on Oracle, which maps empty VARCHARs to NULL.
     private static String frame(String source) { return "1:" + source; }

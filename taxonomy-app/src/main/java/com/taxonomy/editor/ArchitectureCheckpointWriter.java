@@ -45,15 +45,14 @@ public class ArchitectureCheckpointWriter {
                     + "\nRationale: " + request.rationale());
             ObjectId id = inserter.insert(commit);
             inserter.flush();
-            Ref current = repository.exactRef(Constants.R_HEADS + branch);
-            if (current != null) {
-                try (RevWalk walk = new RevWalk(repository)) {
-                    if (walk.isMergedInto(walk.parseCommit(id), walk.parseCommit(current.getObjectId()))) {
-                        return new Result(id.name(), true);
-                    }
-                }
+            if (applied(repository, branch, id)) return new Result(id.name(), true);
+            try {
+                new ExpectedHeadDslCommitter().verifyExpectedHead(source, branch, previous);
+            } catch (ExpectedHeadDslCommitter.BranchHeadConflictException conflict) {
+                // A concurrent retry of this SAME durable intent may have won between the read and CAS.
+                if (applied(repository, branch, id)) return new Result(id.name(), true);
+                throw conflict;
             }
-            new ExpectedHeadDslCommitter().verifyExpectedHead(source, branch, previous);
             RefUpdate update = repository.updateRef(Constants.R_HEADS + branch);
             update.setExpectedOldObjectId(previous == null ? ObjectId.zeroId() : ObjectId.fromString(previous));
             update.setNewObjectId(id); update.setForceUpdate(false);
@@ -62,7 +61,16 @@ public class ArchitectureCheckpointWriter {
             if (result == RefUpdate.Result.NEW || result == RefUpdate.Result.FAST_FORWARD || result == RefUpdate.Result.NO_CHANGE) {
                 return new Result(id.name(), true);
             }
+            if (applied(repository, branch, id)) return new Result(id.name(), true);
             throw new IOException("Checkpoint ref update did not succeed: " + result + "; retry checkpoint " + request.commandId());
+        }
+    }
+
+    private static boolean applied(Repository repository, String branch, ObjectId id) throws IOException {
+        Ref current = repository.exactRef(Constants.R_HEADS + branch);
+        if (current == null) return false;
+        try (RevWalk walk = new RevWalk(repository)) {
+            return walk.isMergedInto(walk.parseCommit(id), walk.parseCommit(current.getObjectId()));
         }
     }
 }

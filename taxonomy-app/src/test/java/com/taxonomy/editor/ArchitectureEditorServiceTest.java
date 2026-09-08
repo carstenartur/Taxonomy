@@ -183,6 +183,35 @@ class ArchitectureEditorServiceTest {
         assertThat(git.textDiff(initial, version)).contains("Branch snapshot");
         assertThat(service.read(alice, version).history()).isEmpty();
         assertThat(service.read(alice, null).versions()).hasSize(4);
+        var versionLink = fixture.journal.checkpoints(alice).stream().filter(c -> c.origin().equals("VERSION_ACTION")).findFirst().orElseThrow();
+        assertThat(versionLink.commitId()).isEqualTo(git.getHeadCommit("draft"));
+        assertThat(versionLink.revision()).isEqualTo(service.read(alice, null).context().revision());
+        assertThat(versionLink.dsl()).isEqualTo(SEED);
+        assertThat(versionLink.actor()).isEqualTo("alice");
+    }
+
+    @Test void concurrentRetriesOfTheSameCheckpointCompleteOneIntentAndOneCommit() throws Exception {
+        execute(update("Concurrent checkpoint"));
+        var start = new CountDownLatch(2);
+        var writer = new ArchitectureCheckpointWriter() {
+            @Override public Result write(com.taxonomy.dsl.storage.DslGitRepository repository, String scope, String branch,
+                                          EditorJournal.Checkpoint request) throws java.io.IOException {
+                start.countDown();
+                try { if (!start.await(20, TimeUnit.SECONDS)) throw new java.io.IOException("Checkpoint peer did not start"); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new java.io.IOException(interrupted); }
+                return super.write(repository, scope, branch, request);
+            }
+        };
+        var concurrent = new ArchitectureEditorService(fixture.repositories, fixture.journal, writer);
+        var request = new CreateCheckpointCommand(service.read(alice, null).context(), metadata());
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> concurrent.checkpoint(alice, request));
+            var second = pool.submit(() -> concurrent.checkpoint(alice, request));
+            assertThat(first.get(30, TimeUnit.SECONDS).commitId()).isEqualTo(second.get(30, TimeUnit.SECONDS).commitId());
+        }
+        assertThat(fixture.journal.read(alice).state().pendingCheckpoint()).isNull();
+        assertThat(fixture.repositories.resolveRepository(alice).getCommitCount("draft")).isEqualTo(2);
+        assertThat(service.checkpoint(alice, request).replayed()).isTrue();
     }
 
     @Test void movedGitHeadRejectsCheckpointIntentAndReleasesItsReservation() throws Exception {

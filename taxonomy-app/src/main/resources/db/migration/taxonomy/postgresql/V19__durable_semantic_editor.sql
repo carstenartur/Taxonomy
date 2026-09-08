@@ -49,5 +49,6 @@ CREATE TABLE editor_checkpoint (
     commit_id VARCHAR(40),
     completed BOOLEAN NOT NULL,
     commit_created BOOLEAN NOT NULL,
-    failure_code VARCHAR(40)
+    failure_code VARCHAR(40),
+    origin VARCHAR(40) NOT NULL
 );

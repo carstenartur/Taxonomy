@@ -237,7 +237,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
             session.append(new Metadata(id, id, id, rationale), context.username(), "VERSION_IMPORT", null,
                     EditorJournal.hash("version:" + head), dsl, List.copyOf(affected(changes)));
         }
-        session.adoptVersion(head);
+        session.adoptVersion(head, context.username(), rationale);
     }
 
     private Change transform(RepositoryContext context, Command command, String current, List<Entry> operations) {

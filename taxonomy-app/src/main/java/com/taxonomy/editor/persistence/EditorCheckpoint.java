@@ -55,5 +55,8 @@ public class EditorCheckpoint {
     @Column(name = "failure_code", length = 40)
     String failureCode;
 
+    @Column(name = "origin", nullable = false, length = 40)
+    String origin;
+
     protected EditorCheckpoint() {}
 }

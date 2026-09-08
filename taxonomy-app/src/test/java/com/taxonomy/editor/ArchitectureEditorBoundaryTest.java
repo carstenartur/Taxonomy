@@ -20,6 +20,10 @@ class ArchitectureEditorBoundaryTest {
                     "com.taxonomy.relations.repository..");
 
     @ArchTest
+    static final ArchRule editorApplicationKeepsJpaInsideItsJournalAdapter = noClasses().that().resideInAPackage("com.taxonomy.editor")
+            .should().dependOnClassesThat().resideInAnyPackage("jakarta.persistence..", "org.springframework.data.jpa..");
+
+    @ArchTest
     static final ArchRule journalCannotWriteGit = noClasses().that().resideInAPackage("com.taxonomy.editor.persistence..")
             .should().dependOnClassesThat().resideInAnyPackage("org.eclipse.jgit..", "com.taxonomy.dsl.storage..");
 
