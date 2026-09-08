@@ -128,7 +128,12 @@ public final class IntegrationContracts {
     }
     public record OutboundRequest(IntegrationContext context, ExchangeDocument document, String expectedExternalVersion) {}
     public record ExchangeFile(String mediaType, String filename, byte[] content, List<MappingLoss> losses) {
-        public ExchangeFile { content = content.clone(); losses = List.copyOf(losses); }
+        public ExchangeFile {
+            require(filename, "filename");
+            if (filename.length() > 240 || filename.equals(".") || filename.equals("..") || filename.contains("/") || filename.contains("\\")
+                    || filename.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Unsafe exchange filename");
+            content = content.clone(); losses = List.copyOf(losses);
+        }
         @Override public byte[] content() { return content.clone(); }
     }
     public record DiscoveryResource(String uri, String type, String title, String version, String configuration) {}

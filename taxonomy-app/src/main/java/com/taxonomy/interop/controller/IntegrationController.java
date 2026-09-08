@@ -60,7 +60,8 @@ public class IntegrationController {
     public ResponseEntity<byte[]> file(@PathVariable UUID connection, @PathVariable UUID operation) {
         var context = resolver.resolveCurrentRepositoryContext();
         var file = service.file(context, connection, operation); var authority = service.operation(context, connection, operation).context().internalState();
-        return ResponseEntity.ok().header(HttpHeaders.CONTENT_TYPE, file.mediaType()).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + file.filename())
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_TYPE, file.mediaType())
+                .header(HttpHeaders.CONTENT_DISPOSITION, org.springframework.http.ContentDisposition.attachment().filename(file.filename(), java.nio.charset.StandardCharsets.UTF_8).build().toString())
                 .header(HttpHeaders.CACHE_CONTROL, "private, no-store").header("X-Content-Type-Options", "nosniff")
                 .header("X-Taxonomy-Semantic-Revision", Long.toString(authority.semanticRevision()))
                 .header("X-Taxonomy-Checkpoint", authority.commitId() == null ? "none" : authority.commitId()).body(file.content());

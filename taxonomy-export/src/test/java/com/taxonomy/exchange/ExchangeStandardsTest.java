@@ -12,6 +12,12 @@ class ExchangeStandardsTest {
     private static byte[] fixture(String name) throws Exception {
         try (var stream = ExchangeStandardsTest.class.getResourceAsStream("/interoperability/" + name)) { assertNotNull(stream); return stream.readAllBytes(); }
     }
+    @Test void exchangeDeliveryRejectsControlCharactersAndPathNamesBeforePersistence() {
+        for (String filename : List.of("", ".", "..", "../escape.xml", "directory\\file.xml", "file\r\nX-Injected: yes", "a" + (char) 0 + "b", "x".repeat(241)))
+            assertThrows(IllegalArgumentException.class, () -> new ExchangeFile("application/xml", filename, new byte[]{1}, List.of()));
+        String unicode = "Änderung \"A\"; reviewed.reqif";
+        assertEquals(unicode, new ExchangeFile("application/reqif+xml", unicode, new byte[]{1}, List.of()).filename());
+    }
     @Test void rmfRoundTripRetainsIdsTypesAttributesAndRepeatedHierarchyOccurrences() throws Exception {
         var before = reqif.read(fixture("eclipse-rmf.reqif"), "tool-version-1", true);
         var after = reqif.read(reqif.write(before), "tool-version-1", true);
