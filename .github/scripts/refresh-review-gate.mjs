@@ -69,6 +69,9 @@ export async function refreshPullRequest(client, number, reviewerLogins) {
     const source = Buffer.from(file.content, 'base64').toString('utf8');
     const policyVersion = Number(source.match(
         /^\s*export\s+const\s+HUMAN_CONFIRMATION_POLICY_VERSION\s*=\s*([1-9][0-9]*)\s*(?:;|$)/mu)?.[1]);
+    if (!Number.isSafeInteger(policyVersion)) {
+        return `#${number}: trusted base review policy version is unreadable; update the PR from main or inspect the trusted gate declaration.`;
+    }
     if (policyVersion !== HUMAN_CONFIRMATION_POLICY_VERSION) {
         return `#${number}: update the PR from main and run CI with the confirmation policy first.`;
     }

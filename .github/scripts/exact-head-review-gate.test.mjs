@@ -179,6 +179,22 @@ test('human coverage completion never invents or corrects invalid Copilot metada
     }).code, 'REVIEW_FILE_COVERAGE_INCOMPLETE');
 });
 
+test('selects the newest valid confirmation with its own scope from unordered comments', () => {
+    const comments = [
+        confirmation({ id: 203, body: `/confirm-review ${HEAD} 101 all-files=3` }),
+        confirmation({ id: 202, body: `/confirm-review ${HEAD} 101 all-files=2` }),
+        confirmation({ id: 206, body: `/confirm-review ${HEAD} 100 all-files=2` }),
+        confirmation({ id: 205 }),
+        confirmation({ id: 201, body: `/confirm-review ${HEAD} 101 all-files=2` })
+    ];
+    const partial = humanGate({ comments, reviews: [review(CLEAN_CLOSER.replace('2/2', '1/2'))] });
+    assert.equal(partial.humanConfirmation.id, 202);
+    assert.equal(partial.humanConfirmation.scope, 'all-changed-files');
+    const complete = humanGate({ comments });
+    assert.equal(complete.humanConfirmation.id, 205);
+    assert.equal(complete.humanConfirmation.scope, 'closer-review');
+});
+
 for (const [name, overrides] of Object.entries({
     'old head': { body: `/confirm-review ${'b'.repeat(40)} 101` },
     'old review': { body: `/confirm-review ${HEAD} 100` },
@@ -510,6 +526,20 @@ test('refresh recognizes the same trusted policy version across harmless formatt
     });
     assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
     assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
+});
+
+test('refresh accepts a trailing comment on the trusted policy declaration', async t => {
+    const { client, writes } = mockGitHub(t, {
+        policySource: `export const HUMAN_CONFIRMATION_POLICY_VERSION = ${HUMAN_CONFIRMATION_POLICY_VERSION}; // full-change review support\n`
+    });
+    assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
+    assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
+});
+
+test('refresh distinguishes an unreadable policy declaration from an older version', async t => {
+    const { client, writes } = mockGitHub(t, { policySource: '// no version declaration' });
+    assert.match(await refreshPullRequest(client, 933), /policy version is unreadable/u);
+    assert.deepEqual(writes, []);
 });
 
 test('live refresh honors the configured trusted reviewer set', async t => {

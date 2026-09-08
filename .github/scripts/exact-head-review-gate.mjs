@@ -206,19 +206,23 @@ export function humanReviewDecision({
             scope: 'all-changed-files', changedFiles
         } };
     }
-    const comment = comments.filter(item => {
+    let selected;
+    for (const item of comments) {
         const command = parseReviewConfirmation(item.body);
         const createdAt = Date.parse(item.created_at);
-        return command?.headSha === headSha && command.reviewId === reviewId
+        if (command?.headSha === headSha && command.reviewId === reviewId
             && (command.changedFiles === undefined ? !requireCompleteCoverage
                 : command.changedFiles === changedFiles)
             && Number.isSafeInteger(item.id) && item.id > 0
             && canConfirm(item.user, humanPermissions, reviewerLogins) && !item.performed_via_github_app
             && createdAt > reviewedAt && createdAt <= asOf
-            && item.created_at === item.updated_at && item.last_edited_at === null;
-    }).toSorted((a, b) => b.id - a.id)[0];
-    if (!comment) return {};
-    const command = parseReviewConfirmation(comment.body);
+            && item.created_at === item.updated_at && item.last_edited_at === null
+            && (!selected || item.id > selected.comment.id)) {
+            selected = { comment: item, command };
+        }
+    }
+    if (!selected) return {};
+    const { comment, command } = selected;
     return { confirmation: {
         source: 'issue_comment', id: comment.id, login: comment.user.login,
         url: comment.html_url, submittedAt: comment.created_at, headSha, reviewId,
