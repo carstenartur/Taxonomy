@@ -73,18 +73,19 @@ public final class ArchitectureSemanticPatch {
         int[] target = range(original, oldBlocks.get(id));
         Map<String, BlockAst> live = index(current);
         String previous = position == 0 ? null : order.get(position - 1);
+        String next = position + 1 < order.size() ? order.get(position + 1) : null;
         int oldLeft = previous == null ? 0 : range(original, oldBlocks.get(previous))[1];
         String leftGap = original.substring(oldLeft, target[0]);
         int liveLeft = previous == null ? 0 : live.containsKey(previous) ? range(current, live.get(previous))[1] : -1;
-        if (liveLeft >= 0 && current.startsWith(leftGap, liveLeft)) return liveLeft + leftGap.length();
+        int liveRight = next != null && live.containsKey(next) ? range(current, live.get(next))[0] : current.length();
+        if (liveLeft >= 0 && liveLeft + leftGap.length() <= liveRight && current.startsWith(leftGap, liveLeft)) {
+            return liveLeft + leftGap.length();
+        }
 
-        if (position + 1 < order.size()) {
-            String next = order.get(position + 1);
-            if (live.containsKey(next)) {
-                String rightGap = original.substring(target[1], range(original, oldBlocks.get(next))[0]);
-                int insertion = range(current, live.get(next))[0] - rightGap.length();
-                if (insertion >= 0 && current.startsWith(rightGap, insertion)) return insertion;
-            }
+        if (next != null && live.containsKey(next)) {
+            String rightGap = original.substring(target[1], range(original, oldBlocks.get(next))[0]);
+            int insertion = liveRight - rightGap.length();
+            if (insertion >= Math.max(0, liveLeft) && current.startsWith(rightGap, insertion)) return insertion;
         }
         throw new ArchitectureDslCommands.CommandProblem("UNDO_CONFLICT", id,
                 "The original insertion boundary changed; choose a new explicit placement", List.of(id));

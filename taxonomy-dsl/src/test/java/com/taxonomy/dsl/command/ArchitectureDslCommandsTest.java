@@ -121,6 +121,11 @@ class ArchitectureDslCommandsTest {
         String first = "# Prefix\nelement arch-first type System {\n  title: \"First\";\n}\n# Suffix\n";
         String firstDeleted = commands.apply(first, new DeleteArchitectureElement("arch-first")).dsl();
         assertThat(commands.inverse(firstDeleted, first, firstDeleted).dsl()).isEqualTo(first);
+
+        String previous = "element arch-before type System {\n  title: \"Before\";\n}\n";
+        String middle = "element arch-middle type System {\n  title: \"Middle\";\n}\n";
+        String next = "element arch-after type System {\n  title: \"After\";\n}\n";
+        assertCode(() -> commands.inverse(next + previous, previous + middle + next, previous + next), "UNDO_CONFLICT");
     }
 
     @Test
