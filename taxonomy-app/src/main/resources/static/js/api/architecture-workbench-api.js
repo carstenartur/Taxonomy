@@ -34,8 +34,9 @@ window.ArchitectureWorkbenchApi = (function () {
     }
 
     function base(projectId, snapshotId) {
-        return '/api/projects/' + positiveInteger(projectId, 'projectId')
+        const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
             + '/architecture-workbench/' + snapshot(snapshotId);
+        return window.TaxonomyI18n?.resolveUrl?.(path) || path;
     }
 
     return {
