@@ -74,12 +74,27 @@ public final class ArchitectureWorkbenchDtos {
             DiagramScene scene,
             Map<String, ElementMetadata> elements,
             Map<String, RelationMetadata> relations,
-            List<String> warnings) {
+            List<String> warnings,
+            SnapshotProvenance exportProvenance) {
 
         public Projection {
             elements = elements == null ? Map.of() : Map.copyOf(elements);
             relations = relations == null ? Map.of() : Map.copyOf(relations);
             warnings = warnings == null ? List.of() : List.copyOf(warnings);
         }
+
+        public Projection(Long projectId, String projectKey, String projectTitle,
+                          Long requirementId, String requirementKey, String requirementTitle, String requirementText,
+                          String snapshotId, AnalysisStatus snapshotStatus, Instant snapshotCreatedAt,
+                          String provider, String modelName, String workspaceId, String branchName, String commitSha,
+                          DiagramModel diagram, DiagramScene scene, Map<String, ElementMetadata> elements,
+                          Map<String, RelationMetadata> relations, List<String> warnings) {
+            this(projectId, projectKey, projectTitle, requirementId, requirementKey, requirementTitle, requirementText,
+                    snapshotId, snapshotStatus, snapshotCreatedAt, provider, modelName, workspaceId, branchName, commitSha,
+                    diagram, scene, elements, relations, warnings, null);
+        }
     }
+
+    public record SnapshotProvenance(Long requirementVersionId, String taxonomyFingerprint,
+                                     String repositoryId) { }
 }

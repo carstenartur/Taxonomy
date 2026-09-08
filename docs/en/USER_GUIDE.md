@@ -638,7 +638,7 @@ Click **📥 Visio 2012 subset** to download the experimental bounded Visio 2012
 
 ### Experimental ArchiMate 3.1 Subset
 
-Click **📥 ArchiMate 3.1 subset** to download the experimental bounded ArchiMate 3.1 subset. Representative output is validated against the pinned 3.1 XSD set, but independent-tool interoperability, stable external identity/property preservation, a versioned mapping and loss profile, and semantic round-trip behavior remain uncertified and tracked in [#967](https://github.com/carstenartur/Taxonomy/issues/967).
+Click **📥 ArchiMate 3.1 subset** to download the experimental bounded ArchiMate 3.1 subset. Every file is validated against the pinned 3.1 XSD set. In the snapshot workbench, **Download ArchiMate + manifest** includes the XML, versioned mapping profile and machine-readable loss report. Stable IDs, typed properties and view membership survive the supported Taxonomy reader round trip. Independent-tool interoperability remains uncertified in [#967](https://github.com/carstenartur/Taxonomy/issues/967); see [the exact profile and limits](../dev/ARCHIMATE_EXCHANGE_PROFILE.md).
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 

@@ -1,6 +1,7 @@
 package com.taxonomy.export.service;
 
 import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.archimate.ArchiMateExportMetadata;
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
@@ -44,6 +45,14 @@ public class CanonicalDiagramExportService {
         DiagramModel diagram = requireCanonicalDiagram(canonicalDiagram);
         ArchiMateModel model = archiMateDiagramService.convert(diagram);
         return archiMateXmlExporter.export(model);
+    }
+
+    public ArchiMateModel prepareArchiMate(DiagramModel canonicalDiagram, ArchiMateExportMetadata metadata) {
+        return metadata.apply(archiMateDiagramService.convert(requireCanonicalDiagram(canonicalDiagram)));
+    }
+
+    public byte[] exportAsArchiMate(DiagramModel canonicalDiagram, ArchiMateExportMetadata metadata) {
+        return archiMateXmlExporter.export(prepareArchiMate(canonicalDiagram, metadata));
     }
 
     public byte[] exportAsVisio(DiagramModel canonicalDiagram) {

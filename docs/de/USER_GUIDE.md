@@ -634,7 +634,7 @@ Klicken Sie auf **📥 Visio 2012 subset**, um die experimentelle begrenzte Visi
 
 ### Experimentelle ArchiMate-3.1-Teilmenge
 
-Klicken Sie auf **📥 ArchiMate 3.1 subset**, um die experimentelle begrenzte ArchiMate-3.1-Teilmenge herunterzuladen. Repräsentative Ausgabe wird gegen den festgeschriebenen 3.1-XSD-Satz validiert; Interoperabilität mit unabhängigen Werkzeugen, stabile externe Identitäten/Eigenschaften, ein versioniertes Mapping- und Verlustprofil sowie semantischer Roundtrip bleiben unzertifiziert und werden in [#967](https://github.com/carstenartur/Taxonomy/issues/967) verfolgt.
+Klicken Sie auf **📥 ArchiMate 3.1 subset**, um die experimentelle begrenzte ArchiMate-3.1-Teilmenge herunterzuladen. Jede Datei wird gegen den festgeschriebenen 3.1-XSD-Satz validiert. Im Snapshot-Workbench enthält **Download ArchiMate + manifest** die XML-Datei, das versionierte Mapping-Profil und den maschinenlesbaren Verlustbericht. Stabile IDs, typisierte Eigenschaften und Ansichten bleiben im unterstützten Taxonomy-Roundtrip erhalten. Interoperabilität mit unabhängigen Werkzeugen bleibt unzertifiziert in [#967](https://github.com/carstenartur/Taxonomy/issues/967); siehe [Profil und Grenzen](../dev/ARCHIMATE_EXCHANGE_PROFILE.md).
 
 > **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
 

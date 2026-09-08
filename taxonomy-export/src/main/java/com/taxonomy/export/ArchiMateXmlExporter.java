@@ -1,178 +1,275 @@
 package com.taxonomy.export;
 
-import com.taxonomy.archimate.ArchiMateElement;
-import com.taxonomy.archimate.ArchiMateModel;
-import com.taxonomy.archimate.ArchiMateRelationship;
-import com.taxonomy.archimate.ArchiMateView;
-import com.taxonomy.archimate.ArchiMateViewConnection;
-import com.taxonomy.archimate.ArchiMateViewNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.taxonomy.archimate.*;
 
+import javax.xml.XMLConstants;
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-/**
- * Serializes an {@link ArchiMateModel} to the ArchiMate Model Exchange File Format (XML).
- * <p>
- * The generated document uses the unchanged ArchiMate 3.0 exchange namespace URI with
- * the ArchiMate 3.1 schema revision and the repository's currently supported model and
- * diagram subset. Full schema and product interoperability certification is tracked
- * separately from this serializer.
- * <p>
- * No external XML libraries are used – XML is assembled with a {@link StringBuilder}
- * and all text content is properly escaped.
- */
+/** Typed ArchiMate 3.1 subset writer. Every result passes offline normative validation. */
 public class ArchiMateXmlExporter {
-
-    private static final Logger log = LoggerFactory.getLogger(ArchiMateXmlExporter.class);
-
-    /**
-     * Exports the model as a UTF-8 encoded ArchiMate XML byte array.
-     *
-     * @param model the ArchiMate model to export
-     * @return UTF-8 encoded XML bytes
-     */
     public byte[] export(ArchiMateModel model) {
-        String xml = buildXml(model);
-        log.info("ArchiMate XML export: {} chars", xml.length());
-        return xml.getBytes(StandardCharsets.UTF_8);
-    }
-
-    private String buildXml(ArchiMateModel model) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        sb.append("<model xmlns=\"http://www.opengroup.org/xsd/archimate/3.0/\"\n");
-        sb.append("       xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n");
-        // The 3.0 namespace is retained for backward compatibility; the schema document
-        // was updated to revision 3.1 by The Open Group without changing the namespace URI.
-        sb.append("       xsi:schemaLocation=\"http://www.opengroup.org/xsd/archimate/3.0/")
-          .append(" http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd\"\n");
-        sb.append("       identifier=\"id-model-1\">\n");
-        sb.append("  <name xml:lang=\"en\">").append(escapeXml(model.title())).append("</name>\n");
-
-        appendElements(sb, model.elements());
-        appendRelationships(sb, model.relationships());
-        appendOrganizations(sb, model.organizations());
-        appendViews(sb, model.view());
-
-        sb.append("</model>");
-        return sb.toString();
-    }
-
-    private void appendElements(StringBuilder sb, List<ArchiMateElement> elements) {
-        sb.append("  <elements>\n");
-        for (ArchiMateElement el : elements) {
-            sb.append("    <element identifier=\"id-").append(escapeXml(el.id()))
-              .append("\" xsi:type=\"").append(escapeXml(el.archiMateType())).append("\">\n");
-            sb.append("      <name xml:lang=\"en\">").append(escapeXml(el.label()))
-              .append("</name>\n");
-            if (el.documentation() != null && !el.documentation().isBlank()) {
-                sb.append("      <documentation xml:lang=\"en\">")
-                  .append(escapeXml(el.documentation())).append("</documentation>\n");
+        validateReferences(model);
+        try {
+            ByteArrayOutputStream output = new BoundedOutput();
+            XMLStreamWriter xml = XMLOutputFactory.newFactory().createXMLStreamWriter(output, "UTF-8");
+            try {
+                write(xml, model);
+            } finally {
+                xml.close();
             }
-            sb.append("    </element>\n");
+            byte[] bytes = output.toByteArray();
+            ArchiMateSchema.parse(bytes);
+            return bytes;
+        } catch (XMLStreamException exception) {
+            throw new IllegalArgumentException("Cannot serialize ArchiMate exchange model", exception);
         }
-        sb.append("  </elements>\n");
     }
 
-    private void appendRelationships(StringBuilder sb, List<ArchiMateRelationship> relationships) {
-        sb.append("  <relationships>\n");
-        for (ArchiMateRelationship rel : relationships) {
-            sb.append("    <relationship identifier=\"id-rel-").append(escapeXml(rel.id()))
-              .append("\" xsi:type=\"").append(escapeXml(rel.archiMateType()))
-              .append("\" source=\"id-").append(escapeXml(rel.sourceId()))
-              .append("\" target=\"id-").append(escapeXml(rel.targetId())).append("\"");
-            if (rel.accessType() != null) {
-                sb.append(" accessType=\"").append(escapeXml(rel.accessType())).append("\"");
+    private void write(XMLStreamWriter xml, ArchiMateModel model) throws XMLStreamException {
+        Map<String, ArchiMateProperty> modelProperties = modelProperties(model);
+        Map<String, String> definitions = new TreeMap<>();
+        collectDefinitions(definitions, modelProperties);
+        for (ArchiMateElement element : model.elements()) collectDefinitions(definitions, identity(element.id(), element.properties()));
+        for (ArchiMateRelationship relation : model.relationships()) collectDefinitions(definitions, identity(relation.id(), relation.properties()));
+        if (!model.views().isEmpty()) definitions.put("taxonomy.id", "string");
+
+        xml.writeStartDocument("UTF-8", "1.0");
+        xml.writeStartElement("model");
+        xml.writeDefaultNamespace(ArchiMateSchema.NAMESPACE);
+        xml.writeNamespace("xsi", XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI);
+        xml.writeAttribute("xsi", XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, "schemaLocation",
+                ArchiMateSchema.NAMESPACE + " http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd");
+        attr(xml, "identifier", ArchiMateIds.id("model", model.id()));
+        text(xml, "name", model.title());
+        properties(xml, modelProperties);
+        if (!model.elements().isEmpty()) {
+            xml.writeStartElement("elements");
+            for (ArchiMateElement element : model.elements()) {
+                xml.writeStartElement("element");
+                attr(xml, "identifier", ArchiMateIds.id("element", element.id()));
+                type(xml, element.archiMateType());
+                text(xml, "name", element.label());
+                if (element.documentation() != null && !element.documentation().isEmpty()) text(xml, "documentation", element.documentation());
+                properties(xml, identity(element.id(), element.properties()));
+                xml.writeEndElement();
             }
-            sb.append(">\n");
-            sb.append("      <name xml:lang=\"en\">").append(escapeXml(rel.name()))
-              .append("</name>\n");
-            sb.append("    </relationship>\n");
+            xml.writeEndElement();
         }
-        sb.append("  </relationships>\n");
-    }
-
-    private void appendOrganizations(StringBuilder sb, Map<String, List<String>> organizations) {
-        if (organizations == null || organizations.isEmpty()) {
-            return;
-        }
-        sb.append("  <organizations>\n");
-        for (Map.Entry<String, List<String>> entry : organizations.entrySet()) {
-            sb.append("    <item>\n");
-            sb.append("      <label xml:lang=\"en\">").append(escapeXml(entry.getKey()))
-              .append("</label>\n");
-            for (String nodeId : entry.getValue()) {
-                sb.append("      <item identifierRef=\"id-").append(escapeXml(nodeId))
-                  .append("\"/>\n");
+        if (!model.relationships().isEmpty()) {
+            xml.writeStartElement("relationships");
+            for (ArchiMateRelationship relation : model.relationships()) {
+                xml.writeStartElement("relationship");
+                attr(xml, "identifier", ArchiMateIds.id("relationship", relation.id()));
+                type(xml, relation.archiMateType());
+                attr(xml, "source", ArchiMateIds.id("element", relation.sourceId()));
+                attr(xml, "target", ArchiMateIds.id("element", relation.targetId()));
+                if (relation.accessType() != null) attr(xml, "accessType", relation.accessType());
+                text(xml, "name", relation.name());
+                properties(xml, identity(relation.id(), relation.properties()));
+                xml.writeEndElement();
             }
-            sb.append("    </item>\n");
+            xml.writeEndElement();
         }
-        sb.append("  </organizations>\n");
+        if (!model.organizations().isEmpty()) {
+            xml.writeStartElement("organizations");
+            for (var entry : new TreeMap<>(model.organizations()).entrySet()) {
+                xml.writeStartElement("item");
+                text(xml, "label", entry.getKey());
+                for (String id : entry.getValue()) {
+                    xml.writeEmptyElement("item");
+                    attr(xml, "identifierRef", ArchiMateIds.id("element", id));
+                }
+                xml.writeEndElement();
+            }
+            xml.writeEndElement();
+        }
+        if (!definitions.isEmpty()) {
+            xml.writeStartElement("propertyDefinitions");
+            for (var entry : definitions.entrySet()) {
+                xml.writeStartElement("propertyDefinition");
+                attr(xml, "identifier", ArchiMateIds.id("property", entry.getKey()));
+                attr(xml, "type", entry.getValue());
+                text(xml, "name", entry.getKey());
+                xml.writeEndElement();
+            }
+            xml.writeEndElement();
+        }
+        if (!model.views().isEmpty()) {
+            xml.writeStartElement("views");
+            xml.writeStartElement("diagrams");
+            for (ArchiMateView view : model.views()) writeView(xml, view);
+            xml.writeEndElement();
+            xml.writeEndElement();
+        }
+        xml.writeEndElement();
+        xml.writeEndDocument();
     }
 
-    private void appendViews(StringBuilder sb, ArchiMateView view) {
-        if (view == null) {
-            return;
-        }
-        sb.append("  <views>\n");
-        sb.append("    <diagrams>\n");
-        // diagrams/view is declared directly as the concrete Diagram type by the
-        // ArchiMate diagram XSD, so no redundant xsi:type is required here.
-        sb.append("      <view identifier=\"id-").append(escapeXml(view.id()))
-          .append("\" viewpoint=\"Layered\">\n");
-        sb.append("        <name xml:lang=\"en\">").append(escapeXml(view.name()))
-          .append("</name>\n");
-
+    private void writeView(XMLStreamWriter xml, ArchiMateView view) throws XMLStreamException {
+        // The XSD declares diagrams/view directly as Diagram; xsi:type is not required here.
+        xml.writeStartElement("view");
+        attr(xml, "identifier", ArchiMateIds.id("view", view.id()));
+        attr(xml, "viewpoint", "Layered");
+        text(xml, "name", view.name());
+        properties(xml, identity(view.id(), Map.of()));
         for (ArchiMateViewNode node : view.nodes()) {
-            // Diagram node declarations use the abstract ViewNodeType in the XSD.
-            // Element-backed nodes therefore have to identify their concrete subtype.
-            sb.append("        <node identifier=\"id-vn-").append(escapeXml(node.id()))
-              .append("\" xsi:type=\"Element\" elementRef=\"id-")
-              .append(escapeXml(node.elementId()))
-              .append("\" x=\"").append(node.x())
-              .append("\" y=\"").append(node.y())
-              .append("\" w=\"").append(node.w())
-              .append("\" h=\"").append(node.h()).append("\">\n");
-            sb.append("          <label xml:lang=\"en\">").append(escapeXml(node.label()))
-              .append("</label>\n");
-            sb.append("          <style");
-            if (node.lineWidth() > 1) {
-                // lineWidth is an attribute of StyleType, not a child element.
-                sb.append(" lineWidth=\"").append(node.lineWidth()).append("\"");
-            }
-            sb.append(">\n");
-            sb.append("            <fillColor r=\"").append(node.r())
-              .append("\" g=\"").append(node.g())
-              .append("\" b=\"").append(node.b()).append("\"/>\n");
-            sb.append("          </style>\n");
-            sb.append("        </node>\n");
+            xml.writeStartElement("node");
+            attr(xml, "identifier", ArchiMateIds.id("node", view.id(), node.id()));
+            type(xml, "Element");
+            attr(xml, "elementRef", ArchiMateIds.id("element", node.elementId()));
+            attr(xml, "x", node.x()); attr(xml, "y", node.y());
+            attr(xml, "w", node.w()); attr(xml, "h", node.h());
+            text(xml, "label", node.label());
+            xml.writeStartElement("style");
+            if (node.lineWidth() != 1) attr(xml, "lineWidth", node.lineWidth());
+            xml.writeEmptyElement("fillColor");
+            attr(xml, "r", node.r()); attr(xml, "g", node.g()); attr(xml, "b", node.b());
+            xml.writeEndElement();
+            xml.writeEndElement();
         }
-
-        for (ArchiMateViewConnection conn : view.connections()) {
-            // Diagram connection declarations use the abstract ConnectionType in the XSD.
-            // Relationship-backed connections therefore have to identify the concrete subtype.
-            sb.append("        <connection identifier=\"id-vc-").append(escapeXml(conn.id()))
-              .append("\" xsi:type=\"Relationship\" relationshipRef=\"id-rel-")
-              .append(escapeXml(conn.relationshipId()))
-              .append("\" source=\"id-vn-").append(escapeXml(conn.sourceNodeId()))
-              .append("\" target=\"id-vn-").append(escapeXml(conn.targetNodeId()))
-              .append("\"/>\n");
+        for (ArchiMateViewConnection connection : view.connections()) {
+            xml.writeEmptyElement("connection");
+            attr(xml, "identifier", ArchiMateIds.id("connection", view.id(), connection.id()));
+            type(xml, "Relationship");
+            attr(xml, "relationshipRef", ArchiMateIds.id("relationship", connection.relationshipId()));
+            attr(xml, "source", ArchiMateIds.id("node", view.id(), connection.sourceNodeId()));
+            attr(xml, "target", ArchiMateIds.id("node", view.id(), connection.targetNodeId()));
         }
-
-        sb.append("      </view>\n");
-        sb.append("    </diagrams>\n");
-        sb.append("  </views>\n");
+        xml.writeEndElement();
     }
 
-    static String escapeXml(String s) {
-        if (s == null) return "";
-        return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;");
+    public static Map<String, ArchiMateProperty> modelProperties(ArchiMateModel model) {
+        Map<String, ArchiMateProperty> result = new TreeMap<>(identity(model.id(), model.properties()));
+        for (int i = 0; i < model.losses().size(); i++) {
+            ArchiMateLoss loss = model.losses().get(i);
+            String prefix = "taxonomy.loss." + i + ".";
+            result.put(prefix + "scope", ArchiMateProperty.text(loss.scope()));
+            result.put(prefix + "id", ArchiMateProperty.text(loss.id()));
+            result.put(prefix + "field", ArchiMateProperty.text(loss.field()));
+            result.put(prefix + "kind", ArchiMateProperty.text(loss.kind()));
+            result.put(prefix + "rationale", ArchiMateProperty.text(loss.rationale()));
+        }
+        return result;
+    }
+
+    private static Map<String, ArchiMateProperty> identity(String id, Map<String, ArchiMateProperty> properties) {
+        Map<String, ArchiMateProperty> result = new TreeMap<>(properties);
+        ArchiMateProperty original = result.put("taxonomy.id", ArchiMateProperty.text(id));
+        if (original != null && !original.equals(ArchiMateProperty.text(id))) {
+            throw new IllegalArgumentException("Conflicting Taxonomy identity property");
+        }
+        return result;
+    }
+
+    private static void collectDefinitions(Map<String, String> definitions, Map<String, ArchiMateProperty> properties) {
+        properties.forEach((key, value) -> {
+            String previous = definitions.putIfAbsent(key, value.type());
+            if (previous != null && !previous.equals(value.type())) throw new IllegalArgumentException("Conflicting property types: " + key);
+        });
+    }
+
+    private static void properties(XMLStreamWriter xml, Map<String, ArchiMateProperty> properties) throws XMLStreamException {
+        if (properties.isEmpty()) return;
+        xml.writeStartElement("properties");
+        for (var entry : new TreeMap<>(properties).entrySet()) {
+            xml.writeStartElement("property");
+            attr(xml, "propertyDefinitionRef", ArchiMateIds.id("property", entry.getKey()));
+            text(xml, "value", entry.getValue().value());
+            xml.writeEndElement();
+        }
+        xml.writeEndElement();
+    }
+
+    private static void type(XMLStreamWriter xml, String value) throws XMLStreamException {
+        xml.writeAttribute("xsi", XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, "type", ArchiMateIds.requireXmlText(value));
+    }
+
+    private static void attr(XMLStreamWriter xml, String name, Object value) throws XMLStreamException {
+        xml.writeAttribute(name, ArchiMateIds.requireXmlText(String.valueOf(value)));
+    }
+
+    private static void text(XMLStreamWriter xml, String name, String value) throws XMLStreamException {
+        xml.writeStartElement(name);
+        xml.writeAttribute("xml", XMLConstants.XML_NS_URI, "lang", "en");
+        String[] parts = ArchiMateIds.requireXmlText(value).split("\r", -1);
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) xml.writeEntityRef("#xD");
+            xml.writeCharacters(parts[i]);
+        }
+        xml.writeEndElement();
+    }
+
+    static void validateReferences(ArchiMateModel model) {
+        Objects.requireNonNull(model, "model");
+        ArchiMateIds.requireIdentity(model.id());
+        if (model.title() == null) throw new IllegalArgumentException("Missing model title");
+        if (model.elements().size() > ArchiMateSchema.MAX_ELEMENTS
+                || model.relationships().size() > ArchiMateSchema.MAX_RELATIONSHIPS || model.views().size() > 32) {
+            throw new IllegalArgumentException("Model exceeds bounded exchange profile");
+        }
+        Map<String, ArchiMateElement> elements = index(model.elements(), ArchiMateElement::id);
+        if (elements.values().stream().anyMatch(element -> element.label() == null)) {
+            throw new IllegalArgumentException("Missing element label");
+        }
+        Map<String, ArchiMateRelationship> relations = index(model.relationships(), ArchiMateRelationship::id);
+        for (var relation : relations.values()) {
+            if (relation.name() == null) throw new IllegalArgumentException("Missing relationship name");
+            requireRef(elements, relation.sourceId()); requireRef(elements, relation.targetId());
+        }
+        model.organizations().values().forEach(ids -> ids.forEach(id -> requireRef(elements, id)));
+        index(model.views(), ArchiMateView::id);
+        for (var view : model.views()) {
+            if (view.name() == null) throw new IllegalArgumentException("Missing view name");
+            var nodes = index(view.nodes(), ArchiMateViewNode::id);
+            if (nodes.values().stream().anyMatch(node -> node.label() == null)) throw new IllegalArgumentException("Missing view node label");
+            index(view.connections(), ArchiMateViewConnection::id);
+            nodes.values().forEach(node -> requireRef(elements, node.elementId()));
+            for (var connection : view.connections()) {
+                var relation = requireRef(relations, connection.relationshipId());
+                var source = requireRef(nodes, connection.sourceNodeId());
+                var target = requireRef(nodes, connection.targetNodeId());
+                if (!relation.sourceId().equals(source.elementId()) || !relation.targetId().equals(target.elementId())) {
+                    throw new IllegalArgumentException("View connection does not follow relationship endpoints: " + connection.id());
+                }
+            }
+        }
+    }
+
+    private static <T> Map<String, T> index(List<T> values, java.util.function.Function<T, String> identity) {
+        Map<String, T> result = new LinkedHashMap<>();
+        for (T value : values) {
+            String id = identity.apply(value);
+            ArchiMateIds.requireIdentity(id);
+            if (result.putIfAbsent(id, value) != null) throw new IllegalArgumentException("Duplicate architecture identity: " + id);
+        }
+        return result;
+    }
+
+    private static <T> T requireRef(Map<String, T> values, String id) {
+        T value = values.get(id);
+        if (value == null) throw new IllegalArgumentException("Unresolved architecture reference: " + id);
+        return value;
+    }
+
+    static String escapeXml(String text) {
+        return ArchiMateIds.requireXmlText(text).replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;");
+    }
+
+    private static final class BoundedOutput extends ByteArrayOutputStream {
+        @Override public synchronized void write(int value) {
+            if (count >= ArchiMateSchema.MAX_BYTES) throw new IllegalArgumentException("Exchange XML exceeds byte limit");
+            super.write(value);
+        }
+
+        @Override public synchronized void write(byte[] bytes, int offset, int length) {
+            if (length > ArchiMateSchema.MAX_BYTES - count) throw new IllegalArgumentException("Exchange XML exceeds byte limit");
+            super.write(bytes, offset, length);
+        }
     }
 }

@@ -16,7 +16,7 @@
 
     bind(
         'downloadArchitectureArchiMate',
-        ArchitectureWorkbenchApi.archiMateUrl);
+        ArchitectureWorkbenchApi.archiMateBundleUrl);
     bind(
         'downloadArchitectureVisio',
         ArchitectureWorkbenchApi.visioUrl);

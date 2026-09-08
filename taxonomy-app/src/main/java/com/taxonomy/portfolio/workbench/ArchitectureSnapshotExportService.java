@@ -1,5 +1,8 @@
 package com.taxonomy.portfolio.workbench;
 
+import com.taxonomy.archimate.ArchiMateExportMetadata;
+import com.taxonomy.export.ArchiMateExchangeProfile;
+import com.taxonomy.export.ArchiMateExchangeReader;
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
@@ -56,6 +59,11 @@ public class ArchitectureSnapshotExportService {
     }
 
     @Transactional(readOnly = true)
+    public Artifact exportArchiMateBundle(Long projectId, String snapshotId, String username, WorkspaceContext context) {
+        return export(projectId, snapshotId, username, context, Format.ARCHIMATE_BUNDLE);
+    }
+
+    @Transactional(readOnly = true)
     public Artifact exportVisio(
             Long projectId,
             String snapshotId,
@@ -87,13 +95,14 @@ public class ArchitectureSnapshotExportService {
         verifyExactCoordinates(projectId, requestedSnapshotId, projection);
 
         DiagramModel canonicalDiagram = freeze(projection.diagram());
-        byte[] content = serialize(canonicalDiagram, format);
+        String graphFingerprint = fingerprint(canonicalDiagram);
+        byte[] content = serialize(canonicalDiagram, format,
+                format == Format.VISIO_VSDX ? null
+                        : ArchiMateSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint));
         if (content == null || content.length == 0) {
             throw PortfolioException.conflict(
                     "The canonical diagram exporter returned no content");
         }
-        String graphFingerprint = fingerprint(canonicalDiagram);
-
         return new Artifact(
                 format,
                 fileName(projection, format),
@@ -113,11 +122,12 @@ public class ArchitectureSnapshotExportService {
                 content);
     }
 
-    private byte[] serialize(DiagramModel canonicalDiagram, Format format) {
+    private byte[] serialize(DiagramModel canonicalDiagram, Format format, ArchiMateExportMetadata metadata) {
         try {
             return switch (format) {
                 case ARCHIMATE_XML ->
-                        diagramExportService.exportAsArchiMate(canonicalDiagram);
+                        diagramExportService.exportAsArchiMate(canonicalDiagram, metadata);
+                case ARCHIMATE_BUNDLE -> bundle(diagramExportService.exportAsArchiMate(canonicalDiagram, metadata));
                 case VISIO_VSDX ->
                         diagramExportService.exportAsVisio(canonicalDiagram);
             };
@@ -127,6 +137,49 @@ public class ArchitectureSnapshotExportService {
                     "The selected snapshot violates the canonical export contract",
                     exception);
         }
+    }
+
+    private static byte[] bundle(byte[] xml) {
+        var model = new ArchiMateExchangeReader().read(xml);
+        var manifest = new java.util.LinkedHashMap<String, Object>();
+        manifest.put("manifestVersion", "taxonomy-architecture-exchange-v1");
+        manifest.put("format", "ArchiMate Exchange 3.1");
+        manifest.put("profile", ArchiMateExchangeProfile.VERSION);
+        manifest.put("experimental", true);
+        manifest.put("xmlSha256", sha256(xml));
+        manifest.put("mappingProfileSha256", sha256(ArchiMateExchangeProfile.resourceBytes()));
+        manifest.put("provenance", model.properties());
+        manifest.put("elements", model.elements().stream().map(element -> element.id()).toList());
+        manifest.put("relationships", model.relationships().stream().map(relation -> relation.id()).toList());
+        manifest.put("views", model.views().stream().map(view -> java.util.Map.of(
+                "id", view.id(), "elements", view.nodes().stream().map(node -> node.elementId()).toList(),
+                "relationships", view.connections().stream().map(connection -> connection.relationshipId()).toList())).toList());
+        manifest.put("losses", model.losses());
+        manifest.put("propertyPolicy", java.util.Map.of(
+                "taxonomy.*", "Typed extensions retain original identities, graph semantics and authorized decision data.",
+                "layout", "Generated layered coordinates; view membership is preserved independently of coordinates.",
+                "canonicalPersistence", "Exchange is a projection, not Taxonomy's canonical persistence format."));
+        manifest.put("consumerAcceptance", "Pending Archi and an independent consumer; no interoperability certification claimed.");
+        try {
+            var output = new java.io.ByteArrayOutputStream();
+            try (var zip = new java.util.zip.ZipOutputStream(output, StandardCharsets.UTF_8)) {
+                zipEntry(zip, "model.archimate.xml", xml);
+                zipEntry(zip, "manifest.json", tools.jackson.databind.json.JsonMapper.builder().build()
+                        .writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest));
+                zipEntry(zip, "mapping-profile.tsv", ArchiMateExchangeProfile.resourceBytes());
+            }
+            return output.toByteArray();
+        } catch (java.io.IOException exception) {
+            throw new java.io.UncheckedIOException(exception);
+        }
+    }
+
+    private static void zipEntry(java.util.zip.ZipOutputStream zip, String name, byte[] bytes) throws java.io.IOException {
+        var entry = new java.util.zip.ZipEntry(name);
+        entry.setTime(0L);
+        zip.putNextEntry(entry);
+        zip.write(bytes);
+        zip.closeEntry();
     }
 
     private static void verifyExactCoordinates(
@@ -320,7 +373,11 @@ public class ArchitectureSnapshotExportService {
         ARCHIMATE_XML(
                 "application/xml",
                 "archimate.xml",
-                "archimate-exchange-3.1-supported-subset-v1"),
+                ArchiMateExchangeProfile.VERSION),
+        ARCHIMATE_BUNDLE(
+                "application/zip",
+                "archimate.zip",
+                ArchiMateExchangeProfile.VERSION),
         VISIO_VSDX(
                 "application/vnd.ms-visio.drawing",
                 "vsdx",

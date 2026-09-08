@@ -43,10 +43,10 @@ class CanonicalDiagramExportServiceTest {
                 "visio/pages/page1.xml");
 
         assertThat(archiMate)
-                .contains("id-capability")
-                .contains("id-service")
-                .contains("id-rel-supports")
-                .contains("id-vc-supports");
+                .contains(com.taxonomy.export.ArchiMateIds.id("element", "capability"))
+                .contains(com.taxonomy.export.ArchiMateIds.id("element", "service"))
+                .contains(com.taxonomy.export.ArchiMateIds.id("relationship", "supports"))
+                .contains(com.taxonomy.export.ArchiMateIds.id("connection", "layered", "supports"));
         assertThat(visioPage)
                 .contains("Secure communications")
                 .contains("Messaging service")
