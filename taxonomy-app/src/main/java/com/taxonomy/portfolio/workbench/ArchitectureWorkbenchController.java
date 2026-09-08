@@ -71,7 +71,7 @@ public class ArchitectureWorkbenchController {
             Model model) {
         model.addAttribute("projectId", projectId);
         model.addAttribute("snapshotId", snapshotId);
-        model.addAttribute("archimateMappingProfile", com.taxonomy.export.ArchiMateExchangeProfile.VERSION);
+        model.addAttribute("archimateMappingProfile", com.taxonomy.archimate.exchange.ArchiMateExchangeProfile.VERSION);
         return "architecture-workbench";
     }
 

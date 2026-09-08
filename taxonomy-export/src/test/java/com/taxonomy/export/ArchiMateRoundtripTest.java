@@ -1,5 +1,11 @@
 package com.taxonomy.export;
 
+import com.taxonomy.archimate.exchange.ArchiMateExchangeProfile;
+import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
+import com.taxonomy.archimate.exchange.ArchiMateIds;
+import com.taxonomy.archimate.exchange.ArchiMateSchema;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+
 import com.taxonomy.archimate.*;
 import com.taxonomy.diagram.*;
 import com.taxonomy.model.RelationType;

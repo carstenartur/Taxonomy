@@ -1,4 +1,4 @@
-package com.taxonomy.export;
+package com.taxonomy.archimate.exchange;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.ls.DOMImplementationLS;

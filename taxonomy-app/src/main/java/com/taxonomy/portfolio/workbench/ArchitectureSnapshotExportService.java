@@ -1,8 +1,8 @@
 package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.archimate.ArchiMateExportMetadata;
-import com.taxonomy.export.ArchiMateExchangeProfile;
-import com.taxonomy.export.ArchiMateExchangeReader;
+import com.taxonomy.archimate.exchange.ArchiMateExchangeProfile;
+import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;

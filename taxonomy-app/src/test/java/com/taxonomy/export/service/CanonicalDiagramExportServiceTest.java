@@ -5,7 +5,7 @@ import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.export.ArchiMateDiagramService;
-import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import org.junit.jupiter.api.Test;
@@ -43,10 +43,10 @@ class CanonicalDiagramExportServiceTest {
                 "visio/pages/page1.xml");
 
         assertThat(archiMate)
-                .contains(com.taxonomy.export.ArchiMateIds.id("element", "capability"))
-                .contains(com.taxonomy.export.ArchiMateIds.id("element", "service"))
-                .contains(com.taxonomy.export.ArchiMateIds.id("relationship", "supports"))
-                .contains(com.taxonomy.export.ArchiMateIds.id("connection", "layered", "supports"));
+                .contains(com.taxonomy.archimate.exchange.ArchiMateIds.id("element", "capability"))
+                .contains(com.taxonomy.archimate.exchange.ArchiMateIds.id("element", "service"))
+                .contains(com.taxonomy.archimate.exchange.ArchiMateIds.id("relationship", "supports"))
+                .contains(com.taxonomy.archimate.exchange.ArchiMateIds.id("connection", "layered", "supports"));
         assertThat(visioPage)
                 .contains("Secure communications")
                 .contains("Messaging service")

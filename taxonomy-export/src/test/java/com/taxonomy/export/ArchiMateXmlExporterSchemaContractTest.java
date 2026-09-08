@@ -1,5 +1,8 @@
 package com.taxonomy.export;
 
+import com.taxonomy.archimate.exchange.ArchiMateIds;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramModel;

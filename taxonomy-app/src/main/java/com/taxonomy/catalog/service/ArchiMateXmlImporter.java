@@ -1,8 +1,8 @@
 package com.taxonomy.catalog.service;
 
 import com.taxonomy.archimate.ArchiMateModel;
-import com.taxonomy.export.ArchiMateSchema;
-import com.taxonomy.export.ArchiMateExchangeReader;
+import com.taxonomy.archimate.exchange.ArchiMateSchema;
+import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.dto.ArchiMateImportResult;
@@ -81,7 +81,7 @@ public class ArchiMateXmlImporter {
         ArchiMateImportResult result = new ArchiMateImportResult();
         result.setPreview(!materialize);
         if (model.exchange() != null) {
-            result.setMappingProfile(com.taxonomy.export.ArchiMateExchangeProfile.VERSION);
+            result.setMappingProfile(com.taxonomy.archimate.exchange.ArchiMateExchangeProfile.VERSION);
             result.setLosses(model.exchange().losses().stream().map(loss ->
                     new ArchiMateImportResult.ImportLoss(loss.scope(), loss.id(), loss.field(), loss.kind(), loss.rationale())).toList());
             List<ArchiMateImportResult.ImportLoss> importLosses = new ArrayList<>(result.getLosses());

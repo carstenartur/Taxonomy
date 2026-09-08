@@ -1,4 +1,4 @@
-package com.taxonomy.export;
+package com.taxonomy.archimate.exchange;
 
 import com.taxonomy.archimate.*;
 import com.taxonomy.diagram.*;

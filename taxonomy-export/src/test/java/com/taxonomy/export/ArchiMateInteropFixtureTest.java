@@ -1,5 +1,8 @@
 package com.taxonomy.export;
 
+import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+
 import com.taxonomy.archimate.*;
 import org.junit.jupiter.api.Test;
 

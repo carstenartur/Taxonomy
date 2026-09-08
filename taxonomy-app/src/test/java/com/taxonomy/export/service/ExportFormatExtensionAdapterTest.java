@@ -5,7 +5,7 @@ import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.export.ArchiMateDiagramService;
-import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.export.StructurizrExportService;

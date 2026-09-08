@@ -1,4 +1,4 @@
-package com.taxonomy.export;
+package com.taxonomy.archimate.exchange;
 
 import java.nio.ByteBuffer;
 import java.io.ByteArrayOutputStream;
