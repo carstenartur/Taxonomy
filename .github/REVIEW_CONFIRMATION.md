@@ -41,8 +41,9 @@ The failing **Maven verification** step summary prints the exact command for tha
 head and review. The review ID is the numeric suffix of its
 `#pullrequestreview-…` link. Do not use a short SHA or add prose or code fences to
 the actual comment. The command is an explicit maintainer attestation that the
-closer review was performed. It does not create a GitHub approval or claim an
-independent peer review. Automation must never post it on a human's behalf.
+closer review or the declared full-change review was performed. It does not create
+a GitHub approval or claim an independent peer review. Automation must never post
+it on a human's behalf.
 
 GitHub deliberately prevents authors from approving their own PRs. The comment
 path supports a solo maintainer while recording who confirmed which commit and

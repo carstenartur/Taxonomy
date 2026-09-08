@@ -426,7 +426,7 @@ test('refresh workflow executes default-branch code with narrowly scoped write p
 function mockGitHub(t, {
     editedAt = null, advanceHead = false, newRun = false, graphqlError = false,
     reviewBody = CLEAN_CLOSER, confirmationBody = confirmation().body,
-    policyVersion = HUMAN_CONFIRMATION_POLICY_VERSION
+    policyVersion = HUMAN_CONFIRMATION_POLICY_VERSION, policySource
 } = {}) {
     const writes = [];
     let prReads = 0;
@@ -462,7 +462,8 @@ function mockGitHub(t, {
             payload = { total_count: 1, workflow_runs: newRun && runListReads >= 2
                 ? [{ ...CI_RUN, id: 302, status: 'in_progress' }, CI_RUN] : [CI_RUN] };
         } else if (path.includes('/contents/')) {
-            payload = { encoding: 'base64', content: Buffer.from(`export const HUMAN_CONFIRMATION_POLICY_VERSION = ${policyVersion};`).toString('base64') };
+            payload = { encoding: 'base64', content: Buffer.from(policySource
+                ?? `export const HUMAN_CONFIRMATION_POLICY_VERSION = ${policyVersion};`).toString('base64') };
         } else if (path.endsWith('/runs/301/jobs')) {
             payload = { total_count: 1, jobs: [FINAL_JOB] };
         } else if (path.endsWith('/runs/301')) {
@@ -501,6 +502,14 @@ test('refresh does not retry a v1 base gate with a v2 coverage confirmation', as
     });
     assert.match(await refreshPullRequest(client, 933), /update the PR from main/u);
     assert.deepEqual(writes, []);
+});
+
+test('refresh recognizes the same trusted policy version across harmless formatting', async t => {
+    const { client, writes } = mockGitHub(t, {
+        policySource: `  export\n const\tHUMAN_CONFIRMATION_POLICY_VERSION\n = ${HUMAN_CONFIRMATION_POLICY_VERSION}  ;\n`
+    });
+    assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
+    assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
 });
 
 test('live refresh honors the configured trusted reviewer set', async t => {

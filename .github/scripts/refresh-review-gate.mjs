@@ -67,7 +67,9 @@ export async function refreshPullRequest(client, number, reviewerLogins) {
         `${prefix}/contents/.github/scripts/exact-head-review-gate.mjs?ref=${baseSha}`);
     if (file.encoding !== 'base64') throw new Error('Trusted gate source is unavailable.');
     const source = Buffer.from(file.content, 'base64').toString('utf8');
-    if (!source.includes(`export const HUMAN_CONFIRMATION_POLICY_VERSION = ${HUMAN_CONFIRMATION_POLICY_VERSION};`)) {
+    const policyVersion = Number(source.match(
+        /^\s*export\s+const\s+HUMAN_CONFIRMATION_POLICY_VERSION\s*=\s*([1-9][0-9]*)\s*(?:;|$)/mu)?.[1]);
+    if (policyVersion !== HUMAN_CONFIRMATION_POLICY_VERSION) {
         return `#${number}: update the PR from main and run CI with the confirmation policy first.`;
     }
 
