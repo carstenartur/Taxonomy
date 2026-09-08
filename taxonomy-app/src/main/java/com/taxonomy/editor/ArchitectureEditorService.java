@@ -65,9 +65,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         long selected = revision == null ? state.revision() : revision;
         if (selected < 0 || selected > state.revision()) throw problem("NOT_FOUND", "revision", "Unknown workspace revision", List.of());
         if (selected != state.revision()) {
-            dsl = selected == 0 ? snapshot.operations().getLast().beforeDsl() : snapshot.operations().stream()
-                    .filter(entry -> entry.revision() == selected).findFirst()
-                    .orElseThrow(() -> problem("NOT_FOUND", "revision", "Unknown workspace revision", List.of())).afterDsl();
+            dsl = journal.sourceAtRevision(context, selected);
+            if (dsl == null) throw problem("NOT_FOUND", "revision", "Unknown workspace revision", List.of());
         }
         String status = selected != state.revision() ? "HISTORICAL"
                 : state.pendingCheckpoint() != null ? "CHECKPOINT_PENDING"
@@ -86,7 +85,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         requireInitialVersion(snapshot.state(), command.context());
         verifyVersion(context, snapshot.state());
         return new Preview(Context.of(context, snapshot.state().checkpointCommit(), snapshot.state().revision()),
-                transform(context, command, snapshot.state().dsl(), snapshot.operations()), kind(command.operation()), target(command.operation()));
+                transform(context, command, snapshot.state().dsl(), snapshot.operations(), id -> journal.operation(context, id)),
+                kind(command.operation()), target(command.operation()));
     }
 
     @Override
@@ -105,7 +105,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
             requireInitialVersion(session.state(), command.context());
             try { verifyVersion(context, session.state()); }
             catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
-            Change change = transform(context, command, session.state().dsl(), session.operations());
+            Change change = transform(context, command, session.state().dsl(), session.operations(), session::find);
             if (change.changes().isEmpty()) throw problem("NO_CHANGE", "command", "No semantic change to accept", List.of());
             Entry entry = session.append(command.metadata(), context.username(), kind(command.operation()), target(command.operation()),
                     fingerprint, change.dsl(), List.copyOf(affected(change.changes())));
@@ -243,24 +243,26 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         session.adoptVersion(head, context.username(), rationale);
     }
 
-    private Change transform(RepositoryContext context, Command command, String current, List<Entry> operations) {
+    private Change transform(RepositoryContext context, Command command, String current, List<OperationSummary> operations,
+                             java.util.function.Function<String, Entry> loadOperation) {
         if (command.operation() instanceof SemanticCommand semantic) return transformer.apply(current, semantic.command());
         String target = target(command.operation());
-        Entry selected = operations.stream().filter(e -> e.commandId().equals(target) && e.actor().equals(context.username()))
+        OperationSummary selected = operations.stream().filter(e -> e.commandId().equals(target) && e.actor().equals(context.username()))
                 .findFirst().orElseThrow(() -> problem("NOT_FOUND", "targetOperationId", "No personal operation in this workspace", List.of()));
         boolean redo = command.operation() instanceof RedoArchitectureCommand;
         if (selected.bodyVersion() != 1 || (redo && !"UNDO".equals(selected.kind())) || (!redo && "UNDO".equals(selected.kind()))
                 || selected.kind().startsWith("VERSION_")) {
             throw problem("NOT_UNDOABLE", "targetOperationId", "Choose an accepted edit for undo or an undo operation for redo", List.of());
         }
-        for (Entry newer : operations) {
+        for (OperationSummary newer : operations) {
             if (newer.revision() <= selected.revision()) continue;
             if (target.equals(newer.targetOperationId())) throw problem("ALREADY_INVERTED", "targetOperationId", "This operation already has an inverse", List.of(newer.commandId()));
             if (newer.affectedIds().stream().anyMatch(selected.affectedIds()::contains)) {
                 throw problem("UNDO_CONFLICT", "targetOperationId", "A later operation depends on the affected objects", List.of(newer.commandId()));
             }
         }
-        return transformer.inverse(current, selected.beforeDsl(), selected.afterDsl());
+        Entry body = loadOperation.apply(selected.commandId());
+        return transformer.inverse(current, body.beforeDsl(), body.afterDsl());
     }
 
     private void verifyVersion(RepositoryContext context, State state) throws IOException {
@@ -279,7 +281,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         String head = head(repository, context.branch());
         return new State(source(repository, head), 0, head, 0, null);
     }
-    private static HistoryEntry history(Entry entry) {
+    private static HistoryEntry history(OperationSummary entry) {
         return new HistoryEntry(entry.commandId(), entry.commandId(), entry.kind(), entry.targetOperationId(),
                 entry.actor(), entry.occurredAt(), entry.rationale(), entry.affectedIds(), entry.previousRevision(), entry.revision());
     }

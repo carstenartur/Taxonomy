@@ -81,6 +81,27 @@ class ArchitectureEditorServiceTest {
                 .isInstanceOf(EditorJournal.RevisionConflict.class);
     }
 
+    @Test void historyAndNormalEditsDoNotLoadHistoricalBodiesButInversesLoadTheirExactTarget() throws Exception {
+        execute(update("History target"));
+        execute(new SemanticCommand(new CreateArchitectureElement("arch-other", "Component", Map.of("title", "Unrelated"))));
+        var statistics = fixture.factory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+        String operationEntity = com.taxonomy.editor.persistence.EditorOperation.class.getName();
+        assertThat(service.read(alice, null).history()).hasSize(2);
+        assertThat(service.read(alice, null, 0L).dsl()).isEqualTo(SEED);
+        assertThat(service.read(alice, null, 1L).dsl()).contains("History target").doesNotContain("arch-other");
+        var changed = execute(update("Latest change"));
+        // Operation bodies may be megabytes each. A history scan or ordinary edit must load none.
+        assertThat(statistics.getEntityStatistics(operationEntity).getLoadCount()).isZero();
+        var inverse = command(new UndoArchitectureCommand(UUID.fromString(changed.operationId())));
+        service.preview(alice, inverse);
+        assertThat(statistics.getEntityStatistics(operationEntity).getLoadCount()).isEqualTo(1);
+        service.execute(alice, inverse);
+        assertThat(statistics.getEntityStatistics(operationEntity).getLoadCount()).isEqualTo(2);
+        assertThat(service.read(alice, null).dsl()).contains("History target", "Unrelated").doesNotContain("Latest change");
+    }
+
     @Test void twoIndependentWritersCannotBothAcceptTheSameSemanticRevisionIncludingInitialization() throws Exception {
         var secondService = new ArchitectureEditorService(fixture.repositories,
                 new EditorJournal(fixture.factory, new org.springframework.orm.jpa.JpaTransactionManager(fixture.factory)), new ArchitectureCheckpointWriter());

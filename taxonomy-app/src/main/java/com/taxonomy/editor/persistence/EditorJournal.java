@@ -38,7 +38,11 @@ public class EditorJournal {
     public record Entry(String commandId, String actor, String occurredAt, String rationale, String kind,
                         String targetOperationId, long previousRevision, long revision, String fingerprint,
                         int bodyVersion, String beforeDsl, String afterDsl, List<String> affectedIds) {}
-    public record Snapshot(State state, List<Entry> operations) {}
+    /** History/conflict scans never materialize the full source bodies of every operation. */
+    public record OperationSummary(String commandId, String actor, String occurredAt, String rationale, String kind,
+                                   String targetOperationId, long previousRevision, long revision,
+                                   int bodyVersion, List<String> affectedIds) {}
+    public record Snapshot(State state, List<OperationSummary> operations) {}
     public record Checkpoint(String commandId, String actor, String occurredAt, String rationale,
                              String fingerprint, long fromRevision, long revision, String expectedCommit,
                              String dsl, String commitId, boolean completed, boolean commitCreated, String failureCode, String origin) {}
@@ -49,6 +53,22 @@ public class EditorJournal {
             EditorWorkspace workspace = em.find(EditorWorkspace.class, scope);
             return workspace == null ? null : new Snapshot(state(workspace), entries(scope, workspace.revision));
         });
+    }
+
+    public Entry operation(RepositoryContext context, String commandId) {
+        return transaction.execute(status -> {
+            EditorOperation operation = em.find(EditorOperation.class, key(scope(context), commandId));
+            return operation == null ? null : entry(operation);
+        });
+    }
+
+    /** Immutable historical source; fetch only the requested revision, including the initial baseline. */
+    public String sourceAtRevision(RepositoryContext context, long revision) {
+        return transaction.execute(status -> em.createQuery(
+                "select o." + (revision == 0 ? "beforeDsl" : "afterDsl")
+                        + " from EditorOperation o where o.scopeId = :scope and o.revision = :revision", String.class)
+                .setParameter("scope", scope(context)).setParameter("revision", revision == 0 ? 1L : revision)
+                .getResultList().stream().findFirst().map(EditorJournal::unframe).orElse(null));
     }
 
     public List<Checkpoint> checkpoints(RepositoryContext context) {
@@ -99,7 +119,7 @@ public class EditorJournal {
         private final EditorWorkspace workspace;
         private Session(EditorWorkspace workspace) { this.workspace = workspace; }
         public State state() { return EditorJournal.state(workspace); }
-        public List<Entry> operations() { return entries(workspace.scopeId, workspace.revision); }
+        public List<OperationSummary> operations() { return entries(workspace.scopeId, workspace.revision); }
         public Entry find(String commandId) {
             EditorOperation operation = em.find(EditorOperation.class, key(workspace.scopeId, commandId));
             return operation == null ? null : entry(operation);
@@ -206,9 +226,14 @@ public class EditorJournal {
         }
     }
 
-    private List<Entry> entries(String scope, long revision) {
-        return em.createQuery("select o from EditorOperation o where o.scopeId = :scope and o.revision <= :revision order by o.revision desc", EditorOperation.class)
-                .setParameter("scope", scope).setParameter("revision", revision).getResultList().stream().map(EditorJournal::entry).toList();
+    private List<OperationSummary> entries(String scope, long revision) {
+        return em.createQuery("select o.commandId, o.actor, o.occurredAt, o.rationale, o.kind, o.targetOperationId, "
+                        + "o.previousRevision, o.revision, o.bodyVersion, o.affectedIds from EditorOperation o "
+                        + "where o.scopeId = :scope and o.revision <= :revision order by o.revision desc", Object[].class)
+                .setParameter("scope", scope).setParameter("revision", revision).getResultList().stream()
+                .map(row -> new OperationSummary((String) row[0], (String) row[1], (String) row[2], (String) row[3],
+                        (String) row[4], (String) row[5], ((Number) row[6]).longValue(), ((Number) row[7]).longValue(),
+                        ((Number) row[8]).intValue(), affectedIds((String) row[9]))).toList();
     }
     private static State state(EditorWorkspace w) {
         return new State(unframe(w.dsl), w.revision, w.checkpointCommit, w.checkpointRevision, w.pendingCheckpoint);
@@ -216,7 +241,11 @@ public class EditorJournal {
     private static Entry entry(EditorOperation o) {
         return new Entry(o.commandId, o.actor, o.occurredAt, o.rationale, o.kind, o.targetOperationId,
                 o.previousRevision, o.revision, o.fingerprint, o.bodyVersion, unframe(o.beforeDsl), unframe(o.afterDsl),
-                unframe(o.affectedIds).isEmpty() ? List.of() : List.of(unframe(o.affectedIds).split("\n")));
+                affectedIds(o.affectedIds));
+    }
+    private static List<String> affectedIds(String framed) {
+        String ids = unframe(framed);
+        return ids.isEmpty() ? List.of() : List.of(ids.split("\n"));
     }
     private static Checkpoint checkpoint(EditorCheckpoint c) {
         return new Checkpoint(c.commandId, c.actor, c.occurredAt, c.rationale, c.fingerprint, c.fromRevision,

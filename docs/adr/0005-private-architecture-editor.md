@@ -49,6 +49,8 @@ The command and its snapshot either both commit or neither does. Retrying an ide
 
 Full before/after source is an intentionally simple reconstructible body format, not Java object serialization. A versioned nonempty envelope preserves empty source on databases such as Oracle that collapse empty strings to NULL. It preserves the existing inverse algorithm and source anchors; it costs storage proportional to snapshot size per operation. Future lossless body compaction needs a versioned decoder and must retain every inverse and retry guarantee.
 
+History and conflict scans select operation metadata without materializing historical source bodies. Normal edits read the current snapshot; an inverse loads only its target operation body, and a historical export loads only the selected revision. This bounds live source-body memory independently of history length; durable snapshot storage still grows with accepted operations.
+
 Only affected DSL blocks are formatted. Unrelated source/order remains byte-identical. Edited blocks retain unknown properties and comments, with the existing normalization limits. The source-preserving patcher, quote/comment-aware block parsing, deletion dependency preview and validation matrix remain unchanged.
 
 ## Undo, redo and recovery
