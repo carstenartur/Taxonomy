@@ -59,17 +59,21 @@ public class EditorJournal {
 
     public <T> T locked(RepositoryContext context, State initial, Function<Session, T> action) {
         String scope = scope(context);
+        boolean[] initializing = {false};
         // Two application instances can race on the very first accepted command.
         // The primary key chooses the initializer; retry only after that transaction rolled back.
         try {
-            return transact(context, scope, initial, action);
+            return transact(context, scope, initial, action, initializing);
         } catch (PersistenceException | org.springframework.dao.DataIntegrityViolationException failure) {
-            if (read(context) == null) throw failure;
-            return transact(context, scope, initial, action);
+            // Only retry a failed initializer insert. Once the application action has started,
+            // it may have published a Git version; replaying it would repeat an external side effect.
+            if (!initializing[0] || read(context) == null) throw failure;
+            return transact(context, scope, initial, action, new boolean[1]);
         }
     }
 
-    private <T> T transact(RepositoryContext context, String scope, State initial, Function<Session, T> action) {
+    private <T> T transact(RepositoryContext context, String scope, State initial, Function<Session, T> action,
+                           boolean[] initializing) {
         return transaction.execute(status -> {
             EditorWorkspace workspace = em.find(EditorWorkspace.class, scope, LockModeType.PESSIMISTIC_WRITE);
             if (workspace == null) {
@@ -80,8 +84,10 @@ public class EditorJournal {
                 workspace.branch = context.branch();
                 workspace.dsl = frame(initial.dsl());
                 workspace.checkpointCommit = initial.checkpointCommit();
+                initializing[0] = true;
                 em.persist(workspace);
                 em.flush();
+                initializing[0] = false;
             }
             T result = action.apply(new Session(workspace));
             em.flush();
