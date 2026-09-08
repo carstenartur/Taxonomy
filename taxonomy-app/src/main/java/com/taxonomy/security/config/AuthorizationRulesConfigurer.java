@@ -42,6 +42,7 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.DELETE, "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.POST, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/architecture/editor/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.DELETE, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
 
