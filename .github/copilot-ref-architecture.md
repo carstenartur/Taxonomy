@@ -59,7 +59,7 @@ Total: approximately 2,500 nodes across all roots.
 | `ModelDiffer` | ⚠️ Supplement | JGit `DiffFormatter` provides native text diffs; `ModelDiffer` is useful for semantic/structural comparison |
 | `HibernateRepository` | ✅ Required | Must use database storage (not `InMemoryRepository`) for Hibernate Search compatibility |
 | Cherry-pick / Merge | ✅ Added | Use JGit's `CherryPickCommand` / `MergeCommand` — do not reimplement |
-| Dual JPA+JGit persistence | ❌ Removed | JGit in DB is the single source of truth; do not also save `ArchitectureDslDocument` on commit |
+| Architecture versions and live editing | ✅ Separate | Git is authoritative for durable versions/checkpoints. The durable private workspace and append-only semantic journal are authoritative for accepted editing revisions. Do not duplicate checkpoints in `ArchitectureDslDocument` or turn each editor operation into a Git commit. See ADR 0005. |
 
 ## Technology Stack
 

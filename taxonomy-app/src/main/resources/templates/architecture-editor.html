@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title th:text="#{editor.title}">Architecture editor</title>
+    <link rel="stylesheet" th:href="@{/css/architecture-editor.css}" href="/css/architecture-editor.css"/>
+</head>
+<body>
+<a class="editor-skip" href="#editorForm" data-i18n="editor.skip">Skip to properties</a>
+<header class="editor-header">
+    <a th:href="@{/}" href="/">Taxonomy</a>
+    <h1 data-i18n="editor.title">Architecture editor</h1>
+    <a th:href="@{/projects}" href="/projects" data-i18n="editor.projects">Projects and snapshots</a>
+</header>
+<main id="architectureEditor">
+    <p id="editorContext" class="editor-context"></p>
+    <p id="editorStatus" role="status" aria-live="polite" data-i18n="editor.loading">Loading architecture…</p>
+    <p id="editorError" role="alert" hidden></p>
+    <div class="editor-toolbar">
+        <button id="editorRefresh" type="button" data-i18n="editor.refresh">Refresh from branch</button>
+        <button id="editorCheckpoint" type="button" disabled data-i18n="editor.checkpoint">Create checkpoint/version</button>
+        <button id="editorResumeCheckpoint" type="button" hidden data-i18n="editor.resumeCheckpoint">Resume checkpoint</button>
+        <button id="editorRecoverVersion" type="button" hidden data-i18n="editor.recoverVersion">Recover completed version</button>
+        <button id="editorNew" type="button" disabled data-i18n="editor.new">New element</button>
+        <button id="editorWorkspace" type="button" hidden data-i18n="editor.workspace">Create private workspace</button>
+        <button id="editorRebuild" type="button" hidden data-i18n="editor.rebuild">Rebuild projection</button>
+        <a id="editorSvg" hidden data-i18n="editor.svg">Download SVG</a>
+        <a id="editorPdf" hidden data-i18n="editor.pdf">Download PDF</a>
+    </div>
+    <p id="editorMode"></p>
+    <div class="editor-columns">
+        <section class="editor-views" aria-labelledby="editorGraphTitle">
+            <h2 id="editorGraphTitle" data-i18n="editor.graph">Architecture graph</h2>
+            <div class="editor-toolbar">
+                <button id="editorZoomIn" type="button" data-i18n="editor.zoomIn">Zoom in</button>
+                <button id="editorZoomOut" type="button" data-i18n="editor.zoomOut">Zoom out</button>
+                <button id="editorFit" type="button" data-i18n="editor.fit">Fit model</button>
+                <button id="editorFocus" type="button" data-i18n="editor.focus">Focus selection</button>
+            </div>
+            <p id="editorGraphSummary"></p>
+            <svg id="editorGraph" viewBox="0 0 1000 420" role="group" tabindex="0" aria-labelledby="editorGraphTitle" aria-describedby="editorGraphHelp"></svg>
+            <p id="editorGraphHelp" data-i18n="editor.graphHelp">Arrow keys pan; +/− zoom. Enter on an object selects it. The searchable element list provides access to the complete model.</p>
+            <p data-i18n="editor.layout">Layout is derived on the server. Pan, zoom and focus are local; exports use the complete server layout.</p>
+            <h2 data-i18n="editor.elements">Elements</h2>
+            <label for="editorSearch" data-i18n="editor.search">Find by identity, title or type</label>
+            <input id="editorSearch" type="search" autocomplete="off"/>
+            <div id="editorTree"></div>
+            <div class="editor-toolbar">
+                <button id="editorPrevious" type="button" data-i18n="editor.previous">Previous</button>
+                <span id="editorPage" aria-live="polite"></span>
+                <button id="editorNext" type="button" data-i18n="editor.next">Next</button>
+            </div>
+        </section>
+        <section aria-labelledby="editorPropertiesTitle">
+            <h2 id="editorPropertiesTitle" data-i18n="editor.properties">Element properties</h2>
+            <p id="editorSelection"></p>
+            <p id="editorDraft" hidden data-i18n="editor.draft">Unaccepted draft. Native text undo affects this form only.</p>
+            <form id="editorForm">
+                <fieldset id="editorFields" disabled>
+                    <label for="editorType" data-i18n="editor.type">Type</label><select id="editorType" required></select>
+                    <label for="editorTitle" data-i18n="editor.name">Name</label><input id="editorTitle" required maxlength="8000"/>
+                    <label for="editorDescription" data-i18n="editor.description">Description</label><textarea id="editorDescription" rows="3" maxlength="8000"></textarea>
+                    <label for="editorElementStatus" data-i18n="editor.elementStatus">Status</label>
+                    <select id="editorElementStatus"><option value="draft">draft</option><option value="active">active</option><option value="retired">retired</option></select>
+                    <label for="editorOwner" data-i18n="editor.owner">Owner</label><input id="editorOwner" maxlength="8000"/>
+                    <label for="editorOrganization" data-i18n="editor.organization">Responsible organization</label><input id="editorOrganization" maxlength="8000"/>
+                    <label for="editorProduct" data-i18n="editor.product">Product reference</label><input id="editorProduct" maxlength="8000"/>
+                    <label for="editorSystem" data-i18n="editor.system">System reference</label><input id="editorSystem" maxlength="8000"/>
+                    <div class="editor-toolbar">
+                        <button id="editorPreviewElement" type="submit" data-i18n="editor.preview">Preview change</button>
+                        <button id="editorDelete" type="button" disabled data-i18n="editor.delete">Preview deletion</button>
+                        <button id="editorDiscard" type="button" data-i18n="editor.discard">Discard draft</button>
+                    </div>
+                </fieldset>
+            </form>
+            <h2 data-i18n="editor.relations">Relations and containment</h2>
+            <form id="editorRelationForm">
+                <fieldset id="editorRelationFields" disabled>
+                    <label for="editorRelationType" data-i18n="editor.relationType">Relation type</label><select id="editorRelationType"></select>
+                    <label for="editorRelationTarget" data-i18n="editor.target">Target element identity</label><input id="editorRelationTarget" required maxlength="128"/>
+                    <label for="editorRelationStatus" data-i18n="editor.relationStatus">Review status</label><select id="editorRelationStatus"></select>
+                    <button type="submit" data-i18n="editor.addRelation">Preview relation</button>
+                    <label for="editorParent" data-i18n="editor.parent">Containment parent identity (empty to ungroup)</label><input id="editorParent" maxlength="128"/>
+                    <button id="editorMove" type="button" data-i18n="editor.move">Preview move</button>
+                </fieldset>
+            </form>
+            <ul id="editorRelations"></ul>
+            <h3 data-i18n="editor.evidence">Evidence and provenance</h3>
+            <pre id="editorEvidence"></pre>
+            <label for="editorRationale" data-i18n="editor.rationale">Reason for the command</label>
+            <textarea id="editorRationale" rows="2" maxlength="1000" required></textarea>
+        </section>
+    </div>
+    <details>
+        <summary data-i18n="editor.dsl">Authoritative DSL — synchronized read-only view</summary>
+        <label class="editor-sr" for="editorDsl">architecture.taxdsl</label>
+        <textarea id="editorDsl" readonly rows="18" spellcheck="false"></textarea>
+    </details>
+    <section aria-labelledby="editorHistoryTitle">
+        <h2 id="editorHistoryTitle" data-i18n="editor.history">Personal semantic history — latest 50 commands</h2>
+        <p data-i18n="editor.historyHelp">Undo and redo append audited commands. Eligibility is checked by the server during preview and acceptance. Git baseline revert remains a separate operation.</p>
+        <ol id="editorHistory"></ol>
+    </section>
+    <section aria-labelledby="editorVersionsTitle">
+        <h2 id="editorVersionsTitle" data-i18n="editor.versions">Version history — Git checkpoints</h2>
+        <p data-i18n="editor.versionsHelp">Stable architecture versions. Editing operations appear in the separate editor history.</p>
+        <ol id="editorVersions"></ol>
+    </section>
+</main>
+<dialog id="editorPreviewDialog" aria-labelledby="editorPreviewTitle">
+    <h2 id="editorPreviewTitle" data-i18n="editor.previewTitle">Review semantic changes</h2>
+    <p id="editorPreviewContext"></p>
+    <div id="editorChanges"></div>
+    <p id="editorPreviewError" role="alert"></p>
+    <div class="editor-toolbar">
+        <button id="editorAccept" type="button" data-i18n="editor.accept">Accept operation</button>
+        <button id="editorReapply" type="button" hidden data-i18n="editor.reapply">Refresh, compare and preview again</button>
+        <button id="editorCancel" type="button" data-i18n="editor.cancel">Cancel</button>
+    </div>
+</dialog>
+<script th:src="@{/webjars/d3/7.9.0/dist/d3.min.js}" src="/webjars/d3/7.9.0/dist/d3.min.js"></script>
+<script th:src="@{/js/taxonomy-i18n.js}" src="/js/taxonomy-i18n.js"></script>
+<script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
+<script th:src="@{/js/api/architecture-editor-api.js}" src="/js/api/architecture-editor-api.js"></script>
+<script th:src="@{/js/architecture-editor-renderer.js}" src="/js/architecture-editor-renderer.js"></script>
+<script th:src="@{/js/architecture-editor.js}" src="/js/architecture-editor.js"></script>
+</body>
+</html>

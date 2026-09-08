@@ -191,4 +191,64 @@ abstract class AbstractDatabaseContainerIT {
         }
         assertThat(response.body()).doesNotContain("jdbc:", ContainerTestUtils.TEST_ADMIN_PASSWORD);
     }
+    @Test
+    @Order(19)
+    void semanticEditorJournalAndCheckpointsWorkOnTheConfiguredDatabase() throws Exception {
+        var created = httpPost("/api/workspace/create", java.util.Map.of("displayName", "Editor database " + java.util.UUID.randomUUID()), null);
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
+        String workspaceId = MAPPER.readTree(created.body()).get("workspaceId").textValue();
+        String endpoint = "/api/architecture/editor?workspaceId=" + workspaceId;
+        JsonNode initial = MAPPER.readTree(httpGet(endpoint).body()).get("document");
+        JsonNode context = initial.get("context");
+        String id = java.util.UUID.randomUUID().toString();
+        var command = java.util.Map.of("context", context, "metadata", editorMetadata(id), "kind", "CREATE_ELEMENT",
+                "type", "System", "properties", java.util.Map.of("title", "Database journal test"));
+        String revision = "\"workspace-revision-" + context.get("revision").longValue() + "\"";
+        var preview = httpPost("/api/architecture/editor/preview?workspaceId=" + workspaceId, command, revision);
+        assertThat(preview.statusCode()).as(preview.body()).isEqualTo(200);
+        var accepted = httpPost("/api/architecture/editor/commands?workspaceId=" + workspaceId, command, revision);
+        assertThat(accepted.statusCode()).as(accepted.body()).isEqualTo(200);
+        var replay = httpPost("/api/architecture/editor/commands?workspaceId=" + workspaceId, command, revision);
+        assertThat(MAPPER.readTree(replay.body()).get("replayed").booleanValue()).isTrue();
+        JsonNode current = MAPPER.readTree(httpGet(endpoint).body()).get("document");
+        assertThat(current.get("history").size()).isEqualTo(1);
+        assertThat(current.get("context").get("commit")).isEqualTo(context.get("commit"));
+        String target = id;
+        for (String kind : java.util.List.of("UNDO", "REDO")) {
+            String historyId = java.util.UUID.randomUUID().toString();
+            JsonNode selected = current.get("context");
+            var inverse = httpPost("/api/architecture/editor/commands?workspaceId=" + workspaceId,
+                    java.util.Map.of("context", selected, "metadata", editorMetadata(historyId), "kind", kind, "targetOperationId", target),
+                    "\"workspace-revision-" + selected.get("revision").longValue() + "\"");
+            assertThat(inverse.statusCode()).as(inverse.body()).isEqualTo(200);
+            target = historyId;
+            current = MAPPER.readTree(httpGet(endpoint).body()).get("document");
+        }
+        assertThat(current.get("history").size()).isEqualTo(3);
+        assertThat(current.get("context").get("commit")).isEqualTo(context.get("commit"));
+        var checkpoint = java.util.Map.of("context", current.get("context"), "metadata", editorMetadata(java.util.UUID.randomUUID().toString()));
+        String expected = "\"workspace-revision-" + current.get("context").get("revision").longValue() + "\"";
+        var version = httpPost("/api/architecture/editor/checkpoints?workspaceId=" + workspaceId, checkpoint, expected);
+        assertThat(version.statusCode()).as(version.body()).isEqualTo(200);
+        assertThat(MAPPER.readTree(version.body()).get("commitCreated").booleanValue()).isTrue();
+        var retried = httpPost("/api/architecture/editor/checkpoints?workspaceId=" + workspaceId, checkpoint, expected);
+        assertThat(MAPPER.readTree(retried.body()).get("replayed").booleanValue()).isTrue();
+        JsonNode reloaded = MAPPER.readTree(httpGet(endpoint).body()).get("document");
+        assertThat(reloaded.get("history").size()).isEqualTo(3);
+        assertThat(reloaded.get("versions").size()).isEqualTo(initial.get("versions").size() + 1);
+        assertThat(reloaded.get("dsl").textValue()).contains("Database journal test");
+    }
+
+    private static java.util.Map<String, String> editorMetadata(String id) {
+        return java.util.Map.of("commandId", id, "correlationId", id, "causationId", id, "rationale", "Database acceptance");
+    }
+
+    private HttpResponse<String> httpPost(String path, Object body, String revision) throws Exception {
+        var request = HttpRequest.newBuilder().uri(URI.create(baseUrl() + path))
+                .header("Accept", "application/json").header("Content-Type", "application/json")
+                .header("Authorization", BASIC_AUTH).POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)));
+        if (revision != null) request.header("If-Match", revision);
+        return HTTP.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
 }

@@ -68,6 +68,19 @@ public class DslValidator {
         TYPE_MATRIX = Collections.unmodifiableMap(m);
     }
 
+    /** Immutable metamodel rules shared by strict semantic command validation and UI schemas. */
+    public static Map<String, Map<String, Set<String>>> relationTypeRules() {
+        return TYPE_MATRIX;
+    }
+
+    public static Set<String> relationTypes() {
+        return VALID_RELATION_TYPES;
+    }
+
+    public static Set<String> relationStatuses() {
+        return VALID_STATUSES;
+    }
+
     /**
      * Validate a canonical architecture model.
      */

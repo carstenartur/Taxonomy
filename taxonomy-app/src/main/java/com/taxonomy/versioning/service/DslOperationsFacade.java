@@ -15,6 +15,7 @@ import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -48,6 +49,7 @@ public class DslOperationsFacade {
     private final RepositoryStateGuard stateGuard;
     private final RepositoryStateService repositoryStateService;
     private final WorkspaceResolver workspaceResolver;
+    private final WorkspaceArchitectureVersionPort editorVersions;
 
     public DslOperationsFacade(TaxDslExportService exportService,
                                DslMaterializeService materializeService,
@@ -57,7 +59,7 @@ public class DslOperationsFacade {
                                ConflictDetectionService conflictDetectionService,
                                RepositoryStateGuard stateGuard,
                                RepositoryStateService repositoryStateService,
-                               WorkspaceResolver workspaceResolver) {
+                               WorkspaceResolver workspaceResolver, WorkspaceArchitectureVersionPort editorVersions) {
         this.exportService = exportService;
         this.materializeService = materializeService;
         this.documentRepository = documentRepository;
@@ -67,6 +69,7 @@ public class DslOperationsFacade {
         this.stateGuard = stateGuard;
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
+        this.editorVersions = editorVersions;
     }
 
     private DslGitRepository resolveRepository() {
@@ -136,7 +139,27 @@ public class DslOperationsFacade {
 
     public String commitDsl(String branch, String dslText, String author, String message)
             throws IOException {
-        return resolveRepository().commitDsl(branch, dslText, author, message);
+        return version(branch, message, () -> resolveRepository().commitDsl(branch, dslText, author, message));
+    }
+
+    protected <T> T version(String branch, String rationale, WorkspaceArchitectureVersionPort.GitAction<T> action) throws IOException {
+        RepositoryContext context = resolveRepositoryContext();
+        RepositoryContext selected = new RepositoryContext(context.repositoryId(), context.workspaceId(),
+                branch, context.username(), context.scope());
+        return editorVersions.version(selected, versionRationale(rationale), action);
+    }
+
+    /** The bounded journal rationale is a summary; the Git action retains its complete original message. */
+    private static String versionRationale(String message) {
+        if (message == null) return "Create architecture version";
+        String normalized = message.codePoints()
+                .map(codePoint -> Character.isISOControl(codePoint) || Character.isWhitespace(codePoint) ? ' ' : codePoint)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString().strip().replaceAll(" +", " ");
+        if (normalized.isEmpty()) return "Create architecture version";
+        if (normalized.length() <= 1000) return normalized;
+        int end = Character.isHighSurrogate(normalized.charAt(999)) ? 999 : 1000;
+        return normalized.substring(0, end).stripTrailing();
     }
 
     public boolean isDatabaseBacked() {
@@ -174,27 +197,38 @@ public class DslOperationsFacade {
     }
 
     public String createBranch(String name, String fromBranch) throws IOException {
-        return resolveRepository().createBranch(name, fromBranch);
+        return version(fromBranch, "Create architecture branch " + name, () -> resolveRepository().createBranch(name, fromBranch));
     }
 
     public String cherryPick(String commitId, String targetBranch) throws IOException {
-        return resolveRepository().cherryPick(commitId, targetBranch);
+        return version(targetBranch, "Cherry-pick architecture version", () -> resolveRepository().cherryPick(commitId, targetBranch));
     }
 
     public String merge(String fromBranch, String intoBranch) throws IOException {
-        return resolveRepository().merge(fromBranch, intoBranch);
+        return mergeVersion(fromBranch, intoBranch, () -> resolveRepository().merge(fromBranch, intoBranch));
+    }
+
+    protected <T> T mergeVersion(String fromBranch, String intoBranch, WorkspaceArchitectureVersionPort.GitAction<T> action) throws IOException {
+        if (fromBranch.equals(intoBranch)) return version(intoBranch, "Merge architecture versions", action);
+        String first = fromBranch.compareTo(intoBranch) <= 0 ? fromBranch : intoBranch;
+        String second = first.equals(fromBranch) ? intoBranch : fromBranch;
+        return version(first, "Merge architecture versions", () -> version(second, "Merge architecture versions", action));
     }
 
     public String revert(String commitId, String branch) throws IOException {
-        return resolveRepository().revert(commitId, branch);
+        return version(branch, "Revert architecture version", () -> resolveRepository().revert(commitId, branch));
     }
 
     public String undoLast(String branch) throws IOException {
-        return resolveRepository().undoLast(branch);
+        return version(branch, "Revert latest architecture version", () -> resolveRepository().undoLast(branch));
     }
 
     public String restore(String commitId, String branch) throws Exception {
-        return resolveRepository().restore(commitId, branch);
+        return version(branch, "Restore architecture as a new version", () -> {
+            try { return resolveRepository().restore(commitId, branch); }
+            catch (IOException | RuntimeException failure) { throw failure; }
+            catch (Exception failure) { throw new IOException("Architecture restore failed", failure); }
+        });
     }
 
     public boolean deleteBranch(String name) throws IOException {

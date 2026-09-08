@@ -76,6 +76,7 @@ public class HelpController {
         new String[]{"API_REFERENCE",             "🔌", "help.toc.API_REFERENCE",                 "help.audience.integrators"},
         new String[]{"CURL_EXAMPLES",             "💻", "help.toc.CURL_EXAMPLES",                 "help.audience.integrators"},
         new String[]{"ARCHITECTURE",              "🏗️", "help.toc.ARCHITECTURE",                  "help.audience.developers"},
+        new String[]{"ARCHITECTURE_EDITOR",       "✏️", "help.toc.ARCHITECTURE_EDITOR",           "help.audience.everyone"},
         new String[]{"DECISION_PIPELINE",         "🔬", "help.toc.DECISION_PIPELINE",             "help.audience.developers"},
         new String[]{"DECISION_RATIONALE_REPORT", "🧭", "help.toc.DECISION_RATIONALE_REPORT",     "help.audience.everyone"},
         new String[]{"DOCUMENT_TEMPLATES",        "📄", "help.toc.DOCUMENT_TEMPLATES",            "help.audience.admins"},

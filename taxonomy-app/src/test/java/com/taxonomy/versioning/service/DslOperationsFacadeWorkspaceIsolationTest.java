@@ -5,9 +5,13 @@ import com.taxonomy.architecture.service.CommitIndexService;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
@@ -16,6 +20,12 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class DslOperationsFacadeWorkspaceIsolationTest {
+    private static final WorkspaceArchitectureVersionPort DIRECT_VERSIONS = new WorkspaceArchitectureVersionPort() {
+        @Override
+        public <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException {
+            return action.run();
+        }
+    };
 
     @Test
     void doesNotFallBackToSharedRepositoryWhenWorkspaceProvisioningFails() {
@@ -38,7 +48,7 @@ class DslOperationsFacadeWorkspaceIsolationTest {
                 conflictDetectionService,
                 stateGuard,
                 repositoryStateService,
-                workspaceResolver);
+                workspaceResolver, DIRECT_VERSIONS);
 
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("architect");
         doThrow(new IllegalStateException("workspace database unavailable"))

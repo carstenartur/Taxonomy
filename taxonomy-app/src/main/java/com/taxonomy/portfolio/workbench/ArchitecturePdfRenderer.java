@@ -36,13 +36,42 @@ public class ArchitecturePdfRenderer {
             throw new IllegalArgumentException("Architecture projection must contain a renderable scene");
         }
 
+        return renderScene(projection.scene(), document -> configureMetadata(document, projection),
+                (stream, height) -> drawHeader(stream, projection, height), stream -> drawFooter(stream, projection));
+    }
+
+    /** Live editor export uses the same vector geometry without masquerading as an analysis snapshot. */
+    public byte[] render(DiagramScene scene, String provenance) {
+        if (scene == null || scene.isEmpty()) throw new IllegalArgumentException("Architecture scene must not be empty");
+        return renderScene(scene, document -> {
+            PDDocumentInformation information = new PDDocumentInformation();
+            information.setTitle(scene.title());
+            information.setSubject(provenance);
+            information.setCreator("Taxonomy server-side vector renderer");
+            document.setDocumentInformation(information);
+        }, (stream, height) -> {
+            text(stream, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16, scene.title());
+            List<String> lines = java.util.Arrays.asList(provenance.split("\\n"));
+            for (int i = 0; i < Math.min(2, lines.size()); i++) {
+                text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33 - i * 12, lines.get(i));
+            }
+        }, stream -> text(stream, REGULAR, 8, PAGE_MARGIN, 16, "Derived server layout · Git-authoritative architecture"));
+    }
+
+    @FunctionalInterface
+    private interface HeaderWriter { void write(PDPageContentStream stream, float height) throws IOException; }
+    @FunctionalInterface
+    private interface FooterWriter { void write(PDPageContentStream stream) throws IOException; }
+
+    private byte[] renderScene(DiagramScene scene, java.util.function.Consumer<PDDocument> metadata,
+                              HeaderWriter header, FooterWriter footer) {
+
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             PDPage page = new PDPage(new PDRectangle(PDRectangle.A3.getHeight(), PDRectangle.A3.getWidth()));
             document.addPage(page);
-            configureMetadata(document, projection);
+            metadata.accept(document);
 
-            DiagramScene scene = projection.scene();
             float availableWidth = page.getMediaBox().getWidth() - 2 * PAGE_MARGIN;
             float availableHeight = page.getMediaBox().getHeight() - 2 * PAGE_MARGIN - HEADER_HEIGHT;
             float scale = (float) Math.min(
@@ -56,10 +85,10 @@ public class ArchitecturePdfRenderer {
                 stream.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
                 stream.fill();
 
-                drawHeader(stream, projection, page.getMediaBox().getHeight());
+                header.write(stream, page.getMediaBox().getHeight());
                 drawEdges(stream, scene, diagramX, diagramTop, scale);
                 drawNodes(stream, scene, diagramX, diagramTop, scale);
-                drawFooter(stream, projection);
+                footer.write(stream);
             }
 
             document.save(output);
