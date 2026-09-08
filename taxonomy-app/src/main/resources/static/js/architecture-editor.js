@@ -8,6 +8,7 @@
     var loader = null;
     var pending = null;
     var busy = false;
+    var formBaseline = {};
     var PAGE_SIZE = 50;
     var dialog = el('editorPreviewDialog');
     var fieldMap = {
@@ -138,11 +139,13 @@
     }
     function renderForm() {
         var item = selectedElement();
+        formBaseline = {};
         el('editorSelection').textContent = item ? item.id : t('editor.newDraft');
         el('editorType').value = item ? item.type : view.schema.elementTypes[0];
         Object.keys(fieldMap).forEach(function (key) {
             var value = item && (key.startsWith('x-') ? item.extensions[key] : item[key]);
             el(fieldMap[key]).value = value || (key === 'x-editor-status' ? 'draft' : '');
+            formBaseline[key] = el(fieldMap[key]).value;
         });
         var parent = item && view.scene.nodes.find(function (node) { return node.id === item.id; });
         el('editorParent').value = parent && parent.parentId || '';
@@ -240,8 +243,14 @@
     }
     el('editorForm').addEventListener('submit', function (event) {
         event.preventDefault();
-        var properties = {}; Object.keys(fieldMap).forEach(function (key) { properties[key] = el(fieldMap[key]).value; });
-        stage({ kind: selectedElement() ? 'UPDATE_ELEMENT' : 'CREATE_ELEMENT', id: selected, type: el('editorType').value, properties: properties });
+        var existing = selectedElement();
+        var properties = {};
+        Object.keys(fieldMap).forEach(function (key) {
+            var value = el(fieldMap[key]).value;
+            // Track user edits to the form, including explicit clearing; displayed defaults are not semantic changes.
+            if (existing ? value !== formBaseline[key] : value !== '' || key === 'title') properties[key] = value;
+        });
+        stage({ kind: existing ? 'UPDATE_ELEMENT' : 'CREATE_ELEMENT', id: selected, type: el('editorType').value, properties: properties });
     });
     el('editorForm').addEventListener('input', function () { el('editorDraft').hidden = false; pending = null; });
     el('editorRelationForm').addEventListener('submit', function (event) {

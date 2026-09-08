@@ -58,10 +58,11 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     measurements.commands.push({ commit: value.context.commit, changedIds: value.change.changedIds });
     return value;
   }
-  async function create(type, title) {
+  async function create(type, title, owner = '') {
     await page.locator('#editorNew').click();
     await page.locator('#editorType').selectOption(type);
     await page.locator('#editorTitle').fill(title);
+    await page.locator('#editorOwner').fill(owner);
     await preview(() => page.locator('#editorPreviewElement').click());
     const result = await commit();
     return `arch-${result.commandId}`;
@@ -101,8 +102,19 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
       await page.locator('#editorNew').waitFor();
     }
     await page.locator('#editorRationale').fill('Browser acceptance architecture decision');
+    await page.locator('#editorTree button').first().click();
+    const unchanged = await preview(() => page.locator('#editorPreviewElement').click());
+    assert.deepEqual(unchanged.change.changes, [], 'Unchanged imported properties must not gain empty fields or defaults');
+    assert.equal(await page.locator('#editorAccept').isDisabled(), true);
+    await page.locator('#editorCancel').click();
     const suffix = Date.now().toString(36);
-    const system = await create('System', `Architecture system ${suffix}`);
+    const system = await create('System', `Architecture system ${suffix}`, 'Architecture owner');
+    await page.locator('#editorOwner').fill('');
+    const clearing = await preview(() => page.locator('#editorPreviewElement').click());
+    assert.ok(clearing.change.changes[0].before.includes('Architecture owner'));
+    assert.match(clearing.change.changes[0].after, /x-owner:\s*""/);
+    await commit();
+    assert.equal(await page.locator('#editorOwner').inputValue(), '');
     const component = await create('Component', `Architecture component ${suffix}`);
     await select(system);
     await page.locator('#editorRelationType').selectOption('RELATED_TO');
@@ -158,6 +170,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.ok((await page.locator('#editorChanges').innerText()).includes('Concurrent accepted description'));
     await commit();
     assert.equal(await page.locator('#editorTitle').inputValue(), `Reapplied system ${suffix}`);
+    assert.equal(await page.locator('#editorDescription').inputValue(), 'Concurrent accepted description');
 
     await page.locator('#editorRationale').fill('Explicit removal after dependency preview');
     await preview(() => page.locator('#editorRelations li').first().getByRole('button').last().click());
@@ -171,6 +184,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     measurements.undoRedoAfterReload = true;
     measurements.staleReappliedExplicitly = true;
     measurements.exportCommitParity = true;
+    measurements.unchangedFormIsNoOp = true;
+    measurements.explicitPropertyClear = true;
   }
   // Bounded renderer spike: neutral DiagramScene fixtures, never replacement taxonomy/domain state.
   measurements.renderer = await page.evaluate(async () => {
