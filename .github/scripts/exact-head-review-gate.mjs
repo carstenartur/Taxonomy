@@ -11,7 +11,7 @@ const DEFAULT_REVIEWERS = [
     'Copilot'
 ];
 const API_VERSION = '2022-11-28';
-export const HUMAN_CONFIRMATION_POLICY_VERSION = 1;
+export const HUMAN_CONFIRMATION_POLICY_VERSION = 2;
 
 export function normalizeLogin(login) {
     return String(login ?? '')
@@ -36,6 +36,14 @@ export function parseReviewCoverage(body) {
         reviewed: Number.parseInt(match[1], 10),
         total: Number.parseInt(match[2], 10)
     } : null;
+}
+
+export function isValidReviewCoverage(coverage, changedFiles) {
+    return Boolean(coverage
+        && Number.isSafeInteger(changedFiles) && changedFiles > 0
+        && Number.isSafeInteger(coverage.total) && coverage.total === changedFiles
+        && Number.isSafeInteger(coverage.reviewed)
+        && coverage.reviewed >= 0 && coverage.reviewed <= coverage.total);
 }
 
 export function parseReviewCommentCount(body) {
@@ -81,8 +89,15 @@ function unresolvedCurrentThreads(threads) {
 
 export function parseReviewConfirmation(body) {
     const match = String(body ?? '').trim().match(
-        /^\/confirm-review ([a-fA-F0-9]{40}) ([1-9][0-9]*)$/u);
-    return match ? { headSha: match[1].toLowerCase(), reviewId: match[2] } : null;
+        /^\/confirm-review ([a-fA-F0-9]{40}) ([1-9][0-9]*)(?: all-files=([1-9][0-9]*))?$/u);
+    if (!match) return null;
+    const command = { headSha: match[1].toLowerCase(), reviewId: match[2] };
+    if (match[3] !== undefined) {
+        const changedFiles = Number(match[3]);
+        if (!Number.isSafeInteger(changedFiles)) return null;
+        command.changedFiles = changedFiles;
+    }
+    return command;
 }
 
 function isHuman(user, reviewerLogins) {
@@ -159,9 +174,10 @@ export async function loadHumanEvidence(client, input) {
 
 export function humanReviewDecision({
     pullRequest, review, reviews = [], comments = [], humanPermissions = new Map(),
-    reviewerLogins, asOf = Infinity
+    reviewerLogins, asOf = Infinity, requireCompleteCoverage = false
 }) {
     const headSha = pullRequest?.head?.sha;
+    const changedFiles = Number(pullRequest?.changed_files);
     const reviewedAt = Date.parse(reviewSubmittedAt(review));
     const reviewId = String(review?.id ?? '');
     const latestOpinions = new Map();
@@ -186,22 +202,29 @@ export function humanReviewDecision({
         return { confirmation: {
             source: 'pull_request_review', id: nativeApproval.id,
             login: nativeApproval.user.login, url: nativeApproval.html_url,
-            submittedAt: reviewSubmittedAt(nativeApproval), headSha, reviewId
+            submittedAt: reviewSubmittedAt(nativeApproval), headSha, reviewId,
+            scope: 'all-changed-files', changedFiles
         } };
     }
     const comment = comments.filter(item => {
         const command = parseReviewConfirmation(item.body);
         const createdAt = Date.parse(item.created_at);
         return command?.headSha === headSha && command.reviewId === reviewId
+            && (command.changedFiles === undefined ? !requireCompleteCoverage
+                : command.changedFiles === changedFiles)
             && Number.isSafeInteger(item.id) && item.id > 0
             && canConfirm(item.user, humanPermissions, reviewerLogins) && !item.performed_via_github_app
             && createdAt > reviewedAt && createdAt <= asOf
             && item.created_at === item.updated_at && item.last_edited_at === null;
     }).toSorted((a, b) => b.id - a.id)[0];
-    return comment ? { confirmation: {
+    if (!comment) return {};
+    const command = parseReviewConfirmation(comment.body);
+    return { confirmation: {
         source: 'issue_comment', id: comment.id, login: comment.user.login,
-        url: comment.html_url, submittedAt: comment.created_at, headSha, reviewId
-    } } : {};
+        url: comment.html_url, submittedAt: comment.created_at, headSha, reviewId,
+        scope: command.changedFiles === undefined ? 'closer-review' : 'all-changed-files',
+        ...(command.changedFiles === undefined ? {} : { changedFiles: command.changedFiles })
+    } };
 }
 
 export function evaluateExactHeadReview({
@@ -254,12 +277,7 @@ export function evaluateExactHeadReview({
 
     const coverage = parseReviewCoverage(review.body);
     const changedFiles = Number(pullRequest?.changed_files);
-    if (!coverage
-            || coverage.total < 1
-            || coverage.reviewed !== coverage.total
-            || !Number.isInteger(changedFiles)
-            || changedFiles < 1
-            || coverage.total !== changedFiles) {
+    if (!isValidReviewCoverage(coverage, changedFiles)) {
         const message = coverage
             ? `The review covered ${coverage.reviewed}/${coverage.total} files while the pull request contains ${Number.isInteger(changedFiles) ? changedFiles : 'an unknown number of'} changed files.`
             : 'The review did not publish a changed-file coverage count.';
@@ -302,12 +320,23 @@ export function evaluateExactHeadReview({
             });
     }
 
+    const completeCoverage = coverage.reviewed === coverage.total;
     const decision = humanReviewDecision({
-        pullRequest, review, reviews, comments, humanPermissions, reviewerLogins: trusted
+        pullRequest, review, reviews, comments, humanPermissions, reviewerLogins: trusted,
+        requireCompleteCoverage: !completeCoverage
     });
     if (decision.objection) {
         return result('blocked', 'HUMAN_CHANGES_REQUESTED',
             'A repository writer has requested changes on the current head.', { review });
+    }
+    if (!completeCoverage && !decision.confirmation) {
+        return result('blocked', 'REVIEW_COVERAGE_CONFIRMATION_REQUIRED',
+            `Copilot reviewed ${coverage.reviewed}/${coverage.total} changed files. `
+            + 'After reviewing every changed file, the linked review and CI evidence, '
+            + 'a repository writer can confirm the full change with this exact PR conversation comment: '
+            + `/confirm-review ${expectedHeadSha} ${review.id} all-files=${changedFiles}`, {
+                review, coverage, changedFiles, reviewCommentCount, unresolvedThreads: []
+            });
     }
     if (classification === 'needs-closer-look' && !decision.confirmation) {
         return result('blocked', 'CLOSER_REVIEW_REQUIRED',
@@ -317,8 +346,11 @@ export function evaluateExactHeadReview({
                 review, coverage, changedFiles, reviewCommentCount, unresolvedThreads: []
             });
     }
+    const needsHuman = !completeCoverage || classification === 'needs-closer-look';
     return result('passed', 'EXACT_HEAD_REVIEW_COMPLETE',
-        decision.confirmation && classification === 'needs-closer-look'
+        !completeCoverage
+            ? `Exact head ${expectedHeadSha} has ${coverage.reviewed}/${coverage.total} Copilot coverage and full-change human confirmation by ${decision.confirmation.login}.`
+            : needsHuman
             ? `Exact head ${expectedHeadSha} has a complete Copilot review confirmed by ${decision.confirmation.login}.`
             : `Exact head ${expectedHeadSha} has a complete approval-recommended review.`, {
             review,
@@ -326,8 +358,7 @@ export function evaluateExactHeadReview({
             changedFiles,
             reviewCommentCount,
             unresolvedThreads: [],
-            humanConfirmation: classification === 'needs-closer-look'
-                ? decision.confirmation : null
+            humanConfirmation: needsHuman ? decision.confirmation : null
         });
 }
 
@@ -484,6 +515,7 @@ function sleep(milliseconds) {
 function evidence(resultValue, number, headSha) {
     return {
         schemaVersion: 1,
+        humanConfirmationPolicyVersion: HUMAN_CONFIRMATION_POLICY_VERSION,
         pullRequestNumber: number,
         expectedHeadSha: headSha,
         status: resultValue.status,

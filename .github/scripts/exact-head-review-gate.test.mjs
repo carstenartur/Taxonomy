@@ -6,6 +6,7 @@ import {
     classifyReview,
     evaluateExactHeadReview,
     GitHubClient,
+    HUMAN_CONFIRMATION_POLICY_VERSION,
     loadHumanPermissions,
     loadHumanEvidence,
     normalizeLogin,
@@ -115,6 +116,69 @@ test('missing confirmation explains the exact command for the current review', (
     assert.match(gate.message, new RegExp(`/confirm-review ${HEAD} 101`, 'u'));
 });
 
+for (const outcome of [APPROVAL, CLEAN_CLOSER]) {
+    test(`a human full-change confirmation supplements 113/121 coverage for ${classifyReview(review(outcome))}`, () => {
+        const gate = humanGate({
+            pullRequest: pullRequest({ user: HUMAN, changed_files: 121 }),
+            reviews: [review(outcome.replace('2/2', '113/121'))],
+            comments: [confirmation({ body: `/confirm-review ${HEAD} 101 all-files=121` })]
+        });
+        assert.equal(gate.status, 'passed');
+        assert.deepEqual(gate.coverage, { reviewed: 113, total: 121 });
+        assert.equal(gate.humanConfirmation.scope, 'all-changed-files');
+        assert.equal(gate.humanConfirmation.changedFiles, 121);
+    });
+}
+
+test('a subsequent native peer approval also supplements partial coverage', () => {
+    const gate = humanGate({
+        pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+        comments: [], reviews: [review(APPROVAL.replace('2/2', '1/2')),
+            review('Reviewed the whole change.', {
+                id: 202, user: HUMAN, state: 'APPROVED', submitted_at: '2026-09-01T10:02:00Z'
+            })]
+    });
+    assert.equal(gate.status, 'passed');
+    assert.equal(gate.humanConfirmation.source, 'pull_request_review');
+    assert.equal(gate.humanConfirmation.scope, 'all-changed-files');
+    assert.equal(gate.humanConfirmation.changedFiles, 2);
+});
+
+test('partial coverage requires explicit full-change scope, never a legacy confirmation', () => {
+    for (const body of [APPROVAL, CLEAN_CLOSER]) {
+        const gate = humanGate({ reviews: [review(body.replace('2/2', '1/2'))] });
+        assert.equal(gate.code, 'REVIEW_COVERAGE_CONFIRMATION_REQUIRED');
+        assert.match(gate.message, new RegExp(`/confirm-review ${HEAD} 101 all-files=2`, 'u'));
+    }
+    assert.equal(humanGate().humanConfirmation.scope, 'closer-review');
+});
+
+test('full-change confirmation requires an exact positive safe-integer file count', () => {
+    assert.deepEqual(parseReviewConfirmation(`/confirm-review ${HEAD} 101 all-files=121`),
+        { headSha: HEAD, reviewId: '101', changedFiles: 121 });
+    for (const count of ['0', '-1', '02', '2.0', '2e0', '9007199254740992', '2 all-files=2']) {
+        assert.equal(parseReviewConfirmation(`/confirm-review ${HEAD} 101 all-files=${count}`), null);
+    }
+    for (const count of [1, 3]) {
+        assert.equal(humanGate({ comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=${count}`
+        })] }).status, 'blocked');
+    }
+});
+
+test('human coverage completion never invents or corrects invalid Copilot metadata', () => {
+    const comments = [confirmation({ body: `/confirm-review ${HEAD} 101 all-files=2` })];
+    for (const coverage of ['3/2', '1/3', '0/0', 'unknown', '9007199254740992/2']) {
+        assert.equal(humanGate({ comments,
+            reviews: [review(APPROVAL.replace('2/2', coverage))]
+        }).code, 'REVIEW_FILE_COVERAGE_INCOMPLETE');
+    }
+    assert.equal(humanGate({ comments,
+        pullRequest: pullRequest({ changed_files: 9007199254740992 }),
+        reviews: [review(APPROVAL.replace('2/2', '9007199254740992/9007199254740992'))]
+    }).code, 'REVIEW_FILE_COVERAGE_INCOMPLETE');
+});
+
 for (const [name, overrides] of Object.entries({
     'old head': { body: `/confirm-review ${'b'.repeat(40)} 101` },
     'old review': { body: `/confirm-review ${HEAD} 100` },
@@ -136,6 +200,12 @@ for (const [name, overrides] of Object.entries({
 })) {
     test(`rejects ${name}`, () => {
         assert.equal(humanGate({ comments: [confirmation(overrides)] }).status, 'blocked');
+        const scoped = { ...overrides,
+            body: `${overrides.body ?? confirmation().body} all-files=2` };
+        assert.equal(humanGate({
+            reviews: [review(CLEAN_CLOSER.replace('2/2', '1/2'))],
+            comments: [confirmation(scoped)]
+        }).status, 'blocked');
     });
 }
 
@@ -171,7 +241,6 @@ test('deleting the only confirmation revokes it; a new Copilot review needs new 
 
 for (const [name, overrides, code] of [
     ['changes', { reviews: [review(CHANGES)] }, 'CHANGES_RECOMMENDED'],
-    ['partial coverage', { reviews: [review(CLEAN_CLOSER.replace('2/2', '1/2'))] }, 'REVIEW_FILE_COVERAGE_INCOMPLETE'],
     ['changed-file mismatch', { pullRequest: pullRequest({ changed_files: 3 }) }, 'REVIEW_FILE_COVERAGE_INCOMPLETE'],
     ['generated comments', { reviews: [review(CLOSER)] }, 'REVIEW_FOLLOW_UP_REQUIRED'],
     ['missing comment count', { reviews: [review(CLEAN_CLOSER.replace('Comments generated', 'Notes'))] }, 'REVIEW_COMMENT_COUNT_MISSING'],
@@ -183,6 +252,9 @@ for (const [name, overrides, code] of [
 ]) {
     test(`human confirmation cannot override ${name}`, () => {
         assert.equal(humanGate(overrides).code, code);
+        assert.equal(humanGate({
+            ...overrides, comments: [confirmation({ body: `/confirm-review ${HEAD} 101 all-files=2` })]
+        }).code, code);
     });
 }
 
@@ -351,7 +423,11 @@ test('refresh workflow executes default-branch code with narrowly scoped write p
     assert.equal(reviewers(workflow), reviewers(ci));
 });
 
-function mockGitHub(t, { editedAt = null, advanceHead = false, newRun = false, graphqlError = false } = {}) {
+function mockGitHub(t, {
+    editedAt = null, advanceHead = false, newRun = false, graphqlError = false,
+    reviewBody = CLEAN_CLOSER, confirmationBody = confirmation().body,
+    policyVersion = HUMAN_CONFIRMATION_POLICY_VERSION
+} = {}) {
     const writes = [];
     let prReads = 0;
     let runListReads = 0;
@@ -375,9 +451,9 @@ function mockGitHub(t, { editedAt = null, advanceHead = false, newRun = false, g
             payload = advanceHead && prReads >= 3
                 ? { ...CI_PR, head: { sha: 'c'.repeat(40) } } : CI_PR;
         } else if (path.endsWith('/reviews')) {
-            payload = [review(CLEAN_CLOSER)];
+            payload = [review(reviewBody)];
         } else if (path.endsWith('/comments')) {
-            const { last_edited_at, ...restComment } = confirmation();
+            const { last_edited_at, ...restComment } = confirmation({ body: confirmationBody });
             payload = [restComment];
         } else if (path.endsWith('/collaborators/maintainer/permission')) {
             payload = { permission: 'admin' };
@@ -386,7 +462,7 @@ function mockGitHub(t, { editedAt = null, advanceHead = false, newRun = false, g
             payload = { total_count: 1, workflow_runs: newRun && runListReads >= 2
                 ? [{ ...CI_RUN, id: 302, status: 'in_progress' }, CI_RUN] : [CI_RUN] };
         } else if (path.includes('/contents/')) {
-            payload = { encoding: 'base64', content: Buffer.from('export const HUMAN_CONFIRMATION_POLICY_VERSION = 1;').toString('base64') };
+            payload = { encoding: 'base64', content: Buffer.from(`export const HUMAN_CONFIRMATION_POLICY_VERSION = ${policyVersion};`).toString('base64') };
         } else if (path.endsWith('/runs/301/jobs')) {
             payload = { total_count: 1, jobs: [FINAL_JOB] };
         } else if (path.endsWith('/runs/301')) {
@@ -407,6 +483,24 @@ test('live REST and GraphQL evidence causes exactly one final-job rerun', async 
     const { client, writes } = mockGitHub(t);
     assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
     assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
+});
+
+test('live refresh accepts verified full-change scope for partial coverage', async t => {
+    const { client, writes } = mockGitHub(t, {
+        reviewBody: CLEAN_CLOSER.replace('2/2', '1/2'),
+        confirmationBody: `/confirm-review ${HEAD} 101 all-files=2`
+    });
+    assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
+    assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
+});
+
+test('refresh does not retry a v1 base gate with a v2 coverage confirmation', async t => {
+    const { client, writes } = mockGitHub(t, {
+        policyVersion: 1, reviewBody: CLEAN_CLOSER.replace('2/2', '1/2'),
+        confirmationBody: `/confirm-review ${HEAD} 101 all-files=2`
+    });
+    assert.match(await refreshPullRequest(client, 933), /update the PR from main/u);
+    assert.deepEqual(writes, []);
 });
 
 test('live refresh honors the configured trusted reviewer set', async t => {
@@ -486,7 +580,7 @@ test('blocks changes recommended and closer-look outcomes', () => {
     }
 });
 
-test('blocks partial file coverage', () => {
+test('blocks partial file coverage without human completion', () => {
     const result = evaluateExactHeadReview({
         pullRequest: pullRequest(),
         reviews: [review(APPROVAL.replace('2/2', '1/2'))],
@@ -494,7 +588,7 @@ test('blocks partial file coverage', () => {
         expectedHeadSha: HEAD,
         reviewerLogins: REVIEWERS
     });
-    assert.equal(result.code, 'REVIEW_FILE_COVERAGE_INCOMPLETE');
+    assert.equal(result.code, 'REVIEW_COVERAGE_CONFIRMATION_REQUIRED');
 });
 
 test('blocks a review whose reported total differs from the pull request', () => {

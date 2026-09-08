@@ -3,7 +3,10 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { GitHubClient, evaluateLiveReview, parseReviewerLogins, parseReviewConfirmation } from './exact-head-review-gate.mjs';
+import {
+    GitHubClient, HUMAN_CONFIRMATION_POLICY_VERSION, evaluateLiveReview,
+    parseReviewerLogins, parseReviewConfirmation
+} from './exact-head-review-gate.mjs';
 
 const GATE_STEP = 'Require complete review of the exact pull-request head';
 const TECHNICAL_STEPS = [
@@ -64,7 +67,7 @@ export async function refreshPullRequest(client, number, reviewerLogins) {
         `${prefix}/contents/.github/scripts/exact-head-review-gate.mjs?ref=${baseSha}`);
     if (file.encoding !== 'base64') throw new Error('Trusted gate source is unavailable.');
     const source = Buffer.from(file.content, 'base64').toString('utf8');
-    if (!source.includes('export const HUMAN_CONFIRMATION_POLICY_VERSION = 1;')) {
+    if (!source.includes(`export const HUMAN_CONFIRMATION_POLICY_VERSION = ${HUMAN_CONFIRMATION_POLICY_VERSION};`)) {
         return `#${number}: update the PR from main and run CI with the confirmation policy first.`;
     }
 
