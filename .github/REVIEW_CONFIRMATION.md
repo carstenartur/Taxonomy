@@ -72,6 +72,9 @@ confirmation also records the number of changed files. Copilot's original counts
 remain unchanged; human completion is separate evidence. The merged-PR audit recognizes
 only confirmations submitted before the merge. It conservatively rechecks current
 permissions and currently available, unedited evidence.
+An automated approval submitted after merge cannot erase findings about missing,
+incomplete or non-approving evidence at merge time. Post-merge review and remediation
+are reported separately.
 
 ## Installing this policy
 

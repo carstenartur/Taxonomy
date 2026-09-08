@@ -276,12 +276,12 @@ test('distinguishes a stale-head late review from exact merged-head evidence', (
         item.code === 'ACTIONABLE_REVIEW_SUBMITTED_AFTER_MERGE'), false);
 });
 
-test('later clean exact-head approval reconciles an earlier commented pre-merge review', () => {
+test('a clean exact-head approval before merge supersedes an earlier commented review', () => {
     const result = auditMergedPullRequest({
         pullRequest: pullRequest(),
         reviews: [
             review(CHANGES),
-            review(APPROVAL, { submitted_at: '2026-09-01T12:00:00Z' })
+            review(APPROVAL, { submitted_at: '2026-09-01T10:30:00Z' })
         ],
         threads: [],
         reviewerLogins: REVIEWERS
@@ -290,10 +290,26 @@ test('later clean exact-head approval reconciles an earlier commented pre-merge 
     assert.equal(findingsAtOrAbove(result.findings, 'high').length, 0);
     assert.equal(result.findings.some(item =>
         item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'), false);
-    assert.ok(result.findings.some(item =>
-        item.code === 'APPROVING_REVIEW_SUBMITTED_AFTER_MERGE'
-            && item.severity === 'medium'));
+    assert.deepEqual(result.findings, []);
 });
+
+for (const [body, codes] of [
+    [CHANGES, ['NON_APPROVING_EXACT_HEAD_REVIEW', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED']],
+    [APPROVAL.replace('2/2', '1/2'), ['INCOMPLETE_EXACT_HEAD_REVIEW']],
+    [APPROVAL.replace('Approval recommended', 'Needs a closer look'), ['NON_APPROVING_EXACT_HEAD_REVIEW']]
+]) {
+    test(`post-merge approval cannot erase ${codes.join(', ')}`, () => {
+        const result = auditMergedPullRequest({
+            pullRequest: pullRequest(), threads: [], reviewerLogins: REVIEWERS,
+            reviews: [review(body), review(APPROVAL, { submitted_at: '2026-09-01T12:00:00Z' })]
+        });
+        for (const code of codes) {
+            assert.ok(result.findings.some(item => item.code === code && item.severity === 'high'));
+        }
+        assert.ok(result.findings.some(item =>
+            item.code === 'APPROVING_REVIEW_SUBMITTED_AFTER_MERGE' && item.severity === 'medium'));
+    });
+}
 
 test('later clean exact-head approval downgrades an actionable late review', () => {
     const result = auditMergedPullRequest({

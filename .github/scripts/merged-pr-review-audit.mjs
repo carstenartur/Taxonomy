@@ -185,32 +185,28 @@ export function auditMergedPullRequest({
             findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
                 'A repository writer requested changes on the merged head.'));
         }
-        const laterCleanReview = exactHeadReviews
-            .filter(review => reviewSubmittedAt(review) > evidence.submittedAt)
-            .map(review => reviewEvidence(review, changedFiles, headSha))
-            .find(isCleanApprovalEvidence);
-        if (!laterCleanReview) {
-            if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
-                findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
-                    `The latest unreconciled exact-head pre-merge review outcome was ${evidence.classification}.`,
-                    evidence));
-            }
-            if (!evidence.completeCoverage && !humanConfirmed) {
-                findings.push(finding('high', 'INCOMPLETE_EXACT_HEAD_REVIEW',
-                    evidence.coverage
-                        ? `The unreconciled pre-merge review covered ${evidence.coverage.reviewed}/${evidence.coverage.total} files while the PR changed ${changedFiles}.`
-                        : 'The unreconciled pre-merge review published no changed-file coverage count.',
-                    evidence));
-            }
-            if (evidence.commentCount === null) {
-                findings.push(finding('medium', 'PRE_MERGE_REVIEW_COMMENT_COUNT_MISSING',
-                    'The unreconciled pre-merge review did not publish its generated-comment count.',
-                    evidence));
-            } else if (evidence.commentCount > 0) {
-                findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
-                    `The exact-head pre-merge review generated ${evidence.commentCount} comment(s) and no later complete, comment-free exact-head approval exists.`,
-                    evidence));
-            }
+        // This is already the latest exact-head review before merge. A later
+        // approval may report remediation, but cannot change the merge-time facts.
+        if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
+            findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
+                `The latest exact-head pre-merge review outcome was ${evidence.classification}.`,
+                evidence));
+        }
+        if (!evidence.completeCoverage && !humanConfirmed) {
+            findings.push(finding('high', 'INCOMPLETE_EXACT_HEAD_REVIEW',
+                evidence.coverage
+                    ? `The pre-merge review covered ${evidence.coverage.reviewed}/${evidence.coverage.total} files while the PR changed ${changedFiles}.`
+                    : 'The pre-merge review published no changed-file coverage count.',
+                evidence));
+        }
+        if (evidence.commentCount === null) {
+            findings.push(finding('medium', 'PRE_MERGE_REVIEW_COMMENT_COUNT_MISSING',
+                'The pre-merge review did not publish its generated-comment count.',
+                evidence));
+        } else if (evidence.commentCount > 0) {
+            findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
+                `The latest exact-head review before merge generated ${evidence.commentCount} comment(s); no fresh comment-free review completed before merge.`,
+                evidence));
         }
     }
 
